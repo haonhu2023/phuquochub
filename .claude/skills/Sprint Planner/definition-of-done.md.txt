@@ -1,0 +1,77 @@
+# Definition of Done
+
+Every Sprint
+
+must satisfy
+
+Documentation
+
+100%
+
+Architecture
+
+100%
+
+ADR
+
+100%
+
+RBAC
+
+100%
+
+Database
+
+100%
+
+OpenAPI
+
+100%
+
+Naming
+
+100%
+
+Testing
+
+Unit
+
+Integration
+
+E2E
+
+CI
+
+Green
+
+--------------------------------------------------
+
+No TODO
+
+No FIXME
+
+No Stub
+
+No Placeholder
+
+--------------------------------------------------
+
+Every API
+
+documented.
+
+Every Entity
+
+tested.
+
+Every Migration
+
+reversible.
+
+Every Service
+
+covered.
+
+--------------------------------------------------
+
+No blocker remains.

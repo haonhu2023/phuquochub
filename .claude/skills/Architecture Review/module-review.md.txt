@@ -1,0 +1,782 @@
+# Module Review
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+
+the official Module Review policy
+
+for the PhuQuocHub platform.
+
+Module Review ensures
+
+every module
+
+is independently maintainable,
+
+architecture compliant,
+
+properly documented,
+
+fully testable,
+
+and production ready.
+
+Every module
+
+must have
+
+clear ownership,
+
+clear responsibilities,
+
+and well-defined boundaries.
+
+---
+
+# Mission
+
+Protect module architecture.
+
+Prevent module drift.
+
+Guarantee module isolation.
+
+Ensure module quality.
+
+Verify module completeness.
+
+---
+
+# Core Principles
+
+Each module
+
+owns its own
+
+Business Logic
+
+Controllers
+
+Services
+
+Repositories
+
+Entities
+
+DTOs
+
+Tests
+
+Documentation
+
+No module
+
+may depend
+
+on another module's
+
+internal implementation.
+
+Only public contracts
+
+may be used.
+
+---
+
+# Module Lifecycle
+
+Planned
+
+↓
+
+Designed
+
+↓
+
+Implemented
+
+↓
+
+Tested
+
+↓
+
+Reviewed
+
+↓
+
+Accepted
+
+↓
+
+Production Ready
+
+Only
+
+Accepted
+
+modules
+
+may be released.
+
+---
+
+# Review Workflow
+
+Every module review
+
+must follow
+
+Step 1
+
+Identify Module
+
+↓
+
+Step 2
+
+Review Structure
+
+↓
+
+Step 3
+
+Review Dependencies
+
+↓
+
+Step 4
+
+Review Documentation
+
+↓
+
+Step 5
+
+Review Implementation
+
+↓
+
+Step 6
+
+Review Tests
+
+↓
+
+Step 7
+
+Review Risks
+
+↓
+
+Step 8
+
+Issue Decision
+
+---
+
+# Module Identity
+
+Verify
+
+Module Name
+
+Module Owner
+
+Business Purpose
+
+Architecture Layer
+
+Dependencies
+
+Public API
+
+Status
+
+Version
+
+Every module
+
+must have
+
+a documented purpose.
+
+---
+
+# Folder Structure
+
+Verify
+
+controllers/
+
+services/
+
+repositories/
+
+entities/
+
+dto/
+
+mappers/
+
+validators/
+
+events/
+
+tests/
+
+README.md
+
+No undocumented folders.
+
+No unexpected structure.
+
+---
+
+# Layer Compliance
+
+Verify
+
+Controller
+
+↓
+
+Service
+
+↓
+
+Repository
+
+↓
+
+Database
+
+Controllers
+
+must not
+
+contain business logic.
+
+Repositories
+
+must not
+
+contain business rules.
+
+Entities
+
+must not
+
+depend on infrastructure.
+
+---
+
+# Dependency Review
+
+Verify
+
+Internal Dependencies
+
+Shared Dependencies
+
+External Dependencies
+
+Circular Dependencies
+
+Cross-module Access
+
+Hidden Dependencies
+
+Dependency Direction
+
+No circular dependency.
+
+No undocumented dependency.
+
+---
+
+# Public Contract Review
+
+Verify
+
+Public Services
+
+Public Interfaces
+
+Public Events
+
+Public DTOs
+
+Documented APIs
+
+Internal implementation
+
+must never
+
+be accessed directly.
+
+---
+
+# Documentation Review
+
+Verify
+
+Architecture
+
+ADR
+
+Decision Register
+
+README
+
+OpenAPI
+
+Database
+
+Workflow
+
+RBAC
+
+Coding Standard
+
+Every module
+
+must be documented.
+
+---
+
+# Database Review
+
+Verify
+
+Entities
+
+Tables
+
+Columns
+
+Indexes
+
+Constraints
+
+Relationships
+
+Migration
+
+Rollback
+
+Naming Convention
+
+Every database object
+
+must belong
+
+to the module.
+
+---
+
+# API Review
+
+Verify
+
+Controllers
+
+Endpoints
+
+DTOs
+
+Validation
+
+Authentication
+
+Authorization
+
+OpenAPI
+
+Examples
+
+Versioning
+
+No undocumented endpoint.
+
+---
+
+# Security Review
+
+Verify
+
+Authentication
+
+Authorization
+
+RBAC
+
+Permissions
+
+Validation
+
+Secrets
+
+Audit Logging
+
+Input Validation
+
+Rate Limiting
+
+OWASP
+
+---
+
+# Testing Review
+
+Verify
+
+Compilation
+
+Lint
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Coverage
+
+CI
+
+Test Quality
+
+Test Isolation
+
+---
+
+# Performance Review
+
+Verify
+
+Indexes
+
+Caching
+
+Queries
+
+Memory
+
+CPU
+
+Pagination
+
+Search
+
+Geo Query
+
+Bundle Size
+
+Response Time
+
+---
+
+# Repository Quality
+
+Verify
+
+Naming
+
+Folder Structure
+
+Code Duplication
+
+Dead Code
+
+Unused Files
+
+Generated Files
+
+Consistency
+
+Readability
+
+Maintainability
+
+---
+
+# Technical Debt
+
+Every debt
+
+must include
+
+Identifier
+
+Description
+
+Impact
+
+Severity
+
+Recommendation
+
+Target Sprint
+
+Owner
+
+Status
+
+---
+
+# Module Metrics
+
+Collect
+
+Controller Count
+
+Service Count
+
+Repository Count
+
+Entity Count
+
+DTO Count
+
+Migration Count
+
+Endpoint Count
+
+Test Count
+
+Coverage
+
+Documentation Coverage
+
+Architecture Drift Count
+
+Technical Debt Count
+
+---
+
+# Module Readiness
+
+A module may be
+
+Not Started
+
+Planning
+
+Partial
+
+Implemented
+
+Tested
+
+Accepted
+
+Production Ready
+
+Deprecated
+
+---
+
+# Drift Detection
+
+Detect
+
+Architecture Drift
+
+Database Drift
+
+OpenAPI Drift
+
+Documentation Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Naming Drift
+
+Dependency Drift
+
+Security Drift
+
+Performance Drift
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+Module
+
+Repository Path
+
+Documentation Reference
+
+Evidence
+
+Severity
+
+Impact
+
+Recommendation
+
+Never guess.
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Report Output
+
+Executive Summary
+
+Module Summary
+
+Architecture Compliance
+
+Documentation Compliance
+
+Database Compliance
+
+API Compliance
+
+Security Compliance
+
+Testing Compliance
+
+Performance Compliance
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+MODULE ACCEPTED
+
+MODULE REQUIRES REWORK
+
+---
+
+# Blocking Conditions
+
+Immediately return
+
+BLOCKED
+
+if
+
+Module missing
+
+Repository unavailable
+
+Architecture unavailable
+
+Mandatory documentation missing
+
+Circular dependency detected
+
+Critical architecture violation
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Module completely reviewed
+
+Dependencies validated
+
+Documentation compared
+
+Evidence attached
+
+No assumptions
+
+No generated code
+
+No modified files
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Module Review succeeds when
+
+every module
+
+has
+
+clear ownership,
+
+clean architecture,
+
+documented interfaces,
+
+validated dependencies,
+
+complete documentation,
+
+adequate testing,
+
+acceptable performance,
+
+and can evolve independently
+
+without introducing
+
+architectural drift
+
+or unnecessary coupling
+
+into the PhuQuocHub platform.

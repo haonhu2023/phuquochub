@@ -1,0 +1,416 @@
+# Examples
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+---
+
+# Purpose
+
+This document provides practical examples
+of how Sprint Planner should operate.
+
+Examples are normative.
+
+Claude Code should follow these examples
+unless an ADR explicitly overrides them.
+
+---
+
+# Example 1 — Planning Sprint 1
+
+## Input
+
+Roadmap
+
+Sprint 1
+
+Repository
+
+Infrastructure complete
+
+Documentation
+
+Frozen
+
+## Analysis
+
+Completed
+
+Config
+
+Logger
+
+Redis
+
+Database
+
+Docker
+
+CI
+
+Missing
+
+Authentication
+
+RBAC
+
+Users
+
+JWT
+
+Categories
+
+## Output
+
+Sprint
+
+Sprint 1
+
+Modules
+
+Users
+
+Authentication
+
+RBAC
+
+Categories
+
+Estimated Batches
+
+5
+
+Dependencies
+
+Infrastructure
+
+PASS
+
+Decision
+
+READY
+
+---
+
+# Example 2 — Planning Sprint 2
+
+Input
+
+Sprint 1 Accepted
+
+Repository
+
+Authentication complete
+
+RBAC complete
+
+Users complete
+
+Analysis
+
+Dependencies satisfied
+
+Generate
+
+Places
+
+Categories
+
+Geo
+
+Search
+
+Nearby
+
+Decision
+
+READY
+
+---
+
+# Example 3 — Batch Generation
+
+Batch
+
+Batch 1
+
+Scope
+
+Entities
+
+Repositories
+
+Migrations
+
+Allowed
+
+Generate
+
+Entities
+
+Repositories
+
+Migration
+
+Forbidden
+
+Controllers
+
+Services
+
+API
+
+Frontend
+
+Reason
+
+Architecture Boundary
+
+PASS
+
+---
+
+# Example 4 — Batch Review
+
+Review Scope
+
+Batch 1
+
+Checks
+
+Compilation
+
+Migration
+
+Database
+
+Naming
+
+Architecture
+
+Decision
+
+READY AFTER FIXES
+
+Reason
+
+Migration not executed
+
+Evidence
+
+Migration file exists
+
+No execution log
+
+---
+
+# Example 5 — Sprint Acceptance
+
+Sprint
+
+Sprint 2
+
+Checks
+
+All Batches PASS
+
+CI PASS
+
+Architecture PASS
+
+Documentation PASS
+
+Migration PASS
+
+OpenAPI PASS
+
+RBAC PASS
+
+Result
+
+READY TO MERGE
+
+---
+
+# Example 6 — Blocked Batch
+
+Requested Module
+
+Reviews
+
+Dependency
+
+Places
+
+Status
+
+Not Implemented
+
+Decision
+
+BLOCKED
+
+Reason
+
+Dependency Missing
+
+---
+
+# Example 7 — Architecture Drift
+
+Finding
+
+New Entity
+
+Booking
+
+Documentation
+
+Not Found
+
+ADR
+
+Not Found
+
+Decision
+
+BLOCKED
+
+Reason
+
+Architecture Drift
+
+---
+
+# Example 8 — Documentation Drift
+
+Finding
+
+New API
+
+/api/bookings
+
+OpenAPI
+
+Not Found
+
+Decision
+
+FAIL
+
+Reason
+
+OpenAPI Drift
+
+---
+
+# Example 9 — Repository Analysis
+
+Repository
+
+Current Sprint
+
+Sprint 3
+
+Completed
+
+Places
+
+Hotels
+
+Restaurants
+
+Missing
+
+Events
+
+Media
+
+Decision
+
+Continue Sprint 3
+
+---
+
+# Example 10 — Production Gate
+
+Checks
+
+Performance
+
+PASS
+
+Security
+
+PASS
+
+Monitoring
+
+PASS
+
+Backup
+
+PASS
+
+Rollback
+
+PASS
+
+Decision
+
+PRODUCTION READY
+
+---
+
+# Anti-Patterns
+
+Never
+
+Generate multiple Sprints
+
+Skip dependency
+
+Modify Architecture
+
+Guess missing entities
+
+Invent API
+
+Invent Database
+
+Invent ADR
+
+Change SSOT
+
+---
+
+# Success Criteria
+
+Examples succeed when
+
+Claude consistently produces
+
+repeatable,
+
+predictable,
+
+and architecture-compliant outputs
+based on these reference cases.

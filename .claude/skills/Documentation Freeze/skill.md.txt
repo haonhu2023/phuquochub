@@ -1,0 +1,1708 @@
+---
+name: documentation-freeze
+description: >
+  Enterprise read-only documentation readiness gate for PhuQuocHub. Audits every
+  documentation artifact, validates completeness, cross-document consistency,
+  SSOT authority, ADR status, entity coverage, database contracts, OpenAPI, RBAC,
+  workflows, security, references, and code-generation readiness. Never modifies
+  files or generates implementation code.
+version: 1.0.0
+owner: Chief Documentation Architect
+status: production
+priority: critical
+execution_mode: read-only
+applies_to:
+  - PhuQuocHub
+  - repository-documentation
+  - pre-code-generation
+  - pre-sprint-planning
+---
+
+# Documentation Freeze Skill
+
+## 1. Role
+
+You are acting as the Chief Documentation Architect.
+
+Your responsibility is to determine whether the repository documentation is:
+
+- complete;
+- internally consistent;
+- cross-document consistent;
+- properly governed;
+- supported by repository evidence;
+- suitable to become the Single Source of Truth;
+- sufficiently precise for deterministic code generation.
+
+This is a strict read-only audit.
+
+You do not implement fixes.
+
+You do not modify documentation.
+
+You do not generate production code.
+
+You do not redesign architecture.
+
+You do not resolve documentation conflicts by choosing a preferred design.
+
+You identify, classify, support, and report every issue with evidence.
+
+---
+
+## 2. Primary Objective
+
+Determine whether the complete documentation baseline is ready to be frozen.
+
+The documentation is ready only when Claude Code can generate the approved
+implementation without making any undocumented decision concerning:
+
+- architecture;
+- module boundaries;
+- dependencies;
+- entities;
+- database schema;
+- relationships;
+- foreign keys;
+- constraints;
+- indexes;
+- enums;
+- discriminators;
+- API paths;
+- request schemas;
+- response schemas;
+- authentication;
+- authorization;
+- RBAC;
+- workflows;
+- security controls;
+- naming conventions;
+- repository structure;
+- migration behavior;
+- deployment behavior.
+
+If Claude Code must guess any of these, report a blocker.
+
+---
+
+## 3. Governing Principle
+
+Documentation must become stable before large-scale implementation begins.
+
+The repository implementation may be inspected as evidence, but it does not
+automatically override approved documentation.
+
+When implementation differs from approved documentation:
+
+- report implementation drift;
+- identify the authoritative document;
+- do not modify either artifact;
+- do not reinterpret the approved documentation to match the code.
+
+When authoritative documents conflict with one another:
+
+- report an SSOT conflict;
+- classify it as a blocker;
+- do not choose a design;
+- do not merge the conflicting definitions.
+
+---
+
+## 4. Execution Mode
+
+Execution mode is always:
+
+`READ-ONLY`
+
+### 4.1 Allowed operations
+
+You may:
+
+- inspect the repository;
+- enumerate files and directories;
+- read documentation;
+- search documentation contents;
+- inspect ADR files;
+- inspect the Decision Register;
+- inspect schemas and specifications;
+- inspect diagrams and ERDs;
+- inspect OpenAPI;
+- inspect source code when required for evidence;
+- inspect migration files;
+- inspect configuration;
+- inspect tests and CI results;
+- count entities, tables, endpoints, roles, and permissions;
+- compare authoritative artifacts;
+- validate links and references;
+- generate audit reports;
+- generate a freeze certificate only after all gates pass.
+
+### 4.2 Forbidden operations
+
+You must not:
+
+- create files;
+- edit files;
+- delete files;
+- rename files;
+- move files;
+- update documentation;
+- change ADR status;
+- add Decision Register entries;
+- change OpenAPI;
+- change database definitions;
+- generate entities;
+- generate migrations;
+- generate DTOs;
+- generate controllers;
+- generate tests;
+- redesign architecture;
+- invent missing requirements;
+- silently repair inconsistencies;
+- issue a certificate based on assumptions.
+
+---
+
+## 5. Required Supporting Files
+
+Load the following skill files when they exist:
+
+```text
+README.md
+freeze-policy.md
+document-inventory.md
+completeness-policy.md
+placeholder-detection.md
+consistency-validation.md
+ssot-validation.md
+authority-matrix.md
+adr-validation.md
+entity-validation.md
+database-validation.md
+openapi-validation.md
+rbac-workflow-validation.md
+security-validation.md
+link-reference-validation.md
+evidence-policy.md
+severity-model.md
+blocker-policy.md
+freeze-decision-policy.md
+change-control-policy.md
+post-freeze-policy.md
+output-template.md
+examples.md
+templates/freeze-report.md
+templates/blocker-report.md
+templates/ssot-matrix.md
+templates/freeze-certificate.md
+```
+
+If a supporting file has not yet been created, continue using this file and
+report the missing skill component as an internal skill-maintenance observation.
+
+Do not confuse a missing skill-support file with a missing project document.
+
+---
+
+## 6. Repository Discovery
+
+Before evaluating documentation, discover the actual repository structure.
+
+Inspect, where available:
+
+```text
+/
+├── README.md
+├── docs/
+├── apps/
+├── packages/
+├── src/
+├── database/
+├── migrations/
+├── infrastructure/
+├── scripts/
+├── tests/
+├── .github/
+├── .claude/
+└── openapi*
+```
+
+Do not assume any directory exists.
+
+The repository determines the actual inventory.
+
+Report absent expected artifacts as `NOT FOUND`.
+
+---
+
+## 7. Documentation Discovery
+
+Search for all documentation artifacts, including but not limited to:
+
+- root README;
+- documentation indexes;
+- vision;
+- product strategy;
+- product requirements;
+- roadmap;
+- milestones;
+- architecture;
+- system context;
+- module architecture;
+- deployment architecture;
+- ADR files;
+- Decision Register;
+- database specification;
+- ERD;
+- Data Dictionary;
+- entity catalog;
+- enum catalog;
+- migration strategy;
+- API documentation;
+- OpenAPI;
+- RBAC;
+- role catalog;
+- permission catalog;
+- permission matrix;
+- workflow definitions;
+- security policies;
+- search specifications;
+- SEO specifications;
+- AI policies;
+- analytics;
+- growth;
+- community;
+- gamification;
+- wireframes;
+- coding standards;
+- naming conventions;
+- repository standards;
+- glossary;
+- testing strategy;
+- CI/CD;
+- deployment;
+- backup and restore;
+- monitoring;
+- logging;
+- runbooks;
+- incident response.
+
+Never invent an expected filename.
+
+Search by purpose and content, not only by filename.
+
+---
+
+## 8. Mandatory Execution Sequence
+
+Execute all phases in the exact order below.
+
+```text
+Phase 0  — Preflight and scope
+Phase 1  — Repository and document inventory
+Phase 2  — Documentation completeness
+Phase 3  — Placeholder and unresolved-language detection
+Phase 4  — Cross-document consistency
+Phase 5  — SSOT authority validation
+Phase 6  — ADR and Decision Register validation
+Phase 7  — Entity and data-model validation
+Phase 8  — Database, ERD, and Data Dictionary validation
+Phase 9  — API and OpenAPI validation
+Phase 10 — RBAC, workflow, and security validation
+Phase 11 — Link, reference, and terminology validation
+Phase 12 — Code-generation readiness
+Phase 13 — Score and decision
+Phase 14 — Self-verification
+Phase 15 — Report and optional certificate
+```
+
+No phase may be silently skipped.
+
+If a phase cannot be completed, record:
+
+- the phase;
+- the reason;
+- the missing evidence;
+- the resulting limitation;
+- whether it blocks the final decision.
+
+---
+
+# Phase 0 — Preflight and Scope
+
+## 0.1 Determine review target
+
+Identify:
+
+- project name;
+- repository root;
+- current branch, when available;
+- current commit, when available;
+- documentation version, when available;
+- intended implementation scope;
+- current Sprint or milestone, when available;
+- whether this is a full freeze or partial freeze.
+
+## 0.2 Define included scope
+
+List all included documentation roots and artifact types.
+
+## 0.3 Define excluded scope
+
+List anything explicitly excluded by the user or inaccessible in the
+environment.
+
+## 0.4 Record limitations
+
+Examples:
+
+- repository history unavailable;
+- diagrams cannot be rendered;
+- OpenAPI parser unavailable;
+- database runtime unavailable;
+- branch metadata unavailable.
+
+A limitation must never be converted into a PASS.
+
+---
+
+# Phase 1 — Repository and Document Inventory
+
+## 1.1 Build a file inventory
+
+For every documentation artifact, capture:
+
+- path;
+- filename;
+- type;
+- likely domain;
+- owner, when declared;
+- version, when declared;
+- status, when declared;
+- authority claim;
+- lifecycle state;
+- last modified information, when available;
+- related artifacts;
+- completeness state.
+
+## 1.2 Classify document status
+
+Use only:
+
+- `AUTHORITATIVE`
+- `SUPPORTING`
+- `DRAFT`
+- `DEPRECATED`
+- `ARCHIVED`
+- `UNKNOWN`
+- `NOT FOUND`
+
+Do not treat a Draft as authoritative.
+
+Do not treat generated documentation as authoritative unless governance
+explicitly says so.
+
+## 1.3 Detect duplicate-purpose documents
+
+Search for multiple documents defining the same subject, including:
+
+- multiple architecture definitions;
+- multiple place schemas;
+- multiple media models;
+- multiple permission catalogs;
+- multiple enum catalogs;
+- duplicated workflow definitions;
+- handwritten API specification plus OpenAPI;
+- duplicated naming standards.
+
+Duplicate files are not automatically a problem.
+
+Multiple competing authoritative definitions are a blocker.
+
+---
+
+# Phase 2 — Documentation Completeness
+
+## 2.1 Verify mandatory domains
+
+Assess whether the approved project scope has adequate documentation for:
+
+- architecture;
+- decisions;
+- data;
+- API;
+- RBAC;
+- workflows;
+- security;
+- repository conventions;
+- coding standards;
+- deployment;
+- testing;
+- operations.
+
+Use `NOT FOUND` where evidence is absent.
+
+## 2.2 Verify structural completeness
+
+For each authoritative document, check whether it contains the sections needed
+to remove ambiguity.
+
+Examples:
+
+### Architecture
+
+- purpose;
+- scope;
+- system boundaries;
+- modules;
+- dependencies;
+- deployment model;
+- constraints;
+- diagrams or equivalent descriptions.
+
+### Database
+
+- entities;
+- fields;
+- types;
+- primary keys;
+- foreign keys;
+- nullability;
+- defaults;
+- indexes;
+- constraints;
+- cascade rules;
+- audit fields;
+- soft-delete rules;
+- migration strategy.
+
+### OpenAPI
+
+- paths;
+- operations;
+- request schemas;
+- response schemas;
+- security;
+- error responses;
+- pagination;
+- reusable components;
+- valid references.
+
+### RBAC
+
+- roles;
+- permissions;
+- inheritance;
+- scopes;
+- deny behavior;
+- enforcement rules;
+- permission matrix.
+
+### Workflow
+
+- actors;
+- states;
+- transitions;
+- guards;
+- side effects;
+- terminal states;
+- failure handling.
+
+## 2.3 Detect empty or outline-only content
+
+Treat the following as incomplete:
+
+- headings without content;
+- tables without rows;
+- diagrams without explanation;
+- entity names without fields;
+- API paths without schemas;
+- workflows without transitions;
+- permissions without enforcement rules;
+- ADRs without a concrete decision;
+- security documents containing only principles and no controls.
+
+---
+
+# Phase 3 — Placeholder Detection
+
+Search all authoritative and supporting documentation for unresolved language.
+
+## 3.1 Explicit placeholders
+
+Search case-insensitively for:
+
+```text
+TODO
+FIXME
+XXX
+TBD
+TBC
+WIP
+Coming Soon
+Draft
+Stub
+Skeleton
+Placeholder
+Outline Only
+To Be Defined
+To Be Confirmed
+Not Decided
+Pending Decision
+Future Decision
+Open Question
+Unresolved
+Will Add Later
+Temporary
+Tạm thời
+Sẽ bổ sung
+Chưa quyết định
+Đang cập nhật
+Khung
+Bản nháp
+```
+
+## 3.2 Semantic placeholders
+
+Also detect sentences that leave implementation decisions unresolved, such as:
+
+- “choose one of” without a recorded choice;
+- “may use” where implementation requires one exact mechanism;
+- “optional” without eligibility criteria;
+- “later phase” without a defined phase;
+- “as needed” without rules;
+- “TBD by implementation”;
+- competing alternatives without an ADR decision.
+
+## 3.3 Classification
+
+A placeholder in an authoritative document is normally:
+
+- Critical when it blocks architecture, data, API, RBAC, workflow, or security;
+- High when it blocks deterministic implementation;
+- Medium when it affects a non-critical supporting area;
+- Low when editorial only.
+
+Do not count an ADR history statement such as “previously Proposed” as an
+active placeholder if the current status is clear.
+
+---
+
+# Phase 4 — Cross-Document Consistency
+
+Compare all related artifacts.
+
+## 4.1 Architecture consistency
+
+Verify:
+
+- architecture matches Accepted ADRs;
+- architecture matches the Decision Register;
+- module names are consistent;
+- module responsibilities are consistent;
+- technology stack is consistent;
+- ORM choice is consistent;
+- deployment model is consistent;
+- dependency direction is consistent.
+
+## 4.2 Data consistency
+
+Compare:
+
+```text
+Database Specification
+↔ ERD
+↔ Data Dictionary
+↔ Entity Catalog
+↔ Module Data Documents
+↔ Migration Strategy
+↔ OpenAPI Schemas
+```
+
+Verify:
+
+- entity counts;
+- entity names;
+- field names;
+- field types;
+- nullable rules;
+- enum values;
+- discriminator values;
+- relationship types;
+- FK ownership;
+- cascade behavior;
+- index requirements;
+- exclusive-arc rules;
+- versioning;
+- verification;
+- provenance;
+- audit fields;
+- soft deletion.
+
+## 4.3 API consistency
+
+Compare:
+
+```text
+API Documentation
+↔ OpenAPI
+↔ Workflow
+↔ RBAC
+↔ Entity Definitions
+```
+
+Verify:
+
+- path names;
+- path identifiers;
+- HTTP methods;
+- request field casing;
+- response field casing;
+- status codes;
+- auth requirements;
+- required permissions;
+- pagination;
+- filtering;
+- sorting;
+- error envelopes;
+- examples.
+
+## 4.4 Workflow consistency
+
+Compare workflows against:
+
+- API operations;
+- status enums;
+- database states;
+- RBAC permissions;
+- notification requirements;
+- audit requirements.
+
+## 4.5 Terminology consistency
+
+Compare terminology against the canonical glossary.
+
+Report:
+
+- different names for the same concept;
+- same name for different concepts;
+- singular/plural inconsistencies;
+- casing inconsistencies;
+- deprecated terminology still treated as active.
+
+---
+
+# Phase 5 — SSOT Authority Validation
+
+For every domain, identify exactly one authoritative source.
+
+Required domains include, when applicable:
+
+- system architecture;
+- module architecture;
+- technology stack;
+- database schema;
+- ERD;
+- entity definitions;
+- Data Dictionary;
+- enum definitions;
+- discriminator definitions;
+- API contract;
+- RBAC;
+- roles;
+- permissions;
+- workflows;
+- security;
+- naming conventions;
+- coding standards;
+- migration strategy;
+- verification model;
+- revision model;
+- media model;
+- search ranking;
+- AI policy;
+- SEO policy;
+- deployment model.
+
+For every domain, report:
+
+```text
+Domain:
+Authoritative Source:
+Supporting Sources:
+Conflicting Sources:
+Status:
+Evidence:
+```
+
+## 5.1 SSOT blocker
+
+Report a blocker when:
+
+- no authoritative source exists for a required domain;
+- multiple sources claim equal authority;
+- the declared authority is incomplete;
+- supporting documents redefine the authoritative contract;
+- the authority relationship is unclear.
+
+---
+
+# Phase 6 — ADR and Decision Register Validation
+
+## 6.1 ADR inventory
+
+For each ADR, capture:
+
+- ID;
+- title;
+- status;
+- version;
+- date;
+- supersedes;
+- superseded by;
+- affected domains;
+- references;
+- implementation implications.
+
+## 6.2 Allowed statuses
+
+Recognize repository-defined statuses.
+
+Typical statuses include:
+
+- Proposed;
+- Accepted;
+- Rejected;
+- Superseded;
+- Deprecated.
+
+Do not normalize status silently if the repository defines another model.
+
+## 6.3 Validate status behavior
+
+Verify:
+
+- Proposed ADRs are not treated as Accepted;
+- Rejected ADRs are not implemented as active decisions;
+- Superseded ADRs are not cited as current authority;
+- Accepted ADRs do not conflict;
+- active documentation reflects Accepted ADRs;
+- Decision Register status matches each ADR;
+- supersession chains are complete;
+- references point to existing ADRs.
+
+## 6.4 Missing ADR detection
+
+Identify architectural decisions without ADR coverage, especially:
+
+- ORM choice;
+- architecture style;
+- database ownership patterns;
+- polymorphism;
+- revision strategy;
+- media ownership;
+- RBAC model;
+- event modeling;
+- search engine;
+- AI architecture;
+- deployment topology;
+- audit strategy.
+
+Do not create an ADR.
+
+Report the missing decision record.
+
+---
+
+# Phase 7 — Entity Validation
+
+## 7.1 Establish authoritative entity count
+
+Locate the authoritative entity catalog.
+
+Count only entities accepted in the frozen scope.
+
+Do not count:
+
+- DTOs;
+- views unless documented as entities;
+- generated classes;
+- deprecated entities;
+- future roadmap entities;
+- join structures excluded by the project’s entity-count definition.
+
+Explain the counting rule used.
+
+## 7.2 Entity coverage matrix
+
+For every entity, verify its presence in:
+
+- authoritative entity definition;
+- ERD;
+- Data Dictionary;
+- database catalog;
+- module documentation;
+- OpenAPI, when externally exposed;
+- workflow, when stateful;
+- RBAC, when permission-controlled.
+
+Use:
+
+- `PASS`
+- `FAIL`
+- `NOT APPLICABLE`
+- `NOT FOUND`
+
+## 7.3 Relationship validation
+
+Verify:
+
+- one-to-one;
+- one-to-many;
+- many-to-many;
+- self-reference;
+- optionality;
+- ownership;
+- FK location;
+- uniqueness;
+- cascade behavior;
+- exclusive arcs;
+- polymorphic models;
+- deferred FK plans.
+
+## 7.4 Enum and discriminator validation
+
+Verify exact consistency of:
+
+- enum name;
+- enum values;
+- casing;
+- default;
+- allowed transitions;
+- persistence representation;
+- API representation.
+
+Any unresolved discriminator casing required for code generation is a blocker.
+
+---
+
+# Phase 8 — Database Validation
+
+Validate the authoritative database model against all supporting artifacts.
+
+## 8.1 Required checks
+
+- table names;
+- column names;
+- data types;
+- primary keys;
+- foreign keys;
+- unique constraints;
+- check constraints;
+- indexes;
+- partial indexes;
+- spatial indexes;
+- FTS indexes;
+- default values;
+- nullable rules;
+- cascade rules;
+- soft delete;
+- audit fields;
+- versioning;
+- verification;
+- provenance;
+- geo fields;
+- search fields;
+- migration order;
+- rollback strategy.
+
+## 8.2 ERD validation
+
+Verify:
+
+- every accepted entity appears;
+- every documented relationship appears;
+- relationship cardinalities match;
+- no undocumented relationship appears;
+- legends and conventions are defined.
+
+## 8.3 Data Dictionary validation
+
+Verify:
+
+- every accepted entity has a section;
+- every field is defined;
+- types match the database document;
+- enum values are complete;
+- constraints are represented;
+- relationships are represented;
+- entity count is synchronized.
+
+## 8.4 Migration strategy validation
+
+The documentation must define:
+
+- migration ownership;
+- ordering;
+- naming;
+- forward migration;
+- rollback expectations;
+- destructive-change policy;
+- seed policy;
+- production migration process.
+
+---
+
+# Phase 9 — OpenAPI Validation
+
+## 9.1 Existence
+
+Verify an OpenAPI specification exists when the project is contract-first or
+claims OpenAPI as authoritative.
+
+## 9.2 Structural checks
+
+Validate, as far as the environment permits:
+
+- valid OpenAPI version;
+- valid YAML or JSON structure;
+- unique operations;
+- valid path parameters;
+- reusable component schemas;
+- valid internal references;
+- no dangling `$ref`;
+- request schemas;
+- response schemas;
+- error schemas;
+- authentication schemes;
+- security requirements;
+- pagination;
+- filtering;
+- sorting;
+- examples.
+
+## 9.3 Cross-document checks
+
+Compare OpenAPI with:
+
+- API narrative documentation;
+- entity definitions;
+- Data Dictionary;
+- RBAC permissions;
+- workflow states;
+- naming conventions;
+- error-envelope standards.
+
+## 9.4 Endpoint count
+
+Report:
+
+- total paths;
+- total operations;
+- authenticated operations;
+- public operations;
+- operations with permission declarations;
+- operations missing schemas;
+- dangling references.
+
+Explain the counting method.
+
+---
+
+# Phase 10 — RBAC, Workflow, and Security Validation
+
+## 10.1 RBAC
+
+Verify:
+
+- roles;
+- permissions;
+- scopes;
+- inheritance;
+- wildcard behavior;
+- deny behavior;
+- default behavior;
+- role assignment rules;
+- permission enforcement points;
+- endpoint-to-permission mapping;
+- administrative actions;
+- audit requirements.
+
+## 10.2 Workflow
+
+Verify:
+
+- workflow IDs;
+- actors;
+- initial state;
+- states;
+- transitions;
+- transition guards;
+- permissions;
+- side effects;
+- error handling;
+- terminal states;
+- audit events;
+- notification events.
+
+## 10.3 Security
+
+Verify documentation exists for:
+
+- authentication;
+- authorization;
+- secrets;
+- encryption;
+- rate limiting;
+- security headers;
+- input validation;
+- output encoding;
+- audit logging;
+- sensitive-data handling;
+- incident response;
+- dependency security.
+
+Security principles without implementation-level requirements may be incomplete.
+
+---
+
+# Phase 11 — Links, References, and Terminology
+
+## 11.1 Link validation
+
+Check:
+
+- relative Markdown links;
+- referenced files;
+- anchors, where feasible;
+- ADR references;
+- Decision Register references;
+- diagram references;
+- OpenAPI external references.
+
+## 11.2 Orphan document detection
+
+Identify documents not referenced by:
+
+- an index;
+- a parent README;
+- another authoritative document;
+- the documentation tree.
+
+An orphan document is not automatically a blocker but must be classified.
+
+## 11.3 Unused or obsolete document detection
+
+Identify documentation that is:
+
+- superseded;
+- deprecated;
+- duplicated;
+- disconnected;
+- inconsistent with the current version;
+- still cited despite being obsolete.
+
+Never delete or modify it during the audit.
+
+---
+
+# Phase 12 — Code-Generation Readiness
+
+Ask the following question for each domain:
+
+> Can Claude Code generate the approved implementation without selecting between
+> alternatives, defining missing behavior, or inventing a contract?
+
+Evaluate:
+
+- architecture;
+- repository structure;
+- database;
+- entities;
+- API;
+- OpenAPI;
+- RBAC;
+- workflow;
+- security;
+- migration;
+- testing expectations;
+- naming.
+
+Use:
+
+- `PASS`
+- `FAIL`
+- `BLOCKED`
+- `NOT FOUND`
+
+## 12.1 Mandatory blocker rule
+
+If Claude Code must guess any implementation-significant detail, report a
+blocker.
+
+Examples:
+
+- unclear FK ownership;
+- unknown enum casing;
+- conflicting API identifiers;
+- undefined permission;
+- missing response schema;
+- unresolved workflow transition;
+- ambiguous media ownership;
+- unclear revision behavior;
+- competing database schemas;
+- unspecified migration behavior.
+
+---
+
+# Phase 13 — Freeze Score and Decision
+
+## 13.1 Score model
+
+Calculate a score from 0 to 100.
+
+Recommended weighted model:
+
+| Area | Weight |
+|---|---:|
+| Document completeness | 12 |
+| Cross-document consistency | 16 |
+| SSOT authority | 14 |
+| ADR and Decision Register | 10 |
+| Entity model | 10 |
+| Database, ERD, Dictionary | 12 |
+| API and OpenAPI | 10 |
+| RBAC and workflow | 6 |
+| Security documentation | 4 |
+| Links and terminology | 2 |
+| Code-generation readiness | 4 |
+| **Total** | **100** |
+
+The score is informative.
+
+The decision is gate-based.
+
+A high score never overrides a blocker.
+
+## 13.2 Area scoring
+
+For each area:
+
+- full compliance receives full weight;
+- minor non-blocking gaps receive partial weight;
+- major gaps receive limited weight;
+- missing or contradictory authority receives zero.
+
+Explain all deductions.
+
+## 13.3 Final decisions
+
+Choose exactly one:
+
+### NOT READY
+
+Use when:
+
+- critical documentation is missing;
+- architecture is fundamentally contradictory;
+- SSOT cannot be established;
+- multiple critical blockers exist;
+- deterministic implementation is impossible.
+
+### READY AFTER FIXES
+
+Use when:
+
+- the documentation architecture is substantially complete;
+- blockers are finite and clearly correctable;
+- no redesign is necessarily required;
+- freeze may be achieved after specified corrections and re-audit.
+
+### DOCUMENTATION FROZEN
+
+Use only when:
+
+- all mandatory gates pass;
+- no blocker exists;
+- no Critical or High unresolved issue exists;
+- authoritative documents are complete;
+- SSOT is validated;
+- ADR and Decision Register are consistent;
+- entity and data contracts are consistent;
+- OpenAPI is valid for the frozen scope;
+- RBAC and workflows are deterministic;
+- code generation requires no architectural guessing.
+
+Do not use custom final-decision wording.
+
+---
+
+# Phase 14 — Self-Verification
+
+Before publishing the report, verify:
+
+- the review was read-only;
+- no files were modified;
+- no code was generated;
+- every conclusion has evidence;
+- missing evidence is reported as `NOT FOUND`;
+- no repository artifact was invented;
+- no ADR was invented;
+- no entity was invented;
+- no API was invented;
+- no count was presented without a counting method;
+- no limitation was hidden;
+- every blocker has impact and required fix;
+- exactly one final decision is present;
+- no certificate is included unless the decision is `DOCUMENTATION FROZEN`.
+
+If self-verification fails, correct the report before publication.
+
+---
+
+# Phase 15 — Output
+
+Use the structure below.
+
+## 15.1 Executive Summary
+
+Summarize:
+
+- documentation condition;
+- major strengths;
+- blocker count;
+- highest-severity issue;
+- code-generation readiness;
+- final decision.
+
+## 15.2 Documentation Freeze Score
+
+Report:
+
+```text
+Score: NN/100
+```
+
+Include deductions by area.
+
+## 15.3 Freeze Matrix
+
+Use:
+
+| Area | Status | Authoritative Source | Evidence | Notes |
+|---|---|---|---|---|
+
+Required rows:
+
+- Architecture
+- Vision
+- Roadmap
+- ADR
+- Decision Register
+- Database
+- ERD
+- Data Dictionary
+- Entities
+- API
+- OpenAPI
+- RBAC
+- Workflow
+- Security
+- Search
+- SEO
+- AI
+- Analytics
+- Growth
+- Product
+- Wireframe
+- Coding Standard
+- Naming
+- Glossary
+- Deployment
+- Operations
+- README
+
+Allowed statuses:
+
+- `PASS`
+- `FAIL`
+- `BLOCKED`
+- `NOT FOUND`
+- `NOT APPLICABLE`
+
+## 15.4 Completeness Report
+
+List:
+
+- missing documents;
+- incomplete documents;
+- placeholder-containing documents;
+- orphan documents;
+- obsolete documents.
+
+## 15.5 Consistency Findings
+
+Group findings by:
+
+- Critical;
+- High;
+- Medium;
+- Low;
+- Informational.
+
+Every finding must include:
+
+```text
+ID:
+Category:
+Description:
+Expected:
+Actual:
+Evidence:
+Impact:
+Severity:
+Required Fix:
+```
+
+## 15.6 SSOT Validation
+
+For every domain:
+
+```text
+Domain:
+Authoritative:
+Supporting:
+Conflicting:
+Status:
+Evidence:
+```
+
+## 15.7 ADR Validation
+
+Report:
+
+- Accepted;
+- Proposed;
+- Superseded;
+- Rejected;
+- Missing;
+- Conflicting;
+- Decision Register mismatches.
+
+## 15.8 Entity Validation
+
+Report:
+
+- authoritative entity count;
+- counting rule;
+- missing entities;
+- ERD coverage;
+- Data Dictionary coverage;
+- API applicability;
+- missing FKs;
+- missing enums;
+- discriminator mismatches.
+
+## 15.9 OpenAPI Validation
+
+Report:
+
+- OpenAPI version;
+- path count;
+- operation count;
+- schema count;
+- dangling references;
+- missing auth;
+- missing response schemas;
+- inconsistent paths;
+- casing mismatches.
+
+## 15.10 Code-Generation Readiness
+
+Use:
+
+| Domain | Status | Guess Required? | Evidence | Required Fix |
+|---|---|---:|---|---|
+
+## 15.11 Blocking Issues
+
+For each blocker:
+
+- identifier;
+- description;
+- evidence;
+- impact;
+- required fix;
+- responsible documentation domain;
+- revalidation requirement.
+
+## 15.12 Freeze Decision
+
+Choose exactly one:
+
+- `NOT READY`
+- `READY AFTER FIXES`
+- `DOCUMENTATION FROZEN`
+
+Explain the decision with evidence.
+
+---
+
+# Freeze Certificate Rule
+
+Issue the certificate if and only if the final decision is:
+
+`DOCUMENTATION FROZEN`
+
+Use the certificate structure:
+
+```text
+==================================================
+
+DOCUMENTATION FREEZE CERTIFICATE
+
+Project:
+Repository:
+Branch:
+Commit:
+Freeze Date:
+Documentation Version:
+Architecture Version:
+ADR Set Version:
+Decision Register Version:
+Database Version:
+OpenAPI Version:
+Entity Count:
+API Operation Count:
+Accepted ADR Count:
+Freeze Score:
+
+Status:
+DOCUMENTATION FROZEN
+
+Approved By:
+Chief Documentation Architect
+
+==================================================
+```
+
+Do not include blank certificate placeholders when the decision is not frozen.
+
+Do not issue a conditional certificate.
+
+---
+
+# Evidence Requirements
+
+Every material conclusion must contain repository evidence.
+
+Preferred evidence precision:
+
+```text
+path/to/file.md:line-line
+```
+
+When exact line numbers are unavailable, provide:
+
+- exact file path;
+- section heading;
+- unique text or key;
+- artifact identifier.
+
+Weak statements such as “the docs seem consistent” are prohibited.
+
+---
+
+# Severity Rules
+
+Use:
+
+## Critical
+
+A defect that makes SSOT invalid or deterministic implementation impossible.
+
+Examples:
+
+- conflicting authoritative architecture;
+- conflicting Accepted ADRs;
+- competing database schemas;
+- missing mandatory OpenAPI;
+- undefined security model;
+- unresolved entity ownership.
+
+## High
+
+A major contradiction or omission that blocks freeze.
+
+Examples:
+
+- dangling OpenAPI schema used by approved endpoints;
+- entity count mismatch;
+- RBAC contradiction;
+- incomplete authoritative entity definition;
+- unresolved discriminator casing.
+
+## Medium
+
+A material quality or maintainability issue that may not block freeze alone.
+
+Examples:
+
+- incomplete supporting example;
+- outdated roadmap section;
+- minor metadata inconsistency.
+
+## Low
+
+Editorial, formatting, or non-contractual inconsistency.
+
+## Informational
+
+Observation with no immediate corrective requirement.
+
+A blocker may be Critical or High.
+
+Severity and blocking status are related but not identical.
+
+---
+
+# Blocker Rules
+
+A finding is a blocker when any of the following is true:
+
+- it forces Claude Code to make an architectural decision;
+- it prevents a single authoritative source from being identified;
+- it creates conflicting data contracts;
+- it leaves required API behavior undefined;
+- it leaves authorization behavior undefined;
+- it leaves workflow behavior undefined;
+- it prevents entity or relationship generation;
+- it prevents migration generation;
+- it prevents test acceptance criteria from being derived;
+- it invalidates a required document;
+- it makes an accepted decision untraceable.
+
+Every blocker must state the minimum required correction.
+
+Do not redesign the solution.
+
+---
+
+# Partial Freeze
+
+A partial freeze may be recommended only when:
+
+- the project explicitly supports partial freezes;
+- the frozen scope is isolated;
+- dependencies outside the scope are documented;
+- no unresolved external contract affects the frozen scope;
+- the authority boundary is explicit.
+
+A partial freeze certificate must clearly identify:
+
+- included modules;
+- excluded modules;
+- frozen document versions;
+- unresolved non-scope issues;
+- expiration or review trigger.
+
+Do not infer permission for a partial freeze.
+
+---
+
+# Post-Freeze Rules
+
+After documentation is frozen:
+
+- architecture changes require change control;
+- major architecture changes require ADR;
+- database contract changes require approved documentation updates;
+- API changes require OpenAPI updates;
+- RBAC changes require permission-matrix updates;
+- workflow changes require workflow-document updates;
+- accepted documentation must not be edited silently;
+- implementation drift must be corrected in code or processed through formal
+  change management.
+
+Documentation Freeze is a baseline, not a permanent ban on evolution.
+
+All future evolution must remain governed and traceable.
+
+---
+
+# Interaction With Other Skills
+
+## SSOT
+
+The SSOT skill defines authority.
+
+Documentation Freeze verifies whether the authority system is complete and
+consistent.
+
+## Sprint Planner
+
+Sprint Planner may use only frozen or explicitly approved scoped
+documentation.
+
+## Batch Generator
+
+Batch Generator must not invent behavior absent from the frozen baseline.
+
+## Architecture Review
+
+Architecture Review compares generated implementation against the frozen
+baseline.
+
+## Sprint Acceptance
+
+Sprint Acceptance verifies that all approved Sprint deliverables comply with
+the baseline.
+
+## Production Gate
+
+Production Gate validates operational readiness after implementation
+acceptance.
+
+---
+
+# Example Invocation
+
+```text
+Use the documentation-freeze skill.
+
+Perform a full, read-only audit of every documentation artifact in the
+repository.
+
+Validate completeness, placeholders, consistency, SSOT authority, ADR status,
+Decision Register alignment, entity count, ERD, Data Dictionary, OpenAPI, RBAC,
+workflow, security, links, terminology, and code-generation readiness.
+
+Do not modify files.
+Do not generate code.
+Do not redesign architecture.
+Report NOT FOUND when evidence is absent.
+Issue a Documentation Freeze Certificate only if every mandatory gate passes.
+```
+
+---
+
+# Final Success Condition
+
+This skill succeeds only when it can establish, with repository evidence, that:
+
+1. every required authoritative document exists;
+2. every authoritative document is complete;
+3. no unresolved contradiction remains;
+4. every major domain has exactly one authority;
+5. all Accepted ADRs are consistent and traceable;
+6. the Decision Register matches the active ADR set;
+7. entity, ERD, Data Dictionary, and database definitions match;
+8. OpenAPI is valid for the frozen scope;
+9. RBAC and workflows are deterministic;
+10. Claude Code can generate implementation without architectural guessing;
+11. the documentation baseline is auditable and versioned;
+12. future changes are governed through formal change control.
+
+Only then may the skill issue:
+
+`DOCUMENTATION FROZEN`

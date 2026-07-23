@@ -1,0 +1,855 @@
+# Naming Review
+
+Version: 1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Documentation Freeze
+
+---
+
+# Purpose
+
+This document defines
+
+the official naming convention review policy
+
+for the PhuQuocHub platform.
+
+Naming conventions
+
+must remain
+
+consistent,
+
+predictable,
+
+searchable,
+
+and documentation-driven.
+
+Every name
+
+must communicate
+
+its purpose
+
+without ambiguity.
+
+---
+
+# Mission
+
+Maintain naming consistency.
+
+Prevent naming drift.
+
+Improve readability.
+
+Improve discoverability.
+
+Guarantee long-term maintainability.
+
+---
+
+# Core Principles
+
+Names must be
+
+Clear
+
+Consistent
+
+Descriptive
+
+Stable
+
+Predictable
+
+Documentation-compliant
+
+Never abbreviate
+
+unless officially documented.
+
+---
+
+# Naming Hierarchy
+
+Repository
+
+↓
+
+Application
+
+↓
+
+Package
+
+↓
+
+Module
+
+↓
+
+Folder
+
+↓
+
+File
+
+↓
+
+Class
+
+↓
+
+Method
+
+↓
+
+Variable
+
+↓
+
+Database
+
+↓
+
+API
+
+Every level
+
+must follow
+
+its own convention.
+
+---
+
+# Repository Naming
+
+Repository names
+
+must use
+
+kebab-case
+
+Examples
+
+phuquochub
+
+admin-portal
+
+search-engine
+
+Forbidden
+
+PhuQuocHub
+
+phuQuocHub
+
+phu_quoc_hub
+
+---
+
+# Folder Naming
+
+Folders
+
+must use
+
+kebab-case
+
+Examples
+
+place-search
+
+hotel-review
+
+geo-index
+
+shared-utils
+
+Forbidden
+
+PlaceSearch
+
+placeSearch
+
+place_search
+
+---
+
+# File Naming
+
+Files
+
+must use
+
+kebab-case
+
+Examples
+
+user.service.ts
+
+hotel.entity.ts
+
+tour.controller.ts
+
+event.repository.ts
+
+Forbidden
+
+UserService.ts
+
+HotelEntity.ts
+
+tourRepository.ts
+
+---
+
+# Module Naming
+
+Modules
+
+must use
+
+PascalCase
+
+Examples
+
+UsersModule
+
+PlacesModule
+
+HotelsModule
+
+EventsModule
+
+RestaurantsModule
+
+---
+
+# Class Naming
+
+Classes
+
+must use
+
+PascalCase
+
+Examples
+
+UserService
+
+PlaceRepository
+
+HotelController
+
+TourEntity
+
+Forbidden
+
+userService
+
+user_service
+
+USERSERVICE
+
+---
+
+# Interface Naming
+
+Interfaces
+
+must use
+
+PascalCase
+
+without prefix
+
+Examples
+
+UserRepository
+
+SearchProvider
+
+JwtPayload
+
+Forbidden
+
+IUserRepository
+
+ISearchProvider
+
+---
+
+# Method Naming
+
+Methods
+
+must use
+
+camelCase
+
+Examples
+
+findBySlug
+
+createPlace
+
+approveReview
+
+searchHotels
+
+Forbidden
+
+FindBySlug
+
+find_by_slug
+
+---
+
+# Variable Naming
+
+Variables
+
+must use
+
+camelCase
+
+Examples
+
+placeId
+
+userProfile
+
+reviewStatus
+
+hotelSearchResult
+
+Forbidden
+
+place_id
+
+PlaceId
+
+PLACE_ID
+
+---
+
+# Constant Naming
+
+Constants
+
+must use
+
+UPPER_SNAKE_CASE
+
+Examples
+
+MAX_PAGE_SIZE
+
+DEFAULT_RADIUS
+
+JWT_SECRET
+
+Forbidden
+
+MaxPageSize
+
+defaultRadius
+
+---
+
+# Enum Naming
+
+Enums
+
+PascalCase
+
+Members
+
+UPPER_SNAKE_CASE
+
+Example
+
+PlaceStatus
+
+ACTIVE
+
+PENDING
+
+ARCHIVED
+
+---
+
+# DTO Naming
+
+DTOs
+
+must end with
+
+Dto
+
+Examples
+
+CreatePlaceDto
+
+UpdateHotelDto
+
+SearchTourDto
+
+Forbidden
+
+PlaceRequest
+
+HotelInput
+
+---
+
+# Entity Naming
+
+Entities
+
+must be singular
+
+PascalCase
+
+Examples
+
+User
+
+Place
+
+Hotel
+
+Restaurant
+
+Event
+
+Forbidden
+
+Users
+
+Places
+
+Hotels
+
+---
+
+# Repository Naming
+
+Repositories
+
+must end with
+
+Repository
+
+Examples
+
+UserRepository
+
+PlaceRepository
+
+HotelRepository
+
+---
+
+# Service Naming
+
+Services
+
+must end with
+
+Service
+
+Examples
+
+AuthService
+
+PlaceService
+
+ReviewService
+
+---
+
+# Controller Naming
+
+Controllers
+
+must end with
+
+Controller
+
+Examples
+
+UserController
+
+PlaceController
+
+AdminController
+
+---
+
+# Database Naming
+
+Tables
+
+snake_case
+
+plural
+
+Examples
+
+users
+
+places
+
+place_reviews
+
+tour_schedules
+
+Columns
+
+snake_case
+
+Examples
+
+created_at
+
+updated_at
+
+place_id
+
+review_status
+
+---
+
+# Database Constraint Naming
+
+Primary Key
+
+pk_
+
+Foreign Key
+
+fk_
+
+Index
+
+idx_
+
+Unique
+
+uq_
+
+Check
+
+chk_
+
+Examples
+
+pk_places
+
+fk_reviews_place
+
+idx_places_slug
+
+uq_users_email
+
+chk_media_arc
+
+---
+
+# API Naming
+
+REST endpoints
+
+must use
+
+kebab-case
+
+plural nouns
+
+Examples
+
+GET /places
+
+GET /hotel-reviews
+
+POST /tour-bookings
+
+Forbidden
+
+/getPlaces
+
+/get_place
+
+/GetPlaces
+
+---
+
+# OpenAPI Schema Naming
+
+Schemas
+
+PascalCase
+
+Examples
+
+Place
+
+Hotel
+
+UserProfile
+
+ReviewSummary
+
+---
+
+# Environment Variables
+
+Environment variables
+
+must use
+
+UPPER_SNAKE_CASE
+
+Examples
+
+DATABASE_URL
+
+REDIS_URL
+
+JWT_SECRET
+
+OPENAI_API_KEY
+
+---
+
+# Naming Drift
+
+Naming Drift includes
+
+Mixed conventions
+
+Undocumented abbreviations
+
+Plural/singular mismatch
+
+Wrong suffix
+
+Wrong prefix
+
+Incorrect casing
+
+Duplicate names
+
+Ambiguous names
+
+Inconsistent terminology
+
+---
+
+# Validation Checklist
+
+Verify
+
+Repository
+
+Folders
+
+Files
+
+Modules
+
+Classes
+
+Interfaces
+
+Methods
+
+Variables
+
+Constants
+
+Enums
+
+DTOs
+
+Entities
+
+Repositories
+
+Controllers
+
+Services
+
+Database
+
+API
+
+Environment Variables
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+Name
+
+Expected Convention
+
+Actual Convention
+
+Repository Path
+
+Documentation Reference
+
+Severity
+
+Recommendation
+
+Never infer.
+
+Never guess.
+
+Never fabricate.
+
+---
+
+# Severity
+
+Critical
+
+Ambiguous architecture name
+
+High
+
+Naming breaks documentation
+
+Medium
+
+Convention mismatch
+
+Low
+
+Formatting inconsistency
+
+Informational
+
+Suggestion only
+
+---
+
+# Report Output
+
+Naming Summary
+
+Naming Inventory
+
+Naming Drift
+
+Convention Violations
+
+Consistency Analysis
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+NAMING VERIFIED
+
+NAMING DRIFT DETECTED
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every naming category reviewed
+
+Documentation compared
+
+Evidence attached
+
+No assumptions
+
+No code generated
+
+No repository modified
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Naming Review succeeds when
+
+every identifier
+
+throughout the PhuQuocHub platform
+
+follows
+
+a single,
+
+consistent,
+
+documented,
+
+and predictable naming convention,
+
+making the repository
+
+easy to understand,
+
+easy to navigate,
+
+easy to maintain,
+
+and fully aligned
+
+with the frozen architecture
+
+and the Single Source of Truth (SSOT).

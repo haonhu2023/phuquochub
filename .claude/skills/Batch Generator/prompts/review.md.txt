@@ -1,0 +1,21 @@
+Review the generated batch.
+
+Compare against
+
+ADR
+
+Decision Register
+
+Architecture
+
+Database
+
+OpenAPI
+
+RBAC
+
+Coding Standard
+
+Report every deviation.
+
+Do not modify code.

@@ -1,0 +1,17 @@
+Generate ONLY the approved batch.
+
+Do not redesign architecture.
+
+Read repository first.
+
+Generate only missing code.
+
+Maximum
+
+2000 LOC
+
+15 files
+
+Stop after generation.
+
+Produce Batch Report.

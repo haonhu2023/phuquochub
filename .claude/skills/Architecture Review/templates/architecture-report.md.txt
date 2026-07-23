@@ -1,0 +1,753 @@
+# Architecture Review Report
+
+Report Version
+
+1.0
+
+Generated At
+
+{{generated_at}}
+
+Repository
+
+{{repository_name}}
+
+Repository Version
+
+{{repository_version}}
+
+Repository Branch
+
+{{branch}}
+
+Commit
+
+{{commit_hash}}
+
+Reviewer
+
+Claude Code
+
+Review Type
+
+{{review_type}}
+
+Current Sprint
+
+{{current_sprint}}
+
+Current Batch
+
+{{current_batch}}
+
+Current Milestone
+
+{{current_milestone}}
+
+---
+
+# Executive Summary
+
+Overall Status
+
+{{overall_status}}
+
+Repository Health
+
+{{repository_health}}
+
+Architecture Health
+
+{{architecture_health}}
+
+Documentation Health
+
+{{documentation_health}}
+
+Production Readiness
+
+{{production_readiness}}
+
+Summary
+
+{{summary}}
+
+---
+
+# Scope
+
+Included
+
+{{included_scope}}
+
+Excluded
+
+{{excluded_scope}}
+
+Limitations
+
+{{limitations}}
+
+---
+
+# Methodology
+
+Documentation Reviewed
+
+{{documentation_reviewed}}
+
+Repository Analyzed
+
+{{repository_analyzed}}
+
+Architecture Compared
+
+{{architecture_compared}}
+
+Dependencies Validated
+
+{{dependencies_validated}}
+
+Evidence Collected
+
+{{evidence_collected}}
+
+Severity Assigned
+
+{{severity_assigned}}
+
+Recommendations Generated
+
+{{recommendations_generated}}
+
+---
+
+# Repository Overview
+
+Applications
+
+{{applications}}
+
+Packages
+
+{{packages}}
+
+Modules
+
+{{modules}}
+
+Shared Libraries
+
+{{shared_libraries}}
+
+Documentation
+
+{{documentation}}
+
+Repository Structure
+
+{{repository_structure}}
+
+---
+
+# Compliance Summary
+
+| Category | Result |
+|----------|--------|
+| Architecture | {{architecture_status}} |
+| Documentation | {{documentation_status}} |
+| Repository | {{repository_status}} |
+| Database | {{database_status}} |
+| API | {{api_status}} |
+| RBAC | {{rbac_status}} |
+| Workflow | {{workflow_status}} |
+| Security | {{security_status}} |
+| Performance | {{performance_status}} |
+| Testing | {{testing_status}} |
+
+---
+
+# Architecture Review
+
+Architecture Status
+
+{{architecture_result}}
+
+Architecture Findings
+
+{{architecture_findings}}
+
+Architecture Drift
+
+{{architecture_drift}}
+
+Evidence
+
+{{architecture_evidence}}
+
+Recommendation
+
+{{architecture_recommendation}}
+
+---
+
+# Documentation Review
+
+Status
+
+{{documentation_result}}
+
+Findings
+
+{{documentation_findings}}
+
+Documentation Drift
+
+{{documentation_drift}}
+
+Evidence
+
+{{documentation_evidence}}
+
+Recommendation
+
+{{documentation_recommendation}}
+
+---
+
+# Repository Review
+
+Status
+
+{{repository_result}}
+
+Folder Structure
+
+{{folder_structure}}
+
+Modules
+
+{{module_summary}}
+
+Dead Code
+
+{{dead_code}}
+
+Duplicate Code
+
+{{duplicate_code}}
+
+Repository Drift
+
+{{repository_drift}}
+
+Evidence
+
+{{repository_evidence}}
+
+Recommendation
+
+{{repository_recommendation}}
+
+---
+
+# Database Review
+
+Status
+
+{{database_result}}
+
+Entities
+
+{{entities}}
+
+Migrations
+
+{{migrations}}
+
+Indexes
+
+{{indexes}}
+
+Constraints
+
+{{constraints}}
+
+Database Drift
+
+{{database_drift}}
+
+Evidence
+
+{{database_evidence}}
+
+Recommendation
+
+{{database_recommendation}}
+
+---
+
+# API Review
+
+Status
+
+{{api_result}}
+
+Controllers
+
+{{controllers}}
+
+Endpoints
+
+{{endpoints}}
+
+DTOs
+
+{{dtos}}
+
+Validation
+
+{{validation}}
+
+OpenAPI Drift
+
+{{openapi_drift}}
+
+Evidence
+
+{{api_evidence}}
+
+Recommendation
+
+{{api_recommendation}}
+
+---
+
+# RBAC Review
+
+Status
+
+{{rbac_result}}
+
+Roles
+
+{{roles}}
+
+Permissions
+
+{{permissions}}
+
+Authorization
+
+{{authorization}}
+
+RBAC Drift
+
+{{rbac_drift}}
+
+Evidence
+
+{{rbac_evidence}}
+
+Recommendation
+
+{{rbac_recommendation}}
+
+---
+
+# Workflow Review
+
+Status
+
+{{workflow_result}}
+
+Registration
+
+{{registration}}
+
+Approval
+
+{{approval}}
+
+Publishing
+
+{{publishing}}
+
+Workflow Drift
+
+{{workflow_drift}}
+
+Evidence
+
+{{workflow_evidence}}
+
+Recommendation
+
+{{workflow_recommendation}}
+
+---
+
+# Dependency Review
+
+Status
+
+{{dependency_result}}
+
+Dependency Graph
+
+{{dependency_graph}}
+
+Circular Dependencies
+
+{{circular_dependencies}}
+
+Dependency Drift
+
+{{dependency_drift}}
+
+Evidence
+
+{{dependency_evidence}}
+
+Recommendation
+
+{{dependency_recommendation}}
+
+---
+
+# Naming Review
+
+Status
+
+{{naming_result}}
+
+Repository Naming
+
+{{repository_naming}}
+
+Folder Naming
+
+{{folder_naming}}
+
+File Naming
+
+{{file_naming}}
+
+Naming Drift
+
+{{naming_drift}}
+
+Evidence
+
+{{naming_evidence}}
+
+Recommendation
+
+{{naming_recommendation}}
+
+---
+
+# Security Review
+
+Status
+
+{{security_result}}
+
+Authentication
+
+{{authentication}}
+
+Authorization
+
+{{authorization}}
+
+Validation
+
+{{security_validation}}
+
+Audit Logging
+
+{{audit_logging}}
+
+Security Drift
+
+{{security_drift}}
+
+Evidence
+
+{{security_evidence}}
+
+Recommendation
+
+{{security_recommendation}}
+
+---
+
+# Performance Review
+
+Status
+
+{{performance_result}}
+
+Indexes
+
+{{performance_indexes}}
+
+Caching
+
+{{caching}}
+
+Pagination
+
+{{pagination}}
+
+Search
+
+{{search}}
+
+Performance Drift
+
+{{performance_drift}}
+
+Evidence
+
+{{performance_evidence}}
+
+Recommendation
+
+{{performance_recommendation}}
+
+---
+
+# Testing Review
+
+Status
+
+{{testing_result}}
+
+Compilation
+
+{{compilation}}
+
+Lint
+
+{{lint}}
+
+Unit Tests
+
+{{unit_tests}}
+
+Integration Tests
+
+{{integration_tests}}
+
+E2E Tests
+
+{{e2e_tests}}
+
+Coverage
+
+{{coverage}}
+
+Testing Drift
+
+{{testing_drift}}
+
+Evidence
+
+{{testing_evidence}}
+
+Recommendation
+
+{{testing_recommendation}}
+
+---
+
+# Technical Debt
+
+| ID | Severity | Description | Target Sprint | Owner | Status |
+|----|----------|-------------|---------------|-------|--------|
+{{technical_debt_table}}
+
+---
+
+# Known Risks
+
+| Risk | Impact | Probability | Severity | Mitigation |
+|------|--------|-------------|----------|------------|
+{{risk_table}}
+
+---
+
+# Recommendations
+
+## Immediate
+
+{{priority_1}}
+
+## Current Sprint
+
+{{priority_2}}
+
+## Next Sprint
+
+{{priority_3}}
+
+## Future Sprint
+
+{{priority_4}}
+
+## Roadmap
+
+{{priority_5}}
+
+---
+
+# Compliance Matrix
+
+| Area | PASS | READY AFTER FIXES | FAIL | BLOCKED |
+|------|------|-------------------|------|----------|
+| Architecture | {{architecture_matrix}} | | | |
+| Documentation | {{documentation_matrix}} | | | |
+| Repository | {{repository_matrix}} | | | |
+| Database | {{database_matrix}} | | | |
+| API | {{api_matrix}} | | | |
+| RBAC | {{rbac_matrix}} | | | |
+| Workflow | {{workflow_matrix}} | | | |
+| Security | {{security_matrix}} | | | |
+| Performance | {{performance_matrix}} | | | |
+| Testing | {{testing_matrix}} | | | |
+
+---
+
+# Metrics
+
+Total Modules
+
+{{module_count}}
+
+Total Controllers
+
+{{controller_count}}
+
+Total Services
+
+{{service_count}}
+
+Total Repositories
+
+{{repository_count}}
+
+Total Entities
+
+{{entity_count}}
+
+Total DTOs
+
+{{dto_count}}
+
+Total Endpoints
+
+{{endpoint_count}}
+
+Architecture Drift Count
+
+{{architecture_drift_count}}
+
+Technical Debt Count
+
+{{technical_debt_count}}
+
+Critical Findings
+
+{{critical_count}}
+
+High Findings
+
+{{high_count}}
+
+Medium Findings
+
+{{medium_count}}
+
+Low Findings
+
+{{low_count}}
+
+---
+
+# Final Decision
+
+Decision
+
+{{final_decision}}
+
+Reason
+
+{{decision_reason}}
+
+Production Ready
+
+{{production_ready}}
+
+Merge Allowed
+
+{{merge_allowed}}
+
+Sprint Accepted
+
+{{sprint_accepted}}
+
+---
+
+# Next Actions
+
+Immediate Actions
+
+{{immediate_actions}}
+
+Current Sprint Actions
+
+{{current_sprint_actions}}
+
+Future Sprint Actions
+
+{{future_sprint_actions}}
+
+Roadmap Actions
+
+{{roadmap_actions}}
+
+---
+
+# Reviewer Declaration
+
+This review
+
+was performed
+
+according to
+
+the Architecture Review Skill,
+
+the Documentation Freeze policy,
+
+the Single Source of Truth (SSOT),
+
+and all approved Architecture Decision Records (ADR).
+
+All findings
+
+are evidence-based.
+
+No undocumented assumptions
+
+were used.
+
+No repository files
+
+were modified.
+
+Report Completed
+
+{{completed_at}}

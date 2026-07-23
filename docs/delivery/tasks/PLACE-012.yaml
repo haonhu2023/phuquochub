@@ -1,0 +1,164 @@
+schema_version: "1.0"
+
+id: PLACE-012
+workstream: place
+title: "Resolve the remaining boundary-typing findings F-19 and F-20"
+type: API contract alignment
+status: completed
+started_at: "2026-07-22"
+completed_at: "2026-07-22"
+started_branch: unknown         # not a git working copy
+started_commit: unknown
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "packages/shared-types npm run build → exit 0; dist/place.* re-emitted"
+    - "node_modules/@phuquochub/shared-types re-materialized → OpeningHours present 7x in copied place.d.ts"
+    - "apps/api npx tsc --noEmit → exit 0 first attempt"
+    - "apps/web npx tsc --noEmit → exit 0 (read-contract tightening broke no consumer)"
+    - "npx jest places → 92/92 passed, 7 suites, exit 0 — mapper AND PLACE-006 DTO specs UNMODIFIED"
+    - "npx eslint places + common → exit 0"
+  mandatory_criteria: "AC1..AC7 all PASS; optional AC8 also PASS"
+  report: docs/delivery/reports/PLACE-012-boundary-typing-report.md
+  evidence_index: docs/delivery/evidence/PLACE-012-boundary-typing-evidence-index.md
+  changed_files:
+    - packages/shared-types/src/place.ts                     # OpeningHours + PlaceDetail retyped
+    - apps/api/src/modules/places/places.mapper.ts           # ISO-string timestamps
+    - packages/shared-types/dist/** and node_modules/@phuquochub/shared-types/**   # generated
+  json_invariance: >-
+    AC3/AC4 — emitted JSON is unchanged: JSON.stringify calls Date.prototype.toJSON, which
+    delegates to toISOString(), so both paths produce the same ISO-8601 string. The conversion
+    moved from the serializer into the mapper; the bytes did not change. Argued from documented
+    behaviour plus unmodified mapper specs — NOT from an observed HTTP response.
+  validator_reuse_decision: >-
+    AC8 — common/opening-hours.ts deliberately does NOT import the shared type. A TypeScript type
+    contributes nothing at runtime, so reuse would not strengthen a single check while coupling a
+    validator to a contract package. The type was instead DERIVED from the validator's rules, and
+    PLACE-006's specs still pass, so divergence would surface as a failing test.
+  permissiveness_preserved: >-
+    Every field optional and an index signature for unknown keys — matching openapi
+    additionalProperties:true and PLACE-006's decisions. A stricter read type would have described
+    data the API itself accepts as valid, and would have broken the web helper that iterates
+    Object.entries(opening_hours).
+  open_findings: >-
+    F-30 the opening_hours structure is now expressed twice (shared TYPE + runtime PREDICATES),
+    aligned by convention and specs rather than by construction. Schema-first single-sourcing
+    would remove it — a design change, not a fix.
+  resolves: "F-19, F-20"
+
+depends_on:
+  - PLACE-011        # completed 2026-07-22; jest places 92/92 unmodified, api+web tsc exit 0, cast removed
+
+problem_statement: >-
+  Two inaccuracies remain at the Place read boundary, both named in the PLACE-010 assessment's
+  typing cluster and both classified NON_BLOCKING:
+   - F-19: toPlaceDetail() (apps/api/src/modules/places/places.mapper.ts) returns created_at and
+     updated_at as `Date`, while the shared wire type PlaceDetail declares them as `string`.
+     The JSON is correct today only because HTTP serialization turns a Date into an ISO string
+     on the way out — so the API's own return type is NOT assignable to the type that describes
+     its own response. Anyone who tries to annotate the mapper with PlaceDetail hits a wall.
+   - F-20: PlaceDetail.opening_hours in packages/shared-types is still Record<string, unknown>,
+     although PLACE-006 made the WRITE path structurally validated against places.md §4. The
+     write side knows the shape; the read side still says "some object".
+  Together they mean the shared contract does not fully describe what the API returns.
+
+objective: >-
+  Make the shared read contract describe the actual payload: declare the opening_hours structure
+  once and reuse it on both sides, and make the mapper's timestamps match the declared wire type
+  — WITHOUT changing a single byte of emitted JSON.
+
+required_inputs:
+  - apps/api/src/modules/places/places.mapper.ts                 # toPlaceDetail
+  - apps/api/src/modules/places/places-detail.mapper.spec.ts     # must pass unmodified
+  - packages/shared-types/src/place.ts                           # PlaceDetail
+  - apps/api/src/common/opening-hours.ts                         # the validated write-side structure
+  - docs/data/modules/places.md                                  # §4, the SSOT structure
+  - docs/api/openapi.yaml                                        # :1777 opening_hours, :1784-1785 timestamps
+  - apps/web/src/app/(public)/places/[slug]/page.tsx             # web consumer of PlaceDetail
+
+in_scope:
+  - "packages/shared-types/src/place.ts — an OpeningHours type, and PlaceDetail.opening_hours typed with it"
+  - "apps/api/src/modules/places/places.mapper.ts — toPlaceDetail timestamps"
+  - "apps/api/src/common/opening-hours.ts — ONLY if the validator can reuse the shared type without weakening its runtime checks"
+  - "rebuild packages/shared-types and re-materialize node_modules/@phuquochub/shared-types (FAT32 — mandatory, see PLACE-005)"
+
+out_of_scope:
+  - "ANY change to the emitted JSON — same field names, same values, same nullability. A Date and its ISO string serialize identically; anything beyond that is a contract change and is forbidden here"
+  - "openapi.yaml — it declares opening_hours with additionalProperties: true deliberately; do not tighten it"
+  - "the runtime validation rules from PLACE-006 — do not relax, extend or restructure them"
+  - "F-6 / F-17 contract divergences (need owner adjudication)"
+  - "F-29 (status vs verification_status enum sources) — cosmetic, recorded, leave it"
+  - "web components or rendering beyond whatever the type change forces"
+
+execution_steps:
+  - "F-20 first: derive the OpeningHours type from places.md §4 and the ALREADY-VALIDATED shape in common/opening-hours.ts, so the type and the runtime validator cannot disagree. Every field is optional (PLACE-006 established that the SSOT marks none required)."
+  - "Decide explicitly how to keep unknown top-level keys permitted, since openapi declares additionalProperties: true and PLACE-006 tolerates them. An index signature is the obvious route; record the choice."
+  - "Type PlaceDetail.opening_hours as OpeningHours | null."
+  - "Check whether common/opening-hours.ts can import the shared type without weakening runtime validation. If reusing it would blur the line between 'validated' and 'declared', DO NOT force it — keep the validator self-contained and record why."
+  - "F-19 second: make toPlaceDetail emit ISO strings for created_at/updated_at. Verify this produces IDENTICAL JSON — JSON.stringify of a Date already yields the same ISO-8601 string — and state that verification in the report rather than assuming it."
+  - "Check every consumer of PlaceDetail: apps/web detail page, hotels/restaurants/tours api modules. The opening_hours tightening is the risky half — if a consumer indexes arbitrary keys, the index signature must accommodate it."
+  - "Rebuild shared-types and RE-COPY dist + package.json into node_modules/@phuquochub/shared-types. Skipping this makes both apps type-check against stale declarations."
+  - "Run every validation command; apps/web typecheck is mandatory evidence for a read-contract change."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "An OpeningHours type exists in packages/shared-types, matches places.md §4, keeps every field optional, and permits unknown top-level keys." }
+  - { id: AC2, mandatory: true,  text: "PlaceDetail.opening_hours is typed with it rather than Record<string, unknown>." }
+  - { id: AC3, mandatory: true,  text: "toPlaceDetail's created_at/updated_at match the declared wire type, and the report states explicitly why the emitted JSON is unchanged." }
+  - { id: AC4, mandatory: true,  text: "The emitted JSON is byte-identical: no field added, removed, renamed, reordered or revalued. Existing mapper specs pass UNMODIFIED." }
+  - { id: AC5, mandatory: true,  text: "PLACE-006's runtime validation behaviour is unchanged — places.dto specs pass unmodified, including the SSOT-example and unknown-key cases." }
+  - { id: AC6, mandatory: true,  text: "No openapi.yaml, entity, migration, repository, service, controller or DTO-rule change." }
+  - { id: AC7, mandatory: true,  text: "shared-types rebuilt AND re-materialized; apps/api jest + eslint + tsc and apps/web tsc all exit 0." }
+  - { id: AC8, mandatory: false, text: "Whether the runtime validator reuses the shared type is decided explicitly, with reasoning either way." }
+
+required_evidence:
+  - "field-by-field mapping from places.md §4 to the OpeningHours type"
+  - "the argument that Date and its ISO string serialize identically"
+  - "consumer sweep of PlaceDetail with compile evidence"
+  - "proof shared-types was rebuilt and re-copied"
+  - "confirmation mapper and dto specs were not edited"
+  - "all four validation exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd packages/shared-types && npm run build"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" \"src/common/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/web && npx tsc --noEmit"
+
+rollback_plan: >-
+  Revert place.ts (drop OpeningHours, restore Record<string, unknown>), revert the mapper
+  timestamps, rebuild shared-types and re-copy into node_modules. The re-copy is mandatory: a
+  source revert without it leaves both apps type-checking against a stale dist. No schema, data
+  or emitted payload is involved.
+
+stop_conditions:
+  - "Typing opening_hours breaks a web consumer that legitimately reads an unknown key — STOP and widen the index signature rather than editing the consumer; the type must describe reality, not force reality to fit it."
+  - "Making the timestamps match would change the emitted JSON in any way — STOP. Leave F-19 open and record why; the wire contract outranks type tidiness."
+  - "Reusing the shared type in the validator would weaken any PLACE-006 runtime check — STOP and keep the validator self-contained; declared shape and enforced shape may legitimately live apart."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-013
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "mapper and dto specs passing unmodified"
+    - "apps/web tsc exit 0 after the tightening"
+    - "shared-types re-materialized"
+
+next_candidate_task:
+  id: PLACE-013
+  title: "Place build-hygiene remediation (F-12, F-23)"
+  type: release-readiness remediation
+  rationale: >-
+    After PLACE-012 the typing cluster from the PLACE-010 assessment is exhausted, and the only
+    remaining NON_BLOCKING items that are actionable without Docker, version control or an owner
+    decision are build hygiene: F-12 (1720001500000-InitAuditLogs.spec.ts sits inside
+    migrations/, where the TypeORM glob loads a test file as a migration) and F-23 (stale
+    apps/api/dist/ still containing code removed in PLACE-007). F-12 in particular is a real
+    defect, not cosmetics. Derive PLACE-013 from PLACE-012's actual outcome.

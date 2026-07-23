@@ -1,0 +1,152 @@
+schema_version: "1.0"
+
+id: PLACE-003
+workstream: place
+title: "Add partial index BTREE(status) WHERE deleted_at IS NULL on places (GAP-06)"
+type: migration
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  migration_execution_state: implemented_not_executed   # no DB touched; Docker not installed
+  results:
+    - "npx jest migrations → 11/11 passed (3 suites, 5 specs new), exit 0"
+    - "npx eslint src/core/database/migrations/**/*.ts --max-warnings=0 → exit 0"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0 (covers edited entity)"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-003-migration-report.md
+  evidence_index: docs/delivery/evidence/PLACE-003-migration-evidence-index.md
+  changed_files:
+    - apps/api/src/core/database/migrations/1720001900000-AddPlacesStatusPartialIndex.ts        # new
+    - apps/api/src/core/database/migrations/__tests__/1720001900000-AddPlacesStatusPartialIndex.spec.ts  # new
+    - apps/api/src/modules/places/entities/place.entity.ts                                      # comment only
+  next_task: docs/delivery/tasks/PLACE-004.yaml
+  entity_alignment_decision: >-
+    No @Index decorator added. Repository convention (source.entity.ts:14-15, and places' own
+    omission of its GIST/FTS indexes) keeps partial WHERE indexes in migrations only; the
+    entity carries a note instead. Recorded so the choice is auditable rather than implicit.
+  open_finding: >-
+    The index is SSOT-mandated and now exists in a migration, but no EXPLAIN evidence proves
+    the planner will choose it — `status` is a 4-value enum, so selectivity for 'published'
+    may be poor. Carried as a finding for the DB-backed validation task, not as an unmet
+    criterion (PLACE-003 explicitly forbids claiming EXPLAIN evidence).
+
+depends_on:
+  - PLACE-002        # completed 2026-07-22, all 4 validation commands green
+
+problem_statement: >-
+  docs/data/modules/places.md:69 specifies the index `BTREE (status) WHERE deleted_at IS NULL`
+  on `places`. It does not exist. 1720000400000-InitPlaces.ts:57-62 creates only
+  `uq_places_slug`, `idx_places_category_status` (category_id, status), `idx_places_location`
+  (GIST) and `idx_places_fts`. The public list/detail paths filter on `status = 'published'`
+  together with the soft-delete predicate, and the composite index is not usable for a
+  status-only lookup because `category_id` is its leading column. This is the last open P1
+  in the Place gap register (GAP-06) other than the parked GAP-05/10 contract question.
+
+objective: >-
+  Author a forward-only TypeORM migration that creates the missing partial index, aligned
+  with the SSOT specification and with the repository's existing partial-index convention,
+  and validate it structurally. Applying it to a live database is explicitly NOT part of
+  this task.
+
+required_inputs:
+  - docs/data/modules/places.md:68-69                                    # SSOT index spec
+  - apps/api/src/core/database/migrations/1720000400000-InitPlaces.ts    # existing places indexes
+  - apps/api/src/modules/places/entities/place.entity.ts                 # entity index decorators
+  - apps/api/src/modules/places/repositories/places.repository.ts        # query shapes that benefit
+  - apps/api/src/core/database/migrations/__tests__/                     # existing migration test convention
+
+in_scope:
+  - "new: apps/api/src/core/database/migrations/1720001900000-AddPlacesStatusPartialIndex.ts"
+  - "new or extended: a migration spec under apps/api/src/core/database/migrations/__tests__/"
+  - "apps/api/src/modules/places/entities/place.entity.ts — ONLY if an @Index decorator is
+     required to keep entity and migration aligned; inspect the file's existing convention first"
+
+out_of_scope:
+  - applying the migration to any database (Docker is not installed — see state.yaml verification_environment)
+  - dropping, renaming or altering idx_places_category_status or any other existing index
+  - query or repository changes
+  - the GAP-05/10 list-param contract divergence (parked, needs owner adjudication)
+  - entity column, nullability, or relation changes
+  - any other module's migrations
+
+execution_steps:
+  - "Read 1720000400000-InitPlaces.ts:57-62 and confirm the index is genuinely absent across
+     ALL migrations, not just InitPlaces — grep the migrations directory for `idx_places_status`."
+  - "Confirm the next free migration timestamp. Highest currently present is 1720001800000
+     (InitSources), so 1720001900000 is expected — re-verify by listing the directory."
+  - "Follow the existing partial-index convention already used in this repo, e.g.
+     `CREATE INDEX \"idx_media_place\" ON \"media\" (\"place_id\") WHERE \"place_id\" IS NOT NULL`
+     and `uq_contacts_primary ... WHERE \"is_primary\" AND \"deleted_at\" IS NULL`."
+  - "Implement up(): CREATE INDEX \"idx_places_status_active\" ON \"places\" (\"status\") WHERE \"deleted_at\" IS NULL."
+  - "Implement down(): DROP INDEX \"idx_places_status_active\" — the migration must be reversible."
+  - "Decide and document whether CREATE INDEX CONCURRENTLY is appropriate. Note that TypeORM
+     wraps migrations in a transaction by default and CONCURRENTLY cannot run inside one;
+     if chosen, document the required transaction setting and the deployment implication."
+  - "Add a migration spec asserting the expected up/down SQL, matching the style of the
+     existing __tests__ directory."
+  - "Check place.entity.ts for existing @Index decorators and keep entity/migration aligned."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "A new forward-only migration creates BTREE(status) WHERE deleted_at IS NULL on places, matching places.md:69." }
+  - { id: AC2, mandatory: true,  text: "down() reverses the change by dropping only the new index." }
+  - { id: AC3, mandatory: true,  text: "Migration ordering is correct: timestamp is greater than 1720001800000 and no existing migration file is modified." }
+  - { id: AC4, mandatory: true,  text: "A spec asserts the expected up and down operations and passes." }
+  - { id: AC5, mandatory: true,  text: "No existing index is dropped, renamed or altered; no entity column, relation or nullability change." }
+  - { id: AC6, mandatory: true,  text: "tsc --noEmit and eslint pass for the changed files." }
+  - { id: AC7, mandatory: false, text: "Locking, index-build cost and deployment ordering are documented, including the CONCURRENTLY decision and its rationale." }
+
+required_evidence:
+  - "grep proving idx_places_status* is absent from every existing migration"
+  - "directory listing proving the chosen timestamp is unused and highest"
+  - "migration spec output"
+  - "tsc and eslint exit codes"
+
+validation_commands:
+  # Node is available as a portable extract; it is NOT on the system PATH.
+  # Prepend it first:  $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  # Also note: on FAT32 the @phuquochub/* packages are copies, not symlinks (state.yaml).
+  - "cd apps/api && npx jest migrations"
+  - "cd apps/api && npx eslint \"src/core/database/migrations/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Delete the new migration file and its spec. Nothing else is touched. Because the migration
+  is never applied in this task, no database state exists to reverse. If it is later applied,
+  down() drops only the new index, which is non-destructive to data.
+
+stop_conditions:
+  - "An equivalent index already exists under a different name — stop and record the finding
+     instead of creating a duplicate."
+  - "Aligning entity and migration would require changing columns, relations or nullability —
+     that is out of scope; stop and raise it as a separate task."
+  - "The task appears to require applying the migration to verify it — it does not. Docker is
+     not installed; structural validation is the approved bar. Do not claim EXPLAIN evidence."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-004
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "migration spec passing"
+    - "diff limited to in_scope files"
+
+next_candidate_task:
+  id: PLACE-004
+  title: "Database-backed validation of Place persistence and geospatial behavior"
+  type: integration validation
+  rationale: >-
+    Once the index migration exists, the largest remaining unverified surface is everything
+    that needs a real Postgres/PostGIS instance: migration application, EXPLAIN confirmation
+    that idx_places_status_active is actually used, DB-backed geospatial checks (SRID 4326,
+    coordinate order, ST_DWithin), and the e2e suite that currently self-skips. This requires
+    installing Docker Desktop and running `npm run db:up` — a prerequisite, not a code change.
+    Not auto-scheduled here; PLACE-004 should be derived from PLACE-003's actual outcome.

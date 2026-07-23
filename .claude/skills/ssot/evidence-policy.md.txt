@@ -1,0 +1,905 @@
+# Evidence Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Evidence Policy
+
+for the PhuQuocHub platform.
+
+Evidence
+
+is the foundation
+
+of every decision,
+
+validation,
+
+review,
+
+approval,
+
+deployment,
+
+and production release.
+
+Every conclusion
+
+must be supported
+
+by verifiable evidence.
+
+No decision
+
+may rely
+
+on assumptions,
+
+opinions,
+
+or undocumented knowledge.
+
+---
+
+# Mission
+
+Guarantee
+
+that every architectural review,
+
+documentation review,
+
+implementation review,
+
+validation,
+
+and production decision
+
+is supported
+
+by trustworthy,
+
+traceable,
+
+repeatable,
+
+and auditable evidence.
+
+---
+
+# Fundamental Principle
+
+Evidence
+
+comes before
+
+conclusion.
+
+No evidence
+
+means
+
+no conclusion.
+
+If evidence
+
+is missing,
+
+Claude Code
+
+must return
+
+NOT FOUND
+
+or
+
+BLOCKED.
+
+---
+
+# Evidence Objectives
+
+Evidence must be
+
+Accurate
+
+Authoritative
+
+Traceable
+
+Repeatable
+
+Verifiable
+
+Current
+
+Relevant
+
+Auditable
+
+Immutable
+
+---
+
+# Approved Evidence Sources
+
+Evidence
+
+may only come from
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+OpenAPI Specification
+
+Workflow Documentation
+
+RBAC Documentation
+
+Coding Standards
+
+Repository Standards
+
+Sprint Documentation
+
+Batch Documentation
+
+Repository Source Code
+
+Migration Files
+
+Test Reports
+
+Deployment Reports
+
+Production Monitoring
+
+Audit Logs
+
+Release Notes
+
+Validation Reports
+
+---
+
+# Unapproved Evidence Sources
+
+The following
+
+must never
+
+be used
+
+as evidence
+
+Personal opinion
+
+Developer memory
+
+Chat history
+
+Speculation
+
+Assumptions
+
+Draft documents
+
+Unapproved documentation
+
+Future plans
+
+Temporary notes
+
+Generated guesses
+
+AI imagination
+
+---
+
+# Evidence Categories
+
+Architecture Evidence
+
+Documentation Evidence
+
+Repository Evidence
+
+Database Evidence
+
+API Evidence
+
+Workflow Evidence
+
+Security Evidence
+
+Performance Evidence
+
+Testing Evidence
+
+Deployment Evidence
+
+Production Evidence
+
+Operational Evidence
+
+Governance Evidence
+
+---
+
+# Evidence Hierarchy
+
+Priority 1
+
+Architecture
+
+↓
+
+Priority 2
+
+ADR
+
+↓
+
+Priority 3
+
+Decision Register
+
+↓
+
+Priority 4
+
+Database Documentation
+
+↓
+
+Priority 5
+
+OpenAPI
+
+↓
+
+Priority 6
+
+Workflow
+
+↓
+
+Priority 7
+
+RBAC
+
+↓
+
+Priority 8
+
+Coding Standards
+
+↓
+
+Priority 9
+
+Repository Standards
+
+↓
+
+Priority 10
+
+Repository
+
+↓
+
+Priority 11
+
+Generated Artifacts
+
+↓
+
+Priority 12
+
+Logs
+
+---
+
+# Evidence Collection
+
+Claude Code
+
+must collect
+
+Primary Evidence
+
+Supporting Evidence
+
+Cross References
+
+Dependencies
+
+Validation Results
+
+No conclusion
+
+may rely
+
+on
+
+only one
+
+weak source.
+
+---
+
+# Evidence Chain
+
+Every decision
+
+must provide
+
+Evidence ID
+
+↓
+
+Primary Source
+
+↓
+
+Supporting Sources
+
+↓
+
+Validation
+
+↓
+
+Conclusion
+
+↓
+
+Recommendation
+
+↓
+
+Final Status
+
+---
+
+# Evidence ID
+
+Every evidence
+
+must include
+
+Evidence ID
+
+Artifact ID
+
+Document Version
+
+Owner
+
+Timestamp
+
+Location
+
+Section
+
+Validation Status
+
+---
+
+# Evidence Metadata
+
+Every evidence
+
+must record
+
+Source
+
+Authority Level
+
+Version
+
+Status
+
+Reviewer
+
+Approval Date
+
+Last Updated
+
+Scope
+
+---
+
+# Evidence Validation
+
+Every evidence
+
+must be checked
+
+for
+
+Existence
+
+Authority
+
+Integrity
+
+Version
+
+Approval
+
+Freshness
+
+Completeness
+
+Consistency
+
+---
+
+# Evidence Freshness
+
+Evidence
+
+must be
+
+Current
+
+Approved
+
+Not Archived
+
+Not Deprecated
+
+Not Superseded
+
+Expired evidence
+
+must not
+
+be used.
+
+---
+
+# Evidence Consistency
+
+Evidence
+
+must be
+
+consistent with
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+Workflow
+
+Repository
+
+If inconsistencies exist
+
+they must be
+
+reported
+
+before
+
+continuing.
+
+---
+
+# Multiple Evidence Rule
+
+Important conclusions
+
+must include
+
+at least
+
+one Primary Evidence
+
+and
+
+two Supporting Evidences
+
+whenever possible.
+
+---
+
+# Missing Evidence
+
+If
+
+required evidence
+
+cannot be found
+
+Claude Code
+
+must return
+
+NOT FOUND
+
+Reason
+
+Missing Artifact
+
+Recommended Action
+
+No assumptions
+
+may be made.
+
+---
+
+# Conflicting Evidence
+
+If
+
+multiple evidence
+
+conflict
+
+Claude Code
+
+must
+
+compare
+
+Authority
+
+Version
+
+Approval
+
+Priority
+
+Higher authority
+
+wins.
+
+Lower authority
+
+is reported
+
+as drift.
+
+---
+
+# Evidence Storage
+
+Evidence
+
+must remain
+
+immutable.
+
+Evidence
+
+must never
+
+be edited
+
+after
+
+validation.
+
+Corrections
+
+require
+
+new evidence.
+
+---
+
+# Evidence Traceability
+
+Every evidence
+
+must link
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Commit
+
+↓
+
+Pull Request
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+---
+
+# Evidence Retention
+
+Architecture Evidence
+
+Permanent
+
+ADR
+
+Permanent
+
+Decision Register
+
+Permanent
+
+Repository Validation
+
+Permanent
+
+Deployment Reports
+
+5 Years
+
+Monitoring Reports
+
+2 Years
+
+Audit Logs
+
+7 Years
+
+Test Reports
+
+3 Years
+
+---
+
+# Evidence Report
+
+Every report
+
+must include
+
+Evidence Summary
+
+Primary Evidence
+
+Supporting Evidence
+
+Missing Evidence
+
+Conflicts
+
+Validation
+
+Recommendation
+
+Final Decision
+
+---
+
+# Evidence Quality Levels
+
+Level A
+
+Approved
+
+Current
+
+Authoritative
+
+Validated
+
+Level B
+
+Approved
+
+Current
+
+Not Validated
+
+Level C
+
+Draft
+
+Incomplete
+
+Level D
+
+Historical
+
+Archived
+
+Level E
+
+Unknown
+
+Not Trusted
+
+Only
+
+Level A
+
+may be used
+
+for
+
+critical decisions.
+
+---
+
+# Compliance Rules
+
+Evidence
+
+is compliant
+
+only when
+
+Approved
+
+Current
+
+Traceable
+
+Validated
+
+Consistent
+
+Authoritative
+
+Complete
+
+Auditable
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Missing Primary Evidence
+
+Conflicting Evidence
+
+Expired Evidence
+
+Unapproved Evidence
+
+Broken Traceability
+
+Architecture Conflict
+
+Documentation Conflict
+
+---
+
+# Self Verification
+
+Before responding
+
+Claude Code
+
+must verify
+
+Primary evidence collected
+
+Supporting evidence collected
+
+Evidence validated
+
+Evidence traceable
+
+No assumptions
+
+No fabricated evidence
+
+No missing references
+
+---
+
+# Success Criteria
+
+The Evidence Policy succeeds when
+
+every decision,
+
+review,
+
+validation,
+
+implementation,
+
+deployment,
+
+and production release
+
+is supported
+
+by authoritative,
+
+validated,
+
+traceable,
+
+and auditable evidence,
+
+allowing
+
+every conclusion
+
+within the PhuQuocHub platform
+
+to be independently verified,
+
+reproduced,
+
+and audited,
+
+while eliminating
+
+assumptions,
+
+hallucinations,
+
+and undocumented reasoning
+
+from every engineering process.

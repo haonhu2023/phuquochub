@@ -1,0 +1,543 @@
+# Output Template
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines the standard output
+format used by all planning and review skills.
+
+All reports must follow
+a consistent structure.
+
+Reports should be
+
+Easy to read
+
+Easy to compare
+
+Easy to archive
+
+Easy to automate
+
+---
+
+# General Rules
+
+Every report must contain
+
+Title
+
+Metadata
+
+Executive Summary
+
+Scope
+
+Evidence
+
+Findings
+
+Risks
+
+Technical Debt
+
+Recommendations
+
+Final Decision
+
+No report may omit
+
+Evidence
+
+Decision
+
+---
+
+# Metadata Template
+
+Project
+
+Version
+
+Repository
+
+Branch
+
+Commit
+
+Sprint
+
+Batch
+
+Date
+
+Reviewer
+
+Review Mode
+
+Read-only / Read-write
+
+---
+
+# Executive Summary Template
+
+Purpose
+
+Current Status
+
+Overall Assessment
+
+Architecture Status
+
+Documentation Status
+
+Repository Status
+
+Overall Recommendation
+
+---
+
+# Scope Template
+
+Included
+
+Excluded
+
+Limitations
+
+Repository Scope
+
+Documentation Scope
+
+Architecture Scope
+
+---
+
+# Evidence Template
+
+Every finding must contain
+
+Finding
+
+Evidence
+
+Reference
+
+Severity
+
+Impact
+
+Required Action
+
+If evidence is missing
+
+Output
+
+NOT FOUND
+
+---
+
+# Finding Template
+
+ID
+
+Title
+
+Description
+
+Severity
+
+Evidence
+
+Impact
+
+Recommendation
+
+Status
+
+---
+
+# Severity Levels
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Informational
+
+---
+
+# Architecture Report Template
+
+Executive Summary
+
+Architecture Compliance
+
+Module Boundaries
+
+Dependency Review
+
+ADR Compliance
+
+Decision Register Compliance
+
+Architecture Drift
+
+Risks
+
+Technical Debt
+
+Recommendation
+
+Final Decision
+
+---
+
+# Documentation Report Template
+
+Executive Summary
+
+Documentation Completeness
+
+Consistency
+
+SSOT Validation
+
+ADR Validation
+
+OpenAPI Validation
+
+Database Validation
+
+Workflow Validation
+
+RBAC Validation
+
+Security Validation
+
+Documentation Drift
+
+Recommendation
+
+Final Decision
+
+---
+
+# Repository Analysis Template
+
+Repository Summary
+
+Completed Modules
+
+Missing Modules
+
+Current Sprint
+
+Current Batch
+
+Dependencies
+
+Risks
+
+Recommendation
+
+Next Batch
+
+Decision
+
+---
+
+# Sprint Plan Template
+
+Sprint
+
+Objectives
+
+Deliverables
+
+Dependencies
+
+Estimated Batches
+
+Estimated LOC
+
+Estimated Duration
+
+Known Risks
+
+Technical Debt
+
+Recommended Order
+
+Decision
+
+---
+
+# Batch Plan Template
+
+Batch Name
+
+Scope
+
+Allowed Changes
+
+Forbidden Changes
+
+Dependencies
+
+Estimated LOC
+
+Files Expected
+
+Acceptance Criteria
+
+Decision
+
+---
+
+# Batch Generation Report
+
+Batch
+
+Generated Modules
+
+Generated Files
+
+Modified Files
+
+Dependencies
+
+Architecture Compliance
+
+ADR Compliance
+
+Database Impact
+
+API Impact
+
+Security Review
+
+Testing
+
+Estimated LOC
+
+Known Risks
+
+Technical Debt
+
+Decision
+
+---
+
+# Batch Acceptance Report
+
+Executive Summary
+
+Scope
+
+Passed Checks
+
+Failed Checks
+
+Known Risks
+
+Technical Debt
+
+Required Fixes
+
+Recommendation
+
+Final Decision
+
+---
+
+# Sprint Acceptance Report
+
+Sprint Summary
+
+Objectives
+
+Completed Deliverables
+
+Architecture
+
+Documentation
+
+Database
+
+API
+
+RBAC
+
+Security
+
+Performance
+
+Testing
+
+Technical Debt
+
+Known Risks
+
+Recommendation
+
+Final Decision
+
+---
+
+# Merge Report
+
+Branch
+
+Files Changed
+
+LOC
+
+Architecture Impact
+
+Database Impact
+
+Security Impact
+
+CI Status
+
+Technical Debt
+
+Known Risks
+
+Rollback
+
+Decision
+
+---
+
+# Production Gate Report
+
+Infrastructure
+
+Database
+
+API
+
+Performance
+
+Security
+
+Monitoring
+
+Logging
+
+Backup
+
+Rollback
+
+Disaster Recovery
+
+Production Readiness
+
+Decision
+
+---
+
+# Recommendation Template
+
+Immediate Actions
+
+Next Sprint
+
+Future Improvements
+
+Technical Debt
+
+Known Risks
+
+---
+
+# Final Decisions
+
+Allowed values
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+MERGE APPROVED
+
+MERGE APPROVED WITH CONDITIONS
+
+MERGE REJECTED
+
+PRODUCTION READY
+
+DOCUMENTATION FROZEN
+
+---
+
+# Self Verification
+
+Before publishing a report
+
+verify
+
+Every finding has evidence
+
+Every decision is justified
+
+No undocumented assumptions
+
+No architecture changes proposed
+
+No code generated during review
+
+---
+
+# Success Criteria
+
+The Output Template succeeds when
+
+every report produced by Claude Code
+
+shares the same structure,
+
+the same terminology,
+
+the same evidence model,
+
+and the same decision framework,
+
+making reports comparable
+across all Sprints,
+all Batches,
+and the entire lifecycle
+of the PhuQuocHub project.

@@ -1,0 +1,25 @@
+Generate
+
+Batch Summary
+
+Architecture Compliance
+
+ADR Compliance
+
+Database Compliance
+
+Security Review
+
+Test Coverage
+
+Technical Debt
+
+Risks
+
+Merge Recommendation
+
+READY
+
+READY AFTER FIXES
+
+NOT READY

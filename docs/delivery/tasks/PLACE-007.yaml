@@ -1,0 +1,153 @@
+schema_version: "1.0"
+
+id: PLACE-007
+workstream: place
+title: "Retire or justify PlacesRepository.getCardBySlug dead code (GAP-13)"
+type: analysis
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  analysis: complete
+  validation: passed
+  decision: "option (a) — REMOVED"
+  results:
+    - "npx jest places → 51/51 passed, 5 suites, exit 0 (GAP-02/04 regression specs UNMODIFIED)"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0 (no compile-time consumer existed)"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-007-dead-code-report.md
+  evidence_index: docs/delivery/evidence/PLACE-007-dead-code-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/repositories/places.repository.ts   # getCardBySlug removed + explanatory comment
+  next_task: docs/delivery/tasks/PLACE-008.yaml
+  sweep_summary: >-
+    Four passes: bare identifier across apps/packages/docs/delivery/scripts (1 source hit — its
+    own definition); dynamic bracket access (none anywhere); all *BySlug identifiers (52 hits,
+    zero resolving to getCardBySlug); and the module export surface (PlacesRepository IS
+    exported from places.module.ts:27, so cross-module reachability had to be checked and was).
+    tsc exit 0 independently confirms no compile-time consumer.
+  decision_rationale: >-
+    Removal, not "add the status filter". getCardById — the sibling with 5 callers —
+    deliberately omits the status filter because moderation (approve/archive/update) must read
+    unpublished rows. So the missing filter is a defect only if the method was public, and no
+    repository evidence settles that. Adding the filter would encode a guess; removal dissolves
+    the question. BUILD_002:193 pre-authorized exactly this, conditional on confirming dead code.
+  limitation: >-
+    Static evidence only. No VCS history exists to consult (repository.vcs: none) and no running
+    system was observed, so a reflective invocation could not be ruled out empirically — though
+    no bracket-access pattern appears anywhere in the codebase.
+  open_findings: >-
+    F-23 apps/api/dist/ holds stale compiled output still containing the removed method
+    (housekeeping, out of scope). F-24 getCardById's deliberate lack of a status filter is
+    undocumented and may be mistaken for the same defect.
+
+depends_on:
+  - PLACE-006        # completed 2026-07-22; jest places.dto 30/30, mutation-checked, eslint + tsc exit 0
+
+problem_statement: >-
+  apps/api/src/modules/places/repositories/places.repository.ts:123-129 defines
+  getCardBySlug(slug). A repository-wide sweep during PLACE-006 found exactly ONE occurrence of
+  that identifier — its own definition — while the sibling getCardById has five call sites in
+  places.service.ts. This is GAP-13 (P3) in the Place gap register.
+  It is not merely unused: unlike getDetailBySlug (:145-156), which filters
+  `status = PUBLISHED` precisely so unpublished content is never exposed on a public channel
+  (the GAP-02/04 fix), getCardBySlug filters only `deleted_at IS NULL`. Anyone who later wires
+  it into a public route would silently reintroduce the exact defect GAP-02/04 closed. Dead
+  code with a security-shaped trap in it is worth resolving deliberately rather than leaving.
+
+objective: >-
+  Establish with evidence whether getCardBySlug has any consumer anywhere in the repository,
+  then either remove it or document why it must stay — and, if it stays, close the status-filter
+  trap so a future caller cannot reintroduce the GAP-02/04 exposure.
+
+required_inputs:
+  - apps/api/src/modules/places/repositories/places.repository.ts        # :123-129 getCardBySlug, :145-156 getDetailBySlug
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # GAP-02/04 regression specs
+  - apps/api/src/modules/places/places.service.ts                        # getCardById call sites
+  - docs/delivery/reports/PLACE-006-opening-hours-report.md              # §31 and F-22
+  - delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md   # original GAP-13 entry
+  - delivery/sprint-01-core-data/BUILD_002_PLACE_PRIORITY_REMEDIATION.md      # the GAP-02/04 fix this method predates
+
+analysis_steps:
+  - "Sweep the WHOLE repository for the identifier, not just apps/api: apps/**, packages/**, docs/**, seeds, scripts and test helpers. Include dynamic-access forms (repo['getCardBySlug'], destructuring, spread-based facades) — a plain text search for the bare name is necessary but not sufficient."
+  - "Check whether it is part of any exported public surface a consumer outside this repository could bind to; PlacesRepository is an @Injectable provider, so establish whether it is exported from the module for other Nest modules."
+  - "Read git history if it exists. NOTE: this repository is not under version control (state.yaml repository.vcs: none), so provenance is unavailable — record that as a limitation rather than inferring intent."
+  - "Compare getCardBySlug against getDetailBySlug and getCardById: which filters each applies, and what a public caller would get. Document the status-filter divergence precisely."
+  - "Decide, from the evidence, between: (a) remove it; (b) keep it and add the status filter; (c) keep it unchanged with a documented reason. State which and why."
+  - "If removal is chosen, confirm no spec asserts its existence, then remove the method and nothing else."
+  - "If (b) is chosen, add a regression spec matching the GAP-02/04 style so the filter cannot be dropped again."
+  - "Run the validation commands below regardless of the option chosen — including when the outcome is 'no code change', to prove nothing was broken."
+
+in_scope:
+  - "the analysis itself, and its report + evidence index"
+  - "apps/api/src/modules/places/repositories/places.repository.ts — ONLY the getCardBySlug method (remove it, or add its status filter). No other method."
+  - "apps/api/src/modules/places/repositories/places.repository.spec.ts — a regression spec, if option (b) is chosen"
+
+out_of_scope:
+  - "getCardById, getDetailBySlug, list, nearby, bbox, bboxClusters, search* — do not touch any other method"
+  - "F-16 (missing unique key in nearby/bbox/bboxClusters LIMIT) — separate concern, separate task"
+  - "service, controller, DTO, mapper, entity, migration or contract changes"
+  - "any other dead-code removal found along the way — record it as a finding, do not bundle it"
+  - "F-17/F-18/F-19/F-20/F-21 from PLACE-005 and PLACE-006"
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "A repository-wide consumer sweep is documented, covering apps/**, packages/**, seeds, scripts and tests, and including dynamic-access forms — not a single bare grep." }
+  - { id: AC2, mandatory: true,  text: "The status-filter divergence between getCardBySlug and getDetailBySlug is documented precisely, including what a public caller would receive." }
+  - { id: AC3, mandatory: true,  text: "One of the three options is chosen and justified from evidence; if the choice is 'keep unchanged', the reason is concrete, not deferral." }
+  - { id: AC4, mandatory: true,  text: "If code changed, the change is confined to getCardBySlug and its spec; no other method is modified." }
+  - { id: AC5, mandatory: true,  text: "npx jest places, eslint and tsc --noEmit exit 0 — run even if no code changed." }
+  - { id: AC6, mandatory: true,  text: "The existing GAP-02/04 regression specs still pass, unmodified." }
+  - { id: AC7, mandatory: false, text: "Any other unused repository method found during the sweep is recorded as a finding rather than removed." }
+
+required_evidence:
+  - "the exact sweep commands and their full result sets (not just counts)"
+  - "side-by-side WHERE clauses of getCardBySlug, getCardById and getDetailBySlug"
+  - "the decision, with the evidence that supports it"
+  - "jest / eslint / tsc exit codes"
+  - "explicit statement that VCS history was unavailable"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  If the method was removed, restore the seven lines from this task file's problem_statement
+  reference (places.repository.ts:123-129) — the body is a two-statement query identical in
+  shape to getCardById but keyed on slug. If a status filter was added, drop the added
+  condition and its spec. No schema, data, migration or contract is involved.
+
+stop_conditions:
+  - "The sweep finds a consumer — STOP the removal path entirely. The method is not dead; switch to assessing whether that consumer is exposed to the missing status filter, and treat THAT as the finding."
+  - "Removing it would require touching any other method or an exported module surface — STOP. That is a wider refactor than GAP-13 authorizes."
+  - "The choice appears to depend on product intent that no repository evidence settles (e.g. a planned public card-by-slug endpoint) — STOP, choose the conservative option (keep + add the status filter), and record the open question for owner confirmation."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-008
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "sweep results recorded"
+    - "validation commands green"
+    - "diff limited to getCardBySlug and its spec, or empty"
+
+next_candidate_task:
+  id: PLACE-008
+  title: "Add PlacesService unit tests for the Place write and moderation paths"
+  type: testing
+  rationale: >-
+    workstreams/place.yaml testing_surface.missing still lists "places.service unit tests" and
+    "controller tests" as absent — the largest untested surface that needs no database. The
+    entry records the blocker as "service imports @phuquochub/utils", which PLACE-005 has since
+    made moot: the package is materialized in node_modules and apps/api type-checks and runs
+    jest against it. places.service.ts contains the authorization-relevant approve/archive/
+    update transitions that currently have NO unit coverage at all. Derive PLACE-008 from
+    PLACE-007's actual outcome rather than assuming this.

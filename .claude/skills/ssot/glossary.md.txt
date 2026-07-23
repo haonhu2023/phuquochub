@@ -1,0 +1,1167 @@
+# Canonical Glossary
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official terminology
+
+used throughout
+
+the PhuQuocHub platform.
+
+The Glossary
+
+serves as
+
+the single authoritative vocabulary
+
+for
+
+architecture,
+
+documentation,
+
+repository,
+
+implementation,
+
+API,
+
+database,
+
+workflow,
+
+planning,
+
+deployment,
+
+and operations.
+
+Every document,
+
+every source file,
+
+every API,
+
+every database object,
+
+and every engineering discussion
+
+must use
+
+these canonical definitions.
+
+---
+
+# Mission
+
+Provide
+
+one shared language
+
+for
+
+Developers
+
+Architects
+
+Project Managers
+
+QA Engineers
+
+DevOps Engineers
+
+Business Analysts
+
+AI Agents
+
+Documentation Authors
+
+Stakeholders
+
+---
+
+# Fundamental Principle
+
+One Concept
+
+↓
+
+One Name
+
+↓
+
+One Meaning
+
+↓
+
+One Definition
+
+No concept
+
+may have
+
+multiple meanings.
+
+No synonym
+
+may replace
+
+a canonical term.
+
+---
+
+# Naming Rules
+
+Every term
+
+must be
+
+Unique
+
+Consistent
+
+Descriptive
+
+Stable
+
+Version Independent
+
+Architecture Aligned
+
+Business Aligned
+
+---
+
+# Business Terms
+
+## Place
+
+Definition
+
+A physical location
+
+within
+
+Phu Quoc.
+
+Examples
+
+Hotel
+
+Restaurant
+
+Beach
+
+Resort
+
+Tourist Attraction
+
+Park
+
+Museum
+
+Market
+
+Harbor
+
+Island
+
+Canonical Name
+
+Place
+
+Forbidden Names
+
+Location
+
+Spot
+
+Destination
+
+Area
+
+Site
+
+---
+
+## Business
+
+Definition
+
+An organization
+
+operating
+
+one or more
+
+Places.
+
+Examples
+
+Hotel Company
+
+Restaurant Owner
+
+Tour Operator
+
+Transportation Company
+
+Rental Company
+
+Forbidden Names
+
+Vendor
+
+Seller
+
+Merchant
+
+unless
+
+business context
+
+requires them.
+
+---
+
+## Hotel
+
+Definition
+
+A Place
+
+providing
+
+accommodation services.
+
+Hotel
+
+extends
+
+Place.
+
+---
+
+## Restaurant
+
+Definition
+
+A Place
+
+providing
+
+food
+
+and beverage services.
+
+Restaurant
+
+extends
+
+Place.
+
+---
+
+## Tour
+
+Definition
+
+A commercial service
+
+providing
+
+guided travel experiences.
+
+---
+
+## Event
+
+Definition
+
+A scheduled activity
+
+occurring
+
+at
+
+one or more
+
+Places.
+
+---
+
+## Review
+
+Definition
+
+A user-generated evaluation
+
+of
+
+a Place,
+
+Business,
+
+Hotel,
+
+Restaurant,
+
+Tour,
+
+or Event.
+
+---
+
+## Booking
+
+Definition
+
+A confirmed reservation
+
+made
+
+by
+
+a User
+
+for
+
+a commercial service.
+
+---
+
+## User
+
+Definition
+
+A registered account
+
+capable of
+
+authentication,
+
+authorization,
+
+interaction,
+
+and ownership.
+
+---
+
+# Architecture Terms
+
+## Architecture
+
+Definition
+
+The approved
+
+high-level design
+
+of the system.
+
+Architecture
+
+defines
+
+structure,
+
+boundaries,
+
+ownership,
+
+dependencies,
+
+and responsibilities.
+
+---
+
+## Module
+
+Definition
+
+A deployable,
+
+maintainable,
+
+and independently owned
+
+software component.
+
+---
+
+## Domain
+
+Definition
+
+A business capability
+
+represented
+
+by
+
+one or more modules.
+
+---
+
+## Layer
+
+Definition
+
+A logical separation
+
+of responsibilities.
+
+Presentation
+
+Application
+
+Domain
+
+Infrastructure
+
+---
+
+## Boundary
+
+Definition
+
+The interface
+
+between
+
+two modules
+
+or domains.
+
+---
+
+## Component
+
+Definition
+
+An independently understandable
+
+architectural building block.
+
+---
+
+# Governance Terms
+
+## SSOT
+
+Single Source of Truth
+
+The authoritative source
+
+for
+
+all engineering knowledge.
+
+---
+
+## ADR
+
+Architecture Decision Record.
+
+A permanent record
+
+of
+
+an architectural decision.
+
+---
+
+## Decision Register
+
+The index
+
+of all
+
+approved decisions.
+
+---
+
+## Documentation Freeze
+
+A governance state
+
+where
+
+approved documentation
+
+cannot change.
+
+---
+
+## Governance
+
+The collection
+
+of policies,
+
+rules,
+
+reviews,
+
+approvals,
+
+and controls
+
+governing
+
+the software lifecycle.
+
+---
+
+# Planning Terms
+
+## Sprint
+
+A fixed-length
+
+planning period
+
+containing
+
+multiple implementation batches.
+
+---
+
+## Batch
+
+The smallest
+
+independently deliverable
+
+implementation unit.
+
+---
+
+## Milestone
+
+A measurable checkpoint
+
+representing
+
+significant project progress.
+
+---
+
+## Roadmap
+
+The long-term sequence
+
+of
+
+planned milestones.
+
+---
+
+## Dependency
+
+A relationship
+
+where
+
+one artifact
+
+requires
+
+another artifact.
+
+---
+
+# Repository Terms
+
+## Repository
+
+The version-controlled
+
+implementation
+
+of the platform.
+
+---
+
+## Package
+
+Reusable software
+
+shared
+
+across
+
+multiple applications.
+
+---
+
+## Library
+
+A reusable
+
+technical component
+
+without
+
+business ownership.
+
+---
+
+## Application
+
+A deployable software product.
+
+Examples
+
+Frontend
+
+Backend
+
+Admin
+
+API Gateway
+
+Worker
+
+---
+
+# Database Terms
+
+## Entity
+
+A business object
+
+stored
+
+inside
+
+the database.
+
+---
+
+## Table
+
+A relational representation
+
+of
+
+an entity.
+
+---
+
+## Migration
+
+A controlled change
+
+to
+
+database structure.
+
+---
+
+## Schema
+
+The complete
+
+database structure.
+
+---
+
+## Index
+
+A database optimization
+
+improving
+
+query performance.
+
+---
+
+## Constraint
+
+A database rule
+
+ensuring
+
+data integrity.
+
+---
+
+# API Terms
+
+## Endpoint
+
+A public API operation.
+
+---
+
+## DTO
+
+Data Transfer Object.
+
+Used
+
+for
+
+communication
+
+between systems.
+
+---
+
+## Request
+
+Data
+
+sent
+
+to an API.
+
+---
+
+## Response
+
+Data
+
+returned
+
+from an API.
+
+---
+
+## Contract
+
+The formal agreement
+
+between
+
+API Provider
+
+and API Consumer.
+
+---
+
+# Workflow Terms
+
+## Workflow
+
+The official
+
+business process
+
+implemented
+
+by the platform.
+
+---
+
+## State
+
+A valid stage
+
+within
+
+a workflow.
+
+---
+
+## Transition
+
+Movement
+
+from one state
+
+to another.
+
+---
+
+# Validation Terms
+
+## Validation
+
+Verification
+
+that
+
+an artifact
+
+conforms
+
+to
+
+approved documentation.
+
+---
+
+## Review
+
+A structured evaluation
+
+performed
+
+before approval.
+
+---
+
+## Approval
+
+Formal authorization
+
+allowing
+
+an artifact
+
+to proceed.
+
+---
+
+## Evidence
+
+Authoritative proof
+
+supporting
+
+a conclusion.
+
+---
+
+## Traceability
+
+The ability
+
+to reconstruct
+
+relationships
+
+between
+
+all engineering artifacts.
+
+---
+
+# Deployment Terms
+
+## Release
+
+A version
+
+approved
+
+for deployment.
+
+---
+
+## Deployment
+
+The process
+
+of
+
+moving
+
+software
+
+to
+
+an execution environment.
+
+---
+
+## Rollback
+
+Restoring
+
+the previous
+
+working version.
+
+---
+
+## Production
+
+The live environment
+
+used
+
+by
+
+real users.
+
+---
+
+# Monitoring Terms
+
+## Health Check
+
+A verification
+
+that
+
+a service
+
+is operational.
+
+---
+
+## Metrics
+
+Numerical measurements
+
+describing
+
+system behavior.
+
+---
+
+## Logging
+
+Persistent recording
+
+of
+
+system events.
+
+---
+
+## Alert
+
+An automated notification
+
+triggered
+
+by
+
+abnormal conditions.
+
+---
+
+# Forbidden Terminology
+
+The following
+
+must not
+
+replace
+
+canonical names.
+
+Location
+
+→ Place
+
+Vendor
+
+→ Business
+
+Object
+
+→ Entity
+
+Function
+
+→ Workflow
+
+Folder
+
+→ Module
+
+API Method
+
+→ Endpoint
+
+Role List
+
+→ Permission Matrix
+
+Task Group
+
+→ Batch
+
+Decision File
+
+→ ADR
+
+Master Document
+
+→ SSOT
+
+---
+
+# Abbreviations
+
+SSOT
+
+Single Source of Truth
+
+ADR
+
+Architecture Decision Record
+
+ERD
+
+Entity Relationship Diagram
+
+DTO
+
+Data Transfer Object
+
+RBAC
+
+Role-Based Access Control
+
+API
+
+Application Programming Interface
+
+CI
+
+Continuous Integration
+
+CD
+
+Continuous Deployment
+
+PR
+
+Pull Request
+
+E2E
+
+End-to-End Test
+
+---
+
+# Compliance Rules
+
+Every document
+
+must
+
+use
+
+canonical terminology.
+
+Every API
+
+must
+
+use
+
+canonical terminology.
+
+Every database object
+
+must
+
+use
+
+canonical terminology.
+
+Every repository module
+
+must
+
+use
+
+canonical terminology.
+
+Every AI-generated document
+
+must
+
+use
+
+canonical terminology.
+
+---
+
+# Self Verification
+
+Before generating
+
+any output
+
+Claude Code
+
+must verify
+
+Canonical terms used
+
+No forbidden terminology
+
+Definitions consistent
+
+Architecture terminology respected
+
+Business terminology respected
+
+No duplicate definitions
+
+---
+
+# Success Criteria
+
+The Canonical Glossary succeeds when
+
+every participant,
+
+every document,
+
+every API,
+
+every repository,
+
+every database object,
+
+every workflow,
+
+and every AI agent
+
+uses
+
+one shared,
+
+consistent,
+
+unambiguous,
+
+and authoritative vocabulary,
+
+eliminating
+
+terminology conflicts,
+
+miscommunication,
+
+documentation inconsistency,
+
+and architectural ambiguity
+
+across the entire
+
+PhuQuocHub platform.

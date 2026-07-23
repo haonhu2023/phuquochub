@@ -1,0 +1,423 @@
+schema_version: "1.0"
+
+project:
+  id: phuquochub
+  name: PhuQuocHub
+
+delivery:
+  framework: enterprise-ai-delivery-framework
+  mode: state-driven
+  initialized: true
+
+repository:
+  # F:\PhuQuochub is NOT a git working copy (git rev-parse → "not a git repository").
+  # VCS-derived identity is therefore unknown, not fabricated.
+  inspected_at: "2026-07-22"
+  vcs: none
+  branch: unknown
+  commit: unknown
+  working_tree: unknown
+  volume: "F: (FAT-family / non-NTFS) — workspace symlinks unavailable"
+
+current:
+  phase: implementation
+  workstream: place
+  task: none                      # PLACE-019 completed 2026-07-23 (PARTIALLY_REMEDIATED).
+                                  # G-1/G-2/G-3/F-33 resolved; nest build exit 0; F-3 only
+                                  # PARTIALLY cleared (no commit) and F-2 untouched — both still
+                                  # block BUILD. No BUILD task exists and none was created.
+  status: awaiting_task_authorization
+
+legacy_build_chain:
+  execution_control: deprecated
+  known_reports:
+    - BUILD_002   # delivery/sprint-01-core-data/BUILD_002_PLACE_PRIORITY_REMEDIATION.md
+    - BUILD_001   # delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md (authored 2026-07-22)
+  missing_reports:
+    - BUILD_003
+    - BUILD_004
+    - BUILD_005
+    - BUILD_006
+    - BUILD_007
+    - BUILD_008
+    - BUILD_009
+    - BUILD_010
+    - BUILD_011
+    - BUILD_012
+    - BUILD_013
+    - BUILD_014
+  synthetic_reconstruction_allowed: false
+  note: >-
+    BUILD_003..BUILD_014 were never produced. Prompts numbered BUILD_003 and higher
+    repeatedly returned BLOCKED because they presupposed prior reports and
+    implementation/deployment states that never existed. This state file — not the
+    BUILD numbering — is now the execution-control source of truth.
+
+gates:
+  # G-3 (PLACE-019, 2026-07-23): three comments below were refreshed because their TEXT was
+  # contradicted by later verified evidence. Every gate VALUE is unchanged and deliberately
+  # conservative — no gate was advanced, and no transition condition was treated as met.
+  repository_inspection: passed
+  architecture_baseline: partial   # docs/ SSOT + ADRs exist. Node IS available (portable extract) and typecheck/build DO run — but `partial` stands: no DB/HTTP/deploy evidence.
+  place_domain_analysis: passed    # PLACE-001 completed 2026-07-22 (evidence/PLACE-001-baseline.md)
+  implementation: in_progress      # PLACE-002..PLACE-018 landed + validated (18/18 complete); still NOT passed — nothing is exercised against a database or over HTTP.
+  testing: in_progress             # 209/209 unit+integration specs green incl. service (PLACE-008) and controller (PLACE-009); still NOT passed — every one runs with the DB mocked or absent, and the 5 e2e specs have never run (needs Docker).
+  deployment: not_started
+  canary: not_started
+  hypercare: not_started
+  stabilization: not_started
+
+verification_environment:
+  # Updated 2026-07-22. Node installed as a PORTABLE extract (no admin): the winget MSI
+  # failed at the UAC elevation prompt (exit 1602) in a non-interactive session.
+  node_runtime: available              # v24.18.0 at %LOCALAPPDATA%\node-portable, npm 11.16.0
+  node_on_system_path: false           # must be prepended per shell; NOT a system install
+  workspace_packages_linked: false     # FAT32 cannot symlink; packages MATERIALIZED as real dirs
+  workspace_packages_materialized: >-
+    node_modules/@phuquochub/{shared-types,utils} contain a copied package.json + prebuilt
+    dist/. This is a local workaround, not an npm workspace link; it will go stale if either
+    package's source changes. Re-copy, or relocate to NTFS and run `npm install`, after any
+    change to packages/*.
+  can_run_lint: true                   # verified: eslint on places+geo → exit 0
+  can_run_typecheck: true              # verified: tsc --noEmit → exit 0
+  can_run_build: verified_via_tsc      # PLACE-013: tsc -p tsconfig.build.json → exit 0, main.js emitted. Full `nest build` still unrun.
+  can_run_unit_tests: true             # verified: jest places.dto 12/12, geo.dto 9/9
+  can_run_e2e: false                   # Docker NOT installed; needs Postgres/PostGIS/Redis
+  docker: not_installed                # blocks db:up, migration:run, EXPLAIN verification
+  volume: "F: FAT32 removable. NTFS targets available: D: (255 GB free), C: (92 GB free)"
+  highest_leverage_fix: "Install Docker Desktop (for DB-backed validation); relocate to NTFS (for durable workspace links)"
+  runbook: docs/delivery/ENVIRONMENT-SETUP-RUNBOOK.md
+
+owner_decisions:
+  # Recorded 2026-07-23 by the owner-decision approval gate. Approval source: owner instruction
+  # supplied in-session. NO individual approver name, job title, ticket or meeting exists in
+  # repository context and none is asserted. Records live in docs/delivery/decisions/ and the
+  # four-part finding state in docs/delivery/findings/ (a directory created by that gate).
+  recorded_at: "2026-07-23"
+  convention_note: >-
+    No owner-decision naming convention pre-existed. docs/delivery/decisions/ held only
+    ADR-DELIVERY-001, whose own scope line reads "Delivery execution control only", so extending
+    that series to product/contract decisions would have mislabelled them. The OWNER-DECISION-<F-id>
+    convention was established by this gate and should be ratified or renamed by the owner.
+  decisions:
+    - id: OD-F-1
+      finding: F-1
+      option: F1-C
+      status: APPROVED
+      record: docs/delivery/decisions/OWNER-DECISION-F-1.md
+      remediation_task: PLACE-016
+      summary: "Out-of-box coordinates must warn, not reject. Globally invalid coordinates still rejected. No replacement coordinates supplied or invented."
+    - id: OD-F-6
+      finding: F-6
+      option: F6-A
+      status: APPROVED
+      record: docs/delivery/decisions/OWNER-DECISION-F-6.md
+      remediation_task: PLACE-017
+      summary: "OpenAPI follows validated runtime. status/sort/cursor get explicit deprecation notes, not silent deletion, because external consumer usage cannot be ruled out."
+    - id: OD-F-17
+      finding: F-17
+      option: F17-D
+      status: APPROVED
+      record: docs/delivery/decisions/OWNER-DECISION-F-17.md
+      remediation_task: PLACE-018
+      summary: "status documented on PlaceCard using the EXISTING PlaceStatus enum (payload unchanged); score removed as dead surface — no endpoint ever emitted it via PlaceCard."
+  approval_does_not_imply: >-
+    A recorded decision is NOT an implementation and NOT a resolved finding. F-1, F-6 and F-17 all
+    remain release blockers with implementation_status PENDING and validation_status PENDING.
+
+proposed_tasks:
+  # Derived from approved decisions, deliberately NOT activated. Governance carries a single
+  # current.task and PLACE-015 already holds it, so activating any of these would create a second
+  # active task. Each requires explicit owner authorization to become current.task.
+  - { id: PLACE-016, status: COMPLETED, decision: OD-F-1, file: docs/delivery/tasks/PLACE-016.yaml,
+      completed: "2026-07-23" }
+  - { id: PLACE-017, status: COMPLETED, decision: OD-F-6, file: docs/delivery/tasks/PLACE-017.yaml,
+      completed: "2026-07-23" }
+  - { id: PLACE-018, status: COMPLETED, decision: OD-F-17, file: docs/delivery/tasks/PLACE-018.yaml,
+      completed: "2026-07-23" }
+
+next_action:
+  task_id: none
+  status: awaiting_task_authorization
+  objective: >-
+    NO further Place execution task is defined or authorized. PLACE-001..PLACE-018 are complete and
+    all three owner-approved remediations (OD-F-1, OD-F-6, OD-F-17) are implemented AND validated.
+    Every remaining item needs infrastructure or an owner decision that no task can supply:
+    install Docker (unblocks DB/migration/HTTP/authz/e2e/EXPLAIN evidence — the largest gap by far),
+    put the repository under version control, obtain an AUTHORITATIVE Phú Quốc boundary, and decide
+    the open product questions (GAP-05/10 cursor+sort, F-24 privileged-vs-public card schema, F-34
+    bboxClusters truncation policy, and the public SearchResult.score). The only clearly executable
+    engineering item left is F-33 (remove the consumerless PlacesRepository.bbox()), which is small
+    and does not justify claiming the workstream is progressing. Deriving another task to keep the
+    sequence moving is explicitly NOT authorized — see PLACE-015/016 next_candidate_task rationale.
+
+completed_tasks:
+  - id: PLACE-019
+    completed: "2026-07-23"
+    result: >-
+      PARTIALLY_REMEDIATED. Owner-authorized pre-BUILD readiness operation. RESOLVED: G-1
+      (project-registry.yaml was UNPARSEABLE — env_template was a mapping key inside a sequence;
+      repaired to a mapping with an explicit paths list, all values and comments preserved), G-2
+      (PLACE-001 given a run_status transcribed from its own 2026-07-22 report, recording
+      validation: not_executed — schema normalization, explicitly NOT re-execution), G-3 (three
+      gate COMMENTS refreshed where later evidence contradicted them; all three gate VALUES left
+      unchanged and still conservative), and F-33 (PlacesRepository.bbox() REMOVED after a
+      re-run four-pass sweep found zero consumers; regression spec pins the removal; absent from
+      the compiled artifact). `nest build` ran to exit 0 for the first time — 120 files,
+      dist/main.js present, matching start:prod. Governance validation went 2 failures -> 0.
+      jest 210/210, tsc + eslint exit 0. F-3 is only PARTIALLY CLEARED: the repo is a Git work
+      tree but has NO COMMIT, so no rollback point exists, and Git needs a safe.directory
+      exception that the authorization forbade setting. F-2 untouched — Docker install was not
+      authorized. BOTH still block BUILD; no BUILD task was created and READY_FOR_BUILD is not
+      asserted.
+    report: docs/delivery/reports/PLACE-019-pre-build-readiness-report.md
+    evidence_index: docs/delivery/evidence/PLACE-019-pre-build-readiness-evidence-index.md
+  - id: PLACE-018
+    completed: "2026-07-23"
+    result: >-
+      F-17 remediated per OD-F-17 (F17-D). `status` now declared on openapi PlaceCard using the
+      PRE-EXISTING PlaceStatus enum — already public via the `Place` detail schema, so zero net-new
+      disclosure — and recorded as publication state, NOT business operating state. `score` removed
+      from shared-types PlaceCard and from the toPlaceCard branch. Emitted JSON byte-identical BOTH
+      ways (runtime already set status; the score branch never executed). IMPORTANT CORRECTION found
+      by the mandatory premise re-verification: search.service.ts:24 reads `r.score` off
+      PlaceCardRow, so PlaceCardRow.score is LIVE — it was KEPT with a comment naming its consumer
+      rather than removed as the decision literally instructed, which would have broken the
+      out-of-scope search module. shared-types rebuilt AND re-copied into node_modules (FAT32
+      copies, not links) before typechecking. jest places 107/107, search 3/3 UNMODIFIED, api+web
+      tsc exit 0, openapi parses.
+    report: docs/delivery/reports/PLACE-018-placecard-contract-report.md
+    evidence_index: docs/delivery/evidence/PLACE-018-placecard-contract-evidence-index.md
+  - id: PLACE-017
+    completed: "2026-07-23"
+    result: >-
+      F-6 remediated per OD-F-6 (F6-A), DOCUMENTATION ONLY — zero runtime files changed, proven by
+      jest places 105/105 being identical to the pre-task count. openapi listPlaces now documents
+      exactly the five parameters ListPlacesQueryDto accepts, with real defaults (page 1, limit 20),
+      the limit CLAMP at 100 (not a rejection), fixed server-side ordering, offset-only pagination,
+      and an explicit statement that no geo filter exists here. status/sort/cursor kept with
+      `deprecated: true` and notes stating they return HTTP 400 — deprecated rather than deleted
+      because external consumers cannot be ruled out (OD-F-6 obligation 7). Meta corrected to the
+      emitted envelope (timestamp/page/pageSize/total/totalPages); phantom `limit` removed,
+      next_cursor/quota_remaining marked not-emitted. api.md §6/§11 reconciled. Verified by an
+      automated contract check that parses the DTO's property names from SOURCE and asserts
+      documented-ACTIVE == runtime-ACCEPTED. Also established by evidence of absence: NO Swagger
+      decorators exist anywhere, and openapi.yaml is the only contract artifact.
+    report: docs/delivery/reports/PLACE-017-openapi-alignment-report.md
+    evidence_index: docs/delivery/evidence/PLACE-017-openapi-alignment-evidence-index.md
+  - id: PLACE-016
+    completed: "2026-07-23"
+    result: >-
+      F-1 hard enforcement REMOVED per approved owner decision OD-F-1 (F1-C). All six DTO fields
+      (places.dto GeoPointDto lat/lng; geo.dto Nearby lat/lng; Bbox minLng/minLat/maxLng/maxLat)
+      no longer reject coordinates for falling outside the PROVISIONAL box; the global
+      @IsNumber/@Min/@Max guards were kept and are now the only rejection, proven by 7 new specs
+      (lat 91, lng 181, NaN, non-numeric). PlacesService.create/update emit a structured
+      `place.coordinate.outside_provisional_bounds` warning naming field, value, bounds and
+      PROVISIONAL status — 5 specs assert the exact payload. Geo READ paths deliberately do NOT
+      signal (an out-of-box read is harmless and would let anonymous callers amplify logs).
+      PHU_QUOC_BOUNDS byte-unchanged, PROVISIONAL header intact, NO replacement coordinates
+      invented. The two now-unreferenced decorator factories were deleted rather than left as dead
+      exports. Mutation check: restoring @Min(9.7)/@Max(10.6) on lat failed exactly the 3
+      lat-dependent specs (lng-only and service specs kept passing), then restored. jest places
+      105/105, geo 13/13, eslint + tsc exit 0. F-1 release_blocker_status OPEN -> CLEARED on
+      conditions pre-committed in findings/F-1.yaml BEFORE execution; the missing authoritative
+      boundary is carried forward as NON-BLOCKING future work.
+    report: docs/delivery/reports/PLACE-016-bbox-enforcement-report.md
+    evidence_index: docs/delivery/evidence/PLACE-016-bbox-enforcement-evidence-index.md
+  - id: PLACE-015
+    completed: "2026-07-23"
+    result: >-
+      F-32 RESOLVED. searchFullText's `ORDER BY score DESC` gained the unique final key `p.id ASC`
+      — the last query in the repository that combined a non-unique sort key with OFFSET
+      pagination, i.e. the GAP-12 defect on the live public /search endpoint. 3 specs added
+      (ORDER BY shape parsed from real SQL; two pages over six score-tied rows disjoint+complete
+      under rotation; searchCount has no ORDER BY). The mutation check is the substantive evidence:
+      with the tie-breaker removed, two pages over six tied rows returned 4 DISTINCT rows instead
+      of 6 — duplication and omission together — failing exactly the 2 new determinism specs with
+      no collateral. Restored; jest places 97/97, jest search 3/3 with search.service specs
+      UNMODIFIED, eslint + tsc exit 0. openapi /search declares no ordering guarantee, so this was
+      a quality fix, not a contract fix. searchCount verified unchanged. No index created (F-15).
+    report: docs/delivery/reports/PLACE-015-search-ordering-report.md
+    evidence_index: docs/delivery/evidence/PLACE-015-search-ordering-evidence-index.md
+  - id: PLACE-001
+    completed: "2026-07-22"
+    result: >-
+      Place domain + persistence baseline established (full spec). Vertical modules
+      (Hotel/Restaurant/Tour) confirmed as ADR-002 satellites of Place; Business =
+      claim/membership overlay on Place. GAP-02/04 RESOLVED; GAP-05/06/07/10/11/12/13/14/15/16
+      OPEN against current source. 5 contradictions registered. All checks NOT EXECUTED (no Node; FAT32).
+    report: docs/delivery/reports/PLACE-001-place-domain-persistence-baseline.md
+    evidence_index: docs/delivery/evidence/PLACE-001-evidence-index.md
+    evidence_detail: docs/delivery/evidence/PLACE-001-baseline.md
+  - id: PLACE-014
+    completed: "2026-07-22"
+    result: >-
+      F-16 RECLASSIFIED, not simply "fixed". nearby() RESOLVED — `p.id ASC` appended (exact
+      ST_Distance ties occur for co-located Places and decided what a user saw at the LIMIT cut);
+      2 specs, mutation-checked, jest places 94/94. bbox() closed as not-applicable: it has NO
+      CONSUMER (GeoService.bbox calls bboxClusters) → F-33. bboxClusters() reclassified as a
+      PRODUCT decision — ordering it would decide which clusters survive truncation at 500 → F-34.
+      Biggest discovery: searchFullText paginates with OFFSET over non-unique score — GAP-12's
+      defect on a live user-facing endpoint → F-32, selected as PLACE-015. openapi declares no
+      ordering guarantee on the geo endpoints, so this was a quality fix, not a contract fix.
+    report: docs/delivery/reports/PLACE-014-geo-ordering-analysis.md
+    evidence_index: docs/delivery/evidence/PLACE-014-geo-ordering-evidence-index.md
+  - id: PLACE-013
+    completed: "2026-07-22"
+    result: >-
+      Build hygiene closed. F-12 was ALREADY FIXED before this task by a user-started background
+      task (InitAuditLogs.spec.ts now in migrations/__tests__/ with a corrected import) — this
+      task VERIFIED it: migrations/ holds 20 files all real migrations, suite 11/11 unchanged,
+      duplicate 1720001500000 prefix gone. F-23 RESOLVED here: apps/api/dist/ (279 stale files,
+      still containing getCardBySlug removed by PLACE-007) deleted after regenerability was
+      PROVEN via `tsc -p tsconfig.build.json` into a scratchpad — dist/ untouched, `nest build`
+      not run. All validations green after removal. No source file changed.
+    report: docs/delivery/reports/PLACE-013-build-hygiene-report.md
+    evidence_index: docs/delivery/evidence/PLACE-013-build-hygiene-evidence-index.md
+  - id: PLACE-012
+    completed: "2026-07-22"
+    result: >-
+      F-19 and F-20 RESOLVED. Shared PlaceDetail.opening_hours is now typed by a structured
+      OpeningHours (derived from places.md §4 AND from PLACE-006's validator, all fields optional
+      + index signature so it is never stricter than what the write path accepts), and
+      toPlaceDetail emits ISO strings matching its own declared wire type. Emitted JSON unchanged
+      — JSON.stringify already produced those exact strings via Date.toJSON. jest places 92/92
+      with mapper and DTO specs UNMODIFIED; apps/web tsc exit 0, so the read-contract tightening
+      broke no consumer. Validator deliberately not coupled to the shared type (F-30).
+    report: docs/delivery/reports/PLACE-012-boundary-typing-report.md
+    evidence_index: docs/delivery/evidence/PLACE-012-boundary-typing-evidence-index.md
+  - id: PLACE-011
+    completed: "2026-07-22"
+    result: >-
+      F-18 RESOLVED. PlaceCardRow.verification_status typed against the shared union instead of
+      `string`, so the unchecked `as VerificationStatusValue` cast in places.mapper.ts is gone
+      (grep → 0 occurrences). Sound because InitPlaces:47 declares the column ENUM NOT NULL — the
+      type now states the invariant the cast merely asserted. jest places 92/92 with specs
+      UNMODIFIED, api+web tsc exit 0, first attempt. No SQL, migration or contract change.
+    report: docs/delivery/reports/PLACE-011-row-typing-report.md
+    evidence_index: docs/delivery/evidence/PLACE-011-row-typing-evidence-index.md
+  - id: PLACE-010
+    completed: "2026-07-22"
+    result: >-
+      Release-readiness assessed from repository evidence only. Overall: NOT READY FOR RELEASE.
+      13 gates classified, NONE proven — 103 specs pass but every one runs with the database
+      mocked or absent. F-1..F-28 consolidated: 5 BLOCKS_RELEASE (PROVISIONAL bbox now actively
+      enforced, no Docker, no version control, GAP-05/10 list params, openapi PlaceCard omits
+      status/score), 18 NON_BLOCKING, 5 RESOLVED. Three carried claims re-measured rather than
+      copied. No gate upgraded; no product code changed; workstream stays INCOMPLETE and closure
+      was deliberately not attempted.
+    report: docs/delivery/reports/PLACE-010-release-readiness-assessment.md
+    evidence_index: docs/delivery/evidence/PLACE-010-readiness-evidence-index.md
+  - id: PLACE-009
+    completed: "2026-07-22"
+    result: >-
+      PlacesController route boundary now pinned — 23 specs, first run green; jest places 92/92
+      across 7 suites; eslint + tsc exit 0. NO production code changed. Asserts the 3 public
+      reads, the 4 permission-gated writes with their exact permission strings (independent
+      literals), @HttpCode(201), the ':id/revisions' before ':slug' declaration order, and that
+      write routes pass user.sub rather than the whole principal. Scope boundary stated
+      explicitly: this asserts what the controller DECLARES, not what the guard DOES.
+    report: docs/delivery/reports/PLACE-009-controller-tests-report.md
+    evidence_index: docs/delivery/evidence/PLACE-009-controller-tests-evidence-index.md
+  - id: PLACE-008
+    completed: "2026-07-22"
+    result: >-
+      PlacesService now has unit coverage — 18 specs, passing on the first run; jest places
+      69/69 across 6 suites; eslint + tsc exit 0. NO production code changed. Pins the forced
+      PENDING create, the WF-14 revision side effects, the snake_case→camelCase update mapping
+      (snake keys asserted ABSENT from the ORM patch), the slug-collision loop, the service-layer
+      GAP-04 privilege boundary, and the ADR-016 audit payloads down to permission and {from,to}.
+      Disproved the stale place.yaml blocker "service imports @phuquochub/utils" (F-25).
+    report: docs/delivery/reports/PLACE-008-service-tests-report.md
+    evidence_index: docs/delivery/evidence/PLACE-008-service-tests-evidence-index.md
+  - id: PLACE-007
+    completed: "2026-07-22"
+    result: >-
+      GAP-13 RESOLVED. PlacesRepository.getCardBySlug REMOVED after a four-pass repository-wide
+      sweep (bare identifier, dynamic bracket access, all *BySlug identifiers, and the exported
+      module surface) found zero consumers; tsc exit 0 independently confirms none existed.
+      Chose removal over adding a status filter because getCardById deliberately omits that
+      filter for moderation, so "fixing" it would have encoded an unsettled intent. jest places
+      51/51 with the GAP-02/04 regression specs unmodified. Findings F-23 (stale dist/) and
+      F-24 (getCardById's undocumented filter omission) raised.
+    report: docs/delivery/reports/PLACE-007-dead-code-report.md
+    evidence_index: docs/delivery/evidence/PLACE-007-dead-code-evidence-index.md
+  - id: PLACE-006
+    completed: "2026-07-22"
+    result: >-
+      GAP-14 RESOLVED. opening_hours is now validated against places.md §4 by a reusable
+      @IsOpeningHours() decorator (apps/api/src/common/opening-hours.ts) applied to BOTH
+      CreatePlaceDto and UpdatePlaceDto. 18 new specs, 30/30 green; mutation check (decorator
+      removed) fails 9. The SSOT example passes verbatim; unknown keys tolerated (openapi
+      additionalProperties:true), open<close deliberately not enforced (overnight ranges), all
+      fields optional. No seeded opening_hours exists, so no stored data is invalidated.
+    report: docs/delivery/reports/PLACE-006-opening-hours-report.md
+    evidence_index: docs/delivery/evidence/PLACE-006-opening-hours-evidence-index.md
+  - id: PLACE-005
+    completed: "2026-07-22"
+    result: >-
+      GAP-11 RESOLVED. Place response types now declared ONCE in packages/shared-types/src/
+      place.ts and imported by both apps/api (places.mapper.ts) and apps/web (places/types.ts,
+      now a pure re-export). Wire payload unchanged — proven by the pre-existing mapper specs
+      passing UNMODIFIED (jest places 33/33). apps/web tsc exit 0 (baseline before edits also 0),
+      apps/api tsc exit 0, both lints exit 0. Enums represented as string-literal unions so the
+      web bundle loads no runtime enum. Findings F-17/F-18/F-19 raised, not absorbed.
+    report: docs/delivery/reports/PLACE-005-shared-types-report.md
+    evidence_index: docs/delivery/evidence/PLACE-005-shared-types-evidence-index.md
+  - id: PLACE-004
+    completed: "2026-07-22"
+    result: >-
+      GAP-12 RESOLVED. PlacesRepository.list() page query now orders by
+      `rating_avg DESC NULLS LAST, created_at DESC, id ASC` — a unique final key, so
+      LIMIT/OFFSET pagination is deterministic. 4 new specs (11/11 green), eslint + tsc exit 0.
+      Mutation-checked: removing the tie-breaker fails exactly the 2 meaningful specs.
+      Caller-visible ordering unchanged; count query provably unaffected; no index created
+      (recorded as F-15 for DB-backed validation).
+    report: docs/delivery/reports/PLACE-004-ordering-report.md
+    evidence_index: docs/delivery/evidence/PLACE-004-ordering-evidence-index.md
+  - id: PLACE-003
+    completed: "2026-07-22"
+    result: >-
+      GAP-06 RESOLVED. Forward-only migration 1720001900000-AddPlacesStatusPartialIndex creates
+      idx_places_status_active = BTREE(status) WHERE deleted_at IS NULL on places, matching
+      places.md §3; down() drops only that index. 5 new migration specs; jest migrations 11/11,
+      eslint (migrations + places) exit 0, tsc --noEmit exit 0. AC1..AC6 PASS, optional AC7 PASS.
+      Migration is implemented_not_executed — no database was touched (Docker not installed) and
+      no EXPLAIN evidence is claimed. Entity change was a comment only.
+    report: docs/delivery/reports/PLACE-003-migration-report.md
+    evidence_index: docs/delivery/evidence/PLACE-003-migration-evidence-index.md
+  - id: PLACE-002
+    completed: "2026-07-22"
+    result: >-
+      GAP-07 RESOLVED. Phú Quốc coordinate bounds enforced on GeoPointDto, NearbyQueryDto and
+      BboxQueryDto, plus an explicit radius @Max(50000) matching the service cap. All four
+      mandatory validation commands EXECUTED and green: jest places.dto 12/12, jest geo.dto
+      9/9, eslint (places+geo) exit 0, tsc --noEmit exit 0. AC1..AC5 all PASS. Phú Quốc bbox
+      remains PROVISIONAL pending owner confirmation (permitted by AC5; carried as a finding).
+    report: docs/delivery/reports/PLACE-002-implementation-report.md
+    evidence_index: docs/delivery/evidence/PLACE-002-evidence-index.md
+
+blocked_task_attempts:
+  # PLACE-003..PLACE-007 were prompted while state.yaml still authorized PLACE-002 and no
+  # task file existed for them. Each returned BLOCKED at preflight. Retained as history.
+  # ADR-DELIVERY-001 applies: state, not task numbering, is the execution gate.
+  - { tasks: "PLACE-003..PLACE-005", result: blocked_preflight, cause: "no task file; PLACE-002 unvalidated; no Node",
+      reports: "docs/delivery/reports/PLACE-00{3,4,5}-execution-report.md" }
+  - { tasks: "PLACE-006, PLACE-007", result: blocked_preflight, cause: "same; no block report authored (duplicate of the above)",
+      note: "PLACE-006 pivoted to clearing the environment blocker, which unblocked PLACE-002." }
+  - { tasks: "PLACE-008", date: "2026-07-22", result: blocked_preflight,
+      cause: "no docs/delivery/tasks/PLACE-008.yaml; state.yaml authorizes PLACE-003 (ready). No PLACE-004..PLACE-007 task file exists either, so PLACE-008 has no completed dependency chain.",
+      note: "No task file was created and no work was executed; creating PLACE-008 solely because a prompt names it is prohibited. Authorized work remains PLACE-003." }
+  - { tasks: "PLACE-009", date: "2026-07-22", result: blocked_preflight,
+      cause: "no docs/delivery/tasks/PLACE-009.yaml; state.yaml authorizes PLACE-003 (ready); declared dependency PLACE-008 is itself BLOCKED, never completed (reports/PLACE-008-execution-report.md).",
+      note: "Seventh consecutive forward-numbered prompt. The gate is functioning; the loop ends only when PLACE-003 is executed." }
+  - { tasks: "PLACE-010", date: "2026-07-22", result: blocked_preflight,
+      cause: "no docs/delivery/tasks/PLACE-010.yaml; state.yaml authorizes PLACE-003 (ready); declared dependency PLACE-009 is itself BLOCKED, never completed (reports/PLACE-009-execution-report.md).",
+      note: "Eighth consecutive forward-numbered prompt. Per-attempt block reports discontinued after PLACE-009 (finding F-11); this list is now the single record for repeat attempts." }
+  - { tasks: "PLACE-011", date: "2026-07-22", result: blocked_preflight,
+      cause: "no docs/delivery/tasks/PLACE-011.yaml; state.yaml authorizes PLACE-003 (ready); declared dependency PLACE-010 is itself BLOCKED, never completed.",
+      note: "Ninth consecutive forward-numbered prompt. Cause is identical and unchanged since PLACE-003 was derived; no new information." }
+  - { tasks: "PLACE-012", date: "2026-07-22", result: blocked_preflight,
+      cause: "no docs/delivery/tasks/PLACE-012.yaml; state.yaml authorizes PLACE-003 (ready); declared dependency PLACE-011 is itself BLOCKED, never completed.",
+      note: "Tenth consecutive forward-numbered prompt, identical cause. Further repeat attempts need not be logged individually — PLACE-003 execution is the only state change that can alter this outcome." }

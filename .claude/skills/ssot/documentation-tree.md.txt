@@ -1,0 +1,927 @@
+# Documentation Tree
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+High
+
+---
+
+# Purpose
+
+This document defines
+
+the official documentation tree
+
+for the PhuQuocHub platform.
+
+The Documentation Tree
+
+specifies
+
+where documentation
+
+must be stored,
+
+how it is organized,
+
+how it is discovered,
+
+and how
+
+Claude Code
+
+navigates
+
+the documentation repository.
+
+Every document
+
+must have
+
+one canonical location.
+
+---
+
+# Mission
+
+Provide
+
+a predictable,
+
+scalable,
+
+discoverable,
+
+and maintainable
+
+documentation structure
+
+for
+
+developers,
+
+architects,
+
+AI assistants,
+
+review systems,
+
+and project stakeholders.
+
+---
+
+# Design Principles
+
+The documentation tree
+
+must be
+
+Simple
+
+Hierarchical
+
+Modular
+
+Predictable
+
+Scalable
+
+Searchable
+
+Documentation-first
+
+Repository-independent
+
+---
+
+# Root Structure
+
+/docs
+
+├── architecture/
+
+├── adr/
+
+├── decisions/
+
+├── database/
+
+├── api/
+
+├── workflows/
+
+├── rbac/
+
+├── coding-standards/
+
+├── repository/
+
+├── planning/
+
+├── release/
+
+├── operations/
+
+├── governance/
+
+├── ai/
+
+├── seo/
+
+├── geo/
+
+├── security/
+
+├── performance/
+
+├── testing/
+
+└── templates/
+
+Every documentation
+
+must belong
+
+to exactly
+
+one directory.
+
+---
+
+# Architecture
+
+/docs/architecture/
+
+Contains
+
+System Architecture
+
+Domain Model
+
+Context Diagram
+
+Container Diagram
+
+Component Diagram
+
+Architecture Principles
+
+Architecture Constraints
+
+Architecture Roadmap
+
+Architecture Evolution
+
+---
+
+# ADR
+
+/docs/adr/
+
+Contains
+
+ADR-001.md
+
+ADR-002.md
+
+ADR-003.md
+
+...
+
+Each ADR
+
+must describe
+
+one decision.
+
+ADR files
+
+must never
+
+contain
+
+multiple decisions.
+
+---
+
+# Decision Register
+
+/docs/decisions/
+
+Contains
+
+decision-register.md
+
+decision-history.md
+
+deprecated-decisions.md
+
+approved-decisions.md
+
+Every approved decision
+
+must appear
+
+inside
+
+Decision Register.
+
+---
+
+# Database
+
+/docs/database/
+
+Contains
+
+database.md
+
+erd.md
+
+tables.md
+
+indexes.md
+
+constraints.md
+
+relationships.md
+
+migration-policy.md
+
+data-dictionary.md
+
+naming.md
+
+---
+
+# API
+
+/docs/api/
+
+Contains
+
+openapi.yaml
+
+api-guidelines.md
+
+authentication.md
+
+pagination.md
+
+filtering.md
+
+sorting.md
+
+versioning.md
+
+errors.md
+
+examples/
+
+schemas/
+
+---
+
+# Workflows
+
+/docs/workflows/
+
+Contains
+
+registration.md
+
+approval.md
+
+verification.md
+
+publishing.md
+
+notification.md
+
+review.md
+
+moderation.md
+
+Every workflow
+
+must describe
+
+exactly one
+
+business process.
+
+---
+
+# RBAC
+
+/docs/rbac/
+
+Contains
+
+roles.md
+
+permissions.md
+
+permission-matrix.md
+
+authorization.md
+
+guards.md
+
+security-model.md
+
+---
+
+# Coding Standards
+
+/docs/coding-standards/
+
+Contains
+
+backend.md
+
+frontend.md
+
+typescript.md
+
+react.md
+
+nestjs.md
+
+database.md
+
+naming.md
+
+folder-structure.md
+
+testing.md
+
+---
+
+# Repository
+
+/docs/repository/
+
+Contains
+
+repository-structure.md
+
+module-boundaries.md
+
+dependency-graph.md
+
+package-policy.md
+
+ownership.md
+
+shared-libraries.md
+
+---
+
+# Planning
+
+/docs/planning/
+
+Contains
+
+roadmap.md
+
+milestones.md
+
+sprints/
+
+batches/
+
+estimation-model.md
+
+dependency-graph.md
+
+planning-policy.md
+
+---
+
+# Sprint Documentation
+
+/docs/planning/sprints/
+
+Contains
+
+Sprint-1.md
+
+Sprint-2.md
+
+Sprint-3.md
+
+...
+
+Every sprint
+
+has
+
+one document.
+
+---
+
+# Batch Documentation
+
+/docs/planning/batches/
+
+Contains
+
+Batch-1.md
+
+Batch-2.md
+
+Batch-3.md
+
+...
+
+Each batch
+
+belongs
+
+to one sprint.
+
+---
+
+# Release
+
+/docs/release/
+
+Contains
+
+release-plan.md
+
+release-checklist.md
+
+release-notes.md
+
+production-gate.md
+
+rollback.md
+
+deployment.md
+
+---
+
+# Operations
+
+/docs/operations/
+
+Contains
+
+monitoring.md
+
+logging.md
+
+backup.md
+
+restore.md
+
+incident-response.md
+
+runbooks/
+
+alerts.md
+
+---
+
+# Governance
+
+/docs/governance/
+
+Contains
+
+ssot.md
+
+documentation-freeze.md
+
+review-policy.md
+
+change-management.md
+
+validation-policy.md
+
+conflict-resolution.md
+
+governance-model.md
+
+---
+
+# AI
+
+/docs/ai/
+
+Contains
+
+ai-policy.md
+
+prompt-policy.md
+
+ai-review.md
+
+generation-rules.md
+
+automation.md
+
+---
+
+# SEO
+
+/docs/seo/
+
+Contains
+
+seo-guidelines.md
+
+structured-data.md
+
+metadata.md
+
+robots.md
+
+sitemap.md
+
+---
+
+# Geo
+
+/docs/geo/
+
+Contains
+
+geo-policy.md
+
+map-data.md
+
+location-model.md
+
+coordinates.md
+
+search-radius.md
+
+---
+
+# Security
+
+/docs/security/
+
+Contains
+
+authentication.md
+
+authorization.md
+
+encryption.md
+
+audit-log.md
+
+secret-management.md
+
+owasp.md
+
+rate-limiting.md
+
+---
+
+# Performance
+
+/docs/performance/
+
+Contains
+
+performance-guide.md
+
+cache.md
+
+database-optimization.md
+
+benchmark.md
+
+sla.md
+
+---
+
+# Testing
+
+/docs/testing/
+
+Contains
+
+testing-strategy.md
+
+unit-testing.md
+
+integration-testing.md
+
+e2e-testing.md
+
+coverage.md
+
+ci.md
+
+---
+
+# Templates
+
+/docs/templates/
+
+Contains
+
+adr-template.md
+
+sprint-template.md
+
+batch-template.md
+
+review-template.md
+
+release-template.md
+
+report-template.md
+
+---
+
+# Naming Rules
+
+Directories
+
+must use
+
+kebab-case.
+
+Markdown
+
+must use
+
+kebab-case.
+
+ADR
+
+must use
+
+ADR-XXX.md
+
+Examples
+
+ADR-001.md
+
+ADR-002.md
+
+---
+
+# File Ownership
+
+Every file
+
+must define
+
+Owner
+
+Version
+
+Status
+
+Last Updated
+
+Applies To
+
+Purpose
+
+No anonymous document
+
+is allowed.
+
+---
+
+# Discovery Rules
+
+Claude Code
+
+must search
+
+documentation
+
+using
+
+Hierarchy
+
+↓
+
+Directory
+
+↓
+
+File
+
+↓
+
+Section
+
+↓
+
+Content
+
+Never
+
+perform
+
+random searches.
+
+---
+
+# Cross References
+
+Documents
+
+may reference
+
+other documents
+
+using
+
+relative paths.
+
+Broken links
+
+are prohibited.
+
+Circular references
+
+are prohibited.
+
+---
+
+# Validation Rules
+
+Every document
+
+must satisfy
+
+Correct directory
+
+Correct owner
+
+Correct version
+
+Correct status
+
+No duplication
+
+No conflicting topic
+
+Valid references
+
+---
+
+# Lifecycle
+
+Create
+
+↓
+
+Review
+
+↓
+
+Approve
+
+↓
+
+Freeze
+
+↓
+
+Implement
+
+↓
+
+Validate
+
+↓
+
+Archive
+
+Only
+
+Approved
+
+and
+
+Frozen
+
+documents
+
+may be used
+
+as authoritative sources.
+
+---
+
+# Compliance Rules
+
+Every review
+
+must verify
+
+Directory structure
+
+File naming
+
+Ownership
+
+Versioning
+
+Cross references
+
+Hierarchy
+
+No duplicates
+
+No orphan documents
+
+---
+
+# Self Verification
+
+Before publishing
+
+Claude Code
+
+must verify
+
+Correct location
+
+Correct hierarchy
+
+Correct references
+
+Correct ownership
+
+No circular dependencies
+
+No duplicated documentation
+
+---
+
+# Success Criteria
+
+The Documentation Tree succeeds when
+
+every document
+
+within
+
+the PhuQuocHub platform
+
+can be located,
+
+identified,
+
+validated,
+
+and maintained
+
+through a predictable,
+
+well-organized,
+
+and scalable
+
+directory structure,
+
+allowing
+
+developers,
+
+architects,
+
+AI assistants,
+
+and governance tools
+
+to navigate
+
+the entire documentation ecosystem
+
+without ambiguity,
+
+duplication,
+
+or inconsistency.

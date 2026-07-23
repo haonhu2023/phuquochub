@@ -1,0 +1,176 @@
+schema_version: "1.0"
+
+id: PLACE-018
+workstream: place
+title: "Align the public PlaceCard contract with the approved status/score decision (F-17 / OD-F-17)"
+type: implementation
+status: completed
+started_at: "2026-07-23"
+completed_at: "2026-07-23"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "packages/shared-types rebuild (tsc -p tsconfig.json) → exit 0"
+    - "re-copy dist into node_modules/@phuquochub/shared-types → verified score absent in copied .d.ts"
+    - "npx jest places → 107/107, 7 suites, exit 0 (105 + 2 new)"
+    - "npx jest search → 3/3, exit 0, specs UNMODIFIED"
+    - "npx eslint places --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit (api) → exit 0"
+    - "npx tsc --noEmit (web) → exit 0"
+    - "openapi.yaml parse → exit 0"
+  mandatory_criteria: "AC1..AC11 all PASS; optional AC12 also PASS"
+  report: docs/delivery/reports/PLACE-018-placecard-contract-report.md
+  evidence_index: docs/delivery/evidence/PLACE-018-placecard-contract-evidence-index.md
+  changed_files:
+    - docs/api/openapi.yaml                                            # PlaceCard gains status
+    - packages/shared-types/src/place.ts                               # score removed from PlaceCard
+    - apps/api/src/modules/places/places.mapper.ts                     # score branch removed
+    - apps/api/src/modules/places/repositories/places.repository.ts    # PlaceCardRow.score KEPT + comment
+    - apps/api/src/modules/places/places.mapper.spec.ts                # 2 specs added
+  scope_correction: >-
+    The mandatory premise re-verification (execution step 1) DISPROVED part of the recorded
+    analysis. search.service.ts:24 reads `r.score` off the PlaceCardRow returned by searchFullText,
+    so PlaceCardRow.score is LIVE, not dead surface. It was KEPT with a comment naming its consumer,
+    instead of removed as OD-F-17 obligation 2 literally instructed — removing it would have broken
+    the search module (explicitly out_of_scope) and contradicted OD-F-17's own clause retaining an
+    internal score where it has a defined ranking purpose. The finding's core claim stands: no
+    endpoint ever emitted score through PlaceCard.
+  payload_delta: >-
+    EMPTY. Documenting `status` changed only the schema (runtime already emitted it unconditionally);
+    removing `score` removed an unreachable branch. Byte-identical in both directions.
+  resolves: "F-17 — release_blocker_status OPEN -> CLEARED on pre-committed conditions"
+  residual: >-
+    F-24 (privileged vs public card schema) still OPEN. openapi SearchResult.score still publishes an
+    undefined number publicly — outside F-17, needs its own owner decision, no finding id minted.
+
+authority:
+  finding: docs/delivery/findings/F-17.yaml
+  decision: docs/delivery/decisions/OWNER-DECISION-F-17.md   # OD-F-17, option F17-D, APPROVED 2026-07-23
+  note: >-
+    Approved decision authorizes the content, not the execution. Activation requires state.yaml
+    to name PLACE-018 as current.task.
+
+depends_on:
+  - PLACE-017     # SEQUENCING dependency only, not technical, preserving the owner's stated
+                  # priority (F-1 → F-6 → F-17) under one-active-task governance.
+
+objective: >-
+  Make the PlaceCard contract describe exactly what the API returns: document `status` (already
+  emitted, already publicly contracted on Place) and delete `score` (declared in three places and
+  emitted by nothing). The emitted JSON must not change by a single byte in either direction.
+
+problem_statement: >-
+  PlaceCard's declared shape and its real payload disagree in two opposite directions. `status` is
+  selected by CARD_COLS and set unconditionally by toPlaceCard, but openapi's PlaceCard schema
+  omits it. `score` is declared in packages/shared-types/src/place.ts, in PlaceCardRow, and in a
+  conditional mapper branch, but no caller of toPlaceCard ever supplies it — the four call sites
+  are geo.service.ts:32 and places.service.ts:59/:125/:167, and none carries a score. OD-F-17
+  approved option F17-D and decided the two fields separately.
+
+affected_components:
+  - docs/api/openapi.yaml                                          # PlaceCard schema (:1754-1768)
+  - packages/shared-types/src/place.ts                             # PlaceCard.score
+  - apps/api/src/modules/places/repositories/places.repository.ts  # PlaceCardRow.score (:28)
+  - apps/api/src/modules/places/places.mapper.ts                   # :28-30 conditional score branch
+  - apps/api/src/modules/places/places.mapper.spec.ts              # "only adds distance_m/score when present" (:30)
+
+in_scope:
+  - "openapi PlaceCard — ADD `status: $ref PlaceStatus`"
+  - "packages/shared-types/src/place.ts — REMOVE `score?: number` from PlaceCard"
+  - "PlaceCardRow — REMOVE `score?: number`"
+  - "places.mapper.ts — REMOVE the conditional score branch"
+  - "places.mapper.spec.ts — adjust only the assertions that referenced score"
+
+out_of_scope:
+  - "SearchResult, SearchService, searchFullText and searchCount — the search module keeps its own score, which has a defined ranking purpose"
+  - "distance_m — unchanged, and already correctly documented"
+  - "splitting public and internal card contracts (option F17-C) — deferred as premature"
+  - "F-24, the privileged-vs-public card access-control question"
+  - "the SearchResult.score scope-boundary observation recorded in F-17.yaml — it needs its own owner decision"
+  - "F-1 and F-6 remediation"
+
+execution_steps:
+  - "Re-verify, do not assume, that no caller of toPlaceCard supplies a score-bearing row. Sweep all four call sites plus any added since. If ANY does, STOP — the finding's premise has changed."
+  - "Re-verify that openapi does not document score on PlaceCard, and that it DOES already declare PlaceStatus (:1680) and apply it to the public Place detail schema (:1778). These two facts are what make each half of this change safe."
+  - "Add `status: { $ref: '#/components/schemas/PlaceStatus' }` to the openapi PlaceCard schema. Invent no enum member."
+  - "Remove score from the shared type, from PlaceCardRow, and from the mapper branch."
+  - "Update only the mapper-spec assertions that referenced score; keep the distance_m half of that spec intact."
+  - "Rebuild packages/shared-types AND re-copy it into node_modules/@phuquochub/ — on FAT32 these are COPIES, not workspace links, so both apps otherwise type-check against a stale declaration."
+  - "Record the JSON compatibility impact explicitly: adding status to openapi changes no payload (runtime already emits it); removing score changes no payload (nothing emitted it)."
+  - "Run every validation command, including the apps/web typecheck — the shared type is a cross-app contract."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "`score` is absent from the public PlaceCard contract: absent from openapi PlaceCard, absent from the shared type, absent from PlaceCardRow, absent from the mapper." }
+  - { id: AC2, mandatory: true,  text: "The report states which of documentation-removal / runtime-removal applied, on evidence: openapi never documented it, so this is runtime + shared-type removal of dead surface, NOT removal of live leakage." }
+  - { id: AC3, mandatory: true,  text: "`status` is documented on openapi PlaceCard using the EXISTING PlaceStatus enum. No enum member is invented." }
+  - { id: AC4, mandatory: true,  text: "The report states explicitly that this field is publication/visibility state and NOT business operating state (which is carried by opening_hours)." }
+  - { id: AC5, mandatory: true,  text: "No internal moderation field beyond the already-published PlaceStatus enum is added to any public schema." }
+  - { id: AC6, mandatory: true,  text: "apps/api and apps/web both type-check: npx tsc --noEmit exits 0 in each, after shared-types is rebuilt and re-copied." }
+  - { id: AC7, mandatory: true,  text: "Mapper specs verify exact field behaviour: status always present, score never present, distance_m still conditional." }
+  - { id: AC8, mandatory: true,  text: "JSON compatibility impact is recorded: emitted payload byte-identical for BOTH halves, with the reason for each." }
+  - { id: AC9, mandatory: true,  text: "External-consumer uncertainty is acknowledged in the report: no VCS, deployment, telemetry or client registry exists, so zero repository hits is not proof of no external consumer." }
+  - { id: AC10, mandatory: true, text: "Existing Place list and detail behaviour remains valid: jest places green with the GAP-02/04 and PLACE-004/014 specs UNMODIFIED." }
+  - { id: AC11, mandatory: true, text: "npx jest search exits 0, proving the search module's own score was not disturbed." }
+  - { id: AC12, mandatory: false, text: "The report re-states the SearchResult.score observation as still-open and needing its own owner decision." }
+
+required_evidence:
+  - "the four-call-site sweep proving no score-bearing row reaches toPlaceCard"
+  - "before/after openapi PlaceCard and shared-type PlaceCard"
+  - "proof shared-types was rebuilt AND re-copied into node_modules"
+  - "mapper spec output"
+  - "byte-identical payload argument for each half"
+  - "all validation exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx jest search"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/web && npx tsc --noEmit"
+  - "node -e \"require('js-yaml').load(require('fs').readFileSync('docs/api/openapi.yaml','utf8'))\""
+
+regression_requirements:
+  - "GAP-02/04 visibility specs UNMODIFIED"
+  - "PLACE-004 and PLACE-014 determinism specs UNMODIFIED"
+  - "search.service specs UNMODIFIED"
+  - "only the score assertions in places.mapper.spec.ts may change, and each change must be justified"
+
+mutation_check_required: false
+mutation_check_note: >-
+  A tie-breaker-style mutation check does not apply: this task deletes unreachable surface and adds
+  documentation. The equivalent proof is the four-call-site sweep (AC1) plus tsc exit 0 in BOTH
+  apps, which together demonstrate nothing consumed the removed field.
+
+rollback_plan: >-
+  Two independent reverts. For status: remove the added openapi property. For score: restore the
+  three declarations and the mapper branch. No schema, data or migration is involved.
+
+stop_conditions:
+  - "Any caller of toPlaceCard is found supplying a score — STOP. The finding's premise (dead surface, not leakage) would be false and OD-F-17's score remediation direction would need re-deciding."
+  - "Documenting status appears to require inventing an enum member, or exposing a moderation-only value not already in the published PlaceStatus enum — STOP. OD-F-17 permits only the existing enum."
+  - "The change appears to alter emitted JSON in either direction — STOP. Both halves are defined as payload-neutral; a payload change means the analysis was wrong."
+  - "Removing score from the shared type breaks apps/web — STOP. That would contradict the evidence that no consumer uses it, and needs re-analysis rather than a web-side patch."
+  - "The work starts drifting into SearchResult.score — STOP. That is out of scope and needs its own owner decision."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    finding_updates:
+      F-17:
+        implementation_status: DONE
+        validation_status: PASSED
+        release_blocker_status: "re-assess — clears only if AC1..AC11 all PASS"
+  requires_evidence:
+    - "both typechecks green"
+    - "byte-identical payload recorded for both halves"
+    - "search specs unmodified and green"
+
+non_claims: >-
+  Completing this task does NOT make the Place workstream release-ready. It aligns a contract whose
+  runtime remains unverified against a real database, real HTTP traffic and real authorization
+  guards. It does not settle F-24, and it does not settle whether SearchResult.score should
+  continue to publish an undefined number.

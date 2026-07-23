@@ -1,0 +1,121 @@
+# Batch Report
+
+## Batch
+
+Name
+
+Scope
+
+Sprint
+
+---
+
+## Files Generated
+
+List
+
+---
+
+## Files Modified
+
+List
+
+---
+
+## LOC
+
+Added
+
+Modified
+
+Deleted
+
+---
+
+## Architecture Compliance
+
+PASS
+
+FAIL
+
+---
+
+## ADR Compliance
+
+PASS
+
+FAIL
+
+---
+
+## OpenAPI Compliance
+
+PASS
+
+FAIL
+
+---
+
+## Database Compliance
+
+PASS
+
+FAIL
+
+---
+
+## RBAC Compliance
+
+PASS
+
+FAIL
+
+---
+
+## Security Review
+
+PASS
+
+FAIL
+
+---
+
+## Tests
+
+Generated
+
+Missing
+
+Coverage
+
+---
+
+## Risks
+
+Critical
+
+High
+
+Medium
+
+Low
+
+---
+
+## Technical Debt
+
+List
+
+---
+
+## Blocking Issues
+
+List
+
+---
+
+## Ready for Review
+
+YES
+
+NO

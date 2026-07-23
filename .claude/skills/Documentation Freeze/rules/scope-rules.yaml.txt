@@ -1,0 +1,281 @@
+# =============================================================================
+# Scope Validation Rules
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Rule ID   : RULE-0002
+# Category  : Scope
+# Version   : 1.0.0
+# Status    : Approved
+#
+# =============================================================================
+
+metadata:
+
+  id: RULE-0002
+
+  name: Scope Validation
+
+  category: Scope
+
+  version: 1.0.0
+
+  status: Approved
+
+  owner: Architecture Governance
+
+  description: >
+    Determines the exact repository scope that shall participate
+    in Documentation Freeze.
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+execution:
+
+  priority: 2
+
+  blocking: true
+
+  enabled: true
+
+  stop_pipeline_on_failure: true
+
+# =============================================================================
+# PRECONDITIONS
+# =============================================================================
+
+preconditions:
+
+  - repository_validation_completed
+
+  - repository_scope_discovered
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
+rules:
+
+  - id: SCOPE-001
+
+    name: Freeze Scope Exists
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      scope.exists: true
+
+    on_fail:
+
+      finding: Freeze scope missing
+
+      decision: FREEZE_BLOCKED
+
+  - id: SCOPE-002
+
+    name: Repository Scope Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      repository.scope_defined: true
+
+    on_fail:
+
+      finding: Repository scope undefined
+
+      decision: FREEZE_BLOCKED
+
+  - id: SCOPE-003
+
+    name: Target Modules Identified
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      repository.modules_identified: true
+
+    on_fail:
+
+      finding: Target modules unidentified
+
+      decision: FREEZE_BLOCKED
+
+  - id: SCOPE-004
+
+    name: Documentation Scope Complete
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      documentation.scope_complete: true
+
+    on_fail:
+
+      finding: Documentation scope incomplete
+
+      decision: FREEZE_REJECTED
+
+  - id: SCOPE-005
+
+    name: Dependency Scope Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      dependencies.scope_defined: true
+
+    on_fail:
+
+      finding: Dependency scope undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SCOPE-006
+
+    name: External Systems Identified
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      external.systems_identified: true
+
+    on_fail:
+
+      finding: External systems not documented
+
+  - id: SCOPE-007
+
+    name: Included Components Valid
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      scope.includes_valid: true
+
+    on_fail:
+
+      finding: Invalid included components
+
+      decision: FREEZE_REJECTED
+
+  - id: SCOPE-008
+
+    name: Excluded Components Valid
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      scope.excludes_documented: true
+
+    on_fail:
+
+      finding: Excluded components undocumented
+
+  - id: SCOPE-009
+
+    name: Version Scope Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      scope.version_defined: true
+
+    on_fail:
+
+      finding: Version scope undefined
+
+      decision: FREEZE_BLOCKED
+
+  - id: SCOPE-010
+
+    name: Validation Boundary Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      validation.boundary_defined: true
+
+    on_fail:
+
+      finding: Validation boundary undefined
+
+      decision: FREEZE_BLOCKED
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  produce:
+
+    - freeze_scope
+
+    - scope_inventory
+
+    - module_inventory
+
+    - dependency_scope
+
+    - validation_boundary
+
+# =============================================================================
+# NEXT RULE
+# =============================================================================
+
+next:
+
+  on_success: RULE-0003
+
+  on_failure: STOP
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  scope_defined: true
+
+  modules_identified: true
+
+  dependencies_identified: true
+
+  validation_boundary_defined: true
+
+  documentation_scope_complete: true
+
+  continue_pipeline: true

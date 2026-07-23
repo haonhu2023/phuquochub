@@ -1,0 +1,839 @@
+# SSOT Principles
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+---
+
+# Purpose
+
+This document defines
+
+the immutable principles
+
+of the Single Source of Truth (SSOT)
+
+for the PhuQuocHub platform.
+
+These principles
+
+govern
+
+every document,
+
+every implementation,
+
+every review,
+
+every decision,
+
+and every production release.
+
+No policy
+
+may contradict
+
+these principles.
+
+---
+
+# Mission
+
+Maintain
+
+one authoritative truth
+
+for every aspect
+
+of the software system.
+
+Prevent
+
+ambiguity,
+
+contradiction,
+
+drift,
+
+and undocumented decisions.
+
+---
+
+# Principle 1
+
+Documentation First
+
+Documentation
+
+must always exist
+
+before implementation.
+
+Architecture
+
+must be designed
+
+before code
+
+is written.
+
+Implementation
+
+must never
+
+lead architecture.
+
+---
+
+# Principle 2
+
+Single Authority
+
+Every topic
+
+must have
+
+exactly one
+
+authoritative document.
+
+Examples
+
+Architecture
+
+→ architecture.md
+
+Database
+
+→ database.md
+
+OpenAPI
+
+→ openapi.yaml
+
+RBAC
+
+→ rbac.md
+
+Workflow
+
+→ workflow.md
+
+No duplicated authority
+
+is permitted.
+
+---
+
+# Principle 3
+
+Implementation Follows Documentation
+
+Source code
+
+implements
+
+documentation.
+
+Documentation
+
+does not describe
+
+existing code.
+
+If
+
+implementation
+
+conflicts
+
+with documentation,
+
+implementation
+
+must change.
+
+---
+
+# Principle 4
+
+Architecture Is Stable
+
+Architecture
+
+changes rarely.
+
+Business logic
+
+changes frequently.
+
+Implementation
+
+changes continuously.
+
+Architecture
+
+must remain
+
+stable.
+
+---
+
+# Principle 5
+
+Evidence Over Assumptions
+
+Every conclusion
+
+must be based on
+
+evidence.
+
+Evidence
+
+may include
+
+Documentation
+
+Repository
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Database
+
+Migration
+
+CI
+
+Tests
+
+Never
+
+guess.
+
+Never
+
+assume.
+
+Never
+
+invent.
+
+---
+
+# Principle 6
+
+Complete Traceability
+
+Every feature
+
+must trace back
+
+to
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Documentation
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Implementation
+
+↓
+
+Tests
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+Every implementation
+
+must have
+
+a traceable origin.
+
+---
+
+# Principle 7
+
+Consistency
+
+All documentation
+
+must remain
+
+consistent.
+
+Architecture
+
+must agree
+
+with ADR.
+
+ADR
+
+must agree
+
+with Decision Register.
+
+Decision Register
+
+must agree
+
+with Documentation.
+
+Documentation
+
+must agree
+
+with Repository.
+
+---
+
+# Principle 8
+
+No Hidden Knowledge
+
+Knowledge
+
+must exist
+
+inside documentation.
+
+Knowledge
+
+must never
+
+exist only
+
+inside
+
+developer memory,
+
+chat history,
+
+or verbal discussions.
+
+---
+
+# Principle 9
+
+Immutable History
+
+Architecture decisions
+
+must never
+
+be rewritten.
+
+Instead
+
+they must
+
+be superseded
+
+through
+
+new ADRs
+
+and
+
+Decision Register updates.
+
+History
+
+must remain
+
+auditable.
+
+---
+
+# Principle 10
+
+Governance Before Speed
+
+Fast implementation
+
+must never
+
+replace
+
+proper governance.
+
+Architecture quality
+
+is more important
+
+than implementation speed.
+
+---
+
+# Principle 11
+
+Review Before Merge
+
+Every change
+
+must be reviewed
+
+before merge.
+
+Architecture
+
+Documentation
+
+Repository
+
+Security
+
+Performance
+
+Testing
+
+must all
+
+pass review.
+
+---
+
+# Principle 12
+
+Documentation Freeze
+
+During implementation,
+
+approved documentation
+
+is frozen.
+
+Documentation
+
+may only change
+
+through
+
+the official
+
+change management process.
+
+---
+
+# Principle 13
+
+Deterministic Decisions
+
+Given
+
+the same documentation
+
+and
+
+the same repository,
+
+every review
+
+must reach
+
+the same conclusion.
+
+Review results
+
+must never depend
+
+on
+
+personal interpretation.
+
+---
+
+# Principle 14
+
+No Architecture Drift
+
+Architecture Drift
+
+is prohibited.
+
+Whenever
+
+implementation
+
+deviates
+
+from
+
+approved architecture,
+
+the drift
+
+must be
+
+identified,
+
+documented,
+
+classified,
+
+and resolved.
+
+---
+
+# Principle 15
+
+Quality Over Quantity
+
+A small,
+
+well-designed,
+
+fully documented
+
+system
+
+is preferable
+
+to
+
+a large,
+
+poorly governed
+
+system.
+
+Every feature
+
+must justify
+
+its existence.
+
+---
+
+# Principle 16
+
+Modularity
+
+Every module
+
+must have
+
+one responsibility.
+
+Modules
+
+communicate
+
+through
+
+well-defined interfaces.
+
+Internal implementation
+
+must remain
+
+isolated.
+
+---
+
+# Principle 17
+
+Security By Design
+
+Security
+
+is part
+
+of architecture.
+
+Authentication,
+
+authorization,
+
+validation,
+
+audit logging,
+
+and encryption
+
+must be
+
+designed
+
+before implementation.
+
+---
+
+# Principle 18
+
+Performance By Design
+
+Performance
+
+must be considered
+
+during architecture,
+
+not after deployment.
+
+Caching,
+
+indexing,
+
+pagination,
+
+search,
+
+and scalability
+
+must be planned.
+
+---
+
+# Principle 19
+
+Automation Supports Governance
+
+Automation
+
+must enforce
+
+documentation.
+
+Automation
+
+must never
+
+replace
+
+architectural decisions.
+
+CI,
+
+validation,
+
+testing,
+
+and review
+
+exist
+
+to protect
+
+the SSOT.
+
+---
+
+# Principle 20
+
+Continuous Improvement
+
+The SSOT
+
+is continuously improved
+
+through
+
+Architecture Reviews,
+
+Sprint Reviews,
+
+Production Reviews,
+
+Technical Debt Reduction,
+
+and ADR evolution.
+
+Improvements
+
+must remain
+
+fully documented,
+
+reviewed,
+
+approved,
+
+and traceable.
+
+---
+
+# Principle Relationships
+
+These principles
+
+are not independent.
+
+Documentation First
+
+supports
+
+Single Authority.
+
+Single Authority
+
+supports
+
+Consistency.
+
+Consistency
+
+supports
+
+Traceability.
+
+Traceability
+
+supports
+
+Governance.
+
+Governance
+
+prevents
+
+Architecture Drift.
+
+Together,
+
+they establish
+
+the foundation
+
+of the SSOT.
+
+---
+
+# Compliance Rules
+
+Every contributor
+
+must comply
+
+with
+
+all principles.
+
+Violating
+
+any principle
+
+requires
+
+documentation,
+
+review,
+
+approval,
+
+and remediation.
+
+Repeated violations
+
+must be treated
+
+as
+
+Architecture Drift.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every principle
+
+is internally consistent.
+
+No principle
+
+contradicts
+
+another principle.
+
+Every downstream policy
+
+can reference
+
+these principles.
+
+No implementation details
+
+are embedded.
+
+---
+
+# Success Criteria
+
+The SSOT Principles succeed when
+
+every architectural decision,
+
+every document,
+
+every implementation,
+
+every review,
+
+and every production release
+
+can be governed
+
+by these immutable principles,
+
+ensuring that
+
+the PhuQuocHub platform
+
+remains
+
+consistent,
+
+traceable,
+
+auditable,
+
+and maintainable
+
+throughout its entire lifecycle.

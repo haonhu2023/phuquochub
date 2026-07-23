@@ -1,0 +1,334 @@
+# =============================================================================
+# Single Source of Truth (SSOT) Validation Rules
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Rule ID   : RULE-0004
+# Category  : SSOT
+# Version   : 1.0.0
+# Status    : Approved
+#
+# =============================================================================
+
+metadata:
+
+  id: RULE-0004
+
+  name: Single Source of Truth Validation
+
+  category: SSOT
+
+  version: 1.0.0
+
+  status: Approved
+
+  owner: Architecture Governance
+
+  description: >
+    Validates that every engineering domain has exactly one
+    authoritative source of truth and that no conflicting
+    definitions exist across the repository.
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+execution:
+
+  priority: 4
+
+  blocking: true
+
+  enabled: true
+
+  stop_pipeline_on_failure: true
+
+# =============================================================================
+# PRECONDITIONS
+# =============================================================================
+
+preconditions:
+
+  - repository_validation_completed
+
+  - scope_validation_completed
+
+  - authority_validation_completed
+
+# =============================================================================
+# MANDATORY SSOT DOMAINS
+# =============================================================================
+
+domains:
+
+  - Architecture
+
+  - Database
+
+  - Workflow
+
+  - API
+
+  - Security
+
+  - RBAC
+
+  - Entity
+
+  - Configuration
+
+  - Events
+
+  - State Machine
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
+rules:
+
+  - id: SSOT-001
+
+    name: Domain Has Single Authority
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      domain.single_authority: true
+
+    on_fail:
+
+      finding: Multiple authorities detected
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-002
+
+    name: Canonical Definition Exists
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      canonical_definition.exists: true
+
+    on_fail:
+
+      finding: Canonical definition missing
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-003
+
+    name: Cross Document Consistency
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      cross_document.consistent: true
+
+    on_fail:
+
+      finding: Conflicting SSOT definitions
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-004
+
+    name: Domain Ownership Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      ownership.defined: true
+
+    on_fail:
+
+      finding: Domain ownership undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-005
+
+    name: Duplicate Definitions
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      duplicate.count == 0
+
+    on_fail:
+
+      finding: Duplicate business definitions detected
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-006
+
+    name: Canonical Identifier Stable
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      canonical.identifier_stable: true
+
+    on_fail:
+
+      finding: Canonical identifiers unstable
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-007
+
+    name: Shared Vocabulary Consistent
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      terminology.consistent: true
+
+    on_fail:
+
+      finding: Shared terminology inconsistent
+
+  - id: SSOT-008
+
+    name: Cross Domain Mapping Valid
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      mappings.valid: true
+
+    on_fail:
+
+      finding: Invalid domain mapping
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-009
+
+    name: No Circular Definitions
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      circular_definitions: false
+
+    on_fail:
+
+      finding: Circular source of truth
+
+      decision: FREEZE_REJECTED
+
+  - id: SSOT-010
+
+    name: Canonical References Valid
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      canonical.references_valid: true
+
+    on_fail:
+
+      finding: Broken canonical references
+
+# =============================================================================
+# SSOT PRIORITY
+# =============================================================================
+
+precedence:
+
+  - Accepted ADR
+
+  - Architecture Specification
+
+  - Domain Specification
+
+  - Entity Catalog
+
+  - Workflow Specification
+
+  - OpenAPI
+
+  - Database Specification
+
+  - Generated Documentation
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  produce:
+
+    - ssot_registry
+
+    - canonical_definitions
+
+    - domain_mapping
+
+    - ownership_matrix
+
+    - consistency_map
+
+    - duplicate_report
+
+# =============================================================================
+# NEXT RULE
+# =============================================================================
+
+next:
+
+  on_success: RULE-0005
+
+  on_failure: STOP
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  single_source_per_domain: true
+
+  canonical_definitions_complete: true
+
+  ownership_defined: true
+
+  duplicate_definitions: false
+
+  cross_document_consistency: true
+
+  continue_pipeline: true

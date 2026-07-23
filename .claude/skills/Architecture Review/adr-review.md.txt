@@ -1,0 +1,601 @@
+# ADR Review
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+
+the official Architecture Decision Record (ADR)
+review policy
+
+for the PhuQuocHub platform.
+
+ADR Review ensures
+
+every architectural decision
+
+is documented,
+
+approved,
+
+traceable,
+
+and consistently implemented.
+
+No architectural decision
+
+may exist
+
+without an ADR.
+
+---
+
+# Mission
+
+Protect architectural decisions.
+
+Prevent undocumented changes.
+
+Guarantee traceability.
+
+Maintain historical context.
+
+Ensure implementation
+
+follows approved decisions.
+
+---
+
+# Core Principles
+
+Architecture decisions
+
+must be explicit.
+
+Architecture decisions
+
+must be documented.
+
+Architecture decisions
+
+must never exist only in code.
+
+Implementation
+
+must reference
+
+approved ADRs.
+
+---
+
+# ADR Definition
+
+An Architecture Decision Record
+
+documents
+
+a significant architectural decision.
+
+Each ADR must contain
+
+Identifier
+
+Title
+
+Status
+
+Context
+
+Problem Statement
+
+Decision
+
+Alternatives
+
+Consequences
+
+Dependencies
+
+Related Decisions
+
+Implementation Notes
+
+Review History
+
+Approval
+
+---
+
+# ADR Lifecycle
+
+Proposed
+
+↓
+
+Under Review
+
+↓
+
+Accepted
+
+↓
+
+Implemented
+
+↓
+
+Verified
+
+↓
+
+Archived
+
+Only
+
+Accepted
+
+ADRs
+
+may be implemented.
+
+---
+
+# Review Workflow
+
+Every ADR review
+
+must follow
+
+Step 1
+
+Identify ADR
+
+↓
+
+Step 2
+
+Verify Metadata
+
+↓
+
+Step 3
+
+Verify Decision
+
+↓
+
+Step 4
+
+Verify Repository
+
+↓
+
+Step 5
+
+Verify Dependencies
+
+↓
+
+Step 6
+
+Verify Documentation
+
+↓
+
+Step 7
+
+Detect Drift
+
+↓
+
+Step 8
+
+Issue Decision
+
+---
+
+# Metadata Validation
+
+Verify
+
+ADR ID
+
+Title
+
+Author
+
+Owner
+
+Date
+
+Status
+
+Version
+
+Related ADRs
+
+Affected Modules
+
+Approval
+
+Review Date
+
+---
+
+# Context Validation
+
+Verify
+
+Business Problem
+
+Architecture Problem
+
+Technical Constraints
+
+Existing State
+
+Target State
+
+Success Criteria
+
+The context
+
+must explain
+
+why the decision exists.
+
+---
+
+# Decision Validation
+
+Verify
+
+Decision
+
+is
+
+Clear
+
+Specific
+
+Actionable
+
+Testable
+
+Repeatable
+
+No ambiguous decisions.
+
+---
+
+# Repository Validation
+
+Compare ADR
+
+against repository.
+
+Verify
+
+Folder Structure
+
+Modules
+
+Database
+
+API
+
+Workflow
+
+RBAC
+
+Infrastructure
+
+Implementation
+
+must follow
+
+the ADR.
+
+---
+
+# Documentation Validation
+
+Verify
+
+Architecture
+
+Decision Register
+
+Database
+
+ERD
+
+OpenAPI
+
+Workflow
+
+Coding Standard
+
+README
+
+All documentation
+
+must remain
+
+consistent
+
+with the ADR.
+
+---
+
+# Dependency Validation
+
+Verify
+
+Referenced ADRs
+
+Dependent ADRs
+
+Affected Modules
+
+Affected APIs
+
+Affected Database
+
+Affected Infrastructure
+
+No broken dependency chain.
+
+---
+
+# Drift Detection
+
+ADR Drift includes
+
+Implementation without ADR
+
+ADR not implemented
+
+Repository contradicts ADR
+
+Documentation contradicts ADR
+
+Database contradicts ADR
+
+OpenAPI contradicts ADR
+
+Workflow contradicts ADR
+
+RBAC contradicts ADR
+
+---
+
+# Severity
+
+Critical
+
+Architecture contradicts ADR
+
+High
+
+Implementation without ADR
+
+ADR inconsistent
+
+Medium
+
+Partial implementation
+
+Low
+
+Formatting
+
+Metadata issue
+
+Informational
+
+Observation only
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+ADR Reference
+
+Repository Evidence
+
+Documentation Evidence
+
+Impact
+
+Severity
+
+Recommendation
+
+Never infer.
+
+Never guess.
+
+Never fabricate.
+
+---
+
+# Technical Debt
+
+Every ADR debt
+
+must include
+
+Identifier
+
+Description
+
+Impact
+
+Severity
+
+Owner
+
+Target Sprint
+
+Recommendation
+
+Status
+
+---
+
+# Report Output
+
+Executive Summary
+
+ADR Inventory
+
+Reviewed ADRs
+
+Missing ADRs
+
+Invalid ADRs
+
+Repository Compliance
+
+Documentation Compliance
+
+Architecture Drift
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+ADR COMPLIANT
+
+ADR DRIFT DETECTED
+
+---
+
+# Blocking Conditions
+
+Immediately return
+
+BLOCKED
+
+if
+
+ADR repository unavailable
+
+Mandatory ADR missing
+
+Conflicting accepted ADRs
+
+Repository unavailable
+
+Documentation unavailable
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+All referenced ADRs reviewed
+
+Repository compared
+
+Documentation compared
+
+Evidence attached
+
+No assumptions
+
+No code generated
+
+No repository modified
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+ADR Review succeeds when
+
+every architectural decision
+
+implemented within the repository
+
+can be traced
+
+to an approved ADR,
+
+every ADR
+
+is internally consistent,
+
+every implementation
+
+matches the documented decision,
+
+and no undocumented
+
+architectural decision
+
+can enter production.
+
+The architecture history
+
+remains complete,
+
+auditable,
+
+and fully traceable
+
+throughout the lifecycle
+
+of the PhuQuocHub platform.

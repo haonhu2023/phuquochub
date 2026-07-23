@@ -1,0 +1,374 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import type { VerificationStatusValue } from '@phuquochub/shared-types';
+import { Place } from '../entities/place.entity';
+import { PlaceStatus, PriceRange } from '../place.enums';
+
+// Row phẳng cho card (đã trích lng/lat từ geography).
+export interface PlaceCardRow {
+  id: string;
+  name: string;
+  slug: string;
+  category_id: string;
+  short_description: string | null;
+  price_range: PriceRange | null;
+  cover_image_url: string | null;
+  rating_avg: string | null;
+  rating_count: number;
+  // Cột là ENUM "verification_status" NOT NULL ở DB (InitPlaces1720000400000:47), nên tập giá
+  // trị đóng — khai đúng ngay tại row thay vì để mapper phải ép kiểu (F-18). Union này lấy từ
+  // shared-types vì nó CHÍNH LÀ tập giá trị của enum, dùng chung cả hai phía; `status` bên dưới
+  // đã theo tiền lệ tương tự với enum nội bộ PlaceStatus.
+  verification_status: VerificationStatusValue;
+  status: PlaceStatus;
+  lat: number;
+  lng: number;
+  distance_m?: number;
+  /**
+   * ts_rank của searchFullText — tín hiệu xếp hạng NỘI BỘ, KHÔNG thuộc hợp đồng công khai.
+   *
+   * F-17/OD-F-17: `score` đã bị gỡ khỏi shared-types `PlaceCard` và khỏi toPlaceCard, nhưng
+   * GIỮ LẠI ở đây vì nó thực sự có người dùng và có mục đích rõ ràng: SearchService đọc
+   * `r.score` (search.service.ts:24) để dựng `SearchResult` — một schema riêng, không phải
+   * PlaceCard. Không có đường nào đưa trường này ra PlaceCard nữa.
+   */
+  score?: number;
+}
+
+// Row chi tiết = card + trường mở rộng (khớp openapi Place).
+export interface PlaceDetailRow extends PlaceCardRow {
+  address: string | null;
+  ward: string | null;
+  description: string | null;
+  opening_hours: Record<string, unknown> | null;
+  osm_id: string | null; // bigint → string qua driver
+  created_at: Date;
+  updated_at: Date;
+}
+
+// FAQ published của Place (đọc cho trang chi tiết).
+export interface PlaceFaqRow {
+  id: string;
+  question: string;
+  answer: string;
+  sort_order: number | null;
+  is_ai_generated: boolean;
+  status: string;
+}
+
+// Cụm điểm bản đồ (grid clustering theo bbox+zoom).
+export interface GeoClusterRow {
+  cnt: number;
+  lng: number;
+  lat: number;
+  sample_id: string;
+  sample_slug: string;
+  sample_name: string;
+}
+
+export interface CreatePlaceRow {
+  name: string;
+  slug: string;
+  categoryId: string;
+  lng: number;
+  lat: number;
+  address?: string | null;
+  ward?: string | null;
+  description?: string | null;
+  shortDescription?: string | null;
+  openingHours?: Record<string, unknown> | null;
+  priceRange?: PriceRange | null;
+  status: PlaceStatus;
+  createdBy?: string | null;
+}
+
+// Repository Pattern cho `places`. Ghi + đọc không gian đi qua raw SQL tham số hóa
+// (ST_MakePoint/ST_DWithin/FTS) — geo tập trung một chỗ (coding-standard §7).
+// cover_image_url: resolve URL của media cover (openapi PlaceCard.cover_image_url, format uri).
+// Subquery scalar → dùng chung mọi truy vấn card mà không cần đổi FROM.
+const CARD_COLS = `
+  p.id, p.name, p.slug, p.category_id, p.short_description, p.price_range,
+  (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+  p.rating_avg, p.rating_count, p.verification_status, p.status,
+  ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
+`;
+
+@Injectable()
+export class PlacesRepository {
+  constructor(
+    @InjectRepository(Place)
+    private readonly repo: Repository<Place>,
+  ) {}
+
+  async existsBySlug(slug: string): Promise<boolean> {
+    const rows = await this.repo.query(`SELECT 1 FROM places WHERE slug = $1 LIMIT 1`, [slug]);
+    return rows.length > 0;
+  }
+
+  async createPlace(input: CreatePlaceRow): Promise<string> {
+    const rows: Array<{ id: string }> = await this.repo.query(
+      `INSERT INTO places
+         (name, slug, category_id, location, address, ward, description, short_description,
+          opening_hours, price_range, status, created_by)
+       VALUES ($1,$2,$3, ST_SetSRID(ST_MakePoint($4,$5),4326)::geography,
+               $6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING id`,
+      [
+        input.name,
+        input.slug,
+        input.categoryId,
+        input.lng,
+        input.lat,
+        input.address ?? null,
+        input.ward ?? null,
+        input.description ?? null,
+        input.shortDescription ?? null,
+        input.openingHours ?? null,
+        input.priceRange ?? null,
+        input.status,
+        input.createdBy ?? null,
+      ],
+    );
+    return rows[0].id;
+  }
+
+  // GAP-13 (PLACE-007): `getCardBySlug` đã được GỠ BỎ. Không có consumer nào trong toàn
+  // repository, và nó chỉ lọc `deleted_at IS NULL` — thiếu lọc `status` mà đường đọc công khai
+  // theo slug (`getDetailBySlug`) bắt buộc phải có. Giữ lại là để sẵn một cái bẫy: ai đó nối
+  // vào route công khai sau này sẽ làm tái xuất đúng lỗ hổng GAP-02/04 đã vá.
+  // KHÔNG "sửa" bằng cách thêm lọc status: `getCardById` bên dưới cố tình KHÔNG lọc status vì
+  // luồng kiểm duyệt (approve/archive) cần đọc cả bản chưa publish. Thêm lọc là đoán ý định
+  // mà repository không xác định được; gỡ bỏ thì câu hỏi đó tự biến mất.
+  // Cần đọc card theo slug trong tương lai: viết mới, và quyết định lọc status ngay tại đó.
+  async getCardById(id: string): Promise<PlaceCardRow | null> {
+    const rows: PlaceCardRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS} FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Row chi tiết cho trang công khai (card + address/ward/description/opening_hours/osm_id/
+   * timestamps). Chỉ trả Place đã `published` — giống `nearby()`/`bbox()`: nội dung
+   * `draft`/`pending` chưa qua kiểm duyệt **không** được lộ ra kênh công khai.
+   * Luồng xem trước của moderator (nếu có) phải dùng truy vấn riêng đã kiểm tra quyền.
+   */
+  async getDetailBySlug(slug: string): Promise<PlaceDetailRow | null> {
+    const rows: PlaceDetailRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS},
+              p.address, p.ward, p.description, p.opening_hours, p.osm_id,
+              p.created_at, p.updated_at
+       FROM places p
+       WHERE p.slug = $1 AND p.deleted_at IS NULL AND p.status = $2
+       LIMIT 1`,
+      [slug, PlaceStatus.PUBLISHED],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** FAQ đã duyệt của Place (place_faqs — satellite của places). */
+  listFaqs(placeId: string): Promise<PlaceFaqRow[]> {
+    return this.repo.query(
+      `SELECT id, question, answer, sort_order, is_ai_generated, status
+       FROM place_faqs
+       WHERE place_id = $1 AND status = 'published'
+       ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
+      [placeId],
+    );
+  }
+
+  /** Cập nhật trường scalar (không đụng location). */
+  async updateScalars(id: string, patch: Record<string, unknown>): Promise<void> {
+    const keys = Object.keys(patch);
+    if (keys.length === 0) {
+      return;
+    }
+    await this.repo.update({ id }, patch);
+  }
+
+  async updateLocation(id: string, lng: number, lat: number): Promise<void> {
+    await this.repo.query(
+      `UPDATE places SET location = ST_SetSRID(ST_MakePoint($2,$3),4326)::geography, updated_at = now() WHERE id = $1`,
+      [id, lng, lat],
+    );
+  }
+
+  async archive(id: string): Promise<void> {
+    await this.repo.query(
+      `UPDATE places SET status = 'archived', deleted_at = now(), updated_at = now() WHERE id = $1`,
+      [id],
+    );
+  }
+
+  async setStatus(id: string, status: PlaceStatus): Promise<void> {
+    await this.repo.update({ id }, { status });
+  }
+
+  /**
+   * Danh sách Place có lọc + phân trang.
+   * `status` là tham số **đặc quyền**: bỏ trống ⇒ chỉ `published` (mặc định an toàn cho
+   * kênh công khai). Chỉ truyền `status` khác khi caller đã được kiểm tra quyền —
+   * **không** nhận thẳng từ query string công khai (xem `ListPlacesQueryDto`).
+   */
+  async list(params: {
+    category?: string;
+    ward?: string;
+    priceRange?: PriceRange;
+    status?: PlaceStatus;
+    limit: number;
+    offset: number;
+  }): Promise<{ items: PlaceCardRow[]; total: number }> {
+    const conds: string[] = ['p.deleted_at IS NULL'];
+    const args: unknown[] = [];
+    if (params.category) {
+      args.push(params.category);
+      conds.push(`p.category_id = $${args.length}`);
+    }
+    if (params.ward) {
+      args.push(params.ward);
+      conds.push(`p.ward = $${args.length}`);
+    }
+    if (params.priceRange) {
+      args.push(params.priceRange);
+      conds.push(`p.price_range = $${args.length}`);
+    }
+    // Mặc định chỉ public; cho phép override khi truyền status.
+    args.push(params.status ?? PlaceStatus.PUBLISHED);
+    conds.push(`p.status = $${args.length}`);
+
+    const where = conds.join(' AND ');
+    const countRows: Array<{ count: string }> = await this.repo.query(
+      `SELECT count(*)::int AS count FROM places p WHERE ${where}`,
+      args,
+    );
+    const total = Number(countRows[0]?.count ?? 0);
+
+    const limitIdx = args.length + 1;
+    const offsetIdx = args.length + 2;
+    // GAP-12: `p.id ASC` là khoá phụ DUY NHẤT chốt cuối — bắt buộc cho phân trang
+    // LIMIT/OFFSET. rating_avg là numeric(2,1) (rất nhiều giá trị trùng + cả nhóm NULL) và
+    // created_at mặc định `now()` chung khi seed/import, nên hai khoá đầu KHÔNG tạo được thứ
+    // tự toàn phần: Postgres được phép xếp các hàng bằng nhau khác đi giữa hai lần chạy →
+    // một hàng có thể xuất hiện ở hai trang hoặc biến mất. Thứ tự người dùng thấy không đổi:
+    // p.id chỉ phân xử khi hai khoá trước đã bằng nhau.
+    const items: PlaceCardRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS} FROM places p WHERE ${where}
+       ORDER BY p.rating_avg DESC NULLS LAST, p.created_at DESC, p.id ASC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...args, params.limit, params.offset],
+    );
+    return { items, total };
+  }
+
+  /**
+   * Địa điểm trong bán kính (mét) — ST_DWithin trên GIST.
+   *
+   * F-16 (PLACE-014): `p.id ASC` là khoá phụ chốt cuối. distance_m là số thực nên hoà nhau
+   * hiếm — nhưng KHÔNG phải không xảy ra: hai cơ sở cùng một địa chỉ có toạ độ trùng khít sẽ
+   * cho ST_Distance bằng nhau tuyệt đối. Khi số hàng khớp vượt LIMIT, hàng nào lọt vào lát cắt
+   * là tuỳ planner ⇒ hai lần gọi giống hệt nhau có thể trả tập khác nhau. Khoá phụ chỉ phân xử
+   * đúng các hàng ĐÃ bằng nhau, nên thứ tự theo khoảng cách mà người dùng thấy không đổi.
+   */
+  async nearby(params: {
+    lat: number;
+    lng: number;
+    radius: number;
+    category?: string;
+    limit: number;
+  }): Promise<PlaceCardRow[]> {
+    const args: unknown[] = [params.lng, params.lat, params.radius];
+    let categoryCond = '';
+    if (params.category) {
+      args.push(params.category);
+      categoryCond = `AND p.category_id = $${args.length}`;
+    }
+    args.push(params.limit);
+    return this.repo.query(
+      `SELECT ${CARD_COLS},
+              ST_Distance(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography) AS distance_m
+       FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND ST_DWithin(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography, $3)
+         ${categoryCond}
+       ORDER BY distance_m ASC, p.id ASC
+       LIMIT $${args.length}`,
+      args,
+    );
+  }
+
+  // F-33 (PLACE-019, 2026-07-23): `bbox()` REMOVED — it had no consumer. GeoService.bbox() calls
+  // bboxClusters() (geo.service.ts:40), not this method. A four-pass repository sweep (bare
+  // identifier, dynamic bracket access, every 'bbox' identifier, and all spec files) found ZERO
+  // callers, and tsc exit 0 confirms none existed at compile time. Same class as GAP-13
+  // (getCardBySlug, PLACE-007) but with no security trap, since it filtered status = 'published'.
+  // Restore instructions: reports/PLACE-019-pre-build-readiness-report.md §10.
+
+  /**
+   * Gom cụm điểm theo lưới đều `cellDeg` (độ) trong bbox — trả điểm gom cụm cho bản đồ
+   * (api.md §11 "clustered points"). Cell 1 điểm ⇒ trả điểm; nhiều điểm ⇒ cụm (count+centroid).
+   */
+  async bboxClusters(params: {
+    minLng: number;
+    minLat: number;
+    maxLng: number;
+    maxLat: number;
+    cellDeg: number;
+    limit: number;
+  }): Promise<GeoClusterRow[]> {
+    return this.repo.query(
+      `SELECT count(*)::int AS cnt,
+              avg(ST_X(p.location::geometry)) AS lng,
+              avg(ST_Y(p.location::geometry)) AS lat,
+              (array_agg(p.id ORDER BY p.id))[1] AS sample_id,
+              (array_agg(p.slug ORDER BY p.id))[1] AS sample_slug,
+              (array_agg(p.name ORDER BY p.id))[1] AS sample_name
+       FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND ST_Intersects(p.location::geometry, ST_MakeEnvelope($1,$2,$3,$4,4326))
+       GROUP BY floor(ST_X(p.location::geometry) / $5), floor(ST_Y(p.location::geometry) / $5)
+       LIMIT $6`,
+      [params.minLng, params.minLat, params.maxLng, params.maxLat, params.cellDeg, params.limit],
+    );
+  }
+
+  async searchCount(q: string): Promise<number> {
+    const rows: Array<{ count: string }> = await this.repo.query(
+      `SELECT count(*)::int AS count FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,'')))
+             @@ plainto_tsquery('simple', immutable_unaccent($1))`,
+      [q],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Tìm kiếm FTS tiếng Việt không dấu (immutable_unaccent + ts_rank).
+   *
+   * F-32: `score` (ts_rank) KHÔNG duy nhất — nhiều tài liệu khớp truy vấn ngang nhau cho ra
+   * cùng một giá trị, chuyện thường gặp với truy vấn ngắn trên name+description. Đây là query
+   * DUY NHẤT trong repo vừa `ORDER BY` khoá không duy nhất vừa phân trang bằng OFFSET
+   * (search.service.ts:16 truyền `(page-1)*limit`), nên đúng lỗi GAP-12: giữa hai lần truy vấn
+   * trang 1 và trang 2, planner có thể xếp các hàng hoà nhau khác đi ⇒ người dùng thấy một
+   * Place hai lần hoặc không bao giờ thấy. `p.id ASC` là khoá cuối DUY NHẤT (PK, NOT NULL),
+   * chỉ phân xử các hàng ĐÃ hoà `score` nên không đụng tới thứ tự liên quan.
+   */
+  async searchFullText(q: string, limit: number, offset: number): Promise<PlaceCardRow[]> {
+    return this.repo.query(
+      `SELECT ${CARD_COLS},
+              ts_rank(
+                to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,''))),
+                plainto_tsquery('simple', immutable_unaccent($1))
+              ) AS score
+       FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,'')))
+             @@ plainto_tsquery('simple', immutable_unaccent($1))
+       ORDER BY score DESC, p.id ASC
+       LIMIT $2 OFFSET $3`,
+      [q, limit, offset],
+    );
+  }
+}

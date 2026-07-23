@@ -1,0 +1,1017 @@
+# SSOT Index
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Critical
+
+Classification
+
+Internal
+
+---
+
+# Purpose
+
+This document
+
+is the
+
+Master Index
+
+of
+
+the Single Source of Truth (SSOT).
+
+It defines
+
+how every document,
+
+policy,
+
+standard,
+
+template,
+
+architecture,
+
+and engineering artifact
+
+is organized,
+
+related,
+
+and consumed.
+
+This document
+
+is the official
+
+entry point
+
+for
+
+all AI agents,
+
+developers,
+
+architects,
+
+reviewers,
+
+project managers,
+
+and stakeholders.
+
+---
+
+# Mission
+
+Provide
+
+one navigation system
+
+for
+
+the entire
+
+engineering knowledge base,
+
+ensuring
+
+every document
+
+is discoverable,
+
+traceable,
+
+versioned,
+
+and connected.
+
+---
+
+# Fundamental Principle
+
+Every document
+
+must appear
+
+inside
+
+SSOT Index.
+
+No document
+
+may exist
+
+outside
+
+the indexed knowledge graph.
+
+---
+
+# Knowledge Hierarchy
+
+Business
+
+↓
+
+Architecture
+
+↓
+
+Governance
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Specifications
+
+↓
+
+Planning
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+↓
+
+Monitoring
+
+↓
+
+Operations
+
+↓
+
+Continuous Improvement
+
+---
+
+# Reading Order
+
+Every AI Agent
+
+must read
+
+documents
+
+in the following order
+
+README.md
+
+↓
+
+ssot-index.md
+
+↓
+
+glossary.md
+
+↓
+
+governance-model.md
+
+↓
+
+architecture-boundary.md
+
+↓
+
+dependency-rules.md
+
+↓
+
+traceability-policy.md
+
+↓
+
+evidence-policy.md
+
+↓
+
+implementation-policy.md
+
+↓
+
+repository-policy.md
+
+↓
+
+coding-standards.md
+
+↓
+
+api-governance.md
+
+↓
+
+data-modeling-standard.md
+
+↓
+
+security-governance.md
+
+↓
+
+performance-governance.md
+
+↓
+
+release-policy.md
+
+↓
+
+deployment-policy.md
+
+↓
+
+monitoring-policy.md
+
+↓
+
+incident-response.md
+
+↓
+
+disaster-recovery.md
+
+↓
+
+backup-policy.md
+
+↓
+
+Sprint Planner
+
+↓
+
+Architecture Review
+
+↓
+
+Repository Analysis
+
+↓
+
+Batch Generator
+
+---
+
+# Core Documents
+
+README.md
+
+Master Introduction
+
+---
+
+skill.md
+
+AI Skill Definition
+
+---
+
+ssot-index.md
+
+Master Navigation
+
+---
+
+glossary.md
+
+Canonical Vocabulary
+
+---
+
+governance-model.md
+
+Governance Framework
+
+---
+
+# Architecture
+
+architecture-boundary.md
+
+System Boundaries
+
+---
+
+dependency-rules.md
+
+Dependency Rules
+
+---
+
+traceability-policy.md
+
+Artifact Traceability
+
+---
+
+evidence-policy.md
+
+Evidence Collection
+
+---
+
+architecture-review/
+
+Architecture Validation
+
+---
+
+# Repository
+
+repository-policy.md
+
+Repository Rules
+
+---
+
+coding-standards.md
+
+Coding Standards
+
+---
+
+branching-strategy.md
+
+Git Workflow
+
+---
+
+merge-policy.md
+
+Merge Rules
+
+---
+
+repository-analysis.md
+
+Repository Review
+
+---
+
+# Planning
+
+Sprint Planner
+
+Roadmap
+
+Milestones
+
+Batch Generator
+
+Planning Policies
+
+Estimation Model
+
+Dependency Graph
+
+---
+
+# Data
+
+data-governance.md
+
+Master Data Governance
+
+---
+
+data-modeling-standard.md
+
+Database Design
+
+---
+
+database/
+
+ERD
+
+Migration
+
+Prisma
+
+---
+
+# API
+
+api-governance.md
+
+API Standards
+
+---
+
+openapi/
+
+API Contracts
+
+---
+
+# Security
+
+security-governance.md
+
+Security Standards
+
+---
+
+RBAC
+
+Authentication
+
+Authorization
+
+Secrets
+
+OWASP
+
+---
+
+# Performance
+
+performance-governance.md
+
+Performance Standards
+
+---
+
+Monitoring
+
+Capacity Planning
+
+Caching
+
+Scaling
+
+---
+
+# Release
+
+release-policy.md
+
+Release Governance
+
+---
+
+deployment-policy.md
+
+Deployment Standards
+
+---
+
+Production Gate
+
+Release Approval
+
+---
+
+# Operations
+
+monitoring-policy.md
+
+Observability
+
+---
+
+incident-response.md
+
+Incident Management
+
+---
+
+disaster-recovery.md
+
+Disaster Recovery
+
+---
+
+backup-policy.md
+
+Backup Strategy
+
+---
+
+# AI Governance
+
+ai-governance.md
+
+AI Rules
+
+---
+
+Prompt Standards
+
+AI Reviews
+
+AI Audit
+
+AI Monitoring
+
+---
+
+# Documentation
+
+documentation-style-guide.md
+
+Writing Standards
+
+---
+
+templates/
+
+Document Templates
+
+---
+
+examples/
+
+Reference Examples
+
+---
+
+# Compliance
+
+audit-policy.md
+
+Engineering Audit
+
+---
+
+compliance-policy.md
+
+Compliance Rules
+
+---
+
+validation-policy.md
+
+Validation Rules
+
+---
+
+review-policy.md
+
+Review Standards
+
+---
+
+# Knowledge Graph
+
+Business Requirements
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Specifications
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Validation
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+↓
+
+Monitoring
+
+↓
+
+Incident
+
+↓
+
+Postmortem
+
+---
+
+# AI Navigation Rules
+
+Claude Code
+
+must
+
+always
+
+read
+
+README.md
+
+before
+
+any other file.
+
+Claude Code
+
+must
+
+consult
+
+SSOT Index
+
+before
+
+loading
+
+additional documentation.
+
+Claude Code
+
+must
+
+never
+
+skip
+
+dependencies.
+
+---
+
+# Dependency Graph
+
+README
+
+↓
+
+SSOT Index
+
+↓
+
+Glossary
+
+↓
+
+Governance
+
+↓
+
+Architecture
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Planning
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Deployment
+
+↓
+
+Operations
+
+---
+
+# Cross Reference Rules
+
+Every document
+
+must reference
+
+its
+
+Parent Document
+
+Related Documents
+
+Child Documents
+
+Dependencies
+
+Referenced Policies
+
+Referenced Standards
+
+Referenced Templates
+
+---
+
+# Version Management
+
+Every document
+
+must contain
+
+Version
+
+Status
+
+Owner
+
+Review Date
+
+Last Updated
+
+Dependencies
+
+Referenced Documents
+
+---
+
+# Search Rules
+
+Every document
+
+must be searchable
+
+by
+
+Title
+
+Keywords
+
+Owner
+
+Category
+
+Version
+
+Tags
+
+Dependencies
+
+---
+
+# Categories
+
+Architecture
+
+Governance
+
+Planning
+
+Implementation
+
+Repository
+
+API
+
+Database
+
+Security
+
+Performance
+
+Operations
+
+Compliance
+
+Documentation
+
+AI
+
+Templates
+
+Examples
+
+---
+
+# Lifecycle
+
+Create
+
+↓
+
+Review
+
+↓
+
+Approve
+
+↓
+
+Publish
+
+↓
+
+Version
+
+↓
+
+Monitor
+
+↓
+
+Improve
+
+↓
+
+Archive
+
+---
+
+# Compliance Rules
+
+The SSOT Index
+
+is compliant
+
+only when
+
+All documents indexed
+
+Dependencies valid
+
+Cross references valid
+
+Versions synchronized
+
+No orphan documents
+
+Navigation complete
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Missing document
+
+Broken dependency
+
+Broken cross reference
+
+Missing version
+
+Duplicate document
+
+Unknown owner
+
+Invalid category
+
+---
+
+# Self Verification
+
+Before publishing
+
+Claude Code
+
+must verify
+
+Every document indexed
+
+Dependencies complete
+
+Cross references valid
+
+Navigation consistent
+
+Versions synchronized
+
+No orphan artifacts
+
+---
+
+# Success Criteria
+
+The SSOT Index succeeds when
+
+every document,
+
+policy,
+
+standard,
+
+template,
+
+architecture artifact,
+
+engineering guideline,
+
+and governance rule
+
+within the PhuQuocHub platform
+
+is discoverable,
+
+traceable,
+
+correctly categorized,
+
+fully interconnected,
+
+and easily navigable,
+
+allowing
+
+both humans
+
+and AI agents
+
+to locate,
+
+understand,
+
+and apply
+
+the correct engineering knowledge
+
+efficiently,
+
+consistently,
+
+and without ambiguity
+
+throughout
+
+the entire software lifecycle.

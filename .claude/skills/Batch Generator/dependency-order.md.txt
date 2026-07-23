@@ -1,0 +1,44 @@
+# Dependency Order
+
+Always generate
+
+Entities
+
+↓
+
+Repositories
+
+↓
+
+Services
+
+↓
+
+Controllers
+
+↓
+
+DTO
+
+↓
+
+Mapper
+
+↓
+
+Tests
+
+↓
+
+Documentation
+
+Never reverse.
+
+Never generate controller
+before entity.
+
+Never generate service
+before repository.
+
+Never generate repository
+before entity.

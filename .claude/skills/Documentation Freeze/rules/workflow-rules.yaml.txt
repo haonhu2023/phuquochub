@@ -1,0 +1,434 @@
+# =============================================================================
+# Workflow Validation Rules
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Rule ID   : RULE-0007
+# Category  : Workflow
+# Version   : 1.0.0
+# Status    : Approved
+#
+# =============================================================================
+
+metadata:
+
+  id: RULE-0007
+
+  name: Workflow Validation
+
+  category: Workflow
+
+  version: 1.0.0
+
+  status: Approved
+
+  owner: Architecture Governance
+
+  description: >
+    Validates business workflows, lifecycle definitions,
+    state transitions, responsibilities, approvals,
+    and execution consistency.
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+execution:
+
+  priority: 7
+
+  blocking: true
+
+  enabled: true
+
+  stop_pipeline_on_failure: true
+
+# =============================================================================
+# PRECONDITIONS
+# =============================================================================
+
+preconditions:
+
+  - repository_validation_completed
+
+  - scope_validation_completed
+
+  - authority_validation_completed
+
+  - ssot_validation_completed
+
+  - architecture_validation_completed
+
+  - security_validation_completed
+
+# =============================================================================
+# WORKFLOW DOMAINS
+# =============================================================================
+
+domains:
+
+  - Business Workflow
+
+  - User Journey
+
+  - State Machine
+
+  - Lifecycle
+
+  - Approval Process
+
+  - Exception Flow
+
+  - Error Handling
+
+  - Rollback
+
+  - Notifications
+
+  - Integration Flow
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
+rules:
+
+  - id: WF-001
+
+    name: Workflow Exists
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      workflow.exists: true
+
+    on_fail:
+
+      finding: Workflow specification missing
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-002
+
+    name: Workflow States Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      workflow.states_defined: true
+
+    on_fail:
+
+      finding: Workflow states undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-003
+
+    name: State Transitions Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      workflow.transitions_defined: true
+
+    on_fail:
+
+      finding: State transitions missing
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-004
+
+    name: Initial State Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.initial_state_defined: true
+
+    on_fail:
+
+      finding: Initial state undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-005
+
+    name: Terminal States Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.terminal_states_defined: true
+
+    on_fail:
+
+      finding: Terminal states undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-006
+
+    name: Business Rules Linked
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.business_rules_linked: true
+
+    on_fail:
+
+      finding: Business rules not linked
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-007
+
+    name: Approval Workflow Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.approvals_defined: true
+
+    on_fail:
+
+      finding: Approval workflow undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-008
+
+    name: Exception Flow Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.exception_flow_defined: true
+
+    on_fail:
+
+      finding: Exception workflow missing
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-009
+
+    name: Rollback Process Defined
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      workflow.rollback_defined: true
+
+    on_fail:
+
+      finding: Rollback workflow missing
+
+  - id: WF-010
+
+    name: Error Handling Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.error_handling_defined: true
+
+    on_fail:
+
+      finding: Error handling undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-011
+
+    name: Workflow Ownership Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.owner_defined: true
+
+    on_fail:
+
+      finding: Workflow owner undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-012
+
+    name: Workflow Consistency
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      workflow.consistent_with_architecture: true
+
+    on_fail:
+
+      finding: Workflow inconsistent with architecture
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-013
+
+    name: Workflow Consistency With API
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.consistent_with_api: true
+
+    on_fail:
+
+      finding: Workflow inconsistent with API
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-014
+
+    name: Workflow Consistency With Database
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      workflow.consistent_with_database: true
+
+    on_fail:
+
+      finding: Workflow inconsistent with database
+
+      decision: FREEZE_REJECTED
+
+  - id: WF-015
+
+    name: Workflow Traceability
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      workflow.traceable: true
+
+    on_fail:
+
+      finding: Workflow traceability incomplete
+
+# =============================================================================
+# WORKFLOW PRINCIPLES
+# =============================================================================
+
+principles:
+
+  - Explicit State Machine
+
+  - Deterministic Execution
+
+  - Complete Lifecycle
+
+  - Explicit Ownership
+
+  - Recoverable Failures
+
+  - Traceable Decisions
+
+  - Idempotent Operations
+
+  - No Undefined State
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  produce:
+
+    - workflow_inventory
+
+    - workflow_graph
+
+    - state_machine
+
+    - transition_matrix
+
+    - workflow_findings
+
+    - workflow_traceability
+
+# =============================================================================
+# NEXT RULE
+# =============================================================================
+
+next:
+
+  on_success: RULE-0008
+
+  on_failure: STOP
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  workflow_exists: true
+
+  states_defined: true
+
+  transitions_defined: true
+
+  lifecycle_complete: true
+
+  approvals_defined: true
+
+  exception_flow_defined: true
+
+  workflow_consistent: true
+
+  continue_pipeline: true

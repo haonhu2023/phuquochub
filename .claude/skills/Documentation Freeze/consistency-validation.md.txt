@@ -1,0 +1,1832 @@
+# Documentation Consistency Validation
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT validation, cross-document audit, pre-code-generation readiness
+
+---
+
+## 1. Purpose
+
+This document defines the official cross-document consistency validation policy
+for the Documentation Freeze skill.
+
+Its purpose is to determine whether all authoritative and supporting documents
+describe the same system, the same contracts, the same terminology, and the
+same approved implementation scope.
+
+A documentation set is not freeze-ready when individual documents are complete
+but contradict one another.
+
+Consistency validation must compare related artifacts systematically and report
+every material inconsistency with precise evidence.
+
+---
+
+## 2. Core Principle
+
+Complete documents may still be inconsistent.
+
+Consistency means that all related documents describe one coherent system.
+
+The following must never describe conflicting realities:
+
+- Architecture;
+- ADR;
+- Decision Register;
+- Database Specification;
+- ERD;
+- Data Dictionary;
+- Entity Catalog;
+- OpenAPI;
+- API narrative documentation;
+- RBAC;
+- Workflow;
+- Security documentation;
+- Coding Standards;
+- Repository Standards;
+- Roadmap;
+- Sprint and Batch scope.
+
+When two authoritative documents disagree, Claude Code must not select a design.
+
+It must report an SSOT conflict.
+
+---
+
+## 3. Objectives
+
+Consistency validation must detect:
+
+- direct contradictions;
+- incompatible definitions;
+- missing cross-document coverage;
+- terminology mismatches;
+- entity count mismatches;
+- field mismatches;
+- type mismatches;
+- enum mismatches;
+- discriminator mismatches;
+- relationship mismatches;
+- index and constraint mismatches;
+- API path mismatches;
+- request and response mismatches;
+- permission mismatches;
+- workflow-state mismatches;
+- ADR and Decision Register mismatches;
+- scope mismatches;
+- roadmap and implementation-plan mismatches;
+- version mismatches;
+- stale supporting documentation;
+- implementation drift where repository evidence is inspected.
+
+---
+
+## 4. Execution Mode
+
+Consistency validation is strictly read-only.
+
+Claude Code may:
+
+- read documentation;
+- compare files;
+- inspect diagrams;
+- inspect OpenAPI;
+- inspect ADRs;
+- inspect the Decision Register;
+- inspect repository structure;
+- inspect source code for evidence;
+- inspect migrations for evidence;
+- construct comparison matrices;
+- classify inconsistencies;
+- generate reports.
+
+Claude Code must not:
+
+- modify documents;
+- reconcile conflicts silently;
+- choose between competing definitions;
+- rewrite lower-authority documents;
+- invent a canonical model;
+- create missing ADRs;
+- update the Decision Register;
+- alter OpenAPI;
+- change database definitions;
+- normalize terminology without evidence.
+
+---
+
+## 5. Consistency Validation Model
+
+Every comparison must identify:
+
+```text
+Subject:
+Domain:
+Source A:
+Source B:
+Authority of A:
+Authority of B:
+Expected Relationship:
+Definition in A:
+Definition in B:
+Comparison Result:
+Impact:
+Severity:
+Blocking:
+Evidence:
+Required Fix:
+```
+
+The comparison must evaluate both content and authority.
+
+---
+
+## 6. Comparison Results
+
+Use exactly one result per comparison:
+
+- `CONSISTENT`
+- `CONSISTENT AT DIFFERENT DETAIL LEVELS`
+- `MISSING IN SOURCE A`
+- `MISSING IN SOURCE B`
+- `DIRECT CONTRADICTION`
+- `SCOPE MISMATCH`
+- `VERSION MISMATCH`
+- `TERMINOLOGY MISMATCH`
+- `STALE SUPPORTING SOURCE`
+- `AUTHORITY CONFLICT`
+- `IMPLEMENTATION DRIFT`
+- `DOCUMENTATION DRIFT`
+- `NOT APPLICABLE`
+- `NOT VERIFIED`
+
+### CONSISTENT
+
+Both sources define compatible rules.
+
+### CONSISTENT AT DIFFERENT DETAIL LEVELS
+
+One source is more detailed, but both describe compatible behavior and the
+authority relationship is clear.
+
+### MISSING IN SOURCE A
+
+Source A should cover the subject but does not.
+
+### MISSING IN SOURCE B
+
+Source B should cover the subject but does not.
+
+### DIRECT CONTRADICTION
+
+The sources define mutually incompatible rules.
+
+### SCOPE MISMATCH
+
+The sources refer to different scopes without making the distinction clear.
+
+### VERSION MISMATCH
+
+The sources describe different versions of the same contract.
+
+### TERMINOLOGY MISMATCH
+
+Different names are used for the same concept or one name is used for different
+concepts.
+
+### STALE SUPPORTING SOURCE
+
+A supporting document has not been updated to match the current authority.
+
+### AUTHORITY CONFLICT
+
+Two sources claim equal or competing authority.
+
+### IMPLEMENTATION DRIFT
+
+Repository implementation differs from approved documentation.
+
+### DOCUMENTATION DRIFT
+
+A documentation artifact differs from the approved authoritative baseline.
+
+### NOT VERIFIED
+
+Available evidence was insufficient.
+
+`NOT VERIFIED` is never equivalent to `CONSISTENT`.
+
+---
+
+## 7. Consistency Versus Completeness
+
+Completeness and consistency are separate.
+
+### Example 1
+
+`database.md` fully defines:
+
+```text
+status enum = PENDING, APPROVED, ARCHIVED
+```
+
+`data-dictionary.md` fully defines:
+
+```text
+status enum = DRAFT, PUBLISHED, DELETED
+```
+
+Both documents may be complete.
+
+The system is inconsistent.
+
+### Example 2
+
+`architecture.md` states that a Place owns media.
+
+`database.md` defines the exact media foreign keys and constraints.
+
+This may be:
+
+`CONSISTENT AT DIFFERENT DETAIL LEVELS`
+
+provided the detailed model does not contradict the architecture.
+
+### Example 3
+
+`openapi.yaml` defines an endpoint.
+
+The API narrative document does not mention it.
+
+This may be:
+
+`MISSING IN SOURCE B`
+
+or
+
+`STALE SUPPORTING SOURCE`
+
+depending on which artifact is authoritative.
+
+---
+
+## 8. Authority-Aware Comparison
+
+Before declaring a contradiction, determine:
+
+- which source is authoritative;
+- whether both sources claim authority;
+- whether one source is supporting;
+- whether one source is historical;
+- whether one source is Draft;
+- whether version differences are intentional;
+- whether one source applies to a different scope.
+
+A lower-authority document contradicting a higher-authority document is normally
+documentation drift.
+
+Two equal-authority sources contradicting each other create an SSOT blocker.
+
+---
+
+## 9. Mandatory Comparison Graph
+
+The minimum comparison graph is:
+
+```text
+Architecture
+↔ ADR
+↔ Decision Register
+
+Architecture
+↔ Repository Standard
+↔ Module Documentation
+
+Database Specification
+↔ ERD
+↔ Data Dictionary
+↔ Entity Catalog
+↔ Migration Strategy
+↔ OpenAPI Schemas
+
+API Narrative
+↔ OpenAPI
+↔ Workflow
+↔ RBAC
+
+RBAC
+↔ Permission Matrix
+↔ Endpoint Permissions
+↔ Workflow Guards
+
+Security Policy
+↔ Authentication
+↔ Authorization
+↔ Audit Requirements
+
+Roadmap
+↔ Sprint Scope
+↔ Batch Scope
+↔ Frozen Documentation Scope
+
+Coding Standard
+↔ Naming Standard
+↔ Repository Standard
+↔ Glossary
+```
+
+Where repository implementation is in scope:
+
+```text
+Frozen Documentation
+↔ Repository
+↔ Migration
+↔ Tests
+```
+
+---
+
+## 10. Architecture and ADR Consistency
+
+Verify:
+
+- every major architecture decision has ADR coverage;
+- Accepted ADRs match the architecture;
+- rejected alternatives are not represented as active architecture;
+- Superseded ADRs are not treated as current;
+- architectural style matches;
+- technology choices match;
+- module boundaries match;
+- ownership rules match;
+- communication patterns match;
+- database ownership model matches;
+- media model matches;
+- revision strategy matches;
+- RBAC strategy matches;
+- deployment model matches.
+
+### Blocking examples
+
+- architecture says modular monolith; ADR says microservices;
+- architecture says TypeORM; Accepted ADR says Prisma;
+- architecture says Event is a peer aggregate; database docs model Event as a
+  Place subtype;
+- architecture says exclusive FK arc; ADR says generic owner_type/owner_id.
+
+---
+
+## 11. ADR and Decision Register Consistency
+
+Verify:
+
+- every active ADR appears in the Decision Register;
+- every Decision Register entry points to a valid ADR;
+- statuses match;
+- titles match;
+- supersession chains match;
+- implementation state matches;
+- affected domains match;
+- active decisions are identifiable;
+- no duplicate active decision exists.
+
+### Blocking examples
+
+- ADR-009 is Accepted, but the Decision Register marks it Proposed;
+- ADR-005 is Superseded, but the Decision Register marks it Active;
+- two active Decision Register entries govern the same subject differently.
+
+---
+
+## 12. Architecture and Repository Standard Consistency
+
+Compare:
+
+- top-level repository structure;
+- application boundaries;
+- package boundaries;
+- module layout;
+- shared-library policy;
+- import direction;
+- dependency rules;
+- naming;
+- ownership.
+
+### Example
+
+Architecture:
+
+```text
+Controllers must call Services.
+```
+
+Repository Standard:
+
+```text
+Controllers may access Repositories directly for simple reads.
+```
+
+Result:
+
+`DIRECT CONTRADICTION`
+
+---
+
+## 13. Architecture and Module Documentation Consistency
+
+For every module, verify:
+
+- module name;
+- purpose;
+- domain ownership;
+- owned entities;
+- public interface;
+- dependencies;
+- layer structure;
+- permission ownership;
+- workflow ownership;
+- API ownership.
+
+Report undocumented modules and modules assigned to conflicting domains.
+
+---
+
+## 14. Database, ERD, and Data Dictionary Consistency
+
+This is a mandatory high-depth comparison.
+
+For every entity or table, compare:
+
+- canonical name;
+- table name;
+- fields;
+- column names;
+- types;
+- lengths;
+- precision;
+- nullability;
+- defaults;
+- primary key;
+- foreign keys;
+- unique constraints;
+- check constraints;
+- indexes;
+- partial indexes;
+- spatial indexes;
+- full-text indexes;
+- relationships;
+- cardinality;
+- optionality;
+- cascade behavior;
+- soft delete;
+- audit fields;
+- versioning;
+- provenance;
+- verification fields.
+
+Every mismatch must be recorded.
+
+---
+
+## 15. Entity Count Consistency
+
+Establish one counting rule.
+
+Compare entity counts across:
+
+- entity catalog;
+- ERD;
+- Data Dictionary;
+- database specification;
+- architecture;
+- module documentation;
+- roadmap.
+
+Do not compare raw counts without reconciling:
+
+- join tables;
+- value objects;
+- views;
+- abstract entities;
+- satellite tables;
+- peer aggregates;
+- future entities;
+- deprecated entities.
+
+Report:
+
+```text
+Authoritative Entity Count:
+Counting Rule:
+Count by Source:
+Excluded Items:
+Mismatch:
+Impact:
+```
+
+An unresolved entity count mismatch in frozen scope is normally High and
+blocking.
+
+---
+
+## 16. Entity Name Consistency
+
+Verify canonical naming across:
+
+- architecture;
+- database;
+- ERD;
+- Data Dictionary;
+- OpenAPI;
+- workflow;
+- repository paths;
+- glossary.
+
+Examples of mismatches:
+
+- Place vs Location;
+- Business vs Vendor;
+- UserReview vs Review;
+- WikiRevision vs Revision;
+- PlaceSeo vs SeoMetadata.
+
+Determine whether the issue is:
+
+- synonym drift;
+- actual different entity;
+- old name;
+- table name versus domain name;
+- version difference.
+
+Do not normalize silently.
+
+---
+
+## 17. Field and Column Consistency
+
+For every externally or persistently relevant field, compare:
+
+- domain field name;
+- database column;
+- OpenAPI property;
+- request DTO property;
+- response property;
+- workflow reference;
+- naming convention.
+
+Example:
+
+```text
+Domain: eventId
+Database: event_id
+OpenAPI: event_id
+```
+
+This may be consistent when naming transformations are documented.
+
+Example:
+
+```text
+Database: event_id
+OpenAPI: eventId
+Coding Standard: request bodies must use snake_case
+```
+
+This is a casing contradiction.
+
+---
+
+## 18. Data Type Consistency
+
+Compare:
+
+- database types;
+- OpenAPI schema types;
+- format;
+- precision;
+- nullable behavior;
+- enum representation;
+- date/time representation;
+- currency representation;
+- geo representation.
+
+Examples:
+
+- UUID in database but integer in OpenAPI;
+- numeric price in database but string response without documented formatting;
+- timestamp with timezone in database but date-only schema in OpenAPI;
+- geography point in database but undefined geo object in API.
+
+---
+
+## 19. Relationship Consistency
+
+Verify:
+
+- one-to-one;
+- one-to-many;
+- many-to-many;
+- optionality;
+- ownership;
+- FK location;
+- cascade rules;
+- uniqueness;
+- exclusive arcs;
+- polymorphic ownership;
+- self-reference.
+
+Example:
+
+ERD:
+
+```text
+Place 1 — N Media
+```
+
+Database:
+
+```text
+media may reference Place, Event, Review, Post, or Wiki Revision
+```
+
+This may be consistent if the ERD shows only one branch of a broader exclusive
+arc and clearly states that scope.
+
+Otherwise it may be incomplete or contradictory.
+
+---
+
+## 20. Enum Consistency
+
+Compare exact enum definitions across:
+
+- database specification;
+- Data Dictionary;
+- OpenAPI;
+- workflow;
+- RBAC;
+- coding standard;
+- examples.
+
+Check:
+
+- enum name;
+- values;
+- casing;
+- order where relevant;
+- default;
+- deprecated values;
+- persistence value;
+- API value;
+- transitions.
+
+An unresolved enum casing mismatch required for code generation is a blocker.
+
+---
+
+## 21. Discriminator Consistency
+
+For polymorphic or variant models, compare:
+
+- discriminator name;
+- allowed values;
+- casing;
+- mapping;
+- database representation;
+- OpenAPI representation;
+- workflow use;
+- validation behavior.
+
+Examples:
+
+```text
+owner_type = PLACE
+```
+
+versus:
+
+```text
+owner_type = place
+```
+
+versus:
+
+```text
+type = Place
+```
+
+Do not treat these as equivalent unless transformation rules are authoritative.
+
+---
+
+## 22. Index and Constraint Consistency
+
+Compare documented indexes and constraints across:
+
+- database specification;
+- Data Dictionary;
+- migration policy;
+- performance documentation;
+- examples;
+- implementation migrations when inspected.
+
+Check:
+
+- index name;
+- indexed columns;
+- order;
+- uniqueness;
+- partial predicate;
+- GIST/GIN/BTREE type;
+- FTS expression;
+- check condition;
+- exclusive arc;
+- FK behavior.
+
+A missing documented index may be:
+
+- a documentation inconsistency before implementation;
+- implementation drift after implementation;
+- accepted deferral only when explicitly governed.
+
+---
+
+## 23. Migration Strategy Consistency
+
+Compare:
+
+- database documentation;
+- migration policy;
+- deployment policy;
+- rollback policy;
+- Sprint or Batch plan;
+- implementation scripts.
+
+Verify:
+
+- migration tool;
+- naming;
+- ordering;
+- forward migration;
+- rollback;
+- destructive-change rules;
+- data backfill;
+- transaction behavior;
+- PostGIS requirements;
+- seed behavior;
+- production execution.
+
+---
+
+## 24. API Narrative and OpenAPI Consistency
+
+Compare every approved endpoint.
+
+Verify:
+
+- base path;
+- version;
+- resource path;
+- HTTP method;
+- operation ID;
+- path parameters;
+- query parameters;
+- request body;
+- response body;
+- status codes;
+- auth;
+- permission;
+- pagination;
+- filtering;
+- sorting;
+- error model;
+- field casing;
+- examples.
+
+A narrative API document must not redefine the OpenAPI contract when OpenAPI is
+authoritative.
+
+---
+
+## 25. Base-Path Consistency
+
+Compare:
+
+- architecture;
+- API governance;
+- OpenAPI servers;
+- controller route prefixes;
+- frontend API client configuration;
+- deployment routing.
+
+Examples:
+
+```text
+/api
+```
+
+versus:
+
+```text
+/api/v1
+```
+
+Determine whether:
+
+- one is global prefix and one is version path;
+- one is outdated;
+- versioning is handled elsewhere;
+- there is a direct contract contradiction.
+
+An unresolved public base-path mismatch is normally High.
+
+---
+
+## 26. API Identifier Consistency
+
+Compare use of:
+
+- `{id}`;
+- `{slug}`;
+- `{place_id}`;
+- `{uuid}`;
+- composite identifiers.
+
+Verify:
+
+- path identifier;
+- entity uniqueness;
+- database constraints;
+- API description;
+- frontend usage;
+- workflow reference.
+
+Example:
+
+Narrative:
+
+```text
+GET /places/{id}
+```
+
+OpenAPI:
+
+```text
+GET /places/{slug}
+```
+
+This is a direct contradiction unless both operations are intentionally
+supported.
+
+---
+
+## 27. Request and Response Casing Consistency
+
+Compare:
+
+- coding standard;
+- OpenAPI;
+- DTO documentation;
+- frontend contract;
+- examples.
+
+Examples:
+
+```text
+place_id
+```
+
+versus:
+
+```text
+placeId
+```
+
+A documented transformation layer may make different internal and external
+casing consistent.
+
+Without an explicit rule, it is drift.
+
+---
+
+## 28. Response Envelope Consistency
+
+Compare:
+
+- API governance;
+- OpenAPI schemas;
+- endpoint examples;
+- frontend client expectations.
+
+Verify fields such as:
+
+- success;
+- data;
+- meta;
+- errors;
+- request_id;
+- timestamp;
+- version.
+
+A universal envelope in narrative documentation that is absent from OpenAPI is
+a contract mismatch.
+
+---
+
+## 29. Error Model Consistency
+
+Compare:
+
+- error codes;
+- HTTP statuses;
+- validation errors;
+- authorization errors;
+- not-found behavior;
+- conflict behavior;
+- rate-limit behavior;
+- internal errors.
+
+Every approved endpoint must use the authoritative error model.
+
+---
+
+## 30. OpenAPI and Entity Model Consistency
+
+For each exposed schema, compare:
+
+- property names;
+- types;
+- required fields;
+- nullable fields;
+- enums;
+- relationships;
+- nested objects;
+- identifiers;
+- timestamps;
+- geo;
+- media;
+- SEO;
+- verification metadata.
+
+OpenAPI does not need to expose every database field.
+
+Omissions are acceptable when the API projection is documented.
+
+Undocumented type contradictions are not acceptable.
+
+---
+
+## 31. RBAC and Permission Matrix Consistency
+
+Compare:
+
+- role catalog;
+- permission catalog;
+- permission matrix;
+- inheritance;
+- wildcard rules;
+- deny behavior;
+- scope behavior;
+- endpoint permission requirements;
+- workflow guards;
+- administrative operations.
+
+Examples:
+
+- endpoint requires `Place.Approve`, but permission catalog has no such
+  permission;
+- role matrix grants approval to Editor, while workflow grants it only to
+  Moderator;
+- docs say deny-by-default, but the permission model describes default allow.
+
+---
+
+## 32. RBAC and OpenAPI Consistency
+
+For every protected endpoint, verify:
+
+- authentication requirement;
+- permission requirement;
+- role requirement where applicable;
+- public/private classification;
+- admin-only behavior;
+- scope.
+
+OpenAPI may express permissions through custom extensions.
+
+If the project requires permission declarations but OpenAPI omits them, report a
+consistency gap.
+
+---
+
+## 33. Workflow and Enum Consistency
+
+Compare workflow state names against authoritative enums.
+
+Example:
+
+Workflow:
+
+```text
+PENDING → APPROVED → PUBLISHED
+```
+
+Database enum:
+
+```text
+DRAFT, ACTIVE, ARCHIVED
+```
+
+This is a contradiction unless a documented mapping exists.
+
+---
+
+## 34. Workflow and API Consistency
+
+Verify every state-changing API operation corresponds to a valid workflow
+transition.
+
+Examples:
+
+- approve;
+- reject;
+- publish;
+- archive;
+- verify;
+- restore;
+- delete;
+- assign role;
+- revoke role.
+
+Check:
+
+- source state;
+- target state;
+- permission;
+- side effects;
+- errors;
+- idempotency.
+
+---
+
+## 35. Workflow and RBAC Consistency
+
+For every transition, verify:
+
+- actor exists;
+- role exists;
+- permission exists;
+- scope exists;
+- guard matches the permission matrix;
+- deny behavior is clear.
+
+An undefined actor or permission is blocking.
+
+---
+
+## 36. Security Consistency
+
+Compare:
+
+- security governance;
+- authentication documentation;
+- authorization documentation;
+- OpenAPI security schemes;
+- RBAC;
+- workflow;
+- deployment;
+- logging;
+- audit requirements.
+
+Detect contradictions such as:
+
+- JWT documented as header token in one source and cookie-only in another;
+- password policy differs;
+- audit logging required in one source but explicitly deferred elsewhere;
+- security document requires rate limiting but API governance says optional;
+- sensitive fields differ across documents.
+
+---
+
+## 37. Audit Logging Consistency
+
+Compare:
+
+- ADR;
+- security policy;
+- privileged workflow;
+- database model;
+- operational requirements;
+- Sprint scope.
+
+Verify:
+
+- audit-log entity or service;
+- privileged actions;
+- append-only rule;
+- retention;
+- actor identity;
+- target identity;
+- timestamp;
+- metadata;
+- access controls.
+
+If audit logging is accepted architecture but missing from the frozen data
+contract, report a blocker.
+
+---
+
+## 38. Naming Consistency
+
+Compare naming across:
+
+- glossary;
+- coding standard;
+- repository standard;
+- database naming;
+- OpenAPI naming;
+- module names;
+- entity names;
+- permissions;
+- workflows;
+- environment variables.
+
+Check:
+
+- casing;
+- singular/plural;
+- prefixes;
+- suffixes;
+- abbreviations;
+- canonical terminology.
+
+---
+
+## 39. Repository Structure Consistency
+
+Compare:
+
+- architecture;
+- repository policy;
+- coding standard;
+- Sprint plan;
+- module documentation;
+- actual repository when inspected.
+
+Examples:
+
+- documentation says `apps/api`, repository uses `services/backend`;
+- documentation says feature modules own entities, repository places all
+  entities in a global folder;
+- documentation says shared package is framework-independent, supporting docs
+  define NestJS-specific dependencies.
+
+---
+
+## 40. Technology Stack Consistency
+
+Compare:
+
+- architecture;
+- ADR;
+- coding standard;
+- repository configuration;
+- package manifests;
+- deployment documentation.
+
+Check:
+
+- framework;
+- ORM;
+- database;
+- cache;
+- search engine;
+- frontend state library;
+- API client;
+- test framework;
+- package manager;
+- container runtime;
+- deployment target.
+
+A code dependency differing from frozen documentation is implementation drift.
+
+A supporting standard differing from an Accepted ADR is documentation drift.
+
+---
+
+## 41. Roadmap and Frozen Scope Consistency
+
+Compare:
+
+- product roadmap;
+- milestone plan;
+- Sprint plan;
+- Batch plan;
+- frozen documentation scope;
+- dependencies.
+
+Verify:
+
+- Sprint contains only approved modules;
+- dependencies are scheduled earlier;
+- deferred modules are not required by current scope;
+- roadmap terminology matches architecture;
+- Sprint acceptance criteria derive from frozen contracts.
+
+---
+
+## 42. Sprint and Batch Consistency
+
+Verify:
+
+- every Batch belongs to one Sprint;
+- Batch scope is a subset of Sprint scope;
+- Batch dependencies are satisfied;
+- Batch outputs map to Sprint deliverables;
+- acceptance criteria are compatible;
+- no Batch introduces undocumented architecture.
+
+---
+
+## 43. Scope Consistency
+
+A difference is not automatically a contradiction when documents cover
+different scopes.
+
+Record:
+
+- global scope;
+- module scope;
+- Sprint scope;
+- release scope;
+- future scope;
+- historical scope.
+
+Example:
+
+Global architecture defines five media ownership branches.
+
+Sprint 2 documentation implements only the Place branch.
+
+This may be consistent when the deferral is explicit and constraints do not
+contradict the full model.
+
+---
+
+## 44. Version Consistency
+
+Compare:
+
+- document versions;
+- ADR versions;
+- OpenAPI version;
+- database version;
+- freeze baseline;
+- release version;
+- repository branch and commit.
+
+Detect:
+
+- new document with old supporting files;
+- freeze certificate referencing outdated OpenAPI;
+- Decision Register referencing previous ADR state;
+- release plan targeting a different architecture version.
+
+---
+
+## 45. Historical and Archived Content
+
+Historical documents may intentionally differ from current authority.
+
+They must be:
+
+- clearly marked;
+- excluded from active authority;
+- referenced as history only;
+- not used for current implementation.
+
+Do not report historical difference as a contradiction unless current documents
+rely on it.
+
+---
+
+## 46. Derived Documentation
+
+Generated or derived documentation may differ in formatting.
+
+It must remain semantically equivalent to the source authority.
+
+Examples:
+
+- generated API docs from OpenAPI;
+- generated ERD from migrations;
+- generated SDK;
+- generated schema reference.
+
+If derived output differs from its source, report derived-artifact drift.
+
+---
+
+## 47. Different Detail Levels
+
+Two sources are consistent at different detail levels when:
+
+- the higher-level source defines intent or boundary;
+- the lower-level source defines exact implementation contract;
+- no statement conflicts;
+- the authority relationship is clear;
+- no missing decision is transferred between them.
+
+Example:
+
+Architecture:
+
+```text
+Places support geo search.
+```
+
+Database:
+
+```text
+location geography(Point, 4326), GIST index, radius query.
+```
+
+Result:
+
+`CONSISTENT AT DIFFERENT DETAIL LEVELS`
+
+---
+
+## 48. Direct Contradiction Test
+
+A direct contradiction exists when both statements cannot simultaneously be
+true in the same scope and version.
+
+Examples:
+
+```text
+User accounts are active immediately.
+```
+
+versus:
+
+```text
+User accounts remain inactive until email verification.
+```
+
+```text
+Media belongs to exactly one of five owner branches.
+```
+
+versus:
+
+```text
+Media may belong to multiple owners simultaneously.
+```
+
+```text
+All request bodies use snake_case.
+```
+
+versus:
+
+```text
+CreatePlaceRequest uses camelCase.
+```
+
+---
+
+## 49. Missing Coverage Test
+
+A missing definition is not always a contradiction.
+
+Example:
+
+Architecture names a module.
+
+Module documentation is absent.
+
+This is:
+
+`MISSING IN SOURCE B`
+
+not necessarily a contradiction.
+
+However, it may still block freeze due to incompleteness.
+
+---
+
+## 50. Stale Supporting Source Test
+
+A supporting document is stale when:
+
+- an authority changed;
+- the supporting document still describes the old rule;
+- the document is still presented as current;
+- the mismatch affects understanding.
+
+Example:
+
+Accepted ADR changes media ownership.
+
+README still describes the old generic polymorphic model.
+
+Result:
+
+`STALE SUPPORTING SOURCE`
+
+---
+
+## 51. Implementation Drift Test
+
+When repository inspection is part of the review, compare code against frozen
+documentation.
+
+Implementation drift includes:
+
+- undocumented endpoint;
+- missing documented endpoint;
+- wrong request casing;
+- missing permission guard;
+- entity mismatch;
+- missing index;
+- workflow mismatch;
+- wrong module boundary;
+- unapproved dependency.
+
+Implementation drift does not automatically mean documentation must change.
+
+The normal correction target is implementation.
+
+---
+
+## 52. Documentation Drift Test
+
+Documentation drift occurs when a lower-authority document differs from the
+approved authority.
+
+Examples:
+
+- README differs from OpenAPI;
+- coding guide differs from Accepted ADR;
+- module guide differs from database specification;
+- example uses old enum values.
+
+The lower-authority document must be synchronized through change control.
+
+---
+
+## 53. Authority Conflict Test
+
+An authority conflict exists when:
+
+- two documents claim to be canonical;
+- governance does not establish priority;
+- both define incompatible contracts;
+- neither is clearly superseded;
+- both apply to the same scope and version.
+
+Authority conflict is normally Critical and blocking.
+
+---
+
+## 54. Severity Model
+
+### Critical
+
+Use when consistency failure invalidates SSOT or architecture.
+
+Examples:
+
+- conflicting Accepted ADRs;
+- competing canonical database schemas;
+- two authoritative entity models;
+- contradictory security architecture.
+
+### High
+
+Use when inconsistency blocks deterministic implementation.
+
+Examples:
+
+- entity count mismatch;
+- undefined enum mapping;
+- OpenAPI and database type contradiction;
+- RBAC and workflow permission contradiction;
+- base-path mismatch.
+
+### Medium
+
+Use when supporting documentation is stale or incomplete but authority remains
+clear.
+
+### Low
+
+Use for editorial terminology or reference inconsistencies.
+
+### Informational
+
+Use for harmless differences in presentation.
+
+---
+
+## 55. Blocking Rules
+
+An inconsistency blocks freeze when:
+
+- both sources are authoritative;
+- implementation cannot satisfy both definitions;
+- code generation requires a choice;
+- data integrity is affected;
+- public API contract is affected;
+- authorization behavior is affected;
+- workflow behavior is affected;
+- security behavior is affected;
+- migration behavior is affected;
+- the freeze baseline cannot be versioned coherently.
+
+---
+
+## 56. Non-Blocking Inconsistencies
+
+Examples:
+
+- formatting differences;
+- different example values with identical schema;
+- missing optional diagram;
+- historical terminology in archived content;
+- explanatory detail absent from supporting document;
+- capitalization differences in prose that do not affect identifiers.
+
+Every finding must still be recorded.
+
+---
+
+## 57. Required Fix Guidance
+
+Required fixes must identify the correction category without inventing design.
+
+### Good
+
+```text
+Reconcile the account-activation rule across workflow.md and auth.md using the
+approved authority and update the lower-authority artifact.
+```
+
+### Bad
+
+```text
+Set is_active to false.
+```
+
+The second statement prescribes implementation unless authority already proves
+that exact rule.
+
+### Good
+
+```text
+Establish one canonical entity count and synchronize the ERD, Data Dictionary,
+and entity catalog.
+```
+
+### Bad
+
+```text
+Use 42 entities.
+```
+
+---
+
+## 58. Consistency Finding Format
+
+Every finding must contain:
+
+```text
+ID:
+Domain:
+Subject:
+Source A:
+Source B:
+Authority A:
+Authority B:
+Scope:
+Version:
+Definition A:
+Definition B:
+Result:
+Impact:
+Severity:
+Blocking:
+Evidence:
+Required Fix:
+```
+
+---
+
+## 59. Consistency Matrix
+
+Use:
+
+| ID | Domain | Source A | Source B | Subject | Result | Severity | Blocking |
+|---|---|---|---|---|---|---|---:|
+
+---
+
+## 60. Domain Summary
+
+Use:
+
+| Domain | Comparisons | Consistent | Missing | Contradictions | Authority Conflicts | Status |
+|---|---:|---:|---:|---:|---:|---|
+
+---
+
+## 61. Mandatory Domain Status
+
+Every mandatory domain must receive:
+
+- `PASS`
+- `PASS WITH NON-BLOCKING FINDINGS`
+- `FAIL`
+- `BLOCKED`
+- `NOT FOUND`
+- `NOT VERIFIED`
+- `NOT APPLICABLE`
+
+---
+
+## 62. Consistency Phase Decision
+
+Issue exactly one:
+
+- `CONSISTENCY PASS`
+- `CONSISTENCY PASS WITH NON-BLOCKING FINDINGS`
+- `CONSISTENCY FAIL`
+- `CONSISTENCY BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 63. Pass Criteria
+
+Issue `CONSISTENCY PASS` only when:
+
+- all mandatory comparisons are complete;
+- no direct contradiction exists;
+- no authority conflict exists;
+- no implementation-significant mismatch exists;
+- supporting artifacts align with authority;
+- versions are compatible.
+
+---
+
+## 64. Pass With Non-Blocking Findings
+
+Use when:
+
+- all authoritative contracts are compatible;
+- only editorial, supporting, historical, or out-of-scope mismatches remain;
+- code generation is deterministic;
+- all findings are documented.
+
+---
+
+## 65. Fail Criteria
+
+Issue `CONSISTENCY FAIL` when:
+
+- one or more implementation-significant contradictions remain;
+- authority and supporting documents diverge materially;
+- data, API, RBAC, or workflow contracts disagree;
+- code generation would require choosing between sources.
+
+---
+
+## 66. Blocked Criteria
+
+Issue `CONSISTENCY BLOCKED` when:
+
+- source documents cannot be accessed;
+- authority cannot be determined;
+- version scope is unknown;
+- required diagrams or external references cannot be inspected;
+- the comparison set is incomplete.
+
+---
+
+## 67. Output Structure
+
+The report must contain:
+
+1. Executive Summary
+2. Scope
+3. Authority Model
+4. Comparison Method
+5. Architecture and ADR Findings
+6. ADR and Decision Register Findings
+7. Architecture and Repository Findings
+8. Database, ERD, and Data Dictionary Findings
+9. Entity and Enum Findings
+10. API and OpenAPI Findings
+11. RBAC and Workflow Findings
+12. Security Findings
+13. Naming and Terminology Findings
+14. Roadmap, Sprint, and Batch Findings
+15. Version Findings
+16. Implementation Drift, when inspected
+17. Documentation Drift
+18. Authority Conflicts
+19. Blocking Findings
+20. Required Fixes
+21. Consistency Phase Decision
+
+---
+
+## 68. Evidence Requirements
+
+Every comparison result must cite:
+
+- exact source paths;
+- sections;
+- keys;
+- table rows;
+- schema paths;
+- ADR IDs;
+- Decision IDs;
+- exact values.
+
+Example:
+
+```text
+docs/workflow/workflow.md — WF-01:
+account remains inactive until verification.
+
+apps/api/src/modules/auth/auth.service.ts:
+register sets isActive to true.
+
+Result: IMPLEMENTATION DRIFT.
+```
+
+Do not rely on general statements such as:
+
+```text
+The documents appear inconsistent.
+```
+
+---
+
+## 69. Tooling Guidance
+
+Where available, use:
+
+- structured YAML parsing;
+- OpenAPI validation;
+- Markdown section extraction;
+- entity-name extraction;
+- enum comparison;
+- reference graph analysis;
+- schema diff;
+- repository search;
+- migration inspection.
+
+Tool absence must be disclosed.
+
+Manual inspection must not be represented as automated proof.
+
+---
+
+## 70. Self-Verification
+
+Before publishing:
+
+- verify all mandatory comparison pairs were evaluated;
+- verify authority levels were identified;
+- verify scope and version were considered;
+- verify different detail levels were not misclassified as contradictions;
+- verify missing coverage was distinguished from contradiction;
+- verify historical documents were treated correctly;
+- verify Draft and Superseded sources were not accepted as current authority;
+- verify every blocker affects frozen-scope implementation;
+- verify no conflict was resolved by assumption;
+- verify every finding has evidence;
+- verify no files were modified;
+- verify exactly one phase decision is present.
+
+---
+
+## 71. Success Criteria
+
+This policy succeeds when every authoritative and supporting document in the
+frozen scope describes one coherent, compatible, versioned system.
+
+The final standard is:
+
+> Claude Code, human developers, reviewers, and test agents can read any related
+> documentation set and derive the same architecture, data model, API contract,
+> authorization model, workflow behavior, and implementation expectations
+> without encountering contradictory definitions or choosing between competing
+> sources.

@@ -1,0 +1,245 @@
+schema_version: "1.0"
+
+id: place
+name: Place Domain
+status: active
+execution_state: implementation_in_progress   # PLACE-001 analysis + PLACE-002 (GAP-07) completed 2026-07-22
+closure_classification: INCOMPLETE            # GAP-06 open; no DB-backed validation; GAP-05/10 parked
+architecture_note: >-
+  Place is the canonical aggregate (ADR-001). Hotel/Restaurant/Tour are satellite
+  extensions keyed by place_id (ADR-002), classified by category. Business ownership is a
+  claim/membership overlay (business_claims/business_members), not a business_id column.
+
+business_purpose: >-
+  Place is the core entity of PhuQuocHub (ADR-001): stable location data plus
+  fast-read caches. It anchors discovery (list/detail/map/search), geo queries,
+  media, contacts, prices, reviews, contributions and the business-type
+  extensions (hotels/restaurants/tours).
+
+repository_paths:
+  api_module: apps/api/src/modules/places
+  entity: apps/api/src/modules/places/entities/place.entity.ts
+  satellites:
+    - apps/api/src/modules/places/entities/place-faq.entity.ts
+    - apps/api/src/modules/places/entities/place-seo.entity.ts
+    - apps/api/src/modules/places/entities/place-ai-summary.entity.ts
+  enums: apps/api/src/modules/places/place.enums.ts
+  dto: apps/api/src/modules/places/dto/places.dto.ts
+  repository: apps/api/src/modules/places/repositories/places.repository.ts
+  service: apps/api/src/modules/places/places.service.ts
+  controller: apps/api/src/modules/places/places.controller.ts
+  mapper: apps/api/src/modules/places/places.mapper.ts
+  migration: apps/api/src/core/database/migrations/1720000400000-InitPlaces.ts
+  web_ui: "apps/web/src/app/(public)/places/ + apps/web/src/modules/places/"
+
+known_entities:
+  - "places (geography(Point,4326), soft-delete, status + verification_status)"
+  - place_faqs
+  - place_seo
+  - place_ai_summary
+  - "media / contacts / price_history (polymorphic, owner_type='place')"
+
+known_apis:
+  - "GET /api/places (public list; offset page/limit; published-only)"
+  - "GET /api/places/:id/revisions (public)"
+  - "GET /api/places/:slug (public detail; published-only, 404 otherwise)"
+  - "POST /api/places (Place.Create → status pending)"
+  - "PATCH /api/places/:id (Place.Edit.Managed)"
+  - "DELETE /api/places/:id (Place.Archive → soft delete)"
+  - "POST /api/places/:id/approve (Place.Approve → published)"
+  - "GET /api/geo/nearby, /api/geo/bbox (geo module → places repo)"
+  - "GET /api/search (search module → places FTS)"
+
+known_consumers:
+  - apps/api/src/modules/geo        # nearby, bbox clusters
+  - apps/api/src/modules/search     # full-text search
+  - apps/api/src/modules/revisions  # place revision history
+  - "apps/web (places list/detail/map/search pages)"
+
+persistence_dependencies:
+  database: "PostgreSQL + PostGIS (geography(Point,4326))"
+  orm: "TypeORM (synchronize:false)"
+  extensions_required: [postgis, unaccent, pg_trgm, pgcrypto]
+  functions_required: [immutable_unaccent]
+
+migration_dependencies:
+  - 1720000000000-InitExtensions
+  - 1720000200000-InitCategories
+  - 1720000100000-InitRbacAndUsers
+  - 1720000400000-InitPlaces
+  - 1720000700000-InitWikiRevisions
+  - 1720000900000-SeedInitialPlaces
+  - 1720001600000-SeedPlacesExpansion
+  - 1720001900000-AddPlacesStatusPartialIndex   # PLACE-003; authored, NOT applied to any DB
+
+shared_type_dependencies:
+  - "@phuquochub/shared-types (ApiSuccess/ApiPaginated/PaginationMeta + src/place.ts: GeoPoint, PlaceCard, PlaceDetail, satellites, value unions — added by PLACE-005)"
+  - "@phuquochub/utils (slugify) — unlinked on FAT32"
+
+frontend_dependencies:
+  - "apps/web/src/modules/places/types.ts (duplicated PlaceCard/PlaceDetail — drift risk)"
+  - "apps/web/src/modules/places/api/places.api.ts (listPlaces/getPlace)"
+
+testing_surface:
+  present:
+    - apps/api/src/modules/places/places.mapper.spec.ts
+    - apps/api/src/modules/places/places-detail.mapper.spec.ts
+    - apps/api/src/modules/places/repositories/places.repository.spec.ts
+    - apps/api/src/modules/places/dto/places.dto.spec.ts
+    - apps/api/src/core/database/migrations/__tests__/1720001900000-AddPlacesStatusPartialIndex.spec.ts
+    - apps/api/src/modules/places/places.service.spec.ts       # PLACE-008, 18 specs
+    - apps/api/src/modules/places/places.controller.spec.ts    # PLACE-009, 23 specs
+  missing:
+    - "e2e assertions (self-skip without seed; needs Postgres/PostGIS/Redis — Docker not installed)"
+    - "guard/PDP enforcement for Place routes (declarations pinned by PLACE-009; behaviour is authz module's own coverage)"
+    - "e2e assertions (self-skip without seed; needs Postgres/PostGIS/Redis — Docker not installed)"
+    - "DB-backed proof that idx_places_status_active is created and chosen (EXPLAIN) — needs Docker"
+  executed_this_session: true    # 2026-07-22: jest places.dto 12/12, geo.dto 9/9, migrations 11/11, eslint + tsc exit 0
+
+deployment_status: not_started   # no evidence of any deploy/canary/hypercare
+
+known_gaps:                      # source: BUILD_001 gap register
+  - { id: GAP-05/10, priority: P1, summary: "openapi listPlaces declares status/sort/cursor; impl uses offset page/limit (needs owner adjudication)", status: parked }
+  - { id: GAP-15, priority: P2, summary: "Prisma model vs TypeORM runtime dual-source; packages/database empty" }
+
+resolved_gaps:
+  - { id: GAP-13, by: PLACE-007, date: "2026-07-22", summary: "getCardBySlug REMOVED. Four-pass repository-wide sweep found zero consumers (incl. the exported PlacesRepository surface); tsc exit 0 confirms no compile-time caller. Removal chosen over adding a status filter because getCardById deliberately omits it for moderation reads. jest places 51/51, GAP-02/04 regression specs unmodified." }
+  - { id: GAP-14, by: PLACE-006, date: "2026-07-22", summary: "opening_hours validated against places.md §4 via @IsOpeningHours() on both write DTOs. 18 specs, 30/30 green, mutation check fails 9 without it. SSOT example passes verbatim; unknown keys tolerated per openapi additionalProperties:true; open<close not enforced (overnight ranges legitimate). No seeded data invalidated. Response type still untyped — F-20." }
+  - { id: GAP-11, by: PLACE-005, date: "2026-07-22", summary: "Place response types declared once in packages/shared-types/src/place.ts; apps/api mapper imports + re-exports, apps/web types.ts is a pure re-export. Wire payload unchanged (mapper specs passed UNMODIFIED, jest places 33/33); apps/api + apps/web tsc exit 0. Findings F-17 (openapi PlaceCard omits status/score), F-18 (row verification_status typed string), F-19 (Date vs string timestamps) raised." }
+  - { id: F-33, by: PLACE-019, date: "2026-07-23", summary: "PlacesRepository.bbox() REMOVED — zero consumers across a re-run four-pass sweep (bare identifier, dynamic bracket access, all 'bbox' identifiers, all specs); GeoService.bbox calls bboxClusters (geo.service.ts:40). Regression spec pins the removal; compiled dist exposes 13 async methods with bbox absent. Same class as GAP-13, no security trap (it filtered status='published'). jest 210/210, tsc + nest build exit 0." }
+  - { id: F-32, by: PLACE-015, date: "2026-07-23", summary: "searchFullText ORDER BY score DESC, p.id ASC — the last OFFSET-paginated query over a non-unique key. GAP-12's defect on the live public /search endpoint. 3 specs; mutation check reproduced the defect (4 distinct rows across two pages instead of 6). jest places 97/97, jest search 3/3 UNMODIFIED, eslint + tsc exit 0. searchCount unchanged and pinned. No index created — F-15." }
+  - { id: GAP-12, by: PLACE-004, date: "2026-07-22", summary: "list() page query now ORDER BY rating_avg DESC NULLS LAST, created_at DESC, id ASC — unique final key makes LIMIT/OFFSET pagination deterministic. 4 specs (11/11 green), mutation-checked. Caller-visible ordering unchanged. No supporting index created — F-15." }
+  - { id: GAP-06, by: PLACE-003, date: "2026-07-22", summary: "Migration 1720001900000-AddPlacesStatusPartialIndex creates idx_places_status_active = BTREE(status) WHERE deleted_at IS NULL, per places.md §3. 5 migration specs; jest migrations 11/11, eslint + tsc exit 0. NOTE: implemented_not_executed — never applied to a database, and no EXPLAIN evidence that the planner uses it." }
+  - { id: "GAP-02/04", by: BUILD_002, summary: "unpublished no longer exposed via detail/list status; regression specs present" }
+  - { id: GAP-07, by: PLACE-002, date: "2026-07-22", summary: "Phú Quốc coordinate bounds enforced on GeoPointDto/NearbyQueryDto/BboxQueryDto + radius @Max(50000); 21 specs green (12 places.dto, 9 geo.dto), eslint + tsc exit 0. Bbox constant remains PROVISIONAL pending owner confirmation." }
+
+known_risks:
+  - "Phú Quốc bbox is PROVISIONAL — derived from seed coordinates, not an authoritative source; owner confirmation required before any release claim"
+  - "Contract authority unresolved for list params (openapi vs implementation) — GAP-05/10 parked"
+  - "No DB-backed validation possible: Docker not installed; PostGIS/SRID/spatial-index behavior and the e2e suite remain unverified"
+  - "Node is a portable extract, not on system PATH; @phuquochub/* in node_modules are copies, not workspace symlinks (FAT32) and go stale if packages/* change"
+  - "Repository is not under version control (no .git) — no task can produce a diff-verified scope proof"
+
+evidence_references:
+  - delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md
+  - delivery/sprint-01-core-data/BUILD_002_PLACE_PRIORITY_REMEDIATION.md
+  - docs/data/modules/places.md
+  - docs/api/api.md
+  - docs/api/openapi.yaml
+
+next_task: none        # PLACE-019 completed 2026-07-23; awaiting task authorization
+
+place_019_status: >-
+  COMPLETED 2026-07-23 — PARTIALLY_REMEDIATED. Owner-authorized pre-BUILD readiness operation,
+  NOT a BUILD task. G-1 (unparseable project-registry.yaml), G-2 (PLACE-001 run_status schema
+  drift), G-3 (three stale gate comments — VALUES unchanged) and F-33 (consumerless
+  PlacesRepository.bbox() removed, pinned by a regression spec, verified absent from the compiled
+  artifact) are all RESOLVED. `nest build` exit 0 for the first time: 120 files, dist/main.js
+  matching start:prod — build reproducibility is now PROVEN FOR COMPILATION, while production
+  startup remains NOT VERIFIED (no service started). Governance validation 2 failures -> 0;
+  jest 210/210; tsc + eslint exit 0. F-3 PARTIALLY CLEARED only (Git work tree exists but there
+  is NO COMMIT, hence no rollback point; safe.directory exception not set because global config
+  changes were outside the authorization). F-2 OPEN and untouched. Both still block BUILD.
+  See reports/PLACE-019-pre-build-readiness-report.md and
+  evidence/PLACE-019-pre-build-readiness-evidence-index.md.
+
+place_016_to_018_status: >-
+  COMPLETED 2026-07-23 — the three owner-approved remediations, all implemented AND validated.
+  PLACE-016 (OD-F-1/F1-C): hard rejection on the PROVISIONAL bbox removed from all six DTO fields;
+  global @IsNumber/@Min/@Max kept and now the only rejection (7 new specs: lat 91, lng 181, NaN,
+  non-numeric); PlacesService.create/update emit a structured
+  `place.coordinate.outside_provisional_bounds` warning (5 specs assert the payload); geo READ paths
+  deliberately silent; PHU_QUOC_BOUNDS byte-unchanged and NO replacement coordinates invented;
+  mutation-checked. PLACE-017 (OD-F-6/F6-A): openapi listPlaces, api.md §6/§11 and Meta reconciled
+  with runtime, DOCUMENTATION ONLY (105/105 unchanged proves it); status/sort/cursor deprecated with
+  HTTP-400 notes rather than deleted; verified by a contract check that derives the runtime side from
+  DTO source. PLACE-018 (OD-F-17/F17-D): `status` documented on PlaceCard with the pre-existing
+  enum, `score` removed from the public contract, payload byte-identical both ways; PlaceCardRow.score
+  KEPT after re-verification found search.service.ts:24 consumes it.
+  F-1, F-6 and F-17 release_blocker_status all OPEN -> CLEARED on conditions pre-committed BEFORE
+  execution. Two release blockers remain and neither is fixable in-repo: F-2 (no Docker) and
+  F-3 (no version control).
+
+place_015_status: >-
+  COMPLETED 2026-07-23. F-32 RESOLVED: searchFullText's ORDER BY gained the unique final key
+  `p.id ASC`, closing the last query in the repository that paginated with OFFSET over a
+  non-unique sort key — the GAP-12 defect on the live public /search endpoint. 3 specs; jest
+  places 97/97, jest search 3/3 with search.service specs UNMODIFIED, eslint + tsc exit 0. The
+  mutation check reproduced the defect exactly: without the tie-breaker, two pages over six
+  score-tied rows yielded 4 distinct rows instead of 6. searchCount needs no change (no ORDER BY;
+  ordering cannot affect a cardinality) and is now pinned by a spec. openapi /search declares no
+  ordering guarantee ⇒ quality fix, not contract fix. Determinism is proven structurally and by
+  simulation, NOT against PostgreSQL. See reports/PLACE-015-search-ordering-report.md and
+  evidence/PLACE-015-search-ordering-evidence-index.md.
+
+place_014_status: >-
+  COMPLETED 2026-07-22. F-16 reclassified rather than blanket-fixed: nearby() resolved with a
+  unique tie-breaker (mutation-checked, 94/94); bbox() closed as not-applicable because it has NO
+  consumer (F-33); bboxClusters() reclassified as needing a PRODUCT decision on truncation policy
+  (F-34). The analysis also uncovered F-32 — searchFullText paginates with OFFSET over a
+  non-unique ts_rank score, i.e. the GAP-12 defect on a live user-facing endpoint — now scheduled
+  as PLACE-015. Determinism is proven structurally and by simulation, NOT against PostgreSQL.
+  See reports/PLACE-014-geo-ordering-analysis.md and
+  evidence/PLACE-014-geo-ordering-evidence-index.md.
+
+place_010_to_013_status: >-
+  PLACE-010 (release-readiness assessment): NOT READY FOR RELEASE. 13 gates classified, none
+  proven; F-1..F-28 consolidated into 5 BLOCKS_RELEASE / 18 NON_BLOCKING / 5 RESOLVED.
+  PLACE-011: F-18 resolved — row typed against the shared union, unchecked cast removed.
+  PLACE-012: F-19 + F-20 resolved — OpeningHours type declared, timestamps match the wire type,
+  emitted JSON unchanged. PLACE-013: F-12 (verified pre-existing) + F-23 resolved — stale dist/
+  removed after regenerability was proven. All 103 specs green throughout; no gate upgraded.
+  The five release blockers are unchanged and all sit OUTSIDE repository control: install Docker,
+  put the repo under version control, and get owner adjudication on the PROVISIONAL Phú Quốc
+  bbox plus the two openapi-vs-implementation divergences (GAP-05/10 and PlaceCard status/score).
+
+place_009_status: >-
+  COMPLETED 2026-07-22. Controller route boundary pinned (23 specs; 92/92 module-wide), no
+  production change. Asserts DECLARED metadata, not guard execution. See
+  reports/PLACE-009-controller-tests-report.md and
+  evidence/PLACE-009-controller-tests-evidence-index.md.
+
+place_008_status: >-
+  COMPLETED 2026-07-22. PlacesService unit-covered (18 specs, 69/69 module-wide), no production
+  change. All collaborators are mocked, so this proves call correctness — NOT that the SQL is
+  right, that audit events reach a store, or that revisions persist. See
+  reports/PLACE-008-service-tests-report.md and evidence/PLACE-008-service-tests-evidence-index.md.
+
+place_007_status: >-
+  COMPLETED 2026-07-22. GAP-13 resolved by removal. Static evidence only — no VCS history and
+  no running system, so a reflective invocation could not be ruled out empirically. See
+  reports/PLACE-007-dead-code-report.md and evidence/PLACE-007-dead-code-evidence-index.md.
+
+place_006_status: >-
+  COMPLETED 2026-07-22. GAP-14 resolved at the DTO layer for both write paths. Enforced on new
+  writes only (F-21); the shared response type remains untyped (F-20). See
+  reports/PLACE-006-opening-hours-report.md and evidence/PLACE-006-opening-hours-evidence-index.md.
+
+place_005_status: >-
+  COMPLETED 2026-07-22. GAP-11 resolved: @phuquochub/shared-types is now the single source for
+  Place response types, consumed by apps/api and apps/web. Wire contract unchanged, proven by
+  unmodified mapper specs. NOTE: node_modules/@phuquochub/shared-types is a FAT32 COPY, not a
+  symlink — every future edit to packages/shared-types must be followed by `npm run build` and
+  a re-copy, or both apps type-check against stale declarations. See
+  reports/PLACE-005-shared-types-report.md and evidence/PLACE-005-shared-types-evidence-index.md.
+
+place_004_status: >-
+  COMPLETED 2026-07-22. GAP-12 resolved: list() ORDER BY gained the unique tie-breaker
+  `p.id ASC`. jest places.repository 11/11, eslint + tsc exit 0, and a mutation check proved
+  the new specs actually constrain the behaviour. No index was created (F-15). See
+  reports/PLACE-004-ordering-report.md and evidence/PLACE-004-ordering-evidence-index.md.
+
+place_003_status: >-
+  COMPLETED 2026-07-22. GAP-06 resolved at the repository level: forward-only migration
+  1720001900000-AddPlacesStatusPartialIndex creates idx_places_status_active on places
+  (BTREE status WHERE deleted_at IS NULL), reversible via down(). Three declared validation
+  commands executed green (jest migrations 11/11, eslint exit 0, tsc exit 0). AC1..AC6 PASS,
+  AC7 PASS. The migration has NOT been applied to any database and no EXPLAIN evidence exists.
+  See reports/PLACE-003-migration-report.md and evidence/PLACE-003-migration-evidence-index.md.
+
+place_002_status: >-
+  COMPLETED 2026-07-22. GAP-07 resolved: Phú Quốc coordinate bounds on
+  GeoPointDto/NearbyQueryDto/BboxQueryDto plus radius @Max(50000). All four mandatory
+  validation commands executed green (jest 12/12 + 9/9, eslint exit 0, tsc exit 0).
+  AC1..AC5 all PASS. See reports/PLACE-002-implementation-report.md and
+  evidence/PLACE-002-evidence-index.md (VO-5..VO-12).

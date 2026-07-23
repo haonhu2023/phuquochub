@@ -1,0 +1,607 @@
+# Milestone Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+Release Management
+
+Project Management
+
+---
+
+# Purpose
+
+This document defines the milestone policy
+for the PhuQuocHub project.
+
+Milestones provide measurable checkpoints
+throughout the software lifecycle.
+
+Every Sprint contributes
+to one or more milestones.
+
+No milestone may be declared complete
+without satisfying its acceptance criteria.
+
+---
+
+# Core Principle
+
+A milestone is not based on time.
+
+A milestone is based on completed outcomes.
+
+Never declare completion
+because a date has arrived.
+
+Declare completion
+only when evidence exists.
+
+---
+
+# Project Lifecycle
+
+Documentation
+
+↓
+
+Documentation Freeze
+
+↓
+
+Sprint Planning
+
+↓
+
+Implementation
+
+↓
+
+Sprint Acceptance
+
+↓
+
+Milestone Review
+
+↓
+
+Release Candidate
+
+↓
+
+Production Gate
+
+↓
+
+Production
+
+↓
+
+Maintenance
+
+---
+
+# Milestone Hierarchy
+
+Project
+
+↓
+
+Release
+
+↓
+
+Milestone
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Task
+
+Every lower level
+inherits requirements
+from the level above.
+
+---
+
+# Official Milestones
+
+M0
+
+Documentation Freeze
+
+M1
+
+Core Infrastructure
+
+M2
+
+Places Platform
+
+M3
+
+Content Platform
+
+M4
+
+Community Platform
+
+M5
+
+Growth Platform
+
+M6
+
+Production Ready
+
+M7
+
+General Availability
+
+---
+
+# M0 — Documentation Freeze
+
+Objective
+
+Freeze architecture
+and establish SSOT.
+
+Required
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Coding Standard
+
+PASS
+
+Output
+
+DOCUMENTATION FROZEN
+
+---
+
+# M1 — Core Infrastructure
+
+Objective
+
+Build the application foundation.
+
+Includes
+
+Authentication
+
+RBAC
+
+Users
+
+Configuration
+
+Logger
+
+Database
+
+Redis
+
+Docker
+
+CI
+
+Acceptance
+
+Sprint 1 accepted
+
+No architecture drift
+
+CI green
+
+Migration verified
+
+---
+
+# M2 — Places Platform
+
+Objective
+
+Deliver the geographic foundation.
+
+Includes
+
+Places
+
+Geo
+
+Categories
+
+Search
+
+Map
+
+Nearby
+
+Acceptance
+
+Search operational
+
+Geo queries verified
+
+Indexes verified
+
+OpenAPI complete
+
+---
+
+# M3 — Content Platform
+
+Objective
+
+Deliver tourism content.
+
+Includes
+
+Hotels
+
+Restaurants
+
+Tours
+
+Events
+
+Media
+
+SEO
+
+Acceptance
+
+CRUD complete
+
+Search integrated
+
+SEO metadata verified
+
+Media workflow functional
+
+---
+
+# M4 — Community Platform
+
+Objective
+
+Enable user-generated content.
+
+Includes
+
+Wiki
+
+Reviews
+
+Verification
+
+Bookmarks
+
+Favorites
+
+User Profiles
+
+Acceptance
+
+Moderation workflow complete
+
+Revision history verified
+
+Permission matrix verified
+
+---
+
+# M5 — Growth Platform
+
+Objective
+
+Support growth
+and business analytics.
+
+Includes
+
+Notifications
+
+Analytics
+
+Recommendations
+
+AI Summary
+
+SEO Automation
+
+Acceptance
+
+Background jobs verified
+
+Analytics dashboards functional
+
+AI outputs validated
+
+---
+
+# M6 — Production Ready
+
+Objective
+
+Prepare for public deployment.
+
+Includes
+
+Performance
+
+Security
+
+Monitoring
+
+Logging
+
+Backups
+
+Disaster Recovery
+
+Acceptance
+
+Production Gate PASS
+
+Performance PASS
+
+Security PASS
+
+Monitoring active
+
+Rollback tested
+
+---
+
+# M7 — General Availability
+
+Objective
+
+Official public launch.
+
+Acceptance
+
+Production stable
+
+Monitoring healthy
+
+Critical bugs resolved
+
+Documentation complete
+
+Support process established
+
+---
+
+# Milestone Acceptance Criteria
+
+Every milestone requires
+
+Architecture PASS
+
+Documentation PASS
+
+Implementation PASS
+
+Testing PASS
+
+Security PASS
+
+Performance PASS
+
+Sprint Acceptance PASS
+
+Production Gate PASS
+(if applicable)
+
+---
+
+# Milestone Review
+
+Every milestone review must include
+
+Executive Summary
+
+Objectives Achieved
+
+Deliverables
+
+Architecture Compliance
+
+Documentation Compliance
+
+Risk Assessment
+
+Technical Debt
+
+Outstanding Work
+
+Recommendation
+
+Evidence
+
+---
+
+# Milestone Status
+
+Allowed values
+
+NOT STARTED
+
+IN PROGRESS
+
+READY FOR REVIEW
+
+READY AFTER FIXES
+
+COMPLETED
+
+BLOCKED
+
+Only one status
+may be assigned.
+
+---
+
+# Blocking Conditions
+
+A milestone cannot be completed if
+
+Architecture Drift exists
+
+Documentation Drift exists
+
+Critical Security Issue exists
+
+Migration Failure exists
+
+CI is failing
+
+Production Gate failed
+
+Required Sprint not accepted
+
+---
+
+# Technical Debt Policy
+
+Technical debt may carry forward
+only if
+
+Risk is Medium or Low
+
+Owner assigned
+
+Target Sprint defined
+
+Mitigation documented
+
+Critical debt
+
+blocks milestone completion.
+
+---
+
+# Dependency Rules
+
+Every milestone
+
+must depend only on
+
+completed milestones.
+
+Example
+
+M3 depends on
+
+M2 completed.
+
+M5 depends on
+
+M4 completed.
+
+Never skip dependencies.
+
+---
+
+# Reporting
+
+Every milestone report must contain
+
+Milestone Name
+
+Objectives
+
+Deliverables
+
+Completed Sprints
+
+Completed Batches
+
+Architecture Status
+
+Security Status
+
+Performance Status
+
+Documentation Status
+
+Technical Debt
+
+Risks
+
+Recommendation
+
+Evidence
+
+---
+
+# Final Decisions
+
+Only one decision
+
+NOT READY
+
+READY AFTER FIXES
+
+COMPLETED
+
+BLOCKED
+
+---
+
+# Success Criteria
+
+The milestone policy succeeds when
+
+project progress
+is measured objectively,
+
+every milestone
+has clear acceptance criteria,
+
+and PhuQuocHub advances
+from Documentation Freeze
+to Production
+without ambiguity,
+without architectural drift,
+and with complete traceability.

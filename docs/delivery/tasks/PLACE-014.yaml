@@ -1,0 +1,156 @@
+schema_version: "1.0"
+
+id: PLACE-014
+workstream: place
+title: "Analyse the LIMIT-without-unique-key exposure in nearby/bbox/bboxClusters (F-16)"
+type: analysis
+status: completed
+started_at: "2026-07-22"
+completed_at: "2026-07-22"
+started_branch: unknown         # not a git working copy
+started_commit: unknown
+
+run_status:
+  analysis: complete
+  validation: passed
+  results:
+    - "npx jest places.repository → 13/13 passed, exit 0"
+    - "mutation check (nearby tie-breaker removed) → 2 failed / 11 passed, exit 1; restored and rerun green"
+    - "npx jest places → 94/94 passed, 7 suites, exit 0"
+    - "npx jest migrations → 11/11 passed, 3 suites, exit 0"
+    - "npx eslint places + geo --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-014-geo-ordering-analysis.md
+  evidence_index: docs/delivery/evidence/PLACE-014-geo-ordering-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/repositories/places.repository.ts        # nearby ORDER BY + doc comment
+    - apps/api/src/modules/places/repositories/places.repository.spec.ts   # 2 determinism specs
+  next_task: docs/delivery/tasks/PLACE-015.yaml
+  classification_per_method: >-
+    nearby() FIX_WARRANTED (fixed — exact ST_Distance ties occur for co-located Places, and the
+    tie decided what a user saw at the LIMIT boundary). bbox() NO_ACTION on ordering — it has NO
+    CONSUMER (GeoService.bbox calls bboxClusters), recorded as F-33. bboxClusters()
+    NEEDS_PRODUCT_DECISION — an ORDER BY would decide WHICH clusters survive truncation at 500,
+    which is a product choice, not a repository fix (F-34). searchFullText() out of scope but is
+    the real defect: it paginates with OFFSET over non-unique score (F-32).
+  two_failure_modes: >-
+    F-16 conflated two defects. (a) cross-page duplication/omission requires OFFSET — applies
+    ONLY to searchFullText here. (b) unstable subset on repeated identical requests requires only
+    LIMIT — applies to nearby/bbox/bboxClusters. The nearby fix and its specs target (b).
+  contract_check: >-
+    openapi.yaml:559-592 declares NO ordering or stability guarantee on /geo/nearby or /geo/bbox,
+    and no limit/pagination parameter at all. This is therefore a quality fix, not a contract
+    fix — and no consumer can have relied on a documented order.
+  resolves: "F-16 (reclassified: nearby resolved, bbox closed as not-applicable, bboxClusters reclassified)"
+  new_findings: >-
+    F-32 searchFullText OFFSET pagination over non-unique score — GAP-12's defect on a live
+    user-facing endpoint → PLACE-015. F-33 PlacesRepository.bbox() has no consumer (same class as
+    GAP-13, but no security trap since it filters status='published'). F-34 bboxClusters
+    truncation at 500 is arbitrary and unstable; deterministic truncation needs a product policy.
+
+depends_on:
+  - PLACE-013        # completed 2026-07-22; build hygiene closed, all validations green
+
+problem_statement: >-
+  PLACE-004 fixed GAP-12 by adding a unique final sort key to PlacesRepository.list(), and
+  recorded F-16 at the same time: nearby() (:268), bbox() (:287) and bboxClusters() (:315) also
+  apply LIMIT without a unique final ordering key. They were deliberately left alone because the
+  defect does not follow automatically — nearby() orders by distance_m, bbox() has no ORDER BY at
+  all, and none of the three paginates with OFFSET — so the GAP-12 failure mode (a row appearing
+  on two pages) may simply not apply. "May not apply" is not the same as "does not apply", and
+  nobody has checked. This is the last unexamined correctness question in the Place read path
+  that needs neither Docker, version control, nor an owner decision.
+
+objective: >-
+  Determine, from the repository, whether each of the three geo read paths has a real
+  non-determinism problem, and if so which. Produce a decision for each: no action needed (with
+  the reason), or a specific remediation for a follow-up task. Do not implement a fix inside this
+  analysis unless one turns out to be trivially safe AND clearly warranted.
+
+required_inputs:
+  - apps/api/src/modules/places/repositories/places.repository.ts        # :246-318 nearby, bbox, bboxClusters
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # PLACE-004 determinism specs to mirror
+  - apps/api/src/modules/geo/geo.service.ts                              # caller: what it does with the rows
+  - apps/api/src/modules/geo/dto/geo.dto.ts                              # limit/radius bounds
+  - apps/api/src/modules/search/                                         # searchFullText ordering, for comparison
+  - docs/delivery/reports/PLACE-004-ordering-report.md                   # §27 F-16 as originally recorded
+  - docs/api/openapi.yaml                                                # whether any ordering guarantee is declared
+
+analysis_steps:
+  - "For each of the three methods, write down: its ORDER BY (or absence of one), whether it uses OFFSET, what bounds its LIMIT, and who calls it."
+  - "Decide per method whether non-determinism is OBSERVABLE by a client. A method with no OFFSET cannot drop or duplicate rows across pages — but it can still return a DIFFERENT SUBSET on identical repeated requests when more rows match than LIMIT allows. Treat those as two distinct defects and say which applies where."
+  - "For nearby(): distance_m is a float over a continuous domain, so exact ties are rare but not impossible (identical coordinates — plausible for two businesses at one address). Assess whether the tie case matters given the caller."
+  - "For bbox() and bboxClusters(): both have NO ORDER BY at all, so with more matches than LIMIT the returned subset is entirely at the planner's discretion. Assess what a map client actually experiences — e.g. markers changing between identical viewport requests."
+  - "Check openapi.yaml for any declared ordering or stability guarantee on these endpoints. If none is declared, say so — it changes whether this is a contract violation or a quality issue."
+  - "Classify each method: NO_ACTION (with reason), FIX_WARRANTED (with the specific change), or NEEDS_PRODUCT_DECISION (e.g. bbox truncation policy is a product question, not a repository one)."
+  - "If and only if a fix is trivially safe and clearly warranted — the PLACE-004 pattern of appending a unique key changes no caller-visible ordering — it may be implemented here WITH a determinism spec mirroring PLACE-004's. Otherwise record it for a follow-up task and implement nothing."
+  - "Run the validation commands regardless of whether code changed, to prove nothing broke."
+
+in_scope:
+  - "the analysis, its report and evidence index"
+  - "apps/api/src/modules/places/repositories/places.repository.ts — ONLY the ORDER BY of the three named methods, and only if the analysis concludes FIX_WARRANTED"
+  - "apps/api/src/modules/places/repositories/places.repository.spec.ts — a determinism spec per method actually changed"
+
+out_of_scope:
+  - "list() — already fixed by PLACE-004; do not touch it"
+  - "changing LIMIT semantics, adding pagination to geo endpoints, or altering the clustering algorithm"
+  - "adding indexes (F-15 territory, and unjustifiable without EXPLAIN)"
+  - "search module ordering — inspect for comparison only, change nothing"
+  - "the five BLOCKS_RELEASE findings; F-26, F-28, F-29, F-30, F-31"
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "Each of the three methods has its ORDER BY / OFFSET / LIMIT / caller documented factually." }
+  - { id: AC2, mandatory: true,  text: "The two distinct failure modes — cross-page duplication vs unstable subset on repeated identical requests — are distinguished, and the applicable one named per method." }
+  - { id: AC3, mandatory: true,  text: "openapi.yaml is checked for a declared ordering/stability guarantee and the finding stated either way." }
+  - { id: AC4, mandatory: true,  text: "Each method is classified NO_ACTION / FIX_WARRANTED / NEEDS_PRODUCT_DECISION with a reason grounded in the code, not in general principle." }
+  - { id: AC5, mandatory: true,  text: "If any code changed, it is confined to the ORDER BY of the classified methods and is accompanied by a determinism spec; if nothing changed, that is stated explicitly as the conclusion." }
+  - { id: AC6, mandatory: true,  text: "npx jest places, eslint and tsc --noEmit exit 0 — run even if no code changed." }
+  - { id: AC7, mandatory: false, text: "Any remediation deferred to a follow-up task is specified precisely enough to be executable without re-deriving the analysis." }
+
+required_evidence:
+  - "per-method table of ORDER BY / OFFSET / LIMIT / callers, with line references"
+  - "the openapi check result"
+  - "the classification and its reasoning per method"
+  - "spec output; and if no code changed, explicit confirmation of that"
+  - "jest / eslint / tsc exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" \"src/modules/geo/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  If no code changed, delete the report and evidence index. If an ORDER BY was extended, remove
+  the appended key and its spec — the same two-line rollback PLACE-004 documented. No schema,
+  data, migration or contract is involved.
+
+stop_conditions:
+  - "A fix would require changing LIMIT semantics, adding OFFSET pagination, or altering clustering — STOP. Those are product decisions about what the map should show, not repository determinism fixes."
+  - "The analysis concludes a fix is warranted but its caller-visible effect is unclear — STOP and defer to a follow-up task rather than guessing; PLACE-004's fix was safe precisely because it changed nothing a caller could already rely on."
+  - "The analysis starts expanding into indexing or query performance — STOP. That is F-15 and needs EXPLAIN, which needs Docker."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-015
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "per-method classification recorded"
+    - "validation green"
+
+next_candidate_task:
+  id: PLACE-015
+  title: "<derive — and consider parking the workstream>"
+  type: "<derive>"
+  rationale: >-
+    After PLACE-014 the executable NON_BLOCKING backlog is genuinely close to empty. Remaining
+    items are F-26 (revision diffs carry no before/after values — a Sprint-4 design question),
+    F-28 (unconstrained :slug — needs a slug-format decision), F-29/F-30/F-31 (cosmetic or
+    structural), plus the five BLOCKS_RELEASE items, all of which need Docker, version control or
+    an owner. PLACE-015 should be derived honestly from that state, and if no task can be
+    justified, the correct outcome is to park the Place workstream in a truthful waiting state
+    naming the three external unblockers — NOT to manufacture work to keep the chain moving.

@@ -1,0 +1,160 @@
+schema_version: "1.0"
+
+id: PLACE-016
+workstream: place
+title: "Replace provisional bbox hard rejection with warning-based enforcement (F-1 / OD-F-1)"
+type: implementation
+status: completed
+started_at: "2026-07-23"
+completed_at: "2026-07-23"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places geo (pre-mutation) → 118/118, 8 suites, exit 0"
+    - "mutation check (@Min(9.7)/@Max(10.6) restored on GeoPointDto.lat) → 3 failed / 30 passed, exit 1; restored and rerun green"
+    - "npx jest places → 105/105, 7 suites, exit 0"
+    - "npx jest geo → 13/13, 1 suite, exit 0"
+    - "npx eslint places + geo + common --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC9 all PASS; optional AC10 also PASS"
+  report: docs/delivery/reports/PLACE-016-bbox-enforcement-report.md
+  evidence_index: docs/delivery/evidence/PLACE-016-bbox-enforcement-evidence-index.md
+  changed_files:
+    - apps/api/src/common/geo-bounds.ts
+    - apps/api/src/modules/places/dto/places.dto.ts
+    - apps/api/src/modules/geo/dto/geo.dto.ts
+    - apps/api/src/modules/places/places.service.ts
+    - apps/api/src/modules/places/dto/places.dto.spec.ts
+    - apps/api/src/modules/geo/dto/geo.dto.spec.ts
+    - apps/api/src/modules/places/places.service.spec.ts
+  next_task: docs/delivery/tasks/PLACE-017.yaml
+  bounds_unchanged: "PHU_QUOC_BOUNDS byte-unchanged; 'PROVISIONAL' appears 5x in geo-bounds.ts"
+  read_path_decision: >-
+    Geo READ paths (nearby/bbox) deliberately emit NO signal: an out-of-box read matches nothing
+    and creates no data, and logging every out-of-box public query would let an anonymous caller
+    amplify log volume. Recorded in geo.dto.ts. Task step 5 required the choice be recorded either way.
+  deviation: >-
+    The two class-validator decorator factories were REMOVED rather than left in place, because
+    after the six fields dropped them nothing referenced them (grep -> 0) and exported-but-unused
+    surface is the F-33/GAP-13 defect class. Rollback remains a small, bounded change.
+  resolves: "F-1 hard enforcement — release_blocker_status OPEN -> CLEARED on pre-committed conditions"
+  residual: "boundary still has NO authoritative source; OD-F-1 obligation 7 unfulfilled, carried as NON-BLOCKING"
+
+authority:
+  finding: docs/delivery/findings/F-1.yaml
+  decision: docs/delivery/decisions/OWNER-DECISION-F-1.md    # OD-F-1, option F1-C, APPROVED 2026-07-23
+  note: >-
+    An approved owner decision authorizes the CONTENT of this task. It does not authorize
+    execution — activation requires state.yaml to name PLACE-016 as current.task.
+
+depends_on:
+  - PLACE-015     # SEQUENCING dependency only, not technical: PLACE-015 is the currently
+                  # authorized active task and governance supports one active task at a time.
+
+objective: >-
+  Stop rejecting Place writes and geo queries solely because a coordinate falls outside the
+  PROVISIONAL Phú Quốc bounding box, while keeping globally invalid coordinates rejected and
+  making every out-of-box coordinate produce an auditable signal. The provisional constants and
+  their PROVISIONAL documentation stay exactly as they are.
+
+problem_statement: >-
+  apps/api/src/common/geo-bounds.ts:23-28 defines minLat 9.7 / maxLat 10.6 / minLng 103.7 /
+  maxLng 104.2. The file's own header states these were inferred from seed coordinates plus a
+  hand-chosen pad; the SSOT documents it cites declare no constants. Those inferred values are
+  nevertheless enforced as hard 422 failures on six DTO fields, so legitimate Place data outside
+  the guessed box cannot be created. OD-F-1 approved option F1-C: compute-and-warn, do not reject.
+
+affected_components:
+  - apps/api/src/common/geo-bounds.ts                        # constants + decorators (constants UNCHANGED)
+  - apps/api/src/modules/places/dto/places.dto.ts            # :22,25 GeoPointDto
+  - apps/api/src/modules/geo/dto/geo.dto.ts                  # :10,13 Nearby; :28,31,34,37 Bbox
+  - apps/api/src/modules/places/places.service.ts            # candidate site for the write-path signal
+  - apps/api/src/modules/places/dto/places.dto.spec.ts       # existing bound specs
+  - apps/api/src/modules/geo/dto/geo.dto.spec.ts             # existing bound specs
+
+in_scope:
+  - "removing out-of-box REJECTION from the six named DTO fields"
+  - "emitting an auditable out-of-box signal (structured log via the existing Nest Logger, and/or a warning surfaced to the caller) on the write path"
+  - "specs covering in-box, out-of-box and globally invalid coordinates"
+
+out_of_scope:
+  - "changing PHU_QUOC_BOUNDS values, or relabelling them as authoritative — explicitly forbidden by OD-F-1"
+  - "introducing replacement coordinates from any source"
+  - "removing the global @Min(-90)/@Max(90) and @Min(-180)/@Max(180) guards — they MUST survive"
+  - "any database column, migration, or persisted review flag (see stop condition 2)"
+  - "F-6 and F-17 remediation — separate tasks"
+  - "the four other BLOCKS_RELEASE findings"
+
+execution_steps:
+  - "Re-read OD-F-1 and F-1.yaml. Confirm the six enforcement points still match the recorded list before editing."
+  - "Remove @IsLatInPhuQuoc()/@IsLngInPhuQuoc() from the six DTO fields. Keep the global @Min/@Max decorators untouched."
+  - "Keep isLatInPhuQuoc()/isLngInPhuQuoc() and PHU_QUOC_BOUNDS exported and documented; they become the computation used by the signal, not a rejection gate. Keep the PROVISIONAL header verbatim."
+  - "Add the auditable signal on the Place write path (create/update): when a coordinate is outside the provisional box, emit a structured log record naming the field, the value, and the provisional bounds, and stating that the box is PROVISIONAL."
+  - "Decide and document whether the geo READ paths (nearby/bbox) also signal. An out-of-box query is harmless — it simply returns nothing — so signalling there is optional; record the choice either way."
+  - "Add specs: in-box accepted (unchanged), out-of-box accepted AND signalled, globally invalid rejected (lat 91, lng 181, NaN)."
+  - "Run the mutation check: restore hard rejection on one field, prove the out-of-box spec fails, restore, re-run green. Leave no mutation in the tree."
+  - "Run every validation command."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "Globally invalid latitude/longitude (e.g. lat 91, lng 181, NaN) are still REJECTED — proven by spec." }
+  - { id: AC2, mandatory: true,  text: "A coordinate outside the provisional Phú Quốc box is NOT rejected for that reason alone — proven by a spec that would have failed before this change." }
+  - { id: AC3, mandatory: true,  text: "Out-of-box input produces an auditable warning / structured log / review signal, asserted by a spec rather than claimed in prose." }
+  - { id: AC4, mandatory: true,  text: "In-box behaviour is unchanged: the existing 21 bound specs either pass unmodified or every modification is individually justified in the report." }
+  - { id: AC5, mandatory: true,  text: "PHU_QUOC_BOUNDS values are byte-unchanged and no comment relabels them authoritative; the PROVISIONAL header survives." }
+  - { id: AC6, mandatory: true,  text: "Focused specs cover all three cases: in-box, out-of-box, globally invalid." }
+  - { id: AC7, mandatory: true,  text: "Mutation check recorded: restoring hard rejection makes the out-of-box spec fail; restored; no mutation left in the tree." }
+  - { id: AC8, mandatory: true,  text: "npx tsc -p tsconfig.json --noEmit exits 0." }
+  - { id: AC9, mandatory: true,  text: "npx jest places, npx jest geo and eslint exit 0." }
+  - { id: AC10, mandatory: false, text: "The report states explicitly that no authoritative boundary is claimed and that F-1 remains open pending an authoritative source." }
+
+required_evidence:
+  - "before/after decorator state for all six fields"
+  - "the emitted signal's shape, and the spec that asserts it"
+  - "proof PHU_QUOC_BOUNDS is unchanged"
+  - "mutation-check output naming which spec failed and confirming restoration"
+  - "all validation exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx jest geo"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" \"src/modules/geo/**/*.ts\" \"src/common/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+regression_requirements:
+  - "the GAP-02/04 visibility specs must pass UNMODIFIED"
+  - "PLACE-004 and PLACE-014 determinism specs must pass UNMODIFIED"
+  - "any edit to an existing bound spec must be justified line by line in the report"
+
+mutation_check_required: true
+
+rollback_plan: >-
+  Re-apply @IsLatInPhuQuoc()/@IsLngInPhuQuoc() to the six fields and delete the signal plus the new
+  specs. No schema, data, migration or contract is involved.
+
+stop_conditions:
+  - "The task starts wanting to choose new boundary coordinates — STOP. OD-F-1 forbids it; that is the separate authoritative-boundary decision."
+  - "The auditable signal appears to need a database column, a migration, or a persisted review-queue row — STOP. No database is reachable (Docker absent) and OD-F-1 accepts a log/metric/warning as sufficient."
+  - "Removing the Phú Quốc decorators appears to also remove the global @Min/@Max guards — STOP. Those are separate, must survive, and are what still rejects impossible coordinates."
+  - "The change would alter what a public read returns — STOP. This task touches write-path validation and signalling only."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    finding_updates:
+      F-1:
+        implementation_status: DONE
+        validation_status: PASSED
+        release_blocker_status: "re-assess — clears only if AC1..AC9 all PASS"
+  requires_evidence:
+    - "mutation check recorded and reverted"
+    - "all four validation commands green"
+    - "PHU_QUOC_BOUNDS proven unchanged"
+
+non_claims: >-
+  Completing this task does NOT make the Place workstream release-ready and does NOT resolve F-1's
+  underlying problem: the boundary remains provisional and unsourced. It only removes hard
+  rejection built on it. No database-backed validation is possible here (Docker absent).

@@ -1,0 +1,694 @@
+# Repository Analysis
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Documentation Freeze
+
+Repository Audit
+
+---
+
+# Purpose
+
+This document defines
+
+the official repository analysis policy
+
+for the PhuQuocHub platform.
+
+Before making any architectural decision,
+
+Claude Code must understand
+
+the current repository.
+
+Repository Analysis
+
+is always performed
+
+before Architecture Review.
+
+---
+
+# Mission
+
+Understand
+
+the repository,
+
+its structure,
+
+its current implementation,
+
+its completed work,
+
+its missing work,
+
+its technical debt,
+
+and its architectural status.
+
+Repository Analysis
+
+must never
+
+modify implementation.
+
+---
+
+# Core Principles
+
+Repository analysis
+
+must be
+
+Read-only
+
+Evidence-based
+
+Repeatable
+
+Deterministic
+
+Traceable
+
+Architecture-driven
+
+No assumptions
+
+No code generation
+
+---
+
+# Analysis Objectives
+
+Determine
+
+Current Sprint
+
+Current Batch
+
+Current Milestone
+
+Completed Modules
+
+Missing Modules
+
+Repository Health
+
+Architecture Status
+
+Documentation Status
+
+Technical Debt
+
+Known Risks
+
+Next Recommended Work
+
+---
+
+# Analysis Workflow
+
+Every repository analysis
+
+must follow
+
+Step 1
+
+Identify repository
+
+↓
+
+Step 2
+
+Read documentation
+
+↓
+
+Step 3
+
+Inspect repository structure
+
+↓
+
+Step 4
+
+Identify modules
+
+↓
+
+Step 5
+
+Analyze dependencies
+
+↓
+
+Step 6
+
+Compare with documentation
+
+↓
+
+Step 7
+
+Identify completed work
+
+↓
+
+Step 8
+
+Identify missing work
+
+↓
+
+Step 9
+
+Generate report
+
+No step
+
+may be skipped.
+
+---
+
+# Repository Structure Review
+
+Inspect
+
+apps/
+
+packages/
+
+docs/
+
+scripts/
+
+tests/
+
+.github/
+
+docker/
+
+configs/
+
+tools/
+
+assets/
+
+Verify
+
+Every top-level directory
+
+is documented.
+
+Report
+
+unexpected folders.
+
+---
+
+# Module Discovery
+
+Identify
+
+Authentication
+
+RBAC
+
+Users
+
+Places
+
+Hotels
+
+Restaurants
+
+Tours
+
+Events
+
+Wiki
+
+Reviews
+
+Media
+
+SEO
+
+Search
+
+Geo
+
+AI
+
+Analytics
+
+Notifications
+
+Community
+
+Admin
+
+Infrastructure
+
+Shared
+
+Determine
+
+Implemented
+
+Partial
+
+Missing
+
+Deprecated
+
+Experimental
+
+---
+
+# File Analysis
+
+Inspect
+
+Controllers
+
+Services
+
+Repositories
+
+Entities
+
+DTOs
+
+Migrations
+
+Tests
+
+Configurations
+
+Utilities
+
+Shared Components
+
+Generated Files
+
+Deleted Files
+
+Duplicate Files
+
+Dead Files
+
+---
+
+# Documentation Analysis
+
+Compare implementation
+
+against
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+ERD
+
+Data Dictionary
+
+Workflow
+
+RBAC
+
+OpenAPI
+
+Coding Standard
+
+README
+
+Every mismatch
+
+must be reported.
+
+---
+
+# Architecture Analysis
+
+Verify
+
+Layer Separation
+
+Module Ownership
+
+Folder Structure
+
+Dependency Direction
+
+Naming Convention
+
+Shared Libraries
+
+Infrastructure
+
+Application Boundaries
+
+Architecture Drift
+
+---
+
+# Dependency Analysis
+
+Inspect
+
+Module Dependencies
+
+Package Dependencies
+
+Circular Dependencies
+
+Hidden Dependencies
+
+Undocumented Dependencies
+
+Shared Libraries
+
+Unused Dependencies
+
+Dependency Direction
+
+---
+
+# Implementation Status
+
+For every module
+
+determine
+
+Not Started
+
+Planning
+
+Partial
+
+Implemented
+
+Tested
+
+Accepted
+
+Production Ready
+
+Deprecated
+
+---
+
+# Sprint Analysis
+
+Determine
+
+Current Sprint
+
+Completed Batches
+
+Remaining Batches
+
+Current Progress
+
+Sprint Risks
+
+Sprint Health
+
+Sprint Velocity
+
+Estimated Completion
+
+---
+
+# Milestone Analysis
+
+Determine
+
+Current Milestone
+
+Completed Objectives
+
+Pending Objectives
+
+Blocked Objectives
+
+Estimated Completion
+
+---
+
+# Technical Debt
+
+Identify
+
+Architecture Debt
+
+Documentation Debt
+
+Database Debt
+
+API Debt
+
+Security Debt
+
+Testing Debt
+
+Performance Debt
+
+Infrastructure Debt
+
+Deployment Debt
+
+Every debt
+
+must include
+
+Description
+
+Impact
+
+Severity
+
+Recommendation
+
+---
+
+# Repository Health
+
+Evaluate
+
+Folder Organization
+
+Code Consistency
+
+Documentation Completeness
+
+Architecture Compliance
+
+Dependency Health
+
+Testing Health
+
+Migration Health
+
+Security Health
+
+Performance Readiness
+
+Assign
+
+Excellent
+
+Good
+
+Fair
+
+Poor
+
+Critical
+
+---
+
+# Repository Metrics
+
+Collect
+
+Module Count
+
+Entity Count
+
+Controller Count
+
+Service Count
+
+Repository Count
+
+Migration Count
+
+DTO Count
+
+Test Count
+
+Documentation Count
+
+OpenAPI Coverage
+
+Architecture Drift Count
+
+Technical Debt Count
+
+---
+
+# Evidence
+
+Every observation
+
+must include
+
+Repository Path
+
+Evidence
+
+Reference
+
+Impact
+
+Severity
+
+Recommendation
+
+Never guess.
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Report Output
+
+Repository Summary
+
+Current Sprint
+
+Current Batch
+
+Repository Structure
+
+Completed Modules
+
+Pending Modules
+
+Dependency Summary
+
+Architecture Compliance
+
+Documentation Compliance
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Next Sprint
+
+Next Batch
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+REPOSITORY HEALTHY
+
+REPOSITORY NEEDS ATTENTION
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Repository completely analyzed
+
+Documentation compared
+
+Dependencies inspected
+
+Architecture validated
+
+Evidence attached
+
+No assumptions
+
+No code generated
+
+No repository modified
+
+---
+
+# Success Criteria
+
+Repository Analysis succeeds when
+
+Claude Code
+
+fully understands
+
+the repository,
+
+its current implementation,
+
+its relationship
+
+to the frozen documentation,
+
+and can accurately determine
+
+what has been completed,
+
+what remains,
+
+and what should be developed next,
+
+without modifying
+
+a single file.

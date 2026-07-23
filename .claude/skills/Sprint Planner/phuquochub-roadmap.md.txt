@@ -1,0 +1,723 @@
+# PhuQuocHub Roadmap
+
+Version: 1.0
+
+Status:
+Production
+
+Project
+
+PhuQuocHub
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+Project Management
+
+---
+
+# Purpose
+
+This roadmap defines the complete development
+plan of the PhuQuocHub platform.
+
+It is the official implementation roadmap
+used by Claude Code.
+
+Every Sprint
+
+Every Batch
+
+Every Milestone
+
+must follow this roadmap.
+
+Changing this roadmap
+requires
+
+ADR
+
+Decision Register update
+
+Architecture approval.
+
+---
+
+# Vision
+
+Build the most complete digital platform
+for Phu Quoc Island.
+
+The platform combines
+
+Tourism
+
+Accommodation
+
+Restaurants
+
+Tours
+
+Events
+
+Maps
+
+Wiki
+
+Reviews
+
+Community
+
+Business Directory
+
+SEO
+
+AI
+
+Analytics
+
+Growth
+
+into a single ecosystem.
+
+---
+
+# Long-term Objectives
+
+Become the largest tourism knowledge base
+for Phu Quoc.
+
+Become the largest business directory
+for Phu Quoc.
+
+Provide accurate geo information.
+
+Provide AI-powered travel recommendations.
+
+Provide structured tourism data.
+
+Become the authoritative information platform
+for visitors,
+residents,
+and businesses.
+
+---
+
+# Development Principles
+
+Architecture First
+
+Documentation First
+
+Code Second
+
+Testing Always
+
+Review Before Merge
+
+Production Last
+
+---
+
+# Development Timeline
+
+Documentation
+
+↓
+
+Sprint 0
+
+↓
+
+Sprint 1
+
+↓
+
+Sprint 2
+
+↓
+
+Sprint 3
+
+↓
+
+Sprint 4
+
+↓
+
+Sprint 5
+
+↓
+
+Sprint 6
+
+↓
+
+Sprint 7
+
+↓
+
+Sprint 8
+
+↓
+
+Production
+
+---
+
+# Sprint 0
+
+Infrastructure
+
+## Objectives
+
+Create the technical foundation.
+
+## Deliverables
+
+Configuration
+
+Logger
+
+Database
+
+Redis
+
+Docker
+
+CI/CD
+
+Environment Validation
+
+TypeORM
+
+Migration Framework
+
+Testing Framework
+
+## Acceptance
+
+Infrastructure operational
+
+Migration successful
+
+CI green
+
+---
+
+# Sprint 1
+
+Authentication & RBAC
+
+## Objectives
+
+Build identity
+and authorization.
+
+## Deliverables
+
+Users
+
+Roles
+
+Permissions
+
+JWT
+
+Refresh Token
+
+Authentication
+
+Authorization
+
+RBAC
+
+User Profile
+
+Categories
+
+## Acceptance
+
+Login
+
+Register
+
+Refresh Token
+
+RBAC
+
+Permission Guards
+
+CI PASS
+
+---
+
+# Sprint 2
+
+Places Platform
+
+## Objectives
+
+Create the geographic core.
+
+## Deliverables
+
+Places
+
+Categories
+
+Contacts
+
+Geo
+
+Coordinates
+
+Nearby Search
+
+Full-text Search
+
+SEO Metadata
+
+AI Summary
+
+Price History
+
+FAQ
+
+## Acceptance
+
+CRUD
+
+Geo Query
+
+Search
+
+OpenAPI
+
+Migration PASS
+
+---
+
+# Sprint 3
+
+Tourism Content
+
+## Objectives
+
+Provide tourism modules.
+
+## Deliverables
+
+Hotels
+
+Restaurants
+
+Tours
+
+Events
+
+Hotel Details
+
+Restaurant Details
+
+Tour Details
+
+Event Details
+
+Gallery
+
+Media
+
+## Acceptance
+
+All CRUD
+
+Search
+
+Media
+
+SEO
+
+---
+
+# Sprint 4
+
+Community Platform
+
+## Objectives
+
+Enable user participation.
+
+## Deliverables
+
+Wiki
+
+Wiki Revision
+
+Reviews
+
+Ratings
+
+Bookmarks
+
+Favorites
+
+Verification Requests
+
+Moderation
+
+Revision History
+
+## Acceptance
+
+Revision Workflow
+
+Moderation
+
+Permission Matrix
+
+---
+
+# Sprint 5
+
+Content Intelligence
+
+## Objectives
+
+Improve discoverability.
+
+## Deliverables
+
+SEO
+
+Schema.org
+
+OpenGraph
+
+AI Summary
+
+AI Recommendation
+
+Related Content
+
+Internal Linking
+
+Dynamic Sitemap
+
+Robots
+
+## Acceptance
+
+SEO PASS
+
+AI PASS
+
+Search PASS
+
+---
+
+# Sprint 6
+
+Growth Platform
+
+## Objectives
+
+Support platform growth.
+
+## Deliverables
+
+Notifications
+
+Analytics
+
+Dashboards
+
+Recommendation Engine
+
+Campaign Tracking
+
+User Behavior
+
+Growth Metrics
+
+Email
+
+Push Notification
+
+## Acceptance
+
+Analytics operational
+
+Notification operational
+
+Tracking operational
+
+---
+
+# Sprint 7
+
+Production Preparation
+
+## Objectives
+
+Prepare production.
+
+## Deliverables
+
+Performance Optimization
+
+Caching
+
+Monitoring
+
+Logging
+
+Security Audit
+
+Backup
+
+Restore
+
+Disaster Recovery
+
+Load Testing
+
+Stress Testing
+
+## Acceptance
+
+Performance PASS
+
+Security PASS
+
+Production Gate PASS
+
+---
+
+# Sprint 8
+
+Production Release
+
+## Objectives
+
+Launch publicly.
+
+## Deliverables
+
+Production Deployment
+
+Monitoring
+
+Alerting
+
+Operations Guide
+
+Runbook
+
+Release Notes
+
+Rollback Plan
+
+## Acceptance
+
+Production Stable
+
+Monitoring Healthy
+
+No Critical Issues
+
+---
+
+# Future Roadmap
+
+Phase 2
+
+Business Portal
+
+Booking
+
+Marketplace
+
+Coupons
+
+Payment
+
+Membership
+
+Partner Dashboard
+
+---
+
+Phase 3
+
+Mobile Application
+
+Android
+
+iOS
+
+Offline Maps
+
+Push Notifications
+
+AI Travel Assistant
+
+---
+
+Phase 4
+
+Regional Expansion
+
+Mekong
+
+Southern Vietnam
+
+Nationwide
+
+---
+
+# Success Metrics
+
+100%
+
+Architecture Compliance
+
+100%
+
+Documentation Compliance
+
+100%
+
+OpenAPI Coverage
+
+100%
+
+RBAC Coverage
+
+100%
+
+Migration Verification
+
+>90%
+
+Test Coverage
+
+Zero
+
+Critical Architecture Drift
+
+Zero
+
+Undocumented API
+
+Zero
+
+Production Data Loss
+
+---
+
+# Risks
+
+Architecture Drift
+
+Documentation Drift
+
+Performance Bottlenecks
+
+Security Vulnerabilities
+
+Technical Debt
+
+Mitigation
+
+ADR
+
+Review
+
+Testing
+
+Continuous Audit
+
+---
+
+# Reporting
+
+Every Sprint
+
+must report
+
+Objectives
+
+Completed Deliverables
+
+Pending Work
+
+Technical Debt
+
+Risks
+
+Recommendations
+
+Architecture Compliance
+
+Documentation Compliance
+
+Evidence
+
+---
+
+# Roadmap Governance
+
+Only the following may modify this roadmap
+
+Chief Software Architect
+
+Documentation Architect
+
+Approved ADR
+
+Decision Register
+
+No implementation
+may redefine the roadmap.
+
+---
+
+# Success Criteria
+
+The roadmap succeeds when
+
+every Sprint,
+
+every Batch,
+
+every Milestone,
+
+and every Release
+
+contributes measurably
+
+toward the long-term vision
+
+without architectural drift,
+
+without undocumented decisions,
+
+and with complete traceability
+
+from Documentation Freeze
+
+to Production Release.

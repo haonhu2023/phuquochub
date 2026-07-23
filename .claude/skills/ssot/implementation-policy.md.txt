@@ -1,0 +1,829 @@
+# Implementation Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Implementation Policy
+
+for the PhuQuocHub platform.
+
+Implementation
+
+is the process
+
+of translating
+
+approved documentation
+
+into
+
+working software.
+
+Implementation
+
+must always
+
+follow
+
+the Single Source of Truth (SSOT).
+
+Implementation
+
+must never
+
+become
+
+the source of truth.
+
+---
+
+# Mission
+
+Guarantee
+
+that every line of code
+
+faithfully implements
+
+approved documentation,
+
+without introducing
+
+undocumented behavior,
+
+architectural violations,
+
+or inconsistent business logic.
+
+---
+
+# Core Principles
+
+Implementation
+
+must always be
+
+Documentation Driven
+
+Architecture Compliant
+
+Traceable
+
+Deterministic
+
+Reviewable
+
+Testable
+
+Maintainable
+
+Secure
+
+Performant
+
+Consistent
+
+---
+
+# Fundamental Rule
+
+Implementation
+
+must never
+
+precede
+
+documentation.
+
+Documentation
+
+must be
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Referenced
+
+↓
+
+Implemented
+
+---
+
+# Implementation Lifecycle
+
+Every implementation
+
+must follow
+
+Documentation
+
+↓
+
+Architecture Review
+
+↓
+
+Documentation Freeze
+
+↓
+
+Sprint Planning
+
+↓
+
+Batch Planning
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Review
+
+↓
+
+Production Gate
+
+↓
+
+Deployment
+
+↓
+
+Monitoring
+
+↓
+
+Maintenance
+
+---
+
+# Preconditions
+
+Before implementation
+
+Claude Code
+
+must verify
+
+Architecture exists
+
+ADR exists
+
+Decision Register updated
+
+Documentation approved
+
+Documentation frozen
+
+Sprint approved
+
+Batch approved
+
+Dependencies resolved
+
+Acceptance Criteria defined
+
+If
+
+any condition fails
+
+return
+
+BLOCKED
+
+---
+
+# Documentation Reference
+
+Every implementation
+
+must reference
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standards
+
+Repository Standards
+
+Sprint
+
+Batch
+
+---
+
+# Repository Rules
+
+Repository
+
+implements
+
+documentation.
+
+Repository
+
+must never
+
+define
+
+architecture.
+
+Repository
+
+must never
+
+replace
+
+documentation.
+
+---
+
+# Architecture Compliance
+
+Implementation
+
+must preserve
+
+System Boundaries
+
+Module Boundaries
+
+Ownership
+
+Layer Separation
+
+Dependency Rules
+
+Communication Patterns
+
+No implementation
+
+may violate
+
+Architecture.
+
+---
+
+# Database Compliance
+
+Implementation
+
+must follow
+
+ERD
+
+Data Dictionary
+
+Naming Convention
+
+Indexes
+
+Constraints
+
+Relationships
+
+Migration Policy
+
+Every entity
+
+must match
+
+documentation.
+
+---
+
+# OpenAPI Compliance
+
+Controllers
+
+must implement
+
+OpenAPI.
+
+DTO
+
+must match
+
+OpenAPI.
+
+Validation
+
+must match
+
+OpenAPI.
+
+Responses
+
+must match
+
+OpenAPI.
+
+No undocumented endpoint
+
+is allowed.
+
+---
+
+# Workflow Compliance
+
+Business Logic
+
+must implement
+
+Workflow.
+
+State transitions
+
+must match
+
+Workflow.
+
+Notifications
+
+must match
+
+Workflow.
+
+Approval
+
+must match
+
+Workflow.
+
+---
+
+# RBAC Compliance
+
+Authorization
+
+must implement
+
+Permission Matrix.
+
+Guards
+
+must match
+
+RBAC.
+
+Every protected endpoint
+
+must define
+
+required permissions.
+
+---
+
+# Coding Standards
+
+Implementation
+
+must follow
+
+Naming Rules
+
+Folder Structure
+
+Module Structure
+
+Layering
+
+Formatting
+
+Error Handling
+
+Logging
+
+Dependency Injection
+
+Best Practices
+
+---
+
+# Dependency Rules
+
+Implementation
+
+must obey
+
+Dependency Graph.
+
+Circular dependencies
+
+are prohibited.
+
+Cross-module violations
+
+are prohibited.
+
+Unauthorized imports
+
+are prohibited.
+
+---
+
+# Security Requirements
+
+Implementation
+
+must include
+
+Authentication
+
+Authorization
+
+Validation
+
+Sanitization
+
+Rate Limiting
+
+Encryption
+
+Audit Logging
+
+Secret Management
+
+OWASP Compliance
+
+Security
+
+must never
+
+be optional.
+
+---
+
+# Performance Requirements
+
+Implementation
+
+must support
+
+Caching
+
+Pagination
+
+Filtering
+
+Sorting
+
+Database Indexes
+
+Connection Pooling
+
+Lazy Loading
+
+Asynchronous Processing
+
+Performance
+
+must be considered
+
+during implementation.
+
+---
+
+# Logging Requirements
+
+Every implementation
+
+must produce
+
+Structured Logs
+
+Error Logs
+
+Audit Logs
+
+Performance Metrics
+
+Trace IDs
+
+Correlation IDs
+
+Sensitive data
+
+must never
+
+appear
+
+inside logs.
+
+---
+
+# Error Handling
+
+Errors
+
+must be
+
+Consistent
+
+Predictable
+
+Documented
+
+Recoverable
+
+Every API
+
+must return
+
+documented
+
+error responses.
+
+---
+
+# Testing Requirements
+
+Implementation
+
+must include
+
+Unit Tests
+
+Integration Tests
+
+End-to-End Tests
+
+Validation Tests
+
+Security Tests
+
+Performance Tests
+
+Acceptance Tests
+
+No feature
+
+is complete
+
+without tests.
+
+---
+
+# Documentation Synchronization
+
+After implementation
+
+Claude Code
+
+must verify
+
+Documentation unchanged
+
+Repository synchronized
+
+OpenAPI synchronized
+
+Database synchronized
+
+Workflow synchronized
+
+Tests synchronized
+
+---
+
+# Traceability
+
+Every implementation
+
+must reference
+
+Feature ID
+
+Sprint ID
+
+Batch ID
+
+ADR ID
+
+Decision ID
+
+Commit
+
+Pull Request
+
+Deployment
+
+Every line of code
+
+must be traceable.
+
+---
+
+# Drift Detection
+
+Claude Code
+
+must detect
+
+Architecture Drift
+
+Documentation Drift
+
+Repository Drift
+
+Database Drift
+
+Workflow Drift
+
+API Drift
+
+RBAC Drift
+
+Security Drift
+
+Performance Drift
+
+Testing Drift
+
+---
+
+# Forbidden Actions
+
+Implementation
+
+must never
+
+Invent business rules
+
+Invent APIs
+
+Invent tables
+
+Invent permissions
+
+Invent workflows
+
+Invent architecture
+
+Ignore documentation
+
+Ignore SSOT
+
+Modify frozen documentation
+
+Bypass reviews
+
+Bypass testing
+
+Bypass Production Gate
+
+---
+
+# Validation
+
+Before completion
+
+Claude Code
+
+must verify
+
+Architecture compliant
+
+Documentation compliant
+
+Repository compliant
+
+Database compliant
+
+OpenAPI compliant
+
+Workflow compliant
+
+RBAC compliant
+
+Testing complete
+
+No unresolved drift
+
+---
+
+# Review Checklist
+
+Implementation
+
+must satisfy
+
+Correct Architecture
+
+Correct Database
+
+Correct API
+
+Correct Workflow
+
+Correct Security
+
+Correct Performance
+
+Correct Logging
+
+Correct Testing
+
+Correct Documentation
+
+Correct Traceability
+
+---
+
+# Success Criteria
+
+Implementation succeeds when
+
+every feature
+
+is built
+
+strictly from
+
+approved documentation,
+
+fully complies
+
+with the architecture,
+
+passes all validation,
+
+remains completely traceable,
+
+contains no undocumented behavior,
+
+introduces no architectural drift,
+
+and can be reviewed,
+
+tested,
+
+deployed,
+
+and maintained
+
+using the SSOT alone.
+
+Implementation
+
+is considered complete
+
+only when
+
+documentation,
+
+repository,
+
+tests,
+
+and production behavior
+
+describe
+
+the exact same system.

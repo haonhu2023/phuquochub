@@ -1,0 +1,830 @@
+# Acceptance Gates
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+---
+
+# Purpose
+
+This document defines the mandatory quality gates
+that every Batch,
+Sprint,
+Release,
+and Production deployment
+must pass.
+
+No implementation is considered complete
+until all required gates pass.
+
+---
+
+# Core Principle
+
+Implementation is not finished
+when code is generated.
+
+Implementation is finished
+only when all quality gates pass.
+
+Passing one gate
+does not imply passing another.
+
+Every gate is independent.
+
+---
+
+# Gate Hierarchy
+
+Documentation Freeze
+
+↓
+
+Sprint Planning
+
+↓
+
+Repository Analysis
+
+↓
+
+Architecture Validation
+
+↓
+
+Implementation
+
+↓
+
+Compilation
+
+↓
+
+Lint
+
+↓
+
+Unit Tests
+
+↓
+
+Integration Tests
+
+↓
+
+Migration Validation
+
+↓
+
+OpenAPI Validation
+
+↓
+
+RBAC Validation
+
+↓
+
+Security Review
+
+↓
+
+Performance Review
+
+↓
+
+Sprint Acceptance
+
+↓
+
+Architecture Compliance Audit
+
+↓
+
+Production Gate
+
+Never change this order.
+
+---
+
+# Gate Categories
+
+Planning Gates
+
+Implementation Gates
+
+Testing Gates
+
+Architecture Gates
+
+Documentation Gates
+
+Security Gates
+
+Performance Gates
+
+Deployment Gates
+
+Production Gates
+
+---
+
+# Planning Gates
+
+Verify
+
+Documentation Frozen
+
+ADR Accepted
+
+Decision Register Updated
+
+Repository Analyzed
+
+Sprint Planned
+
+Dependencies Resolved
+
+Batches Generated
+
+Output
+
+PASS
+
+FAIL
+
+BLOCKED
+
+---
+
+# Architecture Gate
+
+Verify
+
+Architecture
+
+Database
+
+ERD
+
+Module Boundaries
+
+Layer Boundaries
+
+Folder Structure
+
+Dependency Direction
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Decision Register
+
+Accepted ADR
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Implementation Gate
+
+Verify
+
+Files generated
+
+Compilation possible
+
+Dependency Injection valid
+
+Naming Convention followed
+
+Coding Standard followed
+
+No duplicated implementation
+
+No architecture change
+
+No undocumented behavior
+
+---
+
+# Compilation Gate
+
+Verify
+
+TypeScript Build
+
+NestJS Build
+
+Frontend Build
+
+Workspace Build
+
+No Type Errors
+
+No Circular Dependency
+
+Result
+
+PASS
+
+FAIL
+
+BLOCKED
+
+---
+
+# Lint Gate
+
+Verify
+
+ESLint
+
+Prettier
+
+Formatting
+
+Import Order
+
+Unused Imports
+
+Unused Variables
+
+Naming Convention
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Unit Test Gate
+
+Verify
+
+All unit tests pass
+
+Coverage reported
+
+Coverage threshold reached
+
+No flaky tests
+
+Recommended
+
+>80%
+
+Critical Modules
+
+>90%
+
+---
+
+# Integration Test Gate
+
+Verify
+
+Repositories
+
+Database
+
+Redis
+
+Search
+
+Cache
+
+Storage
+
+External Services
+
+Migration
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# End-to-End Gate
+
+Verify
+
+Authentication
+
+Authorization
+
+CRUD
+
+Search
+
+Workflow
+
+RBAC
+
+Error Handling
+
+Critical User Journey
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Migration Gate
+
+Verify
+
+Migration Up
+
+Migration Down
+
+Migration Up Again
+
+No Data Loss
+
+Indexes
+
+Constraints
+
+Foreign Keys
+
+Rollback
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Database Gate
+
+Verify
+
+Schema
+
+ERD
+
+Data Dictionary
+
+Indexes
+
+Constraints
+
+Audit Fields
+
+Soft Delete
+
+Geo Fields
+
+Search Fields
+
+Versioning
+
+Verification
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# OpenAPI Gate
+
+Verify
+
+Endpoint Exists
+
+Request Schema
+
+Response Schema
+
+Authentication
+
+Authorization
+
+Pagination
+
+Errors
+
+Examples
+
+Version
+
+No undocumented endpoint
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# RBAC Gate
+
+Verify
+
+Roles
+
+Permissions
+
+Inheritance
+
+Permission Matrix
+
+Scopes
+
+Deny by Default
+
+No Escalation
+
+No Missing Permission
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Security Gate
+
+Verify
+
+Authentication
+
+Authorization
+
+JWT
+
+Secrets
+
+Encryption
+
+Rate Limit
+
+Security Headers
+
+Audit Logging
+
+Validation
+
+Sanitization
+
+Dependency Vulnerabilities
+
+Result
+
+PASS
+
+FAIL
+
+BLOCKED
+
+---
+
+# Performance Gate
+
+Verify
+
+Response Time
+
+Database Query
+
+Indexes
+
+Caching
+
+Memory
+
+CPU
+
+Bundle Size
+
+Search Performance
+
+Geo Queries
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Documentation Gate
+
+Verify
+
+README
+
+Architecture
+
+Database
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+ADR
+
+Decision Register
+
+Examples
+
+Glossary
+
+No TODO
+
+No Placeholder
+
+No Drift
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Review Gate
+
+Verify
+
+Architecture Review
+
+Code Review
+
+Documentation Review
+
+Security Review
+
+Performance Review
+
+OpenAPI Review
+
+Database Review
+
+RBAC Review
+
+Result
+
+PASS
+
+FAIL
+
+---
+
+# Merge Gate
+
+Merge allowed only if
+
+Compilation PASS
+
+Lint PASS
+
+Unit PASS
+
+Architecture PASS
+
+Documentation PASS
+
+Security PASS
+
+Migration PASS
+
+OpenAPI PASS
+
+RBAC PASS
+
+Review PASS
+
+CI PASS
+
+Otherwise
+
+Merge Forbidden
+
+---
+
+# Sprint Acceptance Gate
+
+Sprint accepted only if
+
+All Batches PASS
+
+All Gates PASS
+
+No Critical Risk
+
+No High Drift
+
+Architecture Stable
+
+Documentation Stable
+
+CI Green
+
+Result
+
+READY TO MERGE
+
+READY AFTER FIXES
+
+NOT READY
+
+---
+
+# Production Gate
+
+Production allowed only if
+
+Sprint Accepted
+
+Performance PASS
+
+Security PASS
+
+Backup Verified
+
+Restore Verified
+
+Rollback Verified
+
+Monitoring Ready
+
+Logging Ready
+
+Alerting Ready
+
+Deployment Verified
+
+Disaster Recovery Verified
+
+Result
+
+PRODUCTION READY
+
+BLOCKED
+
+---
+
+# Blocking Conditions
+
+Immediately stop acceptance if
+
+Architecture Drift
+
+Database Drift
+
+OpenAPI Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Documentation Drift
+
+Critical Security Issue
+
+Migration Failure
+
+CI Failure
+
+Broken Build
+
+Missing ADR
+
+Decision Conflict
+
+---
+
+# Risk Classification
+
+Critical
+
+Production blocker
+
+High
+
+Merge blocker
+
+Medium
+
+Fix before next Sprint
+
+Low
+
+Technical Debt
+
+---
+
+# Reporting
+
+Every acceptance report must include
+
+Executive Summary
+
+Gate Results
+
+PASS Matrix
+
+FAIL Matrix
+
+Blocking Issues
+
+Technical Debt
+
+Risk Assessment
+
+Recommendations
+
+Final Decision
+
+Evidence
+
+---
+
+# Final Decisions
+
+Only one decision may be issued
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+PRODUCTION READY
+
+BLOCKED
+
+Never combine decisions.
+
+---
+
+# Success Criteria
+
+The Acceptance Gate process succeeds
+only if
+
+every Batch,
+
+every Sprint,
+
+and every Release
+
+must prove compliance
+
+through measurable evidence,
+
+without relying on assumptions,
+
+and without requiring architectural decisions
+during implementation.
+
+Quality Gates are mandatory.
+
+No gate may be skipped.
+
+No gate may be bypassed.

@@ -1,0 +1,558 @@
+# Architecture Boundary
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+Code Generation
+
+---
+
+# Purpose
+
+This document defines the architectural boundaries
+that Claude Code must never violate.
+
+Architecture is frozen after Documentation Freeze.
+
+Implementation follows architecture.
+
+Architecture never follows implementation.
+
+---
+
+# Core Principle
+
+Architecture is the Single Source of Truth.
+
+Implementation must adapt to architecture.
+
+Architecture must never adapt to implementation.
+
+---
+
+# Authority Hierarchy
+
+Highest authority
+
+Documentation Freeze
+
+↓
+
+Accepted ADR
+
+↓
+
+Decision Register
+
+↓
+
+Architecture
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+RBAC
+
+↓
+
+Workflow
+
+↓
+
+Coding Standard
+
+↓
+
+Implementation
+
+Implementation is always last.
+
+---
+
+# Immutable Components
+
+The following components are frozen.
+
+Architecture
+
+Database
+
+ERD
+
+Entity Model
+
+Repository Structure
+
+Folder Structure
+
+Module Boundaries
+
+Layer Boundaries
+
+OpenAPI
+
+RBAC
+
+Permission Model
+
+Workflow
+
+Naming Convention
+
+Decision Register
+
+Accepted ADR
+
+Claude Code shall never modify these.
+
+---
+
+# Allowed Changes
+
+Claude Code may
+
+Implement missing modules
+
+Implement missing services
+
+Implement missing repositories
+
+Implement DTO
+
+Implement Mapper
+
+Implement Validators
+
+Implement Tests
+
+Implement Documentation examples
+
+Fix compilation errors
+
+Fix lint errors
+
+Fix typing errors
+
+Optimize implementation
+
+Improve readability
+
+Improve comments
+
+Improve test coverage
+
+Nothing else.
+
+---
+
+# Forbidden Changes
+
+Claude Code must never
+
+Rename modules
+
+Rename entities
+
+Rename API endpoints
+
+Rename folders
+
+Rename database tables
+
+Rename database columns
+
+Rename enums
+
+Rename permissions
+
+Rename roles
+
+Rename OpenAPI schemas
+
+Rename DTO
+
+Rename migrations
+
+Change workflow
+
+Change authentication
+
+Change authorization
+
+Change RBAC
+
+Change architecture
+
+Change deployment model
+
+Change database engine
+
+Change ORM
+
+Change cache strategy
+
+Change search engine
+
+Change folder hierarchy
+
+Invent new modules
+
+Invent new entities
+
+Invent new APIs
+
+Invent new permissions
+
+Invent new workflows
+
+Invent undocumented behavior
+
+---
+
+# ADR Required Changes
+
+The following always require ADR.
+
+Architecture
+
+Database schema
+
+ERD
+
+OpenAPI contract
+
+Workflow
+
+RBAC
+
+Authentication
+
+Authorization
+
+Deployment
+
+Search strategy
+
+AI architecture
+
+Storage provider
+
+External integrations
+
+Caching strategy
+
+Repository pattern
+
+DDD structure
+
+Any breaking change
+
+---
+
+# Boundary Rules
+
+Implementation must remain inside
+existing architecture.
+
+Example
+
+Allowed
+
+Implement
+
+PlaceService
+
+because documented.
+
+---
+
+Forbidden
+
+Replace
+
+Repository Pattern
+
+with Active Record.
+
+---
+
+Allowed
+
+Implement
+
+NotificationService
+
+because documented.
+
+---
+
+Forbidden
+
+Replace
+
+Redis
+
+with Kafka.
+
+---
+
+# Layer Boundary
+
+Dependency direction
+
+must remain
+
+Controller
+
+↓
+
+Service
+
+↓
+
+Repository
+
+↓
+
+Database
+
+Never reverse.
+
+---
+
+# Module Boundary
+
+Modules communicate only through
+
+documented interfaces.
+
+Never import internal implementation
+of another module.
+
+---
+
+# Database Boundary
+
+Never
+
+Add table
+
+Remove table
+
+Rename table
+
+Rename column
+
+Change FK
+
+Change Index
+
+Change ENUM
+
+Change PK
+
+without ADR.
+
+---
+
+# API Boundary
+
+Never
+
+Change endpoint
+
+Change request
+
+Change response
+
+Change status code
+
+Change authentication
+
+Change pagination
+
+without ADR.
+
+---
+
+# Security Boundary
+
+Never modify
+
+JWT
+
+RBAC
+
+Permission Matrix
+
+Encryption
+
+Audit
+
+Rate Limit
+
+without ADR.
+
+---
+
+# Documentation Boundary
+
+Documentation Freeze
+
+is immutable.
+
+Implementation follows documentation.
+
+Never update frozen documentation
+to match code.
+
+---
+
+# Drift Detection
+
+If implementation differs from SSOT
+
+Claude must report
+
+Architecture Drift
+
+Documentation Drift
+
+OpenAPI Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Database Drift
+
+Never silently fix drift.
+
+---
+
+# Unknown Behavior
+
+If behavior is undocumented
+
+Claude must report
+
+NOT FOUND
+
+Never guess.
+
+Never invent.
+
+---
+
+# Blocking Conditions
+
+Stop implementation immediately if
+
+Architecture conflict
+
+Missing ADR
+
+Conflicting ADR
+
+Decision Register conflict
+
+Database conflict
+
+OpenAPI conflict
+
+RBAC conflict
+
+Workflow conflict
+
+Documentation Freeze violation
+
+---
+
+# Review Requirements
+
+Every batch must verify
+
+Architecture compliance
+
+ADR compliance
+
+Decision Register compliance
+
+Database compliance
+
+OpenAPI compliance
+
+RBAC compliance
+
+Workflow compliance
+
+Naming compliance
+
+Folder compliance
+
+Layer compliance
+
+---
+
+# Reporting
+
+Architecture Review must output
+
+Architecture PASS / FAIL
+
+Boundary Violations
+
+ADR Violations
+
+Drift Summary
+
+Blocking Issues
+
+Required Actions
+
+Evidence
+
+---
+
+# Success Criteria
+
+Architecture Boundary succeeds only if
+
+Claude Code can implement
+every Sprint
+
+without changing architecture,
+
+without making undocumented decisions,
+
+without introducing drift,
+
+and without requiring human redesign.
+
+Architecture remains stable
+from Documentation Freeze
+until Production Release.

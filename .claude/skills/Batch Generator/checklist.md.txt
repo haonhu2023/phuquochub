@@ -1,0 +1,75 @@
+# Batch Generation Checklist
+
+Before generating code verify
+
+[ ] Documentation Frozen
+
+[ ] Sprint Approved
+
+[ ] Batch Approved
+
+[ ] ADR Accepted
+
+[ ] Decision Register Updated
+
+[ ] OpenAPI Frozen
+
+[ ] Database Frozen
+
+[ ] ERD Frozen
+
+[ ] Data Dictionary Frozen
+
+[ ] No documentation blockers
+
+---
+
+Repository
+
+[ ] Existing implementation reviewed
+
+[ ] No duplicate module
+
+[ ] No duplicate entity
+
+[ ] No duplicate migration
+
+[ ] No duplicate API
+
+---
+
+Architecture
+
+[ ] Layer respected
+
+[ ] Dependency respected
+
+[ ] Naming respected
+
+[ ] Module boundary respected
+
+---
+
+Security
+
+[ ] RBAC respected
+
+[ ] Authentication respected
+
+[ ] Validation added
+
+[ ] Audit considered
+
+---
+
+Output
+
+[ ] Unit test
+
+[ ] Integration test
+
+[ ] Migration
+
+[ ] Documentation updated if required
+
+[ ] Batch report

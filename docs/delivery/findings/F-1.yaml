@@ -1,0 +1,76 @@
+schema_version: "1.0"
+
+id: F-1
+title: "Phú Quốc bounding box is PROVISIONAL yet hard-enforced on write and geo-query paths"
+workstream: place
+origin:
+  task: PLACE-002
+  recorded_in: docs/delivery/reports/PLACE-002-implementation-report.md
+  consolidated_by: docs/delivery/reports/PLACE-010-release-readiness-assessment.md
+
+decision_status: APPROVED             # OD-F-1, owner instruction 2026-07-23
+implementation_status: DONE           # PLACE-016, 2026-07-23
+validation_status: PASSED             # jest places 105/105, geo 13/13, mutation-checked, eslint + tsc exit 0
+release_blocker_status: CLEARED       # on the pre-committed conditions below — see clears_release_blocker_when
+
+interim_state: REMEDIATED
+
+cleared_note: >-
+  What made F-1 a release blocker was that a PROVISIONAL, unsourced boundary was ACTIVELY ENFORCED
+  as a hard rejection. PLACE-016 removed that enforcement from all six DTO fields and replaced it
+  with an auditable structured signal on the write path, while globally invalid coordinates remain
+  rejected by the untouched @IsNumber/@Min/@Max guards. All four conditions listed under
+  clears_release_blocker_when were pre-committed on 2026-07-23 BEFORE the task ran, and all four
+  are met, so the downgrade rests on recorded evidence rather than judgement.
+
+residual_non_blocking: >-
+  The boundary STILL has no authoritative source and the constants remain PROVISIONAL and
+  unchanged. OD-F-1 obligation 7 — replacement with an authoritative or explicitly
+  product-approved operational boundary — is UNFULFILLED and carried forward as future work
+  requiring an owner and a geographic source. It is no longer a release blocker because nothing
+  is being rejected on its basis.
+
+decision:
+  id: OD-F-1
+  option: F1-C
+  record: docs/delivery/decisions/OWNER-DECISION-F-1.md
+  date: "2026-07-23"
+  owner: Project Owner
+  approval_source: owner instruction
+  summary: >-
+    Being outside the PROVISIONAL Phú Quốc bounding box must not, by itself, reject otherwise
+    valid Place data. Out-of-box coordinates must instead raise an auditable warning/review
+    signal. Globally invalid latitude/longitude values remain rejected. The provisional
+    coordinates and their provisional status stay documented; no replacement coordinates were
+    supplied and none were invented. Replacement with an authoritative or explicitly
+    product-approved operational boundary remains required future work.
+
+current_state:
+  constants: "apps/api/src/common/geo-bounds.ts:23-28 — minLat 9.7, maxLat 10.6, minLng 103.7, maxLng 104.2"
+  classification: "Temporary provisional boundary — derived from seed data + a hand-chosen pad; no traceable authoritative source"
+  enforcement_points:
+    - "apps/api/src/modules/places/dto/places.dto.ts:22,25 — GeoPointDto (Create/Update)"
+    - "apps/api/src/modules/geo/dto/geo.dto.ts:10,13 — NearbyQueryDto"
+    - "apps/api/src/modules/geo/dto/geo.dto.ts:28,31,34,37 — BboxQueryDto"
+  not_enforced:
+    - "no CHECK constraint on places.location (1720000400000-InitPlaces.ts)"
+    - "no service-layer check, no seed/import validation, no geospatial query filter, no config override"
+
+remediation_task: PLACE-016           # COMPLETED 2026-07-23
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-016-bbox-enforcement-report.md
+  evidence_index: docs/delivery/evidence/PLACE-016-bbox-enforcement-evidence-index.md
+
+blocks_release_because: >-
+  Write and geo-query validation currently hard-fails on coordinates outside a boundary the
+  repository itself documents as provisional and unsourced.
+
+clears_release_blocker_when:
+  - "PLACE-016 implemented"
+  - "focused specs cover in-box, out-of-box and globally invalid coordinates"
+  - "mutation check proves the regression spec detects restoration of hard rejection"
+  - "tsc --noEmit and affected regression suites green"
+
+not_claimed:
+  - "no authoritative boundary is asserted by this record"
+  - "no database-backed validation (Docker absent)"

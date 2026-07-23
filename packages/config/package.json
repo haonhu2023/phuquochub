@@ -1,0 +1,16 @@
+{
+  "name": "@phuquochub/config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cấu hình dùng chung: tsconfig presets, prettier (Sprint 0)",
+  "files": [
+    "tsconfig",
+    "prettier"
+  ],
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/nestjs.json": "./tsconfig/nestjs.json",
+    "./tsconfig/nextjs.json": "./tsconfig/nextjs.json",
+    "./prettier": "./prettier/index.json"
+  }
+}

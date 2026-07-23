@@ -1,0 +1,738 @@
+# Documentation Analysis
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Audit
+
+---
+
+# Purpose
+
+This document defines
+
+the official documentation analysis policy
+
+for the PhuQuocHub platform.
+
+Documentation Analysis exists
+
+to ensure
+
+the implementation
+
+never diverges
+
+from the frozen documentation.
+
+Documentation
+
+is the Single Source of Truth (SSOT).
+
+Implementation
+
+must always follow
+
+documentation.
+
+Never the opposite.
+
+---
+
+# Mission
+
+Protect documentation.
+
+Detect documentation drift.
+
+Verify documentation completeness.
+
+Verify implementation compliance.
+
+Prevent undocumented implementation.
+
+Guarantee architecture consistency.
+
+---
+
+# Core Principles
+
+Documentation
+
+defines architecture.
+
+Implementation
+
+implements documentation.
+
+Review
+
+verifies implementation.
+
+Documentation
+
+must never be inferred
+
+from code.
+
+Code
+
+must never redefine
+
+documentation.
+
+---
+
+# Documentation Sources
+
+The official documentation includes
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+ERD
+
+Data Dictionary
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Coding Standard
+
+Glossary
+
+README
+
+Deployment Guide
+
+Security Guide
+
+Performance Guide
+
+Testing Guide
+
+Sprint Documentation
+
+Milestone Documentation
+
+Release Documentation
+
+Every document
+
+belongs to the SSOT.
+
+---
+
+# Analysis Workflow
+
+Every documentation analysis
+
+must follow
+
+Step 1
+
+Identify Documentation
+
+↓
+
+Step 2
+
+Verify Completeness
+
+↓
+
+Step 3
+
+Verify Consistency
+
+↓
+
+Step 4
+
+Compare Repository
+
+↓
+
+Step 5
+
+Detect Drift
+
+↓
+
+Step 6
+
+Assess Risk
+
+↓
+
+Step 7
+
+Generate Report
+
+↓
+
+Step 8
+
+Issue Decision
+
+No step
+
+may be skipped.
+
+---
+
+# Completeness Review
+
+Verify
+
+Architecture exists
+
+ADR complete
+
+Decision Register complete
+
+Database documented
+
+ERD documented
+
+Data Dictionary documented
+
+OpenAPI complete
+
+RBAC complete
+
+Workflow complete
+
+Coding Standard complete
+
+README complete
+
+Glossary complete
+
+Deployment Guide complete
+
+Security Guide complete
+
+Performance Guide complete
+
+Testing Guide complete
+
+---
+
+# Consistency Review
+
+Verify consistency between
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Database
+
+↓
+
+ERD
+
+↓
+
+Data Dictionary
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+RBAC
+
+↓
+
+Coding Standard
+
+↓
+
+Repository
+
+Every inconsistency
+
+must be reported.
+
+---
+
+# Architecture Validation
+
+Verify
+
+Modules
+
+Folder Structure
+
+Layer Boundaries
+
+Dependencies
+
+Shared Libraries
+
+Infrastructure
+
+Application Boundaries
+
+Architecture Rules
+
+Architecture Drift
+
+---
+
+# Database Validation
+
+Verify
+
+Tables
+
+Columns
+
+Types
+
+Constraints
+
+Indexes
+
+Foreign Keys
+
+Soft Delete
+
+Audit Fields
+
+Geo Fields
+
+Search Fields
+
+Migration
+
+Rollback
+
+Naming Convention
+
+ERD
+
+Data Dictionary
+
+---
+
+# OpenAPI Validation
+
+Verify
+
+Endpoints
+
+DTOs
+
+Schemas
+
+Authentication
+
+Authorization
+
+Validation
+
+Pagination
+
+Examples
+
+Error Responses
+
+Versioning
+
+Naming Convention
+
+No undocumented endpoint.
+
+No undocumented DTO.
+
+---
+
+# RBAC Validation
+
+Verify
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Inheritance
+
+Scopes
+
+Wildcard Rules
+
+Authorization
+
+Policy Enforcement
+
+Deny-by-default
+
+---
+
+# Workflow Validation
+
+Verify
+
+Registration Workflow
+
+Verification Workflow
+
+Approval Workflow
+
+Review Workflow
+
+Publication Workflow
+
+Notification Workflow
+
+Revision Workflow
+
+Deletion Workflow
+
+Recovery Workflow
+
+---
+
+# Coding Standard Validation
+
+Verify
+
+Folder Structure
+
+Naming Convention
+
+Layer Rules
+
+Dependency Rules
+
+Formatting
+
+Testing Rules
+
+Migration Rules
+
+Documentation Rules
+
+---
+
+# Repository Comparison
+
+Compare
+
+Repository
+
+against
+
+Architecture
+
+Database
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Coding Standard
+
+ADR
+
+Decision Register
+
+Every undocumented implementation
+
+is Documentation Drift.
+
+Every undocumented deletion
+
+is Documentation Drift.
+
+Every undocumented modification
+
+is Documentation Drift.
+
+---
+
+# Documentation Drift
+
+Documentation Drift includes
+
+Undocumented Module
+
+Undocumented Entity
+
+Undocumented API
+
+Undocumented Table
+
+Undocumented Column
+
+Undocumented Permission
+
+Undocumented Workflow
+
+Undocumented Dependency
+
+Undocumented Folder
+
+Undocumented Configuration
+
+Undocumented Environment Variable
+
+Outdated Documentation
+
+Conflicting Documentation
+
+Missing Documentation
+
+---
+
+# Severity
+
+Critical
+
+Architecture contradiction
+
+Database contradiction
+
+Security contradiction
+
+High
+
+Undocumented implementation
+
+Missing OpenAPI
+
+Missing ADR
+
+Workflow mismatch
+
+Medium
+
+Documentation outdated
+
+Naming mismatch
+
+Minor inconsistency
+
+Low
+
+Formatting
+
+Typos
+
+Informational
+
+Suggestion only
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+Documentation Source
+
+Repository Evidence
+
+Reference
+
+Severity
+
+Impact
+
+Recommendation
+
+Never guess.
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Report Output
+
+Executive Summary
+
+Documentation Inventory
+
+Documentation Completeness
+
+Documentation Consistency
+
+Architecture Validation
+
+Database Validation
+
+OpenAPI Validation
+
+RBAC Validation
+
+Workflow Validation
+
+Coding Standard Validation
+
+Documentation Drift
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+DOCUMENTATION FROZEN
+
+DOCUMENTATION DRIFT DETECTED
+
+---
+
+# Blocking Conditions
+
+Immediately return
+
+BLOCKED
+
+if
+
+Architecture missing
+
+ADR missing
+
+Decision Register missing
+
+OpenAPI missing
+
+Database documentation missing
+
+Repository unavailable
+
+Documentation unavailable
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+All documentation reviewed
+
+Repository compared
+
+Evidence attached
+
+No undocumented assumptions
+
+No generated code
+
+No repository modified
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Documentation Analysis succeeds when
+
+every implementation
+
+is fully traceable
+
+to the frozen documentation,
+
+every documentation artifact
+
+is internally consistent,
+
+every architectural decision
+
+is supported by an ADR,
+
+and no undocumented implementation
+
+can reach production.
+
+Documentation remains
+
+the single authoritative source
+
+for architecture,
+
+database,
+
+API,
+
+security,
+
+workflow,
+
+and implementation
+
+throughout the lifecycle
+
+of the PhuQuocHub platform.

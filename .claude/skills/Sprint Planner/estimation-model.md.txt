@@ -1,0 +1,665 @@
+# Estimation Model
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To:
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Architecture Review
+
+Production Gate
+
+---
+
+# Purpose
+
+This document defines the mandatory estimation model
+used throughout the PhuQuocHub project.
+
+Every estimation must be based on measurable evidence.
+
+Never estimate using intuition.
+
+Never estimate using optimistic assumptions.
+
+All estimates must be reproducible.
+
+---
+
+# Core Principle
+
+Planning quality depends on estimation quality.
+
+Good estimation reduces
+
+- schedule risk
+
+- architecture drift
+
+- sprint failure
+
+- merge conflicts
+
+- production defects
+
+Poor estimation causes
+
+- unrealistic deadlines
+
+- oversized batches
+
+- hidden technical debt
+
+---
+
+# Estimation Dimensions
+
+Every Sprint and every Batch
+must estimate the following dimensions.
+
+Files
+
+Lines of Code
+
+Complexity
+
+Dependencies
+
+Architecture Risk
+
+Database Risk
+
+Testing Effort
+
+Review Effort
+
+Merge Effort
+
+Documentation Effort
+
+Deployment Risk
+
+Confidence
+
+---
+
+# File Estimation
+
+Estimate the number of files that
+will be created or modified.
+
+Categories
+
+New Files
+
+Modified Files
+
+Deleted Files
+
+Generated Files
+
+Configuration Files
+
+Migration Files
+
+Documentation Files
+
+---
+
+Recommended
+
+3–8 files per Batch
+
+Maximum
+
+15 files
+
+---
+
+# LOC Estimation
+
+Estimate the expected implementation size.
+
+Categories
+
+Tiny
+
+<200 LOC
+
+Small
+
+200–600 LOC
+
+Medium
+
+600–1000 LOC
+
+Large
+
+1000–1800 LOC
+
+Very Large
+
+>1800 LOC
+
+Large batches require splitting.
+
+---
+
+# Complexity Model
+
+Every file contributes complexity points.
+
+| Component | Points |
+|-----------|-------:|
+| Config | 1 |
+| Constant | 1 |
+| Enum | 1 |
+| DTO | 2 |
+| Entity | 2 |
+| Mapper | 2 |
+| Validator | 2 |
+| Repository | 3 |
+| Migration | 3 |
+| Controller | 3 |
+| Service | 5 |
+| Guard | 5 |
+| Interceptor | 4 |
+| Cache | 4 |
+| Scheduler | 4 |
+| Search | 6 |
+| AI | 6 |
+| Security | 6 |
+| Geo | 6 |
+| Analytics | 5 |
+| E2E Test | 4 |
+
+---
+
+# Complexity Levels
+
+Total Points
+
+0–10
+
+Very Easy
+
+11–20
+
+Easy
+
+21–35
+
+Medium
+
+36–50
+
+Hard
+
+51+
+
+Very Hard
+
+Planner must split batches above 35 points.
+
+---
+
+# Dependency Estimation
+
+Measure
+
+Internal Dependencies
+
+External Dependencies
+
+Database Dependencies
+
+API Dependencies
+
+Workflow Dependencies
+
+RBAC Dependencies
+
+OpenAPI Dependencies
+
+Each dependency adds review effort.
+
+---
+
+# Architecture Risk
+
+Risk increases when
+
+Architecture layer changes
+
+Shared module changes
+
+Database schema changes
+
+Cross-module integration
+
+Public API changes
+
+Authentication changes
+
+Authorization changes
+
+Migration changes
+
+---
+
+Risk Levels
+
+Low
+
+Medium
+
+High
+
+Critical
+
+---
+
+# Database Risk
+
+Estimate
+
+Table Creation
+
+Table Alteration
+
+Foreign Keys
+
+Indexes
+
+Constraints
+
+Migration
+
+Rollback
+
+Data Loss
+
+Geo
+
+FTS
+
+---
+
+Risk Score
+
+0–10
+
+Low
+
+11–20
+
+Medium
+
+21–30
+
+High
+
+31+
+
+Critical
+
+---
+
+# Testing Estimation
+
+Estimate
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Performance Tests
+
+Security Tests
+
+Migration Tests
+
+Coverage Goal
+
+Recommended
+
+>80%
+
+Critical Modules
+
+>90%
+
+---
+
+# Review Estimation
+
+Estimate review time.
+
+Tiny
+
+15 min
+
+Small
+
+30 min
+
+Medium
+
+60 min
+
+Large
+
+120 min
+
+Very Large
+
+Split Required
+
+---
+
+# Merge Estimation
+
+Estimate
+
+CI Duration
+
+Migration Time
+
+Rollback Time
+
+Deployment Time
+
+Verification Time
+
+---
+
+# Documentation Estimation
+
+Estimate effort required for
+
+OpenAPI
+
+README
+
+Architecture
+
+Decision Register
+
+ADR
+
+Database
+
+RBAC
+
+Workflow
+
+Examples
+
+Glossary
+
+---
+
+# Confidence Model
+
+Confidence reflects estimation reliability.
+
+Confidence depends on
+
+Documentation completeness
+
+Architecture stability
+
+Dependency certainty
+
+Repository familiarity
+
+Previous Sprint history
+
+Existing implementation
+
+---
+
+Confidence Levels
+
+95–100%
+
+Very High
+
+90–94%
+
+High
+
+80–89%
+
+Medium
+
+70–79%
+
+Low
+
+<70%
+
+Planner must stop
+and report insufficient confidence.
+
+---
+
+# Risk Scoring
+
+Overall Risk Score
+
+Architecture ×2
+
+Database ×2
+
+Security ×2
+
+Testing ×1
+
+Deployment ×1
+
+Performance ×1
+
+Documentation ×1
+
+Dependencies ×2
+
+Maximum
+
+100
+
+---
+
+Risk Classification
+
+0–20
+
+Very Low
+
+21–40
+
+Low
+
+41–60
+
+Medium
+
+61–80
+
+High
+
+81–100
+
+Critical
+
+---
+
+# Sprint Duration Model
+
+Estimate
+
+Planning
+
+Implementation
+
+Review
+
+Testing
+
+Merge
+
+Documentation
+
+Buffer
+
+Never estimate implementation only.
+
+---
+
+Recommended Sprint Duration
+
+Small Sprint
+
+3–5 days
+
+Medium Sprint
+
+1–2 weeks
+
+Large Sprint
+
+2–3 weeks
+
+Maximum
+
+3 weeks
+
+---
+
+# Buffer Policy
+
+Every Sprint
+must include contingency.
+
+Recommended
+
+10–20%
+
+High-risk Sprint
+
+20–30%
+
+Never plan with zero buffer.
+
+---
+
+# Velocity Model
+
+Measure
+
+Completed Batches
+
+Accepted Batches
+
+Rejected Batches
+
+Average LOC
+
+Average Review Time
+
+Average CI Time
+
+Average Bug Count
+
+Use historical data whenever available.
+
+---
+
+# Acceptance Forecast
+
+Planner must estimate
+
+Probability of PASS
+
+Probability of READY AFTER FIXES
+
+Probability of FAIL
+
+Never assume 100%.
+
+---
+
+# Reporting
+
+Every Sprint Report must include
+
+Estimated Files
+
+Estimated LOC
+
+Complexity Score
+
+Risk Score
+
+Confidence
+
+Review Time
+
+Testing Time
+
+Deployment Time
+
+Total Duration
+
+Recommended Buffer
+
+---
+
+# Anti-Patterns
+
+Never estimate
+
+by intuition.
+
+Never estimate
+
+without repository analysis.
+
+Never estimate
+
+without dependency analysis.
+
+Never estimate
+
+without architecture validation.
+
+Never ignore uncertainty.
+
+---
+
+# Success Criteria
+
+The estimation model succeeds when
+
+Sprint duration is predictable,
+
+Batch size remains reviewable,
+
+Risk is visible before implementation,
+
+and Claude Code can plan work
+without relying on subjective judgement.

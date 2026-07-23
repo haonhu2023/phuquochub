@@ -1,0 +1,1320 @@
+# Link and Reference Validation Policy
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT validation, documentation integrity, OpenAPI validation
+
+---
+
+## 1. Purpose
+
+This document defines the official link and reference validation policy for the
+Documentation Freeze skill.
+
+Its purpose is to verify that every documentation reference resolves to a valid,
+current, correctly scoped, and semantically appropriate target.
+
+A documentation system is not complete when its files exist but its references
+are broken, stale, circular, ambiguous, or inconsistent.
+
+Every reference must be:
+
+- resolvable;
+- traceable;
+- current;
+- correctly typed;
+- semantically valid;
+- consistent with document authority;
+- valid within the frozen scope.
+
+---
+
+## 2. Core Principle
+
+A reference is a contract.
+
+When one artifact references another, the referenced artifact becomes part of
+the interpretation and implementation context.
+
+A broken reference may remove required implementation information.
+
+A valid path alone does not prove semantic correctness.
+
+Every reference must resolve to the correct artifact, section, version, and
+authority.
+
+---
+
+## 3. Objectives
+
+The validation process must detect:
+
+- broken Markdown links;
+- broken relative paths;
+- missing files;
+- missing anchors;
+- invalid ADR references;
+- invalid Decision Register references;
+- invalid entity references;
+- invalid enum references;
+- invalid workflow references;
+- invalid permission references;
+- invalid repository paths;
+- stale implementation paths;
+- dangling OpenAPI `$ref`;
+- invalid external OpenAPI references;
+- missing diagram files;
+- stale diagram references;
+- orphan documents;
+- undocumented files;
+- circular reference chains;
+- ambiguous references;
+- references to Draft or Superseded artifacts;
+- references crossing outside the approved freeze scope;
+- references using incorrect versions.
+
+---
+
+## 4. Execution Mode
+
+Link and reference validation is strictly read-only.
+
+Claude Code may:
+
+- enumerate files;
+- inspect Markdown links;
+- inspect relative paths;
+- inspect YAML and JSON references;
+- inspect OpenAPI `$ref`;
+- inspect ADR references;
+- inspect Decision Register entries;
+- inspect diagram links;
+- inspect source-code paths;
+- inspect index files;
+- inspect anchors;
+- construct a reference graph;
+- classify findings;
+- generate reports.
+
+Claude Code must not:
+
+- repair links;
+- rename files;
+- create missing targets;
+- update anchors;
+- alter OpenAPI;
+- rewrite references;
+- move documents;
+- generate replacement documents;
+- silently redirect references.
+
+---
+
+## 5. Reference Categories
+
+Every reference must be classified as one of:
+
+- `MARKDOWN_FILE_LINK`
+- `MARKDOWN_ANCHOR_LINK`
+- `DOCUMENT_PATH_REFERENCE`
+- `ADR_REFERENCE`
+- `DECISION_REFERENCE`
+- `OPENAPI_INTERNAL_REF`
+- `OPENAPI_EXTERNAL_REF`
+- `DATABASE_OBJECT_REFERENCE`
+- `ENTITY_REFERENCE`
+- `ENUM_REFERENCE`
+- `PERMISSION_REFERENCE`
+- `WORKFLOW_REFERENCE`
+- `DIAGRAM_REFERENCE`
+- `REPOSITORY_PATH_REFERENCE`
+- `SOURCE_CODE_REFERENCE`
+- `TEMPLATE_REFERENCE`
+- `VERSION_REFERENCE`
+- `URL_REFERENCE`
+- `UNKNOWN_REFERENCE`
+
+---
+
+## 6. Reference Status
+
+Every checked reference must receive exactly one status:
+
+- `VALID`
+- `VALID BUT STALE`
+- `VALID BUT AMBIGUOUS`
+- `BROKEN`
+- `TARGET NOT FOUND`
+- `ANCHOR NOT FOUND`
+- `VERSION MISMATCH`
+- `AUTHORITY MISMATCH`
+- `OUT OF SCOPE`
+- `CIRCULAR`
+- `DEPRECATED TARGET`
+- `SUPERSEDED TARGET`
+- `DRAFT TARGET`
+- `NOT VERIFIED`
+- `NOT APPLICABLE`
+
+`NOT VERIFIED` is never equivalent to `VALID`.
+
+---
+
+## 7. Markdown File Links
+
+Validate Markdown links such as:
+
+```markdown
+[Architecture](../architecture/architecture.md)
+```
+
+Check:
+
+- target path exists;
+- path is correctly resolved relative to the source file;
+- filename casing matches;
+- target is a file, not a missing directory;
+- target is readable;
+- target is not deprecated unless historical context requires it;
+- target belongs to the expected domain;
+- target authority matches the reference purpose.
+
+Examples of failures:
+
+```markdown
+[Database](../data/database-spec.md)
+```
+
+when the actual file is:
+
+```text
+../data/database.md
+```
+
+```markdown
+[RBAC](../../security/rbac.md)
+```
+
+when the relative path resolves outside the repository.
+
+---
+
+## 8. Markdown Anchor Links
+
+Validate links such as:
+
+```markdown
+[Media Model](database.md#media-model)
+```
+
+Check:
+
+- target file exists;
+- heading exists;
+- generated anchor matches Markdown rules;
+- heading text has not changed;
+- duplicate headings do not make the anchor ambiguous;
+- referenced section contains the expected subject.
+
+Anchor validation should account for:
+
+- lowercase conversion;
+- spaces replaced with hyphens;
+- punctuation removal;
+- duplicate heading suffixes;
+- Unicode handling;
+- repository renderer behavior where known.
+
+If renderer-specific behavior cannot be verified, use:
+
+`NOT VERIFIED`
+
+and disclose the limitation.
+
+---
+
+## 9. Plain Path References
+
+Documents may reference paths without Markdown links.
+
+Examples:
+
+```text
+docs/api/openapi.yaml
+apps/api/src/modules/places/
+packages/database/
+```
+
+Validate:
+
+- path exists;
+- path type matches the statement;
+- path has not moved;
+- path is current;
+- path belongs to the repository;
+- path does not point to generated output unless intended.
+
+A path may be syntactically correct but stale.
+
+Example:
+
+```text
+apps/backend/src/
+```
+
+when the active application is:
+
+```text
+apps/api/src/
+```
+
+Classify:
+
+`VALID BUT STALE` or `TARGET NOT FOUND`
+
+depending on evidence.
+
+---
+
+## 10. ADR References
+
+Validate all ADR references.
+
+Supported forms may include:
+
+```text
+ADR-001
+ADR-007
+docs/99-decisions/ADR-007.md
+ADR 007
+```
+
+For every ADR reference, verify:
+
+- ADR file exists;
+- ID is unique;
+- title matches when provided;
+- status is valid;
+- status matches Decision Register;
+- referenced decision is active for the stated context;
+- Superseded ADR is not treated as current;
+- Proposed ADR is not treated as approved;
+- reference is semantically related to the subject;
+- supersession chain is valid.
+
+Example finding:
+
+```text
+docs/data/database.md references ADR-004 as active,
+but ADR-004 is Superseded by ADR-009.
+```
+
+Classify:
+
+`SUPERSEDED TARGET`
+
+This is a blocker when implementation relies on the obsolete decision.
+
+---
+
+## 11. Decision Register References
+
+Validate references from documents to Decision Register entries and from the
+Decision Register to ADRs.
+
+Check:
+
+- decision ID exists;
+- decision ID is unique;
+- ADR reference resolves;
+- title matches;
+- status matches ADR;
+- active/superseded state matches;
+- affected modules match;
+- version matches where documented;
+- reference direction is valid.
+
+Detect:
+
+- Decision Register entry with no ADR;
+- ADR with no Decision Register entry;
+- duplicate decision IDs;
+- stale ADR path;
+- conflicting active decision;
+- reference to archived decision as current authority.
+
+---
+
+## 12. OpenAPI Internal `$ref`
+
+Validate references such as:
+
+```yaml
+$ref: '#/components/schemas/Place'
+```
+
+Check:
+
+- target component exists;
+- reference syntax is valid;
+- target type matches usage;
+- schema reference points to schema;
+- parameter reference points to parameter;
+- response reference points to response;
+- requestBody reference points to requestBody;
+- securityScheme reference is valid;
+- no circular schema reference creates invalid contract behavior;
+- required schema fields resolve;
+- discriminator mappings resolve.
+
+Examples of dangling references:
+
+```yaml
+$ref: '#/components/schemas/RegisterRequest'
+```
+
+when `RegisterRequest` is undefined.
+
+```yaml
+$ref: '#/components/responses/ValidationError'
+```
+
+when only `ValidationErrorResponse` exists.
+
+Every dangling reference used by an approved operation is normally High and
+freeze-blocking.
+
+---
+
+## 13. OpenAPI External `$ref`
+
+Validate references such as:
+
+```yaml
+$ref: './schemas/place.yaml#/Place'
+```
+
+Check:
+
+- external file exists;
+- relative path is correct;
+- JSON Pointer resolves;
+- referenced fragment exists;
+- file version is compatible;
+- external file is in scope;
+- external file authority is clear;
+- no reference cycle prevents resolution.
+
+When external files cannot be read, report:
+
+`NOT VERIFIED`
+
+Do not mark the OpenAPI contract valid.
+
+---
+
+## 14. Circular OpenAPI References
+
+Recursive schemas may be valid.
+
+Examples:
+
+```text
+Category → children → Category
+```
+
+Do not classify every recursive schema as invalid.
+
+Report a circular reference only when it:
+
+- cannot be resolved;
+- creates infinite expansion in the tooling used;
+- contradicts the data model;
+- references incompatible schema types;
+- prevents validation or generation.
+
+Classify valid recursion as:
+
+`VALID`
+
+with a note when useful.
+
+---
+
+## 15. Database Object References
+
+Validate references to:
+
+- tables;
+- columns;
+- indexes;
+- constraints;
+- foreign keys;
+- sequences;
+- triggers;
+- views;
+- materialized views;
+- functions;
+- extensions;
+- schemas.
+
+Examples:
+
+```text
+fk_media_event
+idx_places_search
+chk_media_owner_arc
+place_ai_summary
+```
+
+Check consistency across:
+
+- database specification;
+- ERD;
+- Data Dictionary;
+- migration documentation;
+- entity catalog;
+- SQL examples.
+
+Report when:
+
+- referenced object is not defined;
+- naming differs;
+- object was renamed;
+- constraint exists only in one source;
+- index reference is stale;
+- relation target is missing.
+
+---
+
+## 16. Entity References
+
+Validate every entity reference against the authoritative entity catalog.
+
+Check:
+
+- entity exists;
+- entity name is canonical;
+- entity is active;
+- entity is in scope;
+- entity ownership is correct;
+- entity is not a DTO or table incorrectly described as an entity;
+- plural/singular usage is consistent;
+- module assignment is correct.
+
+Example:
+
+```text
+Location entity
+```
+
+when the canonical entity is:
+
+```text
+Place
+```
+
+This may be a terminology or entity-reference defect.
+
+---
+
+## 17. Enum References
+
+Validate:
+
+- enum exists;
+- enum name matches;
+- values exist;
+- casing matches;
+- storage representation matches;
+- API representation matches;
+- deprecated values are not active;
+- default value exists.
+
+Example:
+
+```text
+PlaceStatus.PUBLISHED
+```
+
+when the authoritative enum defines:
+
+```text
+APPROVED
+ACTIVE
+ARCHIVED
+```
+
+Classify:
+
+`TARGET NOT FOUND` or `AUTHORITY MISMATCH`
+
+depending on context.
+
+---
+
+## 18. Permission References
+
+Validate permission identifiers against the authoritative permission catalog.
+
+Check:
+
+- permission exists;
+- resource name matches;
+- action name matches;
+- scope exists;
+- casing matches;
+- wildcard form is valid;
+- permission is active;
+- endpoint mapping is consistent.
+
+Examples:
+
+```text
+Place.Update:Managed
+Place.Approve:Any
+User.Role.Assign:Any
+```
+
+Report:
+
+- unknown permission;
+- malformed permission;
+- outdated permission;
+- role references missing permission;
+- workflow references unavailable permission.
+
+---
+
+## 19. Workflow References
+
+Validate workflow references, including:
+
+- workflow IDs;
+- state names;
+- transition names;
+- actor names;
+- permission guards;
+- side effects;
+- event names.
+
+Check that:
+
+- referenced workflow exists;
+- state exists;
+- transition exists;
+- source and target states match;
+- actor is defined;
+- permission is valid;
+- referenced side effect exists.
+
+Example:
+
+```text
+WF-01 → VERIFIED
+```
+
+when `VERIFIED` is not a defined state.
+
+---
+
+## 20. Diagram References
+
+Validate references to:
+
+- Mermaid files;
+- PlantUML files;
+- Draw.io files;
+- PNG;
+- SVG;
+- PDF diagrams;
+- embedded diagram blocks.
+
+Check:
+
+- file exists;
+- file format is valid where tooling permits;
+- title matches;
+- diagram belongs to the expected domain;
+- source document exists;
+- image is not stale;
+- referenced version matches;
+- diagram labels use canonical terminology;
+- diagram is not the only unavailable source of a critical contract.
+
+A missing canonical ERD diagram is normally blocking when no textual equivalent
+exists.
+
+---
+
+## 21. Repository Source References
+
+Documentation may reference source files.
+
+Examples:
+
+```text
+apps/api/src/modules/auth/auth.service.ts
+apps/web/src/modules/auth/
+```
+
+Validate:
+
+- file exists;
+- path is current;
+- file type matches;
+- referenced class or function exists when stated;
+- line reference is valid when provided;
+- reference is not to generated code unless intended.
+
+Source references are evidence, not architectural authority.
+
+A missing source reference may indicate stale documentation.
+
+---
+
+## 22. Line Number References
+
+References may include:
+
+```text
+auth.service.ts:54
+openapi.yaml:799-989
+```
+
+Validate where feasible:
+
+- file exists;
+- line number is within range;
+- referenced content still appears there;
+- line range contains the stated evidence.
+
+Line numbers are volatile.
+
+Prefer stable section or symbol references when available.
+
+A stale line number with otherwise valid evidence may be Low or Medium rather
+than blocking.
+
+---
+
+## 23. Version References
+
+Validate references to:
+
+- document versions;
+- API versions;
+- database versions;
+- architecture versions;
+- ADR set versions;
+- release versions;
+- migration versions;
+- package versions.
+
+Detect:
+
+- version not found;
+- version mismatch;
+- incompatible referenced version;
+- document claims latest while linking old version;
+- freeze baseline references mutable “latest” content.
+
+A freeze baseline must use exact versions where governance requires them.
+
+---
+
+## 24. URL References
+
+Validate external URLs only when they are relevant to the frozen contract.
+
+Check:
+
+- URL syntax;
+- HTTPS where required;
+- domain appropriateness;
+- target availability when tooling permits;
+- whether the external source is stable;
+- whether the documentation depends on mutable third-party content.
+
+External URLs must not replace internal authoritative definitions.
+
+Example:
+
+```text
+Follow the latest OWASP guidance.
+```
+
+This may be supporting guidance but is insufficient as the only security
+contract.
+
+---
+
+## 25. Index Validation
+
+Validate all documentation indexes and navigation files.
+
+Examples:
+
+- root README;
+- docs README;
+- SSOT index;
+- architecture README;
+- ADR index;
+- Decision Register;
+- module indexes.
+
+Check:
+
+- indexed file exists;
+- discovered authoritative file is indexed;
+- title matches;
+- status matches;
+- path matches;
+- no duplicate entries;
+- no stale entries;
+- no active document omitted;
+- archived documents are identified as archived.
+
+---
+
+## 26. Orphan Document Detection
+
+A document is orphaned when it has no incoming reference from:
+
+- repository root README;
+- documentation index;
+- SSOT index;
+- parent README;
+- authoritative document;
+- ADR;
+- Decision Register;
+- roadmap;
+- Sprint document;
+- release document.
+
+Classify orphan state as:
+
+- `ORPHAN`
+- `INTENTIONALLY_STANDALONE`
+- `HIDDEN_AUTHORITY`
+- `OBSOLETE`
+- `UNKNOWN`
+
+A hidden authoritative document is a blocker candidate.
+
+A standalone runbook may be valid if governance allows it.
+
+---
+
+## 27. Broken Reference Severity
+
+### Critical
+
+Use when a broken reference prevents authority or architecture interpretation.
+
+Examples:
+
+- architecture references missing ADR;
+- database contract depends on missing canonical schema;
+- security model points to absent authorization policy;
+- freeze baseline references unavailable documents.
+
+### High
+
+Use when the broken reference prevents deterministic implementation.
+
+Examples:
+
+- OpenAPI dangling schema;
+- missing enum target;
+- missing workflow definition;
+- missing permission reference;
+- missing FK target definition.
+
+### Medium
+
+Use for stale supporting references that affect maintainability.
+
+Examples:
+
+- outdated source path;
+- orphan supporting document;
+- stale diagram path.
+
+### Low
+
+Use for editorial links or optional references.
+
+### Informational
+
+Use for unused or redundant references with no active impact.
+
+---
+
+## 28. Blocking Rules
+
+A reference defect blocks freeze when:
+
+- the target defines required architecture;
+- the target defines a required API contract;
+- the target defines a database contract;
+- the target defines an entity;
+- the target defines a permission;
+- the target defines a workflow;
+- the target defines a security control;
+- the target defines an active ADR;
+- the target is part of the freeze baseline;
+- the defect requires implementation guessing;
+- authority cannot be established without the reference.
+
+---
+
+## 29. Non-Blocking Reference Defects
+
+Examples:
+
+- broken link to a non-authoritative screenshot;
+- stale link in archived documentation;
+- missing optional example;
+- invalid anchor in historical release notes;
+- orphan draft outside frozen scope;
+- broken external reference with no contract dependency.
+
+Every defect must still be reported.
+
+---
+
+## 30. Reference Graph
+
+Construct a directed graph where practical.
+
+Each node represents:
+
+- document;
+- ADR;
+- Decision Register entry;
+- schema;
+- diagram;
+- entity;
+- workflow;
+- permission;
+- source file.
+
+Each edge represents a reference.
+
+The graph should help identify:
+
+- orphan nodes;
+- central authorities;
+- broken edges;
+- circular chains;
+- references to deprecated nodes;
+- unindexed authorities;
+- dependency hotspots.
+
+---
+
+## 31. Circular Document References
+
+Not every circular document reference is invalid.
+
+Example:
+
+```text
+architecture.md references workflow.md
+workflow.md references architecture.md
+```
+
+This may be valid cross-context navigation.
+
+A circular chain is problematic when:
+
+- authority depends on itself;
+- definitions cannot be resolved independently;
+- two documents defer the same contract to each other;
+- neither document contains the required rule;
+- the cycle creates ambiguous ownership.
+
+Example:
+
+```text
+database.md: Media ownership is defined in data-dictionary.md.
+data-dictionary.md: Media ownership follows database.md.
+```
+
+If neither defines the rule, classify:
+
+`CIRCULAR`
+
+and normally block freeze.
+
+---
+
+## 32. Ambiguous Reference Detection
+
+References such as the following are ambiguous:
+
+```text
+See the architecture document.
+```
+
+when multiple architecture documents exist.
+
+```text
+Use the standard enum.
+```
+
+when several enum catalogs exist.
+
+```text
+Follow the current workflow.
+```
+
+when no exact workflow ID or path is provided.
+
+Classify:
+
+`VALID BUT AMBIGUOUS`
+
+or
+
+`AUTHORITY MISMATCH`
+
+depending on impact.
+
+---
+
+## 33. Reference to Draft Content
+
+When an authoritative document references a Draft artifact for required
+implementation behavior, report:
+
+`DRAFT TARGET`
+
+A Draft target cannot satisfy a frozen contract.
+
+This is usually High and blocking.
+
+---
+
+## 34. Reference to Superseded Content
+
+When a current artifact references a Superseded target:
+
+- determine whether the reference is historical;
+- determine whether active behavior relies on it;
+- identify the replacement;
+- classify impact.
+
+Historical references are valid when clearly labeled.
+
+Active reliance on Superseded content is blocking.
+
+---
+
+## 35. Reference to Deprecated Content
+
+Deprecated artifacts may remain valid temporarily.
+
+The reference must define:
+
+- deprecation status;
+- replacement;
+- migration path;
+- removal trigger;
+- support period.
+
+A deprecated reference without transition rules may be Medium or High.
+
+---
+
+## 36. Freeze-Scope Reference Validation
+
+For every reference crossing freeze boundaries, identify:
+
+- source scope;
+- target scope;
+- dependency type;
+- authority;
+- whether the target is frozen;
+- whether the dependency contract is stable.
+
+A partial freeze cannot be issued when an in-scope document depends on an
+unfrozen external contract that affects implementation.
+
+---
+
+## 37. Reference Finding Format
+
+Every finding must contain:
+
+```text
+ID:
+Source Artifact:
+Source Section:
+Reference Text:
+Reference Type:
+Target:
+Resolved Target:
+Target Status:
+Authority:
+Freeze Scope:
+Expected:
+Actual:
+Impact:
+Severity:
+Blocking:
+Evidence:
+Required Fix:
+```
+
+Do not repair the link in the report.
+
+State the minimum correction category.
+
+---
+
+## 38. Required Fix Guidance
+
+### Good
+
+```text
+Update the reference to point to the active Accepted ADR governing media
+ownership.
+```
+
+### Bad
+
+```text
+Change the link to ADR-009.
+```
+
+The second statement is too prescriptive unless evidence proves ADR-009 is the
+correct authority.
+
+### Good
+
+```text
+Define the missing `RegisterRequest` schema or remove the approved operation
+that references it through formal contract change.
+```
+
+### Bad
+
+```text
+Create a schema with email and password fields.
+```
+
+The second statement invents the contract.
+
+---
+
+## 39. Link Metrics
+
+Report:
+
+- total documents scanned;
+- total references found;
+- valid references;
+- broken references;
+- missing targets;
+- missing anchors;
+- dangling OpenAPI references;
+- stale references;
+- ambiguous references;
+- Draft targets;
+- Superseded targets;
+- orphan documents;
+- circular authority chains;
+- blocking reference defects.
+
+Explain counting rules.
+
+---
+
+## 40. Reference Matrix
+
+Use:
+
+| ID | Source | Type | Target | Status | Severity | Blocking | Evidence |
+|---|---|---|---|---|---|---:|---|
+
+---
+
+## 41. Domain Reference Summary
+
+Use:
+
+| Domain | References | Valid | Broken | Ambiguous | Blocking | Status |
+|---|---:|---:|---:|---:|---:|---|
+
+---
+
+## 42. Reference Phase Decision
+
+Issue exactly one:
+
+- `REFERENCE VALIDATION PASS`
+- `REFERENCE VALIDATION PASS WITH NON-BLOCKING FINDINGS`
+- `REFERENCE VALIDATION FAIL`
+- `REFERENCE VALIDATION BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 43. Pass Criteria
+
+Issue `REFERENCE VALIDATION PASS` only when:
+
+- all required references resolve;
+- all OpenAPI references resolve;
+- all active ADR references resolve;
+- all Decision Register references resolve;
+- no required target is Draft, Superseded, or missing;
+- no circular authority dependency remains;
+- no blocking orphan authority exists.
+
+---
+
+## 44. Pass With Non-Blocking Findings
+
+Use when:
+
+- every implementation-significant reference is valid;
+- only editorial, historical, optional, or out-of-scope defects remain;
+- findings are documented.
+
+---
+
+## 45. Fail Criteria
+
+Issue `REFERENCE VALIDATION FAIL` when:
+
+- one or more implementation-significant reference defects exist;
+- a required target is missing;
+- OpenAPI contains dangling references;
+- active documentation points to Superseded authority;
+- a required partial-freeze dependency is not frozen;
+- hidden authoritative documents are discovered.
+
+---
+
+## 46. Blocked Criteria
+
+Issue `REFERENCE VALIDATION BLOCKED` when:
+
+- repository files cannot be read;
+- reference formats cannot be inspected;
+- the documentation scope is unknown;
+- required external referenced artifacts are inaccessible;
+- authority cannot be established.
+
+---
+
+## 47. Output Structure
+
+The report must contain:
+
+1. Executive Summary
+2. Scope
+3. Validation Method
+4. Reference Metrics
+5. Markdown Link Findings
+6. Anchor Findings
+7. ADR Reference Findings
+8. Decision Register Findings
+9. OpenAPI `$ref` Findings
+10. Entity and Enum Reference Findings
+11. Permission and Workflow Findings
+12. Diagram Findings
+13. Repository Path Findings
+14. Version Findings
+15. Orphan Documents
+16. Circular References
+17. Ambiguous References
+18. Blocking Findings
+19. Required Fixes
+20. Reference Phase Decision
+
+---
+
+## 48. Evidence Requirements
+
+Every defect must cite:
+
+- source file;
+- source section;
+- exact reference;
+- expected target;
+- actual resolution result;
+- target status;
+- impact.
+
+For OpenAPI, include the exact JSON Pointer or YAML path where possible.
+
+Example:
+
+```text
+docs/api/openapi.yaml
+paths./auth/register.post.requestBody.content.application/json.schema.$ref
+→ #/components/schemas/RegisterRequest
+→ TARGET NOT FOUND
+```
+
+---
+
+## 49. Tooling Guidance
+
+Where available, use:
+
+- Markdown link validators;
+- YAML parsers;
+- JSON parsers;
+- OpenAPI validators;
+- repository file enumeration;
+- anchor generation rules;
+- graph analysis;
+- case-sensitive path checks.
+
+Tool output is evidence.
+
+Tool absence must be disclosed.
+
+Do not claim full validation when only manual inspection occurred.
+
+---
+
+## 50. Self-Verification
+
+Before publishing:
+
+- verify all documentation roots were scanned;
+- verify relative paths were resolved from the source document;
+- verify path casing was checked;
+- verify OpenAPI internal and external references were inspected;
+- verify ADR statuses were considered;
+- verify Superseded targets were not accepted as active;
+- verify Draft targets were not treated as frozen;
+- verify historical references were classified separately;
+- verify circular authority chains were checked;
+- verify every blocker has exact evidence;
+- verify no links were modified;
+- verify limitations are disclosed;
+- verify exactly one phase decision is present.
+
+---
+
+## 51. Success Criteria
+
+This policy succeeds when every implementation-significant reference inside the
+frozen documentation resolves to the correct, active, authoritative artifact.
+
+The final standard is:
+
+> No code-generation agent, developer, reviewer, or auditor must follow a broken,
+> ambiguous, stale, Draft, Superseded, or unavailable reference to understand
+> the approved implementation contract.

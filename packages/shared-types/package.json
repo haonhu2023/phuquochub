@@ -1,0 +1,19 @@
+{
+  "name": "@phuquochub/shared-types",
+  "version": "0.0.0",
+  "private": true,
+  "description": "DTO/enum/interface dùng chung giữa FE và BE (Sprint 0)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src --max-warnings=0",
+    "test": "echo \"(shared-types) no tests yet\" && exit 0",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

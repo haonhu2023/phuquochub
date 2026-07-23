@@ -1,0 +1,153 @@
+schema_version: "1.0"
+
+id: PLACE-017
+workstream: place
+title: "Align OpenAPI list-query documentation to the validated runtime (F-6 / OD-F-6)"
+type: documentation
+status: completed
+started_at: "2026-07-23"
+completed_at: "2026-07-23"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "js-yaml parse of docs/api/openapi.yaml → exit 0"
+    - "contract check (8 assertions, DTO-derived) → CONTRACT CHECK PASSED, exit 0"
+    - "npx jest places → 105/105, 7 suites, exit 0 (IDENTICAL to pre-task — no runtime file touched)"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC10 all PASS; optional AC11 also PASS"
+  report: docs/delivery/reports/PLACE-017-openapi-alignment-report.md
+  evidence_index: docs/delivery/evidence/PLACE-017-openapi-alignment-evidence-index.md
+  changed_files:
+    - docs/api/openapi.yaml       # listPlaces params + operation description; Meta schema
+    - docs/api/api.md             # §6 implementation markers; §11 Place list request line
+  next_task: docs/delivery/tasks/PLACE-018.yaml
+  runtime_untouched: "zero runtime files in the change set; no DTO, controller, service, repository, pipe, type or spec edited"
+  swagger_finding: >-
+    No Swagger/OpenAPI decorators exist anywhere in the codebase (repo-wide grep for
+    @nestjs/swagger, ApiProperty, ApiQuery, SwaggerModule → zero hits), and `find` returns a single
+    openapi.yaml. The obligation to reconcile decorators and generated artifacts is discharged by
+    evidence of absence: the checked-in document is the only contract artifact.
+  deprecation_choice: >-
+    status, sort and cursor were marked deprecated:true with notes stating they are unimplemented
+    and return HTTP 400 — NOT deleted. OD-F-6 obligation 7 applies because external consumer usage
+    cannot be ruled out (no VCS, deployment, telemetry or client registry).
+  inline_params_note: >-
+    page and limit were inlined instead of $ref-ing shared PageParam/LimitParam, so the clamp
+    behaviour could be documented WITHOUT mutating shared components that other operations use.
+  resolves: "F-6 — release_blocker_status OPEN -> CLEARED on pre-committed conditions"
+  residual: "GAP-05/10 (should cursor/sort exist?) still parked; needs ADR-010 accepted. NON-BLOCKING."
+
+authority:
+  finding: docs/delivery/findings/F-6.yaml
+  decision: docs/delivery/decisions/OWNER-DECISION-F-6.md    # OD-F-6, option F6-A, APPROVED 2026-07-23
+  note: >-
+    Approved decision authorizes the content, not the execution. Activation requires state.yaml
+    to name PLACE-017 as current.task.
+
+depends_on:
+  - PLACE-016     # SEQUENCING dependency only, not technical, preserving the owner's stated
+                  # priority (F-1 → F-6 → F-17) under one-active-task governance.
+
+objective: >-
+  Make docs/api/openapi.yaml and docs/api/api.md describe what GET /places actually accepts and
+  returns, without changing a single line of runtime behaviour.
+
+problem_statement: >-
+  main.ts:20 configures ValidationPipe with whitelist + forbidNonWhitelisted, so a query parameter
+  absent from ListPlacesQueryDto is REJECTED WITH HTTP 400, not ignored. openapi.yaml:461-471 and
+  api.md:182 both publish `status`, `sort` and `cursor` for the Place list; none is implemented,
+  so all three currently fail. Separately the response envelope diverges from the declared Meta
+  schema. OD-F-6 approved option F6-A: documentation follows runtime.
+
+affected_components:
+  - docs/api/openapi.yaml            # :461-471 listPlaces params; :1568-1584 shared params; :1651-1658 Meta
+  - docs/api/api.md                  # :62-63 pagination/sort conventions; :182 Place list request line
+  - apps/api/src/modules/places/dto/places.dto.ts        # READ ONLY — the source of truth for what is accepted
+  - apps/api/src/common/pagination.ts                    # READ ONLY — clamp + envelope behaviour
+  - apps/api/src/main.ts                                 # READ ONLY — the ValidationPipe configuration
+
+in_scope:
+  - "docs/api/openapi.yaml — the listPlaces operation, and the Meta schema"
+  - "docs/api/api.md — the Place-list request line and the pagination/sort convention text where it contradicts runtime"
+
+out_of_scope:
+  - "ANY runtime change. No DTO, controller, service, repository, pipe or type may be edited."
+  - "implementing status, sort or cursor — explicitly rejected by OD-F-6 (option F6-B)"
+  - "the keyset/cursor pagination redesign — parked, and blocked behind ADR-010 which is still Proposed"
+  - "other operations' parameters; only /places GET is in scope"
+  - "F-1 and F-17 remediation"
+
+execution_steps:
+  - "Re-derive the accepted parameter set from ListPlacesQueryDto directly. Do not copy the matrix in F-6.yaml — verify it."
+  - "Confirm there are no Swagger/NestJS decorators to reconcile: the OpenAPI document is hand-maintained and checked in, not generated. State the result either way."
+  - "Document category, ward, price_range, page, limit with their real defaults (page 1, limit 20), real allowed values, and the real limit behaviour: values above 100 are SILENTLY CLAMPED by clampLimit, not rejected."
+  - "Document the actual ordering: fixed `rating_avg DESC NULLS LAST, created_at DESC, id ASC` (PLACE-004), with no client control."
+  - "Document pagination as offset-based page/limit, with no cursor support."
+  - "For status, sort and cursor apply OD-F-6 obligation 7: since external consumer usage CANNOT be ruled out, mark each with an explicit deprecation note stating it is not implemented and returns HTTP 400. Do not delete them silently."
+  - "Reconcile the Meta schema with the emitted envelope: page, pageSize, total, totalPages, timestamp — and remove or mark next_cursor/quota_remaining as not emitted by this operation."
+  - "Reconcile api.md:62-63 and :182 so the prose no longer contradicts the corrected contract."
+  - "Run the validation commands. Runtime specs must pass UNMODIFIED — they will, because no runtime file is touched."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "Every parameter accepted by ListPlacesQueryDto is documented in openapi listPlaces." }
+  - { id: AC2, mandatory: true,  text: "Every parameter documented as ACTIVE in openapi listPlaces is accepted by runtime — verified by comparing against the DTO, not by assumption." }
+  - { id: AC3, mandatory: true,  text: "Documented defaults and maximum limits match runtime: page default 1, limit default 20, limit clamped (not rejected) above 100." }
+  - { id: AC4, mandatory: true,  text: "Enum and allowed values match: price_range = free|low|mid|high, matching PriceRange." }
+  - { id: AC5, mandatory: true,  text: "Geographic filters: the report states explicitly that GET /places accepts NONE, and that geographic queries live on /geo/nearby and /geo/bbox." }
+  - { id: AC6, mandatory: true,  text: "Pagination and sorting semantics match runtime: offset page/limit, no cursor, fixed server-side ordering with no client sort control." }
+  - { id: AC7, mandatory: true,  text: "status, sort and cursor carry an explicit deprecation note recording that they are unimplemented and return HTTP 400. They are NOT deleted silently, because external consumer usage cannot be ruled out." }
+  - { id: AC8, mandatory: true,  text: "The checked-in openapi.yaml parses cleanly after editing." }
+  - { id: AC9, mandatory: true,  text: "Runtime behaviour is unchanged — proven by zero non-doc files in the diff and by existing specs passing UNMODIFIED." }
+  - { id: AC10, mandatory: true, text: "A contract check compares the documented active parameter set against the DTO's accepted set and shows them equal." }
+  - { id: AC11, mandatory: false, text: "The Meta divergence is corrected and the report notes it was carried under F-6 without a separate finding identifier." }
+
+required_evidence:
+  - "the accepted-parameter set as re-derived from the DTO"
+  - "before/after openapi listPlaces and Meta"
+  - "the deprecation-note text applied to status, sort, cursor"
+  - "the contract-check output"
+  - "confirmation that no runtime file appears in the change set"
+  - "all validation exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "node -e \"require('js-yaml').load(require('fs').readFileSync('docs/api/openapi.yaml','utf8'))\"   # openapi parses"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+regression_requirements:
+  - "all existing places specs pass UNMODIFIED — no spec may be edited by this task"
+  - "no runtime source file may appear in the change set"
+
+mutation_check_required: false     # documentation-only; there is no behaviour to mutate
+
+rollback_plan: >-
+  Revert the two documentation files. No code, schema, data or generated output is involved.
+
+stop_conditions:
+  - "Aligning documentation appears to require a runtime change — STOP. That would mean an implementation defect exists that OD-F-6 did not decide; record it and escalate."
+  - "The task starts implementing status, sort or cursor — STOP. OD-F-6 explicitly rejected that (F6-B), and public `status` would reverse the GAP-02/04 security fix."
+  - "A versioned deprecation mechanism seems required — STOP. ADR-010 (API Versioning) is still Proposed, so no versioning strategy exists to express one."
+  - "Evidence of an external consumer of status/sort/cursor emerges — STOP. OD-F-6 reverses in that case."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    finding_updates:
+      F-6:
+        implementation_status: DONE
+        validation_status: PASSED
+        release_blocker_status: "re-assess — clears only when documentation, checked-in contract and validation evidence all agree"
+  requires_evidence:
+    - "contract check showing documented == accepted"
+    - "openapi parses"
+    - "zero runtime files in the change set"
+
+non_claims: >-
+  Completing this task does NOT make the Place workstream release-ready. It reconciles
+  documentation with an implementation that remains unverified against a real database, real HTTP
+  traffic, and real authorization guards. External consumer impact remains UNKNOWN and
+  unverifiable: the repository has no version control, deployment, telemetry, or client registry.

@@ -1,0 +1,57 @@
+# Freeze Matrix
+
+| Area | Status | Evidence |
+
+Architecture
+
+Vision
+
+Roadmap
+
+Database
+
+ERD
+
+Data Dictionary
+
+API
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Security
+
+Deployment
+
+Search
+
+SEO
+
+AI
+
+Analytics
+
+Growth
+
+Glossary
+
+Coding Standard
+
+README
+
+ADR
+
+Decision Register
+
+Status
+
+PASS
+
+FAIL
+
+BLOCKED
+
+NOT FOUND

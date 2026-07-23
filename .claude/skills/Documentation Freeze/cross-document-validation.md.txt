@@ -1,0 +1,4490 @@
+---
+title: Cross Document Validation
+version: 2.0.0
+status: Production
+owner: Chief Documentation Architect
+classification: Internal
+priority: Critical
+applies_to:
+  - SSOT
+  - Documentation Freeze
+  - Architecture Review
+  - Sprint Planner
+  - Batch Generator
+  - Production Gate
+review_cycle: Every Freeze
+---
+
+# Cross Document Validation
+
+---
+
+# 1. Purpose
+
+This document defines the official Cross Document Validation Framework
+for the PhuQuocHub platform.
+
+Cross Document Validation ensures that
+
+every document,
+
+every specification,
+
+every architecture artifact,
+
+every API contract,
+
+every workflow,
+
+every database definition,
+
+every ADR,
+
+and every governance document
+
+describe
+
+exactly the same software system.
+
+Validation is performed across documents,
+
+not within a single document.
+
+The objective is to eliminate
+
+contradictions,
+
+duplicate authority,
+
+documentation drift,
+
+architectural divergence,
+
+and inconsistent engineering decisions.
+
+---
+
+# 2. Mission
+
+Guarantee
+
+One Engineering Truth
+
+One Architecture
+
+One Database Model
+
+One API Contract
+
+One Workflow Definition
+
+One Security Model
+
+One Repository Structure
+
+One Approved Documentation State
+
+---
+
+# 3. Why Cross Document Validation Exists
+
+A single document
+
+may be internally correct
+
+while
+
+the documentation system
+
+is inconsistent.
+
+Example
+
+Architecture
+
+defines
+
+Prisma.
+
+Repository Policy
+
+defines
+
+TypeORM.
+
+OpenAPI
+
+references
+
+database fields
+
+that no longer exist.
+
+Workflow
+
+requires moderation.
+
+API
+
+publishes immediately.
+
+Each document
+
+may appear valid.
+
+The system
+
+is not.
+
+Cross Document Validation
+
+detects
+
+these inconsistencies.
+
+---
+
+# 4. Scope
+
+Cross Document Validation applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+SSOT
+
+Repository
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Security
+
+Deployment
+
+Monitoring
+
+Documentation Standards
+
+Planning Documents
+
+Templates
+
+Examples
+
+AI Governance
+
+Release Documentation
+
+Production Documentation
+
+Every document
+
+participating
+
+in Documentation Freeze.
+
+---
+
+# 5. Validation Objectives
+
+Validation guarantees
+
+Consistency
+
+Completeness
+
+Traceability
+
+Authority
+
+Dependency Integrity
+
+Naming Consistency
+
+Version Consistency
+
+Architectural Alignment
+
+Repository Alignment
+
+Implementation Readiness
+
+---
+
+# 6. Validation Principles
+
+---
+
+## Principle 1
+
+Every engineering fact
+
+must have
+
+exactly one
+
+authoritative definition.
+
+---
+
+## Principle 2
+
+Higher authority
+
+always wins.
+
+Lower authority
+
+must synchronize.
+
+---
+
+## Principle 3
+
+Implementation
+
+never determines
+
+engineering truth.
+
+Documentation
+
+does.
+
+---
+
+## Principle 4
+
+Approved ADRs
+
+override
+
+historical architectural assumptions.
+
+---
+
+## Principle 5
+
+Conflicting authority
+
+blocks
+
+Documentation Freeze.
+
+---
+
+## Principle 6
+
+Every inconsistency
+
+must produce
+
+Evidence.
+
+---
+
+## Principle 7
+
+Every validation
+
+must be
+
+deterministic.
+
+Two validators
+
+must reach
+
+the same result.
+
+---
+
+## Principle 8
+
+Validation
+
+must never
+
+guess
+
+missing information.
+
+If evidence
+
+does not exist
+
+return
+
+NOT FOUND.
+
+---
+
+## Principle 9
+
+Cross-document validation
+
+is read-only.
+
+Validation
+
+must never
+
+rewrite documentation.
+
+---
+
+## Principle 10
+
+Validation
+
+must preserve
+
+architectural history.
+
+Historical decisions
+
+remain traceable.
+
+---
+
+# 7. Engineering Truth Hierarchy
+
+Cross Document Validation
+
+always evaluates
+
+according to
+
+the official hierarchy.
+
+Business Requirements
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Specifications
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+Lower layers
+
+must never
+
+override
+
+higher layers.
+
+---
+
+# 8. Validation Model
+
+Validation
+
+is performed
+
+using
+
+three dimensions.
+
+Dimension One
+
+Authority
+
+Who owns the truth?
+
+---
+
+Dimension Two
+
+Consistency
+
+Does every document
+
+describe
+
+the same system?
+
+---
+
+Dimension Three
+
+Traceability
+
+Can every statement
+
+be traced
+
+to
+
+an approved source?
+
+Only when
+
+all three dimensions
+
+pass
+
+may Documentation Freeze continue.
+
+---
+
+# 9. Validation Levels
+
+Level 1
+
+Document Validation
+
+Single document quality.
+
+---
+
+Level 2
+
+Pair Validation
+
+Compare two related documents.
+
+Examples
+
+Architecture
+
+↓
+
+ADR
+
+OpenAPI
+
+↓
+
+API Specification
+
+Database
+
+↓
+
+ERD
+
+---
+
+Level 3
+
+Domain Validation
+
+Compare
+
+all documents
+
+belonging
+
+to one domain.
+
+Example
+
+Place Domain
+
+Architecture
+
+↓
+
+Database
+
+↓
+
+Workflow
+
+↓
+
+API
+
+↓
+
+RBAC
+
+↓
+
+Repository
+
+---
+
+Level 4
+
+System Validation
+
+Validate
+
+the entire documentation system.
+
+---
+
+# 10. Validation Authority
+
+The validator
+
+must determine
+
+the authoritative source
+
+before
+
+performing comparisons.
+
+Authority
+
+is never inferred.
+
+Authority
+
+must be documented.
+
+If authority
+
+cannot be determined
+
+return
+
+BLOCKED.
+
+---
+
+# 11. Validation Inputs
+
+Architecture Documents
+
+ADR
+
+Decision Register
+
+SSOT
+
+Repository Documentation
+
+OpenAPI
+
+Database Documentation
+
+Workflow Documentation
+
+RBAC
+
+Security Documentation
+
+Planning Documentation
+
+Templates
+
+Examples
+
+Reference Standards
+
+---
+
+# 12. Validation Outputs
+
+Cross Validation Report
+
+Conflict Report
+
+Authority Report
+
+Dependency Report
+
+Consistency Report
+
+Synchronization Report
+
+Evidence Package
+
+Freeze Recommendation
+
+---
+
+# 13. Validation States
+
+NOT STARTED
+
+↓
+
+COLLECTING
+
+↓
+
+ANALYZING
+
+↓
+
+COMPARING
+
+↓
+
+VALIDATING
+
+↓
+
+REPORTING
+
+↓
+
+PASS
+
+or
+
+WARNING
+
+or
+
+FAIL
+
+or
+
+BLOCKED
+
+Every validation
+
+must terminate
+
+in exactly one final state.
+
+---
+
+# 14. Validation Preconditions
+
+Validation
+
+may begin
+
+only when
+
+Document Inventory exists
+
+Document Metadata complete
+
+Authority defined
+
+Dependencies resolved
+
+Document Versions identified
+
+Lifecycle Status known
+
+No corrupted documents
+
+---
+
+# 15. Validation Exit Conditions
+
+Validation completes
+
+only when
+
+Every comparison executed
+
+Evidence collected
+
+Conflicts classified
+
+Authority confirmed
+
+Report generated
+
+Recommendation produced
+
+Validation archived
+
+---
+
+# 16. Success Criteria (Foundation)
+
+The Cross Document Validation Framework succeeds when
+
+every document
+
+participating
+
+in Documentation Freeze
+
+can be proven
+
+to describe
+
+exactly the same software system,
+
+using
+
+one authoritative source,
+
+one consistent architecture,
+
+one synchronized documentation state,
+
+and one traceable engineering truth,
+
+without ambiguity,
+
+without contradiction,
+
+and without undocumented assumptions.
+---
+
+# 17. Document Relationship Model
+
+Cross Document Validation
+
+does not compare
+
+documents randomly.
+
+Every document
+
+must belong
+
+to
+
+a governed relationship graph.
+
+Relationships
+
+define
+
+Authority
+
+Dependency
+
+Reference
+
+Ownership
+
+Synchronization
+
+Inheritance
+
+Validation Scope
+
+---
+
+# 18. Relationship Types
+
+Every relationship
+
+must belong
+
+to one of the following categories.
+
+---
+
+## Authority
+
+Defines
+
+the authoritative source.
+
+Example
+
+Architecture
+
+↓
+
+Repository
+
+Repository
+
+must follow
+
+Architecture.
+
+---
+
+## Dependency
+
+One document
+
+depends on
+
+another.
+
+Example
+
+Workflow
+
+↓
+
+Database
+
+Workflow
+
+cannot define
+
+entities
+
+not present
+
+inside Database.
+
+---
+
+## Reference
+
+One document
+
+references
+
+another
+
+without owning it.
+
+Example
+
+API Specification
+
+↓
+
+Security Policy
+
+---
+
+## Synchronization
+
+Two documents
+
+must evolve together.
+
+Example
+
+Database
+
+↓
+
+ERD
+
+Example
+
+OpenAPI
+
+↓
+
+DTO Specification
+
+---
+
+## Derivation
+
+One document
+
+is generated
+
+from another.
+
+Example
+
+OpenAPI
+
+↓
+
+Generated SDK
+
+---
+
+## Historical
+
+Previous versions
+
+remain traceable
+
+but never
+
+override
+
+active documents.
+
+---
+
+# 19. Authority Matrix
+
+Every engineering subject
+
+must have
+
+exactly one authority.
+
+| Subject | Authoritative Document |
+|----------|-----------------------|
+| Architecture | architecture.md |
+| Architectural Decision | ADR |
+| Decision Status | Decision Register |
+| Business Rules | Business Requirements |
+| Entity Definition | Database Documentation |
+| Database Schema | Prisma Schema |
+| API Contract | OpenAPI |
+| Workflow | Workflow Documentation |
+| Permissions | RBAC Documentation |
+| Repository Structure | Repository Policy |
+| Coding Rules | Coding Standards |
+| Deployment | Deployment Policy |
+| Monitoring | Monitoring Policy |
+| Documentation Style | Documentation Style Guide |
+| Freeze | Documentation Freeze |
+| Planning | Sprint Planner |
+| Batch Planning | Batch Generator |
+
+Authority
+
+must never
+
+be duplicated.
+
+---
+
+# 20. Canonical Source Resolution
+
+When
+
+multiple documents
+
+appear
+
+to define
+
+the same concept,
+
+Claude Code
+
+must determine
+
+the canonical source.
+
+Resolution Order
+
+Business Requirement
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policy
+
+↓
+
+Standard
+
+↓
+
+Specification
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+If ambiguity remains
+
+return
+
+BLOCKED.
+
+Never guess.
+
+---
+
+# 21. Dependency Graph
+
+Every document
+
+must declare
+
+its dependencies.
+
+Example
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Repository Policy
+
+↓
+
+Coding Standards
+
+↓
+
+Implementation
+
+---
+
+Example
+
+Architecture
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Backend
+
+↓
+
+Frontend
+
+↓
+
+Testing
+
+---
+
+Every dependency
+
+must be
+
+Directed
+
+Explicit
+
+Documented
+
+Traceable
+
+---
+
+# 22. Dependency Rules
+
+Dependencies
+
+must never
+
+be circular.
+
+Example
+
+A
+
+↓
+
+B
+
+↓
+
+C
+
+↓
+
+A
+
+INVALID
+
+---
+
+Dependencies
+
+must always
+
+flow
+
+from
+
+higher authority
+
+to
+
+lower authority.
+
+---
+
+A document
+
+must never
+
+depend
+
+upon
+
+its own implementation.
+
+---
+
+# 23. Cross Validation Domains
+
+Validation
+
+is executed
+
+inside
+
+engineering domains.
+
+Domains include
+
+Architecture
+
+Database
+
+API
+
+Workflow
+
+Repository
+
+Security
+
+Planning
+
+Documentation
+
+AI Governance
+
+Operations
+
+Deployment
+
+Monitoring
+
+---
+
+Each domain
+
+must validate
+
+internally
+
+before
+
+cross-domain validation begins.
+
+---
+
+# 24. Domain Mapping
+
+Example
+
+Architecture Domain
+
+contains
+
+Architecture
+
+ADR
+
+Decision Register
+
+Dependency Rules
+
+Architecture Review
+
+---
+
+Database Domain
+
+contains
+
+Database Documentation
+
+ERD
+
+Prisma
+
+Migration Rules
+
+Data Dictionary
+
+---
+
+API Domain
+
+contains
+
+OpenAPI
+
+DTO
+
+REST Standards
+
+Authentication
+
+Authorization
+
+---
+
+Workflow Domain
+
+contains
+
+Business Workflow
+
+State Machine
+
+Events
+
+Notifications
+
+Permissions
+
+---
+
+Repository Domain
+
+contains
+
+Repository Policy
+
+Folder Structure
+
+Coding Standards
+
+Naming
+
+Branch Strategy
+
+---
+
+# 25. Cross Domain Relationships
+
+Architecture
+
+governs
+
+Database
+
+API
+
+Repository
+
+Workflow
+
+Deployment
+
+---
+
+Database
+
+supports
+
+API
+
+Workflow
+
+Search
+
+Analytics
+
+---
+
+Workflow
+
+uses
+
+Database
+
+API
+
+Security
+
+Notifications
+
+---
+
+Repository
+
+implements
+
+Architecture.
+
+---
+
+Implementation
+
+implements
+
+Repository.
+
+---
+
+Production
+
+implements
+
+approved implementation.
+
+---
+
+# 26. Cross Reference Rules
+
+Every reference
+
+must satisfy
+
+Target Exists
+
+Target Active
+
+Correct Version
+
+Correct Status
+
+Correct Path
+
+Accessible
+
+No Circular Reference
+
+---
+
+Broken references
+
+produce
+
+FAIL.
+
+---
+
+# 27. Canonical Terminology Mapping
+
+Every engineering term
+
+must map
+
+to
+
+one canonical definition.
+
+Example
+
+Correct
+
+Place
+
+Incorrect
+
+Location
+
+Venue
+
+Destination
+
+(if not officially defined)
+
+---
+
+Correct
+
+Business
+
+Incorrect
+
+Merchant
+
+Company
+
+Vendor
+
+unless
+
+approved.
+
+---
+
+Terminology
+
+must remain
+
+consistent
+
+across
+
+Architecture
+
+Database
+
+OpenAPI
+
+Workflow
+
+Repository
+
+Documentation
+
+---
+
+# 28. Synchronization Rules
+
+The following documents
+
+must always
+
+share
+
+the same version
+
+of engineering truth.
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Repository
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+Synchronization
+
+is mandatory.
+
+---
+
+# 29. Synchronization Failure
+
+Synchronization
+
+fails
+
+when
+
+One document
+
+contains
+
+new information
+
+that
+
+dependent documents
+
+do not.
+
+Example
+
+Architecture
+
+defines
+
+ReviewStatus.
+
+Database
+
+does not.
+
+↓
+
+FAIL
+
+---
+
+Workflow
+
+requires
+
+Approval.
+
+OpenAPI
+
+omits
+
+Approval.
+
+↓
+
+FAIL
+
+---
+
+# 30. Authority Conflict Resolution
+
+If
+
+two documents
+
+claim authority
+
+for
+
+the same subject,
+
+Documentation Freeze
+
+must stop.
+
+Claude Code
+
+must
+
+generate
+
+Conflict Report.
+
+Required
+
+Architecture Review.
+
+No automatic resolution
+
+is allowed.
+
+---
+
+# 31. Relationship Validation Algorithm
+
+For every document
+
+execute
+
+1
+
+Identify Authority
+
+↓
+
+2
+
+Identify Dependencies
+
+↓
+
+3
+
+Verify References
+
+↓
+
+4
+
+Verify Versions
+
+↓
+
+5
+
+Compare Terminology
+
+↓
+
+6
+
+Compare Definitions
+
+↓
+
+7
+
+Compare Metadata
+
+↓
+
+8
+
+Detect Conflicts
+
+↓
+
+9
+
+Generate Report
+
+↓
+
+10
+
+Recommend
+
+PASS
+
+WARNING
+
+FAIL
+
+BLOCKED
+
+---
+
+# 32. Foundation Completion Criteria
+
+The relationship layer
+
+is complete
+
+only when
+
+Every document
+
+has
+
+Exactly One Authority
+
+Documented Dependencies
+
+Valid References
+
+Canonical Terminology
+
+No Circular Dependency
+
+No Duplicate Authority
+
+No Broken Relationships
+
+Complete Traceability
+
+Ready for
+
+Cross Document Comparison.
+---
+
+# 33. Architecture Validation Engine
+
+## Purpose
+
+Architecture
+
+is the highest engineering authority
+for system structure.
+
+Every downstream document
+
+must conform
+
+to the approved architecture.
+
+---
+
+## Validation Inputs
+
+Architecture Documentation
+
+Architecture Boundary
+
+ADR
+
+Decision Register
+
+Repository Structure
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Deployment
+
+---
+
+## Validation Rules
+
+The validator
+
+must compare
+
+Modules
+
+Layer Boundaries
+
+Dependencies
+
+Ownership
+
+Technology Stack
+
+Service Boundaries
+
+Shared Components
+
+Integration Points
+
+Infrastructure
+
+Security Boundaries
+
+---
+
+## Validation Algorithm
+
+For each architecture component
+
+perform
+
+```text
+Locate Component
+        ↓
+Locate References
+        ↓
+Compare Ownership
+        ↓
+Compare Dependencies
+        ↓
+Compare Interfaces
+        ↓
+Compare Lifecycle
+        ↓
+Compare Status
+        ↓
+Generate Findings
+```
+
+---
+
+## PASS
+
+All architecture definitions
+
+match
+
+all dependent documents.
+
+---
+
+## WARNING
+
+Architecture
+
+contains
+
+non-breaking divergence.
+
+---
+
+## FAIL
+
+Architecture
+
+conflicts
+
+with
+
+approved documentation.
+
+---
+
+## BLOCKED
+
+Multiple architecture sources
+
+claim authority.
+
+---
+
+# 34. ADR Validation Engine
+
+## Purpose
+
+Validate
+
+Architectural Decision Records.
+
+---
+
+## Validation Rules
+
+Every ADR
+
+must
+
+Have Unique ID
+
+Have Status
+
+Have Owner
+
+Have Approval
+
+Reference Architecture
+
+Reference Decision Register
+
+Reference Previous ADR
+
+(if superseded)
+
+---
+
+## Compare
+
+ADR
+
+↓
+
+Architecture
+
+ADR
+
+↓
+
+Decision Register
+
+ADR
+
+↓
+
+Repository
+
+ADR
+
+↓
+
+Implementation
+
+---
+
+## Validation Questions
+
+Does Architecture reference the ADR?
+
+Does Decision Register contain the ADR?
+
+Does Repository implement the ADR?
+
+Is ADR status valid?
+
+Has ADR been superseded?
+
+---
+
+## Fail Examples
+
+Accepted ADR
+
+missing
+
+from Decision Register.
+
+Repository
+
+implements
+
+Rejected ADR.
+
+Superseded ADR
+
+still active.
+
+---
+
+# 35. Decision Register Validation
+
+Purpose
+
+Verify
+
+Decision Register
+
+accurately reflects
+
+architectural history.
+
+---
+
+## Compare
+
+Decision Register
+
+↓
+
+ADR
+
+↓
+
+Architecture
+
+---
+
+## Required Fields
+
+Decision ID
+
+ADR
+
+Status
+
+Approval
+
+Owner
+
+Date
+
+Version
+
+---
+
+## Validation
+
+Every Accepted ADR
+
+must exist.
+
+Every Rejected ADR
+
+must remain historical.
+
+Every Superseded ADR
+
+must reference
+
+its successor.
+
+---
+
+## Failure
+
+Missing Decision.
+
+Duplicate Decision.
+
+Invalid Status.
+
+Broken ADR Reference.
+
+---
+
+# 36. Database Validation Engine
+
+Purpose
+
+Ensure
+
+every database definition
+
+matches
+
+all engineering documentation.
+
+---
+
+## Compare
+
+Database Documentation
+
+↓
+
+ERD
+
+↓
+
+Prisma Schema
+
+↓
+
+Migration
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+---
+
+## Validation Rules
+
+Entity Name
+
+Table Name
+
+Primary Key
+
+Foreign Key
+
+Indexes
+
+Constraints
+
+Relationships
+
+Enums
+
+Soft Delete
+
+Audit Fields
+
+Version Fields
+
+Geo Fields
+
+---
+
+## Relationship Validation
+
+One-to-One
+
+One-to-Many
+
+Many-to-Many
+
+Inheritance
+
+Composition
+
+Ownership
+
+---
+
+## Schema Drift
+
+Schema Drift
+
+exists
+
+when
+
+documentation
+
+and
+
+schema
+
+diverge.
+
+---
+
+## Failure
+
+Database
+
+contains
+
+undocumented entity.
+
+Migration
+
+introduces
+
+undocumented field.
+
+Workflow
+
+references
+
+nonexistent table.
+
+---
+
+# 37. OpenAPI Validation Engine
+
+Purpose
+
+Ensure
+
+API documentation
+
+matches
+
+approved contracts.
+
+---
+
+## Compare
+
+OpenAPI
+
+↓
+
+API Specification
+
+↓
+
+DTO
+
+↓
+
+Controller
+
+↓
+
+Workflow
+
+↓
+
+Security
+
+---
+
+## Validate
+
+Endpoints
+
+HTTP Methods
+
+Parameters
+
+Responses
+
+Status Codes
+
+Authentication
+
+Authorization
+
+Errors
+
+Examples
+
+Pagination
+
+Filtering
+
+Sorting
+
+---
+
+## Failure
+
+Endpoint
+
+exists
+
+without documentation.
+
+OpenAPI
+
+documents
+
+different response.
+
+Controller
+
+uses
+
+different schema.
+
+---
+
+# 38. Workflow Validation Engine
+
+Purpose
+
+Ensure
+
+business behavior
+
+remains consistent.
+
+---
+
+## Compare
+
+Workflow
+
+↓
+
+Business Rules
+
+↓
+
+API
+
+↓
+
+Database
+
+↓
+
+Notifications
+
+↓
+
+RBAC
+
+---
+
+## Validate
+
+States
+
+Transitions
+
+Events
+
+Permissions
+
+Triggers
+
+Approvals
+
+Timeouts
+
+Failures
+
+Rollback
+
+Compensation
+
+---
+
+## Workflow Drift
+
+Workflow Drift
+
+exists
+
+when
+
+implementation
+
+changes
+
+behavior
+
+without
+
+documentation.
+
+---
+
+# 39. Repository Validation Engine
+
+Purpose
+
+Ensure
+
+repository
+
+implements
+
+approved documentation.
+
+---
+
+## Compare
+
+Repository
+
+↓
+
+Architecture
+
+↓
+
+Coding Standards
+
+↓
+
+Naming Standards
+
+↓
+
+Dependency Rules
+
+↓
+
+Module Structure
+
+---
+
+## Validate
+
+Folder Structure
+
+Modules
+
+Packages
+
+Imports
+
+Layering
+
+Naming
+
+Ownership
+
+Visibility
+
+---
+
+## Failure
+
+Repository
+
+contains
+
+undocumented module.
+
+Module
+
+violates
+
+layer rules.
+
+Circular dependency.
+
+---
+
+# 40. RBAC Validation Engine
+
+Purpose
+
+Validate
+
+authorization.
+
+---
+
+## Compare
+
+RBAC
+
+↓
+
+Workflow
+
+↓
+
+API
+
+↓
+
+Security
+
+↓
+
+Repository
+
+---
+
+## Validate
+
+Roles
+
+Permissions
+
+Scopes
+
+Inheritance
+
+Ownership
+
+Guards
+
+Policies
+
+Audit
+
+---
+
+## Failure
+
+Permission
+
+exists
+
+without documentation.
+
+Role
+
+missing.
+
+Workflow
+
+requires
+
+permission
+
+not defined.
+
+---
+
+# 41. Security Validation Engine
+
+Purpose
+
+Ensure
+
+security documentation
+
+is consistent.
+
+---
+
+## Compare
+
+Security Policy
+
+↓
+
+Architecture
+
+↓
+
+API
+
+↓
+
+Repository
+
+↓
+
+Infrastructure
+
+↓
+
+Deployment
+
+---
+
+## Validate
+
+Authentication
+
+Authorization
+
+Encryption
+
+Secrets
+
+Audit
+
+TLS
+
+Certificates
+
+Rate Limits
+
+Logging
+
+Compliance
+
+---
+
+## Failure
+
+API
+
+requires
+
+OAuth.
+
+Security
+
+documents
+
+JWT.
+
+↓
+
+FAIL
+
+---
+
+# 42. AI Governance Validation
+
+Purpose
+
+Ensure
+
+AI documentation
+
+aligns
+
+with
+
+engineering governance.
+
+---
+
+## Compare
+
+AI Governance
+
+↓
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Documentation Freeze
+
+↓
+
+Coding Standards
+
+↓
+
+Security
+
+---
+
+## Validate
+
+Allowed Actions
+
+Forbidden Actions
+
+Approval Rules
+
+Evidence
+
+Logging
+
+Review
+
+Automation
+
+---
+
+## Failure
+
+AI
+
+allowed
+
+to approve production.
+
+↓
+
+BLOCKED
+
+AI
+
+allowed
+
+to bypass
+
+Documentation Freeze.
+
+↓
+
+BLOCKED
+
+---
+
+# 43. Comparison Result Matrix
+
+Every comparison
+
+must produce
+
+one result.
+
+PASS
+
+Everything matches.
+
+---
+
+WARNING
+
+Minor observation.
+
+No architectural impact.
+
+---
+
+FAIL
+
+Engineering inconsistency.
+
+Correction required.
+
+---
+
+BLOCKED
+
+Authoritative conflict.
+
+Documentation Freeze
+
+must stop.
+
+---
+
+# 44. Comparison Evidence
+
+Every finding
+
+must contain
+
+Source Document
+
+Target Document
+
+Authority
+
+Compared Section
+
+Evidence
+
+Reason
+
+Severity
+
+Recommendation
+
+Status
+
+Timestamp
+
+Validator
+
+---
+
+# 45. Validation Engine Completion
+
+Part 3
+
+is complete
+
+when
+
+every engineering domain
+
+has
+
+its own
+
+comparison engine,
+
+validation rules,
+
+failure conditions,
+
+and
+
+standardized outputs,
+
+allowing
+
+Cross Document Validation
+
+to execute
+
+repeatable,
+
+deterministic,
+
+and auditable
+
+comparisons
+
+across
+
+the entire documentation system.
+---
+
+# 46. Conflict Detection Engine
+
+## Purpose
+
+The Conflict Detection Engine identifies
+
+contradictions,
+
+duplicate authority,
+
+incompatible definitions,
+
+and documentation inconsistencies
+
+across the engineering knowledge base.
+
+Every detected conflict
+
+must be
+
+classified,
+
+evidenced,
+
+and reported.
+
+The engine
+
+must never
+
+attempt
+
+to silently resolve conflicts.
+
+---
+
+# 47. Conflict Definition
+
+A conflict exists when
+
+two or more active documents
+
+describe
+
+the same engineering subject
+
+using
+
+different authoritative definitions.
+
+A conflict
+
+is always
+
+an engineering issue,
+
+not merely
+
+a documentation issue.
+
+---
+
+# 48. Conflict Categories
+
+Every detected conflict
+
+must belong
+
+to exactly one primary category.
+
+### Architecture Conflict
+
+System boundaries differ.
+
+Module ownership differs.
+
+Layering differs.
+
+Technology stack differs.
+
+Service responsibilities differ.
+
+---
+
+### ADR Conflict
+
+Two accepted ADRs
+
+make incompatible decisions.
+
+ADR status
+
+differs from
+
+Decision Register.
+
+ADR references
+
+nonexistent architecture.
+
+---
+
+### Decision Conflict
+
+Decision Register
+
+does not reflect
+
+approved ADRs.
+
+Duplicate decision IDs.
+
+Missing decision entries.
+
+Invalid decision status.
+
+---
+
+### Database Conflict
+
+Entity definitions differ.
+
+Relationship cardinality differs.
+
+Primary keys differ.
+
+Enums differ.
+
+Constraints differ.
+
+Migration contradicts schema.
+
+---
+
+### API Conflict
+
+Endpoint definitions differ.
+
+Request schema differs.
+
+Response schema differs.
+
+Authentication differs.
+
+Authorization differs.
+
+Status codes differ.
+
+---
+
+### Workflow Conflict
+
+Workflow state differs.
+
+Transitions differ.
+
+Approval flow differs.
+
+Business rules differ.
+
+Notification behavior differs.
+
+---
+
+### Repository Conflict
+
+Repository structure
+
+violates
+
+Architecture.
+
+Module ownership differs.
+
+Dependency rules violated.
+
+Naming inconsistent.
+
+---
+
+### Security Conflict
+
+Authentication differs.
+
+RBAC differs.
+
+Encryption policy differs.
+
+Secrets policy differs.
+
+Audit policy differs.
+
+---
+
+### Terminology Conflict
+
+Same concept
+
+uses
+
+multiple names.
+
+Example
+
+Place
+
+↓
+
+Location
+
+↓
+
+Venue
+
+↓
+
+Destination
+
+Only one
+
+may be canonical.
+
+---
+
+### Metadata Conflict
+
+Version mismatch.
+
+Owner mismatch.
+
+Status mismatch.
+
+Classification mismatch.
+
+---
+
+# 49. Conflict Severity Matrix
+
+Every conflict
+
+must receive
+
+a severity.
+
+### Critical
+
+Architecture conflict
+
+Security conflict
+
+Database corruption risk
+
+Conflicting authority
+
+Production behavior conflict
+
+Result
+
+BLOCKED
+
+---
+
+### High
+
+API conflict
+
+Workflow conflict
+
+Repository conflict
+
+Dependency conflict
+
+Result
+
+FAIL
+
+---
+
+### Medium
+
+Naming inconsistency
+
+Metadata inconsistency
+
+Terminology inconsistency
+
+Result
+
+WARNING
+
+---
+
+### Low
+
+Formatting
+
+Minor wording
+
+Non-authoritative examples
+
+Result
+
+INFO
+
+---
+
+# 50. Duplicate Authority Detection
+
+Purpose
+
+Ensure
+
+one engineering subject
+
+has
+
+one authority.
+
+Algorithm
+
+For every subject
+
+↓
+
+Find authoritative documents
+
+↓
+
+Count authorities
+
+↓
+
+If count > 1
+
+↓
+
+Generate Duplicate Authority Finding
+
+↓
+
+BLOCKED
+
+---
+
+## Example
+
+Architecture.md
+
+defines
+
+Entity Ownership
+
+AND
+
+Database Documentation
+
+also defines
+
+Entity Ownership
+
+↓
+
+BLOCKED
+
+---
+
+# 51. Circular Dependency Detection
+
+Purpose
+
+Prevent
+
+documentation cycles.
+
+Algorithm
+
+For every dependency
+
+↓
+
+Build dependency graph
+
+↓
+
+Perform cycle detection
+
+↓
+
+If cycle exists
+
+↓
+
+FAIL
+
+---
+
+Example
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Workflow
+
+↓
+
+Architecture
+
+↓
+
+FAIL
+
+---
+
+# 52. Drift Detection
+
+Purpose
+
+Detect
+
+documentation
+
+drifting away
+
+from
+
+approved engineering truth.
+
+---
+
+## Drift Types
+
+Architecture Drift
+
+Documentation Drift
+
+Repository Drift
+
+Database Drift
+
+API Drift
+
+Workflow Drift
+
+Security Drift
+
+RBAC Drift
+
+Implementation Drift
+
+Planning Drift
+
+---
+
+# 53. Architecture Drift Detection
+
+Compare
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+↓
+
+Deployment
+
+Detect
+
+Missing Modules
+
+Extra Modules
+
+Boundary Violations
+
+Dependency Violations
+
+Technology Drift
+
+---
+
+# 54. Database Drift Detection
+
+Compare
+
+Database Documentation
+
+↓
+
+Prisma Schema
+
+↓
+
+Migration
+
+↓
+
+Implementation
+
+Detect
+
+Undocumented Tables
+
+Undocumented Columns
+
+Relationship Changes
+
+Missing Constraints
+
+Index Drift
+
+Enum Drift
+
+---
+
+# 55. API Drift Detection
+
+Compare
+
+OpenAPI
+
+↓
+
+Controller
+
+↓
+
+DTO
+
+↓
+
+Integration Tests
+
+Detect
+
+Undocumented Endpoint
+
+Missing Parameters
+
+Response Drift
+
+Security Drift
+
+Version Drift
+
+---
+
+# 56. Workflow Drift Detection
+
+Compare
+
+Workflow Documentation
+
+↓
+
+Implementation
+
+↓
+
+Business Rules
+
+Detect
+
+State Drift
+
+Transition Drift
+
+Approval Drift
+
+Notification Drift
+
+Timeout Drift
+
+---
+
+# 57. Repository Drift Detection
+
+Compare
+
+Repository Policy
+
+↓
+
+Repository
+
+Detect
+
+Module Drift
+
+Folder Drift
+
+Naming Drift
+
+Dependency Drift
+
+Ownership Drift
+
+---
+
+# 58. Security Drift Detection
+
+Compare
+
+Security Documentation
+
+↓
+
+Repository
+
+↓
+
+Infrastructure
+
+↓
+
+Deployment
+
+Detect
+
+Authentication Drift
+
+Authorization Drift
+
+Secrets Drift
+
+Encryption Drift
+
+Logging Drift
+
+---
+
+# 59. Drift Classification
+
+Minor Drift
+
+↓
+
+WARNING
+
+---
+
+Functional Drift
+
+↓
+
+FAIL
+
+---
+
+Architectural Drift
+
+↓
+
+BLOCKED
+
+---
+
+# 60. Root Cause Analysis
+
+Every conflict
+
+must include
+
+Root Cause.
+
+Possible causes
+
+Missing Review
+
+Missing ADR
+
+Outdated Documentation
+
+Manual Change
+
+Repository Drift
+
+Architecture Evolution
+
+Approval Error
+
+Version Conflict
+
+Merge Conflict
+
+Human Error
+
+---
+
+# 61. Conflict Resolution Workflow
+
+Conflict Detected
+
+↓
+
+Collect Evidence
+
+↓
+
+Identify Authority
+
+↓
+
+Classify Severity
+
+↓
+
+Determine Root Cause
+
+↓
+
+Generate Conflict Report
+
+↓
+
+Architecture Review
+
+↓
+
+Decision
+
+↓
+
+Synchronize Documents
+
+↓
+
+Revalidate
+
+↓
+
+Close Conflict
+
+---
+
+# 62. Conflict Evidence
+
+Every conflict
+
+must contain
+
+Conflict ID
+
+Category
+
+Severity
+
+Authority
+
+Affected Documents
+
+Affected Sections
+
+Evidence
+
+Timestamp
+
+Validator
+
+Recommendation
+
+Resolution Status
+
+---
+
+# 63. Conflict Report
+
+Generate
+
+Executive Summary
+
+Conflict Details
+
+Evidence
+
+Authority
+
+Root Cause
+
+Impact Analysis
+
+Recommendation
+
+Required Review
+
+Validation Result
+
+Final Status
+
+---
+
+# 64. Validation Decision Matrix
+
+No Conflict
+
+↓
+
+PASS
+
+---
+
+Minor Drift
+
+↓
+
+WARNING
+
+---
+
+Engineering Conflict
+
+↓
+
+FAIL
+
+---
+
+Authority Conflict
+
+↓
+
+BLOCKED
+
+---
+
+# 65. Automation Rules
+
+Claude Code
+
+must automatically
+
+detect
+
+Duplicate Authority
+
+Circular Dependency
+
+Version Conflict
+
+Terminology Conflict
+
+Reference Conflict
+
+Metadata Conflict
+
+Architecture Drift
+
+Repository Drift
+
+API Drift
+
+Database Drift
+
+Workflow Drift
+
+Security Drift
+
+---
+
+Claude Code
+
+must never
+
+automatically resolve
+
+Critical conflicts.
+
+---
+
+# 66. Audit Requirements
+
+Every detected conflict
+
+must remain
+
+auditable.
+
+Audit Trail
+
+must contain
+
+Detection Time
+
+Detection Engine
+
+Evidence
+
+Validator
+
+Resolution
+
+Approver
+
+Revalidation
+
+Closure
+
+---
+
+# 67. Part 4 Completion Criteria
+
+Conflict Detection
+
+is complete
+
+when
+
+every engineering inconsistency
+
+can be
+
+Detected
+
+Classified
+
+Measured
+
+Explained
+
+Reported
+
+Audited
+
+Revalidated
+
+and
+
+resolved
+
+through
+
+a deterministic,
+
+traceable,
+
+and governance-controlled process.
+---
+
+# 68. Validation State Machine
+
+Cross Document Validation
+
+shall operate
+
+as
+
+a deterministic state machine.
+
+Every validation execution
+
+must follow
+
+the same lifecycle.
+
+```
+
+NOT_STARTED
+        ↓
+COLLECT_DOCUMENTS
+        ↓
+VERIFY_METADATA
+        ↓
+BUILD_RELATION_GRAPH
+        ↓
+RESOLVE_AUTHORITIES
+        ↓
+BUILD_DEPENDENCY_GRAPH
+        ↓
+COMPARE_DOCUMENTS
+        ↓
+DETECT_CONFLICTS
+        ↓
+CLASSIFY_RESULTS
+        ↓
+GENERATE_REPORT
+        ↓
+PASS
+WARNING
+FAIL
+BLOCKED
+
+```
+
+No state
+
+may be skipped.
+
+---
+
+# 69. Validation Execution Workflow
+
+Every validation
+
+shall execute
+
+the following workflow.
+
+## Phase 1
+
+Inventory Collection
+
+Collect
+
+all participating documents.
+
+Verify
+
+existence.
+
+Verify
+
+status.
+
+Verify
+
+versions.
+
+---
+
+## Phase 2
+
+Metadata Validation
+
+Verify
+
+Owner
+
+Version
+
+Status
+
+Dependencies
+
+Classification
+
+Review Date
+
+Approval
+
+---
+
+## Phase 3
+
+Relationship Resolution
+
+Build
+
+Document Graph
+
+Authority Graph
+
+Dependency Graph
+
+Reference Graph
+
+---
+
+## Phase 4
+
+Comparison
+
+Compare
+
+every governed subject
+
+against
+
+its authority.
+
+---
+
+## Phase 5
+
+Conflict Detection
+
+Detect
+
+Authority Conflicts
+
+Dependency Conflicts
+
+Terminology Conflicts
+
+Architecture Drift
+
+Repository Drift
+
+API Drift
+
+Database Drift
+
+Workflow Drift
+
+---
+
+## Phase 6
+
+Report Generation
+
+Produce
+
+Validation Report
+
+Conflict Report
+
+Consistency Report
+
+Dependency Report
+
+Recommendation
+
+---
+
+# 70. Validation Decision Matrix
+
+Every execution
+
+must terminate
+
+with
+
+exactly one
+
+overall result.
+
+| Condition | Result |
+|-----------|--------|
+| No findings | PASS |
+| Minor observations | WARNING |
+| Engineering inconsistency | FAIL |
+| Authority conflict | BLOCKED |
+
+---
+
+# 71. Claude Code Execution Rules
+
+Claude Code
+
+must execute
+
+validation
+
+in read-only mode.
+
+Claude Code
+
+must never
+
+modify
+
+documents
+
+during validation.
+
+---
+
+Claude Code
+
+must
+
+compare
+
+only
+
+approved versions.
+
+---
+
+Claude Code
+
+must
+
+always
+
+resolve authority
+
+before
+
+comparison.
+
+---
+
+Claude Code
+
+must
+
+never
+
+guess
+
+missing information.
+
+---
+
+Claude Code
+
+must
+
+report
+
+NOT FOUND
+
+when
+
+required authority
+
+cannot be located.
+
+---
+
+Claude Code
+
+must
+
+stop
+
+validation
+
+immediately
+
+when
+
+duplicate authority
+
+is detected.
+
+---
+
+Claude Code
+
+must
+
+never
+
+continue
+
+Documentation Freeze
+
+after
+
+BLOCKED.
+
+---
+
+# 72. Automation Rules
+
+The following validations
+
+may be automated.
+
+✓ Metadata Validation
+
+✓ Link Validation
+
+✓ Dependency Validation
+
+✓ Version Validation
+
+✓ Duplicate Authority Detection
+
+✓ Circular Dependency Detection
+
+✓ Terminology Validation
+
+✓ Naming Validation
+
+✓ Placeholder Detection
+
+✓ Broken Reference Detection
+
+✓ Repository Drift Detection
+
+✓ API Drift Detection
+
+✓ Database Drift Detection
+
+✓ Workflow Drift Detection
+
+---
+
+The following
+
+require
+
+human approval.
+
+Architecture Decisions
+
+Business Rules
+
+ADR Approval
+
+Security Exceptions
+
+Documentation Freeze Approval
+
+Production Approval
+
+---
+
+# 73. Validation Report
+
+Every execution
+
+must generate
+
+a standard report.
+
+---
+
+## Report Metadata
+
+Validation ID
+
+Validation Version
+
+Timestamp
+
+Validator
+
+Repository Commit
+
+Git Tag
+
+Freeze Version
+
+Baseline ID
+
+---
+
+## Summary
+
+Documents Analysed
+
+Documents Passed
+
+Warnings
+
+Failures
+
+Blocked
+
+---
+
+## Conflict Summary
+
+Conflict ID
+
+Category
+
+Severity
+
+Authority
+
+Status
+
+Recommendation
+
+---
+
+## Dependency Summary
+
+Broken Dependencies
+
+Circular Dependencies
+
+Missing Dependencies
+
+---
+
+## Consistency Summary
+
+Terminology
+
+Naming
+
+Architecture
+
+Workflow
+
+Repository
+
+Database
+
+API
+
+Security
+
+---
+
+## Recommendation
+
+PASS
+
+Proceed.
+
+WARNING
+
+Proceed with observations.
+
+FAIL
+
+Correct documentation.
+
+BLOCKED
+
+Architecture Review required.
+
+---
+
+# 74. Metrics
+
+The engine
+
+shall collect
+
+the following metrics.
+
+## Coverage
+
+Documents Validated
+
+Domains Validated
+
+Relationships Validated
+
+Authorities Validated
+
+---
+
+## Quality
+
+Consistency Score
+
+Dependency Score
+
+Reference Score
+
+Metadata Score
+
+Authority Score
+
+---
+
+## Findings
+
+Warnings
+
+Failures
+
+Blocked Issues
+
+Duplicate Authorities
+
+Broken Links
+
+Circular Dependencies
+
+---
+
+## Timing
+
+Execution Time
+
+Comparison Time
+
+Report Generation Time
+
+Average Validation Time
+
+---
+
+## Historical
+
+Trend
+
+Failure Rate
+
+Improvement Rate
+
+Repeated Conflicts
+
+---
+
+# 75. Anti-patterns
+
+The validator
+
+must reject
+
+the following practices.
+
+---
+
+Comparing
+
+Draft
+
+to
+
+Production.
+
+---
+
+Using
+
+implementation
+
+as authority.
+
+---
+
+Ignoring
+
+Decision Register.
+
+---
+
+Ignoring
+
+ADR status.
+
+---
+
+Ignoring
+
+version differences.
+
+---
+
+Ignoring
+
+repository drift.
+
+---
+
+Resolving
+
+conflicts
+
+without evidence.
+
+---
+
+Automatically
+
+rewriting
+
+documentation.
+
+---
+
+Silently
+
+changing
+
+authority.
+
+---
+
+Using
+
+multiple
+
+authoritative sources.
+
+---
+
+# 76. Compliance Checklist
+
+Before
+
+Documentation Freeze
+
+verify
+
+□ Every authority exists.
+
+□ Every dependency exists.
+
+□ No circular dependency.
+
+□ No duplicate authority.
+
+□ No unresolved conflict.
+
+□ No architecture drift.
+
+□ No repository drift.
+
+□ No API drift.
+
+□ No database drift.
+
+□ No workflow drift.
+
+□ No terminology conflict.
+
+□ Metadata complete.
+
+□ Links valid.
+
+□ References valid.
+
+□ Validation report generated.
+
+□ Evidence archived.
+
+---
+
+# 77. Self Verification
+
+Before returning PASS
+
+Claude Code
+
+must verify
+
+✓ Every document compared.
+
+✓ Every authority resolved.
+
+✓ Every dependency analysed.
+
+✓ Every relationship verified.
+
+✓ Every conflict classified.
+
+✓ Every report generated.
+
+✓ Every recommendation justified.
+
+✓ No undocumented assumptions used.
+
+✓ No document modified.
+
+✓ Validation reproducible.
+
+---
+
+# 78. Success Criteria
+
+Cross Document Validation succeeds when
+
+every engineering document,
+
+every architectural decision,
+
+every API contract,
+
+every database definition,
+
+every workflow,
+
+every repository rule,
+
+every planning artifact,
+
+every security policy,
+
+and every governance document
+
+can be proven
+
+to describe
+
+one consistent software system,
+
+with
+
+one authoritative source,
+
+one dependency model,
+
+one terminology,
+
+one architecture,
+
+one implementation intent,
+
+and one traceable engineering truth.
+
+The validation process
+
+must be
+
+repeatable,
+
+deterministic,
+
+auditable,
+
+automation-friendly,
+
+and capable of preventing
+
+documentation divergence
+
+before
+
+implementation begins.
+
+---
+
+# End of Document
+
+Status
+
+Production
+
+Validation Engine
+
+Complete
+
+Documentation Freeze
+
+Enterprise Ready

@@ -1,0 +1,265 @@
+# Documentation Freeze Checklist
+
+## Phase 1
+
+Documentation Completeness
+
+[ ] README exists
+
+[ ] Vision
+
+[ ] Architecture
+
+[ ] Roadmap
+
+[ ] Database
+
+[ ] ERD
+
+[ ] Data Dictionary
+
+[ ] API
+
+[ ] OpenAPI
+
+[ ] RBAC
+
+[ ] Security
+
+[ ] Workflow
+
+[ ] Coding Standard
+
+[ ] Deployment
+
+[ ] Search
+
+[ ] SEO
+
+[ ] AI
+
+[ ] Analytics
+
+[ ] Growth
+
+[ ] Product
+
+[ ] Glossary
+
+[ ] Wireframe
+
+[ ] ADR
+
+[ ] Decision Register
+
+--------------------------------------------------
+
+No placeholder
+
+[ ]
+
+No TODO
+
+[ ]
+
+No Draft
+
+[ ]
+
+No Stub
+
+[ ]
+
+No Outline Only
+
+[ ]
+
+--------------------------------------------------
+
+Cross Document
+
+[ ]
+
+No duplicated entities
+
+[ ]
+
+No duplicated tables
+
+[ ]
+
+No duplicated APIs
+
+[ ]
+
+No duplicated workflow
+
+[ ]
+
+No duplicated enum
+
+[ ]
+
+--------------------------------------------------
+
+Database
+
+[ ]
+
+Entity count consistent
+
+[ ]
+
+FK documented
+
+[ ]
+
+Indexes documented
+
+[ ]
+
+Constraints documented
+
+[ ]
+
+Soft Delete documented
+
+[ ]
+
+Audit fields documented
+
+[ ]
+
+--------------------------------------------------
+
+API
+
+[ ]
+
+Every endpoint documented
+
+[ ]
+
+Every schema documented
+
+[ ]
+
+Authentication documented
+
+[ ]
+
+Authorization documented
+
+[ ]
+
+Pagination documented
+
+[ ]
+
+Errors documented
+
+[ ]
+
+--------------------------------------------------
+
+Security
+
+[ ]
+
+Authentication
+
+[ ]
+
+Authorization
+
+[ ]
+
+RBAC
+
+[ ]
+
+Rate limit
+
+[ ]
+
+Audit
+
+[ ]
+
+Secrets
+
+[ ]
+
+Encryption
+
+--------------------------------------------------
+
+ADR
+
+[ ]
+
+Every decision has ADR
+
+[ ]
+
+Decision Register matches
+
+[ ]
+
+No conflicting ADR
+
+[ ]
+
+No obsolete ADR references
+
+--------------------------------------------------
+
+SSOT
+
+[ ]
+
+Exactly one authoritative source
+
+Architecture
+
+Database
+
+ERD
+
+API
+
+Workflow
+
+RBAC
+
+Security
+
+Naming
+
+Coding Standard
+
+Enums
+
+Roles
+
+Permissions
+
+Search
+
+AI
+
+Media
+
+Verification
+
+Revision
+
+--------------------------------------------------
+
+Readiness
+
+[ ]
+
+Claude can generate code
+
+without making architecture decisions.

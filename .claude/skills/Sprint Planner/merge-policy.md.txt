@@ -1,0 +1,602 @@
+# Merge Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+CI/CD Pipeline
+
+---
+
+# Purpose
+
+This document defines the mandatory merge policy
+for the PhuQuocHub project.
+
+A merge is the official acceptance
+of implementation into the project's history.
+
+No code shall be merged
+without satisfying every required quality gate.
+
+---
+
+# Core Principle
+
+Merge is a business decision,
+not merely a Git operation.
+
+Code generation does not imply merge approval.
+
+Every merge must preserve
+
+Architecture
+
+Documentation
+
+Code Quality
+
+Security
+
+Production Stability
+
+---
+
+# Merge Hierarchy
+
+Documentation Freeze
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Implementation
+
+↓
+
+Review
+
+↓
+
+Testing
+
+↓
+
+Merge
+
+↓
+
+Deployment
+
+Merge must never bypass higher authorities.
+
+---
+
+# Merge Scope
+
+Merge policy applies to
+
+Feature Branches
+
+Sprint Branches
+
+Release Branches
+
+Hotfix Branches
+
+Documentation Branches
+
+Migration Branches
+
+Infrastructure Branches
+
+---
+
+# Merge Preconditions
+
+Before merge,
+the following must all be true.
+
+Documentation Freeze
+
+PASS
+
+Architecture Review
+
+PASS
+
+Repository Analysis
+
+PASS
+
+Dependency Analysis
+
+PASS
+
+Compilation
+
+PASS
+
+Lint
+
+PASS
+
+Unit Tests
+
+PASS
+
+Integration Tests
+
+PASS
+
+Migration Validation
+
+PASS
+
+OpenAPI Validation
+
+PASS
+
+RBAC Validation
+
+PASS
+
+Security Review
+
+PASS
+
+Performance Review
+
+PASS
+
+Sprint Acceptance
+
+PASS
+
+CI
+
+GREEN
+
+---
+
+# Batch Merge Rules
+
+A Batch may merge only if
+
+Previous Batch Accepted
+
+Architecture PASS
+
+No Blocking Issues
+
+No Critical Risk
+
+No High Drift
+
+Documentation Updated
+
+Tests Completed
+
+CI Green
+
+---
+
+# Sprint Merge Rules
+
+A Sprint may merge only if
+
+Every Batch Accepted
+
+No Pending Blockers
+
+No Architecture Drift
+
+No Database Drift
+
+No API Drift
+
+No RBAC Drift
+
+No Workflow Drift
+
+No Documentation Drift
+
+---
+
+# Forbidden Merge Conditions
+
+Merge must be rejected if
+
+Compilation fails
+
+Lint fails
+
+Unit Tests fail
+
+Integration Tests fail
+
+Migration fails
+
+Rollback fails
+
+Architecture changes without ADR
+
+Database changes without ADR
+
+OpenAPI changes without ADR
+
+RBAC changes without ADR
+
+Workflow changes without ADR
+
+Critical security issue exists
+
+Production blocker exists
+
+Decision Register conflict exists
+
+Circular dependency detected
+
+Documentation Freeze violated
+
+---
+
+# Conditional Merge
+
+A conditional merge may be allowed only if
+
+Risk Classification
+
+Medium or Low
+
+AND
+
+Technical Debt documented
+
+AND
+
+Owner approval recorded
+
+Conditional merge is prohibited
+for Critical or High risks.
+
+---
+
+# Technical Debt Merge
+
+Technical debt must be classified.
+
+Critical
+
+Merge prohibited
+
+High
+
+Merge prohibited
+
+Medium
+
+Merge allowed only with tracking issue
+
+Low
+
+Merge allowed
+
+Every accepted debt
+must include
+
+Description
+
+Impact
+
+Mitigation
+
+Target Sprint
+
+Owner
+
+---
+
+# Documentation Merge
+
+Documentation must be merged together with code
+whenever implementation changes documentation.
+
+Never allow
+
+Code merged
+
+Documentation pending
+
+unless explicitly approved by ADR.
+
+---
+
+# Database Merge
+
+Database-related merges require
+
+Migration Up PASS
+
+Migration Down PASS
+
+Migration Up Again PASS
+
+No Data Loss
+
+Rollback Verified
+
+---
+
+# API Merge
+
+API merge requires
+
+OpenAPI Updated
+
+Request Schema Valid
+
+Response Schema Valid
+
+Authentication Valid
+
+Authorization Valid
+
+Examples Updated
+
+No undocumented endpoint
+
+---
+
+# Security Merge
+
+Security-sensitive changes require
+
+Security Review PASS
+
+Dependency Scan PASS
+
+Secrets Review PASS
+
+JWT Review PASS
+
+RBAC Review PASS
+
+Audit Review PASS
+
+Rate Limit Review PASS
+
+---
+
+# Performance Merge
+
+Performance-sensitive changes require
+
+Benchmark Completed
+
+No regression
+
+Indexes Verified
+
+Search Performance Verified
+
+Geo Queries Verified
+
+Memory Stable
+
+---
+
+# Merge Strategy
+
+Preferred strategy
+
+Squash Merge
+
+Use when
+
+Feature completed
+
+Batch accepted
+
+History should remain clean
+
+---
+
+Alternative
+
+Merge Commit
+
+Allowed for
+
+Release branches
+
+Major milestones
+
+---
+
+Rebase Merge
+
+Allowed only
+
+before review begins
+
+Never rebase
+
+after approval.
+
+---
+
+# Rollback Policy
+
+Every merge must be reversible.
+
+Rollback must
+
+Restore previous state
+
+Preserve database integrity
+
+Restore API compatibility
+
+Restore production stability
+
+Rollback plan must exist
+before merge.
+
+---
+
+# Branch Protection
+
+Protected branches
+
+main
+
+release/*
+
+production
+
+No direct push allowed.
+
+All merges require
+
+Pull Request
+
+Review
+
+CI PASS
+
+---
+
+# Merge Approval Matrix
+
+| Change Type | Reviewer |
+|-------------|----------|
+| Documentation | Documentation Architect |
+| Database | Database Architect |
+| API | API Architect |
+| Security | Security Architect |
+| RBAC | Security Architect |
+| Search | Search Architect |
+| AI | AI Architect |
+| Production | Release Manager |
+
+---
+
+# Merge Report
+
+Every merge must produce
+
+Merge Summary
+
+Files Changed
+
+LOC
+
+Architecture Impact
+
+Database Impact
+
+Security Impact
+
+Performance Impact
+
+Technical Debt
+
+Known Risks
+
+Rollback Plan
+
+Evidence
+
+Final Decision
+
+---
+
+# Final Merge Decisions
+
+Exactly one decision
+
+MERGE APPROVED
+
+MERGE APPROVED WITH CONDITIONS
+
+MERGE REJECTED
+
+No other wording permitted.
+
+---
+
+# Blocking Conditions
+
+Immediately reject merge if
+
+Architecture Drift
+
+Documentation Drift
+
+Database Drift
+
+OpenAPI Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Critical Security Issue
+
+Broken CI
+
+Failed Rollback
+
+Missing ADR
+
+Missing Decision Register Entry
+
+---
+
+# Success Criteria
+
+The Merge Policy succeeds only if
+
+Every merged change
+
+is reviewable,
+
+traceable,
+
+reversible,
+
+documented,
+
+and fully compliant
+with the frozen architecture.
+
+Merge must preserve
+the integrity of the project
+throughout its lifecycle.

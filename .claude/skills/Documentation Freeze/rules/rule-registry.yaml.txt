@@ -1,0 +1,434 @@
+# =============================================================================
+# Documentation Freeze Rule Registry
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Version   : 1.0.0
+# Status    : Approved
+# Authority : Architecture Governance
+#
+# This registry defines every executable rule within the Documentation
+# Freeze framework.
+#
+# Every rule MUST be registered here before becoming active.
+#
+# =============================================================================
+
+metadata:
+
+  framework: Documentation Freeze
+
+  framework_version: 1.0.0
+
+  registry_version: 1.0.0
+
+  schema: rule-registry-v1
+
+  status: Approved
+
+  owner: Architecture Governance
+
+  description: >
+    Canonical registry for all Documentation Freeze executable rules.
+
+# =============================================================================
+# RULE CATEGORIES
+# =============================================================================
+
+categories:
+
+  - Repository
+
+  - Scope
+
+  - Authority
+
+  - SSOT
+
+  - Architecture
+
+  - Security
+
+  - API
+
+  - Database
+
+  - Workflow
+
+  - RBAC
+
+  - Migration
+
+  - Consistency
+
+  - Completeness
+
+  - Placeholder
+
+  - Reference
+
+  - Evidence
+
+  - Severity
+
+  - Blocking
+
+  - Decision
+
+  - Audit
+
+  - Governance
+
+# =============================================================================
+# ACTIVE RULES
+# =============================================================================
+
+rules:
+
+  - id: RULE-0001
+
+    name: Repository Validation
+
+    file: repository-rules.yaml
+
+    category: Repository
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Repository Standard
+
+    enabled: true
+
+  - id: RULE-0002
+
+    name: Scope Validation
+
+    file: scope-rules.yaml
+
+    category: Scope
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0003
+
+    name: Authority Validation
+
+    file: authority-rules.yaml
+
+    category: Authority
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Architecture Governance
+
+    enabled: true
+
+  - id: RULE-0004
+
+    name: SSOT Validation
+
+    file: ssot-rules.yaml
+
+    category: SSOT
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: SSOT Framework
+
+    enabled: true
+
+  - id: RULE-0005
+
+    name: Architecture Validation
+
+    file: architecture-rules.yaml
+
+    category: Architecture
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Architecture Review
+
+    enabled: true
+
+  - id: RULE-0006
+
+    name: Security Validation
+
+    file: security-rules.yaml
+
+    category: Security
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Security Architecture
+
+    enabled: true
+
+  - id: RULE-0007
+
+    name: Workflow Validation
+
+    file: workflow-rules.yaml
+
+    category: Workflow
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Workflow Specification
+
+    enabled: true
+
+  - id: RULE-0008
+
+    name: Database Validation
+
+    file: database-rules.yaml
+
+    category: Database
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Database Specification
+
+    enabled: true
+
+  - id: RULE-0009
+
+    name: API Validation
+
+    file: api-rules.yaml
+
+    category: API
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: OpenAPI Specification
+
+    enabled: true
+
+  - id: RULE-0010
+
+    name: RBAC Validation
+
+    file: rbac-rules.yaml
+
+    category: RBAC
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: RBAC Specification
+
+    enabled: true
+
+  - id: RULE-0011
+
+    name: Consistency Validation
+
+    file: consistency-rules.yaml
+
+    category: Consistency
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0012
+
+    name: Completeness Validation
+
+    file: completeness-rules.yaml
+
+    category: Completeness
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0013
+
+    name: Placeholder Validation
+
+    file: placeholder-rules.yaml
+
+    category: Placeholder
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0014
+
+    name: Reference Validation
+
+    file: reference-rules.yaml
+
+    category: Reference
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0015
+
+    name: Evidence Evaluation
+
+    file: evidence-rules.yaml
+
+    category: Evidence
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0016
+
+    name: Severity Evaluation
+
+    file: severity-rules.yaml
+
+    category: Severity
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0017
+
+    name: Blocking Evaluation
+
+    file: blocking-rules.yaml
+
+    category: Blocking
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+  - id: RULE-0018
+
+    name: Final Decision
+
+    file: decision-matrix.yaml
+
+    category: Decision
+
+    status: Approved
+
+    version: 1.0.0
+
+    authority: Documentation Freeze
+
+    enabled: true
+
+# =============================================================================
+# EXECUTION ORDER
+# =============================================================================
+
+execution_order:
+
+  - RULE-0001
+
+  - RULE-0002
+
+  - RULE-0003
+
+  - RULE-0004
+
+  - RULE-0005
+
+  - RULE-0006
+
+  - RULE-0007
+
+  - RULE-0008
+
+  - RULE-0009
+
+  - RULE-0010
+
+  - RULE-0011
+
+  - RULE-0012
+
+  - RULE-0013
+
+  - RULE-0014
+
+  - RULE-0015
+
+  - RULE-0016
+
+  - RULE-0017
+
+  - RULE-0018
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  all_rules_registered: true
+
+  duplicate_rule_ids: false
+
+  duplicate_categories: false
+
+  circular_dependencies: false
+
+  execution_order_valid: true
+
+  registry_complete: true

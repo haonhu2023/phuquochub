@@ -1,0 +1,563 @@
+# Sprint Report Template
+
+Version: 1.0
+
+Status:
+Production
+
+Template Type
+
+Sprint Report
+
+Owner
+
+Chief Software Architect
+
+Used By
+
+Sprint Planner
+
+Sprint Acceptance
+
+Architecture Review
+
+Production Gate
+
+---
+
+# Sprint Information
+
+Project
+
+Sprint
+
+Milestone
+
+Version
+
+Repository
+
+Branch
+
+Commit
+
+Start Date
+
+End Date
+
+Reviewer
+
+Review Date
+
+Review Mode
+
+Read-only
+
+---
+
+# Executive Summary
+
+Sprint Objective
+
+Overall Status
+
+Overall Quality
+
+Architecture Status
+
+Documentation Status
+
+Repository Status
+
+Recommendation
+
+---
+
+# Sprint Scope
+
+Included
+
+Excluded
+
+Dependencies
+
+Architecture Boundary
+
+Out of Scope
+
+---
+
+# Planned Deliverables
+
+| Module | Planned | Completed | Status |
+|---------|----------|-----------|--------|
+
+---
+
+# Completed Deliverables
+
+Module
+
+Description
+
+Evidence
+
+Status
+
+---
+
+# Repository Analysis
+
+Current Repository State
+
+Completed Modules
+
+Pending Modules
+
+Generated Files
+
+Modified Files
+
+Deleted Files
+
+Total LOC
+
+---
+
+# Architecture Compliance
+
+Architecture PASS / FAIL
+
+Module Boundaries
+
+Layer Boundaries
+
+Dependency Rules
+
+Folder Structure
+
+Naming Convention
+
+Architecture Drift
+
+Evidence
+
+Recommendation
+
+---
+
+# Documentation Compliance
+
+Documentation Freeze
+
+ADR
+
+Decision Register
+
+Database
+
+ERD
+
+Data Dictionary
+
+Workflow
+
+RBAC
+
+Security
+
+OpenAPI
+
+Coding Standard
+
+README
+
+Glossary
+
+Evidence
+
+Recommendation
+
+---
+
+# Database Review
+
+Entities
+
+Tables
+
+Columns
+
+Indexes
+
+Constraints
+
+Foreign Keys
+
+Migration
+
+Rollback
+
+Soft Delete
+
+Audit Fields
+
+Geo Fields
+
+Search Fields
+
+Evidence
+
+Recommendation
+
+---
+
+# API Review
+
+Endpoints
+
+Authentication
+
+Authorization
+
+Validation
+
+Pagination
+
+Error Handling
+
+OpenAPI
+
+Examples
+
+Versioning
+
+Evidence
+
+Recommendation
+
+---
+
+# Security Review
+
+Authentication
+
+Authorization
+
+RBAC
+
+Permission Matrix
+
+JWT
+
+Encryption
+
+Secrets
+
+Audit Logging
+
+Rate Limit
+
+OWASP
+
+Evidence
+
+Recommendation
+
+---
+
+# Performance Review
+
+Indexes
+
+Caching
+
+Database
+
+Search
+
+Geo Query
+
+Memory
+
+CPU
+
+Bundle Size
+
+Evidence
+
+Recommendation
+
+---
+
+# Testing Review
+
+Compilation
+
+Lint
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Coverage
+
+CI
+
+Evidence
+
+Recommendation
+
+---
+
+# Technical Debt
+
+| ID | Description | Severity | Target Sprint | Status |
+
+---
+
+# Risks
+
+| ID | Risk | Severity | Mitigation | Owner |
+
+---
+
+# Known Issues
+
+Issue
+
+Impact
+
+Evidence
+
+Recommendation
+
+---
+
+# Acceptance Matrix
+
+| Area | Status | Evidence |
+
+Architecture
+
+Documentation
+
+Database
+
+OpenAPI
+
+RBAC
+
+Security
+
+Workflow
+
+Performance
+
+Testing
+
+CI
+
+Deployment
+
+---
+
+# Sprint Metrics
+
+Planned Modules
+
+Completed Modules
+
+Remaining Modules
+
+Planned LOC
+
+Generated LOC
+
+Coverage
+
+Build Time
+
+Migration Count
+
+API Count
+
+Entity Count
+
+Test Count
+
+---
+
+# Recommendations
+
+Immediate Actions
+
+Next Sprint
+
+Future Improvements
+
+Technical Debt
+
+Documentation Updates
+
+---
+
+# Final Decision
+
+Exactly one
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+---
+
+# Sprint Acceptance Certificate
+
+Issue only when
+
+Architecture PASS
+
+Documentation PASS
+
+Database PASS
+
+OpenAPI PASS
+
+RBAC PASS
+
+Security PASS
+
+Testing PASS
+
+CI PASS
+
+No Critical Issues
+
+No High Issues
+
+No Blocking Drift
+
+---
+
+==================================================
+
+SPRINT ACCEPTANCE CERTIFICATE
+
+Project:
+
+Sprint:
+
+Version:
+
+Branch:
+
+Commit:
+
+Acceptance Date:
+
+Architecture:
+
+Documentation:
+
+Database:
+
+Security:
+
+Testing:
+
+CI:
+
+Status
+
+SPRINT ACCEPTED
+
+Approved By
+
+Chief Software Architect
+
+==================================================
+
+Otherwise
+
+Do NOT issue the certificate.
+
+---
+
+# Evidence
+
+Every conclusion
+
+must reference
+
+Repository
+
+Documentation
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Migration
+
+Tests
+
+CI
+
+Never guess.
+
+Never invent.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every finding has evidence
+
+No undocumented assumptions
+
+No architecture changes proposed
+
+No code generated
+
+No files modified
+
+---
+
+# Success Criteria
+
+The Sprint Report succeeds when
+
+it provides
+
+a complete,
+
+evidence-based,
+
+repeatable,
+
+and auditable
+
+summary of the Sprint,
+
+allowing stakeholders
+
+to decide
+
+whether the Sprint
+
+is ready to merge
+
+without reviewing the implementation manually.

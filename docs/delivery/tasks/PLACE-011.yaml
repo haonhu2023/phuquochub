@@ -1,0 +1,145 @@
+schema_version: "1.0"
+
+id: PLACE-011
+workstream: place
+title: "Type PlaceCardRow.verification_status against the shared union and remove the unchecked cast (F-18)"
+type: persistence remediation
+status: completed
+started_at: "2026-07-22"
+completed_at: "2026-07-22"
+started_branch: unknown         # not a git working copy
+started_commit: unknown
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places → 92/92 passed, 7 suites, exit 0 (identical count — specs UNMODIFIED)"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0"
+    - "apps/api npx tsc --noEmit → exit 0 on first attempt"
+    - "apps/web npx tsc --noEmit → exit 0"
+    - "grep 'as VerificationStatusValue' in places.mapper.ts → 0 occurrences"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-011-row-typing-report.md
+  evidence_index: docs/delivery/evidence/PLACE-011-row-typing-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/repositories/places.repository.ts   # verification_status typed
+    - apps/api/src/modules/places/places.mapper.ts                    # cast + justifying comment removed
+  import_direction_decision: >-
+    AC6 — importing VerificationStatusValue (a wire-contract type) into a persistence file is
+    accepted deliberately: the union IS the DB enum's value set, shared-types is already its
+    single source after PLACE-005, and a local copy would recreate GAP-11's duplication. It is
+    an `import type`, so nothing is added at runtime.
+  soundness_basis: >-
+    InitPlaces1720000400000:47 declares the column as ENUM "verification_status" NOT NULL, so the
+    value set is closed and non-null. The type now STATES the invariant the cast merely ASSERTED.
+  open_findings: >-
+    F-29 PlaceCardRow now mixes two sources for enum value sets (status from the internal
+    PlaceStatus enum, verification_status from the shared union). Both correct; cosmetic only.
+  resolves: F-18
+
+depends_on:
+  - PLACE-010        # completed 2026-07-22; readiness assessment, no product code changed
+
+problem_statement: >-
+  PlaceCardRow.verification_status is declared `string` in
+  apps/api/src/modules/places/repositories/places.repository.ts, but the underlying column is a
+  PostgreSQL ENUM ("verification_status", created in InitPlaces1720000400000 with
+  NOT NULL DEFAULT 'pending'). When PLACE-005 single-sourced the response types, the shared
+  PlaceCard typed the field as VerificationStatusValue, and the mismatch surfaced as
+  TS2322 — resolved at the time by an UNCHECKED cast in places.mapper.ts
+  (`row.verification_status as VerificationStatusValue`). That cast is sound only while the DB
+  enum holds; it is a type assertion standing in for a type that could simply be correct.
+  Recorded as F-18, classified NON_BLOCKING by the PLACE-010 assessment and named there as the
+  lead item of the highest-priority cluster still actionable without Docker or an owner decision.
+
+objective: >-
+  Type the repository row at its declaration so the mapper needs no assertion, removing the one
+  unchecked cast on the Place read path — without changing any SQL, any runtime value, or the
+  wire contract.
+
+required_inputs:
+  - apps/api/src/modules/places/repositories/places.repository.ts        # PlaceCardRow, PlaceDetailRow
+  - apps/api/src/modules/places/places.mapper.ts                         # the cast to remove
+  - packages/shared-types/src/place.ts                                   # VerificationStatusValue
+  - apps/api/src/core/database/migrations/1720000400000-InitPlaces.ts    # the DB enum that makes this sound
+  - apps/api/src/modules/places/places.mapper.spec.ts                    # must pass unmodified
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # must pass unmodified
+
+in_scope:
+  - "apps/api/src/modules/places/repositories/places.repository.ts — the verification_status field type on PlaceCardRow only"
+  - "apps/api/src/modules/places/places.mapper.ts — remove the now-unnecessary cast and its explanatory comment"
+
+out_of_scope:
+  - "any SQL, query shape, migration, entity or stored data change"
+  - "F-19 (toPlaceDetail returns Date where the wire type says string) — related but a larger contract question; leave it"
+  - "F-20 (opening_hours response type still Record<string, unknown>) — read-contract change, separate task"
+  - "typing the OTHER string-typed fields on PlaceCardRow (status is already an enum; cover_image_url, short_description etc. are genuinely strings) — do not sweep"
+  - "PlaceDetailRow's own fields beyond what it inherits"
+  - "the response contract, openapi.yaml, DTOs, service, controller"
+  - "adding runtime validation of the value — the DB enum is the guarantee; do not add a redundant check"
+
+execution_steps:
+  - "Confirm from InitPlaces1720000400000 that places.verification_status is a DB ENUM with NOT NULL — that is what makes typing the row sound rather than optimistic. Quote the line."
+  - "Decide the import direction deliberately: the repository is DB-facing, so importing a type from @phuquochub/shared-types (a wire contract package) into it couples persistence to the contract. Check whether the repo already does this anywhere; if it does not, state explicitly why it is acceptable here (the union is the enum's value set, shared by both) or choose a local equivalent instead. Record the decision either way."
+  - "Change PlaceCardRow.verification_status from `string` to the chosen union type."
+  - "Remove the cast in places.mapper.ts along with the comment that justified it — the comment must not outlive the cast, or the next reader will look for a cast that is gone."
+  - "Verify no OTHER consumer of PlaceCardRow.verification_status breaks: the tightening may surface further assumptions elsewhere (geo module, search module, specs)."
+  - "Run the validation commands. The mapper and repository specs MUST pass unmodified — if either needs editing, the change altered behaviour rather than typing, which it must not."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "PlaceCardRow.verification_status is typed as the enum's value union rather than string." }
+  - { id: AC2, mandatory: true,  text: "The unchecked cast in places.mapper.ts is gone, along with the comment that justified it." }
+  - { id: AC3, mandatory: true,  text: "No SQL, query, migration, entity, DTO, service, controller or contract change; no runtime value is converted or validated differently." }
+  - { id: AC4, mandatory: true,  text: "The existing mapper and repository specs pass UNMODIFIED — proof this was a typing change, not a behavioural one." }
+  - { id: AC5, mandatory: true,  text: "npx jest places, eslint and tsc --noEmit exit 0; apps/web tsc --noEmit also exit 0, since the shared package sits on both sides." }
+  - { id: AC6, mandatory: true,  text: "The import-direction decision (contract type into a persistence file, or a local equivalent) is recorded with its reasoning." }
+  - { id: AC7, mandatory: false, text: "Any further assumption surfaced by the tightening is recorded as a finding rather than fixed in passing." }
+
+required_evidence:
+  - "the InitPlaces line proving the column is a NOT NULL enum"
+  - "before/after of both changed declarations"
+  - "the import-direction decision and its reasoning"
+  - "confirmation the mapper and repository specs were not edited"
+  - "jest / eslint / tsc (api and web) exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/web && npx tsc --noEmit"
+
+rollback_plan: >-
+  Restore `verification_status: string` on PlaceCardRow and re-add the cast plus its comment in
+  places.mapper.ts. Two edits, no schema, no data, no contract. Because nothing runtime changes,
+  a revert cannot leave inconsistent state behind.
+
+stop_conditions:
+  - "Tightening the row type surfaces errors in modules outside places (geo, search, revisions) — STOP before editing them. Record the surfaced assumptions as findings; widening the change would turn a two-file remediation into a cross-module refactor."
+  - "The mapper or repository specs require modification to pass — STOP. That means behaviour changed, which this task forbids; re-examine the change rather than editing the tests."
+  - "Making this work appears to need runtime validation of the value — STOP. The DB enum plus NOT NULL is the guarantee; adding a redundant check is out of scope and would misrepresent where the invariant lives."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-012
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "cast removed and specs passing unmodified"
+    - "diff limited to the two in_scope files"
+
+next_candidate_task:
+  id: PLACE-012
+  title: "Resolve the remaining boundary-typing findings F-19 and F-20"
+  type: API contract alignment
+  rationale: >-
+    F-19 (toPlaceDetail returns Date where the shared wire type declares string) and F-20 (the
+    shared PlaceDetail.opening_hours is still Record<string, unknown> while writes are now
+    structurally validated) are the two remaining boundary-typing inaccuracies named in the
+    PLACE-010 assessment's typing cluster. Both are read-contract questions, so they belong
+    together and after F-18 rather than bundled into it. Derive PLACE-012 from PLACE-011's
+    actual outcome — in particular, if PLACE-011 surfaces cross-module assumptions (its first
+    stop condition), those may outrank the read-contract work.

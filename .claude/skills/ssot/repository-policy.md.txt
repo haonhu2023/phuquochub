@@ -1,0 +1,947 @@
+# Repository Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Repository Policy
+
+for the PhuQuocHub platform.
+
+The Repository
+
+is the physical implementation
+
+of the approved architecture.
+
+It must remain
+
+organized,
+
+predictable,
+
+maintainable,
+
+modular,
+
+traceable,
+
+and fully compliant
+
+with the Single Source of Truth (SSOT).
+
+The Repository
+
+implements
+
+documentation.
+
+It never
+
+defines
+
+documentation.
+
+---
+
+# Mission
+
+Provide
+
+a consistent,
+
+scalable,
+
+enterprise-grade
+
+repository structure
+
+that supports
+
+long-term development,
+
+AI-assisted coding,
+
+automated reviews,
+
+continuous integration,
+
+continuous deployment,
+
+and architectural governance.
+
+---
+
+# Fundamental Principle
+
+Repository
+
+must always
+
+reflect
+
+approved documentation.
+
+Repository
+
+must never
+
+become
+
+the authoritative source.
+
+Whenever
+
+Repository
+
+and Documentation
+
+differ,
+
+Documentation
+
+wins.
+
+---
+
+# Repository Objectives
+
+The repository
+
+must provide
+
+Predictability
+
+Scalability
+
+Modularity
+
+Traceability
+
+Maintainability
+
+Consistency
+
+Security
+
+Performance
+
+Testability
+
+Automation
+
+---
+
+# Repository Type
+
+The PhuQuocHub platform
+
+uses
+
+Monorepo Architecture.
+
+The repository
+
+contains
+
+Applications
+
+Packages
+
+Libraries
+
+Shared Components
+
+Infrastructure
+
+Documentation
+
+Scripts
+
+Configuration
+
+Automation
+
+Testing
+
+Deployment
+
+---
+
+# Standard Repository Structure
+
+/
+
+apps/
+
+packages/
+
+libs/
+
+services/
+
+docs/
+
+database/
+
+scripts/
+
+infrastructure/
+
+tests/
+
+tools/
+
+.github/
+
+configs/
+
+assets/
+
+README.md
+
+---
+
+# Applications
+
+/apps/
+
+contains
+
+Frontend
+
+Admin Portal
+
+Public Website
+
+Mobile Gateway
+
+API Gateway
+
+Worker
+
+Cron Jobs
+
+Each application
+
+must be
+
+independent.
+
+---
+
+# Packages
+
+/packages/
+
+contains
+
+Shared Business Logic
+
+Shared Types
+
+Shared Utilities
+
+Shared Validation
+
+Shared SDK
+
+Packages
+
+must not
+
+contain
+
+application-specific logic.
+
+---
+
+# Libraries
+
+/libs/
+
+contains
+
+Infrastructure
+
+Logging
+
+Caching
+
+Messaging
+
+Authentication
+
+Authorization
+
+Storage
+
+Search
+
+Libraries
+
+must remain
+
+framework independent
+
+whenever possible.
+
+---
+
+# Services
+
+/services/
+
+contains
+
+Domain Services
+
+Business Services
+
+Integration Services
+
+Background Workers
+
+Each service
+
+owns
+
+one business capability.
+
+---
+
+# Documentation
+
+/docs/
+
+contains
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+Workflow
+
+RBAC
+
+API
+
+Sprint
+
+Batch
+
+Release
+
+Governance
+
+Documentation
+
+must never
+
+be duplicated
+
+outside
+
+/docs/
+
+---
+
+# Database
+
+/database/
+
+contains
+
+Schema
+
+Migrations
+
+Seeds
+
+ERD
+
+Database Scripts
+
+Generated Clients
+
+---
+
+# Infrastructure
+
+/infrastructure/
+
+contains
+
+Docker
+
+Kubernetes
+
+Terraform
+
+Helm
+
+Cloud Configuration
+
+Monitoring
+
+Logging
+
+Secrets Templates
+
+---
+
+# Scripts
+
+/scripts/
+
+contains
+
+Automation
+
+Migration
+
+Validation
+
+Deployment
+
+Maintenance
+
+Repository Health
+
+---
+
+# Testing
+
+/tests/
+
+contains
+
+Integration Tests
+
+End-to-End Tests
+
+Fixtures
+
+Test Utilities
+
+Performance Tests
+
+Security Tests
+
+---
+
+# Configuration
+
+/configs/
+
+contains
+
+ESLint
+
+Prettier
+
+TypeScript
+
+CI
+
+Build
+
+Environment Templates
+
+---
+
+# Assets
+
+/assets/
+
+contains
+
+Images
+
+Icons
+
+Fonts
+
+Localization
+
+Static Resources
+
+---
+
+# Module Rules
+
+Every module
+
+must have
+
+One Responsibility
+
+One Owner
+
+One Public Interface
+
+One Documentation Reference
+
+One Test Strategy
+
+One Dependency Boundary
+
+---
+
+# Dependency Rules
+
+Modules
+
+may depend
+
+only
+
+on approved layers.
+
+Dependencies
+
+must follow
+
+Architecture.
+
+Circular dependencies
+
+are prohibited.
+
+Reverse dependencies
+
+are prohibited.
+
+Hidden dependencies
+
+are prohibited.
+
+---
+
+# Layer Rules
+
+Presentation
+
+↓
+
+Application
+
+↓
+
+Domain
+
+↓
+
+Infrastructure
+
+Dependencies
+
+must flow
+
+downward only.
+
+---
+
+# Import Rules
+
+Modules
+
+must import
+
+through
+
+public interfaces.
+
+Deep imports
+
+are prohibited.
+
+Private modules
+
+must never
+
+be imported
+
+externally.
+
+---
+
+# Naming Rules
+
+Folders
+
+kebab-case
+
+Files
+
+kebab-case
+
+Classes
+
+PascalCase
+
+Interfaces
+
+PascalCase
+
+Functions
+
+camelCase
+
+Variables
+
+camelCase
+
+Constants
+
+UPPER_SNAKE_CASE
+
+Database Tables
+
+snake_case
+
+API Paths
+
+kebab-case
+
+---
+
+# Ownership
+
+Every module
+
+must define
+
+Owner
+
+Maintainer
+
+Documentation
+
+Version
+
+Dependencies
+
+Reviewers
+
+No orphan module
+
+is allowed.
+
+---
+
+# Module Creation
+
+Before creating
+
+a new module
+
+Claude Code
+
+must verify
+
+Business need
+
+Architecture alignment
+
+Existing module reuse
+
+Dependency impact
+
+Ownership assigned
+
+Documentation exists
+
+---
+
+# Module Modification
+
+Module changes
+
+must include
+
+Updated Documentation
+
+Updated Tests
+
+Updated Dependencies
+
+Updated Ownership
+
+Updated Version
+
+---
+
+# Module Removal
+
+Removing a module
+
+requires
+
+Architecture Review
+
+Impact Analysis
+
+Dependency Validation
+
+Migration Plan
+
+Approval
+
+Repository Cleanup
+
+Documentation Update
+
+---
+
+# Shared Code Policy
+
+Shared code
+
+must be
+
+Generic
+
+Reusable
+
+Independent
+
+Framework-neutral
+
+Well-tested
+
+Documented
+
+Application-specific logic
+
+must never
+
+exist
+
+inside shared packages.
+
+---
+
+# Repository Health
+
+Repository
+
+must maintain
+
+No dead code
+
+No orphan modules
+
+No duplicated logic
+
+No unused dependencies
+
+No circular imports
+
+No broken references
+
+No undocumented modules
+
+---
+
+# Repository Validation
+
+Every repository review
+
+must verify
+
+Folder structure
+
+Module boundaries
+
+Dependency graph
+
+Naming rules
+
+Ownership
+
+Documentation references
+
+Architecture compliance
+
+Testing coverage
+
+Security compliance
+
+Performance compliance
+
+---
+
+# Automation
+
+Repository
+
+must support
+
+Automated Linting
+
+Automated Formatting
+
+Automated Testing
+
+Automated Dependency Analysis
+
+Automated Architecture Review
+
+Automated Documentation Validation
+
+Automated CI
+
+Automated Deployment
+
+---
+
+# Compliance Rules
+
+Repository
+
+is compliant
+
+only when
+
+Architecture respected
+
+Documentation synchronized
+
+Dependencies valid
+
+Naming correct
+
+Ownership assigned
+
+Modules isolated
+
+Tests complete
+
+Automation passing
+
+No unresolved drift
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Circular dependency
+
+Architecture violation
+
+Missing documentation
+
+Broken module boundary
+
+Unauthorized import
+
+Missing owner
+
+Repository drift
+
+Critical duplication
+
+---
+
+# Self Verification
+
+Before approving
+
+Claude Code
+
+must verify
+
+Correct repository structure
+
+Correct dependency direction
+
+Correct module ownership
+
+Correct naming
+
+Correct documentation linkage
+
+Correct testing
+
+No unresolved issues
+
+---
+
+# Success Criteria
+
+The Repository Policy succeeds when
+
+the repository
+
+remains
+
+fully aligned
+
+with
+
+the approved architecture,
+
+maintains
+
+clear module boundaries,
+
+supports
+
+scalable development,
+
+enables
+
+AI-assisted engineering,
+
+prevents
+
+architectural erosion,
+
+and provides
+
+a predictable,
+
+maintainable,
+
+enterprise-grade
+
+foundation
+
+for the entire
+
+PhuQuocHub platform
+
+throughout its lifecycle.

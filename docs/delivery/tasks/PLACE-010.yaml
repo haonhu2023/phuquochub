@@ -1,0 +1,167 @@
+schema_version: "1.0"
+
+id: PLACE-010
+workstream: place
+title: "Place release-readiness assessment (repository evidence only)"
+type: release-readiness assessment
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  assessment: complete
+  validation: passed
+  overall_classification: "NOT READY FOR RELEASE"
+  workstream_classification: INCOMPLETE     # unchanged; closure deliberately NOT attempted
+  results:
+    - "npx jest places → 92/92 passed, 7 suites, exit 0"
+    - "npx jest migrations → 11/11 passed, 3 suites, exit 0"
+    - "apps/api npx tsc --noEmit → exit 0"
+    - "apps/web npx tsc --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC8 all PASS; optional AC9 also PASS"
+  report: docs/delivery/reports/PLACE-010-release-readiness-assessment.md
+  evidence_index: docs/delivery/evidence/PLACE-010-readiness-evidence-index.md
+  product_code_changed: false
+  next_task: docs/delivery/tasks/PLACE-011.yaml
+  gate_summary: >-
+    13 gates classified; NONE proven. implementation/testing/migration/contract/data-quality/
+    security/rollback = PARTIAL; performance/observability/deployment/canary/hypercare/
+    stabilization = NOT VERIFIED. 103 specs pass, but every one runs with the database mocked or
+    absent — the module is well-covered as a set of collaborating objects and untested as a
+    running system.
+  findings_summary: >-
+    F-1..F-28 consolidated: 5 BLOCKS_RELEASE (F-1 PROVISIONAL bbox actively enforced, F-2 no
+    Docker, F-3 no version control, F-6 GAP-05/10 list-param divergence, F-17 openapi PlaceCard
+    omits status/score), 18 NON_BLOCKING, 5 RESOLVED. Only two of the five blockers are
+    environmental; F-1/F-6/F-17 need an owner decision and could be resolved today.
+  carried_claims_reverified: >-
+    Phú Quốc bbox still PROVISIONAL (geo-bounds.ts block intact); migration still
+    implemented_not_executed (Get-Command docker → NOT FOUND, so it cannot have been applied);
+    node_modules/@phuquochub/shared-types still a copy (LinkType empty, no ReparsePoint).
+    Re-measured, not copied forward.
+  recommended_order: >-
+    1) install Docker (unblocks five gates), 2) put the repo under version control, 3) owner
+    adjudication of F-1/F-6/F-17, 4) typing-precision cluster F-18/F-19/F-20, 5) build hygiene
+    F-12/F-23. Items 1-3 are the release path but all sit outside the repository; item 4 is the
+    highest-priority work actually executable here, which is why PLACE-011 is F-18.
+
+depends_on:
+  - PLACE-009        # completed 2026-07-22; jest places 92/92 across 7 suites, no production change
+
+problem_statement: >-
+  Nine Place tasks have completed and the module now has 92 passing specs across DTO,
+  repository, mapper, migration, service and controller layers, with GAP-06/07/11/12/13/14
+  closed. Nothing has ever assessed what that adds up to. state.yaml still carries
+  gates.deployment/canary/hypercare/stabilization as not_started and implementation/testing as
+  in_progress, but those flags were set task-by-task and have never been evaluated against the
+  workstream as a whole. Meanwhile the unverified surface is large and consistently
+  environment-shaped: no migration has ever been applied, no EXPLAIN has ever run, PostGIS/SRID
+  behaviour is untested, the e2e suite self-skips, every consumer is at best `compiled`, and 28
+  findings (F-1..F-28) are open with no consolidated view of which actually block a release.
+  Deciding anything about readiness without that assessment would be guesswork.
+
+objective: >-
+  Produce an evidence-classified readiness assessment for the Place module: gate by gate, state
+  what is proven, by which evidence, and at what level; name precisely what is NOT proven and
+  what environment access each unproven item requires; consolidate the open findings into
+  blocking / non-blocking / accepted-risk; and recommend a truthful next step. Assess only —
+  do not deploy, do not change product code, do not infer any production state.
+
+required_inputs:
+  - docs/delivery/state.yaml
+  - docs/delivery/workstreams/place.yaml
+  - docs/delivery/tasks/PLACE-001.yaml through PLACE-009.yaml
+  - docs/delivery/reports/          # locate PLACE-001..009 reports by task ID, suffixes vary
+  - docs/delivery/evidence/         # locate PLACE-001..009 evidence indexes by task ID
+  - docs/delivery/decisions/ADR-DELIVERY-001.md
+  - docs/delivery/ENVIRONMENT-SETUP-RUNBOOK.md
+  - apps/api/src/modules/places/    # current implementation + specs
+  - docs/data/modules/places.md     # SSOT
+  - docs/api/openapi.yaml           # contract SSOT
+
+in_scope:
+  - "new: docs/delivery/reports/PLACE-010-release-readiness-assessment.md (the assessment itself)"
+  - "new: docs/delivery/evidence/PLACE-010-*-evidence-index.md"
+  - "docs/delivery/state.yaml — gates may be updated ONLY where this assessment produces evidence for the change, and only downward-or-equal in optimism (never mark a gate passed that this assessment cannot prove)"
+  - "docs/delivery/workstreams/place.yaml — consolidated findings/risk register and closure classification"
+
+out_of_scope:
+  - "ANY product code, test, migration or configuration change — this is an assessment, not remediation"
+  - "deploying, running migrations, starting Docker, or acquiring any environment access"
+  - "closing the Place workstream (that is a separate closure assessment, and its criteria are not met while DB-backed validation is absent)"
+  - "resolving any open finding — classify them, do not fix them"
+  - "openapi.yaml or SSOT edits"
+  - "assessing workstreams other than place"
+
+execution_steps:
+  - "Read every PLACE-001..009 report and evidence index. Locate them BY TASK ID — suffixes vary (…-migration-report, …-ordering-report, …-shared-types-report, etc.) and several IDs also have an older BLOCK report of the same number. Do not confuse the two: the block reports are historical."
+  - "Build a coverage map per layer (DTO, repository, mapper, migration, service, controller, e2e) recording the actual spec counts and what each layer's tests do NOT prove."
+  - "Classify every gate — implementation, testing, security, performance, observability, migration, deployment, canary, hypercare, stabilization — as one of: PROVEN (with evidence ref), PARTIAL (with what is missing), NOT VERIFIED (with the reason), or NOT APPLICABLE."
+  - "For every unproven item, state the specific environment access required (e.g. 'Docker + npm run db:up + migration:run', 'a running Nest app', 'production telemetry') so the list doubles as a work plan."
+  - "Consolidate F-1..F-28 into a single table with a blocking classification: BLOCKS_RELEASE / NON_BLOCKING / ACCEPTED_RISK / RESOLVED. Justify each BLOCKS_RELEASE entry — do not inflate the count, and do not deflate it either."
+  - "Explicitly re-verify the highest-risk carried claims rather than copying them forward: that the Phú Quốc bbox is still PROVISIONAL, that the migration is still implemented_not_executed, and that node_modules/@phuquochub/* is still a copy rather than a link."
+  - "Re-run the module's full validation to establish the assessment's factual baseline — an assessment citing stale numbers is worthless."
+  - "State one overall readiness classification and one recommended next task, both supported by the evidence gathered."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "Every PLACE-001..009 report and evidence index is located and read; the assessment cites them by path, and distinguishes the historical block reports from the execution reports of the same task ID." }
+  - { id: AC2, mandatory: true,  text: "A per-layer coverage map records actual spec counts AND, for each layer, what its tests do not prove." }
+  - { id: AC3, mandatory: true,  text: "Every gate is classified PROVEN / PARTIAL / NOT VERIFIED / NOT APPLICABLE with an evidence reference or an explicit reason." }
+  - { id: AC4, mandatory: true,  text: "Every unproven item names the specific environment access it requires." }
+  - { id: AC5, mandatory: true,  text: "F-1..F-28 are consolidated with a blocking classification, each BLOCKS_RELEASE entry justified." }
+  - { id: AC6, mandatory: true,  text: "The three highest-risk carried claims are re-verified against the repository rather than copied forward." }
+  - { id: AC7, mandatory: true,  text: "The module's validation suite is re-run and its actual current numbers are recorded in the assessment." }
+  - { id: AC8, mandatory: true,  text: "One overall readiness classification is stated, and no gate is marked passed that the evidence does not support. No product code is modified." }
+  - { id: AC9, mandatory: false, text: "The assessment is usable as a work plan: the unproven items are ordered by what unblocks the most." }
+
+required_evidence:
+  - "the list of reports/evidence indexes actually read, by path"
+  - "current validation output with counts and exit codes (not quoted from earlier tasks)"
+  - "the gate classification table"
+  - "the consolidated findings table"
+  - "re-verification results for the three carried claims"
+  - "explicit confirmation no product code changed"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx jest migrations"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/web && npx tsc --noEmit"
+
+rollback_plan: >-
+  Delete the assessment report and its evidence index, and revert any state.yaml /
+  workstreams/place.yaml edits. Documentation only — no product code, schema, data or contract
+  is involved, so rollback is complete and non-destructive.
+
+stop_conditions:
+  - "The assessment would need to claim something no repository evidence supports — STOP and record it as NOT VERIFIED. An honest gap is the deliverable; a confident guess destroys the document's value."
+  - "A gate looks passable only by reinterpreting an earlier task's non-claims — STOP. Non-claims are binding; re-reading them charitably is not new evidence."
+  - "The work starts drifting into fixing findings rather than classifying them — STOP. Remediation belongs to a later task with its own authorization."
+  - "Re-running validation reveals a FAILURE — STOP the assessment, record the failure honestly, and treat the regression as the finding; do not publish a readiness assessment on top of a red suite."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-011
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "assessment report + evidence index exist"
+    - "validation re-run recorded with current numbers"
+    - "no product code changed"
+
+next_candidate_task:
+  id: PLACE-011
+  title: "<derive from the assessment's highest-priority actionable gap>"
+  type: "<derive from the assessment>"
+  rationale: >-
+    Deliberately left underspecified: the whole point of PLACE-010 is to determine what should
+    come next from consolidated evidence rather than from a guess made before the assessment
+    exists. Likely candidates on current knowledge are GAP-15 (Prisma/TypeORM dual-source, P2,
+    an architecture decision) and F-18 (PlaceCardRow.verification_status typed string, a small
+    persistence remediation) — but PLACE-011 MUST be derived from what the assessment actually
+    concludes, and the DB-backed validation work must not be scheduled while Docker is absent.

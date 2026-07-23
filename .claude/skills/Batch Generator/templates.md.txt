@@ -1,0 +1,51 @@
+# Batch Report Template
+
+Batch
+
+Sprint
+
+Module
+
+Estimated LOC
+
+Dependencies
+
+Files
+
+Modified Files
+
+Generated Files
+
+Architecture
+
+PASS / FAIL
+
+ADR
+
+PASS / FAIL
+
+Database
+
+PASS / FAIL
+
+OpenAPI
+
+PASS / FAIL
+
+RBAC
+
+PASS / FAIL
+
+Security
+
+PASS / FAIL
+
+Testing
+
+PASS / FAIL
+
+Known Risks
+
+Technical Debt
+
+Next Batch

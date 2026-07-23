@@ -1,0 +1,808 @@
+# Folder Structure
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Documentation Freeze
+
+---
+
+# Purpose
+
+This document defines
+
+the official repository folder structure
+
+for the PhuQuocHub platform.
+
+Every directory
+
+must have
+
+a documented purpose.
+
+Every file
+
+must belong
+
+to a documented location.
+
+Folder organization
+
+must remain
+
+stable,
+
+predictable,
+
+and scalable.
+
+---
+
+# Mission
+
+Maintain
+
+repository consistency.
+
+Prevent
+
+folder drift.
+
+Guarantee
+
+module discoverability.
+
+Support
+
+long-term maintainability.
+
+---
+
+# Core Principles
+
+Every folder
+
+has one responsibility.
+
+Every module
+
+owns its own directory.
+
+Shared components
+
+remain isolated.
+
+Infrastructure
+
+is separated
+
+from business logic.
+
+Documentation
+
+is separated
+
+from implementation.
+
+---
+
+# Repository Root
+
+The repository root
+
+contains only
+
+apps/
+
+packages/
+
+docs/
+
+scripts/
+
+tests/
+
+tools/
+
+configs/
+
+docker/
+
+.github/
+
+assets/
+
+No undocumented
+
+top-level directory
+
+is allowed.
+
+---
+
+# apps/
+
+Contains
+
+deployable applications.
+
+Examples
+
+apps/api
+
+apps/web
+
+apps/admin
+
+apps/mobile
+
+Rules
+
+Each application
+
+must be
+
+self-contained.
+
+---
+
+# packages/
+
+Contains
+
+shared libraries.
+
+Examples
+
+packages/common
+
+packages/config
+
+packages/logger
+
+packages/types
+
+packages/utils
+
+packages/database
+
+Rules
+
+Packages
+
+must never
+
+depend on feature modules.
+
+---
+
+# docs/
+
+Contains
+
+the Single Source of Truth.
+
+Examples
+
+architecture/
+
+api/
+
+data/
+
+security/
+
+workflow/
+
+standards/
+
+overview/
+
+99-decisions/
+
+Rules
+
+Documentation
+
+must never
+
+contain implementation.
+
+---
+
+# scripts/
+
+Contains
+
+automation scripts.
+
+Examples
+
+migration
+
+seed
+
+backup
+
+restore
+
+release
+
+ci
+
+Rules
+
+Scripts
+
+must not
+
+contain business logic.
+
+---
+
+# tests/
+
+Contains
+
+cross-module tests.
+
+Examples
+
+integration
+
+e2e
+
+performance
+
+security
+
+Rules
+
+Unit tests
+
+remain
+
+inside modules.
+
+---
+
+# docker/
+
+Contains
+
+containerization assets.
+
+Examples
+
+Dockerfile
+
+docker-compose.yml
+
+nginx
+
+postgres
+
+redis
+
+---
+
+# configs/
+
+Contains
+
+environment-independent
+
+configuration.
+
+Examples
+
+eslint
+
+prettier
+
+typescript
+
+jest
+
+vitest
+
+Rules
+
+Configuration
+
+must be centralized.
+
+---
+
+# .github/
+
+Contains
+
+GitHub workflows
+
+templates
+
+actions
+
+dependabot
+
+Rules
+
+CI/CD only.
+
+---
+
+# assets/
+
+Contains
+
+static assets.
+
+Examples
+
+logos
+
+images
+
+icons
+
+documentation resources
+
+---
+
+# Feature Module Structure
+
+Every feature module
+
+must follow
+
+controllers/
+
+services/
+
+repositories/
+
+entities/
+
+dto/
+
+validators/
+
+mappers/
+
+events/
+
+tests/
+
+README.md
+
+Optional
+
+policies/
+
+permissions/
+
+jobs/
+
+cache/
+
+search/
+
+No undocumented folder.
+
+---
+
+# Infrastructure Structure
+
+Infrastructure
+
+contains
+
+database/
+
+redis/
+
+queue/
+
+storage/
+
+email/
+
+monitoring/
+
+logging/
+
+search/
+
+No business logic
+
+inside infrastructure.
+
+---
+
+# Shared Package Structure
+
+Shared packages
+
+contain
+
+constants/
+
+types/
+
+utils/
+
+interfaces/
+
+decorators/
+
+exceptions/
+
+helpers/
+
+config/
+
+No feature-specific code.
+
+---
+
+# Documentation Structure
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Coding Standard
+
+↓
+
+Implementation
+
+Documentation
+
+always precedes
+
+implementation.
+
+---
+
+# Folder Naming Rules
+
+Directories
+
+must use
+
+kebab-case
+
+Examples
+
+place-review
+
+hotel-search
+
+geo-index
+
+Forbidden
+
+camelCase
+
+snake_case
+
+PascalCase
+
+spaces
+
+---
+
+# File Naming Rules
+
+Files
+
+must use
+
+kebab-case
+
+Examples
+
+user.service.ts
+
+place.entity.ts
+
+hotel.controller.ts
+
+tour.repository.ts
+
+Forbidden
+
+UserService.ts
+
+placeEntity.ts
+
+PlaceController.ts
+
+---
+
+# Module Isolation
+
+Each module
+
+owns
+
+its folders.
+
+Cross-module access
+
+must occur
+
+through
+
+public services
+
+or
+
+documented interfaces.
+
+Direct access
+
+to another module's
+
+internal folders
+
+is prohibited.
+
+---
+
+# Folder Drift
+
+Folder Drift includes
+
+Undocumented folder
+
+Missing required folder
+
+Unexpected directory
+
+Wrong location
+
+Duplicate directory
+
+Deprecated directory
+
+Improper nesting
+
+Shared code
+
+inside feature modules
+
+Feature code
+
+inside shared packages
+
+---
+
+# Folder Validation
+
+Verify
+
+Folder exists
+
+Correct location
+
+Correct naming
+
+Correct ownership
+
+Correct purpose
+
+Correct documentation
+
+Correct dependencies
+
+---
+
+# Repository Growth
+
+New folders
+
+require
+
+Architecture approval
+
+ADR
+
+Decision Register update
+
+Documentation update
+
+Repository review
+
+Implementation afterwards
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+Folder Path
+
+Expected Location
+
+Actual Location
+
+Documentation Reference
+
+Severity
+
+Recommendation
+
+Never infer.
+
+Never guess.
+
+Never fabricate.
+
+---
+
+# Severity
+
+Critical
+
+Architecture violation
+
+High
+
+Undocumented folder
+
+Shared boundary violation
+
+Medium
+
+Naming issue
+
+Incorrect placement
+
+Low
+
+Minor organization issue
+
+Informational
+
+Observation only
+
+---
+
+# Report Output
+
+Repository Structure
+
+Folder Inventory
+
+Unexpected Folders
+
+Missing Folders
+
+Folder Drift
+
+Naming Issues
+
+Boundary Violations
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+FOLDER STRUCTURE VERIFIED
+
+FOLDER DRIFT DETECTED
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every folder reviewed
+
+Structure validated
+
+Documentation compared
+
+Evidence attached
+
+No assumptions
+
+No generated code
+
+No repository modified
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Folder Structure succeeds when
+
+the repository
+
+maintains
+
+a clean,
+
+predictable,
+
+modular,
+
+well-documented,
+
+and scalable structure,
+
+allowing every developer
+
+and every automated review
+
+to understand
+
+the organization
+
+of the PhuQuocHub platform
+
+without ambiguity.

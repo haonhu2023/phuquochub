@@ -1,0 +1,1029 @@
+# Documentation Style Guide
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Documentation Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Critical
+
+Classification
+
+Internal
+
+---
+
+# Purpose
+
+This document defines
+
+the official Documentation Style Guide
+
+for
+
+the PhuQuocHub platform.
+
+Documentation
+
+must follow
+
+a unified structure,
+
+writing style,
+
+formatting standard,
+
+and governance model
+
+to ensure
+
+clarity,
+
+consistency,
+
+traceability,
+
+maintainability,
+
+and AI readability.
+
+---
+
+# Mission
+
+Create
+
+documentation
+
+that is
+
+Easy to Read
+
+Easy to Maintain
+
+Easy to Search
+
+Easy to Review
+
+Easy for AI
+
+Easy for Humans
+
+Long-term Stable
+
+---
+
+# Documentation Principles
+
+Every document
+
+must be
+
+Clear
+
+Concise
+
+Consistent
+
+Structured
+
+Versioned
+
+Traceable
+
+Reviewable
+
+Evidence Based
+
+Architecture Driven
+
+---
+
+# Documentation Hierarchy
+
+Business Requirements
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Specifications
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Implementation Guides
+
+↓
+
+Reports
+
+---
+
+# Required Document Header
+
+Every document
+
+must begin
+
+with
+
+Title
+
+Version
+
+Status
+
+Owner
+
+Priority
+
+Applies To
+
+Classification
+
+Last Updated
+
+Review Date
+
+---
+
+Example
+
+Title
+
+API Governance
+
+Version
+
+1.2
+
+Status
+
+Production
+
+Owner
+
+API Architect
+
+Priority
+
+Critical
+
+---
+
+# Document Sections
+
+Purpose
+
+Mission
+
+Scope
+
+Definitions
+
+Principles
+
+Policies
+
+Rules
+
+Examples
+
+Compliance
+
+Failure Conditions
+
+Self Verification
+
+Success Criteria
+
+---
+
+# Heading Rules
+
+Level 1
+
+Document Title
+
+#
+
+Level 2
+
+Major Sections
+
+##
+
+Level 3
+
+Subsections
+
+###
+
+Avoid
+
+Heading depth
+
+greater than
+
+Level 4.
+
+---
+
+# Writing Style
+
+Write
+
+Short paragraphs
+
+Simple sentences
+
+Active voice
+
+Present tense
+
+One idea
+
+per paragraph
+
+Avoid
+
+marketing language
+
+opinions
+
+ambiguous wording
+
+---
+
+# Terminology
+
+Use only
+
+Canonical Glossary.
+
+Never
+
+invent
+
+new terminology.
+
+Avoid
+
+synonyms
+
+for
+
+official concepts.
+
+---
+
+# Mandatory Vocabulary
+
+Use
+
+Architecture
+
+ADR
+
+Decision Register
+
+SSOT
+
+Batch
+
+Sprint
+
+Repository
+
+Validation
+
+Evidence
+
+Traceability
+
+Governance
+
+Exactly
+
+as defined
+
+in
+
+glossary.md
+
+---
+
+# Prohibited Language
+
+Avoid
+
+Maybe
+
+Probably
+
+Should
+
+Could
+
+Possibly
+
+Likely
+
+I think
+
+We believe
+
+Instead use
+
+Must
+
+Shall
+
+Required
+
+Prohibited
+
+Mandatory
+
+Optional
+
+Recommended
+
+---
+
+# Versioning
+
+Every document
+
+must define
+
+Major
+
+Minor
+
+Patch
+
+Version
+
+Example
+
+2.3.1
+
+---
+
+# Status Values
+
+Draft
+
+Review
+
+Approved
+
+Production
+
+Deprecated
+
+Archived
+
+---
+
+# Classification Values
+
+Public
+
+Internal
+
+Confidential
+
+Restricted
+
+Highly Restricted
+
+---
+
+# Cross References
+
+Every document
+
+must reference
+
+related documents
+
+using
+
+relative paths.
+
+Example
+
+See
+
+architecture-boundary.md
+
+See
+
+api-governance.md
+
+---
+
+# Internal Links
+
+Use
+
+relative links
+
+only.
+
+Avoid
+
+absolute URLs
+
+inside
+
+internal documentation.
+
+---
+
+# Examples
+
+Every standard
+
+should include
+
+Examples
+
+Counter Examples
+
+Best Practices
+
+Common Mistakes
+
+---
+
+# Tables
+
+Use tables
+
+only
+
+when
+
+comparison
+
+improves readability.
+
+Avoid
+
+large tables
+
+over
+
+20 rows.
+
+---
+
+# Lists
+
+Lists
+
+must be
+
+Short
+
+Ordered
+
+Logical
+
+Consistent
+
+Avoid
+
+deep nesting.
+
+---
+
+# Diagrams
+
+Preferred
+
+Mermaid
+
+Flowcharts
+
+Sequence Diagrams
+
+ER Diagrams
+
+State Diagrams
+
+Architecture Diagrams
+
+Every diagram
+
+must have
+
+Title
+
+Description
+
+Legend
+
+---
+
+# Code Examples
+
+Every code example
+
+must include
+
+Language
+
+Purpose
+
+Expected Output
+
+Version
+
+---
+
+# API Examples
+
+Every endpoint
+
+must include
+
+Request
+
+Response
+
+Errors
+
+Headers
+
+Authentication
+
+Example Payload
+
+---
+
+# ADR Style
+
+Every ADR
+
+must contain
+
+Context
+
+Decision
+
+Alternatives
+
+Consequences
+
+References
+
+Approval
+
+Status
+
+---
+
+# Architecture Style
+
+Architecture documents
+
+must include
+
+Scope
+
+Context
+
+Components
+
+Boundaries
+
+Dependencies
+
+Diagrams
+
+Examples
+
+---
+
+# Policy Style
+
+Policies
+
+must include
+
+Purpose
+
+Mission
+
+Rules
+
+Compliance
+
+Failure Conditions
+
+Success Criteria
+
+---
+
+# Specification Style
+
+Specifications
+
+must define
+
+Inputs
+
+Outputs
+
+Validation
+
+Constraints
+
+Examples
+
+---
+
+# Report Style
+
+Reports
+
+must include
+
+Summary
+
+Evidence
+
+Findings
+
+Recommendations
+
+Status
+
+---
+
+# Formatting Rules
+
+Maximum line length
+
+100 characters
+
+Blank line
+
+between sections
+
+Consistent indentation
+
+No trailing spaces
+
+UTF-8 encoding
+
+---
+
+# File Naming
+
+Use
+
+kebab-case
+
+Examples
+
+api-governance.md
+
+data-governance.md
+
+traceability-policy.md
+
+Avoid
+
+Spaces
+
+CamelCase
+
+Special Characters
+
+---
+
+# Folder Naming
+
+Use
+
+kebab-case
+
+Examples
+
+architecture/
+
+governance/
+
+templates/
+
+examples/
+
+---
+
+# Image Naming
+
+Examples
+
+architecture-overview.png
+
+domain-model.svg
+
+deployment-flow.png
+
+---
+
+# Diagram Naming
+
+Examples
+
+architecture-context.mmd
+
+sequence-booking.mmd
+
+state-order.mmd
+
+---
+
+# Documentation Review
+
+Every document
+
+must be reviewed
+
+for
+
+Accuracy
+
+Consistency
+
+Grammar
+
+Terminology
+
+References
+
+Version
+
+Formatting
+
+Completeness
+
+---
+
+# Documentation Validation
+
+Claude Code
+
+must verify
+
+Header Complete
+
+Required Sections Present
+
+Correct Terminology
+
+Correct References
+
+Version Valid
+
+Status Valid
+
+No Broken Links
+
+Formatting Correct
+
+---
+
+# Documentation Automation
+
+Documentation
+
+must support
+
+Linting
+
+Spell Checking
+
+Link Validation
+
+Markdown Validation
+
+Diagram Validation
+
+Template Validation
+
+Version Validation
+
+---
+
+# Templates
+
+Every document
+
+must originate
+
+from
+
+approved templates.
+
+Manual formatting
+
+should be minimized.
+
+---
+
+# AI Generated Content
+
+AI-generated documents
+
+must include
+
+Generation Date
+
+Model
+
+Reviewer
+
+Approval Status
+
+AI-generated content
+
+must be
+
+reviewed
+
+before
+
+Production.
+
+---
+
+# Compliance Rules
+
+Documentation
+
+is compliant
+
+only when
+
+Style Guide followed
+
+Canonical terminology used
+
+Formatting correct
+
+References valid
+
+Templates followed
+
+Review completed
+
+Validation passed
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Missing Header
+
+Missing Version
+
+Broken References
+
+Invalid Terminology
+
+Invalid Status
+
+Formatting Errors
+
+Required Sections Missing
+
+---
+
+# Self Verification
+
+Before publishing
+
+Claude Code
+
+must verify
+
+Style Guide followed
+
+Formatting valid
+
+Terminology correct
+
+References valid
+
+Version correct
+
+Review completed
+
+Validation passed
+
+---
+
+# Success Criteria
+
+The Documentation Style Guide succeeds when
+
+every document
+
+within
+
+the PhuQuocHub platform
+
+follows
+
+one consistent,
+
+high-quality,
+
+AI-friendly,
+
+human-readable,
+
+versioned,
+
+traceable,
+
+and maintainable standard,
+
+allowing
+
+developers,
+
+architects,
+
+AI agents,
+
+reviewers,
+
+and stakeholders
+
+to understand,
+
+review,
+
+maintain,
+
+and evolve
+
+the documentation
+
+efficiently
+
+throughout
+
+the entire software lifecycle.

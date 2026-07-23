@@ -1,0 +1,2372 @@
+---
+title: Framework Error Codes
+version: 3.0.0
+status: Production
+owner: Chief Documentation Architect
+classification: Internal
+priority: Critical
+framework: Documentation Governance Framework
+applies_to:
+  - Validation Orchestrator
+  - Engine Registry
+  - Execution Model
+  - Validation Pipeline
+  - Configuration Framework
+  - Validation Engines
+  - Audit Framework
+  - Reporting Framework
+review_cycle: Every Freeze
+---
+
+# Framework Error Codes
+
+---
+
+# 1. Purpose
+
+The Framework Error Codes
+
+define
+
+the authoritative error model
+
+used throughout
+
+the Documentation Governance Framework.
+
+Every failure,
+
+warning,
+
+validation issue,
+
+runtime exception,
+
+and governance violation
+
+shall be represented
+
+by
+
+one standardized
+
+error code.
+
+---
+
+# 2. Mission
+
+Provide
+
+Consistent Error Reporting
+
+Deterministic Failure Classification
+
+Machine-readable Diagnostics
+
+Audit Traceability
+
+Governance Enforcement
+
+Framework-wide Consistency
+
+Future Extensibility
+
+---
+
+# 3. Why Error Codes Exist
+
+Without
+
+a centralized
+
+error code system,
+
+individual framework components
+
+would produce
+
+inconsistent
+
+messages,
+
+making
+
+automation,
+
+reporting,
+
+monitoring,
+
+and troubleshooting
+
+difficult.
+
+The Error Framework
+
+provides
+
+one common language
+
+for
+
+every framework component.
+
+---
+
+# 4. Scope
+
+The Error Framework
+
+governs
+
+Validation Errors
+
+Runtime Errors
+
+Configuration Errors
+
+Pipeline Errors
+
+Registry Errors
+
+Governance Errors
+
+Audit Errors
+
+Evidence Errors
+
+Reporting Errors
+
+Extension Errors
+
+Future Framework Components
+
+---
+
+# 5. Responsibilities
+
+The Error Framework
+
+shall
+
+Assign Error Codes
+
+Define Error Categories
+
+Define Error Severity
+
+Define Error Metadata
+
+Provide Error Resolution Guidance
+
+Support Audit
+
+Support Reporting
+
+Support Automation
+
+Support Metrics
+
+---
+
+# 6. Non Responsibilities
+
+The Error Framework
+
+does not
+
+execute validation,
+
+repair repositories,
+
+modify documentation,
+
+or
+
+change framework behavior.
+
+It
+
+defines
+
+errors,
+
+not
+
+their implementation.
+
+---
+
+# 7. Design Principles
+
+## Principle 1
+
+Every error
+
+has
+
+exactly one
+
+unique identifier.
+
+---
+
+## Principle 2
+
+Every identifier
+
+is immutable.
+
+---
+
+## Principle 3
+
+Every error
+
+belongs
+
+to one
+
+error category.
+
+---
+
+## Principle 4
+
+Every error
+
+has
+
+one severity level.
+
+---
+
+## Principle 5
+
+Every error
+
+is
+
+machine readable.
+
+---
+
+## Principle 6
+
+Every error
+
+is
+
+human understandable.
+
+---
+
+## Principle 7
+
+Every error
+
+is
+
+auditable.
+
+---
+
+## Principle 8
+
+Error identifiers
+
+must remain
+
+stable
+
+across framework versions.
+
+---
+
+# 8. Error Architecture
+
+Framework Errors
+
+contain
+
+Identifier
+
+↓
+
+Category
+
+↓
+
+Severity
+
+↓
+
+Source
+
+↓
+
+Description
+
+↓
+
+Evidence
+
+↓
+
+Recommendation
+
+↓
+
+Audit Reference
+
+---
+
+# 9. Error Identifier Format
+
+Every error
+
+uses
+
+the following format.
+
+```
+DF-<CATEGORY>-<NUMBER>
+```
+
+Examples
+
+```
+DF-CONFIG-001
+
+DF-PIPELINE-014
+
+DF-GOV-003
+
+DF-RUNTIME-011
+
+DF-AUDIT-007
+
+DF-EVIDENCE-004
+```
+
+---
+
+# 10. Error Categories
+
+The Framework
+
+defines
+
+the following
+
+top-level categories.
+
+CONFIG
+
+PIPELINE
+
+RUNTIME
+
+ENGINE
+
+REGISTRY
+
+VALIDATION
+
+GOVERNANCE
+
+EVIDENCE
+
+AUDIT
+
+METRICS
+
+REPORT
+
+SECURITY
+
+EXTENSION
+
+UNKNOWN
+
+---
+
+# 11. Foundation Success Criteria
+
+The Framework Error Codes
+
+are successful
+
+when
+
+every framework component
+
+reports
+
+all failures,
+
+warnings,
+
+and governance violations
+
+through
+
+one centralized,
+
+versioned,
+
+auditable,
+
+machine-readable,
+
+and deterministic
+
+error model,
+
+providing
+
+consistent diagnostics
+
+across
+
+the Documentation Governance Framework.
+
+---
+---
+
+# 12. Error Classification Engine
+
+## Purpose
+
+The Error Classification Engine
+
+defines
+
+how framework errors
+
+are classified,
+
+prioritized,
+
+reported,
+
+and governed.
+
+Every error
+
+shall belong
+
+to
+
+exactly one
+
+classification.
+
+Classification
+
+determines
+
+severity,
+
+handling,
+
+recovery,
+
+and reporting.
+
+---
+
+# 13. Error Severity Levels
+
+Every error
+
+shall have
+
+one severity level.
+
+Severity Levels
+
+INFO
+
+WARNING
+
+ERROR
+
+CRITICAL
+
+FATAL
+
+---
+
+INFO
+
+describes
+
+informational events.
+
+No execution impact.
+
+---
+
+WARNING
+
+indicates
+
+non-blocking issues.
+
+Execution
+
+may continue.
+
+---
+
+ERROR
+
+indicates
+
+validation failures.
+
+Execution
+
+may continue
+
+depending upon
+
+framework policy.
+
+---
+
+CRITICAL
+
+indicates
+
+major integrity failures.
+
+Execution
+
+must stop
+
+until
+
+the issue
+
+is resolved.
+
+---
+
+FATAL
+
+indicates
+
+framework instability.
+
+Current execution
+
+must terminate
+
+immediately.
+
+---
+
+# 14. Error Lifecycle
+
+Every error
+
+passes through
+
+the following lifecycle.
+
+Detected
+
+↓
+
+Validated
+
+↓
+
+Classified
+
+↓
+
+Assigned
+
+↓
+
+Reported
+
+↓
+
+Resolved
+
+↓
+
+Closed
+
+↓
+
+Archived
+
+Only
+
+Resolved
+
+or
+
+Archived
+
+errors
+
+may leave
+
+the active error registry.
+
+---
+
+# 15. Error Metadata
+
+Every error
+
+shall contain
+
+the following metadata.
+
+Error Code
+
+Category
+
+Severity
+
+Title
+
+Description
+
+Source Component
+
+Execution Session
+
+Framework Version
+
+Timestamp
+
+Evidence Reference
+
+Audit Reference
+
+Resolution Status
+
+Owner
+
+Recovery Recommendation
+
+---
+
+Metadata
+
+must be
+
+complete
+
+before
+
+an error
+
+is published.
+
+---
+
+# 16. Error Ownership
+
+Every error
+
+shall have
+
+one responsible owner.
+
+Possible Owners
+
+Validation Engine
+
+Validation Orchestrator
+
+Execution Model
+
+Configuration Framework
+
+Engine Registry
+
+Pipeline
+
+Audit Framework
+
+Evidence Framework
+
+Reporting Framework
+
+Framework Administrator
+
+Ownership
+
+defines
+
+responsibility
+
+for
+
+resolution,
+
+not
+
+blame.
+
+---
+
+# 17. Error States
+
+Errors
+
+may exist
+
+in
+
+one state
+
+at any time.
+
+NEW
+
+ACKNOWLEDGED
+
+INVESTIGATING
+
+RESOLVED
+
+CLOSED
+
+ARCHIVED
+
+---
+
+State transitions
+
+must be
+
+recorded
+
+within
+
+the audit trail.
+
+---
+
+# 18. Error Priority
+
+Priority
+
+defines
+
+resolution urgency.
+
+Priority Levels
+
+P1
+
+Immediate
+
+P2
+
+High
+
+P3
+
+Medium
+
+P4
+
+Low
+
+Priority
+
+is determined
+
+by
+
+Severity
+
+×
+
+Governance Impact
+
+×
+
+Execution Impact.
+
+---
+
+# 19. Error Source
+
+Errors
+
+shall identify
+
+their origin.
+
+Possible Sources
+
+Configuration
+
+Pipeline
+
+Runtime
+
+Registry
+
+Validation Engine
+
+Evidence
+
+Audit
+
+Metrics
+
+Reporting
+
+Extension
+
+Security
+
+Unknown
+
+---
+
+Unknown
+
+sources
+
+shall be
+
+investigated.
+
+---
+
+# 20. Error Visibility
+
+Errors
+
+may be
+
+Internal
+
+Administrative
+
+Operator
+
+Executive
+
+Public
+
+Visibility
+
+shall follow
+
+governance policy.
+
+Sensitive
+
+implementation details
+
+must never
+
+appear
+
+in
+
+Executive
+
+or
+
+Public
+
+reports.
+
+---
+
+# 21. Error Traceability
+
+Every error
+
+shall maintain
+
+complete traceability.
+
+Required References
+
+Execution Session
+
+Validation Run
+
+Configuration Snapshot
+
+Pipeline Stage
+
+Validation Engine
+
+Evidence Package
+
+Audit Record
+
+Report Identifier
+
+Repository Snapshot
+
+---
+
+Traceability
+
+must remain
+
+valid
+
+throughout
+
+the entire
+
+Documentation Freeze lifecycle.
+
+---
+
+# 22. Error Integrity
+
+The Error Framework
+
+is valid
+
+only when
+
+Every Error Has Code
+
+Every Error Classified
+
+Every Severity Assigned
+
+Every Owner Assigned
+
+Every Source Known
+
+Every Audit Recorded
+
+Every Evidence Linked
+
+Every State Valid
+
+Every Transition Recorded
+
+---
+
+# 23. Error Classification Completion Criteria
+
+The Error Classification Engine
+
+is complete
+
+when
+
+every framework error
+
+can be
+
+uniquely identified,
+
+classified,
+
+prioritized,
+
+owned,
+
+tracked,
+
+audited,
+
+and resolved
+
+through
+
+one deterministic
+
+enterprise-wide
+
+error management model,
+
+ensuring
+
+consistent diagnostics
+
+across
+
+every Documentation Freeze execution.
+
+---
+---
+
+# 24. Standard Error Catalog
+
+## Purpose
+
+The Standard Error Catalog
+
+defines
+
+the authoritative list
+
+of framework error codes.
+
+Every framework component
+
+shall use
+
+only
+
+registered error codes.
+
+Custom
+
+or
+
+ad-hoc
+
+error codes
+
+are prohibited.
+
+---
+
+# 25. Configuration Error Codes
+
+Configuration Errors
+
+identify
+
+configuration failures.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-CONFIG-001 | ERROR | Configuration file not found |
+| DF-CONFIG-002 | ERROR | Invalid configuration schema |
+| DF-CONFIG-003 | ERROR | Missing required configuration value |
+| DF-CONFIG-004 | CRITICAL | Unsupported configuration version |
+| DF-CONFIG-005 | ERROR | Invalid configuration reference |
+| DF-CONFIG-006 | ERROR | Dependency resolution failed |
+| DF-CONFIG-007 | WARNING | Deprecated configuration option |
+| DF-CONFIG-008 | CRITICAL | Configuration drift detected |
+| DF-CONFIG-009 | CRITICAL | Unauthorized configuration override |
+| DF-CONFIG-010 | FATAL | Configuration integrity compromised |
+
+---
+
+# 26. Pipeline Error Codes
+
+Pipeline Errors
+
+identify
+
+workflow failures.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-PIPELINE-001 | ERROR | Invalid pipeline stage |
+| DF-PIPELINE-002 | ERROR | Stage dependency missing |
+| DF-PIPELINE-003 | ERROR | Stage execution failed |
+| DF-PIPELINE-004 | CRITICAL | Pipeline synchronization failure |
+| DF-PIPELINE-005 | ERROR | Invalid stage transition |
+| DF-PIPELINE-006 | ERROR | Checkpoint creation failed |
+| DF-PIPELINE-007 | ERROR | Pipeline recovery failed |
+| DF-PIPELINE-008 | CRITICAL | Pipeline integrity violation |
+| DF-PIPELINE-009 | ERROR | Timeout exceeded |
+| DF-PIPELINE-010 | FATAL | Pipeline execution aborted |
+
+---
+
+# 27. Runtime Error Codes
+
+Runtime Errors
+
+identify
+
+execution failures.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-RUNTIME-001 | CRITICAL | Runtime initialization failed |
+| DF-RUNTIME-002 | ERROR | Runtime context unavailable |
+| DF-RUNTIME-003 | ERROR | Invalid execution session |
+| DF-RUNTIME-004 | ERROR | Resource allocation failed |
+| DF-RUNTIME-005 | ERROR | Checkpoint restore failed |
+| DF-RUNTIME-006 | ERROR | Runtime synchronization failure |
+| DF-RUNTIME-007 | CRITICAL | Runtime integrity violation |
+| DF-RUNTIME-008 | ERROR | Snapshot unavailable |
+| DF-RUNTIME-009 | CRITICAL | Runtime recovery failed |
+| DF-RUNTIME-010 | FATAL | Runtime terminated unexpectedly |
+
+---
+
+# 28. Registry Error Codes
+
+Registry Errors
+
+identify
+
+engine registration failures.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-REGISTRY-001 | ERROR | Engine registration failed |
+| DF-REGISTRY-002 | ERROR | Duplicate engine identifier |
+| DF-REGISTRY-003 | ERROR | Missing engine manifest |
+| DF-REGISTRY-004 | ERROR | Invalid engine metadata |
+| DF-REGISTRY-005 | ERROR | Dependency graph invalid |
+| DF-REGISTRY-006 | ERROR | Unsupported engine version |
+| DF-REGISTRY-007 | CRITICAL | Registry corruption detected |
+| DF-REGISTRY-008 | ERROR | Registry synchronization failed |
+| DF-REGISTRY-009 | CRITICAL | Registry integrity violation |
+| DF-REGISTRY-010 | FATAL | Registry unavailable |
+
+---
+
+# 29. Validation Error Codes
+
+Validation Errors
+
+identify
+
+validation failures.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-VALIDATION-001 | ERROR | Schema validation failed |
+| DF-VALIDATION-002 | ERROR | Metadata validation failed |
+| DF-VALIDATION-003 | ERROR | Cross-reference validation failed |
+| DF-VALIDATION-004 | ERROR | Dependency validation failed |
+| DF-VALIDATION-005 | ERROR | Consistency validation failed |
+| DF-VALIDATION-006 | ERROR | SSOT validation failed |
+| DF-VALIDATION-007 | WARNING | Deprecated document detected |
+| DF-VALIDATION-008 | CRITICAL | Validation integrity failure |
+| DF-VALIDATION-009 | ERROR | Unsupported validation rule |
+| DF-VALIDATION-010 | FATAL | Validation engine crashed |
+
+---
+
+# 30. Governance Error Codes
+
+Governance Errors
+
+identify
+
+policy violations.
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-GOV-001 | CRITICAL | Governance policy violated |
+| DF-GOV-002 | ERROR | Unauthorized approval |
+| DF-GOV-003 | ERROR | Missing mandatory review |
+| DF-GOV-004 | ERROR | Documentation Freeze blocked |
+| DF-GOV-005 | CRITICAL | Compliance requirement violated |
+| DF-GOV-006 | ERROR | Retention policy violated |
+| DF-GOV-007 | WARNING | Governance recommendation ignored |
+| DF-GOV-008 | CRITICAL | Approval authority invalid |
+| DF-GOV-009 | ERROR | Risk threshold exceeded |
+| DF-GOV-010 | FATAL | Governance framework compromised |
+
+---
+
+# 31. Audit, Evidence and Reporting Error Codes
+
+| Error Code | Severity | Description |
+|------------|----------|-------------|
+| DF-AUDIT-001 | ERROR | Audit record missing |
+| DF-AUDIT-002 | ERROR | Audit integrity validation failed |
+| DF-AUDIT-003 | CRITICAL | Audit trail corrupted |
+| DF-AUDIT-004 | FATAL | Audit subsystem unavailable |
+| DF-EVIDENCE-001 | ERROR | Evidence package missing |
+| DF-EVIDENCE-002 | ERROR | Evidence checksum mismatch |
+| DF-EVIDENCE-003 | CRITICAL | Evidence integrity failure |
+| DF-EVIDENCE-004 | FATAL | Evidence repository unavailable |
+| DF-REPORT-001 | ERROR | Report generation failed |
+| DF-REPORT-002 | ERROR | Invalid report schema |
+| DF-REPORT-003 | CRITICAL | Report publishing failed |
+| DF-REPORT-004 | FATAL | Reporting subsystem unavailable |
+
+---
+
+# 32. Reserved Error Codes
+
+The following ranges
+
+are reserved.
+
+DF-CONFIG-900–999
+
+Reserved for
+
+future configuration errors.
+
+DF-PIPELINE-900–999
+
+Reserved for
+
+future pipeline errors.
+
+DF-RUNTIME-900–999
+
+Reserved for
+
+future runtime errors.
+
+DF-ENGINE-900–999
+
+Reserved for
+
+future validation engine errors.
+
+DF-GOV-900–999
+
+Reserved for
+
+future governance errors.
+
+Reserved identifiers
+
+must never
+
+be reused
+
+for
+
+other categories.
+
+---
+
+# 33. Error Catalog Integrity
+
+The Standard Error Catalog
+
+is valid
+
+only when
+
+Every Error Code Unique
+
+Every Category Defined
+
+Every Severity Assigned
+
+Every Description Approved
+
+No Duplicate Identifiers
+
+No Undefined Categories
+
+No Conflicting Meanings
+
+Reserved Ranges Preserved
+
+---
+
+# 34. Error Catalog Completion Criteria
+
+The Standard Error Catalog
+
+is complete
+
+when
+
+every failure
+
+that may occur
+
+within
+
+the Documentation Governance Framework
+
+can be represented
+
+by
+
+one unique,
+
+stable,
+
+versioned,
+
+auditable,
+
+and governance-approved
+
+error code,
+
+providing
+
+consistent diagnostics,
+
+automation,
+
+and reporting
+
+across
+
+every framework component.
+
+---
+---
+
+# 35. Error Resolution Framework
+
+## Purpose
+
+The Error Resolution Framework
+
+defines
+
+the standardized process
+
+for
+
+analyzing,
+
+recovering,
+
+tracking,
+
+and closing
+
+framework errors.
+
+Every error
+
+shall follow
+
+one deterministic
+
+resolution workflow.
+
+Resolution
+
+must be
+
+auditable,
+
+repeatable,
+
+and governance compliant.
+
+---
+
+# 36. Error Resolution Workflow
+
+Every error
+
+shall progress
+
+through
+
+the following workflow.
+
+Error Detected
+
+↓
+
+Validate Error
+
+↓
+
+Classify Error
+
+↓
+
+Assign Severity
+
+↓
+
+Assign Owner
+
+↓
+
+Determine Recovery Strategy
+
+↓
+
+Execute Recovery
+
+↓
+
+Verify Recovery
+
+↓
+
+Update Audit Trail
+
+↓
+
+Close Error
+
+↓
+
+Archive Error
+
+---
+
+Errors
+
+must never
+
+skip
+
+mandatory workflow stages.
+
+---
+
+# 37. Recovery Strategy
+
+Every error
+
+shall define
+
+one recovery strategy.
+
+Recovery Types
+
+Automatic Retry
+
+Automatic Recovery
+
+Manual Intervention
+
+Governance Review
+
+Framework Restart
+
+Execution Abort
+
+Recovery strategy
+
+depends upon
+
+Error Severity
+
+Error Category
+
+Execution State
+
+Governance Policy
+
+---
+
+# 38. Retry Policy
+
+Retry
+
+is permitted
+
+only for
+
+recoverable errors.
+
+Retry Rules
+
+Maximum Retry Count
+
+Retry Interval
+
+Exponential Backoff
+
+Retry Timeout
+
+Retry Audit
+
+Retry Metrics
+
+---
+
+Retry
+
+must never
+
+be attempted
+
+for
+
+FATAL
+
+errors.
+
+---
+
+Retry Exhausted
+
+↓
+
+Escalation Required
+
+---
+
+# 39. Escalation Policy
+
+Errors
+
+shall be escalated
+
+according to
+
+severity.
+
+INFO
+
+↓
+
+No Escalation
+
+WARNING
+
+↓
+
+Operator Notification
+
+ERROR
+
+↓
+
+Framework Owner
+
+CRITICAL
+
+↓
+
+Governance Authority
+
+FATAL
+
+↓
+
+Immediate Execution Termination
+
+↓
+
+Executive Notification
+
+Escalation
+
+must be
+
+recorded
+
+within
+
+the Audit Framework.
+
+---
+
+# 40. Root Cause Analysis
+
+Every
+
+CRITICAL
+
+and
+
+FATAL
+
+error
+
+requires
+
+Root Cause Analysis.
+
+Analysis
+
+shall identify
+
+Immediate Cause
+
+Contributing Factors
+
+Configuration Impact
+
+Runtime Impact
+
+Governance Impact
+
+Corrective Actions
+
+Preventive Actions
+
+Lessons Learned
+
+---
+
+Root Cause Analysis
+
+must be linked
+
+to
+
+the originating
+
+Error Code.
+
+---
+
+# 41. Error Reporting
+
+Every error
+
+shall generate
+
+a standardized
+
+Error Report.
+
+Required Fields
+
+Error Code
+
+Title
+
+Severity
+
+Category
+
+Description
+
+Timestamp
+
+Source
+
+Owner
+
+Execution Session
+
+Evidence Reference
+
+Audit Reference
+
+Recovery Action
+
+Resolution Status
+
+---
+
+Reports
+
+must follow
+
+the Framework Report Schema.
+
+---
+
+# 42. Error Metrics
+
+The Framework
+
+shall collect
+
+error metrics.
+
+Metrics
+
+include
+
+Total Errors
+
+Errors by Category
+
+Errors by Severity
+
+Mean Time To Detect (MTTD)
+
+Mean Time To Resolve (MTTR)
+
+Retry Count
+
+Recovery Success Rate
+
+Escalation Count
+
+Recurring Errors
+
+Top Error Sources
+
+---
+
+Metrics
+
+must be
+
+available
+
+to
+
+the Metrics Framework.
+
+---
+
+# 43. Error Trend Monitoring
+
+The Framework
+
+shall monitor
+
+long-term
+
+error trends.
+
+Trend Categories
+
+Configuration Errors
+
+Validation Errors
+
+Pipeline Errors
+
+Runtime Errors
+
+Governance Errors
+
+Audit Errors
+
+Evidence Errors
+
+Reporting Errors
+
+---
+
+Trend Analysis
+
+shall identify
+
+Increasing Frequency
+
+Recurring Failures
+
+Regression Patterns
+
+Emerging Risks
+
+Operational Improvements
+
+---
+
+# 44. Resolution Integrity
+
+The Error Resolution Framework
+
+is valid
+
+only when
+
+Every Error Classified
+
+Every Owner Assigned
+
+Every Recovery Defined
+
+Every Escalation Recorded
+
+Every Retry Audited
+
+Every Resolution Verified
+
+Every Closure Approved
+
+Every Audit Updated
+
+---
+
+# 45. Resolution Completion Criteria
+
+The Error Resolution Framework
+
+is complete
+
+when
+
+every framework error
+
+can be
+
+detected,
+
+classified,
+
+assigned,
+
+recovered,
+
+verified,
+
+reported,
+
+audited,
+
+and closed
+
+through
+
+one standardized,
+
+governance-compliant,
+
+enterprise-wide
+
+resolution process,
+
+ensuring
+
+consistent operational behavior
+
+throughout
+
+the Documentation Governance Framework.
+
+---
+---
+
+# 46. Global Error State Machine
+
+Every framework error
+
+shall transition
+
+through
+
+the following lifecycle.
+
+NEW
+
+↓
+
+VALIDATED
+
+↓
+
+CLASSIFIED
+
+↓
+
+ASSIGNED
+
+↓
+
+IN_PROGRESS
+
+↓
+
+RECOVERED
+
+↓
+
+VERIFIED
+
+↓
+
+RESOLVED
+
+↓
+
+CLOSED
+
+↓
+
+ARCHIVED
+
+---
+
+Errors
+
+must never
+
+skip
+
+mandatory states.
+
+Invalid state transitions
+
+↓
+
+BLOCKED
+
+---
+
+Every transition
+
+shall generate
+
+an audit event.
+
+---
+
+# 47. Error Automation Framework
+
+The Framework
+
+shall automate
+
+error management
+
+where possible.
+
+Automated Operations
+
+Error Detection
+
+↓
+
+Error Classification
+
+↓
+
+Severity Assignment
+
+↓
+
+Owner Assignment
+
+↓
+
+Evidence Collection
+
+↓
+
+Audit Recording
+
+↓
+
+Metrics Collection
+
+↓
+
+Recovery Recommendation
+
+↓
+
+Error Reporting
+
+↓
+
+Trend Analysis
+
+↓
+
+Archive
+
+Automation
+
+must never
+
+modify
+
+governance decisions.
+
+Automation
+
+supports
+
+analysis,
+
+not
+
+approval.
+
+---
+
+# 48. Framework Integration
+
+The Error Framework
+
+integrates
+
+with
+
+Validation Orchestrator
+
+↓
+
+Engine Registry
+
+↓
+
+Execution Model
+
+↓
+
+Validation Pipeline
+
+↓
+
+Configuration Framework
+
+↓
+
+Validation Engines
+
+↓
+
+Evidence Framework
+
+↓
+
+Audit Framework
+
+↓
+
+Metrics Framework
+
+↓
+
+Reporting Framework
+
+↓
+
+Documentation Freeze Lifecycle
+
+Every framework component
+
+shall use
+
+the Framework Error Codes
+
+as
+
+its only
+
+authoritative
+
+error model.
+
+---
+
+# 49. Compliance Requirements
+
+The Error Framework
+
+is compliant
+
+only when
+
+Every Error Registered
+
+Every Error Unique
+
+Every Error Classified
+
+Every Severity Assigned
+
+Every Owner Assigned
+
+Every Audit Recorded
+
+Every Evidence Linked
+
+Every Resolution Tracked
+
+Every Closure Verified
+
+Reserved Ranges Preserved
+
+No Duplicate Identifiers
+
+---
+
+Non-compliance
+
+↓
+
+BLOCKED
+
+---
+
+# 50. Error Integrity
+
+The Framework
+
+shall preserve
+
+Error Integrity
+
+through
+
+Identifier Stability
+
+Version Compatibility
+
+Immutable History
+
+Audit Consistency
+
+Evidence Integrity
+
+Traceability
+
+Governance Compliance
+
+Integrity
+
+must remain
+
+valid
+
+throughout
+
+the complete
+
+Documentation Freeze lifecycle.
+
+---
+
+# 51. Error Analytics
+
+The Framework
+
+shall provide
+
+analytics
+
+for
+
+Error Frequency
+
+Error Distribution
+
+Severity Trends
+
+Resolution Time
+
+Recovery Success
+
+Recurring Failures
+
+Governance Violations
+
+Framework Stability
+
+Operational Risk
+
+Analytics
+
+must support
+
+continuous improvement
+
+of
+
+the Documentation Governance Framework.
+
+---
+
+# 52. Error Versioning
+
+Every error code
+
+shall remain
+
+stable
+
+across
+
+framework versions.
+
+Permitted Changes
+
+Description Clarification
+
+Documentation Improvements
+
+Additional References
+
+Examples
+
+---
+
+Prohibited Changes
+
+Reuse Existing Identifier
+
+Change Category
+
+Change Semantic Meaning
+
+Delete Published Error Code
+
+---
+
+Deprecated errors
+
+must remain
+
+documented
+
+for
+
+backward compatibility.
+
+---
+
+# 53. Self Verification
+
+Before declaring
+
+SUCCESS
+
+the Error Framework
+
+shall verify
+
+✓ Every Error Code Unique
+
+✓ Every Category Defined
+
+✓ Every Severity Assigned
+
+✓ Every Owner Assigned
+
+✓ Every Lifecycle Valid
+
+✓ Every Audit Linked
+
+✓ Every Evidence Linked
+
+✓ Every Resolution Complete
+
+✓ Every Reserved Range Protected
+
+✓ Every Integration Valid
+
+✓ No Duplicate Identifiers
+
+✓ No Undefined Categories
+
+---
+
+# 54. Error Framework Success Criteria
+
+The Error Framework
+
+is successful
+
+when
+
+every failure,
+
+warning,
+
+runtime exception,
+
+validation issue,
+
+and governance violation
+
+throughout
+
+the Documentation Governance Framework
+
+is represented
+
+by
+
+one unique,
+
+versioned,
+
+immutable,
+
+machine-readable,
+
+fully auditable,
+
+and governance-compliant
+
+error identifier,
+
+enabling
+
+consistent automation,
+
+diagnostics,
+
+reporting,
+
+monitoring,
+
+and operational governance
+
+across
+
+every Documentation Freeze execution.
+
+---
+
+# 55. Framework Completion Criteria
+
+The Framework Error Codes
+
+are considered
+
+complete
+
+when
+
+Validation Orchestrator,
+
+Engine Registry,
+
+Execution Model,
+
+Validation Pipeline,
+
+Configuration Framework,
+
+Validation Engines,
+
+Evidence Framework,
+
+Audit Framework,
+
+Metrics Framework,
+
+Reporting Framework,
+
+and all future framework extensions
+
+share
+
+one centralized,
+
+enterprise-wide,
+
+authoritative
+
+error management system,
+
+providing
+
+deterministic error handling,
+
+complete traceability,
+
+and long-term framework consistency.
+
+---
+
+# End of Document
+
+Status
+
+Production
+
+Framework Error Codes
+
+Complete
+
+Documentation Governance Framework
+
+Error Management Ready
+
+Enterprise Ready

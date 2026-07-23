@@ -1,0 +1,772 @@
+# Output Template
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Documentation Freeze
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Audit
+
+---
+
+# Purpose
+
+This document defines
+
+the official output format
+
+for every Architecture Review.
+
+All reports
+
+must use
+
+this template.
+
+Reports
+
+must be
+
+consistent,
+
+predictable,
+
+repeatable,
+
+and evidence-based.
+
+---
+
+# General Rules
+
+Every report
+
+must
+
+follow the same order.
+
+Never skip sections.
+
+Never invent sections.
+
+Never omit evidence.
+
+Never omit final decision.
+
+No code generation.
+
+No repository modification.
+
+---
+
+# Report Structure
+
+Architecture Review Report
+
+↓
+
+Executive Summary
+
+↓
+
+Repository Overview
+
+↓
+
+Scope
+
+↓
+
+Methodology
+
+↓
+
+Compliance Summary
+
+↓
+
+Architecture Review
+
+↓
+
+Documentation Review
+
+↓
+
+Repository Review
+
+↓
+
+Database Review
+
+↓
+
+API Review
+
+↓
+
+RBAC Review
+
+↓
+
+Workflow Review
+
+↓
+
+Dependency Review
+
+↓
+
+Naming Review
+
+↓
+
+Security Review
+
+↓
+
+Performance Review
+
+↓
+
+Testing Review
+
+↓
+
+Technical Debt
+
+↓
+
+Known Risks
+
+↓
+
+Recommendations
+
+↓
+
+Compliance Matrix
+
+↓
+
+Final Decision
+
+---
+
+# Executive Summary
+
+Include
+
+Review Date
+
+Repository
+
+Reviewer
+
+Repository Version
+
+Current Sprint
+
+Current Batch
+
+Current Milestone
+
+Architecture Status
+
+Overall Result
+
+Summary
+
+Maximum
+
+10 lines.
+
+---
+
+# Repository Overview
+
+Describe
+
+Repository Structure
+
+Applications
+
+Packages
+
+Modules
+
+Documentation
+
+Current State
+
+Repository Health
+
+---
+
+# Scope
+
+Clearly define
+
+Included
+
+Excluded
+
+Assumptions
+
+Limitations
+
+Examples
+
+Batch
+
+Sprint
+
+Repository
+
+Documentation
+
+Only
+
+what was reviewed.
+
+---
+
+# Methodology
+
+Explain
+
+Documentation compared
+
+Repository inspected
+
+Architecture validated
+
+Dependencies reviewed
+
+Evidence collected
+
+Severity assigned
+
+Recommendations generated
+
+---
+
+# Compliance Summary
+
+Provide
+
+PASS count
+
+READY AFTER FIXES count
+
+FAIL count
+
+BLOCKED count
+
+Architecture Score
+
+Documentation Score
+
+Repository Score
+
+Overall Health
+
+---
+
+# Architecture Review
+
+Evaluate
+
+Layer Separation
+
+Module Ownership
+
+Architecture Drift
+
+Boundaries
+
+Dependencies
+
+Evidence
+
+Severity
+
+Recommendation
+
+---
+
+# Documentation Review
+
+Evaluate
+
+Architecture
+
+ADR
+
+Decision Register
+
+README
+
+Workflow
+
+OpenAPI
+
+Coding Standard
+
+Database
+
+Evidence
+
+---
+
+# Repository Review
+
+Evaluate
+
+Folder Structure
+
+Modules
+
+Packages
+
+Shared Libraries
+
+Naming
+
+Dead Code
+
+Generated Code
+
+Repository Drift
+
+---
+
+# Database Review
+
+Evaluate
+
+Entities
+
+Migrations
+
+Indexes
+
+Constraints
+
+ERD
+
+Data Dictionary
+
+Rollback
+
+Execution
+
+---
+
+# API Review
+
+Evaluate
+
+Controllers
+
+DTOs
+
+Endpoints
+
+Validation
+
+Authentication
+
+Authorization
+
+OpenAPI
+
+Examples
+
+---
+
+# RBAC Review
+
+Evaluate
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Authorization
+
+Guards
+
+Policies
+
+---
+
+# Workflow Review
+
+Evaluate
+
+Registration
+
+Approval
+
+Publishing
+
+Verification
+
+Notification
+
+Revision
+
+Deletion
+
+---
+
+# Dependency Review
+
+Evaluate
+
+Dependency Graph
+
+Circular Dependencies
+
+Module Boundaries
+
+Shared Libraries
+
+Architecture Direction
+
+---
+
+# Naming Review
+
+Evaluate
+
+Repository
+
+Folders
+
+Files
+
+Classes
+
+Entities
+
+Database
+
+API
+
+Environment Variables
+
+---
+
+# Security Review
+
+Evaluate
+
+Authentication
+
+Authorization
+
+Validation
+
+Audit Logging
+
+Secrets
+
+Encryption
+
+OWASP
+
+---
+
+# Performance Review
+
+Evaluate
+
+Indexes
+
+Caching
+
+Pagination
+
+Query Optimization
+
+Search
+
+Geo
+
+Memory
+
+Response Time
+
+---
+
+# Testing Review
+
+Evaluate
+
+Compilation
+
+Lint
+
+Unit Tests
+
+Integration Tests
+
+E2E
+
+Coverage
+
+CI
+
+Migration Tests
+
+---
+
+# Technical Debt
+
+List
+
+Identifier
+
+Description
+
+Severity
+
+Impact
+
+Target Sprint
+
+Owner
+
+Recommendation
+
+Status
+
+---
+
+# Known Risks
+
+List
+
+Risk
+
+Impact
+
+Probability
+
+Severity
+
+Mitigation
+
+Owner
+
+---
+
+# Recommendations
+
+Group
+
+Immediate
+
+Current Sprint
+
+Future Sprint
+
+Roadmap
+
+Each recommendation
+
+must include
+
+Priority
+
+Evidence
+
+Expected Outcome
+
+---
+
+# Compliance Matrix
+
+| Category | Status | Evidence |
+|----------|--------|----------|
+| Architecture | PASS / FAIL | Evidence |
+| Documentation | PASS / FAIL | Evidence |
+| Database | PASS / FAIL | Evidence |
+| Repository | PASS / FAIL | Evidence |
+| API | PASS / FAIL | Evidence |
+| RBAC | PASS / FAIL | Evidence |
+| Workflow | PASS / FAIL | Evidence |
+| Security | PASS / FAIL | Evidence |
+| Performance | PASS / FAIL | Evidence |
+| Testing | PASS / FAIL | Evidence |
+
+---
+
+# Final Decision
+
+Allowed values
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+Only
+
+one
+
+final decision
+
+may appear.
+
+---
+
+# Final Summary
+
+Summarize
+
+Overall Repository Health
+
+Architecture Readiness
+
+Production Readiness
+
+Remaining Work
+
+Next Sprint
+
+Maximum
+
+20 lines.
+
+---
+
+# Evidence Rules
+
+Every finding
+
+must include
+
+Evidence.
+
+If evidence
+
+does not exist
+
+output
+
+NOT FOUND
+
+Never guess.
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Formatting Rules
+
+Use
+
+Markdown
+
+Headings
+
+Tables
+
+Bullet Lists
+
+Code Blocks
+
+Only when necessary.
+
+No HTML.
+
+No emojis
+
+unless explicitly requested.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Template followed.
+
+Every section completed.
+
+Evidence attached.
+
+No assumptions.
+
+No generated code.
+
+No modified repository.
+
+Exactly one final decision.
+
+---
+
+# Success Criteria
+
+The Output Template succeeds when
+
+every Architecture Review
+
+produces
+
+a consistent,
+
+professional,
+
+auditable,
+
+evidence-based report
+
+that can be understood
+
+by developers,
+
+architects,
+
+reviewers,
+
+and project stakeholders,
+
+while remaining fully aligned
+
+with the PhuQuocHub
+
+Single Source of Truth (SSOT)
+
+and Architecture Governance Model.

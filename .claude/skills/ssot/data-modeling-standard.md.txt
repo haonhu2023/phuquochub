@@ -1,0 +1,783 @@
+# Data Modeling Standard
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Data Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Critical
+
+Classification
+
+Internal
+
+---
+
+# Purpose
+
+This document defines
+
+the official Data Modeling Standard
+
+for
+
+the PhuQuocHub platform.
+
+Every database model,
+
+entity,
+
+table,
+
+relationship,
+
+schema,
+
+and migration
+
+must follow
+
+a unified modeling standard
+
+to ensure
+
+consistency,
+
+maintainability,
+
+performance,
+
+and scalability.
+
+---
+
+# Mission
+
+Guarantee
+
+Consistent Schema Design
+
+Scalable Data Models
+
+Maintainable Database
+
+Predictable Relationships
+
+Enterprise Data Quality
+
+Long-term Evolution
+
+---
+
+# Design Principles
+
+Every model
+
+must be
+
+Simple
+
+Consistent
+
+Normalized
+
+Extensible
+
+Versioned
+
+Auditable
+
+Traceable
+
+Scalable
+
+---
+
+# Naming Convention
+
+Tables
+
+snake_case
+
+Examples
+
+place
+
+hotel
+
+restaurant
+
+tour
+
+event
+
+review
+
+booking
+
+---
+
+Columns
+
+snake_case
+
+Examples
+
+created_at
+
+updated_at
+
+deleted_at
+
+published_at
+
+business_id
+
+user_id
+
+category_id
+
+---
+
+Primary Keys
+
+id
+
+UUID
+
+preferred
+
+Example
+
+id UUID PRIMARY KEY
+
+---
+
+Foreign Keys
+
+table_name_id
+
+Examples
+
+user_id
+
+hotel_id
+
+place_id
+
+tour_id
+
+event_id
+
+---
+
+Boolean Fields
+
+must begin with
+
+is_
+
+has_
+
+can_
+
+Examples
+
+is_active
+
+is_verified
+
+has_image
+
+can_publish
+
+---
+
+Timestamp Fields
+
+created_at
+
+updated_at
+
+deleted_at
+
+published_at
+
+verified_at
+
+approved_at
+
+---
+
+# Primary Keys
+
+Every table
+
+must have
+
+one
+
+Primary Key
+
+UUID
+
+preferred.
+
+Auto Increment IDs
+
+are prohibited
+
+unless
+
+performance justification
+
+is documented.
+
+---
+
+# Foreign Keys
+
+Every relationship
+
+must enforce
+
+Referential Integrity.
+
+Foreign Keys
+
+must never
+
+be omitted
+
+without
+
+architectural approval.
+
+---
+
+# Relationship Standards
+
+Supported
+
+One-to-One
+
+One-to-Many
+
+Many-to-Many
+
+Self Reference
+
+Polymorphic
+
+only when approved.
+
+---
+
+# Junction Tables
+
+Many-to-Many
+
+must use
+
+explicit junction tables.
+
+Example
+
+hotel_tag
+
+place_category
+
+tour_destination
+
+---
+
+# Soft Delete
+
+Soft Delete
+
+is mandatory
+
+for
+
+Business Data.
+
+Implementation
+
+deleted_at
+
+TIMESTAMP NULL
+
+Never use
+
+is_deleted
+
+unless justified.
+
+---
+
+# Audit Fields
+
+Every business table
+
+must contain
+
+created_at
+
+updated_at
+
+deleted_at
+
+created_by
+
+updated_by
+
+version
+
+---
+
+# Versioning
+
+Critical entities
+
+must support
+
+Optimistic Locking
+
+using
+
+version
+
+or
+
+row_version.
+
+---
+
+# Unique Constraints
+
+Use
+
+Unique Constraints
+
+instead of
+
+application-only validation.
+
+Examples
+
+slug
+
+email
+
+username
+
+external_id
+
+---
+
+# Index Standards
+
+Every table
+
+must define
+
+Primary Index
+
+Foreign Key Index
+
+Frequently Queried Fields
+
+Composite Indexes
+
+when necessary.
+
+---
+
+Avoid
+
+Unused Indexes
+
+Duplicate Indexes
+
+Over-indexing
+
+---
+
+# Data Types
+
+UUID
+
+Identifiers
+
+TEXT
+
+Large Text
+
+VARCHAR
+
+Short Text
+
+BOOLEAN
+
+Flags
+
+INTEGER
+
+Counts
+
+BIGINT
+
+Large Numbers
+
+NUMERIC
+
+Money
+
+TIMESTAMP WITH TIME ZONE
+
+Dates
+
+JSONB
+
+Flexible Metadata
+
+---
+
+# JSON Usage
+
+JSONB
+
+may store
+
+Flexible Metadata
+
+External Payloads
+
+AI Metadata
+
+Temporary Extensions
+
+JSON
+
+must never replace
+
+proper relational design.
+
+---
+
+# Enumerations
+
+Stable values
+
+must use
+
+ENUM
+
+Examples
+
+status
+
+role
+
+visibility
+
+language
+
+---
+
+Frequently changing values
+
+should use
+
+Reference Tables.
+
+---
+
+# Nullability
+
+Fields
+
+must be
+
+NOT NULL
+
+by default.
+
+NULL
+
+must be
+
+explicitly justified.
+
+---
+
+# Data Integrity
+
+Enforce
+
+Primary Keys
+
+Foreign Keys
+
+Unique Constraints
+
+Check Constraints
+
+Transactions
+
+Cascade Rules
+
+---
+
+# Cascade Policy
+
+ON DELETE CASCADE
+
+only
+
+when
+
+ownership exists.
+
+Otherwise
+
+use
+
+RESTRICT
+
+or
+
+SET NULL.
+
+---
+
+# Migration Rules
+
+Every schema change
+
+must include
+
+Migration File
+
+Rollback Strategy
+
+Validation
+
+Documentation Update
+
+Architecture Review
+
+---
+
+# Performance Standards
+
+Avoid
+
+N+1 Relationships
+
+Large Join Chains
+
+Redundant Tables
+
+Duplicated Columns
+
+Repeated Data
+
+---
+
+Support
+
+Pagination
+
+Filtering
+
+Sorting
+
+Projection
+
+Caching
+
+---
+
+# Multi-language Design
+
+Localized content
+
+must use
+
+translation tables.
+
+Example
+
+place_translation
+
+restaurant_translation
+
+tour_translation
+
+---
+
+# Multi-tenancy
+
+Every model
+
+must be evaluated
+
+for
+
+future
+
+multi-tenant compatibility.
+
+---
+
+# Documentation
+
+Every entity
+
+must define
+
+Purpose
+
+Owner
+
+Relationships
+
+Constraints
+
+Indexes
+
+Lifecycle
+
+Example Queries
+
+---
+
+# Validation Checklist
+
+Before approval
+
+verify
+
+Naming Convention
+
+Primary Keys
+
+Foreign Keys
+
+Indexes
+
+Constraints
+
+Audit Fields
+
+Soft Delete
+
+Versioning
+
+Documentation
+
+Migration
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Missing Primary Key
+
+Missing Foreign Key
+
+No Audit Fields
+
+Duplicate Data
+
+No Constraints
+
+Invalid Naming
+
+Missing Migration
+
+Broken Relationship
+
+---
+
+# Self Verification
+
+Before approval
+
+Claude Code
+
+must verify
+
+Naming correct
+
+Relationships valid
+
+Indexes optimized
+
+Constraints complete
+
+Audit fields present
+
+Migration ready
+
+Documentation updated
+
+Performance reviewed
+
+---
+
+# Success Criteria
+
+The Data Modeling Standard succeeds when
+
+every schema
+
+within the PhuQuocHub platform
+
+is designed
+
+using
+
+consistent conventions,
+
+strong relational integrity,
+
+clear ownership,
+
+efficient indexing,
+
+complete auditability,
+
+and scalable architecture,
+
+ensuring
+
+high performance,
+
+easy maintenance,
+
+safe evolution,
+
+and long-term sustainability
+
+across the entire platform.

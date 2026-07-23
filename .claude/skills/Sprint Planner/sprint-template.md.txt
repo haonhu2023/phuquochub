@@ -1,0 +1,55 @@
+# Sprint Plan
+
+Sprint
+
+Goal
+
+Repository Status
+
+Completed Work
+
+Remaining Work
+
+--------------------------------------------------
+
+Batch 1
+
+Purpose
+
+Files
+
+Dependencies
+
+Estimated LOC
+
+Definition of Done
+
+--------------------------------------------------
+
+Batch 2
+
+...
+
+--------------------------------------------------
+
+Batch 3
+
+...
+
+--------------------------------------------------
+
+Technical Risks
+
+...
+
+--------------------------------------------------
+
+Acceptance Criteria
+
+...
+
+--------------------------------------------------
+
+Next Sprint
+
+...

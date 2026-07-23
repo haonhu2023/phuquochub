@@ -1,0 +1,149 @@
+schema_version: "1.0"
+
+id: PLACE-006
+workstream: place
+title: "Constrain opening_hours to the documented JSONB structure (GAP-14)"
+type: data-quality enforcement
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places.dto → 30/30 passed (12 existing + 18 new), exit 0"
+    - "npx eslint src/modules/places + src/common → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+    - "mutation check (@IsOpeningHours removed) → 9 failed / 21 passed, exit 1; restored and rerun green"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-006-opening-hours-report.md
+  evidence_index: docs/delivery/evidence/PLACE-006-opening-hours-evidence-index.md
+  changed_files:
+    - apps/api/src/common/opening-hours.ts                       # new validator
+    - apps/api/src/modules/places/dto/places.dto.ts              # decorator on Create AND Update
+    - apps/api/src/modules/places/dto/places.dto.spec.ts         # 18 new specs
+  next_task: docs/delivery/tasks/PLACE-007.yaml
+  existing_data_check: >-
+    Stop condition 1 cleared BEFORE implementing: grep across all 20 migrations found no seeded
+    opening_hours payload — SeedPlacesExpansion.ts:13 records that hours were deliberately left
+    empty for lack of a source. New strictness therefore cannot invalidate existing data.
+  false_positive_decisions: >-
+    AC7 — (1) unknown top-level keys tolerated, matching openapi additionalProperties:true;
+    (2) open<close NOT enforced, because overnight ranges (22:00–02:00) are legitimate;
+    (3) every field optional, because places.md §4 marks none required so {} must validate.
+    Each decision is locked by a passing spec.
+  open_findings: >-
+    F-20 the shared RESPONSE type opening_hours is still Record<string, unknown> while writes
+    are structured (read-contract change, out of scope). F-21 structure is enforced on the DTO
+    write path only; no non-DTO write path exists today.
+
+depends_on:
+  - PLACE-005        # completed 2026-07-22; api jest 33/33, api+web tsc exit 0, both lints exit 0
+
+problem_statement: >-
+  CreatePlaceDto and UpdatePlaceDto declare `opening_hours` as a bare `@IsOptional()
+  @IsObject()` (apps/api/src/modules/places/dto/places.dto.ts:52-53 and :81-82), typed
+  Record<string, unknown>. Any object whatsoever passes validation and is written straight to
+  the JSONB column by PlacesService/PlacesRepository — `{}`, `{"foo":"bar"}`, or a structurally
+  wrong payload such as `{"regular":{"mon":"08:00"}}`. docs/data/modules/places.md §4 specifies
+  a concrete structure (timezone, regular per weekday as an array of {open,close}, is_24h,
+  exceptions with date/closed/hours/note, note). Nothing enforces it, so malformed hours can
+  enter through the public create/update path and only fail later, in the UI that renders them.
+  This is GAP-14 (P3) and it is the last apps/api-only data-quality gap that needs no owner
+  decision.
+
+objective: >-
+  Validate the documented opening_hours structure at the DTO layer, rejecting malformed shapes
+  before they reach the database, without changing the stored representation, the response
+  contract, or the openapi schema — and without rejecting any payload the SSOT permits.
+
+required_inputs:
+  - docs/data/modules/places.md            # §4 — the authoritative structure
+  - apps/api/src/modules/places/dto/places.dto.ts        # :52-53, :81-82 opening_hours
+  - apps/api/src/modules/places/dto/places.dto.spec.ts   # existing DTO spec convention
+  - apps/api/src/common/geo-bounds.ts      # PLACE-002 precedent for a reusable custom validator
+  - docs/api/openapi.yaml                  # :1777 opening_hours — object, additionalProperties true
+  - apps/api/src/modules/places/entities/place.entity.ts # openingHours column type
+
+in_scope:
+  - "apps/api/src/modules/places/dto/places.dto.ts — opening_hours validation on Create + Update"
+  - "new (if a reusable validator is warranted): a small opening-hours validator module under apps/api/src/common/, following the geo-bounds.ts precedent"
+  - "apps/api/src/modules/places/dto/places.dto.spec.ts — extend with structure specs"
+
+out_of_scope:
+  - "changing the stored JSONB representation, the entity column type, or any migration"
+  - "changing the response contract or openapi.yaml (openapi deliberately keeps additionalProperties: true — do not tighten it here)"
+  - "normalizing, reformatting or defaulting submitted values — validate only, do not rewrite user input"
+  - "backfilling or validating opening_hours already stored in seeds or the database"
+  - "a place_hours table, or any 'currently open' query feature (places.md §4 defers this explicitly)"
+  - "timezone correctness beyond the field being a non-empty string — do not add a tz database dependency"
+  - "the parked GAP-05/10 contract question, and F-17/F-18 from PLACE-005"
+
+execution_steps:
+  - "Read places.md §4 and enumerate every field, its type, and whether the SSOT shows it as required or optional. Where the SSOT is silent on optionality, treat the field as OPTIONAL — rejecting a payload the SSOT does not forbid would be a regression, not an improvement."
+  - "Read geo-bounds.ts to follow the established custom-validator pattern (registerDecorator, named constraint, clear message), and places.dto.spec.ts for spec style."
+  - "Decide and record the strictness posture: unknown top-level keys tolerated or rejected? The safest default is to validate the KNOWN fields' shapes and tolerate unknown keys, matching openapi's additionalProperties: true. Record the reasoning either way."
+  - "Implement validation for: timezone (string when present), regular (object whose keys are the 7 weekday codes and whose values are arrays of {open, close} time strings; empty array = closed, which MUST remain valid), is_24h (boolean), exceptions (array of {date, closed?, hours?, note?}), note (string)."
+  - "Validate time strings as HH:MM 24-hour and dates as YYYY-MM-DD. Do NOT attempt to validate that open < close: overnight ranges (22:00–02:00) are legitimate for bars, and rejecting them would lose real data."
+  - "Apply the same validation to CreatePlaceDto and UpdatePlaceDto — a gap in either one leaves the write path open."
+  - "Write specs covering: the full places.md §4 example verbatim (must PASS), omitted opening_hours (must stay valid — it is optional), empty sun array, is_24h true, an exception with closed:true and one with hours, plus the malformed cases: regular.mon as a string, bad time format, bad date format, non-array exceptions, wrong weekday key."
+  - "Run the validation commands below, narrowest first."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "The places.md §4 example payload validates successfully, verbatim." }
+  - { id: AC2, mandatory: true,  text: "Structurally malformed payloads are rejected: wrong type for regular's day value, malformed HH:MM, malformed YYYY-MM-DD, and a non-array exceptions." }
+  - { id: AC3, mandatory: true,  text: "opening_hours remains optional, and a closed day (empty array) and is_24h remain valid — no legitimate SSOT-permitted payload is rejected." }
+  - { id: AC4, mandatory: true,  text: "Both CreatePlaceDto and UpdatePlaceDto enforce it; neither write path is left open." }
+  - { id: AC5, mandatory: true,  text: "No entity, migration, repository, service, controller, mapper, response-contract or openapi.yaml change; the stored JSONB representation is unchanged and no submitted value is rewritten." }
+  - { id: AC6, mandatory: true,  text: "npx jest places.dto, eslint and tsc --noEmit all exit 0." }
+  - { id: AC7, mandatory: false, text: "The unknown-key strictness posture and the deliberate non-validation of open<close are recorded with reasoning." }
+
+required_evidence:
+  - "field-by-field mapping from places.md §4 to the implemented rules, including which fields were treated as optional and why"
+  - "the SSOT example payload passing as a spec"
+  - "spec output for each rejection case"
+  - "confirmation that both Create and Update DTOs are covered"
+  - "eslint and tsc exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places.dto"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" \"src/common/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Revert places.dto.ts to the bare @IsObject() form, delete the validator module if one was
+  added, and remove the added specs. No schema, migration, stored data or contract is involved,
+  so rollback is complete and non-destructive. Nothing is applied to a database.
+
+stop_conditions:
+  - "Enforcing the structure would reject data already present in seeds or fixtures — STOP. Existing data compatibility outranks new strictness; record the conflict as a finding and narrow the rule instead."
+  - "The SSOT is ambiguous about whether a field is required, and guessing would reject valid payloads — STOP on that field, implement it as optional, and record the ambiguity."
+  - "Validation appears to need normalization or defaulting to work — STOP. This task validates only; rewriting user input is a separate, explicitly authorized concern."
+  - "The work appears to require tightening openapi.yaml — STOP. openapi is SSOT and deliberately declares additionalProperties: true; changing it needs owner adjudication."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-007
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "SSOT example passing + all rejection specs passing"
+    - "diff limited to in_scope files"
+
+next_candidate_task:
+  id: PLACE-007
+  title: "Retire or justify PlacesRepository.getCardBySlug dead code (GAP-13)"
+  type: analysis
+  rationale: >-
+    places.repository.ts:123-129 defines getCardBySlug with no repository-confirmed consumer
+    (BUILD_001 GAP-13, P3). Deleting it is a small change but needs evidence first that nothing
+    calls it — including apps/web, seeds and tests — which makes it an analysis task with a
+    possible one-line removal, not a blind deletion. Derive PLACE-007 from PLACE-006's actual
+    outcome rather than assuming this: if PLACE-006 surfaces a data-compatibility conflict in
+    seeds, that would outrank a P3 cleanup.

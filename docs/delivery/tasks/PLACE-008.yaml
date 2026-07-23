@@ -1,0 +1,155 @@
+schema_version: "1.0"
+
+id: PLACE-008
+workstream: place
+title: "Add PlacesService unit tests for the write and moderation paths"
+type: testing
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places.service → 18/18 passed on first run, exit 0"
+    - "npx jest places → 69/69 passed, 6 suites, exit 0"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC7 all PASS; optional AC8 also PASS"
+  report: docs/delivery/reports/PLACE-008-service-tests-report.md
+  evidence_index: docs/delivery/evidence/PLACE-008-service-tests-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/places.service.spec.ts    # new, 18 specs
+  production_code_changed: false     # places.service.ts is byte-unchanged (AC7)
+  next_task: docs/delivery/tasks/PLACE-009.yaml
+  stale_blocker_disproven: >-
+    place.yaml recorded "places.service unit tests (blocked: service imports @phuquochub/utils)".
+    That blocker is STALE: slugify resolves under jest, exercised live by the slug-collision spec
+    (create → uniqueSlug → slugify, asserting the result starts with the base slug). PLACE-005
+    fixed the environment; the note had never been retested. Recorded as F-25.
+  coverage_summary: >-
+    18 specs: list (2 — public path never forwards status; pagination), create (4 — invalid
+    category, forced PENDING, PENDING/COMMUNITY_EDIT revision, slug-collision loop), update
+    (6 — not-found, invalid category, snake→camel mapping with snake keys asserted ABSENT,
+    conditional updateLocation, conditional revision, empty-patch case), archive (2), approve
+    (2) — both asserting the ADR-016 audit payload down to permission and {from,to} — and
+    getBySlug (2).
+  open_findings: >-
+    F-26 update revisions record field NAMES only, no before/after values, so prior values are
+    unrecoverable from a revision. Adequate for WF-14 today; matters before Sprint 4 builds the
+    approval flow on it.
+
+depends_on:
+  - PLACE-007        # completed 2026-07-22; jest places 51/51, eslint + tsc exit 0
+
+problem_statement: >-
+  apps/api/src/modules/places/places.service.ts has NO unit test file. workstreams/place.yaml
+  testing_surface.missing lists "places.service unit tests" with the recorded blocker
+  "service imports @phuquochub/utils" — a blocker PLACE-005 made moot: the package is
+  materialized in node_modules and both tsc and jest resolve it (PLACE-005 VO-5, VO-7).
+  The untested surface is the most consequential in the module:
+   - create() forces status PENDING and records a PENDING wiki_revision (WF-06/WF-14);
+   - update() maps snake_case DTO keys to camelCase entity fields and records a revision ONLY
+     when a revisable field actually changed;
+   - archive() and approve() are privileged status transitions that MUST write an ADR-016
+     audit event with the correct from/to context and permission name;
+   - uniqueSlug() loops until the slug is free, guarding the uq_places_slug constraint.
+  Every one of these is pure orchestration over injected collaborators, so all of it is
+  testable with mocks and no database. Regressions here are silent: a dropped audit call or a
+  wrong PENDING default would pass type-check and lint today.
+
+objective: >-
+  Add focused unit tests for PlacesService covering the write and moderation paths, their
+  failure paths, and the audit/revision side effects — using the repository's existing mocking
+  convention, without changing production code.
+
+required_inputs:
+  - apps/api/src/modules/places/places.service.ts
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # createMock convention
+  - apps/api/test/helpers/create-mock.ts                                  # LooseMock helper
+  - apps/api/src/modules/hotels/hotels.service.spec.ts                    # sibling SERVICE spec convention
+  - apps/api/src/modules/events/events.service.spec.ts                    # sibling with slug + repo mocks
+  - apps/api/src/core/audit/audit.service.ts                              # record() signature
+  - apps/api/src/modules/revisions/revisions.service.ts                   # recordPlaceRevision() signature
+
+in_scope:
+  - "new: apps/api/src/modules/places/places.service.spec.ts"
+
+out_of_scope:
+  - "ANY change to places.service.ts or other production code — if a test cannot be written without changing production code, that is a finding, not a licence to edit"
+  - "controller tests (separate surface, separate task)"
+  - "e2e or database-backed tests (Docker not installed)"
+  - "testing getBySlug's full satellite composition beyond one representative assertion — contacts/prices/media/faqs mappers have their own specs"
+  - "F-16, F-17, F-18, F-19, F-20, F-21, F-23, F-24 from earlier tasks"
+  - "changing jest configuration"
+
+execution_steps:
+  - "Read hotels.service.spec.ts and events.service.spec.ts FIRST and follow whichever mocking style they establish — do not introduce a third pattern. Note whether they use Test.createTestingModule or direct construction with createMock, and match it."
+  - "Confirm @phuquochub/utils (slugify) actually resolves under jest before writing the suite — run one trivial spec that imports the service. If it does NOT resolve, STOP and record it; the stated blocker would then still be real."
+  - "Cover create(): status forced to PENDING; unknown category_id → BadRequestException; a wiki_revision recorded with status PENDING and origin COMMUNITY_EDIT."
+  - "Cover update(): missing place → NotFoundException; unknown category_id → BadRequestException; snake_case → camelCase patch mapping (short_description → shortDescription, opening_hours → openingHours, price_range → priceRange, category_id → categoryId); updatedBy always set; updateLocation called ONLY when location is present; revision recorded ONLY when a revisable field changed, and NOT when the patch is empty."
+  - "Cover archive(): missing place → NotFoundException; repository archive() called; audit event place.status_changed with permission Place.Archive and context {from: <existing status>, to: archived}."
+  - "Cover approve(): missing place → NotFoundException; setStatus(PUBLISHED) called; audit event with permission Place.Approve and context {from, to: published}."
+  - "Cover uniqueSlug indirectly through create(): when existsBySlug returns true once then false, the created slug differs from the base slug — proving the collision loop works."
+  - "Cover list(): the public path never passes `status` to the repository (privilege boundary — GAP-04 regression at the SERVICE layer, complementing the existing repository-layer spec)."
+  - "Run the validation commands below."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "A places.service.spec.ts exists and follows the mocking convention already used by the sibling service specs — no new testing pattern introduced." }
+  - { id: AC2, mandatory: true,  text: "create() is covered for: forced PENDING status, invalid category rejection, and the PENDING revision side effect." }
+  - { id: AC3, mandatory: true,  text: "update() is covered for: not-found, invalid category, snake_case→camelCase patch mapping, conditional updateLocation, and conditional revision recording (including the no-change case)." }
+  - { id: AC4, mandatory: true,  text: "archive() and approve() each assert the audit event name, permission, and from/to context — not merely that audit.record was called." }
+  - { id: AC5, mandatory: true,  text: "The slug-collision loop is exercised, proving a colliding slug produces a different final slug." }
+  - { id: AC6, mandatory: true,  text: "list() is asserted not to forward a status filter from the public path." }
+  - { id: AC7, mandatory: true,  text: "No production file is modified; npx jest places, eslint and tsc --noEmit all exit 0." }
+  - { id: AC8, mandatory: false, text: "Assertions target behaviour and arguments rather than call counts alone, so a reordered-but-correct implementation would still pass." }
+
+required_evidence:
+  - "confirmation that @phuquochub/utils resolves under jest (or a documented stop if it does not)"
+  - "the sibling spec convention identified, and how this suite matches it"
+  - "spec output showing the new suite passing, with counts"
+  - "explicit confirmation that places.service.ts was NOT modified"
+  - "jest / eslint / tsc exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places.service"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Delete apps/api/src/modules/places/places.service.spec.ts. Nothing else is touched — this
+  task adds a test file and modifies no production code, so rollback is a single deletion with
+  no schema, data, contract or behavioural consequence.
+
+stop_conditions:
+  - "@phuquochub/utils does not resolve under jest — STOP and record it. The blocker noted in place.yaml would then be real and would need an environment task first; do NOT work around it by mocking the module path unless the sibling specs already establish that pattern."
+  - "A test cannot be written without changing places.service.ts — STOP. Record the untestable seam as a finding; production code changes are out of scope and would turn a testing task into an implementation task."
+  - "The sibling service specs use mutually inconsistent patterns — STOP choosing arbitrarily; follow the one used by the closest analogue (events.service.spec.ts, which also mocks a slug-collision repository) and record the inconsistency as a finding."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-009
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "new suite passing with counts recorded"
+    - "places.service.ts byte-unchanged"
+
+next_candidate_task:
+  id: PLACE-009
+  title: "Add PlacesController tests for the public/privileged route boundary"
+  type: testing
+  rationale: >-
+    With the service covered, the controller remains the last untested Place layer reachable
+    without a database. places.controller.ts is where guards, permission decorators and the
+    public/privileged split are declared, and workstreams/place.yaml still lists "controller
+    tests" as missing. Derive PLACE-009 from PLACE-008's actual outcome — in particular, if
+    PLACE-008 finds untestable seams in the service, fixing those may outrank new controller
+    coverage.

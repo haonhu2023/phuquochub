@@ -1,0 +1,899 @@
+# Synchronization Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Synchronization Policy
+
+for the PhuQuocHub platform.
+
+Synchronization ensures
+
+all authoritative documents,
+
+repository artifacts,
+
+generated assets,
+
+and production implementations
+
+remain consistent
+
+throughout the software lifecycle.
+
+Synchronization prevents
+
+documentation drift,
+
+implementation drift,
+
+API drift,
+
+database drift,
+
+and architectural inconsistency.
+
+---
+
+# Mission
+
+Maintain
+
+complete consistency
+
+between
+
+Architecture,
+
+ADR,
+
+Decision Register,
+
+Database,
+
+OpenAPI,
+
+Workflow,
+
+Repository,
+
+Frontend,
+
+Backend,
+
+Testing,
+
+Deployment,
+
+and Production.
+
+No approved change
+
+may remain
+
+partially synchronized.
+
+---
+
+# Fundamental Rule
+
+Every approved change
+
+must be propagated
+
+to every affected artifact.
+
+A change
+
+is not complete
+
+until
+
+every dependent artifact
+
+has been synchronized
+
+and validated.
+
+---
+
+# Synchronization Scope
+
+Synchronization applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standards
+
+Repository Standards
+
+Sprint Documentation
+
+Batch Documentation
+
+Backend
+
+Frontend
+
+Database Schema
+
+Migration
+
+Tests
+
+Deployment
+
+Monitoring
+
+Generated Artifacts
+
+---
+
+# Synchronization Lifecycle
+
+Every synchronization
+
+must follow
+
+Detect Change
+
+↓
+
+Identify Dependencies
+
+↓
+
+Determine Affected Artifacts
+
+↓
+
+Update Documentation
+
+↓
+
+Update Repository
+
+↓
+
+Validate Consistency
+
+↓
+
+Run Reviews
+
+↓
+
+Approve
+
+↓
+
+Merge
+
+↓
+
+Deploy
+
+↓
+
+Verify Production
+
+---
+
+# Synchronization Matrix
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+RBAC
+
+↓
+
+Coding Standards
+
+↓
+
+Repository Standards
+
+↓
+
+Implementation
+
+↓
+
+Tests
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+Changes
+
+must propagate
+
+only
+
+from top
+
+to bottom.
+
+Bottom-up synchronization
+
+is prohibited.
+
+---
+
+# Architecture Synchronization
+
+When Architecture changes
+
+Claude Code
+
+must verify
+
+ADR updated
+
+Decision Register updated
+
+Database Documentation updated
+
+Workflow updated
+
+OpenAPI updated
+
+Repository updated
+
+Testing updated
+
+Documentation synchronized
+
+---
+
+# ADR Synchronization
+
+When an ADR changes
+
+Claude Code
+
+must verify
+
+Decision Register
+
+reflects
+
+the new decision.
+
+Affected documentation
+
+must be updated.
+
+Repository
+
+must comply.
+
+---
+
+# Decision Register Synchronization
+
+Every approved decision
+
+must appear
+
+inside
+
+Decision Register.
+
+Decision Register
+
+must reference
+
+Architecture
+
+ADR
+
+Affected Modules
+
+Affected Documents
+
+Sprint
+
+Batch
+
+---
+
+# Database Synchronization
+
+Database Documentation
+
+must synchronize
+
+Entities
+
+Prisma Schema
+
+Migrations
+
+Indexes
+
+Constraints
+
+Relationships
+
+Seed Data
+
+Naming
+
+No mismatch
+
+is allowed.
+
+---
+
+# OpenAPI Synchronization
+
+OpenAPI
+
+must synchronize
+
+Controllers
+
+DTOs
+
+Validation
+
+Authentication
+
+Authorization
+
+Responses
+
+Error Codes
+
+Pagination
+
+Filtering
+
+Sorting
+
+Every endpoint
+
+must exist
+
+in both
+
+OpenAPI
+
+and
+
+Implementation.
+
+---
+
+# Workflow Synchronization
+
+Workflow
+
+must synchronize
+
+Backend Logic
+
+Frontend Flow
+
+Notifications
+
+Approval
+
+Verification
+
+Business Rules
+
+State Machine
+
+---
+
+# RBAC Synchronization
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Guards
+
+Policies
+
+Documentation
+
+must remain
+
+fully synchronized.
+
+---
+
+# Backend Synchronization
+
+Backend
+
+must synchronize
+
+Architecture
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standards
+
+Repository Standards
+
+---
+
+# Frontend Synchronization
+
+Frontend
+
+must synchronize
+
+OpenAPI
+
+Backend
+
+Workflow
+
+UI State
+
+Validation
+
+Permissions
+
+Error Handling
+
+No undocumented endpoint
+
+may be consumed.
+
+---
+
+# Repository Synchronization
+
+Repository
+
+must synchronize
+
+Folder Structure
+
+Modules
+
+Packages
+
+Dependencies
+
+Shared Libraries
+
+Naming
+
+Architecture Boundaries
+
+---
+
+# Testing Synchronization
+
+Testing
+
+must synchronize
+
+Implementation
+
+OpenAPI
+
+Workflow
+
+Database
+
+RBAC
+
+Acceptance Criteria
+
+Every new feature
+
+requires
+
+updated tests.
+
+---
+
+# Deployment Synchronization
+
+Deployment
+
+must synchronize
+
+Configuration
+
+Environment Variables
+
+Database
+
+Infrastructure
+
+Monitoring
+
+Logging
+
+Alerts
+
+Rollback
+
+---
+
+# Monitoring Synchronization
+
+Monitoring
+
+must synchronize
+
+Logs
+
+Metrics
+
+Health Checks
+
+Tracing
+
+Alerts
+
+Dashboards
+
+---
+
+# Generated Artifact Synchronization
+
+Generated Artifacts
+
+must synchronize
+
+OpenAPI
+
+Database
+
+Repository
+
+Generated artifacts
+
+must never
+
+be edited manually.
+
+---
+
+# Dependency Analysis
+
+Before synchronization
+
+Claude Code
+
+must identify
+
+All affected modules
+
+All affected documents
+
+All affected APIs
+
+All affected database objects
+
+All affected tests
+
+All affected deployments
+
+---
+
+# Drift Detection
+
+Synchronization
+
+must detect
+
+Architecture Drift
+
+Documentation Drift
+
+Database Drift
+
+Repository Drift
+
+OpenAPI Drift
+
+Workflow Drift
+
+RBAC Drift
+
+Security Drift
+
+Performance Drift
+
+Testing Drift
+
+Configuration Drift
+
+Deployment Drift
+
+---
+
+# Synchronization Order
+
+The required order
+
+is
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Documentation
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+RBAC
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+---
+
+# Synchronization Validation
+
+Claude Code
+
+must verify
+
+Every dependency updated
+
+No missing documentation
+
+No missing endpoint
+
+No orphan migration
+
+No orphan entity
+
+No orphan workflow
+
+No broken reference
+
+No unresolved drift
+
+---
+
+# Failure Conditions
+
+Synchronization fails
+
+when
+
+Required documentation missing
+
+OpenAPI mismatch
+
+Database mismatch
+
+Repository mismatch
+
+Workflow mismatch
+
+Broken dependencies
+
+Missing tests
+
+Unapproved changes
+
+Documentation conflict
+
+Architecture conflict
+
+Return
+
+BLOCKED
+
+until resolved.
+
+---
+
+# Compliance Rules
+
+Every review
+
+must verify
+
+Synchronization complete
+
+Documentation updated
+
+Repository compliant
+
+OpenAPI compliant
+
+Database compliant
+
+Testing complete
+
+Deployment ready
+
+No unresolved drift
+
+---
+
+# Self Verification
+
+Before completion
+
+Claude Code
+
+must verify
+
+Correct synchronization order
+
+Dependencies resolved
+
+No skipped artifact
+
+Evidence collected
+
+No conflicting versions
+
+No undocumented implementation
+
+---
+
+# Success Criteria
+
+The Synchronization Policy succeeds when
+
+every approved change
+
+is propagated
+
+consistently
+
+across
+
+documentation,
+
+architecture,
+
+database,
+
+API,
+
+workflow,
+
+repository,
+
+frontend,
+
+backend,
+
+testing,
+
+deployment,
+
+and production,
+
+ensuring
+
+zero documentation drift,
+
+zero implementation drift,
+
+zero API drift,
+
+and complete traceability
+
+throughout the entire lifecycle
+
+of the PhuQuocHub platform.

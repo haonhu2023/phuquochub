@@ -1,0 +1,114 @@
+schema_version: "1.0"
+
+id: F-17
+title: "openapi PlaceCard omits `status` (emitted by runtime) and the shared type declares an unreachable `score`"
+workstream: place
+origin:
+  task: PLACE-005
+  recorded_in: docs/delivery/reports/PLACE-005-shared-types-report.md
+  consolidated_by: docs/delivery/reports/PLACE-010-release-readiness-assessment.md
+
+decision_status: APPROVED             # OD-F-17, owner instruction 2026-07-23
+implementation_status: DONE           # PLACE-018, 2026-07-23
+validation_status: PASSED             # jest places 107/107, search 3/3 unmodified, api+web tsc exit 0, openapi parses
+release_blocker_status: CLEARED       # on the pre-committed conditions below
+
+interim_state: REMEDIATED
+
+cleared_note: >-
+  `status` is now declared on openapi PlaceCard using the pre-existing authoritative PlaceStatus
+  enum (already public via the `Place` detail schema, so zero net-new disclosure), and `score` is
+  gone from the public contract. Emitted JSON is byte-identical in BOTH directions: runtime already
+  set `status` unconditionally, and the removed `score` branch never executed. All four conditions
+  under clears_release_blocker_when were pre-committed before the task ran and all four are met.
+
+correction_recorded: >-
+  OD-F-17 obligation 2 said to remove `score` from THREE locations including PlaceCardRow, on the
+  basis that all three were unreachable. PLACE-018's mandatory premise re-verification DISPROVED
+  that for one: search.service.ts:24 reads `r.score` off the PlaceCardRow returned by
+  searchFullText, to build the separate SearchResult contract. PlaceCardRow.score is therefore LIVE,
+  not dead. It was KEPT with a comment naming its consumer; removing it would have broken the search
+  module (explicitly out of scope) and contradicted OD-F-17's own clause retaining an internal score
+  "where it has a defined ranking purpose". The finding's core claim is unaffected: no endpoint ever
+  emitted score through PlaceCard.
+
+residual_non_blocking: >-
+  F-24 (whether privileged and public cards should share one schema) remains OPEN and was not
+  settled here. Separately, openapi.yaml:1913-1921 still publishes SearchResult.score as a bare
+  `type: number` on the public /search operation — an undefined numeric score that IS already
+  public. It is outside F-17's schema and needs its own owner decision; no finding identifier was
+  minted for it.
+
+decision:
+  id: OD-F-17
+  option: F17-D
+  record: docs/delivery/decisions/OWNER-DECISION-F-17.md
+  date: "2026-07-23"
+  owner: Project Owner
+  approval_source: owner instruction
+  summary: >-
+    `status` and `score` decided independently.
+
+sub_dispositions:
+  status:
+    disposition: PUBLIC_EXPOSURE_APPROVED
+    enum: "existing authoritative PlaceStatus — draft | pending | published | archived (no member invented)"
+    semantics: "publication/visibility state ONLY; NOT business operating state (that is opening_hours)"
+    basis: >-
+      A stable public publication-status vocabulary already exists AND is already published:
+      openapi declares `PlaceStatus` (:1680) and already applies it to the public `Place` detail
+      schema (:1778). Net-new disclosure from documenting it on PlaceCard is therefore ZERO, and
+      the emitted JSON does not change — runtime already sets it unconditionally
+      (places.mapper.ts:22, CARD_COLS selects p.status).
+    remediation: "documentation only — add `status: $ref PlaceStatus` to the openapi PlaceCard schema"
+    residual_concern: >-
+      `draft` and `pending` are moderation-workflow states, and the same card shape is reused for
+      privileged reads whose status filter is deliberately omitted (F-24). Whether privileged and
+      public cards should share one schema is an ACCESS-CONTROL question, not a vocabulary one,
+      and is out of scope of OD-F-17.
+  score:
+    disposition: PUBLIC_EXPOSURE_NOT_APPROVED
+    basis: >-
+      Undefined numeric score: no defined measure, range, stability guarantee (ts_rank varies with
+      corpus and query), null semantics, or personalization statement.
+    live_leakage: false
+    evidence_no_leakage: >-
+      openapi does NOT document score on PlaceCard, and runtime never emits it through PlaceCard:
+      toPlaceCard has exactly four call sites (geo.service.ts:32, places.service.ts:59, :125,
+      :167) and none supplies a score-bearing row. searchFullText does return a score, but
+      SearchService maps rows by hand into SearchResult — a different schema.
+    classification: "dead contract surface, same class as PLACE-007's getCardBySlug"
+    remediation: >-
+      remove `score` from packages/shared-types/src/place.ts, from PlaceCardRow
+      (places.repository.ts:28), and from the toPlaceCard conditional branch
+      (places.mapper.ts:28-30). Emitted JSON is unchanged because nothing emitted it.
+    retained_internally: >-
+      the search module's own score keeps its defined ranking purpose — searchFullText,
+      SearchService and SearchResult are explicitly NOT touched.
+    future_public_score_requires: "a separate approved decision defining meaning, range, stability, source, null behaviour, personalization"
+
+remediation_task: PLACE-018           # COMPLETED 2026-07-23
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-018-placecard-contract-report.md
+  evidence_index: docs/delivery/evidence/PLACE-018-placecard-contract-evidence-index.md
+
+scope_boundary_observation: >-
+  docs/api/openapi.yaml:1913-1921 publishes SearchResult.score as a bare `type: number` on the
+  public /search operation (security: []) — an undefined numeric score that IS already published
+  publicly. It lies outside F-17 (different schema) and outside OD-F-17, but stands in tension
+  with the owner's "do not publish an undefined numeric score" principle and needs its own owner
+  decision. NO new finding identifier is minted for it here.
+
+blocks_release_because: >-
+  The public card contract does not describe the payload the API actually returns, and the shared
+  type declares a field no endpoint can produce.
+
+clears_release_blocker_when:
+  - "openapi PlaceCard documents status"
+  - "score removed from shared type, PlaceCardRow and mapper"
+  - "jest places + jest search green; apps/api and apps/web tsc exit 0"
+  - "emitted JSON proven byte-identical for both changes"
+
+not_claimed:
+  - "external API consumers are UNKNOWN and unverifiable"
+  - "the F-24 privileged-vs-public card question is NOT settled here"

@@ -1,0 +1,709 @@
+# Architecture Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+the official architecture policy
+for the PhuQuocHub platform.
+
+It specifies
+
+architectural principles,
+
+layer responsibilities,
+
+module boundaries,
+
+dependency rules,
+
+and compliance criteria.
+
+Every implementation
+
+must follow this policy.
+
+---
+
+# Mission
+
+Protect the architecture.
+
+Prevent architectural drift.
+
+Ensure consistency.
+
+Maintain long-term scalability.
+
+Guarantee maintainability.
+
+---
+
+# Core Philosophy
+
+Architecture is the foundation.
+
+Documentation defines architecture.
+
+Implementation follows architecture.
+
+Review validates architecture.
+
+Production depends on architecture.
+
+---
+
+# Architecture Principles
+
+The architecture shall be
+
+Simple
+
+Modular
+
+Scalable
+
+Maintainable
+
+Testable
+
+Observable
+
+Secure
+
+Deterministic
+
+Documentation-driven
+
+---
+
+# Architectural Style
+
+The official architecture is
+
+Modular Monolith
+
+Future-ready for Microservices.
+
+All modules
+
+must remain independently evolvable.
+
+---
+
+# Layered Architecture
+
+Presentation Layer
+
+↓
+
+Application Layer
+
+↓
+
+Domain Layer
+
+↓
+
+Infrastructure Layer
+
+↓
+
+Persistence Layer
+
+No layer
+may bypass another.
+
+---
+
+# Layer Responsibilities
+
+Presentation
+
+Controllers
+
+DTOs
+
+Validation
+
+Authentication Entry
+
+Application
+
+Use Cases
+
+Services
+
+Transactions
+
+Business Orchestration
+
+Domain
+
+Business Rules
+
+Aggregates
+
+Policies
+
+Value Objects
+
+Infrastructure
+
+Database
+
+Redis
+
+External Services
+
+Messaging
+
+Persistence
+
+Repositories
+
+Entities
+
+Migrations
+
+Search
+
+---
+
+# Layer Restrictions
+
+Controllers
+
+must never
+
+access repositories directly.
+
+Controllers
+
+must never
+
+contain business logic.
+
+Services
+
+must never
+
+perform SQL directly.
+
+Repositories
+
+must never
+
+contain business logic.
+
+Entities
+
+must never
+
+contain infrastructure logic.
+
+---
+
+# Module Principles
+
+Each module
+
+owns its own
+
+Entities
+
+Repositories
+
+Services
+
+Controllers
+
+DTOs
+
+Tests
+
+No module
+
+may access
+internal implementation
+
+of another module.
+
+Only public contracts
+may be used.
+
+---
+
+# Dependency Direction
+
+Dependencies
+must always point inward.
+
+Presentation
+
+↓
+
+Application
+
+↓
+
+Domain
+
+↓
+
+Infrastructure
+
+Reverse dependency
+
+is prohibited.
+
+---
+
+# Shared Components
+
+Shared code
+
+must be
+
+Reusable
+
+Stateless
+
+Documented
+
+Independent
+
+Examples
+
+Logger
+
+Config
+
+Utilities
+
+Validation
+
+Common DTOs
+
+Enums
+
+---
+
+# Module Communication
+
+Preferred
+
+Service Interface
+
+Repository Interface
+
+Events
+
+Documented API
+
+Forbidden
+
+Direct database access
+
+Cross-module SQL
+
+Private class access
+
+Internal file imports
+
+---
+
+# Repository Structure
+
+Repository structure
+must remain consistent.
+
+apps/
+
+packages/
+
+docs/
+
+scripts/
+
+tests/
+
+No undocumented
+top-level directories.
+
+---
+
+# Naming Policy
+
+Folders
+
+kebab-case
+
+Files
+
+kebab-case
+
+Classes
+
+PascalCase
+
+Interfaces
+
+PascalCase
+
+Methods
+
+camelCase
+
+Variables
+
+camelCase
+
+Database
+
+snake_case
+
+Environment
+
+UPPER_CASE
+
+---
+
+# Documentation Compliance
+
+Every architectural component
+
+must exist in
+
+Architecture Documentation
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Coding Standard
+
+If undocumented
+
+Implementation is invalid.
+
+---
+
+# Database Architecture
+
+Database
+
+must follow
+
+ERD
+
+Data Dictionary
+
+Naming Convention
+
+Migration Policy
+
+Soft Delete Policy
+
+Audit Policy
+
+Geo Policy
+
+Search Policy
+
+No undocumented table.
+
+No undocumented column.
+
+---
+
+# API Architecture
+
+Every endpoint
+
+must exist in
+
+OpenAPI.
+
+Every DTO
+
+must match
+
+OpenAPI.
+
+Every controller
+
+must remain thin.
+
+Business logic
+belongs in services.
+
+---
+
+# Security Architecture
+
+Authentication
+
+JWT
+
+Authorization
+
+RBAC
+
+Permission Matrix
+
+Validation
+
+Encryption
+
+Audit Logging
+
+Secrets Management
+
+OWASP Compliance
+
+---
+
+# Testing Architecture
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Repository Tests
+
+Migration Tests
+
+Performance Tests
+
+Security Tests
+
+CI Validation
+
+---
+
+# Performance Architecture
+
+Indexes
+
+Caching
+
+Redis
+
+Geo Search
+
+Full-text Search
+
+Pagination
+
+Lazy Loading
+
+Monitoring
+
+Metrics
+
+---
+
+# Deployment Architecture
+
+Development
+
+↓
+
+Testing
+
+↓
+
+Staging
+
+↓
+
+Production
+
+Promotion
+must follow
+approved pipelines.
+
+---
+
+# Architecture Drift
+
+Architecture Drift includes
+
+Undocumented module
+
+Undocumented entity
+
+Undocumented API
+
+Undocumented dependency
+
+Layer violation
+
+Naming violation
+
+Database violation
+
+Workflow violation
+
+RBAC violation
+
+Security violation
+
+Performance violation
+
+---
+
+# Compliance Criteria
+
+Architecture PASS
+
+Only if
+
+No critical drift
+
+No undocumented implementation
+
+Layer rules respected
+
+Dependencies respected
+
+Documentation synchronized
+
+Architecture FAIL
+
+If any
+
+Critical drift
+
+Undocumented implementation
+
+Broken dependency
+
+Layer violation
+
+Architecture BLOCKED
+
+If
+
+Documentation unavailable
+
+Repository unavailable
+
+ADR conflict
+
+Decision Register conflict
+
+---
+
+# Change Management
+
+Architecture changes
+
+require
+
+ADR
+
+Decision Register update
+
+Documentation update
+
+Architecture review
+
+Approval
+
+Implementation afterwards
+
+---
+
+# Prohibited Practices
+
+Never
+
+Invent modules
+
+Invent entities
+
+Invent APIs
+
+Bypass architecture
+
+Bypass documentation
+
+Create undocumented folders
+
+Duplicate business logic
+
+Duplicate modules
+
+Access database directly from controllers
+
+---
+
+# Success Criteria
+
+The Architecture Policy succeeds when
+
+every implementation
+
+strictly follows
+
+the documented architecture,
+
+every dependency
+
+is intentional,
+
+every module
+
+has clear ownership,
+
+and the platform
+
+remains scalable,
+
+maintainable,
+
+secure,
+
+and fully traceable
+
+throughout its lifecycle.
+
+Architecture must remain
+
+the single authoritative blueprint
+
+for the entire PhuQuocHub platform.

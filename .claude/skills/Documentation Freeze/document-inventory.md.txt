@@ -1,0 +1,1184 @@
+# Document Inventory
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT validation, repository documentation discovery
+
+---
+
+## 1. Purpose
+
+This document defines the official document discovery and inventory process
+for the Documentation Freeze skill.
+
+The inventory is the foundation of every freeze audit.
+
+Claude Code must not evaluate documentation completeness, consistency, SSOT
+authority, or code-generation readiness until the repository documentation has
+been fully inventoried.
+
+The inventory process must determine:
+
+- which documents exist;
+- where they are located;
+- what each document defines;
+- who owns each document;
+- which version is active;
+- which status applies;
+- which domain the document belongs to;
+- whether it claims authority;
+- whether it is complete;
+- whether it duplicates another document;
+- whether it is referenced;
+- whether it is still active;
+- whether it belongs to the freeze scope.
+
+---
+
+## 2. Core Principle
+
+Inventory before evaluation.
+
+Do not assume the repository follows a predefined documentation tree.
+
+Do not assume filenames are standardized.
+
+Do not assume all Markdown files are documentation.
+
+Do not assume every document under `docs/` is authoritative.
+
+Do not assume documents outside `docs/` are irrelevant.
+
+The repository must be inspected as it actually exists.
+
+---
+
+## 3. Execution Mode
+
+This process is strictly read-only.
+
+Claude Code may:
+
+- enumerate directories;
+- enumerate files;
+- read document metadata;
+- search document contents;
+- inspect cross-references;
+- classify documents;
+- identify duplicates;
+- identify orphan documents;
+- identify archived documents;
+- identify missing expected domains;
+- produce an inventory report.
+
+Claude Code must not:
+
+- move documents;
+- rename documents;
+- create indexes;
+- add metadata;
+- repair links;
+- change status;
+- update versions;
+- delete duplicates;
+- convert drafts into authoritative documents.
+
+---
+
+## 4. Inventory Objectives
+
+The inventory must answer:
+
+1. What documentation artifacts exist?
+2. Where are they located?
+3. What domain does each artifact cover?
+4. What lifecycle status does each artifact declare?
+5. Does it claim to be authoritative?
+6. What other artifacts support or depend on it?
+7. Is it complete enough to evaluate?
+8. Is it duplicated?
+9. Is it orphaned?
+10. Is it inside the requested freeze scope?
+11. Is it current, deprecated, archived, or unknown?
+12. Is a mandatory documentation domain missing?
+
+---
+
+## 5. Repository Discovery Scope
+
+Inspect the repository root and all relevant subdirectories.
+
+Common locations include:
+
+```text
+/
+├── README.md
+├── docs/
+├── documentation/
+├── architecture/
+├── adr/
+├── decisions/
+├── api/
+├── database/
+├── security/
+├── workflow/
+├── standards/
+├── product/
+├── planning/
+├── operations/
+├── infrastructure/
+├── apps/
+├── packages/
+├── scripts/
+├── tests/
+├── .github/
+└── .claude/
+```
+
+These paths are examples only.
+
+Never report a path as missing merely because the repository uses a different
+directory structure.
+
+Search by purpose, filename, metadata, headings, and content.
+
+---
+
+## 6. File Types to Inspect
+
+The inventory may include:
+
+- Markdown;
+- MDX;
+- AsciiDoc;
+- reStructuredText;
+- plain text;
+- YAML;
+- JSON;
+- OpenAPI YAML or JSON;
+- Mermaid;
+- PlantUML;
+- Draw.io;
+- SVG diagrams;
+- database schema files;
+- SQL documentation;
+- CSV data dictionaries;
+- spreadsheets when used as specifications;
+- PDF specifications;
+- README files;
+- changelogs;
+- decision logs;
+- policy files;
+- runbooks;
+- workflow definitions;
+- repository configuration containing governance information.
+
+Generated build output must normally be excluded unless it is explicitly part
+of the documentation authority model.
+
+---
+
+## 7. Discovery Order
+
+Perform discovery in the following order.
+
+### Step 1 — Repository root
+
+Inspect:
+
+- root README;
+- root documentation index;
+- project manifest;
+- workspace configuration;
+- contributor guide;
+- changelog;
+- governance files.
+
+### Step 2 — Documentation roots
+
+Discover all directories primarily containing documentation.
+
+### Step 3 — Decision artifacts
+
+Locate:
+
+- ADR directories;
+- Decision Register;
+- decision indexes;
+- superseded decision records;
+- change-control records.
+
+### Step 4 — Contract artifacts
+
+Locate:
+
+- database specifications;
+- ERDs;
+- Data Dictionaries;
+- OpenAPI;
+- RBAC;
+- workflows;
+- entity catalogs;
+- enum catalogs;
+- migration strategies.
+
+### Step 5 — Supporting artifacts
+
+Locate:
+
+- examples;
+- diagrams;
+- wireframes;
+- templates;
+- runbooks;
+- testing guides;
+- deployment guides;
+- SEO;
+- AI;
+- analytics;
+- growth;
+- product documents.
+
+### Step 6 — Hidden or embedded documentation
+
+Inspect:
+
+- package READMEs;
+- module READMEs;
+- schema comments;
+- configuration documentation;
+- CI descriptions;
+- migration notes;
+- source directories containing architectural documentation.
+
+---
+
+## 8. Inventory Record
+
+Create one record for every discovered documentation artifact.
+
+Each record must contain:
+
+```text
+Document ID:
+Path:
+Filename:
+Format:
+Title:
+Domain:
+Subdomain:
+Declared Owner:
+Declared Version:
+Declared Status:
+Lifecycle State:
+Authority Claim:
+Authoritative Domain:
+Supporting Domains:
+Related Documents:
+Referenced By:
+References:
+Freeze Scope:
+Completeness State:
+Placeholder State:
+Link State:
+Duplicate State:
+Orphan State:
+Freshness State:
+Notes:
+Evidence:
+```
+
+Do not invent unavailable metadata.
+
+Use `NOT FOUND` for missing metadata.
+
+---
+
+## 9. Document Identifier
+
+Every inventory item should receive a stable audit identifier.
+
+Recommended format:
+
+```text
+DOC-0001
+DOC-0002
+DOC-0003
+```
+
+The identifier is local to the audit unless the repository already defines a
+canonical document ID.
+
+Do not write the generated identifier back into the repository.
+
+---
+
+## 10. Domain Classification
+
+Classify each document into one primary domain.
+
+Allowed primary domains include:
+
+- Governance
+- Vision
+- Product
+- Architecture
+- ADR
+- Decision Register
+- Database
+- ERD
+- Data Dictionary
+- Entity Model
+- API
+- OpenAPI
+- Authentication
+- Authorization
+- RBAC
+- Workflow
+- Security
+- Search
+- Geo
+- SEO
+- AI
+- Analytics
+- Growth
+- Community
+- Media
+- Verification
+- Revision
+- Coding Standard
+- Naming
+- Repository Standard
+- Testing
+- CI/CD
+- Deployment
+- Monitoring
+- Logging
+- Backup
+- Restore
+- Incident Response
+- Operations
+- Roadmap
+- Sprint
+- Batch
+- Release
+- Glossary
+- Wireframe
+- Template
+- Example
+- Unknown
+
+A document may have supporting domains, but it must have one primary domain.
+
+If classification is ambiguous, use:
+
+`Unknown`
+
+and explain why.
+
+---
+
+## 11. Status Classification
+
+Use repository-declared status when present.
+
+Typical statuses include:
+
+- Draft
+- Proposed
+- Under Review
+- Approved
+- Accepted
+- Production
+- Frozen
+- Superseded
+- Deprecated
+- Archived
+- Rejected
+- Unknown
+
+Do not silently normalize repository-specific statuses.
+
+Record both:
+
+```text
+Declared Status:
+Normalized Lifecycle State:
+```
+
+Recommended normalized lifecycle states:
+
+- `DRAFT`
+- `REVIEW`
+- `APPROVED`
+- `FROZEN`
+- `SUPERSEDED`
+- `DEPRECATED`
+- `ARCHIVED`
+- `REJECTED`
+- `UNKNOWN`
+
+---
+
+## 12. Authority Classification
+
+Each document must be classified as one of:
+
+### AUTHORITATIVE
+
+The document is the official source for a domain.
+
+### SUPPORTING
+
+The document explains, illustrates, or extends an authoritative source without
+redefining it.
+
+### DERIVED
+
+The document is generated or transformed from another authoritative artifact.
+
+### HISTORICAL
+
+The document records prior states or decisions.
+
+### DRAFT
+
+The document is not approved for implementation.
+
+### UNKNOWN
+
+Authority cannot be established.
+
+### CONFLICTING AUTHORITY
+
+The document claims authority over a domain already governed by another
+equal-priority source.
+
+A `CONFLICTING AUTHORITY` classification is a blocker candidate.
+
+---
+
+## 13. Authority Evidence
+
+Authority may be established through:
+
+- explicit statement inside the document;
+- SSOT index;
+- documentation hierarchy;
+- parent README;
+- accepted ADR;
+- Decision Register;
+- governance policy;
+- repository convention;
+- freeze certificate;
+- approved version metadata.
+
+Do not infer authority from filename alone.
+
+A file named `database.md` is not automatically authoritative.
+
+---
+
+## 14. Freeze Scope Classification
+
+Each document must be marked:
+
+- `IN_SCOPE`
+- `OUT_OF_SCOPE`
+- `DEPENDENCY`
+- `UNKNOWN`
+
+### IN_SCOPE
+
+Directly governs the requested freeze scope.
+
+### OUT_OF_SCOPE
+
+Clearly unrelated to the requested scope.
+
+### DEPENDENCY
+
+Outside the direct scope but required to interpret or implement it.
+
+### UNKNOWN
+
+The relationship cannot be established.
+
+Unknown scope classification must be resolved before issuing a full freeze.
+
+---
+
+## 15. Completeness Classification
+
+Use:
+
+- `COMPLETE`
+- `PARTIAL`
+- `EMPTY`
+- `PLACEHOLDER_ONLY`
+- `OUTLINE_ONLY`
+- `NOT APPLICABLE`
+- `UNKNOWN`
+
+### COMPLETE
+
+Contains sufficient information for its intended purpose.
+
+### PARTIAL
+
+Contains meaningful content but lacks required implementation-significant
+details.
+
+### EMPTY
+
+Contains no meaningful content.
+
+### PLACEHOLDER_ONLY
+
+Mostly consists of TODO, TBD, notes, or promises of future content.
+
+### OUTLINE_ONLY
+
+Contains headings or lists without defined contracts.
+
+### UNKNOWN
+
+Completeness cannot be determined.
+
+Completeness is evaluated in detail by `completeness-policy.md`.
+
+The inventory only records the preliminary classification.
+
+---
+
+## 16. Duplicate Detection
+
+Identify potential duplicates using:
+
+- similar filenames;
+- identical headings;
+- overlapping definitions;
+- repeated entity catalogs;
+- repeated permission lists;
+- repeated API paths;
+- repeated enum definitions;
+- repeated workflow descriptions;
+- copied sections;
+- multiple document indexes.
+
+Classify duplicate state as:
+
+- `NONE`
+- `CONTENT_DUPLICATE`
+- `PURPOSE_DUPLICATE`
+- `AUTHORITY_DUPLICATE`
+- `VERSION_COPY`
+- `UNKNOWN`
+
+### CONTENT_DUPLICATE
+
+Substantial content is copied.
+
+### PURPOSE_DUPLICATE
+
+Different files define the same subject.
+
+### AUTHORITY_DUPLICATE
+
+Multiple files claim authority for the same domain.
+
+### VERSION_COPY
+
+A retained prior version that is clearly marked historical.
+
+Only `AUTHORITY_DUPLICATE` is automatically a blocker candidate.
+
+---
+
+## 17. Orphan Detection
+
+A document is potentially orphaned when it is not referenced by:
+
+- the root README;
+- a documentation index;
+- a parent README;
+- the SSOT index;
+- another authoritative document;
+- a roadmap;
+- a Sprint or release document;
+- an accepted ADR.
+
+Classify orphan state as:
+
+- `REFERENCED`
+- `ORPHAN`
+- `INTENTIONALLY_STANDALONE`
+- `UNKNOWN`
+
+An orphan document is not automatically invalid.
+
+Evaluate whether it:
+
+- should be indexed;
+- is obsolete;
+- is experimental;
+- is hidden authority;
+- duplicates another document.
+
+---
+
+## 18. Freshness Classification
+
+Freshness must be determined from content and governance metadata, not only file
+timestamps.
+
+Use:
+
+- `CURRENT`
+- `POSSIBLY_STALE`
+- `STALE`
+- `SUPERSEDED`
+- `ARCHIVED`
+- `UNKNOWN`
+
+Signals of staleness include:
+
+- references to removed modules;
+- obsolete technology choices;
+- old API versions;
+- superseded ADRs;
+- deprecated entity names;
+- roadmap phases already replaced;
+- old repository paths;
+- outdated diagrams;
+- mismatched version metadata.
+
+A recently modified file may still contain stale content.
+
+---
+
+## 19. Reference Inventory
+
+For every document, record:
+
+- outgoing file references;
+- outgoing section references;
+- ADR references;
+- Decision Register references;
+- diagram references;
+- OpenAPI references;
+- repository paths;
+- URLs;
+- referenced versions.
+
+Reference validity is evaluated later by
+`link-reference-validation.md`.
+
+---
+
+## 20. Metadata Validation
+
+Inspect document headers and front matter for:
+
+- title;
+- ID;
+- version;
+- status;
+- owner;
+- approval date;
+- last updated date;
+- review date;
+- applies-to scope;
+- classification;
+- supersession details;
+- related documents.
+
+Missing metadata is not always a blocker.
+
+It becomes blocking when the missing metadata prevents:
+
+- authority determination;
+- version determination;
+- freeze-baseline creation;
+- supersession validation;
+- ownership determination;
+- lifecycle-state determination.
+
+---
+
+## 21. Document Index Detection
+
+Identify all files serving as indexes, including:
+
+- root README;
+- docs README;
+- SSOT index;
+- architecture index;
+- ADR index;
+- Decision Register;
+- module index;
+- roadmap;
+- documentation tree;
+- navigation README.
+
+Compare index contents against actual files.
+
+Report:
+
+- indexed file not found;
+- discovered file not indexed;
+- duplicate index entries;
+- stale index path;
+- inconsistent document title;
+- incorrect status.
+
+---
+
+## 22. Expected Domain Matrix
+
+Build a domain matrix for the approved project scope.
+
+Example:
+
+| Domain | Expected? | Found? | Candidate Authority | Status |
+|---|---:|---:|---|---|
+| Architecture | Yes | Yes | `docs/architecture/architecture.md` | Candidate |
+| Database | Yes | No | NOT FOUND | Missing |
+| OpenAPI | Yes | Yes | `docs/api/openapi.yaml` | Candidate |
+| RBAC | Yes | Yes | `docs/security/rbac.md` | Candidate |
+| Workflow | Yes | Yes | `docs/workflow/workflow.md` | Candidate |
+
+Do not assume every listed domain is mandatory.
+
+Mandatory status must be derived from:
+
+- project scope;
+- roadmap;
+- architecture;
+- governance;
+- previous freeze baseline;
+- user-requested scope.
+
+---
+
+## 23. Missing Document Detection
+
+A document is considered missing when:
+
+- the project explicitly requires it;
+- the roadmap depends on it;
+- architecture references it;
+- an ADR references it;
+- another authoritative document references it;
+- governance requires it;
+- implementation depends on it;
+- freeze policy requires it for the current scope.
+
+Report:
+
+```text
+Missing Domain:
+Expected Artifact Type:
+Reason Required:
+Evidence:
+Impact:
+Blocking Status:
+```
+
+Do not invent the expected filename.
+
+---
+
+## 24. Unexpected Document Detection
+
+Identify documents that appear outside the known documentation model.
+
+Examples:
+
+- undocumented architecture copy;
+- old database design;
+- temporary API contract;
+- private permission matrix;
+- duplicate workflow;
+- obsolete module README;
+- unexplained schema file;
+- hidden decision log.
+
+For each unexpected document, determine whether it is:
+
+- legitimate supporting material;
+- stale;
+- deprecated;
+- duplicate authority;
+- undocumented authority;
+- irrelevant;
+- unknown.
+
+---
+
+## 25. Generated Document Detection
+
+Classify generated artifacts separately.
+
+Examples:
+
+- generated Swagger HTML;
+- generated SDK docs;
+- generated ORM schema docs;
+- generated API clients;
+- generated TypeDoc;
+- generated coverage reports;
+- generated database diagrams.
+
+Generated documentation is normally:
+
+`DERIVED`
+
+It must not be treated as authoritative unless governance explicitly assigns
+authority.
+
+Record the source artifact from which it was generated.
+
+---
+
+## 26. Diagram Inventory
+
+Inventory diagrams separately when they carry architectural meaning.
+
+Capture:
+
+- diagram path;
+- format;
+- title;
+- domain;
+- source document;
+- version;
+- legend;
+- referenced entities or modules;
+- whether the diagram is editable;
+- whether a text equivalent exists.
+
+Examples:
+
+- context diagrams;
+- container diagrams;
+- component diagrams;
+- ERDs;
+- workflow diagrams;
+- sequence diagrams;
+- deployment diagrams;
+- permission graphs.
+
+A diagram may be authoritative or supporting.
+
+Do not infer authority from visual complexity.
+
+---
+
+## 27. OpenAPI Inventory
+
+For each OpenAPI artifact, record:
+
+- path;
+- format;
+- version;
+- title;
+- API version;
+- server definitions;
+- path count;
+- operation count;
+- schema count;
+- external references;
+- authority status;
+- generated or handwritten status;
+- lifecycle state.
+
+If multiple OpenAPI files exist, determine:
+
+- version split;
+- module split;
+- public/internal split;
+- duplicate contract;
+- stale copy;
+- conflicting authority.
+
+---
+
+## 28. ADR Inventory
+
+For every ADR, record:
+
+```text
+ADR ID:
+Title:
+Path:
+Status:
+Date:
+Version:
+Supersedes:
+Superseded By:
+Related ADRs:
+Affected Domains:
+Decision Register Entry:
+References Valid:
+Freeze Scope:
+```
+
+Do not merge multiple ADRs into one inventory item.
+
+---
+
+## 29. Decision Register Inventory
+
+Record:
+
+- Decision Register path;
+- format;
+- version;
+- status;
+- total entries;
+- active entries;
+- Proposed entries;
+- Superseded entries;
+- Rejected entries;
+- orphan ADRs;
+- missing ADR references;
+- duplicate decision IDs.
+
+The detailed validation occurs in `adr-validation.md`.
+
+---
+
+## 30. Entity Document Inventory
+
+Identify all entity-definition sources.
+
+Examples:
+
+- canonical entity catalog;
+- database document;
+- ERD;
+- Data Dictionary;
+- module data docs;
+- OpenAPI schemas;
+- entity lists in architecture docs.
+
+For each source, determine whether it is:
+
+- authoritative;
+- supporting;
+- derived;
+- historical;
+- conflicting.
+
+Do not establish the final entity count during inventory unless the authority is
+already explicit.
+
+---
+
+## 31. Inventory Metrics
+
+The inventory report should include:
+
+- total documentation artifacts;
+- total authoritative candidates;
+- total supporting documents;
+- total drafts;
+- total deprecated documents;
+- total archived documents;
+- total unknown-status documents;
+- total orphan documents;
+- total duplicate-purpose documents;
+- total conflicting-authority candidates;
+- total missing required domains;
+- total documents with missing version;
+- total documents with missing owner;
+- total documents with unknown scope.
+
+Explain the counting rules.
+
+---
+
+## 32. Inventory Output
+
+Produce the following sections.
+
+### 32.1 Executive Summary
+
+Summarize:
+
+- documentation structure;
+- total artifacts;
+- major documentation roots;
+- missing domains;
+- authority concerns;
+- inventory limitations.
+
+### 32.2 Repository Documentation Roots
+
+Use:
+
+| Path | Purpose | Artifact Count | Status | Evidence |
+|---|---|---:|---|---|
+
+### 32.3 Document Inventory
+
+Use:
+
+| ID | Path | Domain | Status | Authority | Scope | Completeness | Notes |
+|---|---|---|---|---|---|---|---|
+
+### 32.4 Domain Coverage
+
+Use:
+
+| Domain | Required | Found | Candidate Authority | Supporting Sources | Status |
+|---|---:|---:|---|---|---|
+
+### 32.5 Authority Candidates
+
+Use:
+
+| Domain | Candidate | Authority Evidence | Conflicts | Status |
+|---|---|---|---|---|
+
+### 32.6 Missing Documents
+
+List every missing required domain and supporting evidence.
+
+### 32.7 Duplicate and Conflict Candidates
+
+List:
+
+- duplicate content;
+- duplicate purpose;
+- competing authorities;
+- stale copies;
+- version copies.
+
+### 32.8 Orphan Documents
+
+List every orphan or potentially orphaned artifact.
+
+### 32.9 Metadata Gaps
+
+List documents missing:
+
+- version;
+- owner;
+- status;
+- approval;
+- freeze scope;
+- supersession details.
+
+### 32.10 Inventory Decision
+
+Use exactly one:
+
+- `INVENTORY COMPLETE`
+- `INVENTORY COMPLETE WITH GAPS`
+- `INVENTORY INCOMPLETE`
+- `BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 33. Inventory Completion Criteria
+
+The inventory is complete only when:
+
+- all documentation roots were inspected;
+- all relevant artifacts were cataloged;
+- all mandatory domains were evaluated;
+- authority candidates were identified;
+- duplicates were identified;
+- orphans were identified;
+- lifecycle statuses were recorded;
+- scope classifications were recorded;
+- limitations were disclosed;
+- evidence paths were provided.
+
+---
+
+## 34. Blocking Conditions
+
+Return `BLOCKED` for the inventory phase when:
+
+- the repository cannot be accessed;
+- documentation roots cannot be read;
+- the requested scope cannot be determined;
+- critical archives are encrypted or inaccessible;
+- inventory results are too incomplete to establish document coverage;
+- repository structure is corrupted;
+- required file formats cannot be inspected and no alternative evidence exists.
+
+A missing project document normally produces `NOT FOUND`, not an inventory
+phase `BLOCKED`, unless it prevents the entire documentation model from being
+understood.
+
+---
+
+## 35. Evidence Rules
+
+Every inventory statement must cite:
+
+- exact path;
+- metadata;
+- heading;
+- key;
+- unique text;
+- repository listing.
+
+Examples:
+
+```text
+docs/architecture/architecture.md — Title: System Architecture
+docs/99-decisions/decision-register.md — active decision table
+docs/api/openapi.yaml — openapi: 3.0.3
+```
+
+Do not report a document based only on memory or prior conversation.
+
+---
+
+## 36. Self-Verification
+
+Before publishing the inventory:
+
+- verify no files were modified;
+- verify all documentation roots were inspected;
+- verify all records have paths;
+- verify no missing document was invented;
+- verify authority was not inferred from filename alone;
+- verify drafts were not treated as authoritative;
+- verify generated files were classified as derived;
+- verify archive copies were not counted as active authority;
+- verify all metrics include counting rules;
+- verify limitations are disclosed;
+- verify exactly one inventory decision is present.
+
+---
+
+## 37. Success Criteria
+
+This policy succeeds when Claude Code can produce a complete, evidence-based map
+of the repository documentation before any freeze judgment is made.
+
+The inventory must make it possible to answer:
+
+- what exists;
+- what is missing;
+- what is authoritative;
+- what is supporting;
+- what is duplicated;
+- what is obsolete;
+- what is incomplete;
+- what is in scope;
+- what must be validated next.
+
+No Documentation Freeze audit may proceed on an incomplete or assumed document
+inventory.

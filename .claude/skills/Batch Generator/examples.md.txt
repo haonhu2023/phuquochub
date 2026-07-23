@@ -1,0 +1,107 @@
+# Example 1
+
+User
+
+Generate
+
+Sprint 3
+
+Batch 1
+
+Persistence
+
+Expected
+
+Read docs
+
+↓
+
+Read ADR
+
+↓
+
+Read OpenAPI
+
+↓
+
+Generate entities
+
+↓
+
+Generate repositories
+
+↓
+
+Generate migrations
+
+↓
+
+Generate tests
+
+↓
+
+Stop
+
+Never generate APIs.
+
+--------------------------------------------------
+
+# Example 2
+
+User
+
+Generate
+
+Sprint 3
+
+Batch 2
+
+Services
+
+Expected
+
+Read previous batch
+
+↓
+
+Read OpenAPI
+
+↓
+
+Generate Services
+
+↓
+
+Generate DTO
+
+↓
+
+Generate Mapper
+
+↓
+
+Generate Unit Tests
+
+↓
+
+Stop
+
+Never generate Controller if not requested.
+
+--------------------------------------------------
+
+# Example 3
+
+If estimated LOC
+
+>1000
+
+Expected
+
+Split automatically
+
+Batch 3.1
+
+Batch 3.2
+
+Batch 3.3

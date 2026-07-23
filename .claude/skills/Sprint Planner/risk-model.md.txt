@@ -1,0 +1,67 @@
+# Sprint Risk Model
+
+Risk Levels
+
+LOW
+
+MEDIUM
+
+HIGH
+
+CRITICAL
+
+--------------------------------------------------
+
+High Risk
+
+Database Migration
+
+Authentication
+
+RBAC
+
+Payments
+
+Security
+
+Search
+
+Geo
+
+--------------------------------------------------
+
+Medium Risk
+
+SEO
+
+Media
+
+Reviews
+
+Notifications
+
+Analytics
+
+--------------------------------------------------
+
+Low Risk
+
+Frontend
+
+Admin UI
+
+Documentation
+
+--------------------------------------------------
+
+Every Sprint
+
+must contain
+
+Risk Analysis.
+
+Every HIGH risk
+
+requires
+
+Architecture Review.

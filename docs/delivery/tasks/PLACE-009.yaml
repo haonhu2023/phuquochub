@@ -1,0 +1,157 @@
+schema_version: "1.0"
+
+id: PLACE-009
+workstream: place
+title: "Add PlacesController tests for the public/privileged route boundary"
+type: testing
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places.controller → 23/23 passed on first run, exit 0"
+    - "npx jest places → 92/92 passed, 7 suites, exit 0"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC7 all PASS; optional AC8 also PASS"
+  report: docs/delivery/reports/PLACE-009-controller-tests-report.md
+  evidence_index: docs/delivery/evidence/PLACE-009-controller-tests-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/places.controller.spec.ts   # new, 23 specs
+  production_code_changed: false     # places.controller.ts is byte-unchanged (AC7)
+  next_task: docs/delivery/tasks/PLACE-010.yaml
+  boundary_pinned: >-
+    3 read routes asserted @Public() AND permission-free; 4 write routes asserted NOT public AND
+    carrying exactly Place.Create / Place.Edit.Managed / Place.Archive / Place.Approve. Expected
+    permission strings are independent literals, so a production typo cannot agree with itself.
+    Write routes asserted to pass user.sub (not the whole principal) — that value feeds ADR-016
+    audit records and created_by/updated_by.
+  scope_boundary: >-
+    Asserts what the controller DECLARES, not what the guard DOES. A correct declaration paired
+    with a broken guard would still pass; guard behaviour is the authz module's own coverage and
+    was explicitly out of scope. No Nest application was booted.
+  open_findings: >-
+    F-27 route ordering is proven from declaration order, not from real routing — only e2e would
+    prove resolution of /places/<uuid>/revisions vs /places/<slug>. F-28 :slug has no pipe or
+    format constraint (not a vulnerability — parameterized query + status filter — but it is the
+    one unvalidated path parameter).
+
+depends_on:
+  - PLACE-008        # completed 2026-07-22; jest places 69/69, places.service 18/18, no production change
+
+problem_statement: >-
+  apps/api/src/modules/places/places.controller.ts has no spec file. It is thin by design — each
+  handler delegates straight to PlacesService — so the logic worth testing is not in the method
+  bodies but in the DECORATOR METADATA that surrounds them, which is where the security boundary
+  actually lives:
+   - @Public() on list, listRevisions and getBySlug (3 read routes);
+   - @RequirePermissions('Place.Create') on POST, ('Place.Edit.Managed') on PATCH,
+     ('Place.Archive') on DELETE, ('Place.Approve') on POST :id/approve;
+   - @HttpCode(HttpStatus.CREATED) on POST;
+   - ParseUUIDPipe on every :id param but deliberately NOT on :slug;
+   - route ordering: ':id/revisions' is declared BEFORE ':slug' precisely so the two-segment
+     route is not swallowed by the one-segment param (a comment at :36-37 says so).
+  Nothing verifies any of it. Deleting a @RequirePermissions decorator, marking a write route
+  @Public, weakening a permission name, or reordering the two GET routes would all pass tsc,
+  eslint and every existing spec — while silently opening a write path or breaking detail reads.
+  PLACE-008 pinned the audit events these permissions authorize; this pins the enforcement
+  points themselves.
+
+objective: >-
+  Assert the controller's route metadata and delegation so the public/privileged boundary and
+  the route ordering cannot regress silently — without changing production code and without a
+  running HTTP server.
+
+required_inputs:
+  - apps/api/src/modules/places/places.controller.ts
+  - apps/api/src/modules/places/places.service.spec.ts        # the convention PLACE-008 established
+  - apps/api/src/modules/authz/decorators/public.decorator.ts            # metadata key
+  - apps/api/src/modules/authz/decorators/require-permissions.decorator.ts  # metadata key
+  - apps/api/src/modules/authz/decorators/current-user.decorator.ts
+  - apps/api/test/helpers/create-mock.ts
+
+in_scope:
+  - "new: apps/api/src/modules/places/places.controller.spec.ts"
+
+out_of_scope:
+  - "ANY change to places.controller.ts or other production code — an untestable seam is a finding, not a licence to edit"
+  - "testing the guard IMPLEMENTATION (authz module) — assert what the controller DECLARES, not what the guard does with it; the guard has its own owner"
+  - "e2e / supertest / a running Nest application (Docker not installed, and this must stay a unit test)"
+  - "re-testing service logic already covered by PLACE-008 — assert delegation, not behaviour"
+  - "DTO validation, already covered by places.dto.spec.ts"
+  - "all carried findings F-16..F-26"
+
+execution_steps:
+  - "Read the two authz decorators FIRST and take the actual metadata keys from them (e.g. via their exported constant, not a hard-coded string). If a decorator exports no key constant, use SetMetadata's key as written there and record the coupling as a finding."
+  - "Follow the PLACE-008 convention: direct construction with createMock, no Test.createTestingModule, Vietnamese test names."
+  - "Read metadata with Reflector (or Reflect.getMetadata) against the controller's prototype handlers — assert per handler, not globally."
+  - "Assert the three read routes carry @Public() and the four write routes do NOT."
+  - "Assert each write route's exact permission string. Use the literal expected values so a typo in production is caught; do not read the expected value from the same source as the actual."
+  - "Assert POST returns 201 via @HttpCode metadata."
+  - "Assert delegation: each handler calls its service method with the right arguments, including that user.sub — not the whole principal — is passed as the actor id."
+  - "Assert route ordering: ':id/revisions' is registered before ':slug' on the class. Derive this from the framework's path metadata if reachable; if it is not reachable without booting Nest, record the limitation and assert the ordering via source-order of the prototype method keys, stating clearly what that does and does not prove."
+  - "Run the validation commands below."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "A places.controller.spec.ts exists and follows the PLACE-008 mocking convention; no new testing pattern and no Nest application boot." }
+  - { id: AC2, mandatory: true,  text: "Each of the 3 read routes is asserted @Public(), and each of the 4 write routes is asserted NOT public." }
+  - { id: AC3, mandatory: true,  text: "Each write route's exact permission string is asserted: Place.Create, Place.Edit.Managed, Place.Archive, Place.Approve." }
+  - { id: AC4, mandatory: true,  text: "Delegation is asserted for every handler, including that the actor id passed to the service is user.sub." }
+  - { id: AC5, mandatory: true,  text: "POST / is asserted to respond 201 via its HttpCode metadata." }
+  - { id: AC6, mandatory: true,  text: "The ':id/revisions' before ':slug' ordering is asserted, with an explicit statement of what the chosen technique proves and what it does not." }
+  - { id: AC7, mandatory: true,  text: "No production file is modified; npx jest places, eslint and tsc --noEmit all exit 0." }
+  - { id: AC8, mandatory: false, text: "Metadata keys are taken from the decorators' own exported constants rather than duplicated string literals, so a key rename cannot leave the specs passing vacuously." }
+
+required_evidence:
+  - "the metadata keys used, and where they came from"
+  - "per-route table of asserted public/permission metadata"
+  - "spec output with counts"
+  - "explicit confirmation places.controller.ts was NOT modified"
+  - "a plain statement of what the route-ordering assertion does and does not prove"
+  - "jest / eslint / tsc exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places.controller"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Delete apps/api/src/modules/places/places.controller.spec.ts. Nothing else is touched — no
+  production code, schema, data or contract — so rollback is a single deletion.
+
+stop_conditions:
+  - "Asserting metadata requires booting a Nest testing module — STOP and reconsider. The value here is a fast unit assertion on declared metadata; if only an integration boot can reach it, record that as a finding and scope the task down to what Reflector can read statically."
+  - "A decorator's metadata key is not exported and must be duplicated as a string literal — do NOT silently duplicate it. Record the coupling as a finding and note that a key rename would make these specs pass vacuously."
+  - "A test cannot be written without changing places.controller.ts — STOP. Record the untestable seam; production changes are out of scope."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-010
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "controller suite passing with counts"
+    - "places.controller.ts byte-unchanged"
+
+next_candidate_task:
+  id: PLACE-010
+  title: "Place release-readiness assessment (repository-evidence only)"
+  type: release-readiness assessment
+  rationale: >-
+    After PLACE-009 every Place layer reachable without a database has coverage: DTO
+    (PLACE-002/006), repository (PLACE-004), mapper, service (PLACE-008) and controller
+    (PLACE-009), with the schema gap closed by PLACE-003 and the contract single-sourced by
+    PLACE-005. What remains unverified is almost entirely environment-dependent: migration
+    application, EXPLAIN, PostGIS/SRID behaviour, e2e, and every runtime consumer claim. That
+    makes an honest readiness assessment — classifying each gate against actual evidence and
+    naming precisely what Docker would unlock — the highest-value next step, and it needs no
+    environment access to produce. Derive PLACE-010 from PLACE-009's actual outcome.

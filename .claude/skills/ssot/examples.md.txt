@@ -1,0 +1,37 @@
+# Example 1
+
+Use the SSOT skill.
+
+Generate Sprint 2 Batch 1.
+
+---
+
+# Example 2
+
+Use the SSOT skill.
+
+Review current architecture.
+
+---
+
+# Example 3
+
+Use the SSOT skill.
+
+Validate OpenAPI before code generation.
+
+---
+
+# Example 4
+
+Use the SSOT skill.
+
+Plan Sprint 5.
+
+---
+
+# Example 5
+
+Use the SSOT skill.
+
+Review database migration.

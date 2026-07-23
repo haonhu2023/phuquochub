@@ -1,0 +1,791 @@
+# Examples
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+---
+
+# Purpose
+
+This document provides
+
+reference examples
+
+for Architecture Review.
+
+Examples demonstrate
+
+how policies,
+
+severity,
+
+evidence,
+
+recommendations,
+
+and final decisions
+
+should be applied.
+
+Examples
+
+are guidance.
+
+Policies
+
+remain authoritative.
+
+---
+
+# Example 1
+
+Fully Compliant Repository
+
+Repository Status
+
+Complete
+
+Documentation
+
+Complete
+
+Architecture
+
+Complete
+
+OpenAPI
+
+Complete
+
+Database
+
+Complete
+
+RBAC
+
+Complete
+
+Testing
+
+Complete
+
+Evidence
+
+Repository verified
+
+Architecture verified
+
+Documentation synchronized
+
+Result
+
+PASS
+
+Recommendation
+
+None
+
+---
+
+# Example 2
+
+Missing OpenAPI Endpoint
+
+Finding
+
+Controller exposes
+
+POST /places/import
+
+OpenAPI
+
+does not document
+
+the endpoint.
+
+Evidence
+
+Repository
+
+apps/api/modules/places/controller.ts
+
+OpenAPI
+
+No matching path
+
+Severity
+
+High
+
+Recommendation
+
+Update OpenAPI
+
+before merge.
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 3
+
+Missing ADR
+
+Finding
+
+New Search Module
+
+implemented.
+
+No ADR exists.
+
+Evidence
+
+Repository
+
+contains Search Module.
+
+ADR directory
+
+contains no related ADR.
+
+Severity
+
+High
+
+Recommendation
+
+Create ADR
+
+before implementation
+
+continues.
+
+Decision
+
+FAIL
+
+---
+
+# Example 4
+
+Circular Dependency
+
+Finding
+
+Users Module
+
+imports
+
+RBAC Module
+
+RBAC Module
+
+imports
+
+Users Module
+
+Evidence
+
+Dependency Graph
+
+shows cycle.
+
+Severity
+
+Critical
+
+Recommendation
+
+Extract shared interface.
+
+Remove circular dependency.
+
+Decision
+
+BLOCKED
+
+---
+
+# Example 5
+
+Naming Drift
+
+Finding
+
+UserService.ts
+
+located inside
+
+controllers/
+
+Evidence
+
+Repository Structure
+
+Severity
+
+Medium
+
+Recommendation
+
+Move file
+
+to services/
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 6
+
+Repository Drift
+
+Finding
+
+Unexpected folder
+
+legacy/
+
+exists
+
+without documentation.
+
+Evidence
+
+Repository
+
+Folder Structure
+
+Documentation
+
+No reference
+
+Severity
+
+Medium
+
+Recommendation
+
+Document
+
+or remove
+
+legacy/
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 7
+
+Database Drift
+
+Finding
+
+Migration
+
+adds column
+
+verified_at
+
+Entity
+
+does not contain
+
+verifiedAt
+
+Evidence
+
+Migration
+
+Entity
+
+Severity
+
+High
+
+Recommendation
+
+Synchronize
+
+Entity
+
+Migration
+
+Data Dictionary
+
+Decision
+
+FAIL
+
+---
+
+# Example 8
+
+Security Drift
+
+Finding
+
+Admin endpoint
+
+has no RBAC guard.
+
+Evidence
+
+Controller
+
+contains
+
+@Get()
+
+without
+
+RequirePermissions
+
+Severity
+
+Critical
+
+Recommendation
+
+Protect endpoint
+
+using RBAC
+
+before merge.
+
+Decision
+
+BLOCKED
+
+---
+
+# Example 9
+
+Workflow Drift
+
+Finding
+
+Workflow
+
+requires
+
+email verification.
+
+Repository
+
+activates account
+
+immediately.
+
+Evidence
+
+workflow.md
+
+AuthService
+
+Severity
+
+Medium
+
+Recommendation
+
+Align implementation
+
+with workflow.
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 10
+
+Performance Drift
+
+Finding
+
+Search endpoint
+
+returns
+
+all records.
+
+Pagination missing.
+
+Evidence
+
+Controller
+
+Service
+
+OpenAPI
+
+Severity
+
+Medium
+
+Recommendation
+
+Implement pagination.
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 11
+
+Testing Drift
+
+Finding
+
+Migration
+
+has no tests.
+
+Evidence
+
+tests/
+
+contains no migration tests.
+
+Severity
+
+Medium
+
+Recommendation
+
+Add migration tests.
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 12
+
+Evidence Missing
+
+Finding
+
+Potential issue reported.
+
+Repository
+
+contains
+
+no supporting evidence.
+
+Severity
+
+Not Assigned
+
+Recommendation
+
+Return
+
+NOT FOUND
+
+Decision
+
+Unable to verify.
+
+---
+
+# Example 13
+
+Documentation Drift
+
+Finding
+
+README
+
+states
+
+Redis required.
+
+Repository
+
+contains
+
+no Redis integration.
+
+Evidence
+
+README
+
+Repository
+
+Severity
+
+Low
+
+Recommendation
+
+Update README
+
+or implement Redis.
+
+Decision
+
+READY AFTER FIXES
+
+---
+
+# Example 14
+
+Technical Debt
+
+Finding
+
+Duplicate validation logic
+
+exists
+
+inside
+
+three modules.
+
+Evidence
+
+Repository
+
+Severity
+
+Low
+
+Recommendation
+
+Extract shared validator.
+
+Track
+
+Technical Debt.
+
+Decision
+
+PASS
+
+with Technical Debt
+
+---
+
+# Example 15
+
+Production Gate
+
+Findings
+
+No Critical
+
+No High
+
+Two Medium
+
+Three Low
+
+Architecture compliant
+
+Documentation synchronized
+
+Testing completed
+
+Decision
+
+PASS
+
+Production Ready
+
+---
+
+# Evidence Example
+
+Good Evidence
+
+Repository Path
+
+Documentation Reference
+
+Exact Module
+
+Exact File
+
+Exact ADR
+
+Exact OpenAPI
+
+Exact Migration
+
+Bad Evidence
+
+Guess
+
+Opinion
+
+Memory
+
+Expectation
+
+Future implementation
+
+---
+
+# Recommendation Example
+
+Good
+
+Add missing
+
+RequirePermissions
+
+to
+
+AdminController
+
+because
+
+RBAC documentation
+
+requires it.
+
+Bad
+
+Improve security.
+
+---
+
+# Severity Example
+
+Critical
+
+Authentication bypass.
+
+High
+
+OpenAPI mismatch.
+
+Medium
+
+Missing README.
+
+Low
+
+Formatting issue.
+
+Informational
+
+Future optimization.
+
+---
+
+# Final Decision Examples
+
+PASS
+
+Repository fully compliant.
+
+READY AFTER FIXES
+
+Minor issues remain.
+
+FAIL
+
+Architecture inconsistency exists.
+
+BLOCKED
+
+Critical architecture
+
+or evidence missing.
+
+---
+
+# Self Verification Example
+
+Before publishing
+
+verify
+
+Evidence exists.
+
+Severity assigned.
+
+Recommendation provided.
+
+Decision justified.
+
+No assumptions.
+
+No repository modifications.
+
+---
+
+# Success Criteria
+
+Examples succeed when
+
+Claude Code
+
+can consistently
+
+apply
+
+Architecture Review,
+
+Evidence Policy,
+
+Severity Model,
+
+Recommendation Policy,
+
+and Output Template
+
+to real repositories,
+
+producing deterministic,
+
+repeatable,
+
+high-quality reviews
+
+fully aligned
+
+with the Single Source of Truth (SSOT)
+
+for the PhuQuocHub platform.

@@ -1,0 +1,817 @@
+# Severity Model
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+Security Review
+
+Performance Review
+
+Testing Review
+
+Deployment Review
+
+---
+
+# Purpose
+
+This document defines
+
+the official Severity Model
+
+for the PhuQuocHub platform.
+
+Severity determines
+
+the impact,
+
+priority,
+
+urgency,
+
+approval status,
+
+and release readiness
+
+of every finding.
+
+All reviews
+
+must classify
+
+every issue
+
+using this model.
+
+---
+
+# Mission
+
+Provide
+
+a consistent,
+
+objective,
+
+repeatable,
+
+and evidence-based
+
+severity classification
+
+across the entire project.
+
+---
+
+# Core Principles
+
+Severity
+
+measures impact,
+
+not effort.
+
+Severity
+
+must always
+
+be evidence-based.
+
+Severity
+
+must never
+
+depend on opinion.
+
+Severity
+
+must be
+
+repeatable.
+
+Severity
+
+must be
+
+deterministic.
+
+---
+
+# Severity Levels
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Informational
+
+No additional
+
+severity level
+
+is allowed.
+
+---
+
+# Critical
+
+Definition
+
+A defect
+
+that blocks
+
+production.
+
+Characteristics
+
+Architecture violation
+
+Security vulnerability
+
+Data corruption
+
+Data loss
+
+Authentication bypass
+
+Authorization bypass
+
+Broken migration
+
+Production outage
+
+Repository corruption
+
+Broken architecture
+
+Critical dependency cycle
+
+Missing SSOT
+
+Broken rollback
+
+Missing backup
+
+Examples
+
+Undocumented architecture
+
+Production database loss
+
+Broken RBAC
+
+Authentication bypass
+
+Critical migration failure
+
+Impact
+
+Production blocked
+
+Merge blocked
+
+Sprint blocked
+
+Release blocked
+
+Immediate action required
+
+Maximum Resolution Time
+
+24 hours
+
+Allowed Decision
+
+FAIL
+
+BLOCKED
+
+Never PASS.
+
+---
+
+# High
+
+Definition
+
+Major issue
+
+that blocks merge
+
+but not architecture.
+
+Characteristics
+
+Missing endpoint
+
+OpenAPI mismatch
+
+Workflow mismatch
+
+Broken tests
+
+Missing documentation
+
+Broken CI
+
+Performance regression
+
+Incomplete implementation
+
+Examples
+
+API differs from OpenAPI
+
+Missing migration
+
+Repository drift
+
+Dependency drift
+
+High technical debt
+
+Impact
+
+Merge blocked
+
+Sprint may continue
+
+Production not allowed
+
+Maximum Resolution Time
+
+3 days
+
+Allowed Decision
+
+READY AFTER FIXES
+
+FAIL
+
+---
+
+# Medium
+
+Definition
+
+Issue affecting
+
+maintainability,
+
+quality,
+
+or consistency.
+
+Characteristics
+
+Naming drift
+
+Minor documentation drift
+
+Missing unit tests
+
+Code duplication
+
+Outdated documentation
+
+Performance warning
+
+Examples
+
+Missing README
+
+Naming inconsistency
+
+Partial documentation
+
+Low coverage
+
+Impact
+
+Sprint continues
+
+Fix before next Sprint
+
+Maximum Resolution Time
+
+Current Sprint
+
+Allowed Decision
+
+READY AFTER FIXES
+
+PASS (with technical debt)
+
+---
+
+# Low
+
+Definition
+
+Minor quality issue.
+
+Characteristics
+
+Formatting
+
+Minor optimization
+
+Refactoring opportunity
+
+Readability improvement
+
+Comment quality
+
+Examples
+
+Typo
+
+Minor folder organization
+
+Code style inconsistency
+
+Unused helper
+
+Impact
+
+No release impact
+
+Track as technical debt
+
+Maximum Resolution Time
+
+Future Sprint
+
+Allowed Decision
+
+PASS
+
+READY AFTER FIXES
+
+---
+
+# Informational
+
+Definition
+
+Observation only.
+
+Characteristics
+
+Suggestion
+
+Improvement idea
+
+Future optimization
+
+Architecture note
+
+Examples
+
+Possible optimization
+
+Alternative implementation
+
+Future enhancement
+
+Impact
+
+No action required.
+
+May become roadmap item.
+
+Allowed Decision
+
+PASS
+
+---
+
+# Escalation Rules
+
+A finding
+
+must be escalated
+
+if
+
+Multiple Medium
+
+combine
+
+into one High.
+
+Multiple High
+
+combine
+
+into one Critical.
+
+Repeated unresolved issue
+
+appears
+
+across
+
+three consecutive Sprints.
+
+Security issue
+
+affects
+
+authentication
+
+authorization
+
+database integrity
+
+or production deployment.
+
+---
+
+# Downgrade Rules
+
+Severity
+
+may only
+
+be downgraded
+
+if
+
+Evidence proves
+
+lower impact.
+
+Architecture owner
+
+approves.
+
+Documentation updated.
+
+Review repeated.
+
+Never downgrade
+
+without evidence.
+
+---
+
+# Severity Matrix
+
+Critical
+
+Production Impact
+
+YES
+
+Merge Impact
+
+YES
+
+Sprint Impact
+
+YES
+
+Immediate Fix
+
+YES
+
+---
+
+High
+
+Production Impact
+
+YES
+
+Merge Impact
+
+YES
+
+Sprint Impact
+
+Possible
+
+Immediate Fix
+
+Recommended
+
+---
+
+Medium
+
+Production Impact
+
+NO
+
+Merge Impact
+
+NO
+
+Sprint Impact
+
+YES
+
+Immediate Fix
+
+Before next Sprint
+
+---
+
+Low
+
+Production Impact
+
+NO
+
+Merge Impact
+
+NO
+
+Sprint Impact
+
+NO
+
+Immediate Fix
+
+Optional
+
+---
+
+Informational
+
+Production Impact
+
+NO
+
+Merge Impact
+
+NO
+
+Sprint Impact
+
+NO
+
+Immediate Fix
+
+No
+
+---
+
+# Technical Debt Mapping
+
+Critical
+
+Never Technical Debt.
+
+Must Fix.
+
+High
+
+Normally Fix Immediately.
+
+Medium
+
+May become Technical Debt.
+
+Low
+
+Technical Debt.
+
+Informational
+
+Roadmap Suggestion.
+
+---
+
+# Compliance Mapping
+
+No Critical
+
+↓
+
+Eligible
+
+for PASS
+
+No High
+
+↓
+
+Eligible
+
+for READY AFTER FIXES
+
+Critical Exists
+
+↓
+
+FAIL
+
+Architecture Missing
+
+↓
+
+BLOCKED
+
+---
+
+# Evidence Requirements
+
+Every severity
+
+must include
+
+Identifier
+
+Category
+
+Evidence
+
+Impact
+
+Risk
+
+Recommendation
+
+Owner
+
+Target Sprint
+
+Status
+
+Without evidence
+
+severity
+
+cannot be assigned.
+
+---
+
+# Reporting Rules
+
+Every report
+
+must summarize
+
+Critical Count
+
+High Count
+
+Medium Count
+
+Low Count
+
+Informational Count
+
+Technical Debt Count
+
+Overall Risk
+
+Final Decision
+
+---
+
+# Final Decision Mapping
+
+PASS
+
+No Critical
+
+No High
+
+Medium acceptable
+
+Low acceptable
+
+Informational acceptable
+
+READY AFTER FIXES
+
+No Critical
+
+High resolved
+
+Medium pending
+
+Low pending
+
+FAIL
+
+Critical exists
+
+Architecture violated
+
+Production unsafe
+
+BLOCKED
+
+Missing documentation
+
+Missing repository
+
+Missing architecture
+
+Unable to verify
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every finding
+
+has severity.
+
+Every severity
+
+has evidence.
+
+Every severity
+
+matches impact.
+
+No assumptions exist.
+
+No fabricated evidence exists.
+
+---
+
+# Success Criteria
+
+The Severity Model succeeds when
+
+every review
+
+classifies findings
+
+consistently,
+
+objectively,
+
+and reproducibly,
+
+allowing
+
+Sprint Acceptance,
+
+Production Gate,
+
+Architecture Review,
+
+and Repository Analysis
+
+to reach
+
+deterministic decisions
+
+based solely
+
+on verified evidence
+
+and documented impact.
+
+Severity remains
+
+the universal language
+
+for risk management
+
+throughout
+
+the lifecycle
+
+of the PhuQuocHub platform.

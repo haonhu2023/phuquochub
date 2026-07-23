@@ -1,0 +1,929 @@
+# Source Priority
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Source Priority
+
+for the PhuQuocHub platform.
+
+Source Priority
+
+determines
+
+which documentation
+
+must be consulted first,
+
+which documentation
+
+takes precedence,
+
+and
+
+how Claude Code
+
+must resolve
+
+multiple available sources
+
+during planning,
+
+implementation,
+
+review,
+
+validation,
+
+and production release.
+
+This policy
+
+guarantees
+
+consistent,
+
+deterministic,
+
+and evidence-based
+
+decision making.
+
+---
+
+# Mission
+
+Ensure
+
+every decision
+
+is made
+
+using
+
+the highest priority
+
+available source.
+
+Prevent
+
+conflicting interpretations.
+
+Prevent
+
+AI hallucinations.
+
+Prevent
+
+implementation-driven decisions.
+
+---
+
+# Fundamental Principle
+
+Claude Code
+
+must always
+
+prefer
+
+higher-priority sources
+
+over
+
+lower-priority sources.
+
+Lower-priority sources
+
+may only
+
+supplement
+
+higher-priority sources.
+
+They may never
+
+override
+
+them.
+
+---
+
+# Official Source Priority
+
+Priority 1
+
+System Architecture
+
+Priority 2
+
+Architecture Decision Records (ADR)
+
+Priority 3
+
+Decision Register
+
+Priority 4
+
+Database Documentation
+
+Priority 5
+
+OpenAPI Specification
+
+Priority 6
+
+Workflow Documentation
+
+Priority 7
+
+RBAC Documentation
+
+Priority 8
+
+Coding Standards
+
+Priority 9
+
+Repository Standards
+
+Priority 10
+
+Sprint Documentation
+
+Priority 11
+
+Batch Documentation
+
+Priority 12
+
+Repository Source Code
+
+Priority 13
+
+Generated Files
+
+Priority 14
+
+Logs
+
+Priority 15
+
+Comments
+
+---
+
+# Priority 1
+
+Architecture
+
+Defines
+
+System Vision
+
+System Boundaries
+
+Core Components
+
+Domain Model
+
+Ownership
+
+Major Constraints
+
+Must always
+
+be loaded
+
+first.
+
+---
+
+# Priority 2
+
+ADR
+
+Defines
+
+Architectural Decisions
+
+Decision Context
+
+Trade-offs
+
+Alternatives
+
+Consequences
+
+ADR
+
+explains
+
+why
+
+Architecture
+
+exists
+
+in its current form.
+
+---
+
+# Priority 3
+
+Decision Register
+
+Defines
+
+currently active
+
+approved decisions.
+
+When
+
+multiple ADRs
+
+exist,
+
+Decision Register
+
+identifies
+
+which decision
+
+is active.
+
+---
+
+# Priority 4
+
+Database Documentation
+
+Defines
+
+Tables
+
+Columns
+
+Indexes
+
+Constraints
+
+Relationships
+
+Naming
+
+Migration Rules
+
+---
+
+# Priority 5
+
+OpenAPI
+
+Defines
+
+Public API
+
+Request
+
+Response
+
+Authentication
+
+Validation
+
+Error Codes
+
+Pagination
+
+Filtering
+
+Sorting
+
+---
+
+# Priority 6
+
+Workflow Documentation
+
+Defines
+
+Business Processes
+
+Approval Flow
+
+Registration Flow
+
+Verification Flow
+
+Publishing Flow
+
+Notification Flow
+
+---
+
+# Priority 7
+
+RBAC Documentation
+
+Defines
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Authorization Rules
+
+Security Policies
+
+---
+
+# Priority 8
+
+Coding Standards
+
+Defines
+
+Naming
+
+Folder Structure
+
+Architecture Layers
+
+Patterns
+
+Best Practices
+
+Formatting
+
+---
+
+# Priority 9
+
+Repository Standards
+
+Defines
+
+Packages
+
+Modules
+
+Dependencies
+
+Folder Layout
+
+Ownership
+
+Shared Libraries
+
+---
+
+# Priority 10
+
+Sprint Documentation
+
+Defines
+
+Current Sprint
+
+Scope
+
+Goals
+
+Acceptance Criteria
+
+Dependencies
+
+---
+
+# Priority 11
+
+Batch Documentation
+
+Defines
+
+Current Batch
+
+Tasks
+
+Deliverables
+
+Implementation Order
+
+---
+
+# Priority 12
+
+Repository
+
+Repository
+
+is
+
+implementation.
+
+Repository
+
+never
+
+defines
+
+architecture.
+
+Repository
+
+must
+
+follow
+
+documentation.
+
+---
+
+# Priority 13
+
+Generated Files
+
+Examples
+
+Swagger Client
+
+Prisma Client
+
+Compiled Assets
+
+Generated SDK
+
+Generated Types
+
+Generated files
+
+must never
+
+be considered
+
+authoritative.
+
+---
+
+# Priority 14
+
+Logs
+
+Logs
+
+provide
+
+runtime evidence.
+
+Logs
+
+cannot
+
+change
+
+documentation.
+
+Logs
+
+support
+
+investigation only.
+
+---
+
+# Priority 15
+
+Comments
+
+Comments
+
+have
+
+the lowest priority.
+
+Comments
+
+must never
+
+override
+
+documentation.
+
+Outdated comments
+
+must be ignored.
+
+---
+
+# Multi-Source Resolution
+
+If
+
+multiple sources
+
+exist,
+
+Claude Code
+
+must
+
+load
+
+them
+
+from highest
+
+to lowest.
+
+Stop
+
+when
+
+sufficient evidence
+
+has been collected.
+
+---
+
+# Conflict Resolution
+
+If
+
+two sources
+
+conflict,
+
+higher priority
+
+wins.
+
+Lower priority
+
+must be reported
+
+as
+
+documentation drift
+
+or
+
+implementation drift.
+
+Claude Code
+
+must never
+
+merge
+
+conflicting information.
+
+---
+
+# Missing Source
+
+If
+
+a required source
+
+does not exist,
+
+Claude Code
+
+must continue
+
+using
+
+the next
+
+available
+
+higher-level
+
+approved source.
+
+If
+
+no authoritative source
+
+exists,
+
+return
+
+NOT FOUND.
+
+---
+
+# Repository Rule
+
+Repository
+
+may confirm
+
+documentation.
+
+Repository
+
+may not
+
+replace
+
+documentation.
+
+Repository
+
+may reveal
+
+drift.
+
+Repository
+
+may not
+
+change
+
+authority.
+
+---
+
+# Generated Code Rule
+
+Generated files
+
+must never
+
+be reviewed
+
+as
+
+architectural truth.
+
+Generated files
+
+inherit
+
+their authority
+
+from
+
+the documents
+
+that produced them.
+
+---
+
+# Review Order
+
+Every review
+
+must follow
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+RBAC
+
+↓
+
+Coding Standards
+
+↓
+
+Repository Standards
+
+↓
+
+Sprint
+
+↓
+
+Batch
+
+↓
+
+Repository
+
+↓
+
+Generated Files
+
+---
+
+# Decision Rules
+
+Every conclusion
+
+must identify
+
+Primary Source
+
+Supporting Sources
+
+Evidence
+
+Priority Level
+
+Reason
+
+If
+
+multiple sources
+
+support
+
+the same conclusion,
+
+list
+
+all supporting sources.
+
+---
+
+# Validation Rules
+
+Before
+
+producing
+
+any answer,
+
+Claude Code
+
+must verify
+
+Highest priority source loaded
+
+Lower priority sources checked
+
+No unresolved conflicts
+
+Evidence collected
+
+Authority respected
+
+---
+
+# Invalid Sources
+
+The following
+
+must never
+
+be used
+
+as
+
+primary sources
+
+Chat history
+
+Personal memory
+
+Assumptions
+
+Speculation
+
+Developer opinion
+
+Future plans
+
+Temporary notes
+
+AI-generated guesses
+
+---
+
+# Compliance Rules
+
+Every review
+
+must include
+
+Primary Source
+
+Priority Level
+
+Supporting Sources
+
+Conflict Status
+
+Evidence
+
+Final Decision
+
+---
+
+# Self Verification
+
+Before responding
+
+Claude Code
+
+must verify
+
+Correct priority applied
+
+Correct source selected
+
+No skipped authority
+
+No assumptions
+
+No fabricated information
+
+No conflicting interpretation
+
+---
+
+# Success Criteria
+
+The Source Priority policy succeeds when
+
+every architectural review,
+
+documentation review,
+
+Sprint plan,
+
+Batch plan,
+
+implementation,
+
+and production decision
+
+is based on
+
+the highest available
+
+authoritative source,
+
+with all lower-priority sources
+
+used only
+
+to support,
+
+validate,
+
+or identify drift,
+
+ensuring
+
+consistent,
+
+traceable,
+
+and deterministic
+
+decision making
+
+across the entire
+
+PhuQuocHub platform.

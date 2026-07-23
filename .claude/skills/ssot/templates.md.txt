@@ -1,0 +1,27 @@
+# SSOT Report
+
+## Executive Summary
+
+## Loaded Documents
+
+| Document | Status |
+
+## Missing Documents
+
+## Documentation Conflicts
+
+## ADR Conflicts
+
+## API Conflicts
+
+## Database Conflicts
+
+## Recommendation
+
+## Final Status
+
+READY
+
+READY WITH WARNINGS
+
+BLOCKED

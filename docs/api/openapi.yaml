@@ -1,0 +1,2055 @@
+# PhuQuocHub — OpenAPI 3.1 (đặc tả contract, KHÔNG phải code).
+# Dẫn xuất từ docs/api/api.md; enum & schema khớp database.md + Data Dictionary (ORM: TypeORM).
+# Wave 2 (ADR-002 Accepted): Hotel/Restaurant/Tour = Place extension (satellite); Event = peer/Hybrid.
+openapi: 3.1.0
+
+info:
+  title: PhuQuocHub API
+  version: 1.0.0
+  description: >-
+    REST API cho nền tảng tri thức Phú Quốc (Wikipedia + Reddit + Google Maps).
+    Đa kênh: Web/Mobile (/api), Public (/public/v1, chỉ đọc), Partner (/partner/v1).
+    Mọi phản hồi bọc envelope { success, data, meta } hoặc { success, error }.
+  license:
+    name: Proprietary
+  contact:
+    name: PhuQuocHub
+
+servers:
+  - url: https://api.phuquochub.example/api
+    description: Web/Mobile (nội bộ) — base path /api; versioning /v1 hoãn tới khi ADR-010 (Proposed) được Accepted
+  - url: https://api.phuquochub.example/public/v1
+    description: Public API (chỉ đọc, API key, ghi công ODbL)
+  - url: https://api.phuquochub.example/partner/v1
+    description: Partner API (OAuth2 client-credentials)
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: RBAC
+  - name: Categories
+  - name: Places
+  - name: Contacts
+  - name: Prices
+  - name: Verification
+  - name: Hotels
+  - name: Restaurants
+  - name: Tours
+  - name: Events
+  - name: Reviews
+  - name: Community
+  - name: Business
+  - name: Media
+  - name: Weather
+  - name: AI
+  - name: Search
+  - name: Notification
+  - name: Audit
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ============================ AUTH ============================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Đăng ký tài khoản
+      operationId: authRegister
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/AuthTokenResponse' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Đăng nhập
+      operationId: authLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Làm mới access token
+      operationId: authRefresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/AuthTokenResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Đăng xuất
+      operationId: authLogout
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Xác minh email bằng token
+      operationId: authVerifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties: { token: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Yêu cầu đặt lại mật khẩu
+      operationId: authForgotPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Đặt lại mật khẩu bằng token
+      operationId: authResetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token: { type: string }
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /auth/google:
+    get:
+      tags: [Auth]
+      summary: Bắt đầu OAuth Google (redirect)
+      operationId: authGoogle
+      security: []
+      responses:
+        '302': { description: Redirect tới Google }
+
+  # ============================ USERS ============================
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Hồ sơ của tôi
+      operationId: getMe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/User' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Users]
+      summary: Cập nhật hồ sơ của tôi
+      operationId: updateMe
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: { type: string }
+                avatar_url: { type: string, format: uri }
+                preferences: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/User' } }
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Hồ sơ công khai
+      operationId: getUser
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/PublicUser' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /users/{id}/contributions:
+    get:
+      tags: [Users]
+      summary: Danh sách đóng góp của người dùng
+      operationId: getUserContributions
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { $ref: '#/components/parameters/PageParam' }
+        - { $ref: '#/components/parameters/LimitParam' }
+      responses:
+        '200': { $ref: '#/components/responses/CollectionResponse' }
+  /users/{id}/roles:
+    post:
+      tags: [Users, RBAC]
+      summary: Gán vai trò cho principal
+      operationId: assignUserRole
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role_id]
+              properties:
+                role_id: { type: string, format: uuid }
+                scope_type: { $ref: '#/components/schemas/ScopeType' }
+                business_id: { type: [string, 'null'], format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/{id}/roles/{roleId}:
+    delete:
+      tags: [Users, RBAC]
+      summary: Thu hồi vai trò
+      operationId: revokeUserRole
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { name: roleId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /users/{id}/ban:
+    post:
+      tags: [Users]
+      summary: Ban người dùng
+      operationId: banUser
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+                duration: { type: [string, 'null'] }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ============================ RBAC ============================
+  /roles:
+    get:
+      tags: [RBAC]
+      summary: Danh sách vai trò
+      operationId: listRoles
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    post:
+      tags: [RBAC]
+      summary: Tạo vai trò
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string }
+                name: { type: string }
+                description: { type: string }
+                parent_role_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Role' } }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /roles/{id}:
+    patch:
+      tags: [RBAC]
+      summary: Sửa vai trò
+      operationId: updateRole
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { type: object } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+    delete:
+      tags: [RBAC]
+      summary: Xóa vai trò (không cho xóa is_system)
+      operationId: deleteRole
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /roles/{id}/permissions:
+    post:
+      tags: [RBAC]
+      summary: Gán quyền cho vai trò
+      operationId: addRolePermission
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permission_id]
+              properties:
+                permission_id: { type: string, format: uuid }
+                effect: { $ref: '#/components/schemas/RolePermEffect' }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /roles/{id}/permissions/{permId}:
+    delete:
+      tags: [RBAC]
+      summary: Gỡ quyền khỏi vai trò
+      operationId: removeRolePermission
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { name: permId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /permissions:
+    get:
+      tags: [RBAC]
+      summary: Danh sách quyền
+      operationId: listPermissions
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ CATEGORIES ============================
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Danh sách danh mục
+      operationId: listCategories
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Category' } } }
+    post:
+      tags: [Categories]
+      summary: Tạo danh mục (cần Category.Manage)
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Category' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /categories/{id}:
+    get:
+      tags: [Categories]
+      summary: Chi tiết danh mục
+      operationId: getCategory
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Category' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Categories]
+      summary: Cập nhật danh mục (cần Category.Manage)
+      operationId: updateCategory
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Category' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Categories]
+      summary: Xóa danh mục (cần Category.Manage)
+      operationId: deleteCategory
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================ PLACES ============================
+  /places:
+    get:
+      tags: [Places]
+      summary: Danh sách địa điểm
+      operationId: listPlaces
+      security: []
+      description: >-
+        Danh sách Place công khai — CHỈ trả về Place `published`.
+        Sắp xếp CỐ ĐỊNH phía server: `rating_avg DESC NULLS LAST, created_at DESC, id ASC`
+        (khoá cuối duy nhất ⇒ phân trang xác định). Client KHÔNG điều khiển được thứ tự.
+        Phân trang theo OFFSET (`page`/`limit`); KHÔNG hỗ trợ cursor.
+        Tham số không nằm trong danh sách dưới đây bị TỪ CHỐI 400
+        (`ValidationPipe` chạy với `whitelist` + `forbidNonWhitelisted`).
+        Bộ lọc địa lý KHÔNG có ở endpoint này — dùng `/geo/nearby` hoặc `/geo/bbox`.
+      parameters:
+        - name: category
+          in: query
+          description: Lọc theo `category_id`. So khớp chính xác.
+          schema: { type: string }
+        - name: ward
+          in: query
+          description: Lọc theo tên phường/xã. So khớp chính xác.
+          schema: { type: string }
+        - name: price_range
+          in: query
+          description: Lọc theo khoảng giá. Giá trị ngoài enum → 422.
+          schema: { $ref: '#/components/schemas/PriceRange' }
+        - name: page
+          in: query
+          description: Trang, bắt đầu từ 1. Giá trị `< 1` bị TỪ CHỐI 422; bỏ trống → 1.
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          description: >-
+            Số bản ghi mỗi trang. Bỏ trống → 20. Giá trị `< 1` bị TỪ CHỐI 422.
+            LƯU Ý: giá trị `> 100` KHÔNG bị từ chối mà bị CẮT XUỐNG 100 (`clampLimit`) —
+            response vẫn 200 và `meta.pageSize` phản ánh giá trị đã cắt.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        # ---- Không được triển khai (F-6 / OD-F-6, 2026-07-23) ----
+        # Ba tham số dưới đây từng được công bố nhưng CHƯA BAO GIỜ được triển khai. Vì
+        # `forbidNonWhitelisted` đang bật, gửi chúng lên sẽ nhận HTTP 400 chứ không phải bị bỏ qua.
+        # Chúng được đánh dấu deprecated thay vì xoá thẳng: kho mã không có version control,
+        # deployment, telemetry hay client registry, nên KHÔNG thể loại trừ consumer bên ngoài.
+        - name: status
+          in: query
+          deprecated: true
+          description: >-
+            KHÔNG ĐƯỢC TRIỂN KHAI — gửi lên sẽ nhận HTTP 400. Kênh công khai luôn cố định
+            `published`. Lọc theo trạng thái là ĐẶC QUYỀN kiểm duyệt (GAP-02/04) và sẽ được
+            cung cấp qua endpoint riêng có kiểm tra quyền, không phải qua tham số công khai này.
+          schema: { $ref: '#/components/schemas/PlaceStatus' }
+        - name: sort
+          in: query
+          deprecated: true
+          description: >-
+            KHÔNG ĐƯỢC TRIỂN KHAI — gửi lên sẽ nhận HTTP 400. Thứ tự do server quyết định
+            (xem `description` của operation) và client không điều khiển được.
+          schema: { type: string }
+        - name: cursor
+          in: query
+          deprecated: true
+          description: >-
+            KHÔNG ĐƯỢC TRIỂN KHAI — gửi lên sẽ nhận HTTP 400. Endpoint này phân trang bằng
+            OFFSET (`page`/`limit`). Việc chuyển sang cursor/keyset là câu hỏi hợp đồng còn treo
+            (GAP-05/10) và cần ADR-010 (API Versioning) được chấp nhận trước.
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceCard' } }
+    post:
+      tags: [Places]
+      summary: Tạo địa điểm (đi qua contribution/revision)
+      operationId: createPlace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Place' } }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /places/{slug}:
+    get:
+      tags: [Places]
+      summary: Chi tiết địa điểm theo slug
+      operationId: getPlace
+      security: []
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Place' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /places/{id}:
+    patch:
+      tags: [Places]
+      summary: Sửa địa điểm
+      operationId: updatePlace
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/PlaceInput' } } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Places]
+      summary: Lưu trữ địa điểm (soft delete)
+      operationId: archivePlace
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /places/{id}/approve:
+    post:
+      tags: [Places]
+      summary: Duyệt & công khai địa điểm
+      operationId: approvePlace
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /places/{id}/revisions:
+    get:
+      tags: [Places]
+      summary: Lịch sử phiên bản (wiki_revisions)
+      operationId: listPlaceRevisions
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/WikiRevision' } }
+  /geo/nearby:
+    get:
+      tags: [Places]
+      summary: Địa điểm trong bán kính
+      operationId: geoNearby
+      security: []
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number } }
+        - { name: lng, in: query, required: true, schema: { type: number } }
+        - { name: radius, in: query, schema: { type: integer, description: mét } }
+        - { name: category, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceCard' } }
+  /geo/bbox:
+    get:
+      tags: [Places]
+      summary: Điểm gom cụm theo bbox
+      operationId: geoBbox
+      security: []
+      parameters:
+        - { name: minLng, in: query, required: true, schema: { type: number } }
+        - { name: minLat, in: query, required: true, schema: { type: number } }
+        - { name: maxLng, in: query, required: true, schema: { type: number } }
+        - { name: maxLat, in: query, required: true, schema: { type: number } }
+        - { name: zoom, in: query, schema: { type: integer } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+  /geo/geocode:
+    get:
+      tags: [Places]
+      summary: Geocode / reverse
+      operationId: geoGeocode
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ---- Contacts (§11.1) ----
+  /places/{id}/contacts:
+    get:
+      tags: [Contacts]
+      summary: Liên hệ của địa điểm
+      operationId: listPlaceContacts
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Contact' } } }
+    post:
+      tags: [Contacts]
+      summary: Thêm liên hệ
+      operationId: createPlaceContact
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /contacts/{id}:
+    patch:
+      tags: [Contacts]
+      summary: Sửa liên hệ
+      operationId: updateContact
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/ContactInput' } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+    delete:
+      tags: [Contacts]
+      summary: Xóa liên hệ
+      operationId: deleteContact
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ---- Prices (§11.2) ----
+  /places/{id}/prices:
+    get:
+      tags: [Prices]
+      summary: Giá hiện hành / lịch sử
+      operationId: listPlacePrices
+      security: []
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { name: history, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Price' } } }
+    post:
+      tags: [Prices]
+      summary: Thêm bản giá (append-only)
+      operationId: createPlacePrice
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PriceInput' } } }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /prices/{id}:
+    patch:
+      tags: [Prices]
+      summary: Sửa bản giá
+      operationId: updatePrice
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/PriceInput' } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ---- Verification (§11.3) ----
+  /verifications:
+    get:
+      tags: [Verification]
+      summary: Hàng đợi xác minh
+      operationId: listVerifications
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/VerificationStatus' } }
+        - { name: assigned_to, in: query, schema: { type: string, format: uuid } }
+        - { name: priority, in: query, schema: { type: integer } }
+        - { name: overdue, in: query, schema: { type: boolean } }
+        - { $ref: '#/components/parameters/SortParam' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Verification' } } }
+  /verifications/{id}:
+    get:
+      tags: [Verification]
+      summary: Chi tiết xác minh
+      operationId: getVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+  /verifications/{id}/assign:
+    post:
+      tags: [Verification]
+      summary: Nhận việc / gán moderator
+      operationId: assignVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assigned_to: { type: string, format: uuid }
+                priority: { type: integer }
+                sla_due_at: { type: string, format: date-time }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /verifications/{id}/verify:
+    post:
+      tags: [Verification]
+      summary: Đặt verified/official
+      operationId: verifyVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [verified, official] }
+                source_id: { type: [string, 'null'], format: uuid }
+                expires_at: { type: [string, 'null'], format: date-time }
+                note: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /verifications/{id}/reject:
+    post:
+      tags: [Verification]
+      summary: Bác xác minh (kèm reason_code)
+      operationId: rejectVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason_code]
+              properties:
+                reason_code: { $ref: '#/components/schemas/VerificationReasonCode' }
+                rejected_reason: { type: string }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /verifications/{id}/vote:
+    post:
+      tags: [Verification]
+      summary: Bỏ phiếu cộng đồng (idempotent)
+      operationId: voteVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vote]
+              properties:
+                vote: { type: string, enum: [confirm, dispute] }
+                note: { type: string }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /verifications/{id}/events:
+    get:
+      tags: [Verification]
+      summary: Audit trail chuyển trạng thái
+      operationId: listVerificationEvents
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ HOTELS ============================
+  /hotels:
+    get:
+      tags: [Hotels]
+      summary: Danh sách khách sạn
+      operationId: listHotels
+      security: []
+      parameters:
+        - { name: stars, in: query, schema: { type: integer, minimum: 1, maximum: 5 } }
+        - { name: amenities, in: query, schema: { type: array, items: { type: string } }, style: form, explode: true }
+        - { name: price_min, in: query, schema: { type: number } }
+        - { name: price_max, in: query, schema: { type: number } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Hotel' } } }
+  /hotels/{slug}:
+    get:
+      tags: [Hotels]
+      summary: Chi tiết khách sạn
+      operationId: getHotel
+      security: []
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Hotel' } }
+  /hotels/{id}/rooms:
+    get:
+      tags: [Hotels]
+      summary: Loại phòng
+      operationId: listHotelRooms
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    patch:
+      tags: [Hotels]
+      summary: Cập nhật loại phòng (scope Managed)
+      operationId: updateHotelRooms
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { type: object } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /hotels/{id}/amenities:
+    get:
+      tags: [Hotels]
+      summary: Tiện ích
+      operationId: listHotelAmenities
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ RESTAURANTS ============================
+  /restaurants:
+    get:
+      tags: [Restaurants]
+      summary: Danh sách nhà hàng
+      operationId: listRestaurants
+      security: []
+      parameters:
+        - { name: cuisine, in: query, schema: { type: string } }
+        - { name: price_range, in: query, schema: { $ref: '#/components/schemas/PriceRange' } }
+        - { name: open_now, in: query, schema: { type: boolean } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+  /restaurants/{slug}:
+    get:
+      tags: [Restaurants]
+      summary: Chi tiết nhà hàng
+      operationId: getRestaurant
+      security: []
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  /restaurants/{id}/menu:
+    get:
+      tags: [Restaurants]
+      summary: Thực đơn
+      operationId: getRestaurantMenu
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+    patch:
+      tags: [Restaurants]
+      summary: Cập nhật thực đơn (scope Managed)
+      operationId: updateRestaurantMenu
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/MenuInput' } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ TOURS ============================
+  /tours:
+    get:
+      tags: [Tours]
+      summary: Danh sách tour
+      operationId: listTours
+      security: []
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [diving, fishing, trekking] } }
+        - { name: duration, in: query, schema: { type: integer } }
+        - { name: price_max, in: query, schema: { type: number } }
+        - { name: departure_area, in: query, schema: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    post:
+      tags: [Tours]
+      summary: Tạo tour
+      operationId: createTour
+      requestBody:
+        content: { application/json: { schema: { type: object } } }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /tours/{slug}:
+    get:
+      tags: [Tours]
+      summary: Chi tiết tour
+      operationId: getTour
+      security: []
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  /tours/{id}/itinerary:
+    get:
+      tags: [Tours]
+      summary: Lộ trình
+      operationId: getTourItinerary
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+  /tours/{id}/schedule:
+    get:
+      tags: [Tours]
+      summary: Lịch khởi hành
+      operationId: getTourSchedule
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ EVENTS ============================
+  /events:
+    get:
+      tags: [Events]
+      summary: Danh sách sự kiện
+      operationId: listEvents
+      security: []
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { type: string, enum: [upcoming, ongoing, ended] } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    post:
+      tags: [Events]
+      summary: Tạo sự kiện
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, start_at, end_at]
+              properties:
+                title: { type: string }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+                location: { $ref: '#/components/schemas/GeoPoint' }
+                place_id: { type: [string, 'null'], format: uuid }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /events/{slug}:
+    get:
+      tags: [Events]
+      summary: Chi tiết sự kiện
+      operationId: getEvent
+      security: []
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Event' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /events/calendar:
+    get:
+      tags: [Events]
+      summary: Sự kiện theo lịch
+      operationId: getEventsCalendar
+      security: []
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ REVIEWS ============================
+  /places/{id}/reviews:
+    get:
+      tags: [Reviews]
+      summary: Đánh giá của địa điểm
+      operationId: listPlaceReviews
+      security: []
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/Review' } } }
+    post:
+      tags: [Reviews]
+      summary: Tạo đánh giá
+      operationId: createReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                content: { type: string }
+                media_ids: { type: array, items: { type: string, format: uuid } }
+      responses:
+        '201': { $ref: '#/components/responses/EmptySuccess' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{id}:
+    patch:
+      tags: [Reviews]
+      summary: Sửa đánh giá của mình
+      operationId: updateReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { type: object } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+    delete:
+      tags: [Reviews]
+      summary: Xóa đánh giá
+      operationId: deleteReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /reviews/{id}/report:
+    post:
+      tags: [Reviews]
+      summary: Báo cáo đánh giá
+      operationId: reportReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties: { reason: { type: string }, description: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /reviews/{id}/reply:
+    post:
+      tags: [Reviews]
+      summary: Chủ cơ sở phản hồi (scope Managed)
+      operationId: replyReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { content: { type: string } } } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /reviews/{id}/vote:
+    post:
+      tags: [Reviews]
+      summary: Vote hữu ích
+      operationId: voteReview
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ COMMUNITY ============================
+  /community/posts:
+    get:
+      tags: [Community]
+      summary: Bài viết cộng đồng
+      operationId: listPosts
+      security: []
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    post:
+      tags: [Community]
+      summary: Tạo bài viết
+      operationId: createPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title: { type: string }
+                content: { type: string }
+                place_id: { type: [string, 'null'], format: uuid }
+                tags: { type: array, items: { type: string } }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /community/posts/{id}:
+    patch:
+      tags: [Community]
+      summary: Sửa bài viết của mình
+      operationId: updatePost
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody: { content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /community/posts/{id}/comments:
+    post:
+      tags: [Community]
+      summary: Bình luận
+      operationId: createComment
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+                parent_id: { type: [string, 'null'], format: uuid }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /community/posts/{id}/vote:
+    post:
+      tags: [Community]
+      summary: Vote bài viết
+      operationId: votePost
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /community/comments/{id}/report:
+    post:
+      tags: [Community]
+      summary: Báo cáo bình luận
+      operationId: reportComment
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ BUSINESS ============================
+  /business/claims:
+    get:
+      tags: [Business]
+      summary: Hàng đợi claim
+      operationId: listBusinessClaims
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+    post:
+      tags: [Business]
+      summary: Gửi yêu cầu claim
+      operationId: createBusinessClaim
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [place_id, evidence]
+              properties:
+                place_id: { type: string, format: uuid }
+                evidence: { type: array, items: { type: object, additionalProperties: true } }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /business/claims/{id}/verify:
+    post:
+      tags: [Business]
+      summary: Xác minh claim (moderator)
+      operationId: verifyBusinessClaim
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                reason_code: { $ref: '#/components/schemas/ClaimReasonCode' }
+                note: { type: string }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /business/{id}/dashboard:
+    get:
+      tags: [Business]
+      summary: Dashboard cơ sở (scope Managed)
+      operationId: getBusinessDashboard
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  /business/{id}/managers:
+    post:
+      tags: [Business]
+      summary: Gán manager
+      operationId: addBusinessManager
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties: { user_id: { type: string, format: uuid }, role: { type: string, enum: [manager] } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /business/{id}/managers/{userId}:
+    delete:
+      tags: [Business]
+      summary: Thu hồi manager
+      operationId: revokeBusinessManager
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /business/{id}/transfer:
+    post:
+      tags: [Business]
+      summary: Chuyển nhượng quyền sở hữu
+      operationId: transferBusiness
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_owner_id]
+              properties: { new_owner_id: { type: string, format: uuid } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ MEDIA ============================
+  /media/presign:
+    post:
+      tags: [Media]
+      summary: Xin presigned URL upload
+      operationId: presignMedia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, size]
+              properties:
+                content_type: { type: string }
+                size: { type: integer }
+                place_id: { type: [string, 'null'], format: uuid }
+                review_id: { type: [string, 'null'], format: uuid }
+                post_id: { type: [string, 'null'], format: uuid }
+                business_id: { type: [string, 'null'], format: uuid }
+                event_id: { type: [string, 'null'], format: uuid }
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+      description: 'Đúng MỘT owner (exclusive arc 5 nhánh): place_id | review_id | post_id | business_id | event_id — ADR-009.'
+  /media:
+    post:
+      tags: [Media]
+      summary: Xác nhận media sau upload
+      operationId: createMedia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties: { key: { type: string }, caption: { type: string }, alt: { type: string } }
+      responses: { '201': { $ref: '#/components/responses/ObjectResponse' } }
+  /media/{id}:
+    delete:
+      tags: [Media]
+      summary: Xóa media
+      operationId: deleteMedia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /media/{id}/moderate:
+    post:
+      tags: [Media]
+      summary: Kiểm duyệt media
+      operationId: moderateMedia
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ WEATHER ============================
+  /weather/current:
+    get:
+      tags: [Weather]
+      summary: Thời tiết hiện tại
+      operationId: getWeatherCurrent
+      security: []
+      parameters:
+        - { name: lat, in: query, schema: { type: number } }
+        - { name: lng, in: query, schema: { type: number } }
+        - { name: area, in: query, schema: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  /weather/forecast:
+    get:
+      tags: [Weather]
+      summary: Dự báo
+      operationId: getWeatherForecast
+      security: []
+      parameters:
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 7 } }
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  /weather/marine:
+    get:
+      tags: [Weather]
+      summary: Thời tiết biển (tour)
+      operationId: getWeatherMarine
+      security: []
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+
+  # ============================ AI ============================
+  /ai/places/{id}/summary:
+    post:
+      tags: [AI]
+      summary: Sinh tóm tắt AI (bất đồng bộ)
+      operationId: aiGenerateSummary
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { language: { type: string }, force: { type: boolean } }
+      responses: { '202': { $ref: '#/components/responses/AiJobAccepted' } }
+  /ai/places/{id}/faq:
+    post:
+      tags: [AI]
+      summary: Sinh FAQ AI
+      operationId: aiGenerateFaq
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '202': { $ref: '#/components/responses/AiJobAccepted' } }
+  /ai/translate:
+    post:
+      tags: [AI]
+      summary: Dịch nội dung
+      operationId: aiTranslate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_lang]
+              properties:
+                text: { type: string }
+                entity_ref: { type: string }
+                target_lang: { type: string }
+      responses: { '202': { $ref: '#/components/responses/AiJobAccepted' } }
+  /ai/suggestions/places:
+    get:
+      tags: [AI]
+      summary: Gợi ý địa điểm (từ tín hiệu 0-kết-quả)
+      operationId: aiSuggestPlaces
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
+  # ============================ SEARCH ============================
+  /search:
+    get:
+      tags: [Search]
+      summary: Tìm kiếm trộn nhiều loại
+      operationId: search
+      security: []
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: type, in: query, schema: { type: string, enum: [place, hotel, restaurant, tour, event, community] } }
+        - { name: lat, in: query, schema: { type: number } }
+        - { name: lng, in: query, schema: { type: number } }
+        - { $ref: '#/components/parameters/PageParam' }
+        - { $ref: '#/components/parameters/CursorParam' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/SearchResult' } } }
+  /search/suggest:
+    get:
+      tags: [Search]
+      summary: Gợi ý autocomplete
+      operationId: searchSuggest
+      security: []
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+  /search/reindex:
+    post:
+      tags: [Search]
+      summary: Đánh chỉ mục lại
+      operationId: searchReindex
+      responses: { '202': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ NOTIFICATION ============================
+  /notifications:
+    get:
+      tags: [Notification]
+      summary: Danh sách thông báo
+      operationId: listNotifications
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+  /notifications/{id}/read:
+    patch:
+      tags: [Notification]
+      summary: Đánh dấu đã đọc
+      operationId: markNotificationRead
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /notifications/read-all:
+    patch:
+      tags: [Notification]
+      summary: Đánh dấu đã đọc tất cả
+      operationId: markAllNotificationsRead
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /notifications/preferences:
+    get:
+      tags: [Notification]
+      summary: Lấy tùy chọn thông báo
+      operationId: getNotificationPreferences
+      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+    patch:
+      tags: [Notification]
+      summary: Cập nhật tùy chọn
+      operationId: updateNotificationPreferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: boolean }
+                push: { type: boolean }
+                in_app: { type: boolean }
+                categories: { type: array, items: { type: string } }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /notifications/devices:
+    post:
+      tags: [Notification]
+      summary: Đăng ký thiết bị push (mobile)
+      operationId: registerDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [push_token, platform]
+              properties:
+                push_token: { type: string }
+                platform: { type: string, enum: [ios, android, web] }
+      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
+  /notifications/broadcast:
+    post:
+      tags: [Notification]
+      summary: Gửi broadcast (admin)
+      operationId: broadcastNotification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [audience, title, body]
+              properties:
+                audience: { type: string }
+                title: { type: string }
+                body: { type: string }
+      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+
+  # ============================ AUDIT (ADR-016) ============================
+  /audit:
+    get:
+      tags: [Audit]
+      summary: Nhật ký kiểm toán (append-only, chỉ đọc)
+      operationId: listAuditLogs
+      parameters:
+        - { name: event, in: query, schema: { type: string } }
+        - { name: actor_id, in: query, schema: { type: string, format: uuid } }
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: string, format: uuid } }
+        - { name: result, in: query, schema: { $ref: '#/components/schemas/AuditResult' } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: correlation_id, in: query, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/CursorParam' }
+        - { $ref: '#/components/parameters/LimitParam' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /audit/{id}:
+    get:
+      tags: [Audit]
+      summary: Chi tiết một bản ghi kiểm toán
+      operationId: getAuditLog
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/AuditLog' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /audit/entities/{entityType}/{entityId}:
+    get:
+      tags: [Audit]
+      summary: Dòng thời gian kiểm toán của một tài nguyên
+      operationId: listEntityAuditLogs
+      parameters:
+        - { name: entityType, in: path, required: true, schema: { type: string } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/CursorParam' }
+        - { $ref: '#/components/parameters/LimitParam' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# ============================ COMPONENTS ============================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    oauth2Partner:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /partner/v1/oauth/token
+          scopes:
+            hotels:write: Ghi dữ liệu khách sạn của đối tác
+            tours:write: Ghi dữ liệu tour của đối tác
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SlugPath:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string }
+    PageParam:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    LimitParam:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    CursorParam:
+      name: cursor
+      in: query
+      schema: { type: string }
+    SortParam:
+      name: sort
+      in: query
+      schema: { type: string, description: 'field_asc | field_desc' }
+
+  responses:
+    EmptySuccess:
+      description: Thành công
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, const: true }
+              data: { type: [object, 'null'] }
+    ObjectResponse:
+      description: OK
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties: { data: { type: object, additionalProperties: true } }
+    CollectionResponse:
+      description: OK (danh sách)
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties: { data: { type: array, items: { type: object, additionalProperties: true } } }
+    AuthTokenResponse:
+      description: Cấp token
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties: { data: { $ref: '#/components/schemas/AuthToken' } }
+    AiJobAccepted:
+      description: Đã nhận, xử lý nền
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties: { data: { $ref: '#/components/schemas/AiJob' } }
+    BadRequest:
+      description: Sai định dạng
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    Unauthorized:
+      description: Chưa xác thực
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    Forbidden:
+      description: Không đủ quyền
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    NotFound:
+      description: Không tìm thấy
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    Conflict:
+      description: Xung đột (trùng/optimistic lock)
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    UnprocessableEntity:
+      description: Validation thất bại
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+    TooManyRequests:
+      description: Vượt rate limit/quota
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
+
+  schemas:
+    # ---- Envelope ----
+    # F-6 / OD-F-6 (2026-07-23): đồng bộ với envelope THỰC TẾ do common/pagination.ts `paginate()`
+    # phát ra và với PaginationMeta trong @phuquochub/shared-types. Trước đây khai `limit` và
+    # `next_cursor` — runtime không hề phát hai trường đó.
+    Meta:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time, description: 'ISO timestamp phía server.' }
+        requestId: { type: string, description: 'Mã trace/correlation, nếu có.' }
+        page: { type: integer, description: 'Trang hiện tại, bắt đầu từ 1.' }
+        pageSize: { type: integer, description: 'Số bản ghi mỗi trang SAU khi đã cắt trần (clampLimit).' }
+        total: { type: integer, description: 'Tổng số bản ghi khớp bộ lọc.' }
+        totalPages: { type: integer, description: 'ceil(total / pageSize); 0 khi pageSize = 0.' }
+        quota_remaining:
+          type: integer
+          deprecated: true
+          description: 'KHÔNG được phát ra bởi các endpoint danh sách hiện có.'
+        next_cursor:
+          type: [string, 'null']
+          deprecated: true
+          description: >-
+            KHÔNG được phát ra — chưa có endpoint nào phân trang bằng cursor. Xem GAP-05/10.
+    SuccessEnvelope:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [PLACE_NOT_FOUND] }
+            message: { type: string }
+            details: { type: array, items: { type: object, additionalProperties: true } }
+
+    # ---- Enums ----
+    PlaceStatus: { type: string, enum: [draft, pending, published, archived] }
+    PriceRange: { type: string, enum: [free, low, mid, high] }
+    VerificationStatus: { type: string, enum: [pending, verified, official, community_verified, expired, rejected] }
+    VerificationReasonCode: { type: string, enum: [duplicate, fabricated, outdated, insufficient_evidence, policy_violation, wrong_target, other] }
+    ClaimReasonCode: { type: string, enum: [insufficient_evidence, duplicate, fraud, wrong_target, other] }
+    ScopeType: { type: string, enum: [global, managed, own] }
+    RolePermEffect: { type: string, enum: [allow, deny] }
+    AuditResult: { type: string, enum: [success, failure, allow, deny] }
+
+    # ---- Common ----
+    GeoPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number }
+        lng: { type: number }
+    AuthToken:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer }
+        user: { $ref: '#/components/schemas/User' }
+
+    # ---- Entities ----
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        avatar_url: { type: [string, 'null'], format: uri }
+        roles: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+    PublicUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        avatar_url: { type: [string, 'null'], format: uri }
+    Role:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        is_system: { type: boolean }
+        permissions: { type: array, items: { type: string } }
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        name_vi: { type: string }
+        name_en: { type: [string, 'null'] }
+        icon: { type: [string, 'null'] }
+        parent_id: { type: [string, 'null'], format: uuid }
+    CategoryCreate:
+      type: object
+      required: [name_vi]
+      properties:
+        name_vi: { type: string, maxLength: 120 }
+        name_en: { type: string, maxLength: 120 }
+        icon: { type: string, maxLength: 120 }
+        slug: { type: string, maxLength: 120, description: Bỏ trống → tự sinh từ name_vi }
+        parent_id: { type: string, format: uuid }
+    CategoryUpdate:
+      type: object
+      properties:
+        name_vi: { type: string, maxLength: 120 }
+        name_en: { type: string, maxLength: 120 }
+        icon: { type: string, maxLength: 120 }
+        parent_id: { type: string, format: uuid }
+    PlaceCard:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        category_id: { type: string, format: uuid }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        short_description: { type: [string, 'null'] }
+        price_range: { $ref: '#/components/schemas/PriceRange' }
+        cover_image_url: { type: [string, 'null'], format: uri }
+        rating_avg: { type: [number, 'null'] }
+        rating_count: { type: integer }
+        verification_status: { $ref: '#/components/schemas/VerificationStatus' }
+        # F-17 / OD-F-17 (2026-07-23): runtime LUÔN phát trường này (CARD_COLS chọn p.status;
+        # places.mapper.ts đặt vô điều kiện) nhưng schema trước đây không khai. Đây là TRẠNG THÁI
+        # XUẤT BẢN, KHÔNG phải giờ mở cửa của cơ sở (giờ mở cửa nằm ở `opening_hours`). Dùng đúng
+        # enum PlaceStatus đã có sẵn — enum này vốn ĐÃ công khai qua schema `Place` bên dưới, nên
+        # việc khai ở đây không lộ thêm bất kỳ thông tin nào và payload không đổi một byte.
+        # Kênh công khai chỉ có thể quan sát `published` vì read công khai lọc theo trạng thái đó.
+        status: { $ref: '#/components/schemas/PlaceStatus' }
+        distance_m: { type: [number, 'null'] }
+    Place:
+      allOf:
+        - $ref: '#/components/schemas/PlaceCard'
+        - type: object
+          properties:
+            address: { type: [string, 'null'] }
+            ward: { type: [string, 'null'] }
+            description: { type: [string, 'null'] }
+            opening_hours: { type: [object, 'null'], additionalProperties: true }
+            status: { $ref: '#/components/schemas/PlaceStatus' }
+            osm_id: { type: [integer, 'null'] }
+            contacts: { type: array, items: { $ref: '#/components/schemas/Contact' } }
+            prices: { type: array, items: { $ref: '#/components/schemas/Price' } }
+            media: { type: array, items: { $ref: '#/components/schemas/Media' } }
+            faqs: { type: array, items: { type: object, additionalProperties: true } }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    PlaceInput:
+      type: object
+      required: [name, category_id, location]
+      properties:
+        name: { type: string, maxLength: 200 }
+        category_id: { type: string, format: uuid }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        address: { type: string }
+        ward: { type: string }
+        description: { type: string }
+        short_description: { type: string, maxLength: 300 }
+        opening_hours: { type: object, additionalProperties: true }
+        price_range: { $ref: '#/components/schemas/PriceRange' }
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        owner_type: { type: string, examples: [place, business] }
+        contact_type: { type: string, examples: [HOTLINE, PHONE, EMAIL, WEBSITE, FACEBOOK] }
+        value: { type: string }
+        label: { type: [string, 'null'] }
+        is_primary: { type: boolean }
+        verification_status: { $ref: '#/components/schemas/VerificationStatus' }
+        display_order: { type: integer }
+    ContactInput:
+      type: object
+      required: [contact_type, value]
+      properties:
+        contact_type: { type: string }
+        value: { type: string }
+        label: { type: string }
+        is_primary: { type: boolean }
+        display_order: { type: integer }
+    Price:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        service_name: { type: string }
+        amount: { type: number }
+        currency: { type: string, examples: [VND] }
+        unit: { type: [string, 'null'] }
+        is_free: { type: boolean }
+        valid_from: { type: [string, 'null'], format: date-time }
+        valid_to: { type: [string, 'null'], format: date-time }
+        verification_status: { $ref: '#/components/schemas/VerificationStatus' }
+    PriceInput:
+      type: object
+      required: [service_name, amount]
+      properties:
+        service_name: { type: string }
+        amount: { type: number, minimum: 0 }
+        currency: { type: string }
+        unit: { type: string }
+        is_free: { type: boolean }
+        valid_from: { type: string, format: date-time }
+        valid_to: { type: string, format: date-time }
+        display_order: { type: integer }
+    Media:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [image, video] }
+        url: { type: string, format: uri }
+        thumbnail_url: { type: [string, 'null'], format: uri }
+        caption: { type: [string, 'null'] }
+        alt_text: { type: [string, 'null'] }
+        status: { type: string, enum: [pending, published, hidden, rejected] }
+    Verification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        place_id: { type: [string, 'null'], format: uuid }
+        contact_id: { type: [string, 'null'], format: uuid }
+        price_history_id: { type: [string, 'null'], format: uuid }
+        status: { $ref: '#/components/schemas/VerificationStatus' }
+        method: { type: string, enum: [moderator, owner_claim, source_match, community_vote, system_auto] }
+        confirm_count: { type: integer }
+        dispute_count: { type: integer }
+        lock_version: { type: integer }
+        sla_due_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: [string, 'null'], format: date-time }
+    WikiRevision:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        revision_number: { type: integer }
+        origin: { type: string }
+        status: { type: string, enum: [pending, approved, rejected, reverted] }
+        editor_id: { type: [string, 'null'], format: uuid }
+        change_note: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+    Hotel:
+      allOf:
+        - $ref: '#/components/schemas/Place'
+        - type: object
+          properties:
+            star_rating: { type: [integer, 'null'], minimum: 1, maximum: 5 }
+            hotel_type: { type: string, enum: [resort, hotel, homestay, villa, guesthouse, apartment] }
+            check_in: { type: [string, 'null'] }
+            check_out: { type: [string, 'null'] }
+            amenities: { type: array, items: { type: string } }
+            room_types: { type: array, items: { $ref: '#/components/schemas/RoomType' } }
+    RoomType:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        capacity: { type: integer }
+        amenities: { type: array, items: { type: string } }
+        price_ref: { type: [number, 'null'] }
+    MenuInput:
+      type: object
+      properties:
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string }
+                    price: { type: number }
+                    tags: { type: array, items: { type: string } }
+    SearchResult:
+      type: object
+      properties:
+        type: { type: string, enum: [place, hotel, restaurant, tour, event, community] }
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        score: { type: number }
+        snippet: { type: [string, 'null'] }
+    AiJob:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, examples: [generating] }
+    Amenity:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        label_vi: { type: string }
+        label_en: { type: string }
+        icon: { type: [string, 'null'] }
+        group: { type: [string, 'null'] }
+    Event:
+      type: object
+      description: 'Thực thể peer (Hybrid) — KHÔNG phải Place extension. ADR-002; database.md §3.22.'
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        slug: { type: string }
+        description: { type: [string, 'null'] }
+        cover_media_id: { type: [string, 'null'], format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        timezone: { type: string, examples: [Asia/Ho_Chi_Minh] }
+        place_id: { type: [string, 'null'], format: uuid }
+        organizer_id: { type: [string, 'null'], format: uuid }
+        event_category: { type: [string, 'null'], examples: [festival, music, food, cultural] }
+        status: { type: string, enum: [draft, pending, published, archived] }
+        status_override: { type: [string, 'null'], enum: [cancelled, postponed, null] }
+        recurrence_rule: { type: [string, 'null'] }
+        time_status: { type: string, enum: [upcoming, ongoing, ended], description: 'suy diễn từ start_at/end_at/now — không lưu' }
+        created_at: { type: string, format: date-time }
+    EventOccurrence:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        status_override: { type: [string, 'null'], enum: [cancelled, postponed, null] }
+    AuditLog:
+      type: object
+      description: >-
+        Nhật ký kiểm toán bất biến (append-only) — ADR-016, database.md §3.21.
+        Đa hình qua entity_type/entity_id (không FK cứng). Chỉ đọc.
+      properties:
+        id: { type: string, format: uuid }
+        event: { type: string, examples: [place.status_changed, business.claim_approved, auth.login.success] }
+        actor_id: { type: [string, 'null'], format: uuid }
+        actor_role: { type: [string, 'null'] }
+        is_service_account: { type: boolean }
+        permission: { type: [string, 'null'] }
+        scope: { type: [string, 'null'], examples: [Own, Managed, Any] }
+        entity_type: { type: string }
+        entity_id: { type: [string, 'null'], format: uuid }
+        result: { $ref: '#/components/schemas/AuditResult' }
+        ip: { type: [string, 'null'] }
+        user_agent: { type: [string, 'null'] }
+        context: { type: [object, 'null'], additionalProperties: true }
+        correlation_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }

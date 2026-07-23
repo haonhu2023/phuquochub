@@ -1,0 +1,975 @@
+# Consistency Rules
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Consistency Rules
+
+for the PhuQuocHub platform.
+
+Consistency Rules
+
+ensure
+
+every authoritative artifact
+
+remains synchronized,
+
+internally consistent,
+
+and fully traceable.
+
+These rules
+
+prevent
+
+Architecture Drift,
+
+Documentation Drift,
+
+Database Drift,
+
+API Drift,
+
+Workflow Drift,
+
+Repository Drift,
+
+and Implementation Drift.
+
+---
+
+# Mission
+
+Guarantee
+
+that every layer
+
+of the platform
+
+describes
+
+the same system,
+
+using
+
+the same terminology,
+
+the same structure,
+
+the same contracts,
+
+and the same business rules.
+
+---
+
+# Fundamental Principle
+
+Consistency
+
+means
+
+every artifact
+
+describes
+
+exactly
+
+the same reality.
+
+If
+
+two authoritative artifacts
+
+describe
+
+different realities,
+
+the repository
+
+is inconsistent.
+
+---
+
+# Scope
+
+Consistency applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standards
+
+Repository Standards
+
+Sprint Documentation
+
+Batch Documentation
+
+Repository
+
+Backend
+
+Frontend
+
+Database Schema
+
+Migrations
+
+Tests
+
+Deployment
+
+Monitoring
+
+Generated Artifacts
+
+---
+
+# Rule Group 1
+
+Architecture Consistency
+
+Architecture
+
+must be consistent
+
+with
+
+ADR
+
+Decision Register
+
+Domain Model
+
+Component Diagram
+
+Container Diagram
+
+Context Diagram
+
+No component
+
+may exist
+
+outside
+
+Architecture.
+
+---
+
+# Rule Group 2
+
+ADR Consistency
+
+Every ADR
+
+must
+
+reference
+
+Architecture.
+
+Every ADR
+
+must
+
+appear
+
+inside
+
+Decision Register.
+
+Superseded ADRs
+
+must remain
+
+archived.
+
+No active ADR
+
+may contradict
+
+another active ADR.
+
+---
+
+# Rule Group 3
+
+Decision Register Consistency
+
+Every active decision
+
+must reference
+
+Architecture
+
+ADR
+
+Affected Modules
+
+Affected Documents
+
+Approval Date
+
+Owner
+
+Status
+
+---
+
+# Rule Group 4
+
+Database Documentation Consistency
+
+Database Documentation
+
+must match
+
+ERD
+
+Data Dictionary
+
+Prisma Schema
+
+Database Migrations
+
+Entities
+
+Indexes
+
+Constraints
+
+Relationships
+
+Naming Convention
+
+No undocumented
+
+table
+
+column
+
+constraint
+
+or index
+
+is permitted.
+
+---
+
+# Rule Group 5
+
+Prisma Consistency
+
+Prisma Schema
+
+must match
+
+Database Documentation.
+
+Every model
+
+must have
+
+a documented table.
+
+Every relation
+
+must exist
+
+inside ERD.
+
+---
+
+# Rule Group 6
+
+Migration Consistency
+
+Every migration
+
+must
+
+implement
+
+approved documentation.
+
+Migration
+
+must never
+
+introduce
+
+undocumented objects.
+
+Migration history
+
+must remain immutable.
+
+---
+
+# Rule Group 7
+
+OpenAPI Consistency
+
+Every endpoint
+
+must exist
+
+inside
+
+OpenAPI.
+
+Every request DTO
+
+must match
+
+OpenAPI schema.
+
+Every response DTO
+
+must match
+
+OpenAPI schema.
+
+Every validation rule
+
+must match
+
+OpenAPI.
+
+---
+
+# Rule Group 8
+
+Backend Consistency
+
+Controllers
+
+must implement
+
+OpenAPI.
+
+Services
+
+must implement
+
+Workflow.
+
+Repositories
+
+must implement
+
+Database Documentation.
+
+Authorization
+
+must implement
+
+RBAC.
+
+---
+
+# Rule Group 9
+
+Frontend Consistency
+
+Frontend
+
+must consume
+
+documented endpoints only.
+
+No undocumented API
+
+may be called.
+
+UI validation
+
+must match
+
+backend validation.
+
+---
+
+# Rule Group 10
+
+Workflow Consistency
+
+Business Logic
+
+must match
+
+Workflow.
+
+Approval
+
+must match
+
+Workflow.
+
+Registration
+
+must match
+
+Workflow.
+
+Publishing
+
+must match
+
+Workflow.
+
+---
+
+# Rule Group 11
+
+RBAC Consistency
+
+Roles
+
+must match
+
+Permission Matrix.
+
+Permissions
+
+must match
+
+Guards.
+
+Guards
+
+must match
+
+OpenAPI.
+
+OpenAPI
+
+must declare
+
+authorization.
+
+---
+
+# Rule Group 12
+
+Naming Consistency
+
+Naming
+
+must remain consistent
+
+across
+
+Database
+
+Prisma
+
+Backend
+
+Frontend
+
+OpenAPI
+
+Documentation
+
+Repository
+
+No mixed conventions
+
+inside
+
+one layer.
+
+---
+
+# Rule Group 13
+
+Repository Consistency
+
+Repository
+
+must match
+
+Repository Standards.
+
+Folder Structure
+
+Module Boundaries
+
+Dependencies
+
+Ownership
+
+must remain compliant.
+
+---
+
+# Rule Group 14
+
+Testing Consistency
+
+Unit Tests
+
+must validate
+
+Services.
+
+Integration Tests
+
+must validate
+
+Modules.
+
+E2E Tests
+
+must validate
+
+Workflows.
+
+Test Cases
+
+must match
+
+Acceptance Criteria.
+
+---
+
+# Rule Group 15
+
+Deployment Consistency
+
+Deployment
+
+must match
+
+Deployment Guide.
+
+Infrastructure
+
+must match
+
+Environment Documentation.
+
+Monitoring
+
+must match
+
+Monitoring Guide.
+
+Rollback
+
+must exist.
+
+---
+
+# Rule Group 16
+
+Documentation Consistency
+
+All documentation
+
+must
+
+share
+
+the same terminology.
+
+The same concept
+
+must never
+
+have
+
+multiple names.
+
+Duplicate documentation
+
+is prohibited.
+
+---
+
+# Rule Group 17
+
+Generated Artifact Consistency
+
+Generated SDK
+
+must match
+
+OpenAPI.
+
+Generated Prisma Client
+
+must match
+
+Prisma Schema.
+
+Generated files
+
+must never
+
+be edited manually.
+
+---
+
+# Rule Group 18
+
+Cross Reference Consistency
+
+Every reference
+
+must point
+
+to
+
+an existing document.
+
+Broken references
+
+are prohibited.
+
+Circular references
+
+are prohibited.
+
+---
+
+# Rule Group 19
+
+Version Consistency
+
+Architecture
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Database Documentation
+
+Workflow
+
+Repository
+
+must reference
+
+compatible versions.
+
+Mixed versions
+
+are prohibited.
+
+---
+
+# Rule Group 20
+
+Production Consistency
+
+Production
+
+must match
+
+Approved Documentation.
+
+Running services
+
+must match
+
+Released version.
+
+Production
+
+must never
+
+contain
+
+undocumented features.
+
+---
+
+# Drift Classification
+
+Detected inconsistencies
+
+must be classified as
+
+Architecture Drift
+
+Documentation Drift
+
+Database Drift
+
+OpenAPI Drift
+
+Workflow Drift
+
+RBAC Drift
+
+Repository Drift
+
+Security Drift
+
+Performance Drift
+
+Testing Drift
+
+Deployment Drift
+
+Configuration Drift
+
+Naming Drift
+
+Version Drift
+
+---
+
+# Severity Levels
+
+Critical
+
+System integrity compromised.
+
+High
+
+Major architectural inconsistency.
+
+Medium
+
+Partial synchronization failure.
+
+Low
+
+Documentation inconsistency.
+
+Informational
+
+Future improvement.
+
+---
+
+# Validation Process
+
+Every review
+
+must execute
+
+Load Documentation
+
+↓
+
+Load Repository
+
+↓
+
+Map Dependencies
+
+↓
+
+Compare Artifacts
+
+↓
+
+Detect Drift
+
+↓
+
+Assign Severity
+
+↓
+
+Collect Evidence
+
+↓
+
+Generate Report
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Architecture conflicts
+
+ADR conflicts
+
+Decision Register conflicts
+
+OpenAPI conflicts
+
+Database conflicts
+
+Workflow conflicts
+
+RBAC conflicts
+
+Repository conflicts
+
+Critical drift
+
+Unresolved dependency
+
+Missing authority
+
+---
+
+# Compliance Checklist
+
+Verify
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Repository
+
+Backend
+
+Frontend
+
+Testing
+
+Deployment
+
+Monitoring
+
+Documentation
+
+Naming
+
+Versioning
+
+Dependencies
+
+Cross References
+
+Evidence
+
+---
+
+# Self Verification
+
+Before publishing
+
+Claude Code
+
+must verify
+
+Every rule applied
+
+Every artifact checked
+
+No skipped dependency
+
+Evidence collected
+
+Severity assigned
+
+Recommendations generated
+
+No undocumented assumptions
+
+---
+
+# Success Criteria
+
+The Consistency Rules succeed when
+
+every document,
+
+every database object,
+
+every API,
+
+every workflow,
+
+every repository module,
+
+every deployment,
+
+and every production artifact
+
+represent
+
+the same authoritative system,
+
+allowing
+
+Architecture Review,
+
+Documentation Freeze,
+
+Sprint Acceptance,
+
+Production Gate,
+
+and every governance process
+
+to produce
+
+repeatable,
+
+deterministic,
+
+and evidence-based results,
+
+with zero unresolved drift
+
+across the entire
+
+PhuQuocHub platform.

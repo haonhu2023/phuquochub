@@ -1,0 +1,86 @@
+schema_version: "1.0"
+
+id: F-6
+title: "openapi listPlaces publishes query parameters the runtime rejects with HTTP 400 (GAP-05/10)"
+workstream: place
+origin:
+  register: BUILD_001 gap register (GAP-05/10)
+  recorded_in: delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md
+  consolidated_by: docs/delivery/reports/PLACE-010-release-readiness-assessment.md
+
+decision_status: APPROVED             # OD-F-6, owner instruction 2026-07-23
+implementation_status: DONE           # PLACE-017, 2026-07-23 — documentation only
+validation_status: PASSED             # contract check exit 0; openapi parses; jest places 105/105 unchanged; tsc exit 0
+release_blocker_status: CLEARED       # on the pre-committed conditions below
+
+interim_state: REMEDIATED
+
+cleared_note: >-
+  What made F-6 a release blocker was that three published parameters (status, sort, cursor)
+  returned HTTP 400 and the pagination envelope did not match its declared Meta schema. openapi
+  listPlaces, api.md §6/§11 and Meta are now reconciled with the runtime; the three unimplemented
+  parameters carry explicit deprecation notes stating the 400 behaviour, rather than being deleted
+  silently. An automated contract check parses ListPlacesQueryDto's property names from source and
+  proves documented-ACTIVE == runtime-ACCEPTED. All four conditions under
+  clears_release_blocker_when were pre-committed before the task ran and all four are met.
+
+residual_non_blocking: >-
+  Whether cursor pagination and client-controlled sorting SHOULD exist remains the parked GAP-05/10
+  product question, which needs ADR-010 (API Versioning) to move from Proposed to Accepted before a
+  versioned transition is even expressible. This task made the contract truthful; it did not decide
+  the roadmap. External API consumers remain UNKNOWN and unverifiable, which is why deprecation
+  rather than deletion was used.
+
+decision:
+  id: OD-F-6
+  option: F6-A
+  record: docs/delivery/decisions/OWNER-DECISION-F-6.md
+  date: "2026-07-23"
+  owner: Project Owner
+  approval_source: owner instruction
+  summary: >-
+    OpenAPI and related documentation follow the validated runtime. Documentation-only parameters
+    are removed or deprecated; actual defaults, limits, allowed values, validation, sorting and
+    pagination semantics are documented. Runtime behaviour is preserved and no unused runtime
+    feature is added to satisfy stale documentation. Because external consumer usage cannot be
+    ruled out, a previously published parameter carries an explicit deprecation note rather than
+    being deleted silently.
+
+current_state:
+  validation_pipe: "apps/api/src/main.ts:20 — whitelist + forbidNonWhitelisted ⇒ undocumented-in-DTO params return HTTP 400, not ignored"
+  matching_parameters: [category, ward, price_range, page]
+  partial:
+    - "limit — openapi declares max 100; runtime clampLimit SILENTLY CAPS at 100 rather than rejecting"
+  breaking:
+    - "status — published in openapi + api.md:182; absent from DTO ⇒ HTTP 400"
+    - "sort — published; absent ⇒ HTTP 400; ordering is fixed by PLACE-004"
+    - "cursor — published; absent ⇒ HTTP 400; pagination is offset-only"
+  undocumented_divergence:
+    - "response meta: openapi Meta declares page/limit/total/next_cursor/quota_remaining; runtime emits page/pageSize/total/totalPages/timestamp"
+  security_note: >-
+    places.service.ts:49-50 deliberately does NOT forward `status` — status filtering is a
+    moderation privilege. That omission is the GAP-02/04 fix pinned by PLACE-008/PLACE-009 specs.
+    Implementing the published public `status` filter would reverse it. This is why F6-B was
+    rejected.
+  in_repo_consumer: >-
+    apps/web/src/modules/places/api/places.api.ts sends category, ward, price_range, page, limit
+    only; uses none of status/sort/cursor and ignores meta entirely.
+
+remediation_task: PLACE-017           # COMPLETED 2026-07-23
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-017-openapi-alignment-report.md
+  evidence_index: docs/delivery/evidence/PLACE-017-openapi-alignment-evidence-index.md
+
+blocks_release_because: >-
+  Three published, publicly documented query parameters fail with HTTP 400, and the pagination
+  envelope does not match its declared schema.
+
+clears_release_blocker_when:
+  - "openapi listPlaces + api.md + Meta reconciled with runtime"
+  - "deprecation notes applied where external usage cannot be ruled out"
+  - "a contract check proves documented and accepted parameter sets agree"
+  - "runtime behaviour provably unchanged (existing specs pass unmodified)"
+
+not_claimed:
+  - "external API consumers are UNKNOWN and unverifiable — no VCS, deployment, telemetry or client registry"
+  - "zero repository search hits is NOT treated as proof that no external consumer exists"

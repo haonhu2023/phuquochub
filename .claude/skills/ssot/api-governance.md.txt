@@ -1,0 +1,942 @@
+# API Governance
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief API Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Critical
+
+Classification
+
+Internal
+
+---
+
+# Purpose
+
+This document defines
+
+the official API Governance
+
+for
+
+the PhuQuocHub platform.
+
+API Governance
+
+ensures
+
+every API
+
+is designed,
+
+implemented,
+
+documented,
+
+versioned,
+
+secured,
+
+validated,
+
+and maintained
+
+using
+
+one unified standard.
+
+Every public
+
+and internal API
+
+must comply
+
+with this policy.
+
+---
+
+# Mission
+
+Guarantee
+
+Consistent APIs
+
+Stable Contracts
+
+Predictable Behavior
+
+High Performance
+
+Strong Security
+
+Easy Integration
+
+Long-term Maintainability
+
+---
+
+# API Principles
+
+Every API
+
+must be
+
+Resource Oriented
+
+Stateless
+
+Versioned
+
+Documented
+
+Validated
+
+Secure
+
+Observable
+
+Traceable
+
+Backward Compatible
+
+---
+
+# API Architecture
+
+Client
+
+↓
+
+API Gateway
+
+↓
+
+Application Service
+
+↓
+
+Domain Service
+
+↓
+
+Repository
+
+↓
+
+Database
+
+Business Logic
+
+must never
+
+exist
+
+inside
+
+Controller.
+
+---
+
+# API Styles
+
+Supported
+
+REST
+
+Webhook
+
+Internal RPC
+
+Event-driven API
+
+GraphQL
+
+only
+
+when
+
+approved
+
+by Architecture Review.
+
+---
+
+# REST Principles
+
+Use
+
+Resources
+
+instead of
+
+Actions.
+
+Correct
+
+GET /places
+
+POST /places
+
+GET /places/{id}
+
+PATCH /places/{id}
+
+DELETE /places/{id}
+
+Avoid
+
+/createPlace
+
+/updatePlace
+
+/deletePlace
+
+---
+
+# URL Naming
+
+URLs
+
+must use
+
+kebab-case
+
+Plural Resources
+
+Examples
+
+/places
+
+/hotels
+
+/restaurants
+
+/events
+
+/users
+
+/bookings
+
+/reviews
+
+---
+
+# HTTP Methods
+
+GET
+
+Read
+
+POST
+
+Create
+
+PUT
+
+Replace
+
+PATCH
+
+Partial Update
+
+DELETE
+
+Remove
+
+OPTIONS
+
+Discovery
+
+HEAD
+
+Metadata
+
+---
+
+# Response Format
+
+Every response
+
+must include
+
+success
+
+data
+
+meta
+
+errors
+
+requestId
+
+timestamp
+
+version
+
+---
+
+Success Example
+
+{
+  "success": true,
+  "data": {},
+  "meta": {},
+  "requestId": "...",
+  "timestamp": "...",
+  "version": "v1"
+}
+
+---
+
+Error Example
+
+{
+  "success": false,
+  "errors": [
+    {
+      "code": "...",
+      "message": "...",
+      "field": "..."
+    }
+  ],
+  "requestId": "...",
+  "timestamp": "...",
+  "version": "v1"
+}
+
+---
+
+# HTTP Status Codes
+
+200 OK
+
+201 Created
+
+202 Accepted
+
+204 No Content
+
+400 Bad Request
+
+401 Unauthorized
+
+403 Forbidden
+
+404 Not Found
+
+409 Conflict
+
+422 Validation Error
+
+429 Too Many Requests
+
+500 Internal Server Error
+
+503 Service Unavailable
+
+---
+
+# Versioning
+
+URI Versioning
+
+/v1
+
+/v2
+
+/v3
+
+Major changes
+
+require
+
+new version.
+
+Breaking changes
+
+must never
+
+appear
+
+inside
+
+existing versions.
+
+---
+
+# Pagination
+
+Large collections
+
+must support
+
+page
+
+limit
+
+sort
+
+order
+
+cursor
+
+when applicable.
+
+Response
+
+must include
+
+total
+
+page
+
+pageSize
+
+hasNext
+
+hasPrevious
+
+---
+
+# Filtering
+
+Support
+
+exact match
+
+partial match
+
+date range
+
+status
+
+category
+
+location
+
+price
+
+rating
+
+Filtering
+
+must be documented
+
+inside OpenAPI.
+
+---
+
+# Sorting
+
+Support
+
+sort
+
+order
+
+Examples
+
+?sort=name
+
+?sort=createdAt
+
+?order=asc
+
+?order=desc
+
+---
+
+# Field Selection
+
+Support
+
+fields
+
+parameter
+
+Example
+
+?fields=id,name,address
+
+Avoid
+
+returning
+
+unnecessary data.
+
+---
+
+# Validation
+
+Every request
+
+must validate
+
+Schema
+
+Required Fields
+
+Length
+
+Range
+
+Format
+
+Business Rules
+
+Relationships
+
+Authorization
+
+---
+
+# Authentication
+
+Supported
+
+OAuth2
+
+JWT
+
+OpenID Connect
+
+API Keys
+
+Internal Service Tokens
+
+Anonymous APIs
+
+must be
+
+explicitly approved.
+
+---
+
+# Authorization
+
+Authorization
+
+must follow
+
+RBAC
+
+Permission Matrix
+
+Least Privilege
+
+Every endpoint
+
+must define
+
+required permissions.
+
+---
+
+# Rate Limiting
+
+Public APIs
+
+100 Requests
+
+per Minute
+
+Authenticated APIs
+
+1000 Requests
+
+per Minute
+
+Limits
+
+must be configurable.
+
+---
+
+# Idempotency
+
+Required
+
+for
+
+Payment
+
+Booking
+
+Reservation
+
+Webhook
+
+Retry Operations
+
+Idempotency Key
+
+must be supported.
+
+---
+
+# Error Handling
+
+Errors
+
+must be
+
+Consistent
+
+Predictable
+
+Documented
+
+Localized
+
+Traceable
+
+Every error
+
+must have
+
+Code
+
+Message
+
+Details
+
+Request ID
+
+---
+
+# API Documentation
+
+Every endpoint
+
+must define
+
+Purpose
+
+Authentication
+
+Authorization
+
+Parameters
+
+Request Body
+
+Response Body
+
+Examples
+
+Errors
+
+Rate Limits
+
+---
+
+# OpenAPI
+
+OpenAPI
+
+is mandatory.
+
+Every endpoint
+
+must exist
+
+inside
+
+OpenAPI.
+
+Repository
+
+must implement
+
+OpenAPI.
+
+---
+
+# Webhook Standards
+
+Every webhook
+
+must include
+
+Event Type
+
+Timestamp
+
+Signature
+
+Payload Version
+
+Retry Count
+
+Request ID
+
+Signature Validation
+
+is mandatory.
+
+---
+
+# API Deprecation
+
+Deprecated APIs
+
+must define
+
+Deprecation Date
+
+Removal Date
+
+Migration Guide
+
+Replacement Endpoint
+
+Minimum Support
+
+12 Months
+
+---
+
+# Performance Targets
+
+GET
+
+<200 ms
+
+POST
+
+<500 ms
+
+Authentication
+
+<300 ms
+
+Search
+
+<400 ms
+
+---
+
+# Security
+
+Every API
+
+must implement
+
+HTTPS
+
+TLS
+
+Input Validation
+
+Output Encoding
+
+Rate Limiting
+
+Audit Logging
+
+Request ID
+
+Trace ID
+
+No sensitive data
+
+inside
+
+URLs
+
+or
+
+Logs.
+
+---
+
+# Monitoring
+
+Monitor
+
+Response Time
+
+Error Rate
+
+Availability
+
+Throughput
+
+Latency
+
+Rate Limit
+
+Authentication Failures
+
+Authorization Failures
+
+---
+
+# API Metrics
+
+Availability
+
+Latency
+
+P95
+
+P99
+
+Error Rate
+
+Success Rate
+
+Traffic
+
+Payload Size
+
+Cache Hit Rate
+
+---
+
+# Compliance Rules
+
+API Governance
+
+is compliant
+
+only when
+
+OpenAPI exists
+
+Version defined
+
+Authentication enabled
+
+Authorization enabled
+
+Validation implemented
+
+Monitoring enabled
+
+Documentation complete
+
+Evidence collected
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+No OpenAPI
+
+Authentication Missing
+
+Authorization Missing
+
+Validation Missing
+
+Undocumented Endpoint
+
+Breaking Change
+
+Rate Limit Missing
+
+Critical Security Issue
+
+---
+
+# Self Verification
+
+Before approval
+
+Claude Code
+
+must verify
+
+OpenAPI synchronized
+
+Naming correct
+
+Responses standardized
+
+Errors documented
+
+Authentication verified
+
+Authorization verified
+
+Performance targets met
+
+Monitoring configured
+
+Evidence attached
+
+---
+
+# Success Criteria
+
+The API Governance succeeds when
+
+every API
+
+within the PhuQuocHub platform
+
+follows
+
+one unified,
+
+secure,
+
+well-documented,
+
+versioned,
+
+high-performance,
+
+and backward-compatible standard,
+
+allowing
+
+Frontend,
+
+Mobile,
+
+Third-party integrations,
+
+AI Agents,
+
+and internal services
+
+to communicate
+
+reliably,
+
+predictably,
+
+and safely,
+
+while maintaining
+
+architectural consistency,
+
+operational excellence,
+
+and long-term maintainability
+
+across the entire platform.

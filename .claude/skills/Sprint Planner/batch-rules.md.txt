@@ -1,0 +1,700 @@
+# Batch Rules
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+---
+
+# Purpose
+
+This document defines the mandatory rules
+for decomposing a Sprint into implementation batches.
+
+A Batch is the smallest independently
+implementable, reviewable,
+testable and mergeable unit of work.
+
+Every Sprint must be divided into batches.
+
+Claude Code must never implement an entire Sprint
+in one generation.
+
+---
+
+# Core Principle
+
+Small batches produce stable software.
+
+Large batches create hidden bugs,
+merge conflicts,
+review failures,
+and architecture drift.
+
+Batch quality is always more important
+than generation speed.
+
+---
+
+# Definition
+
+A Batch is a self-contained implementation package.
+
+A Batch contains only one coherent objective.
+
+Examples
+
+Good
+
+Batch 1
+
+Entities
+
+Repositories
+
+Migration
+
+---
+
+Good
+
+Batch 2
+
+DTO
+
+Mapper
+
+Validation
+
+---
+
+Good
+
+Batch 3
+
+Service
+
+Business Logic
+
+---
+
+Good
+
+Batch 4
+
+Controller
+
+OpenAPI
+
+---
+
+Good
+
+Batch 5
+
+Unit Tests
+
+---
+
+Bad
+
+Entities
+
+Controllers
+
+Docker
+
+Frontend
+
+Security
+
+Analytics
+
+All together.
+
+---
+
+# Batch Objectives
+
+Every Batch must
+
+compile independently
+
+review independently
+
+test independently
+
+merge independently
+
+rollback independently
+
+---
+
+# Batch Granularity
+
+Batches should be
+
+small
+
+focused
+
+isolated
+
+predictable
+
+reviewable
+
+---
+
+# One Responsibility Rule
+
+Each Batch
+
+must solve
+
+exactly one implementation problem.
+
+Example
+
+Batch
+
+Place Entity
+
+Repository
+
+Migration
+
+Good
+
+---
+
+Example
+
+Batch
+
+Entity
+
+Frontend
+
+Docker
+
+Search
+
+Bad
+
+---
+
+# Dependency Rule
+
+A Batch
+
+may only depend
+
+on completed batches.
+
+Never generate a batch
+
+that depends on unfinished work.
+
+---
+
+# Allowed Batch Contents
+
+Entities
+
+Repositories
+
+DTOs
+
+Mappers
+
+Validators
+
+Services
+
+Controllers
+
+Interceptors
+
+Guards
+
+Decorators
+
+Unit Tests
+
+Integration Tests
+
+Configuration
+
+Documentation
+
+Migration
+
+---
+
+# Forbidden Batch Contents
+
+Multiple unrelated modules
+
+Architecture redesign
+
+ADR modification
+
+Database redesign
+
+API redesign
+
+Permission redesign
+
+Repository restructuring
+
+Framework migration
+
+---
+
+# Batch Ordering
+
+The implementation order is fixed.
+
+Infrastructure
+
+↓
+
+Database
+
+↓
+
+Entities
+
+↓
+
+Repositories
+
+↓
+
+DTO
+
+↓
+
+Mapper
+
+↓
+
+Validation
+
+↓
+
+Service
+
+↓
+
+Controller
+
+↓
+
+OpenAPI Verification
+
+↓
+
+Unit Tests
+
+↓
+
+Integration Tests
+
+↓
+
+E2E Tests
+
+↓
+
+Documentation Update
+
+↓
+
+Architecture Review
+
+Never change this order.
+
+---
+
+# Batch Independence
+
+A Batch must
+
+compile without future batches.
+
+Example
+
+Entity Batch
+
+must not require
+
+Controller code.
+
+---
+
+# Batch Review
+
+Every Batch requires
+
+Architecture Review
+
+Code Review
+
+Documentation Review
+
+Security Review
+
+Naming Review
+
+Testing Review
+
+Merge Review
+
+---
+
+# Batch Acceptance
+
+A Batch is accepted only if
+
+Compilation PASS
+
+Lint PASS
+
+Unit Test PASS
+
+Architecture PASS
+
+Security PASS
+
+Documentation PASS
+
+OpenAPI PASS
+
+RBAC PASS
+
+Migration PASS
+
+No Drift
+
+---
+
+# Batch Failure
+
+A Batch fails if
+
+Architecture violation
+
+Compilation failure
+
+Migration failure
+
+Broken test
+
+Security issue
+
+ADR violation
+
+Documentation drift
+
+OpenAPI drift
+
+RBAC drift
+
+Performance regression
+
+---
+
+# Batch Rollback
+
+Every Batch
+
+must be reversible.
+
+Rollback must
+
+remove only
+
+the current Batch.
+
+Never affect
+
+previous accepted batches.
+
+---
+
+# Batch Merge Policy
+
+Merge only after
+
+Batch PASS
+
+Architecture PASS
+
+CI PASS
+
+Security PASS
+
+Documentation PASS
+
+Never merge
+
+FAILED batches.
+
+---
+
+# Batch Documentation
+
+Every Batch
+
+must produce
+
+Batch Summary
+
+Files Changed
+
+LOC Estimate
+
+Dependencies
+
+Tests Added
+
+Known Risks
+
+Technical Debt
+
+Acceptance Result
+
+---
+
+# Batch Numbering
+
+Batch numbering
+
+must be sequential.
+
+Example
+
+Sprint 2
+
+Batch 1
+
+Batch 2
+
+Batch 3
+
+Batch 4
+
+Never skip numbers.
+
+---
+
+# Batch Naming
+
+Batch names should describe
+
+implementation purpose.
+
+Examples
+
+Batch 1
+
+Place Entities
+
+Batch 2
+
+Place Repositories
+
+Batch 3
+
+Place Services
+
+Batch 4
+
+Place Controllers
+
+Batch 5
+
+Place Tests
+
+Avoid generic names
+
+Implementation
+
+Update
+
+Fix
+
+Misc
+
+---
+
+# Batch Size
+
+Recommended
+
+3–8 files
+
+Maximum
+
+15 files
+
+Maximum LOC
+
+1000
+
+Recommended LOC
+
+300–700
+
+---
+
+# Batch Estimation
+
+Estimate
+
+Files
+
+LOC
+
+Complexity
+
+Review Time
+
+Testing Time
+
+Merge Time
+
+Confidence
+
+---
+
+# Batch Risk
+
+Every Batch must classify
+
+Architecture Risk
+
+Database Risk
+
+Security Risk
+
+Performance Risk
+
+Integration Risk
+
+Documentation Risk
+
+Deployment Risk
+
+Use
+
+Critical
+
+High
+
+Medium
+
+Low
+
+---
+
+# Batch Output
+
+Sprint Planner must output
+
+Batch Summary
+
+Objective
+
+Dependencies
+
+Files
+
+Estimated LOC
+
+Estimated Time
+
+Acceptance Criteria
+
+Review Strategy
+
+Merge Strategy
+
+Risk Assessment
+
+---
+
+# Blocking Conditions
+
+A Batch cannot start if
+
+Previous Batch FAIL
+
+Architecture Review FAIL
+
+Documentation Freeze FAIL
+
+ADR Conflict
+
+Dependency Missing
+
+Repository Inconsistent
+
+CI Broken
+
+---
+
+# Quality Principles
+
+Batch stability
+
+>
+
+Generation speed
+
+Reviewability
+
+>
+
+Large implementation
+
+Architecture
+
+>
+
+Convenience
+
+Documentation
+
+>
+
+Guessing
+
+---
+
+# Success Criteria
+
+A Batch is successful only if
+
+Claude Code can implement it
+
+without making any architectural decision,
+
+without inventing undocumented behavior,
+
+and without requiring future batches
+to compile.
+
+The Batch must be
+
+independently testable,
+
+independently reviewable,
+
+and independently mergeable.

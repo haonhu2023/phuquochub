@@ -1,0 +1,2703 @@
+---
+title: Metadata Validation
+version: 2.0.0
+status: Production
+owner: Chief Documentation Architect
+classification: Internal
+priority: Critical
+applies_to:
+  - Documentation Freeze
+  - SSOT
+  - Architecture Review
+  - Repository Analysis
+  - Sprint Planner
+review_cycle: Every Freeze
+---
+
+# Metadata Validation
+
+---
+
+# 1. Purpose
+
+This document defines the official Metadata Validation Framework
+for the PhuQuocHub platform.
+
+Metadata Validation ensures that every engineering document contains
+complete, accurate, consistent, traceable, and authoritative metadata.
+
+Metadata provides the contextual information required for every other
+validation engine.
+
+Without valid metadata:
+
+- authority cannot be resolved;
+- dependency graphs cannot be built;
+- version compatibility cannot be verified;
+- ownership cannot be determined;
+- lifecycle state cannot be trusted;
+- Documentation Freeze cannot be completed.
+
+---
+
+# 2. Mission
+
+Guarantee
+
+- Complete Metadata
+- Consistent Metadata
+- Version Integrity
+- Ownership Integrity
+- Lifecycle Integrity
+- Traceability
+- Automation Readiness
+- Governance Compliance
+
+---
+
+# 3. Why Metadata Validation Exists
+
+A document may contain technically correct content while remaining
+unusable because its metadata is incomplete or incorrect.
+
+Examples
+
+Missing Owner
+
+↓
+
+No approval authority exists.
+
+Missing Version
+
+↓
+
+Version compatibility cannot be verified.
+
+Missing Status
+
+↓
+
+Lifecycle state cannot be determined.
+
+Missing Dependencies
+
+↓
+
+Dependency graph becomes incomplete.
+
+Metadata Validation exists to prevent these situations.
+
+---
+
+# 4. Scope
+
+Metadata Validation applies to every document participating in:
+
+- Documentation Freeze
+- SSOT
+- Architecture Review
+- Sprint Planning
+- Repository Analysis
+- Production Gate
+
+Including:
+
+Architecture
+
+ADR
+
+Decision Register
+
+Policies
+
+Standards
+
+Specifications
+
+Repository Documentation
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Security
+
+Deployment
+
+Monitoring
+
+Templates
+
+Examples
+
+---
+
+# 5. Metadata Principles
+
+## Principle 1
+
+Every document must contain metadata.
+
+Metadata is mandatory.
+
+---
+
+## Principle 2
+
+Metadata precedes validation.
+
+No validation engine may execute before metadata is validated.
+
+---
+
+## Principle 3
+
+Metadata is authoritative.
+
+Metadata defines identity, ownership, lifecycle and version.
+
+---
+
+## Principle 4
+
+Metadata must be machine-readable.
+
+Automation depends on deterministic metadata.
+
+---
+
+## Principle 5
+
+Metadata must remain synchronized.
+
+Conflicting metadata invalidates Documentation Freeze.
+
+---
+
+## Principle 6
+
+Metadata is immutable within one Freeze Baseline.
+
+Changes require a new baseline.
+
+---
+
+## Principle 7
+
+Metadata must be traceable.
+
+Every metadata change shall produce evidence.
+
+---
+
+## Principle 8
+
+Metadata Validation is read-only.
+
+Validators must never modify metadata automatically.
+
+---
+
+# 6. Metadata Hierarchy
+
+Document Identity
+
+↓
+
+Version
+
+↓
+
+Status
+
+↓
+
+Owner
+
+↓
+
+Authority
+
+↓
+
+Lifecycle
+
+↓
+
+Dependencies
+
+↓
+
+Approvals
+
+↓
+
+Review Information
+
+↓
+
+Audit Information
+
+Higher-level metadata governs lower-level metadata.
+
+---
+
+# 7. Metadata Categories
+
+Identity Metadata
+
+Lifecycle Metadata
+
+Version Metadata
+
+Ownership Metadata
+
+Governance Metadata
+
+Dependency Metadata
+
+Approval Metadata
+
+Security Metadata
+
+Audit Metadata
+
+Automation Metadata
+
+Every metadata field belongs to exactly one category.
+
+---
+
+# 8. Metadata Model
+
+Every document shall contain two logical sections:
+
+Document Body
+
+Document Metadata
+
+Metadata shall remain independent from document content.
+
+Validation engines compare metadata separately from content.
+
+---
+
+# 9. Metadata Lifecycle
+
+Every metadata record passes through:
+
+Created
+
+↓
+
+Validated
+
+↓
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Active
+
+↓
+
+Superseded
+
+↓
+
+Archived
+
+Only Approved, Frozen and Active metadata may satisfy
+Documentation Freeze.
+
+---
+
+# 10. Foundation Success Criteria
+
+The Metadata Validation Framework succeeds when every engineering
+document participating in Documentation Freeze contains complete,
+accurate, authoritative, machine-readable and fully traceable metadata,
+allowing all downstream validation engines to execute deterministically.
+
+---
+
+# 11. Metadata Validation Engine
+
+## Purpose
+
+The Metadata Validation Engine
+
+is responsible for validating
+
+every metadata field
+
+associated with
+
+every engineering artifact.
+
+Metadata Validation
+
+must execute
+
+before
+
+all other validation engines.
+
+No document
+
+may enter
+
+Documentation Freeze
+
+without
+
+successful metadata validation.
+
+---
+
+# 12. Metadata Architecture
+
+Metadata
+
+is divided
+
+into
+
+ten logical domains.
+
+Identity
+
+↓
+
+Version
+
+↓
+
+Lifecycle
+
+↓
+
+Ownership
+
+↓
+
+Authority
+
+↓
+
+Dependency
+
+↓
+
+Approval
+
+↓
+
+Classification
+
+↓
+
+Audit
+
+↓
+
+Automation
+
+Each domain
+
+has
+
+its own validation rules.
+
+---
+
+# 13. Required Metadata
+
+The following metadata
+
+is mandatory
+
+for every governed document.
+
+Document ID
+
+Title
+
+Version
+
+Status
+
+Owner
+
+Classification
+
+Authority
+
+Lifecycle State
+
+Dependencies
+
+Approvers
+
+Review Cycle
+
+Created Date
+
+Last Updated
+
+Validation Status
+
+Freeze Status
+
+Every required field
+
+must exist.
+
+Missing fields
+
+produce
+
+FAIL.
+
+---
+
+# 14. Optional Metadata
+
+Optional metadata
+
+enhances
+
+automation
+
+but
+
+does not block
+
+Documentation Freeze.
+
+Examples
+
+Description
+
+Keywords
+
+Tags
+
+Examples
+
+Related Documents
+
+Estimated Reading Time
+
+Language
+
+Audience
+
+Notes
+
+Missing optional metadata
+
+produces
+
+INFO.
+
+---
+
+# 15. Metadata Schema
+
+Every metadata block
+
+must conform
+
+to
+
+the approved schema.
+
+Example
+
+```yaml
+title:
+version:
+status:
+owner:
+classification:
+authority:
+dependencies:
+review_cycle:
+approvers:
+created:
+updated:
+validation_status:
+freeze_status:
+```
+
+Additional fields
+
+may exist
+
+only when
+
+approved
+
+by Documentation Governance.
+
+---
+
+# 16. Metadata Identity Validation
+
+Purpose
+
+Ensure
+
+every document
+
+has
+
+one unique identity.
+
+---
+
+## Validate
+
+Document ID
+
+Unique
+
+Title
+
+Unique
+
+Path
+
+Unique
+
+Repository Location
+
+Valid
+
+---
+
+## Failure
+
+Duplicate ID
+
+↓
+
+FAIL
+
+Duplicate Path
+
+↓
+
+FAIL
+
+Missing Title
+
+↓
+
+FAIL
+
+---
+
+# 17. Version Validation
+
+Every document
+
+must declare
+
+its version.
+
+---
+
+Supported Format
+
+Major.Minor.Patch
+
+Examples
+
+1.0.0
+
+2.1.4
+
+3.0.0
+
+---
+
+Validation
+
+Version Exists
+
+Version Format Valid
+
+Version Increment Valid
+
+Version Compatible
+
+---
+
+Failure
+
+Invalid Format
+
+↓
+
+FAIL
+
+Missing Version
+
+↓
+
+FAIL
+
+---
+
+# 18. Status Validation
+
+Every document
+
+must declare
+
+exactly one status.
+
+Allowed
+
+Draft
+
+Review
+
+Approved
+
+Frozen
+
+Active
+
+Superseded
+
+Archived
+
+---
+
+Validation
+
+Status Exists
+
+Status Valid
+
+Status Compatible
+
+---
+
+Failure
+
+Multiple Status
+
+↓
+
+FAIL
+
+Unknown Status
+
+↓
+
+FAIL
+
+---
+
+# 19. Ownership Validation
+
+Every document
+
+must have
+
+one owner.
+
+---
+
+Validate
+
+Owner Exists
+
+Owner Active
+
+Owner Authorized
+
+Owner Unique
+
+---
+
+Failure
+
+Missing Owner
+
+↓
+
+FAIL
+
+Unknown Owner
+
+↓
+
+FAIL
+
+Multiple Owners
+
+↓
+
+WARNING
+
+---
+
+# 20. Authority Validation
+
+Purpose
+
+Determine
+
+whether
+
+the document
+
+may define
+
+engineering truth.
+
+---
+
+Validate
+
+Authority Exists
+
+Authority Approved
+
+Authority Unique
+
+Authority Compatible
+
+---
+
+Failure
+
+Duplicate Authority
+
+↓
+
+BLOCKED
+
+Missing Authority
+
+↓
+
+FAIL
+
+---
+
+# 21. Lifecycle Validation
+
+Every document
+
+must belong
+
+to
+
+one lifecycle state.
+
+---
+
+Allowed
+
+Draft
+
+↓
+
+Review
+
+↓
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Active
+
+↓
+
+Superseded
+
+↓
+
+Archived
+
+---
+
+Failure
+
+Invalid Lifecycle
+
+↓
+
+FAIL
+
+Archived
+
+used
+
+as dependency
+
+↓
+
+BLOCKED
+
+---
+
+# 22. Dependency Metadata Validation
+
+Validate
+
+Dependency IDs
+
+Dependency Versions
+
+Dependency Status
+
+Dependency Authority
+
+Dependency Lifecycle
+
+---
+
+Failure
+
+Broken Dependency
+
+↓
+
+FAIL
+
+Unknown Dependency
+
+↓
+
+FAIL
+
+---
+
+# 23. Approval Metadata Validation
+
+Every approved document
+
+must include
+
+Approval ID
+
+Approver
+
+Approval Date
+
+Approval Version
+
+Approval Scope
+
+Approval Status
+
+---
+
+Failure
+
+Missing Approval
+
+↓
+
+FAIL
+
+Expired Approval
+
+↓
+
+WARNING
+
+---
+
+# 24. Classification Validation
+
+Every document
+
+must declare
+
+its classification.
+
+Allowed
+
+Public
+
+Internal
+
+Restricted
+
+Confidential
+
+---
+
+Failure
+
+Missing Classification
+
+↓
+
+WARNING
+
+Unknown Classification
+
+↓
+
+FAIL
+
+---
+
+# 25. Review Metadata Validation
+
+Validate
+
+Review Cycle
+
+Review Date
+
+Reviewer
+
+Review Result
+
+Review Status
+
+---
+
+Failure
+
+Review Missing
+
+↓
+
+WARNING
+
+---
+
+# 26. Audit Metadata Validation
+
+Validate
+
+Created Date
+
+Updated Date
+
+Created By
+
+Updated By
+
+Validation Timestamp
+
+Freeze Timestamp
+
+Baseline ID
+
+Repository Commit
+
+Git Tag
+
+---
+
+Failure
+
+Audit Trail Incomplete
+
+↓
+
+WARNING
+
+---
+
+# 27. Metadata Consistency Validation
+
+Metadata
+
+must remain
+
+consistent
+
+across
+
+all related documents.
+
+Examples
+
+Owner
+
+must match
+
+Approval Records.
+
+Version
+
+must match
+
+Freeze Baseline.
+
+Lifecycle
+
+must match
+
+Documentation Freeze.
+
+---
+
+Failure
+
+Metadata Drift
+
+↓
+
+FAIL
+
+---
+
+# 28. Metadata Validation Result
+
+Each metadata validation
+
+must produce
+
+one result.
+
+PASS
+
+Metadata complete.
+
+---
+
+WARNING
+
+Minor metadata issue.
+
+---
+
+FAIL
+
+Metadata invalid.
+
+---
+
+BLOCKED
+
+Authority conflict.
+
+---
+
+# 29. Metadata Evidence
+
+Every validation
+
+must produce
+
+Metadata Report
+
+Validation Timestamp
+
+Validator
+
+Evidence
+
+Recommendations
+
+Affected Documents
+
+---
+
+# 30. Part 2 Completion Criteria
+
+The Metadata Validation Engine
+
+is complete
+
+when
+
+every required metadata field
+
+can be
+
+identified,
+
+validated,
+
+classified,
+
+verified,
+
+and
+
+compared
+
+using
+
+deterministic,
+
+repeatable,
+
+and
+
+automation-friendly
+
+validation rules.
+
+---
+
+# 31. Metadata Analysis Engine
+
+## Purpose
+
+The Metadata Analysis Engine
+
+evaluates
+
+the integrity
+
+of metadata
+
+across
+
+the complete documentation ecosystem.
+
+Its responsibility
+
+extends beyond
+
+field validation.
+
+The engine
+
+must identify
+
+patterns,
+
+relationships,
+
+drift,
+
+conflicts,
+
+duplicates,
+
+and inconsistencies
+
+that may compromise
+
+Documentation Freeze.
+
+---
+
+# 32. Missing Metadata Detection
+
+## Purpose
+
+Detect
+
+mandatory metadata
+
+that does not exist.
+
+---
+
+## Detection Algorithm
+
+For every document
+
+↓
+
+Load Metadata Schema
+
+↓
+
+Enumerate Required Fields
+
+↓
+
+Compare Existing Metadata
+
+↓
+
+Identify Missing Fields
+
+↓
+
+Generate Findings
+
+---
+
+## Required Output
+
+Document ID
+
+Missing Field
+
+Severity
+
+Affected Validation Engine
+
+Recommendation
+
+---
+
+## Severity Rules
+
+Missing Title
+
+↓
+
+FAIL
+
+---
+
+Missing Version
+
+↓
+
+FAIL
+
+---
+
+Missing Owner
+
+↓
+
+FAIL
+
+---
+
+Missing Authority
+
+↓
+
+BLOCKED
+
+---
+
+Missing Lifecycle
+
+↓
+
+FAIL
+
+---
+
+Missing Dependencies
+
+↓
+
+FAIL
+
+---
+
+Missing Approval
+
+↓
+
+FAIL
+
+---
+
+Missing Review Cycle
+
+↓
+
+WARNING
+
+---
+
+# 33. Duplicate Metadata Detection
+
+## Purpose
+
+Ensure
+
+metadata uniqueness.
+
+---
+
+## Detect
+
+Duplicate Document ID
+
+Duplicate Title
+
+Duplicate Version Identifier
+
+Duplicate Authority
+
+Duplicate Freeze Identifier
+
+Duplicate Baseline ID
+
+Duplicate Validation ID
+
+---
+
+## Algorithm
+
+Normalize
+
+↓
+
+Index
+
+↓
+
+Hash
+
+↓
+
+Compare
+
+↓
+
+Duplicate?
+
+↓
+
+Generate Finding
+
+---
+
+## Results
+
+Duplicate Authority
+
+↓
+
+BLOCKED
+
+---
+
+Duplicate Document ID
+
+↓
+
+FAIL
+
+---
+
+Duplicate Tags
+
+↓
+
+INFO
+
+---
+
+# 34. Metadata Conflict Detection
+
+## Purpose
+
+Detect
+
+metadata
+
+that
+
+describes
+
+the same artifact
+
+in different ways.
+
+---
+
+## Compare
+
+Owner
+
+↓
+
+Approver
+
+↓
+
+Lifecycle
+
+↓
+
+Status
+
+↓
+
+Classification
+
+↓
+
+Authority
+
+↓
+
+Freeze Version
+
+↓
+
+Baseline
+
+---
+
+## Examples
+
+Document A
+
+Version 2.1
+
+↓
+
+Document B
+
+Version 1.8
+
+↓
+
+FAIL
+
+---
+
+Document Status
+
+Approved
+
+↓
+
+Freeze State
+
+Draft
+
+↓
+
+FAIL
+
+---
+
+Owner
+
+Alice
+
+↓
+
+Approval
+
+Bob
+
+↓
+
+WARNING
+
+---
+
+# 35. Metadata Drift Detection
+
+## Purpose
+
+Detect
+
+metadata changes
+
+after
+
+Documentation Freeze.
+
+---
+
+## Drift Types
+
+Version Drift
+
+Owner Drift
+
+Lifecycle Drift
+
+Authority Drift
+
+Dependency Drift
+
+Approval Drift
+
+Freeze Drift
+
+Repository Drift
+
+Audit Drift
+
+---
+
+## Drift Workflow
+
+Current Metadata
+
+↓
+
+Baseline Metadata
+
+↓
+
+Difference?
+
+↓
+
+YES
+
+↓
+
+Classify Drift
+
+↓
+
+Generate Report
+
+---
+
+## Severity
+
+Authority Drift
+
+↓
+
+BLOCKED
+
+---
+
+Version Drift
+
+↓
+
+FAIL
+
+---
+
+Owner Drift
+
+↓
+
+WARNING
+
+---
+
+Tag Drift
+
+↓
+
+INFO
+
+---
+
+# 36. Metadata Integrity Validation
+
+Metadata
+
+is considered
+
+valid
+
+only when
+
+Every Required Field Exists
+
+No Duplicate Identity
+
+No Conflicting Authority
+
+No Invalid Lifecycle
+
+No Invalid Version
+
+No Invalid Approval
+
+No Invalid Dependency
+
+No Metadata Drift
+
+No Freeze Drift
+
+---
+
+# 37. Metadata Relationship Validation
+
+Metadata
+
+must remain
+
+consistent
+
+across
+
+related documents.
+
+---
+
+## Validate
+
+Owner
+
+Version
+
+Status
+
+Lifecycle
+
+Authority
+
+Freeze Status
+
+Baseline ID
+
+Repository Commit
+
+Review Cycle
+
+---
+
+## Relationship Rule
+
+One artifact
+
+↓
+
+One Metadata Identity
+
+One Authority
+
+One Lifecycle
+
+One Owner
+
+One Version
+
+---
+
+# 38. Metadata Compatibility Validation
+
+Metadata
+
+must be
+
+compatible
+
+between
+
+dependent artifacts.
+
+---
+
+## Validate
+
+Version Compatibility
+
+Lifecycle Compatibility
+
+Authority Compatibility
+
+Approval Compatibility
+
+Classification Compatibility
+
+Dependency Compatibility
+
+---
+
+## Failure
+
+Incompatible Version
+
+↓
+
+FAIL
+
+---
+
+Different Lifecycle
+
+↓
+
+FAIL
+
+---
+
+Conflicting Authority
+
+↓
+
+BLOCKED
+
+---
+
+# 39. Metadata Impact Analysis
+
+Every metadata issue
+
+must include
+
+impact analysis.
+
+---
+
+## Impact Categories
+
+Architecture
+
+Repository
+
+Documentation
+
+API
+
+Database
+
+Workflow
+
+Security
+
+Deployment
+
+Monitoring
+
+Planning
+
+Testing
+
+Production
+
+---
+
+## Required Outputs
+
+Affected Documents
+
+Affected Domains
+
+Affected Freeze
+
+Affected Baseline
+
+Affected Releases
+
+Affected Validation Engines
+
+---
+
+# 40. Root Cause Analysis
+
+Every metadata issue
+
+must identify
+
+its origin.
+
+---
+
+## Possible Causes
+
+Manual Edit
+
+Repository Merge
+
+Architecture Evolution
+
+Approval Error
+
+Missing Review
+
+Outdated Template
+
+Version Conflict
+
+Migration Error
+
+Automation Failure
+
+Human Error
+
+---
+
+## Report
+
+Root Cause
+
+Confidence Level
+
+Supporting Evidence
+
+Recommended Action
+
+---
+
+# 41. Metadata Resolution Workflow
+
+Metadata Issue
+
+↓
+
+Collect Evidence
+
+↓
+
+Identify Authority
+
+↓
+
+Determine Correct Metadata
+
+↓
+
+Update Source Document
+
+↓
+
+Synchronize Related Documents
+
+↓
+
+Revalidate
+
+↓
+
+Generate Evidence
+
+↓
+
+Close Finding
+
+---
+
+## Resolution Rules
+
+Missing Metadata
+
+↓
+
+Complete Metadata
+
+---
+
+Duplicate Metadata
+
+↓
+
+Remove Duplicate
+
+---
+
+Authority Conflict
+
+↓
+
+Architecture Review
+
+---
+
+Version Conflict
+
+↓
+
+Synchronize Versions
+
+---
+
+Lifecycle Conflict
+
+↓
+
+Restart Validation
+
+---
+
+# 42. Metadata Failure Matrix
+
+| Failure | Result |
+|----------|--------|
+| Missing Required Field | FAIL |
+| Duplicate Metadata | WARNING |
+| Duplicate Authority | BLOCKED |
+| Invalid Version | FAIL |
+| Invalid Lifecycle | FAIL |
+| Invalid Approval | FAIL |
+| Invalid Dependency | FAIL |
+| Authority Drift | BLOCKED |
+| Metadata Drift | FAIL |
+
+---
+
+# 43. Metadata Evidence
+
+Every finding
+
+must contain
+
+Finding ID
+
+Metadata Category
+
+Document ID
+
+Affected Field
+
+Severity
+
+Evidence
+
+Validator
+
+Timestamp
+
+Recommendation
+
+Resolution Status
+
+---
+
+# 44. Metadata Analysis Completion
+
+Metadata Analysis
+
+is complete
+
+when
+
+every metadata record
+
+has been
+
+validated,
+
+compared,
+
+classified,
+
+version checked,
+
+lifecycle checked,
+
+authority verified,
+
+drift analysed,
+
+impact assessed,
+
+root cause identified,
+
+and
+
+assigned
+
+a deterministic validation outcome.
+
+---
+
+---
+
+# 45. Metadata Validation State Machine
+
+## Purpose
+
+The Metadata Validation Engine
+
+shall operate
+
+as
+
+a deterministic state machine.
+
+Every validation execution
+
+must follow
+
+the identical lifecycle.
+
+State transitions
+
+must be deterministic,
+
+traceable,
+
+and reproducible.
+
+---
+
+## State Diagram
+
+```text
+NOT_STARTED
+        ↓
+LOAD_SCHEMA
+        ↓
+LOAD_METADATA
+        ↓
+VALIDATE_REQUIRED_FIELDS
+        ↓
+VALIDATE_STRUCTURE
+        ↓
+VALIDATE_VERSION
+        ↓
+VALIDATE_AUTHORITY
+        ↓
+VALIDATE_DEPENDENCIES
+        ↓
+VALIDATE_LIFECYCLE
+        ↓
+VALIDATE_APPROVAL
+        ↓
+ANALYZE_CONFLICTS
+        ↓
+GENERATE_REPORT
+        ↓
+PASS
+WARNING
+FAIL
+BLOCKED
+```
+
+No state
+
+may be skipped.
+
+No shortcut
+
+is permitted.
+
+---
+
+# 46. Metadata Validation Workflow
+
+## Phase 1
+
+Metadata Discovery
+
+Collect
+
+all metadata blocks.
+
+Locate
+
+metadata schema.
+
+Identify
+
+document type.
+
+---
+
+## Phase 2
+
+Schema Validation
+
+Verify
+
+metadata schema version.
+
+Validate
+
+required fields.
+
+Reject
+
+unknown mandatory fields.
+
+---
+
+## Phase 3
+
+Identity Validation
+
+Verify
+
+Document ID
+
+Unique Identifier
+
+Repository Path
+
+Canonical Name
+
+---
+
+## Phase 4
+
+Authority Validation
+
+Resolve
+
+authority.
+
+Validate
+
+authority ownership.
+
+Detect
+
+duplicate authority.
+
+---
+
+## Phase 5
+
+Dependency Validation
+
+Verify
+
+dependency metadata.
+
+Resolve
+
+dependency versions.
+
+Verify
+
+dependency lifecycle.
+
+---
+
+## Phase 6
+
+Approval Validation
+
+Verify
+
+approval metadata.
+
+Verify
+
+approval scope.
+
+Verify
+
+approval validity.
+
+---
+
+## Phase 7
+
+Conflict Analysis
+
+Detect
+
+metadata conflicts.
+
+Classify
+
+severity.
+
+Generate
+
+evidence.
+
+---
+
+## Phase 8
+
+Report Generation
+
+Generate
+
+Metadata Report
+
+Validation Summary
+
+Issue Summary
+
+Recommendation
+
+Audit Package
+
+---
+
+# 47. Metadata Decision Matrix
+
+Every validation
+
+must produce
+
+one overall decision.
+
+| Condition | Result |
+|------------|---------|
+| Metadata fully valid | PASS |
+| Minor observations | WARNING |
+| Metadata inconsistency | FAIL |
+| Authority conflict | BLOCKED |
+
+---
+
+# 48. Claude Code Execution Rules
+
+Claude Code
+
+must execute
+
+Metadata Validation
+
+before
+
+Cross Document Validation.
+
+---
+
+Claude Code
+
+must execute
+
+Metadata Validation
+
+before
+
+Dependency Validation.
+
+---
+
+Claude Code
+
+must never
+
+modify
+
+metadata automatically.
+
+---
+
+Claude Code
+
+must never
+
+guess
+
+missing values.
+
+---
+
+Claude Code
+
+must always
+
+report
+
+missing metadata.
+
+---
+
+Claude Code
+
+must stop
+
+validation
+
+when
+
+Authority Conflict
+
+is detected.
+
+---
+
+Claude Code
+
+must preserve
+
+original metadata
+
+throughout
+
+validation.
+
+---
+
+# 49. Automation Rules
+
+The following validations
+
+may be automated.
+
+✓ Required Field Validation
+
+✓ Schema Validation
+
+✓ Version Validation
+
+✓ Lifecycle Validation
+
+✓ Owner Validation
+
+✓ Dependency Metadata Validation
+
+✓ Duplicate Detection
+
+✓ Drift Detection
+
+✓ Metadata Reports
+
+✓ Metrics Collection
+
+---
+
+Human approval
+
+is required
+
+for
+
+Authority Changes
+
+Ownership Changes
+
+Classification Changes
+
+Approval Changes
+
+Freeze Metadata Changes
+
+---
+
+# 50. Metadata Validation Report
+
+Every execution
+
+shall generate
+
+a standardized report.
+
+---
+
+## Report Header
+
+Validation ID
+
+Validation Timestamp
+
+Validator
+
+Repository Commit
+
+Freeze Version
+
+Baseline ID
+
+Metadata Schema Version
+
+---
+
+## Executive Summary
+
+Documents Validated
+
+Documents Passed
+
+Warnings
+
+Failures
+
+Blocked
+
+---
+
+## Identity Summary
+
+Duplicate IDs
+
+Missing IDs
+
+Path Issues
+
+Naming Issues
+
+---
+
+## Version Summary
+
+Valid Versions
+
+Invalid Versions
+
+Version Drift
+
+Compatibility Issues
+
+---
+
+## Authority Summary
+
+Authorities
+
+Duplicate Authorities
+
+Authority Drift
+
+Authority Conflicts
+
+---
+
+## Lifecycle Summary
+
+Lifecycle States
+
+Invalid States
+
+Lifecycle Drift
+
+---
+
+## Approval Summary
+
+Approved
+
+Missing Approval
+
+Expired Approval
+
+Approval Drift
+
+---
+
+## Final Recommendation
+
+PASS
+
+Proceed.
+
+WARNING
+
+Proceed with observations.
+
+FAIL
+
+Correct metadata.
+
+BLOCKED
+
+Architecture Review required.
+
+---
+
+# 51. Metadata Metrics
+
+The engine
+
+shall collect
+
+the following metrics.
+
+---
+
+## Coverage Metrics
+
+Metadata Records
+
+Documents Covered
+
+Validation Coverage
+
+Schema Coverage
+
+---
+
+## Quality Metrics
+
+Metadata Completeness
+
+Metadata Accuracy
+
+Metadata Consistency
+
+Authority Integrity
+
+Lifecycle Integrity
+
+Approval Integrity
+
+---
+
+## Operational Metrics
+
+Execution Time
+
+Average Validation Time
+
+Average Report Time
+
+Automation Coverage
+
+---
+
+## Historical Metrics
+
+Metadata Drift Trend
+
+Repeated Failures
+
+Validation Success Rate
+
+Authority Stability
+
+Baseline Stability
+
+---
+
+# 52. Metadata Compliance Checklist
+
+Before
+
+Documentation Freeze
+
+verify
+
+□ Metadata schema valid.
+
+□ Every required field exists.
+
+□ Every document has one unique ID.
+
+□ Version format valid.
+
+□ Owner assigned.
+
+□ Authority resolved.
+
+□ Lifecycle valid.
+
+□ Dependencies declared.
+
+□ Approval complete.
+
+□ Classification assigned.
+
+□ Metadata synchronized.
+
+□ No duplicate authority.
+
+□ No metadata drift.
+
+□ Validation report generated.
+
+□ Evidence archived.
+
+---
+
+# 53. Metadata Self Verification
+
+Before returning PASS
+
+Claude Code
+
+must verify
+
+✓ Every metadata block validated.
+
+✓ Every schema validated.
+
+✓ Every identity unique.
+
+✓ Every version verified.
+
+✓ Every lifecycle verified.
+
+✓ Every authority resolved.
+
+✓ Every dependency validated.
+
+✓ Every approval verified.
+
+✓ Every conflict classified.
+
+✓ Every report generated.
+
+✓ Validation reproducible.
+
+✓ No metadata modified.
+
+---
+
+# 54. Metadata Success Criteria
+
+Metadata Validation succeeds when
+
+every governed document
+
+contains
+
+complete,
+
+accurate,
+
+authoritative,
+
+machine-readable,
+
+version-consistent,
+
+lifecycle-consistent,
+
+approval-consistent,
+
+dependency-consistent,
+
+and fully traceable metadata,
+
+allowing
+
+all downstream validation engines
+
+to execute
+
+without ambiguity,
+
+without hidden assumptions,
+
+and without metadata conflicts.
+
+Metadata Validation
+
+shall serve
+
+as
+
+the foundational validation layer
+
+for
+
+Documentation Freeze,
+
+SSOT,
+
+Architecture Review,
+
+Dependency Validation,
+
+Cross Document Validation,
+
+Repository Analysis,
+
+Sprint Planning,
+
+and all future engineering governance workflows.
+
+---
+
+# End of Document
+
+Status
+
+Production
+
+Metadata Validation Engine
+
+Complete
+
+Documentation Freeze
+
+Enterprise Ready
+

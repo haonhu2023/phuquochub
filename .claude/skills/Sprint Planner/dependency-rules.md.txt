@@ -1,0 +1,787 @@
+# Dependency Rules
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+---
+
+# Purpose
+
+This document defines the mandatory dependency analysis
+rules used by Sprint Planner.
+
+Dependency analysis determines
+
+- implementation order
+
+- sprint order
+
+- batch order
+
+- merge order
+
+- deployment order
+
+Claude Code must never generate code
+without validating dependencies first.
+
+---
+
+# Core Principle
+
+Dependencies define implementation order.
+
+Implementation order never defines dependencies.
+
+The planner must always follow the dependency graph.
+
+Never violate dependency order.
+
+---
+
+# Dependency Types
+
+Dependencies are classified into the following categories.
+
+## Hard Dependency
+
+A component cannot exist without another component.
+
+Examples
+
+Authentication
+
+↓
+
+Users
+
+↓
+
+RBAC
+
+↓
+
+Permissions
+
+Without Users
+
+Authentication cannot function.
+
+---
+
+## Soft Dependency
+
+A component can operate independently,
+but functionality improves if another component exists.
+
+Example
+
+Analytics
+
+↓
+
+Notifications
+
+Analytics can exist without Notifications.
+
+Notifications can later consume Analytics events.
+
+---
+
+## Optional Dependency
+
+A feature may integrate later.
+
+Example
+
+AI Summary
+
+↓
+
+LLM Provider
+
+The application can work without AI.
+
+---
+
+## External Dependency
+
+Dependencies outside the repository.
+
+Examples
+
+PostgreSQL
+
+Redis
+
+MinIO
+
+SMTP
+
+Cloudflare
+
+OpenStreetMap
+
+Google Maps
+
+GitHub Actions
+
+Docker
+
+---
+
+## Runtime Dependency
+
+Required only during execution.
+
+Examples
+
+Redis
+
+RabbitMQ
+
+SMTP
+
+---
+
+## Build Dependency
+
+Required only during build.
+
+Examples
+
+TypeScript
+
+Nest CLI
+
+ESLint
+
+OpenAPI Generator
+
+---
+
+# Dependency Principles
+
+The planner must always prefer
+
+low coupling
+
+high cohesion
+
+clear ownership
+
+stable interfaces
+
+minimal dependency depth
+
+---
+
+# Allowed Dependency Direction
+
+Dependency direction must always move downward.
+
+Example
+
+API
+
+↓
+
+Application
+
+↓
+
+Domain
+
+↓
+
+Infrastructure
+
+Never reverse this direction.
+
+---
+
+# Forbidden Dependencies
+
+The following dependencies are prohibited.
+
+Controller
+
+↓
+
+Controller
+
+Repository
+
+↓
+
+Controller
+
+Entity
+
+↓
+
+Service
+
+Migration
+
+↓
+
+API
+
+Database
+
+↓
+
+Frontend
+
+Feature
+
+↓
+
+Feature
+
+without documented contract
+
+---
+
+# Circular Dependency Policy
+
+Circular dependencies are prohibited.
+
+Examples
+
+A → B → A
+
+A → B → C → A
+
+If detected
+
+Planning stops.
+
+Report
+
+BLOCKER
+
+---
+
+# Dependency Graph Construction
+
+Sprint Planner shall construct
+a directed acyclic graph (DAG).
+
+Each node represents
+
+Module
+
+Entity
+
+Migration
+
+API
+
+Workflow
+
+Batch
+
+Each edge represents
+
+requires
+
+depends on
+
+extends
+
+references
+
+owns
+
+implements
+
+---
+
+# Dependency Resolution Order
+
+Resolve dependencies in the following order.
+
+1
+
+Architecture
+
+↓
+
+2
+
+Database
+
+↓
+
+3
+
+Entities
+
+↓
+
+4
+
+Repositories
+
+↓
+
+5
+
+Services
+
+↓
+
+6
+
+Controllers
+
+↓
+
+7
+
+OpenAPI
+
+↓
+
+8
+
+Frontend
+
+↓
+
+9
+
+Testing
+
+↓
+
+10
+
+Deployment
+
+---
+
+# Module Dependency Rules
+
+## Authentication
+
+Depends on
+
+Users
+
+RBAC
+
+JWT
+
+Redis
+
+Cannot start before these modules exist.
+
+---
+
+## RBAC
+
+Depends on
+
+Users
+
+Permissions
+
+Roles
+
+Role Hierarchy
+
+Decision Register
+
+---
+
+## Places
+
+Depends on
+
+Categories
+
+Media
+
+Geo
+
+Search
+
+---
+
+## Hotel
+
+Depends on
+
+Places
+
+Media
+
+Contacts
+
+Price History
+
+---
+
+## Restaurant
+
+Depends on
+
+Places
+
+Menu
+
+Media
+
+Opening Hours
+
+---
+
+## Tour
+
+Depends on
+
+Places
+
+Schedules
+
+Price History
+
+Media
+
+---
+
+## Event
+
+Depends on
+
+Media
+
+Occurrences
+
+Verification
+
+---
+
+## Reviews
+
+Depends on
+
+Users
+
+Places
+
+Verification
+
+---
+
+## Wiki
+
+Depends on
+
+Places
+
+Users
+
+Revisions
+
+Verification
+
+---
+
+## SEO
+
+Depends on
+
+Places
+
+Media
+
+Wiki
+
+---
+
+## AI
+
+Depends on
+
+Places
+
+Wiki
+
+SEO
+
+---
+
+## Notifications
+
+Depends on
+
+Users
+
+Authentication
+
+Email
+
+Events
+
+---
+
+## Analytics
+
+Depends on
+
+Users
+
+Events
+
+Search
+
+---
+
+## Search
+
+Depends on
+
+Places
+
+Categories
+
+PostGIS
+
+FTS
+
+---
+
+## Community
+
+Depends on
+
+Users
+
+Authentication
+
+RBAC
+
+Moderation
+
+---
+
+# Migration Dependency Rules
+
+Migrations shall execute in this order.
+
+Extensions
+
+↓
+
+Enums
+
+↓
+
+Lookup Tables
+
+↓
+
+Core Tables
+
+↓
+
+Satellite Tables
+
+↓
+
+Indexes
+
+↓
+
+Constraints
+
+↓
+
+Views
+
+↓
+
+Seed Data
+
+Never violate migration order.
+
+---
+
+# Entity Dependency Rules
+
+Parent entities must exist
+before child entities.
+
+Examples
+
+users
+
+↓
+
+reviews
+
+places
+
+↓
+
+hotel_details
+
+places
+
+↓
+
+restaurant_details
+
+places
+
+↓
+
+tour_details
+
+events
+
+↓
+
+event_occurrences
+
+---
+
+# API Dependency Rules
+
+API generation requires
+
+Entity
+
+Repository
+
+Service
+
+Validation DTO
+
+Mapper
+
+OpenAPI Schema
+
+Authentication
+
+Authorization
+
+All must exist.
+
+---
+
+# Frontend Dependency Rules
+
+Frontend pages cannot be generated before
+
+OpenAPI
+
+Controller
+
+DTO
+
+Response Schema
+
+exist.
+
+Never invent backend contracts.
+
+---
+
+# Testing Dependency Rules
+
+Unit Tests
+
+↓
+
+Integration Tests
+
+↓
+
+E2E Tests
+
+↓
+
+Performance Tests
+
+Never skip earlier layers.
+
+---
+
+# Batch Dependency Rules
+
+A batch may only contain
+components whose dependencies
+already exist.
+
+Batch must never create
+unresolved dependencies.
+
+---
+
+# Merge Dependency Rules
+
+Batch merge order follows
+
+Dependency Graph
+
+never implementation speed.
+
+---
+
+# Dependency Validation
+
+Before approving a sprint,
+Sprint Planner must verify
+
+All dependencies resolved
+
+No circular dependency
+
+No missing dependency
+
+No undocumented dependency
+
+No hidden dependency
+
+No orphan module
+
+---
+
+# Blocking Conditions
+
+Planning must stop if
+
+Architecture dependency missing
+
+Database dependency missing
+
+ADR dependency missing
+
+OpenAPI dependency missing
+
+Circular dependency detected
+
+Repository structure inconsistent
+
+---
+
+# Success Criteria
+
+Dependency analysis succeeds only if
+
+Claude Code can implement every batch
+without inventing any dependency
+or changing implementation order.
+
+Dependency correctness is more important
+than implementation speed.

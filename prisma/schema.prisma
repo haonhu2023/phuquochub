@@ -1,0 +1,1011 @@
+// PhuQuocHub — prisma/schema.prisma
+// =============================================================================
+// DRAFT SCHEMA — chỉ 32 thực thể ĐÃ ACCEPTED (database.md §11 + Data Dictionary).
+// Wave 2–5 (Hotel/Restaurant/Tour extension, events, reports, votes, notifications,
+// tokens, api_keys, ai_jobs, tags…) CHƯA thiết kế → không có ở đây.
+//
+// Quyết định đã "bake-in" để schema HỢP LỆ (theo Prisma Readiness Assessment):
+//  - B2 (enum bắt đầu bằng số): `period` 24h/7d/30d → LAST_24H/LAST_7D/LAST_30D/ALL_TIME.
+//  - B3 (naming discriminator): mọi discriminator đa hình chuẩn hóa UPPERCASE, biểu diễn
+//        bằng String (giữ tính "mở rộng không migration"), KHÔNG dùng enum.
+//  - B5 (partial UNIQUE `WHERE …`): Prisma không biểu diễn được → dùng @@index thường +
+//        ghi chú "PARTIAL UNIQUE (raw SQL)". KHÔNG đặt @@unique đầy đủ (sẽ over-constrain).
+//  - B6 (quan hệ đa hình): field scalar + @@index, KHÔNG @relation (toàn vẹn ở tầng app).
+//  - B7 (CHECK, exclusive-arc "đúng-một", DAG no-cycle): raw SQL migration (ghi chú).
+//  - Cascade cho arc/đa-đường-dẫn để onDelete: NoAction (tránh lỗi cascade-cycle của Prisma);
+//        ON DELETE CASCADE thực tế áp bằng raw SQL migration (ADR-009). Chỉ quan hệ 1-đường
+//        an toàn mới để Cascade trong schema.
+//  - PostGIS GEOGRAPHY → Unsupported(...) (truy vấn không gian qua $queryRaw).
+//  - Soft delete (`deleted_at`) cần Prisma Client Extension/middleware (không có trong schema).
+//
+// Field & bảng dùng snake_case (khớp Data Dictionary) qua @@map/@map ngầm định tên field.
+// KHÔNG sinh migration, KHÔNG sinh code, KHÔNG sinh API (theo yêu cầu).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================ ENUMS =========================================
+
+enum UserProvider {
+  local
+  google
+}
+
+enum RolePermEffect {
+  allow
+  deny
+}
+
+enum ScopeType {
+  global
+  managed
+  own
+}
+
+enum PlaceStatus {
+  draft
+  pending
+  published
+  archived
+}
+
+enum PriceRange {
+  free
+  low
+  mid
+  high
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  official
+  community_verified
+  expired
+  rejected
+}
+
+enum VerificationMethod {
+  moderator
+  owner_claim
+  source_match
+  community_vote
+  system_auto
+}
+
+enum VerificationReasonCode {
+  duplicate
+  fabricated
+  outdated
+  insufficient_evidence
+  policy_violation
+  wrong_target
+  other
+}
+
+enum VoteType {
+  confirm
+  dispute
+}
+
+enum MediaType {
+  image
+  video
+}
+
+enum MediaProvider {
+  upload
+  youtube
+  vimeo
+}
+
+enum MediaStatus {
+  pending
+  published
+  hidden
+  rejected
+}
+
+enum FaqStatus {
+  pending
+  published
+  hidden
+}
+
+enum AiSummaryStatus {
+  generating
+  ready
+  stale
+  rejected
+}
+
+enum ReviewStatus {
+  pending
+  published
+  hidden
+}
+
+enum ContributionType {
+  create
+  update
+  report
+}
+
+enum ContributionStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PostStatus {
+  draft
+  published
+  hidden
+}
+
+enum SourceType {
+  official_website
+  business_owner
+  government
+  google_maps
+  openstreetmap
+  press
+  facebook
+  community
+  field_survey
+  moderator
+  ai
+  other
+}
+
+enum SourceKind {
+  url
+  dataset
+  platform_user
+  ai_model
+  offline
+}
+
+enum RevisionOrigin {
+  community_edit
+  owner_update
+  moderator_edit
+  osm_sync
+  ai_generation
+  import
+}
+
+enum RevisionStatus {
+  pending
+  approved
+  rejected
+  reverted
+}
+
+enum ClaimStatus {
+  pending
+  approved
+  rejected
+  disputed
+  withdrawn
+}
+
+enum ClaimReasonCode {
+  insufficient_evidence
+  duplicate
+  fraud
+  wrong_target
+  other
+}
+
+enum MemberRole {
+  owner
+  manager
+}
+
+enum Granularity {
+  hour
+  day
+  month
+}
+
+enum PageType {
+  home
+  place
+  category
+  search
+  community
+  topic
+  other
+}
+
+enum ViewSource {
+  map
+  search
+  direct
+  community
+  external
+}
+
+// B2 fix: giá trị enum không được bắt đầu bằng số trong Prisma.
+enum PopularPeriod {
+  LAST_24H
+  LAST_7D
+  LAST_30D
+  ALL_TIME
+}
+
+enum TrendingPeriod {
+  LAST_24H
+  LAST_7D
+}
+
+enum AlertChannel {
+  in_app
+  email
+  push
+}
+
+// ======================= 1. NGƯỜI DÙNG & RBAC ===============================
+
+model User {
+  id                 String       @id @default(uuid()) @db.Uuid
+  email              String       @unique @db.VarChar(255)
+  password_hash      String?      @db.VarChar(255) // null nếu OAuth
+  display_name       String       @db.VarChar(120)
+  avatar_url         String?      @db.VarChar(500)
+  provider           UserProvider @default(local)
+  is_active          Boolean      @default(true)
+  is_service_account Boolean      @default(false) // AI Agent / service principal
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime     @updatedAt @db.Timestamptz(6)
+
+  // Back-relations (real FKs)
+  places_created        Place[]              @relation("PlaceCreatedBy")
+  places_updated        Place[]              @relation("PlaceUpdatedBy")
+  reviews               Review[]
+  contributions         Contribution[]       @relation("ContributionUser")
+  contributions_reviewed Contribution[]      @relation("ContributionReviewer")
+  posts                 CommunityPost[]
+  comments              CommunityComment[]
+  media_uploaded        Media[]
+  faqs_created          PlaceFaq[]
+  sources_authored      Source[]
+  attributions_verified SourceAttribution[]  @relation("AttributionVerifiedBy")
+  attributions_created  SourceAttribution[]  @relation("AttributionCreatedBy")
+  revisions_edited      WikiRevision[]       @relation("RevisionEditor")
+  revisions_reviewed    WikiRevision[]       @relation("RevisionReviewer")
+  verifications_verified Verification[]      @relation("VerifVerifiedBy")
+  verifications_assigned Verification[]      @relation("VerifAssignedTo")
+  verifications_created  Verification[]      @relation("VerifCreatedBy")
+  verification_events   VerificationEvent[]
+  verification_votes    VerificationVote[]
+  price_history_updated PriceHistory[]
+  claims_requested      BusinessClaim[]      @relation("ClaimRequester")
+  claims_reviewed       BusinessClaim[]      @relation("ClaimReviewer")
+  memberships           BusinessMember[]     @relation("MemberUser")
+  memberships_granted   BusinessMember[]     @relation("MemberGrantedBy")
+  user_roles            UserRole[]           @relation("UserRoleUser")
+  user_roles_granted    UserRole[]           @relation("UserRoleGrantedBy")
+  saved_searches        SavedSearch[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Role {
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique @db.VarChar(60)
+  name          String   @db.VarChar(120)
+  description   String?  @db.VarChar(300)
+  is_system     Boolean  @default(true)
+  is_assignable Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @updatedAt @db.Timestamptz(6)
+
+  role_permissions RolePermission[]
+  children_links   RoleParent[]     @relation("RoleAsParent") // vai trò này là cha
+  parent_links     RoleParent[]     @relation("RoleAsChild")  // vai trò này là con
+  user_roles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(120) // Module.Action[.Scope]; wildcard Place.*, *
+  module      String   @db.VarChar(60)
+  action      String   @db.VarChar(60)
+  scope       String?  @db.VarChar(20) // Own, Managed, Any, null
+  description String?  @db.VarChar(300)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+
+  role_permissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  role_id       String         @db.Uuid
+  permission_id String         @db.Uuid
+  effect        RolePermEffect @default(allow) // deny thắng
+  created_at    DateTime       @default(now()) @db.Timestamptz(6)
+
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model RoleParent {
+  role_id        String   @db.Uuid // vai trò con
+  parent_role_id String   @db.Uuid // vai trò cha
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  // CHECK(role_id <> parent_role_id) + DAG không chu trình → raw SQL migration.
+  role   Role @relation("RoleAsChild", fields: [role_id], references: [id], onDelete: Cascade)
+  parent Role @relation("RoleAsParent", fields: [parent_role_id], references: [id], onDelete: NoAction)
+
+  @@id([role_id, parent_role_id])
+  @@map("role_parents")
+}
+
+model UserRole {
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @db.Uuid
+  role_id     String    @db.Uuid
+  scope_type  ScopeType @default(global)
+  business_id String?   @db.Uuid // → places (Place đã claim); chỉ khi scope_type=managed
+  granted_by  String?   @db.Uuid
+  granted_at  DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at  DateTime? @db.Timestamptz(6)
+
+  user            User   @relation("UserRoleUser", fields: [user_id], references: [id], onDelete: Cascade)
+  role            Role   @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  granted_by_user User?  @relation("UserRoleGrantedBy", fields: [granted_by], references: [id], onDelete: NoAction)
+  business        Place? @relation("UserRoleBusiness", fields: [business_id], references: [id], onDelete: NoAction)
+
+  // PARTIAL UNIQUE (raw SQL): UNIQUE(user_id, role_id, business_id) WHERE revoked_at IS NULL
+  @@index([user_id])
+  @@map("user_roles")
+}
+
+// ======================= 2. ĐỊA ĐIỂM & VỆ TINH ==============================
+
+model Category {
+  id        String  @id @default(uuid()) @db.Uuid
+  slug      String  @unique @db.VarChar(120)
+  name_vi   String  @db.VarChar(120)
+  name_en   String? @db.VarChar(120)
+  icon      String? @db.VarChar(120)
+  parent_id String? @db.Uuid
+
+  parent   Category?  @relation("CategoryTree", fields: [parent_id], references: [id], onDelete: NoAction)
+  children Category[] @relation("CategoryTree")
+  places   Place[]
+
+  @@index([parent_id])
+  @@map("categories")
+}
+
+model Place {
+  id                  String                        @id @default(uuid()) @db.Uuid
+  name                String                        @db.VarChar(200)
+  slug                String                        @unique @db.VarChar(220)
+  category_id         String                        @db.Uuid
+  location            Unsupported("geography(Point, 4326)") // GIST index → raw SQL
+  address             String?                       @db.VarChar(300)
+  ward                String?                       @db.VarChar(120)
+  description         String?                       @db.Text
+  short_description   String?                       @db.VarChar(300)
+  opening_hours       Json?                         @db.JsonB
+  price_range         PriceRange?
+  cover_image_id      String?                       @db.Uuid
+  rating_avg          Decimal?                      @db.Decimal(2, 1) // cache job-synced
+  rating_count        Int                           @default(0)
+  view_count          BigInt                        @default(0)
+  status              PlaceStatus
+  verification_status VerificationStatus            @default(pending) // cache
+  verified_at         DateTime?                     @db.Timestamptz(6)
+  osm_id              BigInt?
+  created_by          String?                       @db.Uuid
+  updated_by          String?                       @db.Uuid
+  created_at          DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime                      @updatedAt @db.Timestamptz(6)
+  deleted_at          DateTime?                     @db.Timestamptz(6) // soft delete
+
+  category        Category @relation(fields: [category_id], references: [id], onDelete: NoAction)
+  cover_image     Media?   @relation("PlaceCoverImage", fields: [cover_image_id], references: [id], onDelete: NoAction)
+  created_by_user User?    @relation("PlaceCreatedBy", fields: [created_by], references: [id], onDelete: NoAction)
+  updated_by_user User?    @relation("PlaceUpdatedBy", fields: [updated_by], references: [id], onDelete: NoAction)
+
+  // Back-relations
+  media_community    Media[]          @relation("MediaPlace")
+  media_business     Media[]          @relation("MediaBusiness")
+  faqs               PlaceFaq[]
+  seo                PlaceSeo?
+  ai_summary         PlaceAiSummary?
+  reviews            Review[]
+  contributions      Contribution[]
+  posts              CommunityPost[]
+  verifications      Verification[]   @relation("VerificationPlace")
+  place_views        PlaceViewAgg[]
+  popular_places     PopularPlace[]
+  business_claims    BusinessClaim[]
+  business_members   BusinessMember[]
+  user_roles_managed UserRole[]       @relation("UserRoleBusiness")
+
+  // GIST(location), GIN FTS(name+description) unaccent, partial index status → raw SQL.
+  @@index([category_id, status])
+  @@index([slug])
+  @@map("places")
+}
+
+model PlaceFaq {
+  id              String    @id @default(uuid()) @db.Uuid
+  place_id        String    @db.Uuid
+  question        String    @db.VarChar(300)
+  answer          String    @db.Text
+  sort_order      Int?
+  is_ai_generated Boolean   @default(false)
+  status          FaqStatus @default(pending)
+  created_by      String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  place           Place @relation(fields: [place_id], references: [id], onDelete: Cascade)
+  created_by_user User? @relation(fields: [created_by], references: [id], onDelete: NoAction)
+
+  @@index([place_id])
+  @@map("place_faqs")
+}
+
+model PlaceSeo {
+  place_id         String   @id @db.Uuid // 1–1: PK = FK
+  meta_title       String?  @db.VarChar(160)
+  meta_description String?  @db.VarChar(320)
+  meta_keywords    String?  @db.VarChar(300)
+  canonical_url    String?  @db.VarChar(300)
+  og_title         String?  @db.VarChar(160)
+  og_description   String?  @db.VarChar(320)
+  og_image_url     String?  @db.VarChar(500)
+  no_index         Boolean  @default(false)
+  structured_data  Json?    @db.JsonB
+  updated_at       DateTime @updatedAt @db.Timestamptz(6)
+
+  place Place @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  @@map("place_seo")
+}
+
+model PlaceAiSummary {
+  place_id       String          @id @db.Uuid // 1–1
+  summary        String?         @db.Text
+  highlights     Json?           @db.JsonB
+  model          String?         @db.VarChar(80)
+  prompt_version String?         @db.VarChar(40)
+  source_hash    String?         @db.VarChar(64)
+  language       String?         @db.Char(2)
+  status         AiSummaryStatus @default(generating)
+  is_approved    Boolean         @default(false)
+  generated_at   DateTime?       @db.Timestamptz(6)
+  updated_at     DateTime        @updatedAt @db.Timestamptz(6)
+
+  place Place @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  @@map("place_ai_summary")
+}
+
+// ======================= 3. NỘI DUNG DÙNG CHUNG =============================
+
+model Media {
+  id                  String        @id @default(uuid()) @db.Uuid
+  place_id            String?       @db.Uuid // exclusive arc (media cộng đồng)
+  review_id           String?       @db.Uuid
+  post_id             String?       @db.Uuid
+  business_id         String?       @db.Uuid // → places (media chính thức của cơ sở)
+  type                MediaType
+  url                 String        @db.VarChar(500)
+  thumbnail_url       String?       @db.VarChar(500)
+  provider            MediaProvider
+  external_id         String?       @db.VarChar(100)
+  width               Int?
+  height              Int?
+  duration            Int?
+  caption             String?       @db.VarChar(300)
+  alt_text            String?       @db.VarChar(200)
+  sort_order          Int?
+  status              MediaStatus   @default(pending)
+  ai_moderation_score Decimal?      @db.Decimal(4, 3)
+  ai_labels           Json?         @db.JsonB
+  uploaded_by         String?       @db.Uuid
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime      @updatedAt @db.Timestamptz(6)
+  deleted_at          DateTime?     @db.Timestamptz(6)
+
+  // Exclusive arc: CHECK đúng-một + ON DELETE CASCADE thực → raw SQL migration (ADR-009).
+  place            Place?          @relation("MediaPlace", fields: [place_id], references: [id], onDelete: NoAction)
+  review           Review?         @relation(fields: [review_id], references: [id], onDelete: NoAction)
+  post             CommunityPost?  @relation(fields: [post_id], references: [id], onDelete: NoAction)
+  business         Place?          @relation("MediaBusiness", fields: [business_id], references: [id], onDelete: NoAction)
+  uploaded_by_user User?           @relation(fields: [uploaded_by], references: [id], onDelete: NoAction)
+
+  cover_of_places Place[] @relation("PlaceCoverImage")
+
+  @@index([place_id])
+  @@index([review_id])
+  @@index([post_id])
+  @@index([business_id])
+  @@index([status])
+  @@map("media")
+}
+
+model Contact {
+  // POLYMORPHIC (ADR-005): owner_type/owner_id không FK cứng → không @relation.
+  id                  String             @id @default(uuid()) @db.Uuid
+  owner_type          String             @db.VarChar(30) // UPPERCASE: PLACE, BUSINESS, …
+  owner_id            String             @db.Uuid
+  contact_type        String             @db.VarChar(30) // HOTLINE, PHONE, EMAIL, WEBSITE, …
+  value               String             @db.VarChar(300)
+  label               String?            @db.VarChar(120)
+  is_primary          Boolean            @default(false)
+  verification_status VerificationStatus @default(pending)
+  verified_at         DateTime?          @db.Timestamptz(6)
+  display_order       Int                @default(0)
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @updatedAt @db.Timestamptz(6)
+  deleted_at          DateTime?          @db.Timestamptz(6)
+
+  verifications Verification[] @relation("VerificationContact")
+
+  // PARTIAL UNIQUE (raw SQL): (owner_type, owner_id, contact_type) WHERE is_primary AND deleted_at IS NULL
+  @@index([owner_type, owner_id])
+  @@index([owner_type, owner_id, contact_type])
+  @@map("contacts")
+}
+
+model PriceHistory {
+  // POLYMORPHIC (ADR-006): entity_type/entity_id không FK cứng.
+  id                  String             @id @default(uuid()) @db.Uuid
+  entity_type         String             @db.VarChar(30) // UPPERCASE: PLACE, HOTEL, TOUR, EVENT, …
+  entity_id           String             @db.Uuid
+  service_name        String             @db.VarChar(120)
+  amount              Decimal            @db.Decimal(12, 2)
+  currency            String             @default("VND") @db.Char(3)
+  unit                String?            @db.VarChar(40)
+  is_free             Boolean            @default(false)
+  description         String?            @db.VarChar(300)
+  display_order       Int                @default(0)
+  valid_from          DateTime?          @db.Timestamptz(6)
+  valid_to            DateTime?          @db.Timestamptz(6)
+  source_id           String?            @db.Uuid
+  verification_status VerificationStatus @default(pending)
+  verified_at         DateTime?          @db.Timestamptz(6)
+  updated_by          String?            @db.Uuid
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @updatedAt @db.Timestamptz(6)
+  deleted_at          DateTime?          @db.Timestamptz(6)
+
+  source          Source?        @relation(fields: [source_id], references: [id], onDelete: NoAction)
+  updated_by_user User?          @relation(fields: [updated_by], references: [id], onDelete: NoAction)
+  verifications   Verification[] @relation("VerificationPrice")
+
+  @@index([entity_type, entity_id])
+  @@index([entity_type, entity_id, service_name])
+  @@index([entity_type, entity_id, valid_to])
+  @@index([source_id])
+  @@map("price_history")
+}
+
+// ======================= 4. NGUỒN & PHIÊN BẢN ===============================
+
+model Source {
+  id             String     @id @default(uuid()) @db.Uuid
+  type           SourceType
+  kind           SourceKind
+  title          String?    @db.VarChar(200)
+  url            String?    @db.VarChar(500)
+  external_ref   String?    @db.VarChar(150)
+  publisher      String?    @db.VarChar(200)
+  author_user_id String?    @db.Uuid
+  license        String?    @db.VarChar(60)
+  reliability    Int        @db.SmallInt
+  language       String?    @db.Char(2)
+  retrieved_at   DateTime?  @db.Timestamptz(6)
+  metadata       Json?      @db.JsonB
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime   @updatedAt @db.Timestamptz(6)
+  deleted_at     DateTime?  @db.Timestamptz(6)
+
+  author        User?               @relation(fields: [author_user_id], references: [id], onDelete: NoAction)
+  attributions  SourceAttribution[]
+  price_history PriceHistory[]
+  verifications Verification[]
+  verification_events VerificationEvent[]
+
+  // PARTIAL UNIQUE (raw SQL): (type, external_ref) WHERE external_ref IS NOT NULL
+  @@index([type])
+  @@index([author_user_id])
+  @@map("sources")
+}
+
+model SourceAttribution {
+  // POLYMORPHIC entity (entity_type/entity_id) — không @relation. source_id có FK thật.
+  id          String   @id @default(uuid()) @db.Uuid
+  source_id   String   @db.Uuid
+  entity_type String   @db.VarChar(30) // UPPERCASE chuẩn hóa
+  entity_id   String   @db.Uuid
+  field       String?  @db.VarChar(60)
+  confidence  Int?     @db.SmallInt
+  note        String?  @db.VarChar(300)
+  is_primary  Boolean  @default(false)
+  verified_by String?  @db.Uuid
+  verified_at DateTime? @db.Timestamptz(6)
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  source           Source @relation(fields: [source_id], references: [id], onDelete: Cascade)
+  verified_by_user User?  @relation("AttributionVerifiedBy", fields: [verified_by], references: [id], onDelete: NoAction)
+  created_by_user  User?  @relation("AttributionCreatedBy", fields: [created_by], references: [id], onDelete: NoAction)
+
+  @@unique([entity_type, entity_id, field, source_id])
+  @@index([entity_type, entity_id])
+  @@index([source_id])
+  @@map("source_attributions")
+}
+
+model WikiRevision {
+  // entity_type/entity_id POLYMORPHIC — không @relation. parent self-relation.
+  id                 String         @id @default(uuid()) @db.Uuid
+  entity_type        String         @db.VarChar(30) // UPPERCASE: PLACE (sau: TOPIC, AREA)
+  entity_id          String         @db.Uuid
+  revision_number    Int
+  parent_revision_id String?        @db.Uuid
+  snapshot           Json           @db.JsonB
+  diff               Json?          @db.JsonB
+  origin             RevisionOrigin
+  change_note        String?        @db.VarChar(300)
+  editor_id          String?        @db.Uuid
+  status             RevisionStatus @default(pending)
+  reviewed_by        String?        @db.Uuid
+  reviewed_at        DateTime?      @db.Timestamptz(6)
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+
+  parent           WikiRevision?  @relation("RevisionParent", fields: [parent_revision_id], references: [id], onDelete: NoAction)
+  children         WikiRevision[] @relation("RevisionParent")
+  editor           User?          @relation("RevisionEditor", fields: [editor_id], references: [id], onDelete: NoAction)
+  reviewed_by_user User?          @relation("RevisionReviewer", fields: [reviewed_by], references: [id], onDelete: NoAction)
+
+  @@unique([entity_type, entity_id, revision_number])
+  @@index([entity_type, entity_id, status])
+  @@map("wiki_revisions")
+}
+
+// ======================= 5. XÁC MINH ========================================
+
+model Verification {
+  id                String                  @id @default(uuid()) @db.Uuid
+  place_id          String?                 @db.Uuid // exclusive arc
+  contact_id        String?                 @db.Uuid
+  price_history_id  String?                 @db.Uuid
+  status            VerificationStatus      @default(pending)
+  method            VerificationMethod
+  source_id         String?                 @db.Uuid // bắt buộc khi official → raw SQL CHECK
+  confidence        Int?                    @db.SmallInt
+  confirm_count     Int                     @default(0) // cache dẫn xuất
+  dispute_count     Int                     @default(0)
+  reason_code       VerificationReasonCode?
+  verified_by       String?                 @db.Uuid
+  assigned_to       String?                 @db.Uuid
+  assigned_at       DateTime?               @db.Timestamptz(6)
+  sla_due_at        DateTime?               @db.Timestamptz(6)
+  priority          Int                     @default(0) @db.SmallInt
+  note              String?                 @db.VarChar(300)
+  rejected_reason   String?                 @db.VarChar(300)
+  valid_from        DateTime?               @db.Timestamptz(6)
+  expires_at        DateTime?               @db.Timestamptz(6)
+  lock_version      Int                     @default(0) // optimistic lock
+  created_by        String?                 @db.Uuid
+  created_at        DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime                @updatedAt @db.Timestamptz(6)
+
+  // Exclusive arc CHECK đúng-một + CHECK(status/official/source_id) + partial-unique/target → raw SQL.
+  place         Place?        @relation("VerificationPlace", fields: [place_id], references: [id], onDelete: Cascade)
+  contact       Contact?      @relation("VerificationContact", fields: [contact_id], references: [id], onDelete: Cascade)
+  price_history PriceHistory? @relation("VerificationPrice", fields: [price_history_id], references: [id], onDelete: Cascade)
+  source        Source?       @relation(fields: [source_id], references: [id], onDelete: NoAction)
+  verified_by_user User?      @relation("VerifVerifiedBy", fields: [verified_by], references: [id], onDelete: NoAction)
+  assigned_to_user User?      @relation("VerifAssignedTo", fields: [assigned_to], references: [id], onDelete: NoAction)
+  created_by_user  User?      @relation("VerifCreatedBy", fields: [created_by], references: [id], onDelete: NoAction)
+
+  events VerificationEvent[]
+  votes  VerificationVote[]
+
+  // PARTIAL UNIQUE (raw SQL): (place_id) WHERE place_id IS NOT NULL; tương tự contact_id, price_history_id.
+  @@index([status])
+  @@index([assigned_to, sla_due_at])
+  @@index([source_id])
+  @@map("verifications")
+}
+
+model VerificationEvent {
+  id              String              @id @default(uuid()) @db.Uuid
+  verification_id String              @db.Uuid
+  from_status     VerificationStatus?
+  to_status       VerificationStatus
+  method          VerificationMethod
+  source_id       String?             @db.Uuid
+  actor_id        String?             @db.Uuid
+  note            String?             @db.VarChar(300)
+  created_at      DateTime            @default(now()) @db.Timestamptz(6)
+
+  verification Verification @relation(fields: [verification_id], references: [id], onDelete: Cascade)
+  source       Source?      @relation(fields: [source_id], references: [id], onDelete: NoAction)
+  actor        User?        @relation(fields: [actor_id], references: [id], onDelete: NoAction)
+
+  @@index([verification_id, created_at])
+  @@map("verification_events")
+}
+
+model VerificationVote {
+  id              String   @id @default(uuid()) @db.Uuid
+  verification_id String   @db.Uuid
+  user_id         String   @db.Uuid
+  vote            VoteType
+  weight          Int      @default(1) @db.SmallInt
+  note            String?  @db.VarChar(300)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  verification Verification @relation(fields: [verification_id], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([verification_id, user_id]) // idempotent — một người một phiếu
+  @@index([verification_id])
+  @@map("verification_votes")
+}
+
+// ======================= 6. SỞ HỮU CƠ SỞ ====================================
+
+model BusinessClaim {
+  id            String           @id @default(uuid()) @db.Uuid
+  place_id      String           @db.Uuid
+  requester_id  String           @db.Uuid
+  evidence      Json             @db.JsonB
+  status        ClaimStatus      @default(pending)
+  reviewer_id   String?          @db.Uuid
+  reason_code   ClaimReasonCode?
+  decision_note String?          @db.VarChar(300)
+  decided_at    DateTime?        @db.Timestamptz(6)
+  created_at    DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime         @updatedAt @db.Timestamptz(6)
+
+  place     Place            @relation(fields: [place_id], references: [id], onDelete: Cascade)
+  requester User             @relation("ClaimRequester", fields: [requester_id], references: [id], onDelete: NoAction)
+  reviewer  User?            @relation("ClaimReviewer", fields: [reviewer_id], references: [id], onDelete: NoAction)
+  members   BusinessMember[]
+
+  // PARTIAL UNIQUE (raw SQL): (place_id, requester_id) WHERE status='pending'
+  // CHECK (status<>'rejected' OR reason_code IS NOT NULL) → raw SQL
+  @@index([place_id, status])
+  @@map("business_claims")
+}
+
+model BusinessMember {
+  id         String     @id @default(uuid()) @db.Uuid
+  place_id   String     @db.Uuid
+  user_id    String     @db.Uuid
+  role       MemberRole
+  claim_id   String?    @db.Uuid
+  granted_by String?    @db.Uuid
+  granted_at DateTime   @default(now()) @db.Timestamptz(6)
+  revoked_at DateTime?  @db.Timestamptz(6)
+
+  place           Place          @relation(fields: [place_id], references: [id], onDelete: Cascade)
+  user            User           @relation("MemberUser", fields: [user_id], references: [id], onDelete: Cascade)
+  claim           BusinessClaim? @relation(fields: [claim_id], references: [id], onDelete: NoAction)
+  granted_by_user User?          @relation("MemberGrantedBy", fields: [granted_by], references: [id], onDelete: NoAction)
+
+  // PARTIAL UNIQUE (raw SQL): (place_id) WHERE role='owner' AND revoked_at IS NULL;
+  //                           (place_id, user_id) WHERE revoked_at IS NULL
+  @@index([user_id])
+  @@map("business_members")
+}
+
+// ======================= 7. CỘNG ĐỒNG & ĐÓNG GÓP ============================
+
+model Review {
+  id         String       @id @default(uuid()) @db.Uuid
+  place_id   String       @db.Uuid
+  user_id    String       @db.Uuid
+  rating     Int          @db.SmallInt // 1–5 → raw SQL CHECK
+  content    String?      @db.Text
+  status     ReviewStatus @default(pending)
+  created_at DateTime     @default(now()) @db.Timestamptz(6)
+
+  place Place   @relation(fields: [place_id], references: [id], onDelete: Cascade)
+  user  User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  media Media[]
+
+  @@unique([place_id, user_id]) // mỗi người 1 review / địa điểm
+  @@map("reviews")
+}
+
+model Contribution {
+  id          String             @id @default(uuid()) @db.Uuid
+  user_id     String             @db.Uuid
+  place_id    String?            @db.Uuid // null nếu tạo mới
+  type        ContributionType
+  payload     Json               @db.JsonB
+  status      ContributionStatus @default(pending)
+  reviewed_by String?            @db.Uuid
+  review_note String?            @db.Text
+  created_at  DateTime           @default(now()) @db.Timestamptz(6)
+  reviewed_at DateTime?          @db.Timestamptz(6)
+
+  user          User   @relation("ContributionUser", fields: [user_id], references: [id], onDelete: Cascade)
+  place         Place? @relation(fields: [place_id], references: [id], onDelete: NoAction)
+  reviewed_by_user User? @relation("ContributionReviewer", fields: [reviewed_by], references: [id], onDelete: NoAction)
+
+  @@index([place_id, status])
+  @@map("contributions")
+}
+
+model CommunityPost {
+  id         String     @id @default(uuid()) @db.Uuid
+  author_id  String     @db.Uuid
+  title      String     @db.VarChar(300)
+  slug       String     @unique @db.VarChar(320)
+  content    String     @db.Text
+  place_id   String?    @db.Uuid
+  status     PostStatus @default(draft)
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at DateTime   @updatedAt @db.Timestamptz(6)
+
+  author   User               @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  place    Place?             @relation(fields: [place_id], references: [id], onDelete: NoAction)
+  comments CommunityComment[]
+  media    Media[]
+
+  @@index([place_id])
+  @@map("community_posts")
+}
+
+model CommunityComment {
+  id         String   @id @default(uuid()) @db.Uuid
+  post_id    String   @db.Uuid
+  author_id  String   @db.Uuid
+  parent_id  String?  @db.Uuid
+  content    String   @db.Text
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  post    CommunityPost      @relation(fields: [post_id], references: [id], onDelete: Cascade)
+  author  User               @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  parent  CommunityComment?  @relation("CommentThread", fields: [parent_id], references: [id], onDelete: NoAction)
+  replies CommunityComment[] @relation("CommentThread")
+
+  @@index([post_id])
+  @@map("community_comments")
+}
+
+// ======================= 8. ANALYTICS (tổng hợp) ============================
+
+model PageViewAgg {
+  id              String      @id @default(uuid()) @db.Uuid
+  granularity     Granularity
+  bucket_start    DateTime    @db.Timestamptz(6)
+  page_type       PageType
+  entity_id       String?     @db.Uuid
+  path_hash       String?     @db.Char(16)
+  views           BigInt
+  unique_visitors Int?
+  uniques_hll     Bytes?      // HLL sketch
+  created_at      DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@unique([granularity, bucket_start, page_type, entity_id])
+  @@index([page_type, bucket_start])
+  @@map("page_views_agg")
+}
+
+model PlaceViewAgg {
+  id              String      @id @default(uuid()) @db.Uuid
+  granularity     Granularity
+  bucket_start    DateTime    @db.Timestamptz(6)
+  place_id        String      @db.Uuid
+  views           BigInt
+  unique_visitors Int?
+  uniques_hll     Bytes?
+  source          ViewSource?
+  created_at      DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime    @updatedAt @db.Timestamptz(6)
+
+  place Place @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  @@unique([granularity, bucket_start, place_id, source])
+  @@index([place_id, bucket_start])
+  @@index([bucket_start])
+  @@map("place_views_agg")
+}
+
+model SearchQueryAgg {
+  id                String      @id @default(uuid()) @db.Uuid
+  granularity       Granularity
+  bucket_start      DateTime    @db.Timestamptz(6)
+  query_normalized  String      @db.VarChar(120)
+  search_count      BigInt
+  zero_result_count BigInt
+  click_count       BigInt
+  result_count_avg  Decimal?    @db.Decimal(8, 1)
+  created_at        DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime    @updatedAt @db.Timestamptz(6)
+
+  @@unique([granularity, bucket_start, query_normalized])
+  @@index([bucket_start, search_count])
+  @@map("search_queries_agg")
+}
+
+model PopularPlace {
+  id              String        @id @default(uuid()) @db.Uuid
+  period          PopularPeriod
+  place_id        String        @db.Uuid
+  rank            Int
+  score           Decimal       @db.Decimal(12, 4)
+  views           BigInt
+  unique_visitors Int?
+  delta_rank      Int?
+  computed_at     DateTime      @db.Timestamptz(6)
+
+  place Place @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  @@unique([period, place_id])
+  @@index([period, rank])
+  @@map("popular_places")
+}
+
+model TrendingKeyword {
+  id               String         @id @default(uuid()) @db.Uuid
+  period           TrendingPeriod
+  keyword          String         @db.VarChar(120)
+  rank             Int
+  current_count    BigInt
+  previous_count   BigInt
+  growth_score     Decimal        @db.Decimal(10, 4)
+  zero_result_rate Decimal?       @db.Decimal(4, 3)
+  computed_at      DateTime       @db.Timestamptz(6)
+
+  @@unique([period, keyword])
+  @@index([period, rank])
+  @@map("trending_keywords")
+}
+
+// ======================= 9. TÌM KIẾM ========================================
+
+model SavedSearch {
+  id               String        @id @default(uuid()) @db.Uuid
+  user_id          String        @db.Uuid
+  name             String?       @db.VarChar(120)
+  query_raw        String?       @db.VarChar(200)
+  query_normalized String?       @db.VarChar(200)
+  filters          Json?         @db.JsonB
+  sort             String?       @db.VarChar(40)
+  alert_enabled    Boolean       @default(false)
+  alert_channel    AlertChannel?
+  last_run_at      DateTime?     @db.Timestamptz(6)
+  created_at       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime      @updatedAt @db.Timestamptz(6)
+  deleted_at       DateTime?     @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("saved_searches")
+}

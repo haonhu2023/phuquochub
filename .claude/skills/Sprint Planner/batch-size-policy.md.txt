@@ -1,0 +1,664 @@
+# Batch Size Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To:
+Sprint Planner
+Batch Generator
+Architecture Review
+Sprint Acceptance
+
+---
+
+# Purpose
+
+This document defines the maximum allowable size
+for an implementation batch.
+
+The purpose is to ensure that every generated batch is
+
+- reviewable
+- testable
+- understandable
+- mergeable
+- reversible
+
+Large batches increase
+
+- review complexity
+- architecture drift
+- merge conflicts
+- regression risk
+
+Therefore Claude Code must automatically split
+large implementation tasks into multiple batches.
+
+---
+
+# Core Principle
+
+A batch should be as small as possible,
+but large enough to provide measurable progress.
+
+Small batches reduce risk.
+
+Large batches increase uncertainty.
+
+Never optimize for Lines of Code.
+
+Always optimize for review quality.
+
+---
+
+# Batch Size Categories
+
+## Tiny
+
+Files
+
+1–3
+
+LOC
+
+<200
+
+Complexity
+
+Very Low
+
+Review Time
+
+<15 min
+
+Suitable For
+
+Bug Fix
+
+Configuration
+
+Documentation
+
+Small Refactor
+
+---
+
+## Small (Preferred)
+
+Files
+
+4–8
+
+LOC
+
+200–600
+
+Complexity
+
+Low
+
+Review Time
+
+15–45 min
+
+Suitable For
+
+Entity
+
+Repository
+
+DTO
+
+Mapper
+
+Validation
+
+Migration
+
+---
+
+## Medium
+
+Files
+
+9–15
+
+LOC
+
+600–1000
+
+Complexity
+
+Medium
+
+Review Time
+
+45–90 min
+
+Suitable For
+
+Complete module layer
+
+Example
+
+All Controllers
+
+All Services
+
+All Repositories
+
+---
+
+## Large
+
+Files
+
+16–25
+
+LOC
+
+1000–1800
+
+Complexity
+
+High
+
+Review Time
+
+90–180 min
+
+Status
+
+NOT RECOMMENDED
+
+Sprint Planner must automatically split
+unless explicitly approved.
+
+---
+
+## Very Large
+
+Files
+
+>25
+
+LOC
+
+>1800
+
+Complexity
+
+Very High
+
+Status
+
+FORBIDDEN
+
+Claude Code must stop.
+
+Planner must create multiple batches.
+
+---
+
+# File Count Rules
+
+Recommended
+
+5–8 files
+
+Maximum
+
+15 files
+
+Absolute Maximum
+
+20 files
+
+If more than 20 files are affected,
+Planner must split the work.
+
+---
+
+# LOC Rules
+
+Recommended
+
+300–700 LOC
+
+Maximum
+
+1000 LOC
+
+Absolute Maximum
+
+1500 LOC
+
+Beyond 1500 LOC,
+Planner must stop generation.
+
+---
+
+# Complexity Scoring
+
+Every file contributes a complexity score.
+
+| File Type | Score |
+|------------|------:|
+| Config | 1 |
+| Entity | 2 |
+| DTO | 2 |
+| Mapper | 2 |
+| Validator | 2 |
+| Repository | 3 |
+| Migration | 3 |
+| Controller | 3 |
+| Service | 5 |
+| Guard | 5 |
+| Interceptor | 4 |
+| Search | 6 |
+| AI | 6 |
+| Security | 6 |
+| Performance | 5 |
+| E2E Test | 4 |
+
+Batch Complexity
+
+Total Score
+
+0–10
+
+Very Easy
+
+11–20
+
+Easy
+
+21–35
+
+Medium
+
+36–50
+
+Hard
+
+>50
+
+Split Required
+
+---
+
+# Automatic Split Rules
+
+Claude Code must split a batch if
+
+Files >15
+
+OR
+
+LOC >1000
+
+OR
+
+Complexity Score >35
+
+OR
+
+Touches multiple modules
+
+OR
+
+Touches unrelated layers
+
+OR
+
+Changes architecture
+
+---
+
+# Layer Split Policy
+
+Never mix unrelated layers.
+
+Preferred
+
+Batch 1
+
+Entities
+
+Repositories
+
+Migration
+
+---
+
+Batch 2
+
+DTO
+
+Mapper
+
+Validator
+
+---
+
+Batch 3
+
+Service
+
+Business Logic
+
+---
+
+Batch 4
+
+Controller
+
+OpenAPI
+
+---
+
+Batch 5
+
+Tests
+
+---
+
+Bad Example
+
+Entities
+
+Controllers
+
+Frontend
+
+Docker
+
+CI
+
+All together
+
+---
+
+# Module Split Policy
+
+Each module should be planned independently.
+
+Example
+
+Sprint 2
+
+Batch 1
+
+Places
+
+Entities
+
+---
+
+Batch 2
+
+Places
+
+Repository
+
+---
+
+Batch 3
+
+Places
+
+Service
+
+---
+
+Batch 4
+
+Places
+
+Controller
+
+---
+
+Batch 5
+
+Places
+
+Tests
+
+Only after Places is complete,
+start Hotels.
+
+---
+
+# Parallel Execution Rules
+
+Batches may execute in parallel only if
+
+No shared entities
+
+No shared migrations
+
+No shared repositories
+
+No shared APIs
+
+No shared DTOs
+
+No shared permissions
+
+Otherwise
+
+Sequential execution is required.
+
+---
+
+# Review Thresholds
+
+Tiny Batch
+
+1 reviewer
+
+Small Batch
+
+1 reviewer
+
+Medium Batch
+
+2 reviewers
+
+Large Batch
+
+Architecture review required
+
+Very Large
+
+Rejected
+
+---
+
+# Testing Requirements
+
+Tiny
+
+Unit Tests
+
+Small
+
+Unit Tests
+
+Medium
+
+Unit + Integration
+
+Large
+
+Unit + Integration + E2E
+
+Very Large
+
+Split before testing
+
+---
+
+# Merge Requirements
+
+Tiny
+
+CI PASS
+
+Small
+
+CI PASS
+
+Architecture PASS
+
+Medium
+
+CI PASS
+
+Architecture PASS
+
+Security PASS
+
+Large
+
+Not allowed without explicit approval
+
+Very Large
+
+Forbidden
+
+---
+
+# Risk Threshold
+
+Batch Risk Score
+
+0–20
+
+Acceptable
+
+21–40
+
+Needs Review
+
+41–60
+
+Needs Architecture Approval
+
+>60
+
+Split Required
+
+---
+
+# Batch Confidence
+
+Planner must estimate confidence.
+
+90–100%
+
+Very High
+
+75–89%
+
+High
+
+60–74%
+
+Medium
+
+<60%
+
+Planner must stop.
+
+Reason
+
+Insufficient information.
+
+---
+
+# Anti-Patterns
+
+Never create
+
+One Batch = One Sprint
+
+Never create
+
+100+ file Pull Request
+
+Never create
+
+5000 LOC generation
+
+Never generate
+
+Controllers before Services
+
+Never generate
+
+Frontend before OpenAPI
+
+Never generate
+
+Tests before implementation
+
+Never merge
+
+Untested code
+
+---
+
+# Reporting
+
+Every batch report must include
+
+Batch Size
+
+Files
+
+LOC
+
+Complexity Score
+
+Risk Score
+
+Estimated Review Time
+
+Estimated Testing Time
+
+Confidence
+
+Recommendation
+
+---
+
+# Success Criteria
+
+A batch size policy succeeds when
+
+Every generated batch
+
+can be reviewed within one sitting,
+
+merged independently,
+
+reverted independently,
+
+and implemented without architectural decisions.
+
+Batch size must maximize
+
+quality,
+
+traceability,
+
+and maintainability,
+
+not generation speed.

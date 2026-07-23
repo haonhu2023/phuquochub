@@ -1,0 +1,626 @@
+# Decision Register Review
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+
+the official Decision Register Review policy
+
+for the PhuQuocHub platform.
+
+The Decision Register
+
+is the authoritative index
+
+of every approved architectural decision.
+
+It provides
+
+traceability,
+
+governance,
+
+and historical consistency.
+
+Every accepted ADR
+
+must appear
+
+in the Decision Register.
+
+---
+
+# Mission
+
+Protect decision consistency.
+
+Maintain traceability.
+
+Prevent undocumented decisions.
+
+Detect conflicting decisions.
+
+Guarantee architectural governance.
+
+---
+
+# Core Principles
+
+The Decision Register
+
+is the official catalog
+
+of architecture decisions.
+
+ADR
+
+documents the decision.
+
+Decision Register
+
+tracks the decision.
+
+Implementation
+
+must follow both.
+
+No implementation
+
+may reference
+
+a non-existent decision.
+
+---
+
+# Decision Register Structure
+
+Each record
+
+must contain
+
+Decision ID
+
+ADR Reference
+
+Title
+
+Status
+
+Version
+
+Owner
+
+Date Approved
+
+Affected Modules
+
+Affected Database
+
+Affected APIs
+
+Affected Documentation
+
+Dependencies
+
+Superseded Decision
+
+Review Status
+
+Implementation Status
+
+---
+
+# Decision Lifecycle
+
+Proposed
+
+↓
+
+Under Review
+
+↓
+
+Approved
+
+↓
+
+Implemented
+
+↓
+
+Verified
+
+↓
+
+Archived
+
+Only
+
+Approved
+
+decisions
+
+may be implemented.
+
+---
+
+# Review Workflow
+
+Every review
+
+must follow
+
+Step 1
+
+Load Decision Register
+
+↓
+
+Step 2
+
+Validate Structure
+
+↓
+
+Step 3
+
+Compare ADRs
+
+↓
+
+Step 4
+
+Compare Repository
+
+↓
+
+Step 5
+
+Detect Conflicts
+
+↓
+
+Step 6
+
+Assess Impact
+
+↓
+
+Step 7
+
+Generate Report
+
+↓
+
+Step 8
+
+Issue Decision
+
+---
+
+# Register Validation
+
+Verify
+
+Decision IDs
+
+Unique identifiers
+
+Referenced ADRs
+
+Version
+
+Status
+
+Owner
+
+Approval
+
+Dependencies
+
+Affected Components
+
+No duplicate records.
+
+No missing identifiers.
+
+---
+
+# ADR Consistency
+
+Verify
+
+Every Accepted ADR
+
+exists
+
+inside
+
+Decision Register.
+
+Every Register entry
+
+references
+
+a valid ADR.
+
+Missing references
+
+are invalid.
+
+---
+
+# Repository Consistency
+
+Compare
+
+Decision Register
+
+against repository.
+
+Verify
+
+Modules
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Infrastructure
+
+Folder Structure
+
+Dependencies
+
+Implementation
+
+must match
+
+approved decisions.
+
+---
+
+# Documentation Consistency
+
+Compare
+
+Decision Register
+
+against
+
+Architecture
+
+ADR
+
+Database
+
+ERD
+
+OpenAPI
+
+Workflow
+
+Coding Standard
+
+README
+
+No contradiction
+
+is permitted.
+
+---
+
+# Dependency Validation
+
+Verify
+
+Decision dependencies
+
+Superseded decisions
+
+Related ADRs
+
+Affected modules
+
+Affected infrastructure
+
+Decision history
+
+Dependency chain
+
+must remain valid.
+
+---
+
+# Conflict Detection
+
+Detect
+
+Duplicate decisions
+
+Conflicting decisions
+
+Contradictory ADRs
+
+Superseded decisions
+
+Missing implementation
+
+Orphan ADRs
+
+Repository without decision
+
+Decision without ADR
+
+---
+
+# Drift Detection
+
+Decision Drift includes
+
+Repository changes
+
+without decision
+
+ADR accepted
+
+but absent
+
+from Decision Register
+
+Decision Register
+
+contradicts ADR
+
+Decision Register
+
+contradicts implementation
+
+Decision Register
+
+contradicts documentation
+
+---
+
+# Severity
+
+Critical
+
+Conflicting approved decisions
+
+Repository contradicts decision
+
+High
+
+Missing approved decision
+
+Missing ADR reference
+
+Medium
+
+Incomplete metadata
+
+Outdated implementation status
+
+Low
+
+Formatting
+
+Naming
+
+Informational
+
+Observation only
+
+---
+
+# Evidence
+
+Every finding
+
+must include
+
+Decision ID
+
+ADR Reference
+
+Repository Evidence
+
+Documentation Evidence
+
+Severity
+
+Impact
+
+Recommendation
+
+Never infer.
+
+Never guess.
+
+Never fabricate.
+
+---
+
+# Technical Debt
+
+Every decision debt
+
+must include
+
+Identifier
+
+Description
+
+Impact
+
+Severity
+
+Owner
+
+Target Sprint
+
+Recommendation
+
+Status
+
+---
+
+# Report Output
+
+Executive Summary
+
+Decision Register Summary
+
+Reviewed Decisions
+
+Missing Decisions
+
+Conflicting Decisions
+
+Repository Compliance
+
+Documentation Compliance
+
+Decision Drift
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+DECISION REGISTER VERIFIED
+
+DECISION DRIFT DETECTED
+
+---
+
+# Blocking Conditions
+
+Immediately return
+
+BLOCKED
+
+if
+
+Decision Register missing
+
+Repository unavailable
+
+Architecture unavailable
+
+Mandatory ADR missing
+
+Conflicting approved decisions
+
+Documentation unavailable
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Decision Register loaded
+
+All ADRs compared
+
+Repository compared
+
+Documentation compared
+
+Evidence attached
+
+No assumptions
+
+No generated code
+
+No modified files
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Decision Register Review succeeds when
+
+every approved architectural decision
+
+is recorded,
+
+traceable,
+
+consistent,
+
+implemented,
+
+and synchronized
+
+with ADRs,
+
+documentation,
+
+and the repository.
+
+The Decision Register
+
+must remain
+
+the authoritative index
+
+of architectural governance
+
+throughout
+
+the lifecycle
+
+of the PhuQuocHub platform.

@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-test:
+    name: Lint · Typecheck · Build · Unit test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+  e2e:
+    name: API e2e (Postgres + Redis)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: phuquoc
+          POSTGRES_PASSWORD: phuquoc
+          POSTGRES_DB: phuquochub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U phuquoc -d phuquochub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: phuquoc
+      DB_PASSWORD: phuquoc
+      DB_NAME: phuquochub
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-access-secret-please-change
+      JWT_REFRESH_SECRET: ci-refresh-secret-please-change
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build shared packages
+        run: npm run build --workspace @phuquochub/shared-types --workspace @phuquochub/utils
+
+      - name: Run migrations
+        run: npm run migration:run --workspace @phuquochub/api
+
+      - name: API e2e
+        run: npm run test:e2e --workspace @phuquochub/api

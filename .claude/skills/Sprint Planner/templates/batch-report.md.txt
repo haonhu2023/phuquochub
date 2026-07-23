@@ -1,0 +1,544 @@
+# Batch Report Template
+
+Version: 1.0
+
+Status:
+Production
+
+Template Type
+
+Batch Report
+
+Owner
+
+Chief Software Architect
+
+Used By
+
+Batch Generator
+
+Sprint Planner
+
+Sprint Acceptance
+
+Architecture Review
+
+Production Gate
+
+---
+
+# Batch Information
+
+Project
+
+Sprint
+
+Batch
+
+Milestone
+
+Version
+
+Repository
+
+Branch
+
+Commit
+
+Start Date
+
+End Date
+
+Generator
+
+Reviewer
+
+Review Mode
+
+Read-only / Read-write
+
+---
+
+# Executive Summary
+
+Batch Objective
+
+Scope
+
+Overall Status
+
+Overall Quality
+
+Architecture Status
+
+Documentation Status
+
+Recommendation
+
+---
+
+# Batch Scope
+
+Included
+
+Excluded
+
+Dependencies
+
+Architecture Boundary
+
+Out of Scope
+
+---
+
+# Planned Deliverables
+
+| Module | Planned | Completed | Status |
+
+---
+
+# Generated Modules
+
+Module
+
+Description
+
+Reason
+
+Dependencies
+
+Status
+
+---
+
+# Generated Files
+
+| File | Type | Status | Notes |
+
+---
+
+# Modified Files
+
+| File | Reason | Status |
+
+---
+
+# Deleted Files
+
+| File | Reason |
+
+---
+
+# Repository Impact
+
+New Modules
+
+Updated Modules
+
+Removed Modules
+
+Estimated LOC
+
+Actual LOC
+
+Repository Impact
+
+---
+
+# Architecture Compliance
+
+Architecture PASS / FAIL
+
+Module Boundaries
+
+Layer Boundaries
+
+Dependency Rules
+
+Folder Structure
+
+Naming Convention
+
+Architecture Drift
+
+Evidence
+
+Recommendation
+
+---
+
+# Documentation Compliance
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+ERD
+
+Data Dictionary
+
+Workflow
+
+RBAC
+
+Security
+
+OpenAPI
+
+Coding Standard
+
+Evidence
+
+Recommendation
+
+---
+
+# Database Review
+
+Entities
+
+Tables
+
+Columns
+
+Indexes
+
+Constraints
+
+Foreign Keys
+
+Soft Delete
+
+Audit Fields
+
+Geo Fields
+
+Migration
+
+Rollback
+
+Evidence
+
+Recommendation
+
+---
+
+# API Review
+
+New Endpoints
+
+Modified Endpoints
+
+Validation
+
+Authentication
+
+Authorization
+
+OpenAPI
+
+Examples
+
+Versioning
+
+Evidence
+
+Recommendation
+
+---
+
+# Security Review
+
+Authentication
+
+Authorization
+
+RBAC
+
+Permission Matrix
+
+JWT
+
+Encryption
+
+Secrets
+
+Validation
+
+Audit Logging
+
+Rate Limit
+
+Evidence
+
+Recommendation
+
+---
+
+# Testing Review
+
+Compilation
+
+Lint
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Coverage
+
+CI
+
+Evidence
+
+Recommendation
+
+---
+
+# Technical Debt
+
+| ID | Description | Severity | Target Sprint | Status |
+
+---
+
+# Known Risks
+
+| ID | Risk | Severity | Mitigation | Owner |
+
+---
+
+# Acceptance Checklist
+
+Architecture
+
+Documentation
+
+Database
+
+Migration
+
+API
+
+RBAC
+
+Security
+
+Testing
+
+CI
+
+Performance
+
+All Dependencies Satisfied
+
+No Critical Drift
+
+---
+
+# Batch Metrics
+
+Modules Generated
+
+Files Generated
+
+Files Modified
+
+Files Deleted
+
+Estimated LOC
+
+Generated LOC
+
+Migration Count
+
+Entity Count
+
+Repository Count
+
+API Count
+
+Test Count
+
+---
+
+# Recommendations
+
+Immediate Actions
+
+Next Batch
+
+Future Improvements
+
+Technical Debt
+
+Documentation Updates
+
+---
+
+# Final Decision
+
+Exactly one
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+---
+
+# Batch Acceptance Certificate
+
+Issue only when
+
+Architecture PASS
+
+Documentation PASS
+
+Database PASS
+
+Migration PASS
+
+OpenAPI PASS
+
+Security PASS
+
+Testing PASS
+
+CI PASS
+
+No Critical Issues
+
+No High Issues
+
+No Blocking Drift
+
+==================================================
+
+BATCH ACCEPTANCE CERTIFICATE
+
+Project:
+
+Sprint:
+
+Batch:
+
+Version:
+
+Branch:
+
+Commit:
+
+Acceptance Date:
+
+Architecture:
+
+Documentation:
+
+Database:
+
+Security:
+
+Testing:
+
+CI:
+
+Status
+
+BATCH ACCEPTED
+
+Approved By
+
+Chief Software Architect
+
+==================================================
+
+Otherwise
+
+Do NOT issue the certificate.
+
+---
+
+# Evidence
+
+Every conclusion
+
+must reference
+
+Repository
+
+Architecture
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Database
+
+Migration
+
+Tests
+
+CI
+
+Never guess.
+
+Never invent.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every finding has evidence
+
+No undocumented assumptions
+
+No architecture changes proposed
+
+No code generated during review
+
+No files modified
+
+---
+
+# Success Criteria
+
+The Batch Report succeeds when
+
+it provides
+
+a complete,
+
+evidence-based,
+
+repeatable,
+
+and auditable
+
+summary of a Batch,
+
+allowing stakeholders
+
+to determine
+
+whether the Batch
+
+is ready to merge
+
+without manually reviewing
+
+every generated file.

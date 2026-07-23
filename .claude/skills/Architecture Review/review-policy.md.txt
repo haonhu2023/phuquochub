@@ -1,0 +1,790 @@
+# Review Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Review
+
+Documentation Review
+
+Sprint Review
+
+Batch Review
+
+Production Review
+
+Prompt 29
+
+Prompt 30
+
+Prompt 36
+
+---
+
+# Purpose
+
+This document defines
+the official review policy
+for the PhuQuocHub platform.
+
+All architecture reviews
+
+must follow
+the same methodology,
+
+the same evidence model,
+
+the same severity model,
+
+and the same reporting format.
+
+Review is independent
+from implementation.
+
+Review never modifies code.
+
+---
+
+# Mission
+
+The purpose of review is
+
+to protect architecture,
+
+to preserve documentation integrity,
+
+to detect drift,
+
+to identify technical debt,
+
+to assess implementation quality,
+
+and to prevent architectural regression.
+
+---
+
+# Core Principles
+
+Review is
+
+Objective
+
+Repeatable
+
+Deterministic
+
+Evidence-based
+
+Traceable
+
+Read-only
+
+No review
+may rely on assumptions.
+
+No review
+may generate production code.
+
+---
+
+# Review Objectives
+
+Every review must determine
+
+Whether architecture
+is still compliant.
+
+Whether implementation
+matches documentation.
+
+Whether repository
+remains healthy.
+
+Whether dependencies
+remain valid.
+
+Whether undocumented changes
+have been introduced.
+
+Whether production risks exist.
+
+---
+
+# Review Hierarchy
+
+Documentation Review
+
+↓
+
+Architecture Review
+
+↓
+
+Repository Review
+
+↓
+
+Implementation Review
+
+↓
+
+Database Review
+
+↓
+
+API Review
+
+↓
+
+Security Review
+
+↓
+
+Performance Review
+
+↓
+
+Sprint Review
+
+↓
+
+Release Review
+
+↓
+
+Production Review
+
+---
+
+# Review Types
+
+## Documentation Review
+
+Purpose
+
+Verify documentation quality.
+
+Scope
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+Workflow
+
+Coding Standard
+
+README
+
+Deliverable
+
+Documentation Report
+
+---
+
+## Architecture Review
+
+Purpose
+
+Validate implementation
+against architecture.
+
+Scope
+
+Modules
+
+Dependencies
+
+Layer Boundaries
+
+Folder Structure
+
+Architecture Drift
+
+Deliverable
+
+Architecture Report
+
+---
+
+## Repository Review
+
+Purpose
+
+Understand repository state.
+
+Scope
+
+Modules
+
+Packages
+
+Generated Files
+
+Deleted Files
+
+Dead Code
+
+Duplicate Code
+
+Repository Growth
+
+Deliverable
+
+Repository Summary
+
+---
+
+## Database Review
+
+Purpose
+
+Verify database architecture.
+
+Scope
+
+Entities
+
+Tables
+
+Columns
+
+Indexes
+
+Constraints
+
+Foreign Keys
+
+Migration
+
+Rollback
+
+ERD
+
+Data Dictionary
+
+Deliverable
+
+Database Review Report
+
+---
+
+## API Review
+
+Purpose
+
+Verify API architecture.
+
+Scope
+
+Controllers
+
+Routes
+
+DTOs
+
+Validation
+
+Authentication
+
+Authorization
+
+Versioning
+
+OpenAPI
+
+Deliverable
+
+API Compliance Report
+
+---
+
+## Security Review
+
+Purpose
+
+Evaluate security posture.
+
+Scope
+
+Authentication
+
+Authorization
+
+RBAC
+
+Encryption
+
+Secrets
+
+Validation
+
+Rate Limiting
+
+Audit Logging
+
+OWASP
+
+Deliverable
+
+Security Review Report
+
+---
+
+## Performance Review
+
+Purpose
+
+Evaluate system performance.
+
+Scope
+
+Database
+
+Indexes
+
+Caching
+
+Geo Queries
+
+Search
+
+Bundle Size
+
+Memory
+
+CPU
+
+Response Time
+
+Deliverable
+
+Performance Report
+
+---
+
+## Sprint Review
+
+Purpose
+
+Determine Sprint readiness.
+
+Scope
+
+Objectives
+
+Deliverables
+
+Architecture
+
+Documentation
+
+Testing
+
+Security
+
+Performance
+
+Technical Debt
+
+Deliverable
+
+Sprint Acceptance Report
+
+---
+
+## Production Review
+
+Purpose
+
+Determine production readiness.
+
+Scope
+
+Infrastructure
+
+Monitoring
+
+Backup
+
+Restore
+
+Rollback
+
+Deployment
+
+Security
+
+Performance
+
+Deliverable
+
+Production Gate Report
+
+---
+
+# Review Workflow
+
+Every review follows
+exactly the same workflow.
+
+Step 1
+
+Understand scope
+
+↓
+
+Step 2
+
+Load documentation
+
+↓
+
+Step 3
+
+Inspect repository
+
+↓
+
+Step 4
+
+Compare implementation
+
+↓
+
+Step 5
+
+Detect drift
+
+↓
+
+Step 6
+
+Evaluate risk
+
+↓
+
+Step 7
+
+Generate report
+
+↓
+
+Step 8
+
+Issue decision
+
+No step
+may be skipped.
+
+---
+
+# Scope Rules
+
+Every review
+must clearly define
+
+Included
+
+Excluded
+
+Limitations
+
+Repository Scope
+
+Documentation Scope
+
+Architecture Scope
+
+---
+
+# Evidence Rules
+
+Every finding
+requires evidence.
+
+Valid evidence
+
+Repository
+
+Architecture
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Migration
+
+Database
+
+Tests
+
+CI
+
+Configuration
+
+If evidence
+cannot be located
+
+Output
+
+NOT FOUND
+
+Never guess.
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Severity Model
+
+Critical
+
+Production blocker.
+
+High
+
+Merge blocker.
+
+Medium
+
+Must be fixed
+before next Sprint.
+
+Low
+
+Technical debt.
+
+Informational
+
+Observation only.
+
+---
+
+# Drift Detection
+
+Review must detect
+
+Architecture Drift
+
+Documentation Drift
+
+Database Drift
+
+OpenAPI Drift
+
+Workflow Drift
+
+RBAC Drift
+
+Dependency Drift
+
+Naming Drift
+
+Folder Drift
+
+Security Drift
+
+Performance Drift
+
+Every drift
+must include
+
+Evidence
+
+Severity
+
+Recommendation
+
+---
+
+# Technical Debt
+
+Every technical debt
+must include
+
+Identifier
+
+Description
+
+Severity
+
+Impact
+
+Recommendation
+
+Target Sprint
+
+Owner
+
+Status
+
+---
+
+# Risk Assessment
+
+Every review
+must assess
+
+Architecture Risk
+
+Security Risk
+
+Performance Risk
+
+Business Risk
+
+Operational Risk
+
+Maintainability Risk
+
+Scalability Risk
+
+---
+
+# Reporting Rules
+
+Every report
+must contain
+
+Executive Summary
+
+Scope
+
+Evidence
+
+Findings
+
+Compliance Matrix
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+Exactly one decision
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+MERGE APPROVED
+
+MERGE APPROVED WITH CONDITIONS
+
+MERGE REJECTED
+
+PRODUCTION READY
+
+No additional
+decision values
+are permitted.
+
+---
+
+# Review Independence
+
+Review must never
+
+Generate production code
+
+Modify repository
+
+Rewrite documentation
+
+Change architecture
+
+Create ADR
+
+Change OpenAPI
+
+Change database
+
+Approve undocumented implementation
+
+---
+
+# Self Verification
+
+Before publishing
+the report
+
+verify
+
+Scope defined
+
+Evidence complete
+
+No assumptions
+
+No generated code
+
+No modified files
+
+Exactly one decision
+
+Architecture preserved
+
+---
+
+# Success Criteria
+
+The Review Policy succeeds when
+
+every review
+
+is objective,
+
+repeatable,
+
+auditable,
+
+fully evidence-based,
+
+and capable of detecting
+architectural regression
+
+before implementation
+reaches production.
+
+The review process
+must protect
+
+the SSOT,
+
+the frozen architecture,
+
+and the long-term
+maintainability
+of the PhuQuocHub platform.

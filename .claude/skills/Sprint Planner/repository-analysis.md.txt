@@ -1,0 +1,754 @@
+# Repository Analysis
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To:
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+---
+
+# Purpose
+
+This document defines the mandatory repository analysis
+performed before any planning or code generation.
+
+Repository Analysis is the first step
+of every implementation cycle.
+
+Claude Code must understand the current repository
+before making any implementation decision.
+
+No code shall be generated
+without completing Repository Analysis.
+
+---
+
+# Core Principle
+
+The repository is the current implementation truth.
+
+Documentation is the architectural truth.
+
+Planning must compare both.
+
+Never overwrite existing implementation.
+
+Never duplicate implementation.
+
+Never regenerate completed work.
+
+---
+
+# Repository Analysis Objectives
+
+Repository analysis must determine
+
+Current implementation status
+
+Completed modules
+
+Incomplete modules
+
+Generated code
+
+Hand-written code
+
+Documentation coverage
+
+Architecture compliance
+
+Dependency graph
+
+Technical debt
+
+Production readiness
+
+---
+
+# Analysis Order
+
+Repository analysis must follow this order.
+
+Step 1
+
+Repository Structure
+
+↓
+
+Step 2
+
+Documentation Inventory
+
+↓
+
+Step 3
+
+Implementation Inventory
+
+↓
+
+Step 4
+
+Architecture Validation
+
+↓
+
+Step 5
+
+Dependency Analysis
+
+↓
+
+Step 6
+
+API Analysis
+
+↓
+
+Step 7
+
+Database Analysis
+
+↓
+
+Step 8
+
+Security Analysis
+
+↓
+
+Step 9
+
+Testing Analysis
+
+↓
+
+Step 10
+
+Gap Analysis
+
+↓
+
+Step 11
+
+Risk Analysis
+
+↓
+
+Step 12
+
+Planning Decision
+
+Never change this order.
+
+---
+
+# Repository Structure Analysis
+
+Analyze
+
+apps/
+
+packages/
+
+docs/
+
+scripts/
+
+docker/
+
+.github/
+
+infra/
+
+config/
+
+test/
+
+tools/
+
+assets/
+
+public/
+
+Verify
+
+Directory naming
+
+Module organization
+
+Monorepo layout
+
+Workspace configuration
+
+Build scripts
+
+Package manager
+
+---
+
+# Documentation Inventory
+
+Verify existence of
+
+README
+
+Architecture
+
+Vision
+
+Roadmap
+
+Decision Register
+
+ADR
+
+Database
+
+ERD
+
+Data Dictionary
+
+RBAC
+
+Workflow
+
+API
+
+OpenAPI
+
+Coding Standard
+
+Security
+
+Deployment
+
+Search
+
+SEO
+
+AI
+
+Analytics
+
+Glossary
+
+Report
+
+PASS
+
+FAIL
+
+NOT FOUND
+
+---
+
+# Implementation Inventory
+
+Identify
+
+Completed modules
+
+Partial modules
+
+Empty modules
+
+Generated modules
+
+Deprecated modules
+
+Experimental modules
+
+Scaffold-only modules
+
+Report
+
+Implemented
+
+Partial
+
+Missing
+
+Deprecated
+
+---
+
+# Module Status Classification
+
+Every module must be classified.
+
+Not Started
+
+Planning
+
+Scaffold
+
+Partially Implemented
+
+Implementation Complete
+
+Review Pending
+
+Accepted
+
+Merged
+
+Production Ready
+
+Deprecated
+
+---
+
+# File Classification
+
+Every file should be classified.
+
+Documentation
+
+Configuration
+
+Infrastructure
+
+Entity
+
+Migration
+
+Repository
+
+DTO
+
+Mapper
+
+Validator
+
+Service
+
+Controller
+
+Guard
+
+Interceptor
+
+Decorator
+
+Utility
+
+Frontend
+
+Test
+
+CI
+
+Deployment
+
+---
+
+# Duplicate Detection
+
+Detect
+
+Duplicate entities
+
+Duplicate repositories
+
+Duplicate DTOs
+
+Duplicate APIs
+
+Duplicate migrations
+
+Duplicate utilities
+
+Duplicate configurations
+
+Duplicate documentation
+
+Report every duplication.
+
+---
+
+# Dead Code Detection
+
+Detect
+
+Unused files
+
+Unused modules
+
+Unused services
+
+Unused DTOs
+
+Unused utilities
+
+Unused migrations
+
+Unused exports
+
+Unused dependencies
+
+Never remove automatically.
+
+Only report.
+
+---
+
+# Architecture Analysis
+
+Verify
+
+Layer boundaries
+
+Module boundaries
+
+Dependency direction
+
+DDD compliance
+
+Clean Architecture
+
+Modular Monolith
+
+Repository pattern
+
+No circular dependency
+
+---
+
+# API Analysis
+
+Verify
+
+Controllers
+
+Endpoints
+
+OpenAPI
+
+DTO
+
+Validation
+
+Response Schema
+
+Authentication
+
+Authorization
+
+Versioning
+
+Pagination
+
+Error Handling
+
+Report
+
+Implemented
+
+Missing
+
+Undocumented
+
+Deprecated
+
+---
+
+# Database Analysis
+
+Verify
+
+Entities
+
+Tables
+
+Indexes
+
+Constraints
+
+Foreign Keys
+
+Enums
+
+Views
+
+Migrations
+
+Seed Data
+
+Versioning
+
+Soft Delete
+
+Audit Fields
+
+Geo Fields
+
+FTS
+
+---
+
+# Security Analysis
+
+Verify
+
+Authentication
+
+Authorization
+
+RBAC
+
+Permission Matrix
+
+JWT
+
+Secrets
+
+Rate Limit
+
+Audit Logs
+
+Encryption
+
+Security Headers
+
+CORS
+
+Validation
+
+Input Sanitization
+
+---
+
+# Testing Analysis
+
+Analyze
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Performance Tests
+
+Security Tests
+
+Migration Tests
+
+Coverage
+
+CI Execution
+
+---
+
+# Dependency Analysis
+
+Construct dependency graph.
+
+Verify
+
+No missing dependency
+
+No circular dependency
+
+No undocumented dependency
+
+No orphan module
+
+No hidden dependency
+
+---
+
+# Technical Debt Analysis
+
+Identify
+
+TODO
+
+FIXME
+
+HACK
+
+XXX
+
+Deprecated API
+
+Temporary workaround
+
+Incomplete implementation
+
+Known limitation
+
+Experimental feature
+
+Estimate debt level.
+
+---
+
+# Gap Analysis
+
+Compare
+
+Documentation
+
+↓
+
+Implementation
+
+Identify
+
+Documented but not implemented
+
+Implemented but undocumented
+
+Partially implemented
+
+Implementation drift
+
+Architecture drift
+
+OpenAPI drift
+
+Database drift
+
+RBAC drift
+
+Workflow drift
+
+---
+
+# Risk Analysis
+
+Evaluate
+
+Architecture Risk
+
+Database Risk
+
+API Risk
+
+Security Risk
+
+Performance Risk
+
+Deployment Risk
+
+Documentation Risk
+
+Testing Risk
+
+Each risk
+
+Critical
+
+High
+
+Medium
+
+Low
+
+---
+
+# Planning Recommendation
+
+After repository analysis
+Planner must recommend
+
+Continue Current Sprint
+
+Split Sprint
+
+Start Next Sprint
+
+Fix Technical Debt
+
+Freeze Documentation
+
+Run Architecture Review
+
+Run Production Gate
+
+Stop Planning
+
+Every recommendation
+must include evidence.
+
+---
+
+# Blocking Conditions
+
+Repository analysis must stop if
+
+Documentation Freeze failed
+
+Architecture conflict detected
+
+Circular dependency detected
+
+Critical security issue detected
+
+Database migration inconsistent
+
+OpenAPI missing
+
+Decision Register inconsistent
+
+---
+
+# Reporting
+
+Repository analysis must produce
+
+Executive Summary
+
+Repository Status
+
+Module Inventory
+
+Documentation Inventory
+
+Implementation Inventory
+
+Gap Analysis
+
+Risk Assessment
+
+Technical Debt Summary
+
+Planning Recommendation
+
+Evidence
+
+---
+
+# Success Criteria
+
+Repository analysis succeeds only if
+
+Claude Code fully understands
+
+what already exists,
+
+what is missing,
+
+what must not be changed,
+
+and what can safely be implemented next.
+
+Planning must never begin
+without a completed Repository Analysis.

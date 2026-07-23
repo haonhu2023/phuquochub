@@ -1,0 +1,158 @@
+schema_version: "1.0"
+
+id: PLACE-013
+workstream: place
+title: "Place build-hygiene remediation (F-12, F-23)"
+type: release-readiness remediation
+status: completed
+started_at: "2026-07-22"
+completed_at: "2026-07-22"
+started_branch: unknown         # not a git working copy
+started_commit: unknown
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest migrations (pre + post dist removal) → 11/11 passed, 3 suites, exit 0 both times"
+    - "npx jest places → 92/92 passed, 7 suites, exit 0"
+    - "npx eslint src/core/database/migrations/**/*.ts --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+    - "regenerability probe: npx tsc -p tsconfig.build.json --outDir <scratchpad> → exit 0, main.js produced"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-013-build-hygiene-report.md
+  evidence_index: docs/delivery/evidence/PLACE-013-build-hygiene-evidence-index.md
+  changed_files:
+    - apps/api/dist/    # REMOVED (279 stale files); regenerable via `npm run build`
+  source_code_changed: false
+  f12_attribution: >-
+    F-12 was ALREADY FIXED before this task ran — 1720001500000-InitAuditLogs.spec.ts had been
+    moved to migrations/__tests__/ with a corrected import by a background task started by the
+    user during PLACE-003. This task VERIFIED it (migrations/ holds 20 files, all real
+    migrations; import resolves; suite 11/11, same count as before) rather than claiming it.
+  f23_decision: >-
+    REMOVED, on evidence: .gitignore:7 lists dist/ (untracked build output); it was genuinely
+    stale (still contained getCardBySlug, removed by PLACE-007); its only dependents are the
+    start scripts, unrunnable here; and regenerability was PROVEN with
+    `tsc -p tsconfig.build.json` into a scratchpad — leaving dist/ untouched and without running
+    `nest build`, which the task forbade. All four validations stayed green after removal.
+  open_findings: >-
+    F-31 package.json has no prestart hook, so `npm start` on a clean tree fails on a missing
+    dist/ rather than building first. Pre-existing; more visible now.
+  resolves: "F-12 (verified pre-existing), F-23"
+
+depends_on:
+  - PLACE-012        # completed 2026-07-22; api+web tsc exit 0, jest places 92/92 unmodified
+
+problem_statement: >-
+  Two build-hygiene findings remain, both classified NON_BLOCKING by the PLACE-010 assessment
+  and both actionable without Docker, version control or an owner decision:
+   - F-12: apps/api/src/core/database/migrations/1720001500000-InitAuditLogs.spec.ts sits
+     DIRECTLY inside migrations/. data-source.ts:22 configures
+     `migrations: [join(__dirname, 'migrations/*.{ts,js}')]`, and that glob matches the spec
+     file — so TypeORM will load a test file as if it were a migration. This is not theoretical:
+     __tests__/1720001700000-InitSources.spec.ts:5-8 exists in a subdirectory precisely to avoid
+     the mistake, and names InitAuditLogs.spec.ts as the file that made it. It is also why two
+     files share the timestamp prefix 1720001500000.
+   - F-23: apps/api/dist/ holds stale compiled output — it still contains getCardBySlug, removed
+     from source by PLACE-007. A stale build artifact in the working tree can mislead a source
+     sweep (it did during PLACE-007's) and can be run by `npm start`, which serves dist/main.js.
+  F-12 is a genuine defect with a runtime consequence; F-23 is untracked-artifact hygiene whose
+  correct disposition must be established rather than assumed.
+
+objective: >-
+  Relocate the misplaced migration spec so the TypeORM glob can no longer load a test file as a
+  migration, and establish and act on the correct disposition of the stale dist/ directory —
+  without changing any migration, any test assertion, or any application behaviour.
+
+required_inputs:
+  - apps/api/src/core/database/migrations/1720001500000-InitAuditLogs.spec.ts
+  - apps/api/src/core/database/migrations/1720001500000-InitAuditLogs.ts
+  - apps/api/src/core/database/migrations/__tests__/1720001700000-InitSources.spec.ts   # the convention + the comment naming F-12
+  - apps/api/src/core/database/data-source.ts                                            # :22 the glob
+  - apps/api/package.json                                                                # build/start/clean scripts
+  - .gitignore (if present at repo root or apps/api)                                      # whether dist/ is meant to be tracked
+
+in_scope:
+  - "move apps/api/src/core/database/migrations/1720001500000-InitAuditLogs.spec.ts into migrations/__tests__/, fixing only its relative import"
+  - "apps/api/dist/ — remove it, or document why it must stay; whichever the evidence supports"
+  - "a .gitignore entry for dist/ ONLY if one is absent and the repository convention clearly expects build output to be ignored"
+
+out_of_scope:
+  - "ANY change to 1720001500000-InitAuditLogs.ts or any other migration"
+  - "changing, weakening, adding or removing a single test assertion — this is a file move, not a test edit"
+  - "changing data-source.ts (the glob is correct; the file placement was wrong)"
+  - "renaming migration timestamps, even though two files currently share 1720001500000 — the duplication disappears once the spec moves"
+  - "other stale artifacts, other packages' dist directories, or node_modules"
+  - "all remaining findings, in particular the 5 BLOCKS_RELEASE items which are outside repository control"
+
+execution_steps:
+  - "Read the InitAuditLogs spec and confirm exactly which relative import needs adjusting after the move ('./1720001500000-InitAuditLogs' → '../1720001500000-InitAuditLogs')."
+  - "Confirm from data-source.ts:22 that the glob is 'migrations/*.{ts,js}' and does NOT match subdirectories — that is why __tests__/ is the fix."
+  - "Move the file. Do not edit its assertions. Verify afterwards that migrations/ contains only real migrations."
+  - "Re-run the migration suite and confirm the SAME test count as before the move — a changed count means something was lost, not relocated."
+  - "For dist/: first determine whether it is meant to be tracked. Check .gitignore (note: there is no .git, so a .gitignore may exist without being enforced) and package.json for a clean script. State the finding before acting."
+  - "If dist/ is build output that any developer can regenerate with `npm run build`, remove it — but ONLY after confirming nothing in the repository depends on it existing (e.g. a start script used in this environment). If anything does, leave it and document why."
+  - "Do NOT run `nest build` to regenerate dist/. Building is not this task's job and would replace one unverified artifact with another."
+  - "Run the validation commands."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "1720001500000-InitAuditLogs.spec.ts lives in migrations/__tests__/ and its import resolves." }
+  - { id: AC2, mandatory: true,  text: "migrations/ contains ONLY files that are real migrations — verified by listing, not assumed." }
+  - { id: AC3, mandatory: true,  text: "The migration suite passes with the SAME test count as before the move; no assertion was added, removed or altered." }
+  - { id: AC4, mandatory: true,  text: "No migration file, data-source.ts, or any other production file is modified." }
+  - { id: AC5, mandatory: true,  text: "The disposition of apps/api/dist/ is decided on evidence and stated: removed, or retained with a documented reason." }
+  - { id: AC6, mandatory: true,  text: "npx jest migrations, npx jest places, eslint and tsc --noEmit all exit 0." }
+  - { id: AC7, mandatory: false, text: "The now-resolved duplicate 1720001500000 timestamp prefix is confirmed gone, since the spec no longer sits beside the migration." }
+
+required_evidence:
+  - "before/after directory listing of migrations/ and migrations/__tests__/"
+  - "the data-source.ts glob line, quoted"
+  - "migration suite counts before and after the move"
+  - "the dist/ disposition decision with the evidence behind it"
+  - "confirmation no migration or production file changed"
+  - "all four validation exit codes"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest migrations"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/core/database/migrations/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Move the spec file back to migrations/ and restore its original relative import. If dist/ was
+  removed, it is regenerable with `npm run build` in apps/api — that is the definition of build
+  output, and is precisely why removal is safe if the evidence supports it. No source, schema,
+  data or contract is involved.
+
+stop_conditions:
+  - "Moving the spec changes the migration test count or any assertion result — STOP and restore. The move must be behaviour-preserving; a different count means the file was not merely relocated."
+  - "Anything in the repository depends on apps/api/dist/ existing in this environment — STOP, leave it in place, and document the dependency instead of deleting it."
+  - "The work starts expanding into regenerating builds, renaming migration timestamps, or tidying other artifacts — STOP. Scope is exactly these two findings."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-014
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "migration suite count unchanged"
+    - "migrations/ listing free of spec files"
+    - "dist/ disposition recorded"
+
+next_candidate_task:
+  id: PLACE-014
+  title: "<derive from repository state after PLACE-013>"
+  type: "<derive>"
+  rationale: >-
+    Deliberately underspecified. After PLACE-013 the NON_BLOCKING backlog reachable in this
+    environment is close to exhausted: what remains is F-16 (nearby/bbox LIMIT without a unique
+    key, needs analysis), F-26 (revision diffs carry no before/after values, a Sprint-4 design
+    question), F-28 (unconstrained :slug, needs a slug-format decision), F-29/F-30 (cosmetic and
+    structural duplication) — and the five BLOCKS_RELEASE items, every one of which requires
+    Docker, version control, or an absent owner. PLACE-014 must be derived from what is actually
+    true then, and if nothing meaningful remains executable, the honest outcome is to say so and
+    park the workstream rather than manufacture work.

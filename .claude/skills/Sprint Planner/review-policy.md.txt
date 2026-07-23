@@ -1,0 +1,679 @@
+# Review Policy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Review
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Merge Review
+
+Security Review
+
+Performance Review
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines the review policy
+for the PhuQuocHub project.
+
+All reviews must be
+
+Objective
+
+Repeatable
+
+Evidence-based
+
+Read-only
+
+Traceable
+
+No review
+may rely on assumptions.
+
+---
+
+# Core Principle
+
+Review never modifies implementation.
+
+Review only evaluates implementation.
+
+Implementation and review
+must remain independent.
+
+---
+
+# Review Hierarchy
+
+Documentation Review
+
+↓
+
+Architecture Review
+
+↓
+
+Repository Review
+
+↓
+
+Implementation Review
+
+↓
+
+Security Review
+
+↓
+
+Performance Review
+
+↓
+
+Sprint Review
+
+↓
+
+Release Review
+
+↓
+
+Production Review
+
+---
+
+# Review Modes
+
+## Documentation Review
+
+Purpose
+
+Verify documentation quality.
+
+Checks
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Coding Standard
+
+README
+
+Glossary
+
+Examples
+
+Output
+
+PASS
+
+FAIL
+
+BLOCKED
+
+---
+
+## Repository Review
+
+Purpose
+
+Understand repository state.
+
+Checks
+
+Folder Structure
+
+Modules
+
+Dependencies
+
+Generated Code
+
+Existing Features
+
+Pending Features
+
+Dead Code
+
+Duplicate Code
+
+Output
+
+Repository Summary
+
+---
+
+## Architecture Review
+
+Purpose
+
+Verify implementation follows architecture.
+
+Checks
+
+Architecture
+
+Module Boundaries
+
+Layer Boundaries
+
+Folder Structure
+
+Dependency Direction
+
+Naming
+
+ADR
+
+Decision Register
+
+Output
+
+Architecture PASS
+
+Architecture FAIL
+
+---
+
+## Database Review
+
+Checks
+
+Tables
+
+Columns
+
+Constraints
+
+Indexes
+
+Foreign Keys
+
+Soft Delete
+
+Audit Fields
+
+Geo Fields
+
+Migration
+
+Rollback
+
+Data Dictionary
+
+ERD
+
+---
+
+## OpenAPI Review
+
+Checks
+
+Endpoints
+
+Schemas
+
+Authentication
+
+Authorization
+
+Pagination
+
+Examples
+
+Version
+
+Undocumented APIs
+
+---
+
+## RBAC Review
+
+Checks
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Inheritance
+
+Scopes
+
+Deny-by-default
+
+Authorization
+
+---
+
+## Workflow Review
+
+Checks
+
+Business Workflow
+
+Verification Workflow
+
+Approval Workflow
+
+Revision Workflow
+
+Publication Workflow
+
+Notification Workflow
+
+---
+
+## Security Review
+
+Checks
+
+Authentication
+
+Authorization
+
+JWT
+
+Secrets
+
+Encryption
+
+Validation
+
+Sanitization
+
+Rate Limit
+
+Audit Logging
+
+Dependency Scan
+
+OWASP
+
+---
+
+## Performance Review
+
+Checks
+
+Indexes
+
+Search
+
+Caching
+
+Memory
+
+CPU
+
+Geo Queries
+
+Bundle Size
+
+Response Time
+
+---
+
+## Sprint Review
+
+Checks
+
+Objectives
+
+Deliverables
+
+Batches
+
+Architecture
+
+Documentation
+
+Testing
+
+Security
+
+Performance
+
+Technical Debt
+
+Known Risks
+
+---
+
+## Production Review
+
+Checks
+
+Deployment
+
+Monitoring
+
+Logging
+
+Alerting
+
+Backup
+
+Restore
+
+Rollback
+
+Disaster Recovery
+
+Performance
+
+Security
+
+---
+
+# Review Rules
+
+Every review
+
+must be
+
+Read-only
+
+Never modify files.
+
+Never generate code.
+
+Never redesign architecture.
+
+Never invent missing documentation.
+
+Never assume implementation.
+
+---
+
+# Evidence Rules
+
+Every conclusion
+
+must cite evidence.
+
+Evidence may include
+
+Repository files
+
+Documentation
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Migration
+
+Configuration
+
+Tests
+
+CI
+
+If evidence is missing
+
+Output
+
+NOT FOUND
+
+Never guess.
+
+---
+
+# Severity Levels
+
+Critical
+
+Production blocker
+
+High
+
+Merge blocker
+
+Medium
+
+Fix before next Sprint
+
+Low
+
+Technical Debt
+
+Informational
+
+Observation only
+
+---
+
+# Drift Detection
+
+Review must detect
+
+Architecture Drift
+
+Database Drift
+
+Documentation Drift
+
+OpenAPI Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Naming Drift
+
+Folder Drift
+
+Dependency Drift
+
+---
+
+# Blocking Conditions
+
+Immediately stop review if
+
+Repository unavailable
+
+Documentation missing
+
+Architecture missing
+
+Decision Register missing
+
+ADR conflict
+
+Broken repository
+
+Unknown branch
+
+---
+
+# Review Outputs
+
+Every review must include
+
+Executive Summary
+
+Scope
+
+Evidence
+
+PASS Matrix
+
+FAIL Matrix
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+Exactly one
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+PRODUCTION READY
+
+---
+
+# Technical Debt
+
+Every debt must include
+
+Identifier
+
+Description
+
+Impact
+
+Severity
+
+Owner
+
+Target Sprint
+
+Mitigation
+
+Status
+
+---
+
+# Risk Assessment
+
+Every review
+
+must classify
+
+Security Risk
+
+Architecture Risk
+
+Performance Risk
+
+Business Risk
+
+Operational Risk
+
+---
+
+# Merge Recommendation
+
+Allowed
+
+MERGE APPROVED
+
+Allowed with debt
+
+MERGE APPROVED WITH CONDITIONS
+
+Rejected
+
+MERGE REJECTED
+
+---
+
+# Production Recommendation
+
+Allowed
+
+PRODUCTION READY
+
+Rejected
+
+BLOCKED
+
+---
+
+# Self Verification
+
+Before publishing the report
+
+Claude must verify
+
+Every conclusion has evidence.
+
+No assumption exists.
+
+No undocumented decision exists.
+
+No architecture modification proposed.
+
+No code generated.
+
+No files modified.
+
+---
+
+# Success Criteria
+
+The Review Policy succeeds when
+
+every review
+
+is repeatable,
+
+objective,
+
+evidence-based,
+
+traceable,
+
+and independent
+from implementation.
+
+No review
+may influence architecture.
+
+No review
+may modify implementation.
+
+Review exists only
+to determine compliance
+with the frozen documentation.

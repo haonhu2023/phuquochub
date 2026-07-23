@@ -1,0 +1,670 @@
+# Dependency Analysis
+
+Version: 1.0
+
+Status:
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+---
+
+# Purpose
+
+This document defines
+
+the official dependency analysis policy
+
+for the PhuQuocHub platform.
+
+Every dependency
+
+must be intentional,
+
+documented,
+
+traceable,
+
+and compliant
+
+with the architecture.
+
+Dependency analysis exists
+
+to prevent
+
+architecture erosion,
+
+tight coupling,
+
+hidden dependencies,
+
+and circular references.
+
+---
+
+# Mission
+
+Maintain a clean dependency graph.
+
+Prevent architectural degradation.
+
+Guarantee module isolation.
+
+Protect long-term maintainability.
+
+Detect dependency drift early.
+
+---
+
+# Core Principles
+
+Every dependency
+
+must satisfy
+
+Necessity
+
+Documentation
+
+Architecture
+
+Ownership
+
+Traceability
+
+Testability
+
+Reviewability
+
+No dependency
+
+may exist
+
+without a documented reason.
+
+---
+
+# Dependency Hierarchy
+
+Presentation
+
+↓
+
+Application
+
+↓
+
+Domain
+
+↓
+
+Infrastructure
+
+↓
+
+Persistence
+
+Dependencies
+
+must always
+
+flow downward.
+
+Reverse dependencies
+
+are prohibited.
+
+---
+
+# Dependency Types
+
+## Internal Dependency
+
+Between
+
+modules
+
+inside
+
+PhuQuocHub.
+
+Examples
+
+Users
+
+↓
+
+RBAC
+
+Places
+
+↓
+
+Categories
+
+Tours
+
+↓
+
+Places
+
+Events
+
+↓
+
+Places
+
+---
+
+## Shared Dependency
+
+Reusable components.
+
+Examples
+
+Logger
+
+Config
+
+Common
+
+Validation
+
+Utils
+
+Types
+
+Enums
+
+Shared dependencies
+
+must remain
+
+stateless.
+
+---
+
+## External Dependency
+
+Third-party libraries.
+
+Examples
+
+NestJS
+
+TypeORM
+
+Redis
+
+JWT
+
+Zod
+
+OpenAPI
+
+MapLibre
+
+PostGIS
+
+Every external dependency
+
+must be
+
+approved,
+
+versioned,
+
+and documented.
+
+---
+
+# Module Dependency Rules
+
+Modules
+
+may communicate only through
+
+Public Service
+
+Public Repository Interface
+
+Documented Events
+
+Documented API
+
+Forbidden
+
+Private imports
+
+Cross-module SQL
+
+Accessing internal entities
+
+Accessing internal DTOs
+
+Accessing internal repositories
+
+---
+
+# Layer Dependency Rules
+
+Controllers
+
+↓
+
+Services
+
+↓
+
+Repositories
+
+↓
+
+Database
+
+Controllers
+
+must never
+
+import repositories.
+
+Services
+
+must never
+
+query SQL directly.
+
+Repositories
+
+must never
+
+contain business rules.
+
+Entities
+
+must never
+
+depend on infrastructure.
+
+---
+
+# Shared Library Rules
+
+Shared libraries
+
+must never
+
+depend on
+
+feature modules.
+
+Allowed
+
+Feature Module
+
+↓
+
+Shared
+
+Forbidden
+
+Shared
+
+↓
+
+Feature Module
+
+---
+
+# Dependency Documentation
+
+Every dependency
+
+must be documented in
+
+Architecture
+
+ADR
+
+Decision Register
+
+Repository Structure
+
+Module Documentation
+
+If undocumented
+
+Dependency Drift
+
+must be reported.
+
+---
+
+# Circular Dependency
+
+Circular dependency
+
+is prohibited.
+
+Example
+
+Users
+
+↓
+
+RBAC
+
+↓
+
+Users
+
+Result
+
+FAIL
+
+Recommendation
+
+Extract shared abstraction.
+
+---
+
+# Dependency Graph
+
+The dependency graph
+
+must remain
+
+Directed
+
+Acyclic
+
+Minimal
+
+Documented
+
+Readable
+
+Predictable
+
+Every node
+
+must have
+
+clear ownership.
+
+---
+
+# Dependency Validation
+
+Every dependency
+
+must answer
+
+Why does it exist?
+
+Who owns it?
+
+Is it documented?
+
+Is it approved?
+
+Is it tested?
+
+Is it necessary?
+
+---
+
+# Forbidden Dependencies
+
+Feature Module
+
+↓
+
+Feature Module Internal
+
+Presentation
+
+↓
+
+Persistence
+
+Controller
+
+↓
+
+Database
+
+Repository
+
+↓
+
+Controller
+
+Shared
+
+↓
+
+Feature Module
+
+Circular Import
+
+Undocumented Import
+
+Hidden Dependency
+
+---
+
+# Drift Detection
+
+Dependency Drift includes
+
+Undocumented dependency
+
+Unexpected dependency
+
+Circular dependency
+
+Layer violation
+
+Shared dependency violation
+
+External dependency not approved
+
+Dependency direction violation
+
+Unused dependency
+
+Dead dependency
+
+Duplicate dependency
+
+---
+
+# Severity
+
+Critical
+
+Circular dependency
+
+Layer violation
+
+Architecture violation
+
+High
+
+Undocumented dependency
+
+Hidden dependency
+
+Cross-module access
+
+Medium
+
+Unused dependency
+
+Redundant dependency
+
+Low
+
+Optimization opportunity
+
+Informational
+
+Observation only
+
+---
+
+# Evidence
+
+Every dependency finding
+
+must include
+
+Source Module
+
+Target Module
+
+Reason
+
+Evidence
+
+Severity
+
+Recommendation
+
+No dependency
+
+may be reported
+
+without evidence.
+
+---
+
+# Reporting
+
+Every Dependency Analysis
+
+must include
+
+Dependency Graph Summary
+
+Valid Dependencies
+
+Invalid Dependencies
+
+Circular Dependencies
+
+Layer Violations
+
+Shared Library Violations
+
+Architecture Drift
+
+Recommendations
+
+Final Decision
+
+---
+
+# Compliance Criteria
+
+PASS
+
+All dependencies documented.
+
+No circular dependency.
+
+No layer violation.
+
+No undocumented import.
+
+READY AFTER FIXES
+
+Minor violations.
+
+Technical debt only.
+
+FAIL
+
+Circular dependency.
+
+Architecture violation.
+
+Undocumented critical dependency.
+
+BLOCKED
+
+Repository unavailable.
+
+Dependency graph incomplete.
+
+Architecture documentation missing.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every dependency
+
+has evidence.
+
+Every violation
+
+references documentation.
+
+No assumptions exist.
+
+No code generated.
+
+No repository modified.
+
+---
+
+# Success Criteria
+
+Dependency Analysis succeeds when
+
+every dependency
+
+is intentional,
+
+documented,
+
+traceable,
+
+architecture-compliant,
+
+and supports
+
+the long-term evolution
+
+of the PhuQuocHub platform
+
+without introducing
+
+hidden coupling,
+
+architecture drift,
+
+or maintainability risks.

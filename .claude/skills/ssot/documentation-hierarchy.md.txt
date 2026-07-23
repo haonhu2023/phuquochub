@@ -1,0 +1,961 @@
+# Documentation Hierarchy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Documentation Hierarchy
+
+for the PhuQuocHub platform.
+
+Documentation Hierarchy
+
+establishes
+
+the relationships,
+
+dependencies,
+
+ownership,
+
+authority,
+
+and navigation rules
+
+between all project documentation.
+
+It guarantees
+
+that every document
+
+has
+
+a defined position,
+
+a defined responsibility,
+
+and a clear relationship
+
+with every other document.
+
+---
+
+# Mission
+
+Create
+
+one coherent
+
+documentation system
+
+where
+
+every document
+
+has
+
+exactly one purpose,
+
+one owner,
+
+one authority level,
+
+and one place
+
+inside the hierarchy.
+
+---
+
+# Design Principles
+
+The hierarchy
+
+must be
+
+Simple
+
+Deterministic
+
+Traceable
+
+Scalable
+
+Maintainable
+
+Documentation-driven
+
+Implementation-independent
+
+---
+
+# Documentation Pyramid
+
+The documentation hierarchy
+
+is organized
+
+as a pyramid.
+
+Higher layers
+
+govern
+
+lower layers.
+
+Lower layers
+
+implement
+
+higher layers.
+
+Architecture
+
+↓
+
+Architecture Decision Records (ADR)
+
+↓
+
+Decision Register
+
+↓
+
+Domain Documentation
+
+↓
+
+Technical Documentation
+
+↓
+
+Implementation Documentation
+
+↓
+
+Planning Documentation
+
+↓
+
+Operational Documentation
+
+↓
+
+Repository
+
+↓
+
+Generated Artifacts
+
+---
+
+# Level 1
+
+Architecture
+
+Purpose
+
+Defines
+
+the entire system.
+
+Contains
+
+System Design
+
+System Boundaries
+
+Core Components
+
+Ownership
+
+Domain Model
+
+Architectural Vision
+
+Consumers
+
+Every document
+
+below.
+
+---
+
+# Level 2
+
+Architecture Decision Records
+
+Purpose
+
+Explain
+
+why
+
+architectural decisions
+
+were made.
+
+Contains
+
+Decision
+
+Context
+
+Alternatives
+
+Consequences
+
+Status
+
+References
+
+Consumers
+
+Decision Register
+
+Architecture Review
+
+Sprint Planning
+
+---
+
+# Level 3
+
+Decision Register
+
+Purpose
+
+Record
+
+approved decisions
+
+currently active
+
+within the project.
+
+Contains
+
+Decision ID
+
+Status
+
+Owner
+
+Approval Date
+
+Affected Documents
+
+Consumers
+
+Sprint Planner
+
+Documentation Freeze
+
+Architecture Review
+
+---
+
+# Level 4
+
+Domain Documentation
+
+Includes
+
+Database Documentation
+
+Business Rules
+
+Workflow
+
+RBAC
+
+Permission Matrix
+
+Entity Relationships
+
+Geo Rules
+
+AI Rules
+
+SEO Rules
+
+Each document
+
+describes
+
+one domain.
+
+---
+
+# Database Documentation
+
+Contains
+
+ERD
+
+Tables
+
+Columns
+
+Constraints
+
+Indexes
+
+Naming Rules
+
+Migration Rules
+
+Entities
+
+Relationships
+
+Consumers
+
+Prisma
+
+Migration
+
+Architecture Review
+
+---
+
+# Workflow Documentation
+
+Contains
+
+Business Processes
+
+Approval Flow
+
+Publishing Flow
+
+Verification Flow
+
+Review Flow
+
+Consumers
+
+Backend
+
+Frontend
+
+Testing
+
+---
+
+# RBAC Documentation
+
+Contains
+
+Roles
+
+Permissions
+
+Permission Matrix
+
+Authorization Rules
+
+Consumers
+
+Security Review
+
+Implementation
+
+Testing
+
+---
+
+# OpenAPI Specification
+
+Defines
+
+all public APIs.
+
+Contains
+
+Endpoints
+
+DTOs
+
+Schemas
+
+Authentication
+
+Responses
+
+Errors
+
+Consumers
+
+Backend
+
+Frontend
+
+SDK Generation
+
+Testing
+
+---
+
+# Coding Standards
+
+Defines
+
+Coding Rules
+
+Naming
+
+Folder Structure
+
+Layer Rules
+
+Patterns
+
+Best Practices
+
+Consumers
+
+Developers
+
+Architecture Review
+
+AI Assistants
+
+---
+
+# Repository Standards
+
+Defines
+
+Repository Layout
+
+Module Layout
+
+Packages
+
+Dependency Rules
+
+Ownership
+
+Consumers
+
+Developers
+
+Architecture Review
+
+Repository Analysis
+
+---
+
+# Sprint Documentation
+
+Contains
+
+Sprint Goals
+
+Sprint Scope
+
+Acceptance Criteria
+
+Dependencies
+
+Risk
+
+Consumers
+
+Sprint Planner
+
+Batch Generator
+
+Project Manager
+
+---
+
+# Batch Documentation
+
+Contains
+
+Batch Scope
+
+Batch Tasks
+
+Deliverables
+
+Dependencies
+
+Consumers
+
+Claude Code
+
+Sprint Planner
+
+Developers
+
+---
+
+# Operational Documentation
+
+Contains
+
+Deployment Guide
+
+Monitoring
+
+Logging
+
+Incident Response
+
+Backup
+
+Recovery
+
+Runbooks
+
+Consumers
+
+DevOps
+
+Production Gate
+
+---
+
+# Repository
+
+Repository
+
+implements
+
+everything
+
+defined
+
+above.
+
+Repository
+
+never
+
+defines architecture.
+
+---
+
+# Generated Artifacts
+
+Includes
+
+Swagger Clients
+
+Generated SDK
+
+Compiled Assets
+
+ORM Clients
+
+Build Output
+
+Generated files
+
+have
+
+no authority.
+
+---
+
+# Documentation Dependency Graph
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Database
+
+↓
+
+Workflow
+
+↓
+
+RBAC
+
+↓
+
+OpenAPI
+
+↓
+
+Coding Standards
+
+↓
+
+Repository Standards
+
+↓
+
+Sprint Documentation
+
+↓
+
+Batch Documentation
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+---
+
+# Navigation Rules
+
+Claude Code
+
+must always
+
+navigate
+
+from top
+
+to bottom.
+
+Never
+
+search randomly.
+
+Always
+
+start
+
+with
+
+the highest
+
+relevant authority.
+
+---
+
+# Cross References
+
+Documents
+
+may reference
+
+other documents.
+
+References
+
+must always
+
+point upward
+
+or sideways.
+
+Never
+
+create
+
+circular references.
+
+---
+
+# Circular Dependency Rule
+
+Documentation
+
+must never
+
+contain
+
+circular dependencies.
+
+Example
+
+Architecture
+
+references
+
+Workflow
+
+Workflow
+
+references
+
+Architecture
+
+Allowed.
+
+Example
+
+ADR-001
+
+references
+
+ADR-002
+
+ADR-002
+
+references
+
+ADR-001
+
+Not Allowed.
+
+---
+
+# Ownership
+
+Every document
+
+must have
+
+one owner.
+
+Architecture
+
+Chief Architect
+
+ADR
+
+Architecture Team
+
+Decision Register
+
+Architecture Team
+
+Database
+
+Data Architect
+
+OpenAPI
+
+API Architect
+
+Workflow
+
+Business Architect
+
+Repository Standards
+
+Technical Lead
+
+Coding Standards
+
+Lead Engineer
+
+Sprint Documentation
+
+Project Manager
+
+Batch Documentation
+
+Sprint Planner
+
+Operational Documentation
+
+DevOps
+
+---
+
+# Validation Rules
+
+Before
+
+using
+
+any document
+
+Claude Code
+
+must verify
+
+Document exists
+
+Document approved
+
+Document version
+
+Owner assigned
+
+Status active
+
+No conflicts
+
+---
+
+# Documentation Lifecycle
+
+Draft
+
+↓
+
+Review
+
+↓
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Implemented
+
+↓
+
+Validated
+
+↓
+
+Archived
+
+Only
+
+Approved
+
+or
+
+Frozen
+
+documents
+
+may guide
+
+implementation.
+
+---
+
+# Compliance Rules
+
+Every review
+
+must verify
+
+Hierarchy respected
+
+Correct authority
+
+No duplicate documents
+
+No conflicting ownership
+
+No circular references
+
+No missing documents
+
+---
+
+# Self Verification
+
+Before responding
+
+Claude Code
+
+must verify
+
+Correct document selected
+
+Hierarchy followed
+
+Dependencies respected
+
+No circular reference
+
+Evidence attached
+
+---
+
+# Success Criteria
+
+The Documentation Hierarchy succeeds when
+
+every document
+
+has
+
+one defined position,
+
+one defined purpose,
+
+one owner,
+
+one authority,
+
+and one relationship
+
+within the documentation ecosystem,
+
+allowing
+
+Claude Code,
+
+developers,
+
+reviewers,
+
+and architects
+
+to locate,
+
+interpret,
+
+validate,
+
+and maintain
+
+project knowledge
+
+without ambiguity,
+
+duplication,
+
+or conflicting sources.
+
+The hierarchy
+
+becomes
+
+the navigation system
+
+for the entire
+
+PhuQuocHub Single Source of Truth.

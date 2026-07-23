@@ -1,0 +1,843 @@
+# Authority Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Authority Policy
+
+for the PhuQuocHub platform.
+
+The Authority Policy determines
+
+which document
+
+or artifact
+
+is authoritative
+
+when multiple sources
+
+describe
+
+the same topic.
+
+Every architectural decision,
+
+review,
+
+implementation,
+
+and validation
+
+must follow
+
+this policy.
+
+---
+
+# Mission
+
+Guarantee
+
+one authoritative source
+
+for every subject.
+
+Prevent
+
+documentation conflicts.
+
+Prevent
+
+implementation conflicts.
+
+Prevent
+
+multiple truths.
+
+Ensure
+
+every decision
+
+is deterministic.
+
+---
+
+# Fundamental Rule
+
+For every topic
+
+there shall be
+
+exactly one
+
+authoritative source.
+
+If
+
+multiple documents
+
+claim authority
+
+over the same topic,
+
+a documentation conflict
+
+exists.
+
+Documentation conflicts
+
+must be resolved
+
+before implementation.
+
+---
+
+# Authority Levels
+
+Authority is hierarchical.
+
+Higher authority
+
+always overrides
+
+lower authority.
+
+The hierarchy
+
+must never
+
+be violated.
+
+---
+
+# Official Authority Hierarchy
+
+Level 1
+
+Architecture
+
+↓
+
+Level 2
+
+Architecture Decision Records (ADR)
+
+↓
+
+Level 3
+
+Decision Register
+
+↓
+
+Level 4
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+↓
+
+Level 5
+
+OpenAPI Specification
+
+↓
+
+Level 6
+
+Workflow Documentation
+
+↓
+
+Level 7
+
+Coding Standards
+
+↓
+
+Level 8
+
+Repository Standards
+
+↓
+
+Level 9
+
+Implementation
+
+↓
+
+Level 10
+
+Generated Files
+
+---
+
+# Architecture
+
+Architecture
+
+defines
+
+system boundaries,
+
+major components,
+
+ownership,
+
+responsibilities,
+
+and overall design.
+
+Nothing
+
+may contradict
+
+Architecture.
+
+Architecture
+
+is
+
+the highest authority.
+
+---
+
+# Architecture Decision Records
+
+ADRs
+
+explain
+
+why
+
+architecture decisions
+
+were made.
+
+ADRs
+
+must remain
+
+consistent
+
+with Architecture.
+
+When
+
+Architecture changes,
+
+new ADRs
+
+must be created.
+
+Old ADRs
+
+must never
+
+be rewritten.
+
+---
+
+# Decision Register
+
+The Decision Register
+
+records
+
+approved decisions
+
+that affect
+
+implementation.
+
+Decision Register
+
+must comply
+
+with Architecture
+
+and ADRs.
+
+---
+
+# Database Documentation
+
+Database Documentation
+
+defines
+
+tables,
+
+columns,
+
+indexes,
+
+constraints,
+
+relationships,
+
+and migrations.
+
+Entities
+
+must comply
+
+with Database Documentation.
+
+---
+
+# OpenAPI
+
+OpenAPI
+
+defines
+
+public API contracts.
+
+Controllers
+
+must implement
+
+OpenAPI.
+
+OpenAPI
+
+must never
+
+be generated
+
+from implementation
+
+without review.
+
+---
+
+# Workflow Documentation
+
+Workflow Documentation
+
+defines
+
+business processes.
+
+Implementation
+
+must follow
+
+Workflow.
+
+Business logic
+
+must never
+
+change Workflow
+
+without approval.
+
+---
+
+# Coding Standards
+
+Coding Standards
+
+define
+
+style,
+
+structure,
+
+patterns,
+
+naming,
+
+layering,
+
+and conventions.
+
+Implementation
+
+must comply.
+
+---
+
+# Repository Standards
+
+Repository Standards
+
+define
+
+folder structure,
+
+module organization,
+
+package ownership,
+
+and dependency rules.
+
+Implementation
+
+must comply.
+
+---
+
+# Implementation
+
+Implementation
+
+is
+
+never
+
+authoritative.
+
+Implementation
+
+exists
+
+to realize
+
+documentation.
+
+Implementation
+
+cannot
+
+justify
+
+documentation changes.
+
+---
+
+# Generated Files
+
+Generated files
+
+have
+
+no authority.
+
+Examples
+
+Swagger generation
+
+ORM generation
+
+Client SDK generation
+
+Compiled artifacts
+
+Generated files
+
+must never
+
+be treated
+
+as
+
+documentation.
+
+---
+
+# Conflict Resolution
+
+Whenever
+
+two sources
+
+conflict,
+
+Claude Code
+
+must
+
+compare
+
+their authority level.
+
+Higher authority
+
+wins.
+
+Lower authority
+
+must be updated.
+
+---
+
+# Examples
+
+Example 1
+
+Architecture
+
+states
+
+Place
+
+is the aggregate root.
+
+Repository
+
+contains
+
+Hotel
+
+as aggregate root.
+
+Result
+
+Repository
+
+must change.
+
+---
+
+Example 2
+
+OpenAPI
+
+documents
+
+GET /places.
+
+Controller
+
+implements
+
+GET /locations.
+
+Result
+
+Controller
+
+must change.
+
+---
+
+Example 3
+
+Database Documentation
+
+defines
+
+snake_case.
+
+Migration
+
+creates
+
+camelCase columns.
+
+Result
+
+Migration
+
+must change.
+
+---
+
+Example 4
+
+Workflow
+
+requires
+
+email verification.
+
+Implementation
+
+activates users
+
+immediately.
+
+Result
+
+Implementation
+
+must change.
+
+---
+
+# Documentation Ownership
+
+Every document
+
+must have
+
+one owner.
+
+Architecture
+
+↓
+
+Chief Architect
+
+ADR
+
+↓
+
+Architecture Team
+
+Decision Register
+
+↓
+
+Architecture Team
+
+Database
+
+↓
+
+Data Architect
+
+OpenAPI
+
+↓
+
+API Architect
+
+Workflow
+
+↓
+
+Business Architect
+
+Coding Standards
+
+↓
+
+Lead Engineer
+
+Repository Standards
+
+↓
+
+Technical Lead
+
+Implementation
+
+↓
+
+Development Team
+
+---
+
+# Authority Verification
+
+Before making
+
+any decision,
+
+Claude Code
+
+must verify
+
+Authoritative source exists
+
+Documentation approved
+
+Documentation version
+
+Documentation ownership
+
+Documentation status
+
+No conflicting authority
+
+---
+
+# Invalid Authority
+
+The following
+
+are never
+
+authoritative
+
+Chat history
+
+Developer memory
+
+Comments
+
+Temporary notes
+
+Personal opinions
+
+Future plans
+
+Unapproved drafts
+
+Generated code
+
+Repository state
+
+---
+
+# Missing Authority
+
+If
+
+no authoritative source
+
+exists,
+
+Claude Code
+
+must return
+
+NOT FOUND
+
+No assumptions
+
+may be made.
+
+---
+
+# Authority Changes
+
+Authority
+
+may only change
+
+through
+
+Architecture Review
+
+↓
+
+ADR Update
+
+↓
+
+Decision Register Update
+
+↓
+
+Documentation Approval
+
+↓
+
+Documentation Freeze
+
+↓
+
+Implementation
+
+---
+
+# Compliance Rules
+
+Every review
+
+must verify
+
+Correct authority
+
+Documentation approved
+
+No conflicting authority
+
+Implementation compliant
+
+Evidence available
+
+If any rule fails,
+
+output
+
+BLOCKED
+
+---
+
+# Self Verification
+
+Before responding
+
+Claude Code
+
+must verify
+
+Correct authority selected
+
+Hierarchy respected
+
+Evidence attached
+
+No assumptions
+
+No undocumented decisions
+
+No authority conflicts
+
+---
+
+# Success Criteria
+
+The Authority Policy succeeds when
+
+every topic
+
+throughout
+
+the PhuQuocHub platform
+
+has exactly one
+
+authoritative source,
+
+every conflict
+
+is resolved
+
+using the official hierarchy,
+
+and every implementation,
+
+review,
+
+and production release
+
+is based solely
+
+on approved documentation,
+
+ensuring
+
+consistent,
+
+traceable,
+
+deterministic,
+
+and enterprise-grade
+
+governance.

@@ -1,0 +1,727 @@
+# Data Governance
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Data Officer (CDO)
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Critical
+
+Classification
+
+Internal
+
+---
+
+# Purpose
+
+This document defines
+
+the official Data Governance Policy
+
+for the PhuQuocHub platform.
+
+Data Governance ensures
+
+all data
+
+is created,
+
+stored,
+
+processed,
+
+shared,
+
+archived,
+
+and deleted
+
+according to
+
+enterprise standards.
+
+Data is
+
+a strategic asset
+
+that must remain
+
+accurate,
+
+consistent,
+
+secure,
+
+traceable,
+
+auditable,
+
+and reusable.
+
+---
+
+# Mission
+
+Guarantee
+
+High Data Quality
+
+Single Source of Truth
+
+Data Integrity
+
+Data Security
+
+Data Consistency
+
+Data Traceability
+
+Data Ownership
+
+Long-term Sustainability
+
+---
+
+# Guiding Principles
+
+Every data item
+
+must have
+
+Owner
+
+Definition
+
+Lifecycle
+
+Validation Rules
+
+Security Classification
+
+Retention Policy
+
+Lineage
+
+Metadata
+
+Quality Metrics
+
+---
+
+# Data Domains
+
+Core Platform
+
+Users
+
+Places
+
+Businesses
+
+Hotels
+
+Restaurants
+
+Tours
+
+Events
+
+Jobs
+
+Real Estate
+
+Articles
+
+Media
+
+Reviews
+
+Bookings
+
+Notifications
+
+Analytics
+
+AI
+
+System Configuration
+
+Audit Logs
+
+---
+
+# Data Ownership
+
+Every dataset
+
+must have
+
+Business Owner
+
+Technical Owner
+
+Data Steward
+
+No orphan datasets
+
+are permitted.
+
+---
+
+# Data Classification
+
+Public
+
+Internal
+
+Confidential
+
+Restricted
+
+Highly Restricted
+
+Classification
+
+determines
+
+Storage
+
+Encryption
+
+Access
+
+Retention
+
+Audit Requirements
+
+---
+
+# Master Data
+
+Master Data
+
+includes
+
+Places
+
+Businesses
+
+Categories
+
+Tags
+
+Locations
+
+Administrative Units
+
+Languages
+
+Currencies
+
+Units
+
+Master Data
+
+must have
+
+one authoritative source.
+
+---
+
+# Reference Data
+
+Reference Data
+
+must be
+
+Versioned
+
+Documented
+
+Immutable where applicable
+
+Examples
+
+Country Codes
+
+Province Codes
+
+District Codes
+
+Ward Codes
+
+Languages
+
+Currencies
+
+Categories
+
+---
+
+# Metadata Requirements
+
+Every dataset
+
+must define
+
+Name
+
+Description
+
+Owner
+
+Created Date
+
+Updated Date
+
+Version
+
+Source
+
+Schema
+
+Relationships
+
+Quality Rules
+
+Retention
+
+Classification
+
+---
+
+# Data Lifecycle
+
+Create
+
+↓
+
+Validate
+
+↓
+
+Store
+
+↓
+
+Use
+
+↓
+
+Share
+
+↓
+
+Archive
+
+↓
+
+Delete
+
+---
+
+# Data Quality Dimensions
+
+Accuracy
+
+Completeness
+
+Consistency
+
+Timeliness
+
+Validity
+
+Uniqueness
+
+Integrity
+
+Availability
+
+---
+
+# Data Validation
+
+All incoming data
+
+must validate
+
+Schema
+
+Required Fields
+
+Business Rules
+
+Relationships
+
+Formats
+
+Duplicates
+
+Ranges
+
+References
+
+---
+
+# Data Lineage
+
+Every important dataset
+
+must record
+
+Origin
+
+Transformation
+
+Destination
+
+Consumers
+
+Update History
+
+Version History
+
+Approval History
+
+---
+
+# Data Versioning
+
+Every structural change
+
+must create
+
+New Version
+
+Migration Plan
+
+Rollback Plan
+
+Compatibility Assessment
+
+Documentation Update
+
+---
+
+# Data Retention
+
+Operational Data
+
+5 Years
+
+Audit Logs
+
+7 Years
+
+Analytics
+
+As Defined
+
+Temporary Data
+
+30 Days
+
+Deleted Data
+
+Securely Destroyed
+
+according to policy.
+
+---
+
+# Data Archiving
+
+Archived Data
+
+must be
+
+Encrypted
+
+Indexed
+
+Searchable
+
+Auditable
+
+Recoverable
+
+Read-only
+
+---
+
+# Data Security
+
+Data
+
+must be protected
+
+using
+
+Encryption
+
+Least Privilege
+
+Role-Based Access Control
+
+Audit Logging
+
+Secure APIs
+
+Backup
+
+Monitoring
+
+---
+
+# Data Privacy
+
+Personal Data
+
+must follow
+
+Privacy Policy
+
+Consent Requirements
+
+Data Minimization
+
+Purpose Limitation
+
+Retention Rules
+
+Right to Deletion
+
+---
+
+# Data Sharing
+
+Data Sharing
+
+requires
+
+Approval
+
+Access Control
+
+Audit Logging
+
+Purpose Definition
+
+Security Review
+
+---
+
+# Data Access
+
+Every access
+
+must be
+
+Authenticated
+
+Authorized
+
+Logged
+
+Audited
+
+Least Privilege
+
+---
+
+# Data Integrity
+
+The platform
+
+must guarantee
+
+Primary Keys
+
+Foreign Keys
+
+Constraints
+
+Transactions
+
+Consistency Checks
+
+Duplicate Detection
+
+---
+
+# Data Quality Monitoring
+
+Monitor
+
+Missing Values
+
+Duplicates
+
+Schema Violations
+
+Broken References
+
+Outdated Records
+
+Validation Failures
+
+Data Freshness
+
+---
+
+# AI Data Governance
+
+AI
+
+may consume
+
+Approved Data Only.
+
+AI
+
+must never
+
+modify
+
+Master Data
+
+without
+
+Human Approval.
+
+AI-generated data
+
+must include
+
+Source
+
+Confidence Score
+
+Generation Time
+
+Approval Status
+
+---
+
+# Compliance
+
+Data Governance
+
+must comply with
+
+SSOT
+
+Security Policy
+
+Backup Policy
+
+Compliance Policy
+
+Privacy Policy
+
+Architecture Decisions
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+if
+
+Unknown Data Owner
+
+Missing Metadata
+
+Schema Violation
+
+Duplicate Master Data
+
+Broken Referential Integrity
+
+Unauthorized Access
+
+Retention Violation
+
+Unapproved AI Modification
+
+---
+
+# Self Verification
+
+Before approval
+
+Claude Code
+
+must verify
+
+Ownership defined
+
+Metadata complete
+
+Validation rules applied
+
+Classification assigned
+
+Lineage tracked
+
+Quality metrics acceptable
+
+Security controls enabled
+
+Retention policy defined
+
+---
+
+# Success Criteria
+
+The Data Governance Policy succeeds when
+
+every dataset
+
+within the PhuQuocHub platform
+
+has clear ownership,
+
+high quality,
+
+consistent structure,
+
+complete metadata,
+
+full traceability,
+
+appropriate security,
+
+well-defined lifecycle,
+
+and reliable governance,
+
+enabling
+
+accurate analytics,
+
+safe AI usage,
+
+efficient operations,
+
+and long-term maintainability
+
+across the entire platform.

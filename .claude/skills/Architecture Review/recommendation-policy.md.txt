@@ -1,0 +1,733 @@
+# Recommendation Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Repository Analysis
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Security Review
+
+Performance Review
+
+Testing Review
+
+---
+
+# Purpose
+
+This document defines
+
+the official Recommendation Policy
+
+for the PhuQuocHub platform.
+
+Every architecture review,
+
+repository analysis,
+
+security review,
+
+performance review,
+
+and sprint acceptance
+
+must produce
+
+clear,
+
+actionable,
+
+prioritized,
+
+and traceable
+
+recommendations.
+
+Recommendations
+
+exist
+
+to guide implementation,
+
+reduce technical debt,
+
+and improve long-term quality.
+
+---
+
+# Mission
+
+Transform review findings
+
+into
+
+actionable work.
+
+Reduce architecture drift.
+
+Improve maintainability.
+
+Protect production quality.
+
+Guide Sprint planning.
+
+---
+
+# Core Principles
+
+Recommendations
+
+must always
+
+be
+
+Evidence-Based
+
+Specific
+
+Actionable
+
+Prioritized
+
+Traceable
+
+Measurable
+
+Never recommend
+
+without evidence.
+
+Never recommend
+
+without impact analysis.
+
+---
+
+# Recommendation Workflow
+
+Every recommendation
+
+must follow
+
+Finding
+
+↓
+
+Evidence
+
+↓
+
+Impact Analysis
+
+↓
+
+Priority
+
+↓
+
+Recommended Action
+
+↓
+
+Target Sprint
+
+↓
+
+Verification
+
+↓
+
+Closure
+
+---
+
+# Recommendation Categories
+
+Architecture
+
+Database
+
+Documentation
+
+OpenAPI
+
+RBAC
+
+Workflow
+
+Testing
+
+Performance
+
+Security
+
+Infrastructure
+
+Deployment
+
+Repository
+
+Naming
+
+Dependency
+
+Technical Debt
+
+Monitoring
+
+Logging
+
+Configuration
+
+Automation
+
+Developer Experience
+
+---
+
+# Recommendation Priority
+
+Priority 1
+
+Immediate
+
+Critical production blocker.
+
+Priority 2
+
+High
+
+Merge blocker.
+
+Priority 3
+
+Medium
+
+Current Sprint.
+
+Priority 4
+
+Low
+
+Future Sprint.
+
+Priority 5
+
+Optional
+
+Roadmap improvement.
+
+---
+
+# Recommendation Structure
+
+Each recommendation
+
+must contain
+
+Identifier
+
+Category
+
+Title
+
+Description
+
+Evidence
+
+Expected State
+
+Current State
+
+Impact
+
+Risk
+
+Priority
+
+Estimated Effort
+
+Owner
+
+Target Sprint
+
+Dependencies
+
+Verification Criteria
+
+Status
+
+---
+
+# Recommendation Rules
+
+Every recommendation
+
+must answer
+
+What is wrong?
+
+Why is it wrong?
+
+Why does it matter?
+
+What should change?
+
+Who should change it?
+
+When should it be changed?
+
+How can it be verified?
+
+---
+
+# Architecture Recommendations
+
+Examples
+
+Create missing module.
+
+Restore layer separation.
+
+Remove circular dependency.
+
+Implement missing ADR.
+
+Update Decision Register.
+
+Split oversized module.
+
+Move shared code.
+
+---
+
+# Database Recommendations
+
+Examples
+
+Add missing index.
+
+Add foreign key.
+
+Fix constraint.
+
+Normalize table.
+
+Remove duplicate column.
+
+Optimize migration.
+
+---
+
+# Documentation Recommendations
+
+Examples
+
+Update ADR.
+
+Update OpenAPI.
+
+Update README.
+
+Update Workflow.
+
+Update Data Dictionary.
+
+Synchronize documentation.
+
+---
+
+# API Recommendations
+
+Examples
+
+Implement missing endpoint.
+
+Correct response schema.
+
+Fix validation.
+
+Update DTO.
+
+Add pagination.
+
+Document endpoint.
+
+---
+
+# Security Recommendations
+
+Examples
+
+Implement RBAC.
+
+Add audit logging.
+
+Strengthen validation.
+
+Encrypt sensitive data.
+
+Rotate secrets.
+
+Implement rate limiting.
+
+---
+
+# Performance Recommendations
+
+Examples
+
+Add index.
+
+Cache query.
+
+Reduce N+1 queries.
+
+Optimize pagination.
+
+Reduce bundle size.
+
+Improve search performance.
+
+---
+
+# Testing Recommendations
+
+Examples
+
+Increase unit coverage.
+
+Add integration tests.
+
+Add migration tests.
+
+Improve CI.
+
+Automate regression testing.
+
+---
+
+# Technical Debt Recommendations
+
+Examples
+
+Refactor duplicated logic.
+
+Remove dead code.
+
+Rename inconsistent files.
+
+Improve folder organization.
+
+Document shared components.
+
+---
+
+# Priority Matrix
+
+Critical Severity
+
+↓
+
+Priority 1
+
+High Severity
+
+↓
+
+Priority 2
+
+Medium Severity
+
+↓
+
+Priority 3
+
+Low Severity
+
+↓
+
+Priority 4
+
+Informational
+
+↓
+
+Priority 5
+
+---
+
+# Recommendation Constraints
+
+Recommendations
+
+must never
+
+Contradict SSOT
+
+Contradict ADR
+
+Contradict Architecture
+
+Contradict Decision Register
+
+Invent requirements
+
+Invent modules
+
+Invent APIs
+
+Invent database objects
+
+Invent workflows
+
+---
+
+# Recommendation Dependencies
+
+Every recommendation
+
+must identify
+
+Dependencies
+
+Blocking Issues
+
+Related ADRs
+
+Affected Modules
+
+Affected Documentation
+
+Affected Database
+
+Affected APIs
+
+Related Sprint
+
+---
+
+# Verification
+
+Every recommendation
+
+must define
+
+Verification Criteria.
+
+Examples
+
+Migration executes successfully.
+
+OpenAPI updated.
+
+Unit tests pass.
+
+Architecture drift resolved.
+
+Documentation synchronized.
+
+Performance benchmark improved.
+
+---
+
+# Completion Status
+
+Proposed
+
+Approved
+
+Scheduled
+
+In Progress
+
+Implemented
+
+Verified
+
+Closed
+
+Deferred
+
+Rejected
+
+---
+
+# Reporting
+
+Every report
+
+must include
+
+Recommendation Summary
+
+Priority Distribution
+
+Architecture Actions
+
+Database Actions
+
+Documentation Actions
+
+Security Actions
+
+Performance Actions
+
+Testing Actions
+
+Technical Debt Actions
+
+Roadmap Suggestions
+
+---
+
+# Recommendation Quality
+
+Good recommendations
+
+are
+
+Specific
+
+Actionable
+
+Measurable
+
+Achievable
+
+Relevant
+
+Traceable
+
+Time-bound
+
+Poor recommendations
+
+are
+
+Vague
+
+Unverifiable
+
+Opinion-based
+
+Speculative
+
+Unprioritized
+
+---
+
+# Compliance Rules
+
+Every recommendation
+
+must reference
+
+Evidence
+
+Documentation
+
+Affected Component
+
+Severity
+
+Priority
+
+Expected Outcome
+
+Without evidence
+
+recommendations
+
+must not be published.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every recommendation
+
+references evidence.
+
+Every recommendation
+
+has priority.
+
+Every recommendation
+
+has owner.
+
+Every recommendation
+
+has verification criteria.
+
+No assumptions exist.
+
+No fabricated recommendations exist.
+
+---
+
+# Success Criteria
+
+The Recommendation Policy succeeds when
+
+every review
+
+produces
+
+clear,
+
+prioritized,
+
+evidence-based,
+
+and actionable recommendations
+
+that can be directly
+
+scheduled,
+
+implemented,
+
+verified,
+
+and tracked
+
+through future Sprints,
+
+ensuring continuous improvement
+
+of the PhuQuocHub platform
+
+without introducing
+
+architecture drift
+
+or undocumented changes.

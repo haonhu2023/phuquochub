@@ -1,0 +1,3002 @@
+---
+title: Orphan Document Validation
+version: 2.0.0
+status: Production
+owner: Chief Documentation Architect
+classification: Internal
+priority: Critical
+applies_to:
+  - Documentation Freeze
+  - SSOT
+  - Architecture Review
+  - Repository Analysis
+  - Documentation Governance
+review_cycle: Every Freeze
+---
+
+# Orphan Document Validation
+
+---
+
+# 1. Purpose
+
+This document defines the official Orphan Document Validation Framework
+for the PhuQuocHub platform.
+
+The purpose of Orphan Document Validation is to ensure that every
+engineering document participating in Documentation Freeze has a
+meaningful relationship with the documentation ecosystem.
+
+A document shall not exist in isolation.
+
+Every governed document must have one or more valid relationships,
+including references, dependencies, authority, synchronization,
+or lifecycle connections.
+
+Documents that no longer participate in the engineering knowledge graph
+must be identified before Documentation Freeze.
+
+---
+
+# 2. Mission
+
+Guarantee
+
+Complete Document Connectivity
+
+No Hidden Documentation
+
+No Forgotten Specifications
+
+No Dead Documentation
+
+No Unreachable Documents
+
+No Invalid Historical References
+
+No Documentation Waste
+
+Complete Traceability
+
+---
+
+# 3. Why Orphan Validation Exists
+
+Large engineering repositories naturally accumulate documentation.
+
+Over time,
+
+documents become
+
+renamed,
+
+replaced,
+
+deprecated,
+
+superseded,
+
+or forgotten.
+
+Although these documents remain inside the repository,
+
+they no longer contribute to engineering knowledge.
+
+Such documents become
+
+Orphan Documents.
+
+Examples include
+
+Legacy API Guides
+
+Obsolete Architecture Notes
+
+Unused Database Specifications
+
+Retired Workflow Documents
+
+Experimental Design Notes
+
+Superseded Planning Documents
+
+These documents create
+
+confusion,
+
+duplicate maintenance,
+
+incorrect implementation,
+
+and engineering risk.
+
+---
+
+# 4. Scope
+
+This validation applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+Business Rules
+
+Repository Documentation
+
+Coding Standards
+
+Database Documentation
+
+ERD
+
+Migration Guides
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Security
+
+Deployment
+
+Monitoring
+
+Testing
+
+Templates
+
+Reference Guides
+
+Documentation Policies
+
+AI Governance
+
+Documentation Freeze
+
+Every document
+participating
+in Documentation Governance.
+
+---
+
+# 5. Objectives
+
+Orphan Validation guarantees
+
+Every document is reachable.
+
+Every document has authority.
+
+Every document has valid references.
+
+Every document belongs to a lifecycle.
+
+Every document participates in engineering.
+
+No forgotten documentation.
+
+No abandoned documentation.
+
+No invalid historical documents.
+
+---
+
+# 6. Definitions
+
+## Reachable Document
+
+A document that can be reached
+
+through
+
+at least one
+
+approved relationship
+
+from
+
+the engineering root.
+
+---
+
+## Orphan Document
+
+A document
+
+that
+
+cannot be reached
+
+through
+
+authority,
+
+dependency,
+
+reference,
+
+or synchronization.
+
+---
+
+## Historical Document
+
+A document
+
+intentionally retained
+
+for
+
+historical purposes.
+
+Historical documents
+
+are not considered
+
+orphans
+
+if they are correctly archived.
+
+---
+
+## Active Document
+
+A document
+
+participating
+
+in
+
+the current engineering baseline.
+
+---
+
+## Dead Document
+
+A document
+
+that
+
+has no engineering purpose,
+
+no references,
+
+no dependencies,
+
+no authority,
+
+and
+
+no archival justification.
+
+---
+
+# 7. Orphan Validation Principles
+
+---
+
+## Principle 1
+
+Every governed document
+
+must be reachable.
+
+---
+
+## Principle 2
+
+Every document
+
+must belong
+
+to
+
+exactly one
+
+engineering lifecycle.
+
+---
+
+## Principle 3
+
+Every active document
+
+must have
+
+at least one
+
+incoming
+
+or
+
+outgoing
+
+relationship.
+
+---
+
+## Principle 4
+
+Historical documents
+
+must be archived.
+
+---
+
+## Principle 5
+
+Dead documentation
+
+must never
+
+remain
+
+inside
+
+the active repository.
+
+---
+
+## Principle 6
+
+Reachability
+
+must be calculated
+
+using
+
+approved relationships only.
+
+---
+
+## Principle 7
+
+Orphan Validation
+
+must never
+
+delete documents.
+
+Validation
+
+only reports findings.
+
+---
+
+## Principle 8
+
+False positives
+
+must be minimized.
+
+Validation
+
+must always verify
+
+authority
+
+before
+
+declaring
+
+an orphan.
+
+---
+
+# 8. Engineering Root Documents
+
+Reachability analysis
+
+begins
+
+from
+
+engineering roots.
+
+Approved roots include
+
+Business Requirements
+
+Architecture
+
+ADR
+
+Decision Register
+
+SSOT
+
+Documentation Freeze
+
+Repository Policy
+
+All other documents
+
+must be reachable
+
+from
+
+at least one
+
+root document.
+
+---
+
+# 9. Relationship Types
+
+Reachability
+
+may be established
+
+through
+
+Authority
+
+Dependency
+
+Reference
+
+Synchronization
+
+Inheritance
+
+Lifecycle
+
+Approved Cross Reference
+
+Only approved relationships
+
+participate
+
+in reachability analysis.
+
+---
+
+# 10. Reachability Rules
+
+A document is considered
+
+Reachable
+
+if
+
+at least one
+
+approved path
+
+exists
+
+from
+
+an Engineering Root.
+
+Example
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Monitoring
+
+↓
+
+Production
+
+Every document
+
+on this path
+
+is reachable.
+
+---
+
+# 11. Invalid Reachability
+
+The following
+
+do not establish
+
+reachability
+
+Draft References
+
+Broken Links
+
+Deprecated References
+
+Unknown Authority
+
+Archived-only References
+
+Superseded-only References
+
+Invalid Dependencies
+
+Manual Notes
+
+Temporary Files
+
+---
+
+# 12. Validation Inputs
+
+Architecture
+
+ADR
+
+Decision Register
+
+Repository Documentation
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Security
+
+Deployment
+
+Monitoring
+
+Documentation Inventory
+
+Metadata
+
+Dependency Graph
+
+Cross Document Graph
+
+---
+
+# 13. Validation Outputs
+
+Reachability Report
+
+Orphan Report
+
+Dead Document Report
+
+Historical Document Report
+
+Impact Analysis
+
+Archive Recommendation
+
+Documentation Inventory Status
+
+---
+
+# 14. Validation States
+
+NOT_STARTED
+
+↓
+
+DISCOVERING
+
+↓
+
+BUILDING_GRAPH
+
+↓
+
+RESOLVING_ROOTS
+
+↓
+
+CALCULATING_REACHABILITY
+
+↓
+
+DETECTING_ORPHANS
+
+↓
+
+CLASSIFYING
+
+↓
+
+GENERATING_REPORT
+
+↓
+
+PASS
+
+WARNING
+
+FAIL
+
+BLOCKED
+
+Every execution
+
+must terminate
+
+with exactly one
+
+final state.
+
+---
+
+# 15. Preconditions
+
+Before validation
+
+verify
+
+Document Inventory Exists
+
+Metadata Valid
+
+Dependency Graph Available
+
+Authority Matrix Available
+
+Cross Document Graph Available
+
+Lifecycle Information Available
+
+---
+
+# 16. Foundation Success Criteria
+
+The Orphan Document Validation Framework succeeds when every governed
+document can be classified as Active, Historical, or Orphan through a
+deterministic reachability analysis, ensuring that no undocumented,
+unreachable, or abandoned artifacts remain within the active
+Documentation Freeze scope.
+---
+
+# 17. Document Graph Engine
+
+## Purpose
+
+The Document Graph Engine
+
+constructs
+
+the complete documentation graph
+
+for
+
+every engineering artifact
+
+participating
+
+in Documentation Freeze.
+
+The graph
+
+represents
+
+all approved relationships
+
+between
+
+engineering documents.
+
+It becomes
+
+the authoritative source
+
+for
+
+reachability analysis,
+
+orphan detection,
+
+historical classification,
+
+and archive recommendations.
+
+---
+
+# 18. Graph Model
+
+The graph
+
+is
+
+Directed
+
+Connected
+
+Authority-aware
+
+Version-aware
+
+Lifecycle-aware
+
+Traceable
+
+Deterministic
+
+---
+
+Each graph
+
+contains
+
+Nodes
+
+Edges
+
+Authority
+
+Metadata
+
+Lifecycle
+
+Version
+
+Validation Status
+
+---
+
+# 19. Graph Nodes
+
+A node
+
+represents
+
+exactly one
+
+engineering artifact.
+
+Examples
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Security Policy
+
+Deployment Guide
+
+Repository Policy
+
+Coding Standards
+
+Documentation Freeze
+
+---
+
+Every node
+
+must contain
+
+Document ID
+
+Document Type
+
+Title
+
+Version
+
+Status
+
+Lifecycle
+
+Owner
+
+Authority Level
+
+Validation Status
+
+Repository Path
+
+Freeze Baseline
+
+---
+
+# 20. Graph Edges
+
+Every edge
+
+represents
+
+an approved relationship.
+
+Edge Types
+
+Authority
+
+Dependency
+
+Reference
+
+Synchronization
+
+Inheritance
+
+Lifecycle
+
+Approval
+
+Traceability
+
+---
+
+Every edge
+
+contains
+
+Source
+
+Target
+
+Relationship Type
+
+Strength
+
+Mandatory Flag
+
+Lifecycle Compatibility
+
+Version Compatibility
+
+Validation Status
+
+---
+
+# 21. Root Document Discovery
+
+Reachability
+
+begins
+
+from
+
+Engineering Roots.
+
+Approved Roots
+
+Business Requirements
+
+Architecture
+
+ADR Index
+
+Decision Register
+
+SSOT
+
+Documentation Freeze
+
+Repository Policy
+
+---
+
+The validator
+
+must verify
+
+that
+
+every declared root
+
+exists
+
+before
+
+graph traversal begins.
+
+Missing root
+
+↓
+
+BLOCKED
+
+---
+
+# 22. Reference Resolution Engine
+
+Purpose
+
+Resolve
+
+every reference
+
+to
+
+exactly one
+
+active document.
+
+---
+
+Resolution Workflow
+
+Locate Reference
+
+↓
+
+Resolve Target
+
+↓
+
+Target Exists
+
+↓
+
+Version Compatible
+
+↓
+
+Lifecycle Compatible
+
+↓
+
+Authority Compatible
+
+↓
+
+Reference Valid
+
+---
+
+Failure
+
+↓
+
+Broken Reference
+
+↓
+
+FAIL
+
+---
+
+# 23. Authority Resolution Engine
+
+Every document
+
+must resolve
+
+to
+
+one authority.
+
+---
+
+Resolution Order
+
+Business Requirements
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policy
+
+↓
+
+Standard
+
+↓
+
+Specification
+
+↓
+
+Implementation
+
+---
+
+If
+
+multiple authorities
+
+exist
+
+↓
+
+BLOCKED
+
+---
+
+If
+
+authority
+
+cannot be resolved
+
+↓
+
+FAIL
+
+---
+
+# 24. Dependency Resolution Engine
+
+Every dependency
+
+must resolve
+
+before
+
+reachability analysis.
+
+---
+
+Resolution
+
+Locate Dependency
+
+↓
+
+Resolve Target
+
+↓
+
+Verify Exists
+
+↓
+
+Verify Approved
+
+↓
+
+Verify Lifecycle
+
+↓
+
+Register Edge
+
+---
+
+Failure
+
+↓
+
+Broken Dependency
+
+↓
+
+FAIL
+
+---
+
+# 25. Reachability Analysis
+
+Purpose
+
+Determine
+
+whether
+
+every document
+
+is reachable
+
+from
+
+at least one
+
+Engineering Root.
+
+---
+
+Algorithm
+
+Initialize Root Set
+
+↓
+
+Mark Roots
+
+↓
+
+Traverse Graph
+
+↓
+
+Mark Reachable Nodes
+
+↓
+
+Collect Unvisited Nodes
+
+↓
+
+Classify Findings
+
+---
+
+Only
+
+approved edges
+
+participate
+
+in traversal.
+
+---
+
+# 26. Graph Traversal Algorithm
+
+Traversal
+
+may use
+
+Depth First Search
+
+or
+
+Breadth First Search.
+
+---
+
+Traversal Rules
+
+Visit Node
+
+↓
+
+Mark Visited
+
+↓
+
+Resolve Outgoing Edges
+
+↓
+
+Validate Edge
+
+↓
+
+Visit Target
+
+↓
+
+Repeat
+
+---
+
+Traversal ends
+
+when
+
+no unvisited
+
+reachable node
+
+remains.
+
+---
+
+# 27. Reachability Matrix
+
+Every document
+
+must belong
+
+to exactly one
+
+reachability class.
+
+---
+
+Reachable
+
+Connected
+
+Approved
+
+Active
+
+---
+
+Historical
+
+Archived
+
+Referenced
+
+Traceable
+
+---
+
+Orphan
+
+Not Reachable
+
+No Authority
+
+No Dependency
+
+No References
+
+---
+
+Dead
+
+No Reachability
+
+No Authority
+
+No Lifecycle
+
+No Archive Justification
+
+---
+
+# 28. Reference Integrity
+
+Every reference
+
+must satisfy
+
+Target Exists
+
+Target Approved
+
+Target Active
+
+Correct Version
+
+Correct Lifecycle
+
+No Circular Reference
+
+---
+
+Failure
+
+↓
+
+FAIL
+
+---
+
+# 29. Reachability Validation Rules
+
+A document
+
+is Reachable
+
+only when
+
+One Approved Path Exists
+
+One Authority Exists
+
+Lifecycle Compatible
+
+Version Compatible
+
+Metadata Valid
+
+---
+
+Otherwise
+
+continue
+
+classification.
+
+---
+
+# 30. Graph Integrity Validation
+
+The graph
+
+is valid
+
+only when
+
+Every Node Exists
+
+Every Root Exists
+
+Every Edge Valid
+
+No Broken References
+
+No Invalid Authority
+
+No Invalid Dependency
+
+No Circular Reachability
+
+No Duplicate Nodes
+
+No Duplicate Roots
+
+Complete Traceability
+
+---
+
+# 31. Graph Evidence
+
+Every graph execution
+
+must generate
+
+Graph ID
+
+Validation Timestamp
+
+Traversal Method
+
+Visited Nodes
+
+Reachable Nodes
+
+Unreachable Nodes
+
+Traversal Duration
+
+Evidence Package
+
+---
+
+# 32. Part 2 Completion Criteria
+
+The Document Graph Engine
+
+is complete
+
+when
+
+every engineering document
+
+can be placed
+
+inside
+
+one deterministic,
+
+fully connected,
+
+authority-aware,
+
+version-aware,
+
+and lifecycle-aware documentation graph,
+
+allowing
+
+the Reachability Analysis Engine
+
+to accurately determine
+
+whether
+
+each document
+
+is Active,
+
+Historical,
+
+Orphan,
+
+or Dead,
+
+without ambiguity
+
+and without undocumented assumptions.
+
+---
+
+---
+
+# 33. Orphan Detection Engine
+
+## Purpose
+
+The Orphan Detection Engine
+
+identifies
+
+engineering artifacts
+
+that no longer participate
+
+in
+
+the active documentation ecosystem.
+
+Detection
+
+must be
+
+deterministic,
+
+repeatable,
+
+traceable,
+
+and evidence-based.
+
+The engine
+
+must distinguish
+
+between
+
+inactive documents,
+
+historical documents,
+
+temporary documents,
+
+and true orphan documents.
+
+---
+
+# 34. Orphan Classification
+
+Every unreachable document
+
+must be classified
+
+before
+
+reporting.
+
+Classification Categories
+
+Direct Orphan
+
+Indirect Orphan
+
+Hidden Orphan
+
+Historical Orphan
+
+Dead Document
+
+Temporary Orphan
+
+False Positive
+
+Unknown
+
+Only
+
+one classification
+
+may be assigned.
+
+---
+
+# 35. Direct Orphan Detection
+
+## Definition
+
+A Direct Orphan
+
+has
+
+no approved incoming relationship
+
+and
+
+no approved outgoing relationship.
+
+---
+
+## Detection Algorithm
+
+Locate Document
+
+↓
+
+Collect Incoming Edges
+
+↓
+
+Collect Outgoing Edges
+
+↓
+
+Incoming = 0
+
+AND
+
+Outgoing = 0
+
+↓
+
+Check Authority
+
+↓
+
+Check Lifecycle
+
+↓
+
+Generate Finding
+
+---
+
+## Example
+
+legacy-api.md
+
+No References
+
+No Dependencies
+
+No Authority
+
+No Synchronization
+
+↓
+
+Direct Orphan
+
+---
+
+## Severity
+
+Active Document
+
+↓
+
+FAIL
+
+Historical Document
+
+↓
+
+WARNING
+
+---
+
+# 36. Indirect Orphan Detection
+
+## Definition
+
+An Indirect Orphan
+
+is connected
+
+only
+
+through
+
+obsolete
+
+or invalid
+
+documents.
+
+---
+
+## Example
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Old Workflow
+
+↓
+
+Legacy API
+
+Old Workflow
+
+↓
+
+Superseded
+
+↓
+
+Legacy API
+
+becomes
+
+Indirect Orphan.
+
+---
+
+## Detection
+
+Resolve Dependency Chain
+
+↓
+
+Every Parent Valid?
+
+↓
+
+NO
+
+↓
+
+Indirect Orphan
+
+---
+
+## Severity
+
+FAIL
+
+---
+
+# 37. Hidden Orphan Detection
+
+## Definition
+
+A Hidden Orphan
+
+appears
+
+to have references
+
+but
+
+none
+
+are approved.
+
+---
+
+## Example
+
+Document A
+
+↓
+
+references
+
+Document B
+
+↓
+
+Broken Link
+
+↓
+
+Hidden Orphan
+
+---
+
+Another Example
+
+Document
+
+references
+
+Archived Document
+
+↓
+
+Hidden Orphan
+
+---
+
+## Detection
+
+References Exist
+
+↓
+
+Validate References
+
+↓
+
+All Invalid
+
+↓
+
+Hidden Orphan
+
+---
+
+## Severity
+
+FAIL
+
+---
+
+# 38. Historical Orphan Detection
+
+## Definition
+
+Historical documentation
+
+may not participate
+
+in
+
+current engineering.
+
+Historical documents
+
+are
+
+not failures
+
+if
+
+correctly archived.
+
+---
+
+## Validation
+
+Archived
+
+↓
+
+Historical Classification
+
+↓
+
+PASS
+
+---
+
+Archived
+
+↓
+
+Still Referenced
+
+↓
+
+WARNING
+
+---
+
+Archived
+
+↓
+
+Used by Active Document
+
+↓
+
+FAIL
+
+---
+
+# 39. Dead Document Detection
+
+## Definition
+
+A Dead Document
+
+has
+
+No Authority
+
+No References
+
+No Dependencies
+
+No Lifecycle
+
+No Owner
+
+No Approval
+
+No Archive Status
+
+No Engineering Purpose
+
+---
+
+## Detection Workflow
+
+Reachability
+
+↓
+
+Authority
+
+↓
+
+Lifecycle
+
+↓
+
+Approval
+
+↓
+
+Repository Presence
+
+↓
+
+Classification
+
+---
+
+## Result
+
+Dead Document
+
+---
+
+## Recommendation
+
+Archive
+
+or
+
+Delete
+
+according
+
+to
+
+Retention Policy.
+
+---
+
+# 40. Temporary Orphan Detection
+
+## Definition
+
+Temporary Orphans
+
+occur
+
+during
+
+controlled transitions.
+
+Examples
+
+Refactoring
+
+Repository Migration
+
+Architecture Migration
+
+Freeze Preparation
+
+Batch Generation
+
+---
+
+## Validation
+
+Temporary State
+
+↓
+
+Approved Exception
+
+↓
+
+PASS
+
+---
+
+Temporary State
+
+↓
+
+No Exception
+
+↓
+
+WARNING
+
+---
+
+# 41. False Positive Prevention
+
+The validator
+
+must avoid
+
+incorrect orphan reports.
+
+---
+
+Never classify
+
+as orphan
+
+when
+
+Document
+
+is referenced
+
+through
+
+approved authority.
+
+---
+
+Never classify
+
+as orphan
+
+during
+
+approved Freeze Migration.
+
+---
+
+Never classify
+
+historical documentation
+
+as orphan
+
+when
+
+Retention Policy
+
+requires preservation.
+
+---
+
+Never classify
+
+generated documentation
+
+as orphan
+
+when
+
+its generator
+
+is active.
+
+---
+
+# 42. Orphan Severity Matrix
+
+Critical
+
+Architecture
+
+ADR
+
+Decision Register
+
+SSOT
+
+↓
+
+BLOCKED
+
+---
+
+High
+
+Repository
+
+Database
+
+Workflow
+
+OpenAPI
+
+↓
+
+FAIL
+
+---
+
+Medium
+
+Reference Guide
+
+Templates
+
+Examples
+
+↓
+
+WARNING
+
+---
+
+Low
+
+Legacy Notes
+
+Draft Examples
+
+↓
+
+INFO
+
+---
+
+# 43. Orphan Detection Matrix
+
+| Document Type | Reachable | Authority | Result |
+|---------------|-----------|-----------|--------|
+| Active | Yes | Yes | PASS |
+| Active | No | Yes | FAIL |
+| Active | No | No | FAIL |
+| Archived | No | Historical | PASS |
+| Archived | Referenced | Historical | WARNING |
+| Architecture | No | Root | BLOCKED |
+| ADR | No | Root | BLOCKED |
+| Repository | No | Architecture | FAIL |
+| Workflow | No | Architecture | FAIL |
+
+---
+
+# 44. Reachability Verification
+
+Before
+
+declaring
+
+Orphan
+
+verify
+
+Authority
+
+↓
+
+Dependencies
+
+↓
+
+References
+
+↓
+
+Synchronization
+
+↓
+
+Lifecycle
+
+↓
+
+Approval
+
+↓
+
+Metadata
+
+↓
+
+Repository
+
+↓
+
+Historical Status
+
+---
+
+Only after
+
+all checks
+
+fail
+
+may
+
+Orphan
+
+be reported.
+
+---
+
+# 45. Evidence Collection
+
+Every orphan finding
+
+must contain
+
+Finding ID
+
+Document ID
+
+Document Type
+
+Classification
+
+Severity
+
+Reachability Path
+
+Authority Status
+
+Lifecycle State
+
+Evidence
+
+Recommendation
+
+Timestamp
+
+Validator
+
+---
+
+# 46. Part 3 Completion Criteria
+
+The Orphan Detection Engine
+
+is complete
+
+when
+
+every unreachable document
+
+can be classified
+
+as
+
+Direct,
+
+Indirect,
+
+Hidden,
+
+Historical,
+
+Temporary,
+
+or
+
+Dead,
+
+using
+
+repeatable,
+
+traceable,
+
+and deterministic
+
+validation rules,
+
+while preventing
+
+false positives
+
+through
+
+authority,
+
+dependency,
+
+lifecycle,
+
+and repository verification.
+
+---
+
+---
+
+# 47. Impact Analysis Engine
+
+## Purpose
+
+Every orphan document
+
+may affect
+
+multiple engineering domains.
+
+The Impact Analysis Engine
+
+determines
+
+the scope
+
+and severity
+
+of those effects
+
+before
+
+any remediation action.
+
+---
+
+## Impact Categories
+
+Architecture
+
+Repository
+
+Database
+
+OpenAPI
+
+Workflow
+
+Security
+
+Deployment
+
+Monitoring
+
+Testing
+
+Documentation
+
+Governance
+
+Production
+
+---
+
+## Impact Levels
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Informational
+
+---
+
+## Required Outputs
+
+Affected Documents
+
+Affected Domains
+
+Affected Teams
+
+Affected Validation Engines
+
+Affected Baselines
+
+Affected Releases
+
+Business Impact
+
+Engineering Impact
+
+Risk Score
+
+Recommended Action
+
+---
+
+# 48. Archive Recommendation Engine
+
+## Purpose
+
+Determine
+
+whether
+
+an orphan document
+
+should be
+
+Archived,
+
+Retained,
+
+Merged,
+
+Superseded,
+
+or Deleted.
+
+---
+
+## Recommendation Matrix
+
+Historical Document
+
+↓
+
+Archive
+
+---
+
+Superseded Document
+
+↓
+
+Retain
+
+↓
+
+Historical Archive
+
+---
+
+Duplicate Document
+
+↓
+
+Merge
+
+↓
+
+Archive Original
+
+---
+
+Dead Document
+
+↓
+
+Delete
+
+(after retention approval)
+
+---
+
+Temporary Orphan
+
+↓
+
+Retain
+
+↓
+
+Revalidate
+
+---
+
+## Archive Preconditions
+
+Metadata Complete
+
+Lifecycle Closed
+
+No Active References
+
+No Active Dependencies
+
+Retention Policy Satisfied
+
+Approval Complete
+
+---
+
+# 49. Orphan Resolution Workflow
+
+Orphan Detected
+
+↓
+
+Collect Evidence
+
+↓
+
+Resolve Authority
+
+↓
+
+Verify References
+
+↓
+
+Verify Dependencies
+
+↓
+
+Perform Impact Analysis
+
+↓
+
+Determine Classification
+
+↓
+
+Generate Recommendation
+
+↓
+
+Architecture Review
+
+↓
+
+Approve Resolution
+
+↓
+
+Archive
+
+or
+
+Restore
+
+↓
+
+Revalidate
+
+↓
+
+Close Finding
+
+---
+
+## Resolution Rules
+
+Direct Orphan
+
+↓
+
+Restore Relationship
+
+or
+
+Archive
+
+---
+
+Indirect Orphan
+
+↓
+
+Repair Dependency Chain
+
+↓
+
+Revalidate
+
+---
+
+Hidden Orphan
+
+↓
+
+Repair References
+
+↓
+
+Revalidate
+
+---
+
+Historical Orphan
+
+↓
+
+Archive
+
+---
+
+Dead Document
+
+↓
+
+Delete
+
+according to
+
+Retention Policy
+
+---
+
+# 50. Claude Code Execution Rules
+
+Claude Code
+
+must execute
+
+Orphan Validation
+
+after
+
+Metadata Validation,
+
+Dependency Validation,
+
+and
+
+Cross Document Validation.
+
+---
+
+Claude Code
+
+must never
+
+archive
+
+or
+
+delete
+
+documents automatically.
+
+---
+
+Claude Code
+
+must never
+
+declare
+
+an orphan
+
+without
+
+performing
+
+reachability analysis.
+
+---
+
+Claude Code
+
+must always
+
+collect
+
+evidence
+
+before
+
+reporting.
+
+---
+
+Claude Code
+
+must always
+
+generate
+
+an
+
+Orphan Report.
+
+---
+
+Claude Code
+
+must stop
+
+Documentation Freeze
+
+when
+
+Critical Orphans
+
+are detected.
+
+---
+
+# 51. Automation Rules
+
+The following
+
+may be automated.
+
+✓ Document Inventory Discovery
+
+✓ Graph Construction
+
+✓ Reachability Analysis
+
+✓ Root Discovery
+
+✓ Orphan Classification
+
+✓ Historical Classification
+
+✓ Dead Document Detection
+
+✓ Report Generation
+
+✓ Metrics Collection
+
+✓ Drift Detection
+
+---
+
+The following
+
+require
+
+human approval.
+
+Delete Documents
+
+Archive Documents
+
+Authority Changes
+
+Retention Exceptions
+
+Documentation Freeze Approval
+
+---
+
+# 52. Orphan Validation Report
+
+Every execution
+
+shall generate
+
+a standardized report.
+
+---
+
+## Report Header
+
+Validation ID
+
+Timestamp
+
+Validator
+
+Repository Commit
+
+Freeze Version
+
+Baseline ID
+
+Traversal Algorithm
+
+Graph Version
+
+---
+
+## Executive Summary
+
+Documents Analysed
+
+Reachable
+
+Historical
+
+Temporary
+
+Orphan
+
+Dead
+
+Warnings
+
+Failures
+
+Blocked
+
+---
+
+## Reachability Summary
+
+Reachable Nodes
+
+Unreachable Nodes
+
+Traversal Coverage
+
+Disconnected Components
+
+---
+
+## Orphan Summary
+
+Finding ID
+
+Document
+
+Classification
+
+Severity
+
+Recommendation
+
+Status
+
+---
+
+## Archive Summary
+
+Documents to Archive
+
+Documents to Restore
+
+Documents to Merge
+
+Documents to Delete
+
+Pending Approval
+
+---
+
+## Final Recommendation
+
+PASS
+
+Proceed
+
+WARNING
+
+Proceed with observations
+
+FAIL
+
+Repair orphan issues
+
+BLOCKED
+
+Architecture Review Required
+
+---
+
+# 53. Metrics
+
+The engine
+
+shall collect
+
+the following metrics.
+
+---
+
+## Inventory Metrics
+
+Total Documents
+
+Reachable Documents
+
+Historical Documents
+
+Orphan Documents
+
+Dead Documents
+
+---
+
+## Graph Metrics
+
+Connected Components
+
+Disconnected Components
+
+Average Reachability Depth
+
+Maximum Reachability Depth
+
+Root Coverage
+
+---
+
+## Quality Metrics
+
+Reachability Score
+
+Traceability Score
+
+Reference Integrity
+
+Dependency Integrity
+
+Authority Integrity
+
+Documentation Health Score
+
+---
+
+## Operational Metrics
+
+Execution Time
+
+Traversal Time
+
+Classification Time
+
+Report Generation Time
+
+Average Resolution Time
+
+---
+
+## Historical Metrics
+
+Repeated Orphans
+
+Archive Trend
+
+Repository Health Trend
+
+Documentation Growth
+
+---
+
+# 54. Compliance Checklist
+
+Before
+
+Documentation Freeze
+
+verify
+
+□ Every document inventoried.
+
+□ Every root discovered.
+
+□ Every document reachable or justified.
+
+□ No unexplained orphan.
+
+□ No dead document.
+
+□ Historical documents archived.
+
+□ References validated.
+
+□ Dependencies validated.
+
+□ Reachability report generated.
+
+□ Evidence archived.
+
+□ Approval completed.
+
+---
+
+# 55. Self Verification
+
+Before returning PASS
+
+Claude Code
+
+must verify
+
+✓ Every document analysed.
+
+✓ Every root analysed.
+
+✓ Every graph traversed.
+
+✓ Every orphan classified.
+
+✓ Every historical document verified.
+
+✓ Every recommendation justified.
+
+✓ Every report generated.
+
+✓ No document modified.
+
+✓ Validation reproducible.
+
+✓ Evidence complete.
+
+---
+
+# 56. Success Criteria
+
+Orphan Document Validation succeeds when
+
+every engineering document,
+
+every architectural artifact,
+
+every API specification,
+
+every workflow,
+
+every repository rule,
+
+every governance document,
+
+and every supporting specification
+
+can be proven
+
+to belong
+
+to
+
+the active engineering knowledge graph,
+
+or
+
+to an approved historical archive,
+
+with
+
+no unexplained orphan,
+
+no dead documentation,
+
+no unreachable engineering artifact,
+
+and complete traceability
+
+from Engineering Root Documents
+
+to every governed document.
+
+The validation process
+
+must ensure
+
+that Documentation Freeze
+
+contains
+
+only
+
+active,
+
+historically justified,
+
+or explicitly governed documentation,
+
+thereby preventing
+
+documentation decay,
+
+knowledge fragmentation,
+
+and engineering ambiguity.
+
+---
+
+# End of Document
+
+Status
+
+Production
+
+Orphan Document Validation Engine
+
+Complete
+
+Documentation Freeze
+
+Enterprise Ready

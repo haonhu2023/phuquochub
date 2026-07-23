@@ -1,0 +1,166 @@
+schema_version: "1.0"
+
+id: PLACE-005
+workstream: place
+title: "Single-source the Place response types in @phuquochub/shared-types (GAP-11)"
+type: API contract alignment
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "packages/shared-types tsc --noEmit → exit 0; npm run build → exit 0 (dist/place.* emitted)"
+    - "node_modules/@phuquochub/shared-types re-materialized (FAT32 copy) → index.d.ts exports ./place"
+    - "apps/api tsc --noEmit → exit 2 (1 × TS2322) then exit 0 after narrowing at the mapper"
+    - "apps/web tsc --noEmit → exit 0 (baseline before edits was also exit 0)"
+    - "apps/api jest places → 33/33 passed, 5 suites, exit 0 — mapper specs UNMODIFIED"
+    - "eslint apps/api places + packages/shared-types src → exit 0"
+  mandatory_criteria: "AC1..AC6 all PASS; optional AC7 also PASS"
+  report: docs/delivery/reports/PLACE-005-shared-types-report.md
+  evidence_index: docs/delivery/evidence/PLACE-005-shared-types-evidence-index.md
+  changed_files:
+    - packages/shared-types/src/place.ts                      # new — single declaration
+    - packages/shared-types/src/index.ts                      # barrel export
+    - apps/api/src/modules/places/places.mapper.ts            # import + re-export; verification_status narrowed
+    - apps/web/src/modules/places/types.ts                    # pure re-export, zero declarations
+    - packages/shared-types/dist/** and node_modules/@phuquochub/shared-types/**   # generated
+  next_task: docs/delivery/tasks/PLACE-006.yaml
+  representation_decision: >-
+    AC7 — enums are string-literal UNIONS, not TS enums. Type-only, so apps/web loads no runtime
+    enum object into the client bundle; and a scratchpad tsc probe confirmed string-enum members
+    are assignable to their literal union, so apps/api keeps using place.enums.ts without casts.
+  open_findings: >-
+    F-17 openapi PlaceCard omits status/score that both implementations return (needs owner
+    adjudication — same family as parked GAP-05/10). F-18 PlaceCardRow.verification_status is
+    typed string for a DB enum column, forcing an unchecked cast at the mapper (repository
+    change, out of scope). F-19 toPlaceDetail returns Date where the wire type says string.
+  environment_note: >-
+    node_modules/@phuquochub/shared-types is a COPY, not a symlink (FAT32). It now carries real
+    Place declarations, so any future edit to packages/shared-types that skips the rebuild +
+    re-copy will make BOTH apps type-check against stale types. Risk F-5 became load-bearing.
+
+depends_on:
+  - PLACE-004        # completed 2026-07-22; jest places.repository 11/11, eslint + tsc exit 0
+
+problem_statement: >-
+  The Place response shape is declared twice, independently. apps/api/src/modules/places/
+  places.mapper.ts:6-21 defines `PlaceCard` (the openapi PlaceCard shape), and
+  apps/web/src/modules/places/types.ts re-declares PlaceCard/PlaceDetail plus GeoPoint,
+  PlaceContact, PlacePrice, PlaceMedia, PlaceFaq. Nothing links the two: they agree today only
+  because a human kept them in step. packages/shared-types — which exists precisely for
+  "DTO/enum/interface dùng chung giữa FE và BE" — carries only api-response.ts and health.ts,
+  and workstreams/place.yaml records "no Place types yet". The declarations have already begun
+  to diverge in strictness: the API types price_range/status as enums, the web as bare string.
+  This is GAP-11 (P2). It is a latent-drift defect, not an active bug — the mapper already
+  converts rating_avg and osm_id to number, so both declarations currently describe the same
+  wire payload.
+
+objective: >-
+  Make @phuquochub/shared-types the single source of truth for the Place response types, with
+  both the API mapper and the web module importing them, so the two sides can no longer drift
+  silently. The JSON wire contract must not change: this is a type-declaration consolidation,
+  not a contract change.
+
+required_inputs:
+  - apps/api/src/modules/places/places.mapper.ts                 # PlaceCard, toPlaceCard, toPlaceDetail
+  - apps/api/src/modules/places/places.mapper.spec.ts            # existing mapper specs
+  - apps/api/src/modules/places/places-detail.mapper.spec.ts     # existing detail mapper specs
+  - apps/web/src/modules/places/types.ts                         # duplicated declarations
+  - apps/web/src/modules/places/api/places.api.ts                # web consumer of those types
+  - packages/shared-types/src/index.ts                           # current barrel
+  - packages/shared-types/src/api-response.ts                    # existing style to follow
+  - docs/api/openapi.yaml                                        # authoritative wire shape
+  - apps/api/src/modules/places/place.enums.ts                   # PlaceStatus, PriceRange, GeoJSONPoint
+
+in_scope:
+  - "new: packages/shared-types/src/place.ts — the shared Place response types"
+  - "packages/shared-types/src/index.ts — export the new module"
+  - "apps/api/src/modules/places/places.mapper.ts — import instead of re-declaring"
+  - "apps/web/src/modules/places/types.ts — re-export from shared-types instead of re-declaring"
+  - "rebuild packages/shared-types (npm run build) and re-materialize node_modules/@phuquochub/shared-types (FAT32 workaround — see state.yaml verification_environment)"
+
+out_of_scope:
+  - "any change to the JSON payload: no field added, removed, renamed, retyped at the wire level, or reordered"
+  - "openapi.yaml — it is the authority here, not the subject"
+  - "the GAP-05/10 list-param divergence (parked, needs owner adjudication)"
+  - "entity, migration, repository, service, controller or DTO changes"
+  - "apps/web rendering, components or styling beyond the types module"
+  - "moving @phuquochub/utils or any other package"
+  - "converting the web module to the API's enum types if that would force runtime imports into the client bundle — prefer string-literal unions and record the reasoning"
+
+execution_steps:
+  - "Read openapi.yaml's PlaceCard/Place schemas and treat them as the authoritative shape; where the two current declarations disagree in strictness, the SSOT decides — do not silently pick the API's version."
+  - "Read packages/shared-types/src/api-response.ts and follow its declaration style, export convention and comment language."
+  - "Author packages/shared-types/src/place.ts with the shared types. Decide explicitly whether enums come across as TS enums or string-literal unions, and record why — the web must not be forced to import runtime enum objects if a type-only union suffices."
+  - "Export the new module from src/index.ts."
+  - "Point places.mapper.ts at the shared types. Its PlaceCard must be re-exported or aliased so existing importers keep compiling — check every importer before changing the export surface."
+  - "Point apps/web/src/modules/places/types.ts at the shared types, re-exporting the names the web already uses so PlaceCard.tsx and places.api.ts need no edit."
+  - "Rebuild shared-types and RE-COPY dist + package.json into node_modules/@phuquochub/shared-types. On FAT32 these are real directories, not symlinks: skipping this makes the API type-check fail with TS2307 or, worse, type-check against a stale dist."
+  - "Run the validation commands below, narrowest first. apps/web typecheck is mandatory — it is the only proof the web side actually consumes the shared declarations."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "The Place response types are declared exactly once, in packages/shared-types, and exported from its barrel." }
+  - { id: AC2, mandatory: true,  text: "apps/api's places.mapper.ts consumes the shared types rather than re-declaring them, and every existing importer of its PlaceCard still compiles." }
+  - { id: AC3, mandatory: true,  text: "apps/web's places types module consumes the shared types rather than re-declaring them, and PlaceCard.tsx / places.api.ts require no change." }
+  - { id: AC4, mandatory: true,  text: "The JSON wire contract is unchanged: no field added, removed, renamed or retyped at the payload level. Existing mapper specs pass unmodified." }
+  - { id: AC5, mandatory: true,  text: "No entity, migration, repository, service, controller, DTO or openapi.yaml change." }
+  - { id: AC6, mandatory: true,  text: "apps/api jest (places), eslint and tsc --noEmit exit 0, AND apps/web typecheck exits 0." }
+  - { id: AC7, mandatory: false, text: "The enum-vs-string-literal-union decision is recorded with its reasoning, including the client-bundle consideration." }
+
+required_evidence:
+  - "before/after declaration sites, showing the duplication is gone rather than merely re-exported from a second copy"
+  - "list of every importer of places.mapper.ts's PlaceCard, with compile evidence"
+  - "proof the shared-types dist was rebuilt AND re-materialized into node_modules (timestamp or content check)"
+  - "apps/api tsc exit code and apps/web typecheck exit code"
+  - "mapper spec results, unmodified"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd packages/shared-types && npx tsc -p tsconfig.json --noEmit"
+  - "cd packages/shared-types && npm run build"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/web && npx tsc --noEmit"
+
+rollback_plan: >-
+  Delete packages/shared-types/src/place.ts, revert its index.ts export, revert places.mapper.ts
+  and apps/web/src/modules/places/types.ts to their re-declaring form, then rebuild and
+  re-materialize shared-types. No schema, data, migration or wire contract is involved, so
+  rollback is complete and non-destructive. If the re-materialization step is what broke the
+  build, re-copying dist alone restores it without touching source.
+
+stop_conditions:
+  - "Consolidating the types would require changing the JSON payload to make both sides agree — STOP. That is a contract change and needs its own authorized task; record the divergence as a finding instead."
+  - "apps/web cannot be type-checked in this environment (missing Next/React types, no node_modules resolution) — STOP before editing the web file, record the limitation, and reduce the task to the API + package side only rather than making an unverifiable web change."
+  - "Sharing the types would force the web client to import runtime enum objects from the API module — STOP and use type-only declarations; do not add a runtime dependency to the client bundle for a typing concern."
+  - "openapi.yaml appears wrong relative to both implementations — STOP. openapi is the SSOT here; a change to it is out of scope and needs owner adjudication (see GAP-05/10 precedent)."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-006
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "apps/api tsc exit 0 AND apps/web typecheck exit 0"
+    - "mapper specs passing unmodified"
+    - "diff limited to in_scope files"
+
+next_candidate_task:
+  id: PLACE-006
+  title: "Constrain opening_hours to the documented JSONB structure (GAP-14)"
+  type: data-quality enforcement
+  rationale: >-
+    places.dto.ts:52-53 and :81-82 accept opening_hours as a bare @IsObject() —
+    Record<string, unknown> — while docs/data/modules/places.md §4 specifies a concrete
+    structure (timezone, regular, special days). Any shape currently passes validation and is
+    persisted to JSONB, so bad data can enter through the public create/update path. It is
+    apps/api-only, DTO-level, and testable without a database — the same shape of work as
+    PLACE-002. Derive PLACE-006 from PLACE-005's actual outcome rather than assuming this.

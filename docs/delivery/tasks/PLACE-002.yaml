@@ -1,0 +1,131 @@
+schema_version: "1.0"
+
+id: PLACE-002
+workstream: place
+title: Place coordinate & geo-input validation (GAP-07)
+type: implementation
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # not a git repository
+started_commit: unknown
+completed_at: "2026-07-22"
+
+# Truthful run status. All four validation_commands EXECUTED and GREEN on 2026-07-22
+# after Node v24.18.0 (portable) was made available; see PLACE-002 evidence index VO-1..VO-8.
+run_status:
+  implementation: complete       # 5 in-scope files changed (see report §11)
+  validation: passed
+  validation_environment: >-
+    Node v24.18.0 portable (%LOCALAPPDATA%\node-portable), npm 11.16.0, run in place on the
+    FAT32 volume F:. Workspace packages @phuquochub/{shared-types,utils} were materialized as
+    real directories in node_modules/@phuquochub/ (copied package.json + prebuilt dist/),
+    because FAT32 cannot create the npm workspace symlinks. Not an NTFS install.
+  results:
+    - "npx jest places.dto → 12/12 passed, exit 0"
+    - "npx jest geo.dto → 9/9 passed, exit 0"
+    - "eslint src/modules/{places,geo}/**/*.ts --max-warnings=0 → exit 0"
+    - "tsc -p tsconfig.json --noEmit → exit 0 (after workspace packages materialized)"
+  report: docs/delivery/reports/PLACE-002-implementation-report.md
+  evidence_index: docs/delivery/evidence/PLACE-002-evidence-index.md
+  mandatory_criteria: "AC1..AC5 all PASS (see evidence index)"
+  changed_files:
+    - apps/api/src/common/geo-bounds.ts
+    - apps/api/src/modules/places/dto/places.dto.ts
+    - apps/api/src/modules/geo/dto/geo.dto.ts
+    - apps/api/src/modules/places/dto/places.dto.spec.ts
+    - apps/api/src/modules/geo/dto/geo.dto.spec.ts
+  next_task: docs/delivery/tasks/PLACE-003.yaml
+  open_question: >-
+    Phú Quốc bbox in geo-bounds.ts remains PROVISIONAL (derived from seed coordinates, not
+    from an authoritative source). AC5 explicitly permits this, so it does not block
+    completion, but owner confirmation is still required before any release claim.
+    Carried forward as an open finding, not as an unmet criterion.
+
+depends_on:
+  - PLACE-001
+
+problem_statement: >-
+  api.md §11 (docs/api/api.md:184) requires Place coordinates to fall "trong Phú Quốc",
+  but validation enforces only global lat/lng ranges (places.dto.ts:17-22 GeoPointDto;
+  geo.dto.ts:5-13,23-33 Nearby/Bbox). Additionally NearbyQueryDto.radius has @Min(1) but
+  no @Max (geo.dto.ts:12-13), so an anonymous caller can request an unbounded radius; the
+  cap currently exists only as a service-side comment.
+
+objective: >-
+  Enforce a Phú Quốc coordinate boundary on all Place coordinate inputs and bound the
+  nearby-search radius at the DTO layer, with regression specs — without touching
+  persistence, storage format, coordinate order, or the API response contract.
+
+in_scope_files:
+  - apps/api/src/modules/places/dto/places.dto.ts        # GeoPointDto bounds
+  - apps/api/src/modules/geo/dto/geo.dto.ts              # NearbyQueryDto, BboxQueryDto, radius @Max
+  - apps/api/src/modules/places/dto/places.dto.spec.ts   # extend
+  - "new (if absent): apps/api/src/modules/geo/dto/geo.dto.spec.ts"
+  - "optional: a single shared bbox constant (e.g. a small geo constants file) to avoid duplication"
+
+out_of_scope:
+  - entities, migrations, services, controllers, repositories, mappers
+  - API response contract / OpenAPI shape
+  - the GAP-05/10 list-param divergence (needs owner adjudication — separate task)
+  - geography storage, coordinate order, GeoJSON representation
+
+required_evidence:
+  - docs/delivery/reports/PLACE-001-place-domain-persistence-baseline.md   # §12, §20 GAP-07
+  - docs/delivery/evidence/PLACE-001-evidence-index.md                     # V-1..V-3
+  - docs/api/api.md:184
+
+implementation_steps:
+  - "Confirm/obtain the authoritative Phú Quốc bounding box (min/max lat, min/max lng). If not documented, implement a clearly-labelled PROVISIONAL constant and flag for owner confirmation — do not invent precision silently."
+  - "Add a reusable coordinate-in-bounds validation (custom validator or explicit @Min/@Max pair) applied to GeoPointDto, NearbyQueryDto (lat/lng), and BboxQueryDto (min/max lat/lng)."
+  - "Add an explicit @Max to NearbyQueryDto.radius consistent with the service cap."
+  - "Keep the existing global @Min/@Max guards as defense-in-depth."
+  - "Write/extend DTO specs (valid in-bounds, out-of-bounds lat, out-of-bounds lng, boundary equality, radius over-max, radius missing→default preserved)."
+
+acceptance_criteria:
+  - "Out-of-Phú-Quốc coordinates are rejected by CreatePlaceDto/UpdatePlaceDto (via GeoPointDto), NearbyQueryDto, and BboxQueryDto."
+  - "NearbyQueryDto.radius has an explicit upper bound."
+  - "DTO specs cover the listed cases and fail before the change (mutation-checked if Node available)."
+  - "No entity/migration/service/controller/mapper/contract/response change."
+  - "The Phú Quốc bbox is either sourced from SSOT or explicitly marked PROVISIONAL pending owner confirmation."
+
+validation_commands:
+  - "cd apps/api && npx jest places.dto"
+  - "cd apps/api && npx jest geo.dto"
+  - "cd apps/api && npx eslint \"src/modules/{places,geo}/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+# NOTE: this key was previously nested under `validation_commands` at sequence level, which
+# made the file invalid YAML from the day it was authored (js-yaml: "bad indentation of a
+# mapping entry"). Lifted to a sibling key — minimum correction, no meaning changed.
+validation_commands_note: >-
+  All four EXECUTED and green on 2026-07-22 (see run_status.results). Node was obtained as a
+  portable extract rather than an NTFS install; the @phuquochub/* packages were materialized
+  as real directories because FAT32 cannot create npm workspace symlinks. The original note
+  read: "In the current environment these are NOT EXECUTABLE (no Node; FAT32 unlinks
+  @phuquochub/*). If unrunnable, record NOT EXECUTED with cause; do not claim pass."
+
+rollback_plan: >-
+  Revert the two DTO files (and the optional constants file / new spec). No database, data,
+  or contract change is involved, so revert is complete and non-destructive.
+
+stop_conditions:
+  - "The authoritative Phú Quốc bbox cannot be determined AND owner confirmation is unavailable — implement PROVISIONAL and mark blocked-for-confirmation rather than guessing final precision."
+  - "A change would require touching persistence, response contract, or the GAP-05/10 params — stop; that is out of scope."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-003
+      gates.implementation: in_progress   # first implementation slice underway; NOT passed
+    status: completed
+  requires_evidence:
+    - "spec output (or NOT EXECUTED + cause)"
+    - "diff limited to in_scope_files"
+
+next_candidate_task:
+  id: PLACE-003
+  title: "Add partial index BTREE(status) WHERE deleted_at IS NULL (GAP-06) — forward-only migration"
+  rationale: >-
+    Next open P1; needs a new migration + a Postgres/Node environment to verify via EXPLAIN,
+    so best sequenced after the environment (NTFS + Node) is restored. GAP-05/10 stays parked
+    pending owner adjudication and is not auto-scheduled.

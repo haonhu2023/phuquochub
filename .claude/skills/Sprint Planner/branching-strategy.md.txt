@@ -1,0 +1,722 @@
+# Branching Strategy
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+CI/CD Pipeline
+
+Git Workflow
+
+---
+
+# Purpose
+
+This document defines the Git branching strategy
+for the PhuQuocHub project.
+
+Every implementation must follow
+a predictable branch lifecycle.
+
+Branches must reflect
+the project roadmap,
+Sprint structure,
+and release strategy.
+
+No work shall be performed
+directly on protected branches.
+
+---
+
+# Core Principle
+
+Every change begins in an isolated branch.
+
+Every branch has one responsibility.
+
+Every branch is short-lived.
+
+Every branch is traceable.
+
+---
+
+# Branch Hierarchy
+
+production
+
+↓
+
+release/*
+
+↓
+
+main
+
+↓
+
+develop
+
+↓
+
+sprint/*
+
+↓
+
+feature/*
+
+↓
+
+fix/*
+
+↓
+
+hotfix/*
+
+---
+
+# Protected Branches
+
+The following branches are protected
+
+production
+
+release/*
+
+main
+
+develop
+
+No direct commits.
+
+No force push.
+
+No history rewrite.
+
+Only Pull Request merge allowed.
+
+---
+
+# Branch Types
+
+## Production
+
+Name
+
+production
+
+Purpose
+
+Live production deployment.
+
+Requirements
+
+Production Gate PASS
+
+Deployment verified
+
+Rollback verified
+
+Monitoring active
+
+---
+
+## Release
+
+Format
+
+release/vX.Y.Z
+
+Example
+
+release/v1.0.0
+
+Purpose
+
+Release candidate.
+
+Requirements
+
+Sprint Acceptance PASS
+
+Architecture PASS
+
+CI PASS
+
+---
+
+## Main
+
+Name
+
+main
+
+Purpose
+
+Stable codebase.
+
+Every commit
+
+must be releasable.
+
+---
+
+## Develop
+
+Name
+
+develop
+
+Purpose
+
+Integration branch.
+
+All accepted Sprint branches merge here first.
+
+---
+
+## Sprint
+
+Format
+
+sprint/sprint-01-auth
+
+sprint/sprint-02-places
+
+sprint/sprint-03-hotels
+
+Purpose
+
+Complete Sprint implementation.
+
+Contains
+
+multiple Feature branches.
+
+Deleted after merge.
+
+---
+
+## Feature
+
+Format
+
+feature/auth-login
+
+feature/place-search
+
+feature/event-detail
+
+feature/media-gallery
+
+Purpose
+
+Single feature implementation.
+
+Scope
+
+One Batch only.
+
+---
+
+## Fix
+
+Format
+
+fix/place-filter
+
+fix/login-validation
+
+Purpose
+
+Non-critical bug fixes.
+
+---
+
+## Hotfix
+
+Format
+
+hotfix/security-jwt
+
+hotfix/sql-index
+
+Purpose
+
+Critical production fixes.
+
+Created directly from production.
+
+Merged into
+
+production
+
+main
+
+develop
+
+---
+
+# Naming Rules
+
+Use lowercase.
+
+Use hyphen.
+
+No spaces.
+
+Good
+
+feature/place-search
+
+Bad
+
+Feature_Search
+
+PlaceSearch
+
+search
+
+---
+
+# Sprint Mapping
+
+Every Sprint owns one Sprint branch.
+
+Example
+
+Sprint 1
+
+sprint/sprint-01-auth
+
+Contains
+
+feature/auth-login
+
+feature/auth-register
+
+feature/rbac
+
+feature/user-profile
+
+---
+
+Sprint 2
+
+sprint/sprint-02-places
+
+Contains
+
+feature/place-entity
+
+feature/place-api
+
+feature/place-search
+
+feature/place-map
+
+---
+
+# Feature Lifecycle
+
+Repository Analysis
+
+↓
+
+Sprint Planning
+
+↓
+
+Create Feature Branch
+
+↓
+
+Generate Batch
+
+↓
+
+Review
+
+↓
+
+CI
+
+↓
+
+Merge into Sprint
+
+↓
+
+Sprint Acceptance
+
+↓
+
+Merge into Develop
+
+↓
+
+Release
+
+↓
+
+Production
+
+---
+
+# Pull Request Rules
+
+Every Pull Request must include
+
+Purpose
+
+Scope
+
+Files Changed
+
+Architecture Impact
+
+Database Impact
+
+Security Impact
+
+Risk
+
+Evidence
+
+CI Result
+
+Review Result
+
+Technical Debt
+
+Known Limitations
+
+---
+
+# Pull Request Size
+
+Preferred
+
+<500 LOC
+
+Maximum
+
+1000 LOC
+
+Absolute Maximum
+
+1500 LOC
+
+Beyond this
+
+Split required.
+
+---
+
+# Merge Order
+
+Feature
+
+↓
+
+Sprint
+
+↓
+
+Develop
+
+↓
+
+Release
+
+↓
+
+Main
+
+↓
+
+Production
+
+Never skip a stage.
+
+---
+
+# Versioning Strategy
+
+Semantic Versioning
+
+Major.Minor.Patch
+
+Examples
+
+v1.0.0
+
+v1.1.0
+
+v1.1.1
+
+---
+
+## Major
+
+Architecture changes
+
+Breaking API
+
+Major features
+
+Requires ADR
+
+---
+
+## Minor
+
+New feature
+
+Backward compatible
+
+---
+
+## Patch
+
+Bug fixes
+
+Performance
+
+Documentation
+
+Tests
+
+---
+
+# Release Tags
+
+Every release
+
+must create Git tag.
+
+Examples
+
+v1.0.0
+
+v1.1.0-beta
+
+v1.2.0-rc1
+
+v2.0.0
+
+---
+
+# Branch Lifetime
+
+Feature
+
+1–3 days
+
+Sprint
+
+1–2 weeks
+
+Release
+
+<1 week
+
+Hotfix
+
+<24 hours
+
+Delete merged branches.
+
+---
+
+# CI Policy
+
+Every branch executes
+
+Type Check
+
+Lint
+
+Unit Tests
+
+Integration Tests
+
+Security Scan
+
+Build
+
+Feature branches
+
+may skip E2E.
+
+Release branches
+
+must execute full pipeline.
+
+---
+
+# Rollback Strategy
+
+Every Release
+
+must have rollback.
+
+Rollback includes
+
+Application
+
+Database
+
+Migration
+
+Cache
+
+Search Index
+
+Configuration
+
+---
+
+# Conflict Resolution
+
+Never resolve conflicts
+
+by overwriting.
+
+Always
+
+Review
+
+Compare
+
+Re-test
+
+Document
+
+---
+
+# Emergency Hotfix Flow
+
+Production Issue
+
+↓
+
+Create Hotfix
+
+↓
+
+Fix
+
+↓
+
+Review
+
+↓
+
+CI
+
+↓
+
+Deploy Production
+
+↓
+
+Merge Back
+
+production
+
+↓
+
+main
+
+↓
+
+develop
+
+---
+
+# Branch Reports
+
+Every Sprint must report
+
+Branch Name
+
+Created
+
+Merged
+
+Deleted
+
+Author
+
+Reviewer
+
+CI Status
+
+Acceptance Status
+
+Release Version
+
+---
+
+# Blocking Conditions
+
+Branch creation prohibited if
+
+Documentation Freeze failed
+
+Architecture conflict exists
+
+Sprint not approved
+
+Repository Analysis incomplete
+
+Critical security issue exists
+
+---
+
+# Success Criteria
+
+The Branching Strategy succeeds when
+
+every implementation,
+
+every Sprint,
+
+and every Release
+
+can be traced
+from Documentation Freeze
+to Production.
+
+Git history remains
+
+clean,
+
+predictable,
+
+reviewable,
+
+and reproducible.
+
+No work is ever lost,
+
+no change is ever untraceable,
+
+and every release
+can be rolled back safely.

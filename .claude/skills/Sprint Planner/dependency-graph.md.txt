@@ -1,0 +1,1030 @@
+# Dependency Graph
+
+Version: 1.0
+
+Status:
+Production
+
+Owner:
+Chief Software Architect
+
+Applies To
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines the dependency graph
+for the entire PhuQuocHub platform.
+
+Its purpose is to ensure that
+
+every Sprint,
+
+every Batch,
+
+every module,
+
+every service,
+
+and every database object
+
+is implemented
+in the correct order.
+
+Claude Code must never
+implement a module
+before all of its required dependencies
+have been accepted.
+
+---
+
+# Core Principle
+
+Dependencies determine implementation order.
+
+Implementation order
+must never be guessed.
+
+Dependencies are part of the architecture.
+
+Changing dependencies
+requires ADR.
+
+---
+
+# Dependency Types
+
+Structural Dependency
+
+Database Dependency
+
+Module Dependency
+
+Runtime Dependency
+
+API Dependency
+
+Infrastructure Dependency
+
+Security Dependency
+
+Workflow Dependency
+
+Documentation Dependency
+
+Deployment Dependency
+
+---
+
+# Dependency Rules
+
+A dependency
+
+must already exist
+
+must already compile
+
+must already pass review
+
+must already be accepted
+
+before a dependent module
+may be implemented.
+
+---
+
+# Project Dependency Hierarchy
+
+Documentation Freeze
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Infrastructure
+
+↓
+
+Authentication
+
+↓
+
+Authorization
+
+↓
+
+RBAC
+
+↓
+
+Core Data
+
+↓
+
+Geo
+
+↓
+
+Search
+
+↓
+
+Content
+
+↓
+
+Community
+
+↓
+
+AI
+
+↓
+
+Growth
+
+↓
+
+Production
+
+---
+
+# Sprint Dependency Graph
+
+Sprint 0
+
+Infrastructure
+
+↓
+
+Sprint 1
+
+Authentication
+
+RBAC
+
+Users
+
+Core Database
+
+↓
+
+Sprint 2
+
+Places
+
+Categories
+
+Geo
+
+Search
+
+↓
+
+Sprint 3
+
+Hotels
+
+Restaurants
+
+Tours
+
+Events
+
+↓
+
+Sprint 4
+
+Wiki
+
+Reviews
+
+Verification
+
+Bookmarks
+
+↓
+
+Sprint 5
+
+Media
+
+SEO
+
+AI Summary
+
+Community
+
+↓
+
+Sprint 6
+
+Notifications
+
+Analytics
+
+Growth
+
+↓
+
+Sprint 7
+
+Performance
+
+Security
+
+Monitoring
+
+↓
+
+Sprint 8
+
+Production Release
+
+---
+
+# Infrastructure Dependencies
+
+Config
+
+↓
+
+Logger
+
+↓
+
+Redis
+
+↓
+
+Database
+
+↓
+
+Migration
+
+↓
+
+Repository
+
+↓
+
+Service
+
+↓
+
+Controller
+
+↓
+
+API
+
+---
+
+# Authentication Dependencies
+
+Users
+
+↓
+
+JWT
+
+↓
+
+Refresh Token
+
+↓
+
+Session
+
+↓
+
+RBAC
+
+↓
+
+Permissions
+
+↓
+
+Guards
+
+↓
+
+Protected APIs
+
+---
+
+# RBAC Dependencies
+
+Roles
+
+↓
+
+Permissions
+
+↓
+
+Role Hierarchy
+
+↓
+
+Permission Matrix
+
+↓
+
+Authorization Service
+
+↓
+
+Permission Guards
+
+↓
+
+Controllers
+
+---
+
+# Database Dependencies
+
+Entity
+
+↓
+
+Migration
+
+↓
+
+Repository
+
+↓
+
+Service
+
+↓
+
+Controller
+
+↓
+
+OpenAPI
+
+↓
+
+Frontend
+
+---
+
+# Place Dependencies
+
+Categories
+
+↓
+
+Places
+
+↓
+
+Contacts
+
+↓
+
+Media
+
+↓
+
+Price History
+
+↓
+
+SEO
+
+↓
+
+AI Summary
+
+↓
+
+Search
+
+↓
+
+Reviews
+
+↓
+
+Bookmarks
+
+---
+
+# Search Dependencies
+
+Places
+
+↓
+
+Categories
+
+↓
+
+Geo
+
+↓
+
+FTS
+
+↓
+
+Ranking
+
+↓
+
+Nearby Search
+
+↓
+
+Recommendation
+
+---
+
+# Hotel Dependencies
+
+Places
+
+↓
+
+Hotel Details
+
+↓
+
+Amenities
+
+↓
+
+Policies
+
+↓
+
+Room Types
+
+↓
+
+Availability
+
+↓
+
+API
+
+↓
+
+Frontend
+
+---
+
+# Restaurant Dependencies
+
+Places
+
+↓
+
+Restaurant Details
+
+↓
+
+Menu
+
+↓
+
+Cuisine
+
+↓
+
+Reservation
+
+↓
+
+API
+
+↓
+
+Frontend
+
+---
+
+# Tour Dependencies
+
+Places
+
+↓
+
+Tour Details
+
+↓
+
+Schedule
+
+↓
+
+Itinerary
+
+↓
+
+Booking
+
+↓
+
+API
+
+↓
+
+Frontend
+
+---
+
+# Event Dependencies
+
+Places
+
+↓
+
+Events
+
+↓
+
+Organizer
+
+↓
+
+Schedule
+
+↓
+
+Tickets
+
+↓
+
+Media
+
+↓
+
+Frontend
+
+---
+
+# Wiki Dependencies
+
+Users
+
+↓
+
+Places
+
+↓
+
+Wiki Revision
+
+↓
+
+Moderation
+
+↓
+
+Verification
+
+↓
+
+Search
+
+---
+
+# Review Dependencies
+
+Users
+
+↓
+
+Places
+
+↓
+
+Verification
+
+↓
+
+Review
+
+↓
+
+Rating
+
+↓
+
+Media
+
+↓
+
+Moderation
+
+---
+
+# Verification Dependencies
+
+Users
+
+↓
+
+Places
+
+↓
+
+Verification Requests
+
+↓
+
+Moderation
+
+↓
+
+Approval Workflow
+
+---
+
+# Media Dependencies
+
+Places
+
+↓
+
+Hotels
+
+↓
+
+Restaurants
+
+↓
+
+Tours
+
+↓
+
+Events
+
+↓
+
+Reviews
+
+↓
+
+Wiki
+
+↓
+
+Gallery
+
+↓
+
+SEO
+
+---
+
+# SEO Dependencies
+
+Places
+
+↓
+
+Content
+
+↓
+
+Slug
+
+↓
+
+Metadata
+
+↓
+
+Schema.org
+
+↓
+
+Sitemap
+
+↓
+
+OpenGraph
+
+↓
+
+Robots
+
+---
+
+# AI Dependencies
+
+Places
+
+↓
+
+Wiki
+
+↓
+
+Reviews
+
+↓
+
+SEO
+
+↓
+
+Search
+
+↓
+
+AI Summary
+
+↓
+
+Recommendations
+
+---
+
+# Notification Dependencies
+
+Users
+
+↓
+
+Events
+
+↓
+
+Reviews
+
+↓
+
+Verification
+
+↓
+
+Messaging
+
+↓
+
+Push
+
+↓
+
+Email
+
+---
+
+# Analytics Dependencies
+
+Users
+
+↓
+
+Search
+
+↓
+
+Places
+
+↓
+
+Reviews
+
+↓
+
+Events
+
+↓
+
+Tracking
+
+↓
+
+Dashboards
+
+---
+
+# Growth Dependencies
+
+Analytics
+
+↓
+
+SEO
+
+↓
+
+AI
+
+↓
+
+Recommendations
+
+↓
+
+Marketing
+
+↓
+
+Campaigns
+
+---
+
+# Production Dependencies
+
+Infrastructure
+
+↓
+
+Monitoring
+
+↓
+
+Logging
+
+↓
+
+Security
+
+↓
+
+Backups
+
+↓
+
+Disaster Recovery
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+---
+
+# Batch Rules
+
+A Batch may contain
+
+only modules
+
+whose dependencies
+have already passed acceptance.
+
+Never mix
+
+Infrastructure
+
+and Business Logic
+
+in the same Batch.
+
+---
+
+# Dependency Validation
+
+Before generating code
+
+Claude Code must verify
+
+Dependencies exist
+
+Dependencies accepted
+
+Dependencies documented
+
+Dependencies compile
+
+Dependencies tested
+
+Dependencies merged
+
+---
+
+# Circular Dependency Rules
+
+Circular dependency
+
+is prohibited.
+
+If detected
+
+Stop immediately.
+
+Report
+
+BLOCKER
+
+Do not generate code.
+
+---
+
+# Missing Dependency
+
+If dependency
+
+does not exist
+
+Report
+
+NOT FOUND
+
+Do not invent.
+
+Do not bypass.
+
+Do not create automatically.
+
+---
+
+# Dependency Reporting
+
+Every Sprint Plan
+
+must include
+
+Dependency Graph
+
+Blocked Modules
+
+Ready Modules
+
+Missing Dependencies
+
+Critical Dependencies
+
+Recommended Order
+
+---
+
+# Dependency Decisions
+
+Only three states
+
+READY
+
+BLOCKED
+
+NOT FOUND
+
+No other status.
+
+---
+
+# Success Criteria
+
+Dependency Graph succeeds when
+
+every module
+
+every service
+
+every entity
+
+every API
+
+every Sprint
+
+is implemented
+
+in the correct order,
+
+without circular dependency,
+
+without undocumented assumptions,
+
+and without violating
+
+the frozen architecture.

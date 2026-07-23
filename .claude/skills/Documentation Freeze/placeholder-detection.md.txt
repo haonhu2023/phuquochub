@@ -1,0 +1,1312 @@
+# Placeholder Detection Policy
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT validation, pre-code-generation readiness
+
+---
+
+## 1. Purpose
+
+This document defines the official placeholder-detection policy for the
+Documentation Freeze skill.
+
+Its purpose is to identify all unresolved, deferred, incomplete, ambiguous, or
+non-final language that may prevent documentation from becoming a stable and
+deterministic implementation baseline.
+
+Placeholder detection must identify both:
+
+1. explicit placeholders;
+2. semantic placeholders.
+
+A document may appear complete while still containing unresolved decisions.
+
+The absence of `TODO` does not prove that a document is ready to freeze.
+
+---
+
+## 2. Core Principle
+
+Any language that transfers a required design decision to the implementation
+phase is a placeholder.
+
+Examples:
+
+- “choose an appropriate strategy”;
+- “use one of the following”;
+- “add indexes where needed”;
+- “apply permissions as appropriate”;
+- “this will be decided later”;
+- “implementation may select”;
+- “support additional types in the future.”
+
+If implementation cannot proceed deterministically, the documentation is not
+ready to freeze.
+
+---
+
+## 3. Objectives
+
+Placeholder detection must identify:
+
+- unresolved tasks;
+- missing decisions;
+- deferred architecture;
+- undefined contracts;
+- optional behavior without eligibility rules;
+- incomplete examples used as contracts;
+- unknown field values;
+- undefined enum values;
+- undecided dependencies;
+- missing ownership;
+- unspecified migration behavior;
+- vague security requirements;
+- vague performance requirements;
+- future-scope content incorrectly included in the frozen scope;
+- temporary compromises without an approved decision.
+
+---
+
+## 4. Execution Mode
+
+Placeholder detection is strictly read-only.
+
+Claude Code may:
+
+- search document text;
+- inspect headings;
+- inspect tables;
+- inspect diagrams;
+- inspect comments;
+- inspect YAML and JSON descriptions;
+- inspect OpenAPI descriptions;
+- inspect ADR status and content;
+- inspect templates;
+- classify findings;
+- produce evidence-based reports.
+
+Claude Code must not:
+
+- replace placeholders;
+- decide between alternatives;
+- fill missing values;
+- change document status;
+- convert Draft content into approved content;
+- create ADRs;
+- rewrite ambiguous sections;
+- infer the intended design.
+
+---
+
+## 5. Placeholder Categories
+
+Every finding must be classified into one of the following categories:
+
+- `EXPLICIT_PLACEHOLDER`
+- `SEMANTIC_PLACEHOLDER`
+- `UNRESOLVED_DECISION`
+- `OPEN_QUESTION`
+- `TEMPORARY_RULE`
+- `FUTURE_SCOPE_LEAK`
+- `AMBIGUOUS_OPTIONALITY`
+- `UNDEFINED_REFERENCE`
+- `INCOMPLETE_EXAMPLE`
+- `UNKNOWN_VALUE`
+- `DRAFT_CONTENT`
+- `DEFERRED_IMPLEMENTATION`
+- `EDITORIAL_PLACEHOLDER`
+- `FALSE_POSITIVE`
+- `HISTORICAL_REFERENCE`
+
+---
+
+## 6. Explicit Placeholder Dictionary
+
+Search case-insensitively for at least the following terms.
+
+### 6.1 English
+
+```text
+TODO
+FIXME
+XXX
+TBD
+TBC
+WIP
+DRAFT
+STUB
+SKELETON
+PLACEHOLDER
+OUTLINE ONLY
+COMING SOON
+TO BE DEFINED
+TO BE CONFIRMED
+TO BE DECIDED
+NOT DECIDED
+PENDING DECISION
+PENDING REVIEW
+PENDING APPROVAL
+OPEN QUESTION
+UNRESOLVED
+UNKNOWN
+TEMPORARY
+TEMP
+LATER
+FUTURE WORK
+FUTURE DECISION
+WILL ADD LATER
+IMPLEMENT LATER
+NOT IMPLEMENTED
+NOT YET IMPLEMENTED
+TENTATIVE
+PROVISIONAL
+EXAMPLE ONLY
+FOR REFERENCE ONLY
+TO BE UPDATED
+NEEDS REVIEW
+NEEDS DISCUSSION
+UNDER DISCUSSION
+```
+
+### 6.2 Vietnamese
+
+```text
+CẦN BỔ SUNG
+CHƯA BỔ SUNG
+SẼ BỔ SUNG
+CHƯA QUYẾT ĐỊNH
+SẼ QUYẾT ĐỊNH SAU
+ĐANG CẬP NHẬT
+BẢN NHÁP
+TẠM THỜI
+ĐỂ SAU
+CHƯA XÁC ĐỊNH
+CẦN THẢO LUẬN
+ĐANG THẢO LUẬN
+CHƯA TRIỂN KHAI
+SẼ TRIỂN KHAI SAU
+CHỜ DUYỆT
+CHỜ XÁC NHẬN
+KHUNG
+DÀN Ý
+VÍ DỤ
+MINH HỌA
+THAM KHẢO
+TÙY TRƯỜNG HỢP
+KHI CẦN
+NẾU CẦN
+CÓ THỂ
+DỰ KIẾN
+TẠM DÙNG
+```
+
+The list is a minimum baseline.
+
+Repository-specific terms must also be discovered.
+
+---
+
+## 7. Explicit Placeholder Search Rules
+
+Search:
+
+- body text;
+- headings;
+- tables;
+- code blocks;
+- comments;
+- YAML values;
+- JSON values;
+- diagram labels;
+- OpenAPI descriptions;
+- examples;
+- templates;
+- footnotes;
+- appendices;
+- commit-style notes embedded in documents.
+
+Do not exclude code blocks automatically.
+
+A code block may contain an unresolved schema or configuration placeholder.
+
+---
+
+## 8. Semantic Placeholder Definition
+
+A semantic placeholder exists when the wording is grammatically complete but
+does not define a deterministic contract.
+
+Examples:
+
+```text
+Use an appropriate caching strategy.
+```
+
+```text
+Select a suitable data type.
+```
+
+```text
+Permissions may vary by role.
+```
+
+```text
+The relation can be one-to-one or one-to-many.
+```
+
+```text
+The API may return additional fields.
+```
+
+```text
+Indexes should be added where useful.
+```
+
+These sentences hide implementation decisions.
+
+---
+
+## 9. Semantic Placeholder Patterns
+
+Search for statements containing patterns such as:
+
+- may;
+- might;
+- could;
+- optionally;
+- as needed;
+- if necessary;
+- where appropriate;
+- when applicable;
+- depending on implementation;
+- implementation-specific;
+- at developer discretion;
+- choose one;
+- one of the following;
+- use a suitable;
+- use an appropriate;
+- can be extended;
+- can be adjusted;
+- may change;
+- subject to change;
+- later;
+- future;
+- eventually;
+- TBD by implementation;
+- determined during coding;
+- tùy trường hợp;
+- khi cần;
+- nếu cần;
+- có thể dùng;
+- có thể chọn;
+- tùy triển khai;
+- tùy người phát triển;
+- sẽ xem xét;
+- dự kiến;
+- có thể thay đổi;
+- linh hoạt;
+- phù hợp với thực tế.
+
+These expressions are not always invalid.
+
+They require contextual evaluation.
+
+---
+
+## 10. Context Evaluation
+
+Do not classify every occurrence automatically.
+
+Evaluate whether the statement affects implementation.
+
+### Non-blocking example
+
+```text
+The examples may be expanded in future documentation releases.
+```
+
+This may be editorial.
+
+### Blocking example
+
+```text
+Media may reference a Place or Event depending on implementation.
+```
+
+This leaves the data model unresolved.
+
+### Non-blocking example
+
+```text
+A future mobile application may consume this API.
+```
+
+This may be roadmap context.
+
+### Blocking example
+
+```text
+The API may use offset or cursor pagination.
+```
+
+This leaves the API contract unresolved.
+
+---
+
+## 11. Unresolved Alternative Detection
+
+Detect sections that list multiple alternatives without a final decision.
+
+Examples:
+
+```text
+ORM options:
+- TypeORM
+- Prisma
+- Sequelize
+```
+
+```text
+Authentication may use:
+- cookies;
+- localStorage;
+- session storage.
+```
+
+```text
+Media ownership options:
+- polymorphic owner_type/owner_id;
+- exclusive foreign-key arc.
+```
+
+An alternatives section is acceptable only when:
+
+- the document clearly identifies the selected option;
+- an Accepted ADR records the decision;
+- rejected alternatives are clearly marked;
+- the active choice is deterministic.
+
+Otherwise classify:
+
+`UNRESOLVED_DECISION`
+
+---
+
+## 12. Open Question Detection
+
+Search for direct questions and unresolved prompts.
+
+Examples:
+
+```text
+Should media belong to Place or Event?
+```
+
+```text
+Do we need a separate business entity?
+```
+
+```text
+What happens when a user deletes a review?
+```
+
+```text
+Which permission should control this action?
+```
+
+Open questions inside authoritative documents block freeze when they affect the
+frozen scope.
+
+---
+
+## 13. Temporary Rule Detection
+
+Detect temporary implementation rules such as:
+
+```text
+For now, users are active immediately.
+```
+
+```text
+Temporarily store tokens in localStorage.
+```
+
+```text
+Use a placeholder relation until the target table exists.
+```
+
+```text
+Skip the foreign key for now.
+```
+
+A temporary rule is acceptable only when all of the following are true:
+
+- it is explicitly documented;
+- an owner is assigned;
+- the reason is stated;
+- scope is defined;
+- expiration or review trigger is defined;
+- impact is defined;
+- an ADR or approved deviation exists where required;
+- the temporary behavior is deterministic.
+
+Otherwise classify:
+
+`TEMPORARY_RULE`
+
+and evaluate as a blocker candidate.
+
+---
+
+## 14. Future-Scope Leak Detection
+
+Future functionality must not introduce ambiguity into the current frozen scope.
+
+Examples:
+
+```text
+The table will later support bookings.
+```
+
+```text
+The API may eventually expose payments.
+```
+
+```text
+The entity can support multiple tenants in the future.
+```
+
+Future statements are acceptable when clearly isolated as roadmap material.
+
+They become problematic when they affect current implementation decisions.
+
+Example:
+
+```text
+Add tenant_id now or later depending on implementation.
+```
+
+This is a blocking future-scope leak.
+
+---
+
+## 15. Ambiguous Optionality Detection
+
+Detect optional behavior without explicit criteria.
+
+Examples:
+
+```text
+Audit logging is optional.
+```
+
+```text
+A Place may have SEO metadata.
+```
+
+```text
+Authentication is required where appropriate.
+```
+
+Optionality must define:
+
+- when optionality applies;
+- who decides;
+- default behavior;
+- persistence behavior;
+- API behavior;
+- validation behavior.
+
+Without criteria, classify:
+
+`AMBIGUOUS_OPTIONALITY`
+
+---
+
+## 16. Undefined Reference Detection
+
+Detect references to artifacts that are not defined.
+
+Examples:
+
+```text
+Use the standard response envelope.
+```
+
+but no response-envelope standard exists.
+
+```text
+Follow the media discriminator enum.
+```
+
+but no enum is defined.
+
+```text
+Apply the default permission.
+```
+
+but no default permission is specified.
+
+```text
+Use the approved migration strategy.
+```
+
+but no migration strategy exists.
+
+Classify:
+
+`UNDEFINED_REFERENCE`
+
+---
+
+## 17. Unknown Value Detection
+
+Detect placeholders embedded in contracts.
+
+Examples:
+
+```text
+status: UNKNOWN
+```
+
+```text
+role: TBD
+```
+
+```text
+permission: to-be-defined
+```
+
+```text
+event_type: value will be added later
+```
+
+```text
+max_page_size: N
+```
+
+```text
+retention_days: XX
+```
+
+Unknown values in authoritative contracts normally block freeze.
+
+---
+
+## 18. Incomplete Example Detection
+
+Examples must not be mistaken for complete contracts.
+
+Detect examples containing:
+
+- ellipsis;
+- omitted required fields;
+- comments such as “other fields”;
+- generic placeholders;
+- fake references;
+- undefined enum values;
+- unresolvable schema names.
+
+Examples:
+
+```json
+{
+  "id": "...",
+  "other_fields": "..."
+}
+```
+
+```yaml
+schema:
+  $ref: "#/components/schemas/TBD"
+```
+
+An incomplete example is non-blocking only when the authoritative schema is
+complete elsewhere.
+
+---
+
+## 19. Draft Content Detection
+
+A document is Draft content when:
+
+- status is Draft;
+- front matter says WIP;
+- heading says Draft;
+- content says “not approved”;
+- review is pending;
+- approval is missing where mandatory;
+- the document contains unresolved alternatives.
+
+A Draft may be useful supporting material.
+
+It must not be used as authoritative frozen input.
+
+---
+
+## 20. Deferred Implementation Detection
+
+Detect statements that defer documentation decisions to implementation.
+
+Examples:
+
+```text
+The exact structure will be determined during coding.
+```
+
+```text
+The developer may choose the best index.
+```
+
+```text
+The implementation can decide whether to use Redis.
+```
+
+```text
+The controller may expose additional routes.
+```
+
+Classify:
+
+`DEFERRED_IMPLEMENTATION`
+
+This is normally blocking.
+
+---
+
+## 21. Diagram Placeholder Detection
+
+Inspect diagrams for:
+
+- “TBD” nodes;
+- “Future service” nodes inside current scope;
+- unlabeled relationships;
+- unknown cardinality;
+- question marks;
+- placeholder arrows;
+- generic “Other module” boxes;
+- incomplete legends;
+- omitted entity fields where the diagram claims to be canonical.
+
+A supporting architecture diagram may omit detail.
+
+A canonical ERD may not omit required relationships.
+
+---
+
+## 22. Table Placeholder Detection
+
+Inspect tables for:
+
+- empty cells;
+- `TBD`;
+- `N/A` without explanation;
+- question marks;
+- placeholder IDs;
+- missing owner;
+- missing status;
+- missing version;
+- unnamed columns;
+- “varies”;
+- “depends”;
+- “later.”
+
+Example:
+
+| Entity | Owner | Table |
+|---|---|---|
+| Media | TBD | media |
+
+This is a blocking placeholder if entity ownership is required.
+
+---
+
+## 23. OpenAPI Placeholder Detection
+
+Search OpenAPI for:
+
+- undefined `$ref`;
+- example-only schemas;
+- placeholder descriptions;
+- empty response bodies;
+- generic object schemas;
+- missing required fields;
+- `additionalProperties: true` used without governance;
+- placeholder enum values;
+- temporary server URLs;
+- unresolved security schemes;
+- “to be defined” operation descriptions;
+- empty path parameters;
+- unknown error schemas.
+
+Examples:
+
+```yaml
+schema:
+  type: object
+```
+
+without properties may be incomplete for a contract-first API.
+
+```yaml
+enum:
+  - TBD
+```
+
+is blocking.
+
+---
+
+## 24. ADR Placeholder Detection
+
+Detect ADRs containing:
+
+- Proposed status but treated as active;
+- Decision section with multiple options;
+- no selected decision;
+- missing consequences;
+- “temporary decision” without review trigger;
+- missing supersession status;
+- unresolved open questions;
+- missing affected components.
+
+An Accepted ADR containing unresolved architecture is a critical defect.
+
+---
+
+## 25. Database Placeholder Detection
+
+Search for:
+
+- unspecified types;
+- unspecified lengths;
+- unknown nullable rules;
+- unspecified indexes;
+- missing FK targets;
+- “relationship to be decided”;
+- unknown cascade rules;
+- temporary JSON fields replacing unresolved modeling;
+- placeholder table names;
+- placeholder enum values;
+- “add constraint later.”
+
+Examples:
+
+```text
+price: numeric or decimal
+```
+
+```text
+owner_id references the relevant object
+```
+
+```text
+Add indexes based on usage
+```
+
+These are implementation-significant placeholders.
+
+---
+
+## 26. RBAC Placeholder Detection
+
+Search for:
+
+- “appropriate permission”;
+- “admin only” without a permission ID;
+- undefined roles;
+- undefined scope;
+- missing deny behavior;
+- missing inheritance rules;
+- wildcard behavior not specified;
+- “permission may vary”;
+- unassigned privileged actions.
+
+Example:
+
+```text
+Only authorized staff can approve Places.
+```
+
+This is incomplete unless the exact permission rule is defined.
+
+---
+
+## 27. Workflow Placeholder Detection
+
+Search for:
+
+- undefined states;
+- unnamed transitions;
+- “manual review if needed”;
+- missing failure handling;
+- unknown transition guards;
+- “send notifications when appropriate”;
+- unresolved retry behavior;
+- undefined terminal state;
+- missing actor ownership.
+
+Example:
+
+```text
+After submission, the item may be reviewed or published.
+```
+
+This leaves the workflow unresolved.
+
+---
+
+## 28. Security Placeholder Detection
+
+Search for vague security language such as:
+
+- “follow OWASP”;
+- “secure the endpoint”;
+- “encrypt sensitive data”;
+- “use strong authentication”;
+- “rate-limit where needed”;
+- “log important actions”;
+- “protect secrets.”
+
+Such statements are insufficient unless they define actionable controls or
+reference an authoritative security standard.
+
+---
+
+## 29. Performance Placeholder Detection
+
+Search for:
+
+- “optimize later”;
+- “add cache if needed”;
+- “use suitable indexes”;
+- “support high traffic”;
+- “scale horizontally when necessary”;
+- “fast response time”;
+- “acceptable latency.”
+
+Performance requirements must define measurable criteria where they govern the
+frozen scope.
+
+---
+
+## 30. False Positive Handling
+
+Not every placeholder-like term is an active gap.
+
+Examples of possible false positives:
+
+- historical incident report;
+- rejected ADR alternative;
+- template placeholder;
+- code example demonstrating bad practice;
+- changelog entry;
+- glossary definition;
+- test fixture;
+- archived roadmap;
+- quoted third-party text.
+
+Classify as:
+
+`FALSE_POSITIVE`
+
+only after verifying context.
+
+Do not remove it from the report silently.
+
+---
+
+## 31. Historical Reference Handling
+
+Statements such as:
+
+```text
+The previous design used a temporary owner_type field.
+```
+
+may be historical rather than active.
+
+Classify:
+
+`HISTORICAL_REFERENCE`
+
+when:
+
+- current design is explicit;
+- historical status is clear;
+- no active document relies on the old rule.
+
+---
+
+## 32. Template Handling
+
+Templates intentionally contain placeholders.
+
+Examples:
+
+```text
+{{project_name}}
+{{version}}
+{{owner}}
+```
+
+Template placeholders are not blockers when:
+
+- the file is clearly classified as a template;
+- it is not used as an active filled document;
+- required instances are populated elsewhere.
+
+A partially filled active report is not exempt merely because it originated
+from a template.
+
+---
+
+## 33. Placeholder Severity
+
+### Critical
+
+Use when the placeholder leaves architecture, data ownership, security, or SSOT
+authority unresolved.
+
+Examples:
+
+- ORM undecided;
+- aggregate ownership undecided;
+- authentication model undecided;
+- competing database schemas;
+- entity model unresolved.
+
+### High
+
+Use when deterministic implementation is blocked.
+
+Examples:
+
+- enum casing undefined;
+- FK target unknown;
+- response schema missing;
+- permission undefined;
+- workflow transition unresolved.
+
+### Medium
+
+Use when supporting documentation is incomplete but the authoritative contract
+is still deterministic.
+
+### Low
+
+Use for editorial placeholders.
+
+### Informational
+
+Use for future-scope notes with no current implementation impact.
+
+---
+
+## 34. Blocking Rules
+
+A placeholder blocks freeze when:
+
+- it affects an authoritative document;
+- it affects the frozen scope;
+- it requires implementation choice;
+- it changes a contract;
+- it affects data integrity;
+- it affects security;
+- it affects authorization;
+- it affects workflow behavior;
+- it affects migration behavior;
+- it affects acceptance criteria.
+
+A placeholder does not automatically block freeze when:
+
+- it is outside scope;
+- it is historical;
+- it is a template variable;
+- it is inside an example with a complete authoritative schema elsewhere;
+- it is purely editorial.
+
+---
+
+## 35. Placeholder Finding Format
+
+Every finding must contain:
+
+```text
+ID:
+Document:
+Path:
+Section:
+Exact Text:
+Category:
+Context:
+Authoritative:
+In Freeze Scope:
+Implementation Impact:
+Severity:
+Blocking:
+Evidence:
+Required Fix:
+```
+
+Do not rewrite the missing content.
+
+State what decision or definition must be supplied.
+
+---
+
+## 36. Required Fix Rules
+
+Required fixes must be precise but non-prescriptive.
+
+### Good
+
+```text
+Define one exact pagination strategy for the approved endpoint set.
+```
+
+### Bad
+
+```text
+Use cursor pagination.
+```
+
+The second statement invents a design unless supported by authority.
+
+### Good
+
+```text
+Record the selected ORM in an Accepted ADR and synchronize the architecture.
+```
+
+### Bad
+
+```text
+Choose TypeORM.
+```
+
+---
+
+## 37. Search Strategy
+
+Use multiple passes.
+
+### Pass 1 — Exact tokens
+
+Search the explicit placeholder dictionary.
+
+### Pass 2 — Modal language
+
+Search:
+
+- may;
+- might;
+- could;
+- optional;
+- later;
+- future;
+- as needed;
+- appropriate;
+- suitable;
+- depending;
+- provisional;
+- temporary.
+
+### Pass 3 — Question detection
+
+Search for question marks and interrogative headings.
+
+### Pass 4 — Alternative lists
+
+Search for:
+
+- “option”;
+- “alternative”;
+- “choose”;
+- “one of”;
+- “either/or”;
+- unresolved comparison tables.
+
+### Pass 5 — Structural gaps
+
+Search empty headings, empty tables, missing schema properties, and unresolved
+references.
+
+### Pass 6 — Context validation
+
+Review each candidate to remove false positives.
+
+---
+
+## 38. Placeholder Metrics
+
+Report:
+
+- total files scanned;
+- total explicit candidates;
+- total semantic candidates;
+- total confirmed placeholders;
+- total blockers;
+- total false positives;
+- total historical references;
+- total template placeholders;
+- placeholder count by domain;
+- placeholder count by severity;
+- placeholder count by authority status.
+
+Explain counting rules.
+
+---
+
+## 39. Placeholder Matrix
+
+Use:
+
+| ID | Document | Category | Authority | Scope | Severity | Blocking | Evidence |
+|---|---|---|---|---|---|---:|---|
+
+---
+
+## 40. Domain Summary
+
+Use:
+
+| Domain | Explicit | Semantic | Blocking | Non-Blocking | Status |
+|---|---:|---:|---:|---:|---|
+
+---
+
+## 41. Placeholder Phase Decision
+
+Issue exactly one:
+
+- `PLACEHOLDER CHECK PASS`
+- `PLACEHOLDER CHECK PASS WITH NON-BLOCKING FINDINGS`
+- `PLACEHOLDER CHECK FAIL`
+- `PLACEHOLDER CHECK BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 42. Pass Criteria
+
+Issue `PLACEHOLDER CHECK PASS` only when:
+
+- no active placeholder exists in authoritative frozen-scope content;
+- no semantic placeholder requires implementation choice;
+- no unresolved question affects implementation;
+- no deferred decision affects the contract.
+
+---
+
+## 43. Pass With Non-Blocking Findings
+
+Use when:
+
+- all authoritative contracts are deterministic;
+- remaining findings are editorial, historical, template-related, or outside
+  scope;
+- findings are documented.
+
+---
+
+## 44. Fail Criteria
+
+Issue `PLACEHOLDER CHECK FAIL` when:
+
+- one or more confirmed blocking placeholders remain;
+- implementation must select a design;
+- contract values are unresolved;
+- required controls are vague;
+- an authoritative document is Draft or outline-only.
+
+---
+
+## 45. Blocked Criteria
+
+Issue `PLACEHOLDER CHECK BLOCKED` when:
+
+- files cannot be read;
+- scan scope is unknown;
+- the document authority cannot be established;
+- the file format cannot be evaluated;
+- repository access is incomplete.
+
+---
+
+## 46. Output Structure
+
+The placeholder report must contain:
+
+1. Executive Summary
+2. Scope
+3. Search Method
+4. Explicit Placeholder Findings
+5. Semantic Placeholder Findings
+6. Unresolved Decisions
+7. Open Questions
+8. Temporary Rules
+9. Future-Scope Leaks
+10. Undefined References
+11. Draft Content
+12. False Positives
+13. Historical References
+14. Template Placeholders
+15. Domain Summary
+16. Blocking Findings
+17. Required Fixes
+18. Placeholder Phase Decision
+
+---
+
+## 47. Evidence Requirements
+
+Every confirmed placeholder must cite:
+
+- exact file path;
+- section;
+- exact phrase;
+- context;
+- authority status;
+- freeze scope;
+- impact.
+
+Do not report only search counts.
+
+Every blocker requires manual contextual confirmation.
+
+---
+
+## 48. Self-Verification
+
+Before publishing:
+
+- verify all documentation roots were scanned;
+- verify case-insensitive searches were used;
+- verify semantic patterns were reviewed;
+- verify false positives were classified;
+- verify templates were handled separately;
+- verify historical statements were not treated as active automatically;
+- verify every blocker affects frozen-scope implementation;
+- verify no missing decision was solved by the auditor;
+- verify every finding has evidence;
+- verify no files were modified;
+- verify exactly one phase decision is present.
+
+---
+
+## 49. Success Criteria
+
+This policy succeeds when the Documentation Freeze skill detects not only visible
+tokens such as `TODO` and `TBD`, but also hidden ambiguity expressed through
+apparently complete language.
+
+The final standard is:
+
+> No authoritative frozen-scope document transfers an implementation-significant
+> decision to Claude Code, a developer, or a later phase.

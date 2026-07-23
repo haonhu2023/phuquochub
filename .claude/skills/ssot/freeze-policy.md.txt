@@ -1,0 +1,937 @@
+# Documentation Freeze Policy
+
+Version
+
+1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Entire PhuQuocHub Platform
+
+Priority
+
+Highest
+
+---
+
+# Purpose
+
+This document defines
+
+the official Documentation Freeze Policy
+
+for the PhuQuocHub platform.
+
+Documentation Freeze
+
+ensures
+
+that approved documentation
+
+remains stable
+
+throughout
+
+planning,
+
+implementation,
+
+testing,
+
+review,
+
+and production release.
+
+A stable documentation baseline
+
+eliminates
+
+ambiguity,
+
+moving targets,
+
+architecture drift,
+
+and implementation inconsistency.
+
+---
+
+# Mission
+
+Provide
+
+one immutable
+
+documentation baseline
+
+during
+
+every Sprint,
+
+Batch,
+
+Release,
+
+and Production cycle.
+
+---
+
+# Definition
+
+Documentation Freeze
+
+is a governance state
+
+where
+
+approved documentation
+
+is temporarily locked.
+
+During Freeze
+
+implementation
+
+must follow
+
+documentation.
+
+Documentation
+
+must not follow
+
+implementation.
+
+---
+
+# Objectives
+
+Freeze exists to
+
+Maintain architectural integrity
+
+Prevent documentation drift
+
+Prevent implementation drift
+
+Protect Sprint stability
+
+Protect Batch stability
+
+Ensure deterministic reviews
+
+Support reproducible builds
+
+Guarantee production consistency
+
+---
+
+# Freeze Scope
+
+Documentation Freeze
+
+applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standards
+
+Repository Standards
+
+Sprint Documentation
+
+Batch Documentation
+
+Release Documentation
+
+Deployment Documentation
+
+Monitoring Documentation
+
+Security Documentation
+
+Performance Documentation
+
+Testing Documentation
+
+Governance Documentation
+
+Templates
+
+---
+
+# Documents Not Frozen
+
+The following
+
+may continue changing
+
+unless otherwise specified
+
+Meeting Notes
+
+Personal Notes
+
+Draft Documents
+
+Research Documents
+
+Ideas
+
+Backlog
+
+Future Proposals
+
+Experimental Documents
+
+These documents
+
+are never
+
+authoritative.
+
+---
+
+# Freeze Timeline
+
+Documentation
+
+Draft
+
+↓
+
+Review
+
+↓
+
+Approved
+
+↓
+
+Freeze
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Release
+
+↓
+
+Archive
+
+Only
+
+Approved
+
+documentation
+
+may enter
+
+Freeze.
+
+---
+
+# Freeze Trigger
+
+Freeze begins
+
+when
+
+Architecture approved
+
+ADR approved
+
+Decision Register updated
+
+Sprint approved
+
+Batch approved
+
+OpenAPI approved
+
+Database approved
+
+Documentation synchronized
+
+Architecture Review passed
+
+---
+
+# Freeze Duration
+
+Freeze
+
+starts
+
+before implementation.
+
+Freeze
+
+ends
+
+after
+
+Sprint Acceptance
+
+Production Gate
+
+or
+
+Release Completion.
+
+---
+
+# Freeze Rules
+
+During Freeze
+
+Claude Code
+
+must
+
+Read documentation
+
+Validate documentation
+
+Review documentation
+
+Compare documentation
+
+Reference documentation
+
+Generate reports
+
+Detect drift
+
+Claude Code
+
+must not
+
+Modify architecture
+
+Modify ADR
+
+Modify Decision Register
+
+Modify OpenAPI
+
+Modify Workflow
+
+Modify Database Documentation
+
+Modify RBAC
+
+Modify Coding Standards
+
+Modify Repository Standards
+
+without
+
+approved change request.
+
+---
+
+# Repository During Freeze
+
+Repository
+
+may change.
+
+Documentation
+
+may not.
+
+Repository
+
+must converge
+
+toward
+
+documentation.
+
+Documentation
+
+must never
+
+converge
+
+toward
+
+repository.
+
+---
+
+# Change Requests During Freeze
+
+If
+
+a documentation change
+
+is required
+
+during Freeze
+
+Claude Code
+
+must stop.
+
+A formal
+
+Change Request
+
+must be created.
+
+The request
+
+must include
+
+Reason
+
+Impact
+
+Risk
+
+Affected Documents
+
+Affected Modules
+
+Rollback Plan
+
+Owner
+
+Approval
+
+---
+
+# Emergency Changes
+
+Emergency changes
+
+are permitted
+
+only
+
+when
+
+Critical Production Failure
+
+Critical Security Incident
+
+Critical Data Loss
+
+Regulatory Compliance
+
+Legal Requirement
+
+Production Outage
+
+Emergency changes
+
+must still
+
+produce
+
+Documentation
+
+ADR
+
+Decision Register
+
+Validation
+
+Post Review
+
+---
+
+# Emergency Workflow
+
+Incident
+
+↓
+
+Emergency Approval
+
+↓
+
+Temporary Freeze Lift
+
+↓
+
+Documentation Update
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Production Verification
+
+↓
+
+Freeze Restored
+
+↓
+
+Post Review
+
+---
+
+# Temporary Freeze Lift
+
+Freeze
+
+may be lifted
+
+only by
+
+Chief Software Architect
+
+or
+
+Authorized Delegate.
+
+Temporary lifts
+
+must specify
+
+Reason
+
+Duration
+
+Affected Documents
+
+Approval
+
+Expiration
+
+---
+
+# Partial Freeze
+
+Freeze
+
+may apply
+
+to
+
+selected areas
+
+Examples
+
+Database only
+
+API only
+
+Workflow only
+
+Architecture only
+
+Security only
+
+The scope
+
+must be documented.
+
+---
+
+# Version Control
+
+Every frozen document
+
+must include
+
+Version
+
+Status
+
+Freeze Date
+
+Owner
+
+Approval Date
+
+Last Review
+
+Document ID
+
+---
+
+# Validation During Freeze
+
+Claude Code
+
+must verify
+
+No unauthorized edits
+
+Documentation unchanged
+
+Version unchanged
+
+Approval unchanged
+
+Dependencies unchanged
+
+Cross references valid
+
+---
+
+# Drift Detection
+
+If
+
+repository
+
+changes
+
+without
+
+documentation approval
+
+report
+
+Implementation Drift.
+
+If
+
+documentation
+
+changes
+
+without
+
+approval
+
+report
+
+Documentation Drift.
+
+If
+
+both change
+
+independently
+
+report
+
+Critical Synchronization Drift.
+
+---
+
+# Allowed Activities
+
+Review
+
+Testing
+
+Implementation
+
+Validation
+
+Repository Analysis
+
+Architecture Review
+
+Sprint Planning
+
+Batch Planning
+
+Production Planning
+
+Evidence Collection
+
+Compliance Review
+
+---
+
+# Forbidden Activities
+
+Architecture redesign
+
+Workflow redesign
+
+API redesign
+
+Database redesign
+
+RBAC redesign
+
+Repository restructuring
+
+Coding Standard modification
+
+without
+
+approved
+
+Change Request.
+
+---
+
+# Compliance Rules
+
+Documentation Freeze
+
+is compliant
+
+only when
+
+Documentation approved
+
+Versions locked
+
+Repository references documentation
+
+No unauthorized modifications
+
+Change requests tracked
+
+Validation complete
+
+Evidence available
+
+---
+
+# Failure Conditions
+
+Return
+
+BLOCKED
+
+when
+
+Frozen documentation modified
+
+Unauthorized architecture changes
+
+Unauthorized OpenAPI changes
+
+Unauthorized workflow changes
+
+Missing approvals
+
+Version conflicts
+
+Critical drift detected
+
+---
+
+# Responsibilities
+
+Chief Software Architect
+
+Approves Freeze
+
+Architecture Team
+
+Maintains Architecture
+
+API Architect
+
+Maintains OpenAPI
+
+Data Architect
+
+Maintains Database Documentation
+
+Technical Lead
+
+Maintains Repository Standards
+
+Project Manager
+
+Maintains Sprint Documentation
+
+DevOps Lead
+
+Maintains Release Documentation
+
+Claude Code
+
+Enforces Freeze
+
+---
+
+# Interaction With Other Skills
+
+Documentation Freeze
+
+must execute
+
+before
+
+Sprint Planner
+
+Batch Generator
+
+Architecture Review
+
+Repository Analysis
+
+Sprint Acceptance
+
+Production Gate
+
+Security Review
+
+Performance Review
+
+Database Migration
+
+OpenAPI Validator
+
+RBAC Validator
+
+Testing Review
+
+No downstream skill
+
+may ignore
+
+an active Freeze.
+
+---
+
+# Audit Requirements
+
+Every Freeze
+
+must record
+
+Freeze ID
+
+Version
+
+Start Date
+
+End Date
+
+Owner
+
+Affected Documents
+
+Reason
+
+Approval
+
+Change Requests
+
+Validation Results
+
+---
+
+# Self Verification
+
+Before completing
+
+any task
+
+Claude Code
+
+must verify
+
+Freeze status
+
+Document status
+
+Version
+
+Approval
+
+No unauthorized edits
+
+No active conflicts
+
+Evidence collected
+
+---
+
+# Success Criteria
+
+The Documentation Freeze Policy succeeds when
+
+every Sprint,
+
+every Batch,
+
+every Release,
+
+and every Production deployment
+
+is executed
+
+against
+
+a stable,
+
+approved,
+
+fully synchronized,
+
+and immutable
+
+documentation baseline,
+
+ensuring
+
+that implementation,
+
+testing,
+
+review,
+
+and deployment
+
+produce deterministic,
+
+repeatable,
+
+and traceable results
+
+without introducing
+
+architecture drift,
+
+documentation drift,
+
+or implementation inconsistency
+
+across the entire
+
+PhuQuocHub platform.

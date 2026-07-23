@@ -1,0 +1,725 @@
+# Evidence Policy
+
+Version: 1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+
+the official Evidence Policy
+
+for the PhuQuocHub platform.
+
+Every conclusion,
+
+finding,
+
+recommendation,
+
+decision,
+
+and compliance result
+
+must be supported
+
+by verifiable evidence.
+
+Evidence is the foundation
+
+of every architecture review.
+
+Without evidence
+
+there is no conclusion.
+
+---
+
+# Mission
+
+Ensure every review
+
+is
+
+Objective
+
+Repeatable
+
+Auditable
+
+Traceable
+
+Evidence-Based
+
+Transparent
+
+Deterministic
+
+---
+
+# Core Principles
+
+Evidence
+
+always overrides opinion.
+
+Evidence
+
+always overrides assumptions.
+
+Evidence
+
+must be reproducible.
+
+Evidence
+
+must be traceable.
+
+Evidence
+
+must be verifiable.
+
+Evidence
+
+must never be fabricated.
+
+---
+
+# Evidence Definition
+
+Evidence
+
+is any verifiable artifact
+
+that supports
+
+or disproves
+
+a statement.
+
+Evidence
+
+must exist
+
+before
+
+a conclusion
+
+can be made.
+
+---
+
+# Approved Evidence Sources
+
+Repository
+
+Architecture Documentation
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+ERD
+
+Data Dictionary
+
+OpenAPI
+
+Workflow Documentation
+
+RBAC Documentation
+
+Coding Standard
+
+README
+
+Migration
+
+Configuration
+
+CI Pipeline
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Security Reports
+
+Performance Reports
+
+Deployment Logs
+
+Monitoring Data
+
+Application Logs
+
+---
+
+# Repository Evidence
+
+Valid repository evidence
+
+includes
+
+Folder Structure
+
+Files
+
+Classes
+
+Functions
+
+Entities
+
+Repositories
+
+Controllers
+
+Services
+
+DTOs
+
+Tests
+
+Configuration
+
+Migration
+
+Package Structure
+
+Import Graph
+
+Dependency Graph
+
+Commit History
+
+---
+
+# Documentation Evidence
+
+Documentation evidence
+
+includes
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Coding Standard
+
+Security Guide
+
+Performance Guide
+
+Deployment Guide
+
+README
+
+---
+
+# Database Evidence
+
+Database evidence
+
+includes
+
+Migration
+
+Entity
+
+Constraint
+
+Index
+
+Foreign Key
+
+Check Constraint
+
+Trigger
+
+Schema
+
+ERD
+
+Execution Result
+
+Rollback Result
+
+---
+
+# API Evidence
+
+API evidence
+
+includes
+
+Controller
+
+DTO
+
+Validation
+
+Route
+
+Authentication
+
+Authorization
+
+OpenAPI
+
+Response Schema
+
+Request Schema
+
+---
+
+# Testing Evidence
+
+Testing evidence
+
+includes
+
+Compilation
+
+Lint
+
+Unit Test
+
+Integration Test
+
+E2E Test
+
+Coverage
+
+CI
+
+Performance Test
+
+Security Test
+
+Migration Test
+
+---
+
+# Security Evidence
+
+Security evidence
+
+includes
+
+RBAC
+
+Authentication
+
+Authorization
+
+Audit Log
+
+Validation
+
+Encryption
+
+Rate Limiting
+
+Secret Management
+
+OWASP Verification
+
+---
+
+# Performance Evidence
+
+Performance evidence
+
+includes
+
+Execution Time
+
+Query Plan
+
+Index Usage
+
+Cache Hit Rate
+
+Memory Usage
+
+CPU Usage
+
+Bundle Size
+
+API Latency
+
+Database Statistics
+
+---
+
+# Evidence Validation
+
+Every evidence item
+
+must answer
+
+What is being verified?
+
+Where is the source?
+
+Can it be reproduced?
+
+Can it be independently verified?
+
+Does it support the conclusion?
+
+---
+
+# Invalid Evidence
+
+The following
+
+are never
+
+acceptable evidence
+
+Assumptions
+
+Guesses
+
+Opinions
+
+Speculation
+
+Estimated behavior
+
+Expected implementation
+
+Future work
+
+Verbal statements
+
+Undocumented comments
+
+---
+
+# Missing Evidence
+
+If evidence
+
+cannot be located
+
+Output
+
+NOT FOUND
+
+Do not
+
+guess.
+
+Do not
+
+assume.
+
+Do not
+
+invent.
+
+Do not
+
+infer.
+
+---
+
+# Evidence Requirements
+
+Every finding
+
+must contain
+
+Identifier
+
+Evidence Source
+
+Repository Path
+
+Documentation Reference
+
+Description
+
+Severity
+
+Recommendation
+
+Owner
+
+Status
+
+---
+
+# Traceability
+
+Every evidence item
+
+must be traceable
+
+to
+
+Repository
+
+or
+
+Documentation.
+
+Every recommendation
+
+must reference
+
+the supporting evidence.
+
+Every final decision
+
+must reference
+
+all critical evidence.
+
+---
+
+# Evidence Severity
+
+Critical
+
+Architecture contradiction
+
+Security violation
+
+Data loss risk
+
+High
+
+Repository mismatch
+
+Documentation mismatch
+
+Database mismatch
+
+Medium
+
+Incomplete implementation
+
+Missing test
+
+Missing documentation
+
+Low
+
+Naming issue
+
+Formatting issue
+
+Optimization opportunity
+
+Informational
+
+Observation only
+
+---
+
+# Evidence Lifecycle
+
+Collected
+
+↓
+
+Validated
+
+↓
+
+Referenced
+
+↓
+
+Reviewed
+
+↓
+
+Accepted
+
+↓
+
+Archived
+
+---
+
+# Evidence Rules
+
+Never
+
+Modify evidence
+
+Generate evidence
+
+Fabricate evidence
+
+Ignore contradictory evidence
+
+Hide evidence
+
+Remove evidence
+
+Interpret evidence without context
+
+---
+
+# Evidence Reporting
+
+Every report
+
+must include
+
+Evidence Summary
+
+Evidence Inventory
+
+Critical Evidence
+
+Supporting Evidence
+
+Missing Evidence
+
+Contradictory Evidence
+
+Evidence Quality
+
+Evidence Coverage
+
+Recommendations
+
+---
+
+# Compliance Rules
+
+Every compliance result
+
+must include
+
+Supporting evidence.
+
+PASS
+
+requires evidence.
+
+READY AFTER FIXES
+
+requires evidence.
+
+FAIL
+
+requires evidence.
+
+BLOCKED
+
+requires evidence.
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every finding
+
+contains evidence.
+
+Every recommendation
+
+references evidence.
+
+No assumptions exist.
+
+No fabricated evidence exists.
+
+Every conclusion
+
+is reproducible.
+
+---
+
+# Success Criteria
+
+The Evidence Policy succeeds when
+
+every architecture review,
+
+documentation review,
+
+repository analysis,
+
+Sprint acceptance,
+
+and production gate
+
+is completely
+
+evidence-based,
+
+fully traceable,
+
+fully reproducible,
+
+and independently verifiable.
+
+No architectural decision
+
+may ever rely
+
+on assumptions.
+
+Evidence remains
+
+the foundation
+
+of all governance
+
+throughout
+
+the lifecycle
+
+of the PhuQuocHub platform.

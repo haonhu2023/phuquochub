@@ -1,0 +1,107 @@
+# Executive Summary
+
+Overall documentation quality.
+
+--------------------------------------------------
+
+# Documentation Freeze Score
+
+0-100
+
+--------------------------------------------------
+
+# Freeze Matrix
+
+(use freeze-matrix.md)
+
+--------------------------------------------------
+
+# Missing Documents
+
+List all missing documents.
+
+--------------------------------------------------
+
+# Incomplete Documents
+
+List every incomplete document.
+
+--------------------------------------------------
+
+# Consistency Issues
+
+Critical
+
+High
+
+Medium
+
+Low
+
+--------------------------------------------------
+
+# Blocking Issues
+
+Description
+
+Evidence
+
+Impact
+
+Required Fix
+
+--------------------------------------------------
+
+# SSOT Validation
+
+For every domain
+
+identify exactly one authoritative document.
+
+--------------------------------------------------
+
+# ADR Validation
+
+Accepted
+
+Proposed
+
+Superseded
+
+Missing
+
+Conflicts
+
+--------------------------------------------------
+
+# Code Generation Readiness
+
+Architecture
+
+Database
+
+API
+
+RBAC
+
+Workflow
+
+Security
+
+OpenAPI
+
+Decision Register
+
+PASS
+
+FAIL
+
+--------------------------------------------------
+
+# Freeze Decision
+
+NOT READY
+
+READY AFTER FIXES
+
+DOCUMENTATION FROZEN

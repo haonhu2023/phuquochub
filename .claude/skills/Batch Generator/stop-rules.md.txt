@@ -1,0 +1,35 @@
+# Stop Rules
+
+Immediately stop if
+
+Architecture missing
+
+ADR conflict
+
+Decision conflict
+
+OpenAPI missing
+
+Database missing
+
+Entity missing
+
+Dependency conflict
+
+Naming conflict
+
+Repository inconsistent
+
+Documentation not frozen
+
+Batch exceeds size
+
+Need architectural decision
+
+Need user confirmation
+
+Need new ADR
+
+Never guess.
+
+Stop and report.

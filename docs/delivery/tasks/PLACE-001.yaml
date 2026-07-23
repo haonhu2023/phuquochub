@@ -1,0 +1,119 @@
+schema_version: "1.0"
+
+id: PLACE-001
+workstream: place
+title: Place Domain and Persistence Baseline Analysis
+type: analysis
+status: completed     # full PLACE-001 spec executed 2026-07-22; report + evidence index produced
+
+# G-2 (PLACE-019, 2026-07-23) — SCHEMA NORMALIZATION, NOT RE-EXECUTION.
+# PLACE-001 predates the `run_status` convention that PLACE-002..PLACE-018 all follow (17/18),
+# so governance validation reported it as "completed but has no run_status". The task was NOT
+# re-run and its status, meaning and outcome are unchanged. The block below is transcribed from
+# the artifacts PLACE-001 actually produced on 2026-07-22 — it records what was true THEN,
+# including that no check could be executed, and does not pretend the field existed at the time.
+run_status:
+  analysis: complete
+  validation: not_executed          # historically accurate — see results below
+  schema_note: >-
+    Added retroactively by PLACE-019 for schema consistency. Values derived from
+    reports/PLACE-001-place-domain-persistence-baseline.md (§16 test inventory, §21 execution
+    matrix) and evidence/PLACE-001-evidence-index.md. No claim is upgraded.
+  results:
+    - "lint / typecheck / build / jest / e2e → NOT EXECUTED (no Node runtime at the time; FAT32 left @phuquochub/* unlinked; e2e also needs DB/Redis)"
+    - "YAML lint (python) → NOT EXECUTED (python was a non-functional WindowsApps stub)"
+    - "unit specs (places.mapper, places-detail.mapper, places.repository, places.dto) → present but NOT EXECUTED"
+    - "migrations → implemented_unverified (not executed against any database)"
+  mandatory_criteria: >-
+    Acceptance criteria were met by ANALYSIS evidence, not by executed checks: every baseline claim
+    cites a repository path (and line where practical). GAP-02/04 RESOLVED; GAP-05/06/07/10/11/12/
+    13/14/15/16 recorded OPEN against then-current source; 5 contradictions registered.
+  report: docs/delivery/reports/PLACE-001-place-domain-persistence-baseline.md
+  evidence_index: docs/delivery/evidence/PLACE-001-evidence-index.md
+  evidence_detail: docs/delivery/evidence/PLACE-001-baseline.md
+  changed_files: []                 # analysis task — no production file was modified
+  next_task: docs/delivery/tasks/PLACE-002.yaml
+
+purpose: >-
+  Establish the actual Place architecture and persistence contract from repository
+  evidence before any implementation change. This task is executable independently
+  of the deprecated BUILD chain (it does not require BUILD_001 or BUILD_003..BUILD_014).
+
+repository_scope:
+  - apps/api/src/modules/places/**
+  - apps/api/src/core/database/migrations/1720000400000-InitPlaces.ts
+  - apps/api/src/modules/geo/**          # consumer: nearby/bbox
+  - apps/api/src/modules/search/**       # consumer: FTS
+  - apps/api/src/modules/revisions/**    # consumer: revisions
+  - apps/web/src/modules/places/**       # frontend contract
+  - docs/data/modules/places.md          # authoritative schema
+  - docs/api/api.md
+  - docs/api/openapi.yaml
+  - prisma/schema.prisma                 # reference model
+
+required_inputs:
+  - docs/delivery/state.yaml
+  - docs/delivery/workstreams/place.yaml
+  - docs/delivery/reports/bootstrap-baseline.md
+  - delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md   # prior evidence, not an execution gate
+  - delivery/sprint-01-core-data/BUILD_002_PLACE_PRIORITY_REMEDIATION.md
+
+inspection_checklist:
+  - "Confirm entity <-> migration <-> Prisma field alignment (types, nullability, enums)."
+  - "Confirm PostGIS coordinate convention end-to-end (write lng,lat; read ST_X/ST_Y; GeoJSON [lng,lat])."
+  - "Confirm index set vs places.md §3 (verify GAP-06: partial status index absent)."
+  - "Confirm validation surface vs api.md §11 (verify GAP-07: Phú Quốc coordinate bound absent)."
+  - "Confirm list query contract vs openapi/api.md (GAP-05/10: status/sort/cursor divergence)."
+  - "Confirm response envelope + pagination flow (paginate -> TransformInterceptor -> web apiGet)."
+  - "Confirm BUILD_002 remediation still present (getDetailBySlug status filter; DTO has no status)."
+  - "Inventory tests and mark which are executable given the environment."
+
+expected_outputs:
+  - "A verified Place domain + persistence baseline (fields, enums, indexes, coordinate contract, relations)."
+  - "Confirmed status of each BUILD_001 gap (still-open / resolved / superseded) with evidence."
+  - "An evidence record under docs/delivery/evidence/ referencing exact file:line."
+  - "A recommended, narrowly-scoped first implementation task (candidate: PLACE-002)."
+
+acceptance_criteria:
+  - "Every baseline claim cites a repository path (and line where practical)."
+  - "No production code, migration, DTO, entity, or contract modified."
+  - "Open gaps are confirmed against current source, not copied blindly from BUILD_001/002."
+  - "Verification limitations (no Node; FAT32) are stated, not worked around by fabrication."
+
+prohibited_actions:
+  - "Do not change entities, DTOs, services, controllers, repositories, or mappers."
+  - "Do not create or run migrations."
+  - "Do not modify seed data or API contracts."
+  - "Do not claim any test/lint/typecheck passed unless actually executed."
+  - "Do not reconstruct missing BUILD reports."
+
+dependencies:
+  requires: []                  # none — bootstrap-independent
+  soft_reference:
+    - BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md
+    - BUILD_002_PLACE_PRIORITY_REMEDIATION.md
+
+evidence_requirements:
+  - "file:line references for each confirmed field/index/contract claim"
+  - "explicit NOT EXECUTED markers for any command that could not run, with cause"
+
+completion_transition:
+  on_success:
+    set_state:
+      current.phase: analysis
+      current.task: PLACE-002        # next implementation task, defined on completion
+      gates.place_domain_analysis: passed
+    status: completed
+
+failure_transition:
+  on_blocked:
+    status: blocked
+    require: "record the concrete blocker (path/permission/evidence gap) in the task evidence file"
+
+next_candidate_task:
+  id: PLACE-002
+  title: "Place coordinate validation (GAP-07) — DTO-only, SSOT-backed, no DB/migration"
+  rationale: >-
+    Narrowest open P1 that needs no owner adjudication and no database; testable via a
+    DTO spec of the kind already present. Parallel non-code recommendation: relocate to
+    NTFS + install Node to unblock typecheck/build and the service/e2e suites.

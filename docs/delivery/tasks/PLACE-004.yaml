@@ -1,0 +1,140 @@
+schema_version: "1.0"
+
+id: PLACE-004
+workstream: place
+title: "Add a unique tie-breaker to Place list ordering (GAP-12)"
+type: implementation
+status: completed
+started_at: "2026-07-22"
+started_branch: unknown         # F:\PhuQuochub is not a git working copy
+started_commit: unknown
+completed_at: "2026-07-22"
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places.repository → 11/11 passed (7 existing + 4 new), exit 0"
+    - "npx eslint src/modules/places/**/*.ts --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+    - "mutation check (tie-breaker removed) → 2 failed / 9 passed, exit 1; restored and rerun green"
+  mandatory_criteria: "AC1..AC5 all PASS; optional AC6 also PASS"
+  report: docs/delivery/reports/PLACE-004-ordering-report.md
+  evidence_index: docs/delivery/evidence/PLACE-004-ordering-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/repositories/places.repository.ts        # ORDER BY + comment
+    - apps/api/src/modules/places/repositories/places.repository.spec.ts   # 4 new specs
+  next_task: docs/delivery/tasks/PLACE-005.yaml
+  index_decision: >-
+    AC6 — no index created. A covering index would be (rating_avg DESC NULLS LAST, created_at
+    DESC, id ASC) WHERE deleted_at IS NULL, but the task's out_of_scope forbids new indexes and
+    justifying one requires EXPLAIN evidence that does not exist (Docker not installed).
+    Recorded as finding F-15 for the DB-backed validation task.
+  open_finding: >-
+    F-16 — nearby()/bbox()/bboxClusters() also LIMIT without a unique final key. They sort by
+    distance/geometry rather than paginating with OFFSET, so the same defect does not follow
+    automatically, but they were not analysed. Backlog, not an unmet criterion.
+
+depends_on:
+  - PLACE-003        # completed 2026-07-22; jest migrations 11/11, eslint + tsc exit 0
+
+problem_statement: >-
+  PlacesRepository.list() (apps/api/src/modules/places/repositories/places.repository.ts:237-242)
+  paginates with `ORDER BY p.rating_avg DESC NULLS LAST, p.created_at DESC` and LIMIT/OFFSET.
+  Neither key is unique: rating_avg is numeric(2,1) over a small range (many exact ties, plus
+  a large NULL group for unrated places), and created_at is set by a shared `now()` default so
+  seeded/imported rows share timestamps. With no unique final sort key, PostgreSQL may order
+  tied rows differently between the count/page queries and between successive page requests —
+  so a row can appear on two pages or on none while the caller walks the list. This is
+  GAP-12 in the Place gap register (workstreams/place.yaml), priority P2, and it affects the
+  default public listing path — the same path PLACE-003's idx_places_status_active serves.
+
+objective: >-
+  Make Place list pagination deterministic by appending a unique final sort key to the list
+  ordering, and prove the determinism with repository-level specs. Ordering semantics visible
+  to callers (primary sort by rating, then recency) must not change; only ties are affected.
+
+required_inputs:
+  - apps/api/src/modules/places/repositories/places.repository.ts        # list() ORDER BY, :237-242
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # existing repo spec convention
+  - apps/api/src/core/database/migrations/1720000400000-InitPlaces.ts    # places PK + existing indexes
+  - docs/api/openapi.yaml                                                # listPlaces contract (ordering not specified)
+  - docs/delivery/reports/PLACE-003-migration-report.md                  # §27 F-14 (this finding)
+
+in_scope:
+  - "apps/api/src/modules/places/repositories/places.repository.ts — list() ORDER BY only"
+  - "apps/api/src/modules/places/repositories/places.repository.spec.ts — extend with ordering specs"
+
+out_of_scope:
+  - "changing the primary ordering keys (rating_avg, created_at) or their direction"
+  - "switching offset pagination to cursor/keyset pagination — that is the parked GAP-05/10 contract question"
+  - "nearby(), bbox(), bboxClusters(), searchFullText() ordering (distance/geometry/score driven; separate concern)"
+  - "any new index or migration — decide and record whether one is warranted, do not create it here"
+  - "DTO, controller, service, mapper, entity, shared-type or OpenAPI changes"
+  - "GAP-13 getCardBySlug dead code; GAP-11 shared Place types; GAP-14 opening_hours"
+
+execution_steps:
+  - "Read list() and confirm the exact current ORDER BY and both call sites (count query and page query)."
+  - "Confirm places.id is the primary key (InitPlaces:31) and therefore unique and non-null — the natural tie-breaker."
+  - "Append the tie-breaker as the LAST ordering key so the caller-visible sort is unchanged; choose and record a stable direction (e.g. p.id ASC)."
+  - "Check whether the count query needs any change — it has no ORDER BY, so state explicitly whether it is affected."
+  - "Assess whether the new sort key warrants an index: record the reasoning and the decision. Creating one is OUT OF SCOPE for this task; if warranted, raise it as a finding for a later migration task."
+  - "Read places.repository.spec.ts first and follow its existing mocking/assertion style — do not introduce a second testing pattern."
+  - "Add specs proving: the emitted SQL ends with the unique key; the primary keys still lead; and two successive page queries over a tied dataset produce disjoint, complete results."
+  - "Run the validation commands below, narrowest first."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "list()'s page query ORDER BY ends with a unique, non-null column so the total order is deterministic." }
+  - { id: AC2, mandatory: true,  text: "The existing primary sort keys and their directions are unchanged and still lead the ORDER BY." }
+  - { id: AC3, mandatory: true,  text: "A spec asserts the emitted ORDER BY shape, and a spec demonstrates stable, non-overlapping pagination across at least two pages of tied rows." }
+  - { id: AC4, mandatory: true,  text: "No DTO, controller, service, mapper, entity, migration, index or contract change." }
+  - { id: AC5, mandatory: true,  text: "npx jest places.repository, eslint and tsc --noEmit all exit 0." }
+  - { id: AC6, mandatory: false, text: "The index question for the new sort key is explicitly decided and recorded with its reasoning." }
+
+required_evidence:
+  - "before/after ORDER BY text from places.repository.ts"
+  - "proof places.id is the primary key (InitPlaces migration line reference)"
+  - "spec output showing the new ordering specs passing"
+  - "eslint and tsc exit codes"
+  - "explicit statement of whether the count query was affected"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  # On FAT32 the @phuquochub/* packages are copies, not symlinks (see state.yaml).
+  - "cd apps/api && npx jest places.repository"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Revert the ORDER BY clause in list() and remove the added specs. Two files, no schema, no
+  data, no contract. Because nothing is applied to a database and no migration is authored,
+  rollback is complete and non-destructive.
+
+stop_conditions:
+  - "Making the ordering deterministic appears to require switching to keyset/cursor pagination — STOP. That is the parked GAP-05/10 contract question and needs owner adjudication."
+  - "The fix appears to require a new index or migration to perform acceptably — STOP at the code change, record the index need as a finding, and do not author the migration here."
+  - "A DB-backed check seems necessary to prove the ordering — it is not. Structural spec assertions plus deterministic in-memory pagination are the approved bar; Docker is not installed and no EXPLAIN evidence may be claimed."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-005
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "ordering specs passing"
+    - "diff limited to the two in_scope files"
+
+next_candidate_task:
+  id: PLACE-005
+  title: "Database-backed validation of Place persistence, indexes and geospatial behavior"
+  type: integration validation
+  rationale: >-
+    After GAP-12 the largest unverified surface is everything needing a real Postgres/PostGIS
+    instance: applying migrations (including PLACE-003's idx_places_status_active), EXPLAIN
+    confirmation that the index is actually chosen, SRID 4326 / coordinate-order / ST_DWithin
+    checks, and the e2e suite that currently self-skips. This requires installing Docker
+    Desktop and running `npm run db:up` — an environment prerequisite, not a code change, so
+    it must NOT be scheduled until that prerequisite is met. Derive PLACE-005 from PLACE-004's
+    actual outcome and the environment state at that time.

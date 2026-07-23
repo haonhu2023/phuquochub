@@ -1,0 +1,103 @@
+schema_version: "1.0"
+
+project:
+  id: phuquochub
+  name: PhuQuocHub
+  description: "Wikipedia + Reddit + Google Maps cho Phú Quốc (per root package.json)"
+
+repository:
+  type: monorepo
+  tooling: "npm workspaces + Turborepo (turbo ^2.1.3)"
+  package_manager: "npm@10.8.2"
+  node_engine: ">=20.0.0"
+  vcs: none                # not a git working copy in this environment
+  workspaces:
+    - "apps/*"
+    - "packages/*"
+
+applications:
+  - id: api
+    path: apps/api
+    framework: "NestJS ^10.4 (TypeScript, decorators)"
+    entry: apps/api/src/main.ts
+  - id: web
+    path: apps/web
+    framework: "Next.js (App Router)"
+
+shared_packages:
+  - { id: shared-types, path: packages/shared-types, note: "API envelope/pagination/health only — no Place types yet" }
+  - { id: utils,        path: packages/utils,        note: "slugify etc.; consumed by places.service.ts" }
+  - { id: config,       path: packages/config }
+  - { id: ui,           path: packages/ui }
+  - { id: database,     path: packages/database,     note: "Prisma stub only — migrations dir empty (.gitkeep)" }
+
+persistence:
+  primary_database: "PostgreSQL + PostGIS"
+  runtime_orm: "TypeORM (synchronize:false)"
+  datasource: apps/api/src/core/database/data-source.ts
+  migrations_dir: apps/api/src/core/database/migrations
+  prisma_schema: prisma/schema.prisma   # reference model (ADR-013); NOT the runtime ORM
+  cache: "Redis (apps/api/src/core/redis)"
+
+core_infrastructure_modules:
+  path: apps/api/src/core
+  modules: [audit, config, database, logger, redis]
+
+domain_modules_detected:
+  path: apps/api/src/modules
+  modules:
+    - auth
+    - authz
+    - categories
+    - community
+    - contacts
+    - contributions
+    - events
+    - geo
+    - health
+    - hotels
+    - media
+    - notifications
+    - places        # first registered delivery workstream
+    - prices
+    - rbac
+    - restaurants
+    - reviews
+    - revisions
+    - search
+    - sources
+    - tours
+    - users
+
+ci_cd:
+  workflow: .github/workflows/ci.yml
+  jobs:
+    - "Lint · Typecheck · Build · Unit test (node 20)"
+    - "API e2e (Postgres + Redis; runs migrations)"
+
+# G-1 (PLACE-019, 2026-07-23): this block was UNPARSEABLE — `env_template` was a mapping key
+# placed inside a sequence, so the whole file failed YAML parsing ("bad indentation of a mapping
+# entry (82:3)"). Repaired by making `infrastructure` a mapping with an explicit `paths` sequence.
+# Every original value and comment is preserved verbatim; no project decision was changed.
+infrastructure:
+  paths:
+    - infrastructure/k8s      # stub (.gitkeep)
+    - infrastructure/nginx    # stub (.gitkeep)
+    - docker-compose.yml      # postgres, redis, minio (npm run db:up)
+  env_template: .env.example
+
+delivery_framework:
+  location: docs/delivery
+  state_file: docs/delivery/state.yaml
+  active_workstreams:
+    - place
+  deprecated_execution_systems:
+    - "Sequential BUILD_001..BUILD_014 report chain (see ADR-DELIVERY-001)"
+
+documentation_authority_references:
+  - docs/99-decisions/            # ADR-001..ADR-016 + decision-register.md
+  - docs/data/modules/places.md   # authoritative Place schema (SSOT per ADR-001/B7)
+  - docs/api/api.md
+  - docs/api/openapi.yaml
+  - enterprise-engineering-framework/00-governance/authority-and-scope.md
+  - enterprise-engineering-framework/00-governance/validation-commands.md

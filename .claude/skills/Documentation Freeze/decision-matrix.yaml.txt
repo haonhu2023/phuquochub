@@ -1,0 +1,223 @@
+# =============================================================================
+# Documentation Freeze Decision Matrix
+# Version: 1.0.0
+# Status: Approved
+# =============================================================================
+
+metadata:
+
+  framework: Documentation Freeze
+
+  version: 1.0.0
+
+  schema: decision-matrix-v1
+
+  owner: Architecture Governance
+
+  status: Approved
+
+  description: >
+    Canonical machine-readable decision matrix used by the
+    Documentation Freeze Decision Engine.
+
+# =============================================================================
+# VALID DECISIONS
+# =============================================================================
+
+decisions:
+
+  - id: FREEZE_APPROVED
+
+    description: >
+      Repository is fully approved.
+
+    exit_code: 0
+
+    implementation_allowed: true
+
+    merge_allowed: true
+
+    deployment_allowed: true
+
+    requires_revalidation: false
+
+  - id: FREEZE_APPROVED_WITH_NON_BLOCKING_FINDINGS
+
+    description: >
+      Repository approved with editorial findings.
+
+    exit_code: 1
+
+    implementation_allowed: true
+
+    merge_allowed: true
+
+    deployment_allowed: true
+
+    requires_revalidation: false
+
+  - id: FREEZE_REJECTED
+
+    description: >
+      Repository evaluated successfully but engineering blockers exist.
+
+    exit_code: 10
+
+    implementation_allowed: false
+
+    merge_allowed: false
+
+    deployment_allowed: false
+
+    requires_revalidation: true
+
+  - id: FREEZE_BLOCKED
+
+    description: >
+      Repository cannot be evaluated.
+
+    exit_code: 20
+
+    implementation_allowed: false
+
+    merge_allowed: false
+
+    deployment_allowed: false
+
+    requires_revalidation: true
+
+# =============================================================================
+# BLOCKING CONDITIONS
+# =============================================================================
+
+blocking_conditions:
+
+  authority_conflict: true
+
+  missing_ssot: true
+
+  missing_architecture: true
+
+  missing_database_specification: true
+
+  missing_workflow: true
+
+  missing_openapi: true
+
+  missing_rbac: true
+
+  missing_authentication: true
+
+  conflicting_architecture: true
+
+  implementation_significant_placeholder: true
+
+# =============================================================================
+# DECISION MATRIX
+# =============================================================================
+
+matrix:
+
+  - when:
+
+      repository: PASS
+
+      authority: PASS
+
+      ssot: PASS
+
+      blocking: NONE
+
+    decision: FREEZE_APPROVED
+
+  - when:
+
+      repository: PASS
+
+      authority: PASS
+
+      ssot: PASS
+
+      blocking: LOW_ONLY
+
+    decision: FREEZE_APPROVED_WITH_NON_BLOCKING_FINDINGS
+
+  - when:
+
+      repository: PASS
+
+      authority: FAIL
+
+    decision: FREEZE_REJECTED
+
+  - when:
+
+      repository: PASS
+
+      ssot: FAIL
+
+    decision: FREEZE_REJECTED
+
+  - when:
+
+      repository: FAIL
+
+    decision: FREEZE_BLOCKED
+
+# =============================================================================
+# PRECEDENCE
+# =============================================================================
+
+precedence:
+
+  - repository
+
+  - scope
+
+  - authority
+
+  - ssot
+
+  - architecture
+
+  - security
+
+  - workflow
+
+  - database
+
+  - api
+
+  - rbac
+
+  - consistency
+
+  - completeness
+
+  - placeholder
+
+  - reference
+
+  - drift
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  include:
+
+    - freeze_certificate
+
+    - finding_report
+
+    - audit_report
+
+    - required_fix_report
+
+    - machine_readable_summary
+
+# =============================================================================
+# END
+# =============================================================================

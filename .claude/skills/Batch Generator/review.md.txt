@@ -1,0 +1,49 @@
+# Batch Self Review
+
+Verify
+
+Architecture
+
+Dependencies
+
+OpenAPI
+
+RBAC
+
+Security
+
+Database
+
+Naming
+
+Coding Standard
+
+Layering
+
+Module boundary
+
+No dead code
+
+No duplicated code
+
+No TODO
+
+No FIXME
+
+No commented code
+
+No debug logs
+
+No console.log
+
+No secrets
+
+No hardcode
+
+No magic numbers
+
+No cyclic dependency
+
+No architectural drift
+
+Report everything.

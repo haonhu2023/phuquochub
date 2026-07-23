@@ -1,0 +1,155 @@
+schema_version: "1.0"
+
+id: PLACE-015
+workstream: place
+title: "Make search result pagination deterministic (F-32)"
+type: implementation
+status: completed
+started_at: "2026-07-23"
+completed_at: "2026-07-23"
+started_branch: unknown         # not a git working copy
+started_commit: unknown
+
+run_status:
+  implementation: complete
+  validation: passed
+  results:
+    - "npx jest places.repository → 16/16 passed, exit 0"
+    - "mutation check (`, p.id ASC` removed) → 2 failed / 14 passed, exit 1; Set size 4 instead of 6 = the F-32 defect reproduced; restored and rerun green"
+    - "npx jest places → 97/97 passed, 7 suites, exit 0"
+    - "npx jest search → 3/3 passed, 1 suite, exit 0, specs UNMODIFIED"
+    - "npx eslint places + search --max-warnings=0 → exit 0"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+  mandatory_criteria: "AC1..AC7 all PASS; optional AC8 also PASS"
+  report: docs/delivery/reports/PLACE-015-search-ordering-report.md
+  evidence_index: docs/delivery/evidence/PLACE-015-search-ordering-evidence-index.md
+  changed_files:
+    - apps/api/src/modules/places/repositories/places.repository.ts        # searchFullText ORDER BY + F-32 doc comment
+    - apps/api/src/modules/places/repositories/places.repository.spec.ts   # 3 determinism specs
+  next_task: docs/delivery/tasks/PLACE-016.yaml
+  change: "ORDER BY score DESC → ORDER BY score DESC, p.id ASC (one clause)"
+  contract_check: >-
+    openapi.yaml:1359-1380 declares NO ordering or stability guarantee on /search, so this is a
+    quality fix, not a contract fix, and no consumer can have relied on a documented order.
+  searchcount_unchanged: >-
+    searchCount() is a bare count(*) with NO ORDER BY — ordering cannot affect a cardinality, so
+    the count and the page query still describe the same result set. Verified and pinned by a spec.
+  resolves: "F-32 (RESOLVED)"
+  new_findings: "none — F-15, F-33 and F-34 carried forward unchanged"
+
+depends_on:
+  - PLACE-014        # completed 2026-07-22; jest places 94/94, mutation-checked, nearby tie-breaker added
+
+problem_statement: >-
+  PlacesRepository.searchFullText (apps/api/src/modules/places/repositories/places.repository.ts,
+  the FTS query) orders by `ts_rank(...) DESC` alone and is called by SearchService with
+  LIMIT/OFFSET pagination: search.service.ts:16 passes `(page - 1) * limit`. `score` is not
+  unique — ts_rank readily produces identical values across documents that match a query
+  equally well, and short Vietnamese queries over name+description make that common rather than
+  exotic. With no unique final sort key, PostgreSQL may order tied rows differently between the
+  page-1 and page-2 queries, so a user paging through search results can see the same Place
+  twice or never see it at all.
+  This is exactly the GAP-12 defect PLACE-004 fixed in list(), on a different and user-facing
+  endpoint. PLACE-014 discovered it while analysing F-16 and recorded it as F-32; it was out of
+  that task's scope (which excluded the search module), so it was escalated rather than fixed.
+  Note searchCount() is a separate query with no ORDER BY — it is unaffected, but the pair is
+  worth checking together since they must agree on the result set.
+
+objective: >-
+  Make search pagination deterministic by appending a unique final sort key to the FTS query,
+  without changing relevance ordering, the response contract, or the search behaviour a caller
+  can already rely on.
+
+required_inputs:
+  - apps/api/src/modules/places/repositories/places.repository.ts        # searchFullText, searchCount
+  - apps/api/src/modules/places/repositories/places.repository.spec.ts   # PLACE-004/014 determinism spec pattern + orderKeysFrom helper
+  - apps/api/src/modules/search/search.service.ts                        # :16 paginated call, :31 suggest call
+  - apps/api/src/modules/search/search.service.spec.ts                   # existing expectations, must not be weakened
+  - docs/delivery/reports/PLACE-004-ordering-report.md                   # the proven-safe pattern
+  - docs/delivery/reports/PLACE-014-geo-ordering-analysis.md             # §19 F-32 as recorded
+  - docs/api/openapi.yaml                                                # /search — check for any declared ordering guarantee
+
+in_scope:
+  - "apps/api/src/modules/places/repositories/places.repository.ts — the ORDER BY of searchFullText ONLY"
+  - "apps/api/src/modules/places/repositories/places.repository.spec.ts — determinism specs for search"
+
+out_of_scope:
+  - "searchCount() — it has no ORDER BY and needs no change; verify, do not edit"
+  - "relevance tuning of any kind: ts_rank weights, the tsvector expression, plainto_tsquery, unaccent handling"
+  - "switching search to keyset/cursor pagination — that is the parked GAP-05/10 contract question"
+  - "search.service.ts, the search DTO, controller, or response shape"
+  - "F-33 (dead repo.bbox) and F-34 (bboxClusters truncation policy) — recorded by PLACE-014, separate tasks"
+  - "adding an index for the new sort key (F-15 territory; unjustifiable without EXPLAIN)"
+  - "the five BLOCKS_RELEASE findings"
+
+execution_steps:
+  - "Read searchFullText and confirm the exact current ORDER BY and that SearchService really paginates it with OFFSET (search.service.ts:16), while suggest() calls it with offset 0 (:31) and is therefore unaffected."
+  - "Check openapi.yaml's /search operation for a declared ordering or stability guarantee. Record the result either way — it determines whether this is a contract fix or a quality fix, exactly as PLACE-014 did for the geo endpoints."
+  - "Append `p.id ASC` as the LAST key, after `score DESC`. Do not alter the score expression or its direction — relevance ordering must be untouched, and p.id must arbitrate only rows already tied on score."
+  - "Verify searchCount() needs no change and say so explicitly in the report; the count and the page query must continue to describe the same result set."
+  - "Add determinism specs following the pattern already established in places.repository.spec.ts by PLACE-004 and extended by PLACE-014: reuse the existing orderKeysFrom / comparatorFor helpers rather than writing a third variant."
+  - "Cover BOTH failure modes for this method: (a) two successive pages over tied rows are disjoint and complete — the mode that actually applies here because OFFSET is used; and (b) the ORDER BY ends with a unique key."
+  - "Run the mutation check: remove the tie-breaker, prove the new specs fail for the expected reason, restore, and re-run to green. Leave no mutation in the tree."
+  - "Run every validation command."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true,  text: "searchFullText's ORDER BY ends with a unique, non-null column, and `score DESC` remains the leading key with its direction unchanged." }
+  - { id: AC2, mandatory: true,  text: "A spec asserts the emitted ORDER BY shape by parsing the real SQL, not by hard-coding an expected string." }
+  - { id: AC3, mandatory: true,  text: "A spec demonstrates that two successive pages over score-tied rows are disjoint and complete, using the rotated-input technique that models planner freedom." }
+  - { id: AC4, mandatory: true,  text: "A mutation check is performed and recorded: with the tie-breaker removed the new specs fail; restored, all pass. No mutation remains in the working tree." }
+  - { id: AC5, mandatory: true,  text: "searchCount() is unchanged, and the report states explicitly why it needs no change." }
+  - { id: AC6, mandatory: true,  text: "No relevance tuning, no service/DTO/controller/contract change, no new index, no change to any other repository method." }
+  - { id: AC7, mandatory: true,  text: "npx jest places, npx jest search, eslint and tsc --noEmit all exit 0; existing search.service specs pass UNMODIFIED." }
+  - { id: AC8, mandatory: false, text: "The openapi /search ordering-guarantee check is recorded, classifying this as a contract fix or a quality fix." }
+
+required_evidence:
+  - "before/after ORDER BY text"
+  - "confirmation that SearchService.search paginates with OFFSET and that suggest() uses offset 0"
+  - "the openapi /search ordering check result"
+  - "explicit statement that searchCount needs no change, with the reason"
+  - "mutation-check output showing which specs failed and that they were restored"
+  - "all four validation exit codes, and confirmation search.service.spec.ts was not edited"
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "cd apps/api && npx jest places"
+  - "cd apps/api && npx jest search"
+  - "cd apps/api && npx eslint \"src/modules/places/**/*.ts\" \"src/modules/search/**/*.ts\" --max-warnings=0"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+
+rollback_plan: >-
+  Remove `, p.id ASC` from searchFullText's ORDER BY and delete the added specs. Two edits in two
+  files, no schema, data, migration or contract involved — the same two-line rollback PLACE-004
+  and PLACE-014 documented for the identical pattern.
+
+stop_conditions:
+  - "Making pagination deterministic appears to require keyset/cursor pagination — STOP. That is the parked GAP-05/10 contract question and needs owner adjudication."
+  - "The fix appears to change relevance ordering in any observable way — STOP and re-examine. p.id must only arbitrate rows already tied on score; if results reorder for non-tied rows, the change is wrong."
+  - "The existing search.service specs need editing to pass — STOP. That would mean behaviour changed rather than ordering being stabilised."
+  - "An index looks necessary for acceptable performance — STOP at the code change and record it; justifying an index needs EXPLAIN, which needs Docker."
+
+completion_transition:
+  on_success:
+    set_state:
+      current.task: PLACE-016
+      current.status: ready
+    task_status: completed
+  requires_evidence:
+    - "mutation check recorded and reverted"
+    - "search.service specs passing unmodified"
+    - "diff limited to the two in_scope files"
+
+next_candidate_task:
+  id: PLACE-016
+  title: "<derive — and seriously consider parking the workstream>"
+  type: "<derive>"
+  rationale: >-
+    After PLACE-015 the last known correctness defect reachable without infrastructure is closed.
+    What would remain is F-33 (dead repo.bbox — a small removal task, the only clearly executable
+    item), F-34 (bboxClusters truncation — needs a PRODUCT decision), F-26/F-28/F-29/F-30/F-31
+    (design questions and cosmetics), and the five BLOCKS_RELEASE items, every one of which needs
+    Docker, version control, or an absent owner. PLACE-016 must be derived from that reality: if
+    only F-33 justifies a task, schedule it and then park; if nothing does, park immediately with
+    a truthful waiting state naming the three external unblockers. Do NOT manufacture work to
+    keep the sequence running.

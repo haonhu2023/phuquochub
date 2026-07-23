@@ -1,0 +1,382 @@
+# =============================================================================
+# Security Validation Rules
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Rule ID   : RULE-0006
+# Category  : Security
+# Version   : 1.0.0
+# Status    : Approved
+#
+# =============================================================================
+
+metadata:
+
+  id: RULE-0006
+
+  name: Security Validation
+
+  category: Security
+
+  version: 1.0.0
+
+  status: Approved
+
+  owner: Security Architecture Board
+
+  description: >
+    Validates that security architecture, controls, identity,
+    authorization, and security documentation are complete,
+    internally consistent, and implementation-ready.
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+execution:
+
+  priority: 6
+
+  blocking: true
+
+  enabled: true
+
+  stop_pipeline_on_failure: true
+
+# =============================================================================
+# PRECONDITIONS
+# =============================================================================
+
+preconditions:
+
+  - repository_validation_completed
+
+  - scope_validation_completed
+
+  - authority_validation_completed
+
+  - ssot_validation_completed
+
+  - architecture_validation_completed
+
+# =============================================================================
+# SECURITY DOMAINS
+# =============================================================================
+
+domains:
+
+  - Authentication
+
+  - Authorization
+
+  - Identity
+
+  - Session Management
+
+  - Secrets
+
+  - Encryption
+
+  - Audit Logging
+
+  - Network Security
+
+  - Data Protection
+
+  - Key Management
+
+  - Security Monitoring
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
+rules:
+
+  - id: SEC-001
+
+    name: Security Architecture Exists
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      security.architecture_exists: true
+
+    on_fail:
+
+      finding: Security architecture missing
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-002
+
+    name: Authentication Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      authentication.documented: true
+
+    on_fail:
+
+      finding: Authentication model undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-003
+
+    name: Authorization Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      authorization.documented: true
+
+    on_fail:
+
+      finding: Authorization model undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-004
+
+    name: Identity Provider Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      identity.provider_defined: true
+
+    on_fail:
+
+      finding: Identity provider undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-005
+
+    name: Secrets Management
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      secrets.management_documented: true
+
+    on_fail:
+
+      finding: Secret management undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-006
+
+    name: Encryption Strategy
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      encryption.strategy_defined: true
+
+    on_fail:
+
+      finding: Encryption strategy missing
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-007
+
+    name: Audit Logging
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      audit.logging_defined: true
+
+    on_fail:
+
+      finding: Audit logging undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-008
+
+    name: Data Protection
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      data.protection_defined: true
+
+    on_fail:
+
+      finding: Data protection policy missing
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-009
+
+    name: Network Security
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      network.security_documented: true
+
+    on_fail:
+
+      finding: Network security incomplete
+
+  - id: SEC-010
+
+    name: Security Boundaries
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      security.boundaries_defined: true
+
+    on_fail:
+
+      finding: Security boundaries undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: SEC-011
+
+    name: Threat Model Available
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      threat.model_defined: true
+
+    on_fail:
+
+      finding: Threat model missing
+
+  - id: SEC-012
+
+    name: Security Consistency
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      security.consistent_with_architecture: true
+
+    on_fail:
+
+      finding: Security documentation inconsistent
+
+      decision: FREEZE_REJECTED
+
+# =============================================================================
+# SECURITY PRINCIPLES
+# =============================================================================
+
+principles:
+
+  - Least Privilege
+
+  - Zero Trust
+
+  - Defense in Depth
+
+  - Secure by Default
+
+  - Fail Secure
+
+  - Explicit Authorization
+
+  - Complete Auditability
+
+  - Principle of Least Knowledge
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  produce:
+
+    - security_inventory
+
+    - authentication_report
+
+    - authorization_report
+
+    - encryption_report
+
+    - audit_report
+
+    - security_findings
+
+# =============================================================================
+# NEXT RULE
+# =============================================================================
+
+next:
+
+  on_success: RULE-0007
+
+  on_failure: STOP
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  security_architecture_exists: true
+
+  authentication_defined: true
+
+  authorization_defined: true
+
+  identity_provider_defined: true
+
+  secrets_management_defined: true
+
+  encryption_defined: true
+
+  audit_logging_defined: true
+
+  security_boundaries_defined: true
+
+  continue_pipeline: true

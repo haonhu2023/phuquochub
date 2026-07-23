@@ -1,0 +1,43 @@
+# SSOT Checklist
+
+## Documentation
+
+- [ ] Architecture loaded
+- [ ] Database loaded
+- [ ] ERD loaded
+- [ ] Data Dictionary loaded
+- [ ] OpenAPI loaded
+- [ ] RBAC loaded
+- [ ] Workflow loaded
+- [ ] Security loaded
+
+## Validation
+
+- [ ] No TODO
+- [ ] No Draft
+- [ ] No Placeholder
+- [ ] No Stub
+- [ ] No duplicated definitions
+- [ ] No conflicting definitions
+
+## ADR
+
+- [ ] Accepted ADR loaded
+- [ ] No ADR conflicts
+
+## API
+
+- [ ] OpenAPI exists
+- [ ] Endpoints documented
+
+## Database
+
+- [ ] Entity count matches
+- [ ] ERD matches
+- [ ] Data Dictionary matches
+
+## Decision
+
+- [ ] READY
+- [ ] READY WITH WARNINGS
+- [ ] BLOCKED

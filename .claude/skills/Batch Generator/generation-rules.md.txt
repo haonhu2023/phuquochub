@@ -1,0 +1,56 @@
+# Generation Rules
+
+Never
+
+Invent architecture
+
+Invent API
+
+Invent entities
+
+Invent enums
+
+Invent permissions
+
+Invent workflows
+
+Invent business logic
+
+Invent validation
+
+Invent migrations
+
+Invent RBAC
+
+Invent OpenAPI
+
+Invent naming
+
+---
+
+Always
+
+Read repository first.
+
+Reuse existing code.
+
+Follow Coding Standard.
+
+Follow OpenAPI.
+
+Follow ADR.
+
+Follow Decision Register.
+
+Generate smallest change possible.
+
+Prefer additive edits.
+
+Avoid refactor.
+
+Avoid rewrite.
+
+Avoid formatting unrelated files.
+
+Never modify generated code
+outside current batch.

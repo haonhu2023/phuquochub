@@ -1,0 +1,426 @@
+# =============================================================================
+# Architecture Validation Rules
+# =============================================================================
+#
+# Framework : Documentation Freeze
+# Rule ID   : RULE-0005
+# Category  : Architecture
+# Version   : 1.0.0
+# Status    : Approved
+#
+# =============================================================================
+
+metadata:
+
+  id: RULE-0005
+
+  name: Architecture Validation
+
+  category: Architecture
+
+  version: 1.0.0
+
+  status: Approved
+
+  owner: Architecture Governance
+
+  description: >
+    Validates the canonical software architecture and ensures
+    that implementation architecture conforms to approved
+    architectural documentation.
+
+# =============================================================================
+# EXECUTION
+# =============================================================================
+
+execution:
+
+  priority: 5
+
+  blocking: true
+
+  enabled: true
+
+  stop_pipeline_on_failure: true
+
+# =============================================================================
+# PRECONDITIONS
+# =============================================================================
+
+preconditions:
+
+  - repository_validation_completed
+
+  - scope_validation_completed
+
+  - authority_validation_completed
+
+  - ssot_validation_completed
+
+# =============================================================================
+# ARCHITECTURE DOMAINS
+# =============================================================================
+
+domains:
+
+  - System Architecture
+
+  - Domain Architecture
+
+  - Module Architecture
+
+  - Service Architecture
+
+  - Integration Architecture
+
+  - Infrastructure Architecture
+
+  - Deployment Architecture
+
+  - Security Architecture
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+
+rules:
+
+  - id: ARCH-001
+
+    name: Architecture Document Exists
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      architecture.exists: true
+
+    on_fail:
+
+      finding: Architecture document missing
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-002
+
+    name: Approved Architecture
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      architecture.status: Approved
+
+    on_fail:
+
+      finding: Architecture not approved
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-003
+
+    name: Architecture Version Current
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      architecture.current: true
+
+    on_fail:
+
+      finding: Outdated architecture
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-004
+
+    name: System Boundaries Defined
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      system.boundaries_defined: true
+
+    on_fail:
+
+      finding: System boundaries undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-005
+
+    name: Module Boundaries Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      modules.boundaries_defined: true
+
+    on_fail:
+
+      finding: Module boundaries missing
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-006
+
+    name: Layer Dependencies Valid
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      dependencies.layered: true
+
+    on_fail:
+
+      finding: Invalid layer dependency
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-007
+
+    name: Circular Dependency Detection
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      dependencies.circular: false
+
+    on_fail:
+
+      finding: Circular architecture dependency
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-008
+
+    name: Domain Ownership Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      ownership.domains_defined: true
+
+    on_fail:
+
+      finding: Domain ownership undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-009
+
+    name: Integration Contracts Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      integrations.documented: true
+
+    on_fail:
+
+      finding: Integration contracts missing
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-010
+
+    name: Technology Stack Approved
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      technology.approved: true
+
+    on_fail:
+
+      finding: Technology stack not formally approved
+
+  - id: ARCH-011
+
+    name: Deployment Model Defined
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      deployment.documented: true
+
+    on_fail:
+
+      finding: Deployment architecture undefined
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-012
+
+    name: Cross-domain Consistency
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      architecture.consistent_with_ssot: true
+
+    on_fail:
+
+      finding: Architecture conflicts with SSOT
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-013
+
+    name: Architecture Decision Records Linked
+
+    severity: High
+
+    blocking: true
+
+    condition:
+
+      adr.linked: true
+
+    on_fail:
+
+      finding: Architecture decisions not traceable
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-014
+
+    name: Architecture Drift Detection
+
+    severity: Critical
+
+    blocking: true
+
+    condition:
+
+      architecture.drift: false
+
+    on_fail:
+
+      finding: Architecture drift detected
+
+      decision: FREEZE_REJECTED
+
+  - id: ARCH-015
+
+    name: Architecture Traceability
+
+    severity: Medium
+
+    blocking: false
+
+    condition:
+
+      architecture.traceable: true
+
+    on_fail:
+
+      finding: Architecture traceability incomplete
+
+# =============================================================================
+# ARCHITECTURE PRINCIPLES
+# =============================================================================
+
+principles:
+
+  - Single Source of Truth
+
+  - Separation of Concerns
+
+  - High Cohesion
+
+  - Low Coupling
+
+  - Explicit Dependencies
+
+  - Deterministic Design
+
+  - Immutable Contracts
+
+  - Traceable Decisions
+
+# =============================================================================
+# OUTPUT
+# =============================================================================
+
+outputs:
+
+  produce:
+
+    - architecture_inventory
+
+    - architecture_graph
+
+    - dependency_graph
+
+    - domain_map
+
+    - architecture_findings
+
+    - drift_report
+
+# =============================================================================
+# NEXT RULE
+# =============================================================================
+
+next:
+
+  on_success: RULE-0006
+
+  on_failure: STOP
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success:
+
+  architecture_documented: true
+
+  boundaries_defined: true
+
+  dependencies_valid: true
+
+  circular_dependencies: false
+
+  adr_traceability: true
+
+  architecture_consistent_with_ssot: true
+
+  architecture_drift: false
+
+  continue_pipeline: true

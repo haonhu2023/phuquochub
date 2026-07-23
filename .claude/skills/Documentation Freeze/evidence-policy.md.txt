@@ -1,0 +1,51 @@
+# Evidence Policy
+
+Every finding must contain evidence.
+
+Evidence format
+
+File
+
+Section
+
+Line
+
+Example
+
+docs/data/database.md
+
+Section 3.5
+
+Lines 140-182
+
+Never say
+
+"It looks wrong."
+
+Instead
+
+Report
+
+Database.md section 3.5 defines
+media ownership as polymorphic,
+while ADR-009 defines exclusive arc.
+
+Evidence
+
+database.md 3.5
+
+ADR-009 section 4.
+
+--------------------------------------------------
+
+If no evidence exists
+
+write
+
+Not Found
+
+Never guess.
+
+Never infer.
+
+Never estimate.

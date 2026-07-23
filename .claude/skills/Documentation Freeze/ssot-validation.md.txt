@@ -1,0 +1,2247 @@
+# SSOT Validation Policy
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT governance, architecture governance, pre-code-generation readiness
+
+---
+
+## 1. Purpose
+
+This document defines the official Single Source of Truth validation policy for
+the Documentation Freeze skill.
+
+Its purpose is to determine whether every implementation-significant domain in
+the repository has exactly one authoritative source and whether all supporting,
+derived, historical, and implementation artifacts remain subordinate to that
+authority.
+
+The policy prevents:
+
+- competing authoritative documents;
+- hidden authority;
+- authority ambiguity;
+- authority drift;
+- implementation becoming the source of truth;
+- Draft documents being used as approved contracts;
+- Superseded decisions being treated as active;
+- generated artifacts redefining contracts;
+- duplicated definitions with incompatible meanings;
+- undocumented authority changes;
+- code-generation agents choosing between conflicting sources.
+
+A documentation set cannot be frozen until the authority model is explicit,
+complete, consistent, and evidence-based.
+
+---
+
+## 2. Core Principle
+
+For every implementation-significant domain, there must be exactly one
+authoritative source.
+
+Supporting documents may explain the authority.
+
+Derived documents may reproduce the authority.
+
+Historical documents may preserve prior states.
+
+Implementation may realize the authority.
+
+None of these may replace, redefine, or override the authoritative source.
+
+The required model is:
+
+```text
+One Domain
+↓
+One Authoritative Source
+↓
+Zero Competing Authorities
+↓
+Explicit Supporting Relationships
+↓
+Deterministic Implementation
+```
+
+---
+
+## 3. Primary Objective
+
+The SSOT validation phase must answer:
+
+> Can every architecture, database, API, RBAC, workflow, security, naming,
+> migration, and implementation decision be traced to exactly one current,
+> approved, authoritative source?
+
+If the answer is no, the documentation is not ready to freeze.
+
+---
+
+## 4. Execution Mode
+
+SSOT validation is strictly read-only.
+
+Claude Code may:
+
+- inspect documentation;
+- inspect indexes;
+- inspect metadata;
+- inspect ADRs;
+- inspect the Decision Register;
+- inspect diagrams;
+- inspect OpenAPI;
+- inspect repository paths;
+- inspect source code as supporting evidence;
+- identify authority candidates;
+- construct authority maps;
+- classify documents;
+- detect conflicts;
+- generate findings;
+- generate an SSOT matrix;
+- issue a phase decision.
+
+Claude Code must not:
+
+- assign authority without evidence;
+- create authority metadata;
+- promote a Draft document;
+- resolve conflicts by preference;
+- rewrite lower-authority documents;
+- create ADRs;
+- update the Decision Register;
+- modify OpenAPI;
+- modify database documentation;
+- choose a design;
+- infer an undocumented hierarchy;
+- treat implementation as authority by default.
+
+---
+
+## 5. SSOT Definition
+
+A Single Source of Truth is the unique, current, approved, and authoritative
+artifact that defines a subject for a specific scope and version.
+
+A valid SSOT source must be:
+
+- identifiable;
+- current;
+- approved;
+- versioned where governance requires;
+- scoped;
+- owned;
+- internally complete;
+- consistent with higher-level authority;
+- referenced by dependent artifacts;
+- free from unresolved conflict;
+- sufficient for deterministic implementation.
+
+A source is not authoritative merely because:
+
+- it is the longest document;
+- it has the newest modification date;
+- it appears in the repository root;
+- it has the most implementation detail;
+- it matches the current code;
+- it is named `final`;
+- it is generated automatically;
+- it was discussed most recently in chat;
+- it is cited by many other documents;
+- it is easier to implement.
+
+---
+
+## 6. Authority Classes
+
+Every documentation artifact must be classified into exactly one authority
+class for each domain it affects.
+
+Allowed authority classes are:
+
+- `AUTHORITATIVE`
+- `SUPPORTING`
+- `DERIVED`
+- `HISTORICAL`
+- `DRAFT`
+- `DEPRECATED`
+- `ARCHIVED`
+- `IMPLEMENTATION EVIDENCE`
+- `UNKNOWN`
+- `CONFLICTING AUTHORITY`
+
+A document may be authoritative for one domain and supporting for another.
+
+Example:
+
+```text
+openapi.yaml
+```
+
+may be:
+
+- authoritative for public API contracts;
+- supporting for workflows;
+- derived evidence for generated SDKs.
+
+Authority must be evaluated per domain, not only per document.
+
+---
+
+## 7. Authoritative Source
+
+An authoritative source is the approved artifact that defines the binding
+contract for a domain.
+
+Examples may include:
+
+- Architecture document for system boundaries;
+- Accepted ADR for a specific architectural decision;
+- Decision Register for the active decision state;
+- Database specification for schema contracts;
+- canonical ERD for relationship visualization;
+- Data Dictionary for field definitions;
+- OpenAPI for public API contracts;
+- RBAC specification for roles and permissions;
+- Workflow specification for states and transitions;
+- Coding Standard for naming and implementation conventions;
+- Migration Policy for migration behavior;
+- Security Policy for security controls.
+
+An authoritative source must not defer its core contract to a supporting source
+without an explicit authority relationship.
+
+---
+
+## 8. Supporting Source
+
+A supporting source:
+
+- explains;
+- illustrates;
+- summarizes;
+- provides examples;
+- provides rationale;
+- provides usage guidance;
+- provides implementation notes;
+- links to the authority.
+
+A supporting source must not:
+
+- redefine contract values;
+- introduce alternative rules;
+- expand scope without approval;
+- contradict the authority;
+- silently supersede the authority.
+
+Examples:
+
+- module README summarizing architecture;
+- API usage guide supporting OpenAPI;
+- example payload supporting a schema;
+- architecture diagram supporting textual architecture;
+- tutorial supporting coding standards.
+
+A supporting source may contain more explanation but not competing truth.
+
+---
+
+## 9. Derived Source
+
+A derived source is generated from another source.
+
+Examples:
+
+- generated Swagger UI;
+- generated SDK;
+- generated API client;
+- generated ORM docs;
+- generated ERD;
+- generated TypeScript types;
+- generated schema reference;
+- generated HTML documentation.
+
+A derived source inherits authority from its source.
+
+It does not gain independent authority.
+
+The validation must record:
+
+```text
+Derived Artifact:
+Source Artifact:
+Generation Method:
+Version:
+Synchronization Status:
+```
+
+If a derived source differs from its authority, classify the difference as:
+
+`DERIVED ARTIFACT DRIFT`
+
+---
+
+## 10. Historical Source
+
+A historical source preserves previous decisions, versions, incidents, designs,
+or releases.
+
+Examples:
+
+- Superseded ADR;
+- archived architecture;
+- previous OpenAPI version;
+- old migration design;
+- postmortem;
+- prior freeze certificate;
+- historical roadmap.
+
+Historical sources are valid evidence of history.
+
+They must not be used as current implementation authority.
+
+A historical source must clearly indicate:
+
+- historical status;
+- applicable version;
+- replacement;
+- archive date;
+- supersession relationship where relevant.
+
+---
+
+## 11. Draft Source
+
+A Draft source is not approved for implementation.
+
+Indicators include:
+
+- Draft status;
+- Proposed status;
+- WIP;
+- pending approval;
+- unresolved alternatives;
+- missing decision;
+- incomplete contract;
+- open questions;
+- provisional wording.
+
+A Draft may support discussion.
+
+It cannot satisfy a freeze gate as authority.
+
+Any current authoritative document depending on a Draft target for required
+behavior creates a blocker.
+
+---
+
+## 12. Deprecated Source
+
+A Deprecated source is still temporarily recognized but scheduled for removal
+or replacement.
+
+A Deprecated source must define:
+
+- deprecation date;
+- replacement;
+- migration path;
+- support window;
+- removal trigger;
+- affected scope.
+
+A Deprecated source may remain authoritative for a legacy version.
+
+It must not be treated as authority for a new frozen scope unless governance
+explicitly allows it.
+
+---
+
+## 13. Archived Source
+
+An Archived source is no longer active.
+
+It may be retained for audit, history, or legal purposes.
+
+An Archived source cannot govern current implementation.
+
+A current document referencing an Archived source must clarify whether the
+reference is historical.
+
+---
+
+## 14. Implementation Evidence
+
+Repository code, migrations, tests, runtime configuration, and deployed behavior
+may serve as implementation evidence.
+
+They can prove:
+
+- what is currently implemented;
+- whether drift exists;
+- whether documentation was followed;
+- whether a constraint exists;
+- whether a route exists;
+- whether a test was executed.
+
+They do not automatically define what should be true.
+
+Implementation evidence must not override approved documentation.
+
+When implementation differs from authority, report:
+
+`IMPLEMENTATION DRIFT`
+
+---
+
+## 15. Unknown Authority
+
+Use `UNKNOWN` when:
+
+- no authority claim is present;
+- governance does not identify the source;
+- index relationships are missing;
+- document status is unclear;
+- multiple candidates exist without priority;
+- scope is unclear;
+- version is unclear.
+
+An `UNKNOWN` authority for an implementation-significant domain blocks freeze
+until resolved.
+
+---
+
+## 16. Conflicting Authority
+
+Use `CONFLICTING AUTHORITY` when two or more sources:
+
+- apply to the same domain;
+- apply to the same scope;
+- apply to the same version;
+- claim equal authority;
+- define incompatible contracts;
+- are not clearly superseded;
+- cannot be ordered by approved governance.
+
+Conflicting authority is normally Critical and freeze-blocking.
+
+---
+
+## 17. Domain-Based Authority
+
+Authority must be established per domain.
+
+Mandatory domains may include:
+
+- System Architecture
+- Technology Stack
+- Architectural Style
+- Module Boundaries
+- Dependency Direction
+- Repository Structure
+- Database Schema
+- Entity Catalog
+- Entity Count
+- ERD
+- Data Dictionary
+- Enum Catalog
+- Discriminator Definitions
+- Migration Strategy
+- Public API
+- Internal API
+- Authentication
+- Authorization
+- Role Catalog
+- Permission Catalog
+- Permission Matrix
+- Workflow
+- Security Controls
+- Audit Logging
+- Naming
+- Coding Standards
+- Search
+- Geo
+- SEO
+- AI
+- Analytics
+- Media
+- Verification
+- Revision
+- Deployment
+- Monitoring
+- Backup
+- Restore
+- Incident Response
+- Testing
+- Release
+- Glossary
+
+Only domains relevant to the approved scope are mandatory.
+
+---
+
+## 18. Authority Evidence Sources
+
+Authority may be established using:
+
+- SSOT index;
+- documentation hierarchy;
+- authority policy;
+- parent README;
+- document metadata;
+- explicit “authoritative source” statement;
+- Accepted ADR;
+- Decision Register;
+- freeze certificate;
+- governance policy;
+- repository documentation convention;
+- approved document status;
+- approved scope document.
+
+No single signal is always sufficient.
+
+Authority must be supported by a coherent evidence chain.
+
+---
+
+## 19. Authority Evidence Chain
+
+For every domain, build an evidence chain:
+
+```text
+Domain
+↓
+Governance Rule
+↓
+Authority Candidate
+↓
+Status
+↓
+Version
+↓
+Owner
+↓
+Supporting Sources
+↓
+Dependent Artifacts
+↓
+Conflict Check
+↓
+Final Authority Status
+```
+
+Example:
+
+```text
+Domain: Public API
+Governance Rule: API governance declares OpenAPI authoritative
+Candidate: docs/api/openapi.yaml
+Status: Approved
+Version: 1.0.0
+Supporting: docs/api/api-guidelines.md
+Dependent: frontend client, tests
+Conflict: none
+Result: VALID SSOT
+```
+
+---
+
+## 20. Authority Priority
+
+Use the repository-approved authority hierarchy.
+
+Where the repository follows the PhuQuocHub default hierarchy, use:
+
+```text
+Architecture
+↓
+Accepted ADR
+↓
+Decision Register
+↓
+Domain Specification
+↓
+OpenAPI / Database / Workflow / RBAC Contract
+↓
+Coding and Repository Standards
+↓
+Sprint and Batch Documents
+↓
+Implementation
+↓
+Generated Artifacts
+↓
+Comments and Notes
+```
+
+This hierarchy does not mean Architecture defines every field or endpoint.
+
+Higher-level sources define boundaries and decisions.
+
+Domain sources define exact contracts within those boundaries.
+
+A higher-level source cannot be used to invent lower-level detail.
+
+---
+
+## 21. Authority Is Not Global Priority Alone
+
+Authority must consider subject ownership.
+
+Example:
+
+- Architecture is higher-level than OpenAPI;
+- OpenAPI is more specific and authoritative for exact public endpoint schemas;
+- Architecture may constrain API design;
+- Architecture should not redefine every request property.
+
+A conflict exists when OpenAPI violates Architecture.
+
+A detail difference is valid when OpenAPI adds compatible contract detail.
+
+---
+
+## 22. Authority Scope
+
+Every authority declaration must include scope.
+
+Possible scopes:
+
+- entire platform;
+- application;
+- module;
+- domain;
+- release;
+- API version;
+- database version;
+- Sprint;
+- Batch;
+- feature;
+- environment;
+- historical version.
+
+A source cannot override another source outside its approved scope.
+
+Example:
+
+```text
+Sprint 3 document
+```
+
+cannot redefine the global media architecture.
+
+It may define the implementation subset scheduled for Sprint 3.
+
+---
+
+## 23. Authority Version
+
+Authority must be evaluated for a specific version.
+
+Record:
+
+- document version;
+- API version;
+- architecture version;
+- ADR state;
+- database version;
+- freeze baseline;
+- release version.
+
+Two documents may be valid authorities for different versions.
+
+This is not a conflict when version boundaries are explicit.
+
+It becomes a conflict when both are presented as current for the same version.
+
+---
+
+## 24. Authority Lifecycle
+
+The lifecycle is:
+
+```text
+Draft
+↓
+Review
+↓
+Approved
+↓
+Frozen
+↓
+Implemented
+↓
+Validated
+↓
+Superseded
+↓
+Archived
+```
+
+Only approved or frozen sources may govern implementation.
+
+Accepted ADRs are active decisions.
+
+Proposed ADRs are not implementation authority.
+
+Superseded documents remain historical.
+
+---
+
+## 25. Authority Ownership
+
+Every authoritative domain should have one owner.
+
+Examples:
+
+- Architecture → Chief Software Architect
+- Database → Data Architect
+- OpenAPI → API Architect
+- Workflow → Business Architect
+- RBAC → Security Architect
+- Repository Standard → Technical Lead
+- Sprint → Project Manager
+- Release → Release Manager
+
+Missing ownership is blocking when it prevents authority governance or change
+approval.
+
+---
+
+## 26. Authority Discovery Workflow
+
+Execute in the following order.
+
+### Step 1 — Identify the domain
+
+Define the exact subject.
+
+Avoid vague subjects such as “backend.”
+
+Use subjects such as:
+
+- media ownership model;
+- Place status enum;
+- public API base path;
+- role assignment permission;
+- account verification workflow.
+
+### Step 2 — Identify candidates
+
+Search:
+
+- indexes;
+- architecture;
+- ADRs;
+- Decision Register;
+- domain specifications;
+- module documentation;
+- OpenAPI;
+- Data Dictionary;
+- workflow;
+- RBAC;
+- repository standards.
+
+### Step 3 — Record authority claims
+
+For each candidate, capture:
+
+- explicit claim;
+- status;
+- version;
+- owner;
+- scope;
+- dependencies;
+- references.
+
+### Step 4 — Apply governance hierarchy
+
+Determine whether one source is clearly higher or more specific within the
+approved hierarchy.
+
+### Step 5 — Check completeness
+
+An authority candidate cannot serve as valid SSOT if it is incomplete for its
+domain.
+
+### Step 6 — Check consistency
+
+Compare with higher-level and related sources.
+
+### Step 7 — Check lifecycle
+
+Exclude Draft, Rejected, Superseded, Deprecated, or Archived candidates where
+they are not current.
+
+### Step 8 — Check uniqueness
+
+Determine whether exactly one active authority remains.
+
+### Step 9 — Record supporting relationships
+
+Identify subordinate supporting and derived sources.
+
+### Step 10 — Issue domain result
+
+Use the approved domain result model.
+
+---
+
+## 27. Domain Authority Result
+
+Every domain must receive exactly one result:
+
+- `VALID SSOT`
+- `VALID SSOT WITH NON-BLOCKING GAPS`
+- `MISSING AUTHORITY`
+- `AMBIGUOUS AUTHORITY`
+- `CONFLICTING AUTHORITY`
+- `INCOMPLETE AUTHORITY`
+- `STALE AUTHORITY`
+- `DRAFT AUTHORITY`
+- `SUPERSEDED AUTHORITY`
+- `OUT OF SCOPE`
+- `NOT VERIFIED`
+
+### VALID SSOT
+
+One complete, approved, current authority exists.
+
+### VALID SSOT WITH NON-BLOCKING GAPS
+
+Authority is clear and complete, but minor governance metadata or supporting
+synchronization gaps remain.
+
+### MISSING AUTHORITY
+
+No source governs the domain.
+
+### AMBIGUOUS AUTHORITY
+
+Multiple candidates exist, but their authority relationship is unclear.
+
+### CONFLICTING AUTHORITY
+
+Multiple equal authorities define incompatible rules.
+
+### INCOMPLETE AUTHORITY
+
+The authority is identified but does not define enough information.
+
+### STALE AUTHORITY
+
+The declared authority is outdated relative to approved decisions.
+
+### DRAFT AUTHORITY
+
+The only candidate is Draft or Proposed.
+
+### SUPERSEDED AUTHORITY
+
+The source is no longer active.
+
+### NOT VERIFIED
+
+Evidence is insufficient.
+
+---
+
+## 28. Architecture Authority Validation
+
+Validate authority for:
+
+- system context;
+- architectural style;
+- application boundaries;
+- module boundaries;
+- dependency direction;
+- technology stack;
+- infrastructure pattern;
+- cross-cutting concerns.
+
+Check:
+
+- architecture document exists;
+- status is approved;
+- version is known;
+- Accepted ADRs align;
+- no competing architecture exists;
+- README does not redefine architecture;
+- implementation is not treated as authority.
+
+---
+
+## 29. ADR Authority Validation
+
+An ADR is authoritative only for the decision it records.
+
+Validate:
+
+- status is Accepted;
+- Decision Register confirms active status;
+- decision scope is clear;
+- supersession state is clear;
+- no conflicting Accepted ADR exists;
+- implementation implications are identifiable.
+
+An ADR does not replace full domain specifications when more detail is required.
+
+Example:
+
+ADR chooses exclusive FK arc.
+
+Database specification must define exact columns and constraints.
+
+---
+
+## 30. Decision Register Authority Validation
+
+The Decision Register is authoritative for:
+
+- active decision status;
+- decision index;
+- supersession state;
+- implementation status where defined.
+
+It does not replace the full ADR context.
+
+Validate:
+
+- every active ADR appears;
+- every entry resolves;
+- statuses match;
+- duplicate decision IDs do not exist;
+- active decision set is unambiguous.
+
+---
+
+## 31. Database Authority Validation
+
+Determine the authoritative source for:
+
+- schema;
+- tables;
+- columns;
+- types;
+- keys;
+- constraints;
+- indexes;
+- relationships;
+- migration expectations.
+
+Possible source split:
+
+```text
+Database Specification → schema contract
+ERD → relationship visualization
+Data Dictionary → field-level definition
+Migration Policy → migration behavior
+```
+
+This split is valid when responsibilities are explicit and compatible.
+
+It is invalid when multiple sources redefine the same contract differently.
+
+---
+
+## 32. ERD Authority Validation
+
+The ERD may be:
+
+- authoritative for relationships and cardinality;
+- supporting visualization;
+- derived from migrations.
+
+Record its role explicitly.
+
+If the database specification and ERD disagree, authority alone does not remove
+the defect.
+
+The lower-authority artifact must still be synchronized.
+
+---
+
+## 33. Data Dictionary Authority Validation
+
+Determine whether the Data Dictionary is authoritative for:
+
+- field names;
+- types;
+- descriptions;
+- nullability;
+- defaults;
+- sensitivity;
+- constraints.
+
+If the Database Specification claims authority for the same details, verify
+that the responsibility split is clear.
+
+A duplicated field contract with inconsistent values is an authority conflict
+or documentation drift.
+
+---
+
+## 34. Entity Catalog Authority Validation
+
+Determine the source of truth for:
+
+- entity names;
+- entity count;
+- domain ownership;
+- aggregate ownership;
+- table mapping;
+- lifecycle;
+- relationships.
+
+A list in an architecture document may be high-level.
+
+The entity catalog may be authoritative for exact count.
+
+The counting rule must be explicit.
+
+---
+
+## 35. Enum Authority Validation
+
+Every implementation-significant enum must have one canonical definition.
+
+Validate:
+
+- enum name;
+- exact values;
+- casing;
+- default;
+- storage representation;
+- API representation;
+- transition rules.
+
+Do not accept duplicated enum lists across documents as equal authority unless
+governance defines one as canonical and the others as derived.
+
+---
+
+## 36. Discriminator Authority Validation
+
+For every polymorphic or variant model, establish authority for:
+
+- discriminator field;
+- allowed values;
+- casing;
+- mapping;
+- persistence representation;
+- API representation;
+- validation behavior.
+
+Unclear discriminator authority is normally High and blocking.
+
+---
+
+## 37. OpenAPI Authority Validation
+
+When the project is contract-first, OpenAPI is authoritative for:
+
+- public paths;
+- HTTP methods;
+- parameters;
+- request schemas;
+- response schemas;
+- status codes;
+- security schemes;
+- operation security;
+- public field casing;
+- error schemas.
+
+Narrative API documentation must remain supporting.
+
+Generated Swagger UI is derived.
+
+Controller code is implementation evidence.
+
+---
+
+## 38. Internal API Authority Validation
+
+Internal APIs may use:
+
+- OpenAPI;
+- typed interfaces;
+- event contracts;
+- message schemas;
+- service interfaces.
+
+The repository must define one authority model.
+
+Do not assume public OpenAPI governs internal contracts unless documented.
+
+---
+
+## 39. Authentication Authority Validation
+
+Establish one authority for:
+
+- authentication mechanism;
+- token type;
+- token location;
+- refresh behavior;
+- session behavior;
+- verification flow;
+- expiration;
+- revocation;
+- password policy;
+- provider integration.
+
+Conflicting auth sources are Critical.
+
+---
+
+## 40. Authorization and RBAC Authority Validation
+
+Establish authority for:
+
+- roles;
+- permissions;
+- permission naming;
+- scopes;
+- inheritance;
+- wildcard behavior;
+- deny behavior;
+- default behavior;
+- enforcement;
+- role assignment;
+- revocation.
+
+The role list and permission matrix may be separate authorities for different
+subdomains.
+
+Their relationship must be explicit.
+
+---
+
+## 41. Workflow Authority Validation
+
+Each workflow must have one canonical source.
+
+The authoritative workflow must define:
+
+- actors;
+- states;
+- transitions;
+- guards;
+- side effects;
+- terminal states;
+- errors;
+- audit events.
+
+API documentation may expose workflow actions.
+
+It must not redefine transition rules.
+
+---
+
+## 42. Security Authority Validation
+
+Establish authority for:
+
+- authentication controls;
+- authorization controls;
+- encryption;
+- secrets;
+- audit logging;
+- rate limiting;
+- sensitive data;
+- security headers;
+- incident response;
+- dependency security.
+
+External standards such as OWASP may support requirements.
+
+They do not replace internal actionable controls.
+
+---
+
+## 43. Naming Authority Validation
+
+Establish authority for:
+
+- folders;
+- files;
+- classes;
+- interfaces;
+- methods;
+- variables;
+- DTOs;
+- entities;
+- database tables;
+- columns;
+- API paths;
+- environment variables;
+- permissions;
+- workflows.
+
+The glossary may govern terminology.
+
+The Coding Standard may govern casing and suffixes.
+
+The authority split must be clear.
+
+---
+
+## 44. Repository Structure Authority Validation
+
+Establish authority for:
+
+- top-level directories;
+- application locations;
+- package locations;
+- module layout;
+- shared code;
+- generated code;
+- tests;
+- imports;
+- dependency boundaries.
+
+The actual repository is not authority by default.
+
+It may reveal implementation drift.
+
+---
+
+## 45. Migration Authority Validation
+
+Establish authority for:
+
+- migration tool;
+- naming;
+- ordering;
+- forward execution;
+- rollback;
+- transaction behavior;
+- destructive changes;
+- backfills;
+- seed data;
+- production execution.
+
+A Batch instruction must not redefine migration policy.
+
+---
+
+## 46. Testing Authority Validation
+
+Establish authority for:
+
+- test levels;
+- coverage;
+- migration tests;
+- repository tests;
+- E2E tests;
+- security tests;
+- performance tests;
+- acceptance criteria;
+- CI gates.
+
+Sprint documents may specify scope-specific tests.
+
+They must remain compatible with the global strategy.
+
+---
+
+## 47. Deployment Authority Validation
+
+Establish authority for:
+
+- environments;
+- promotion;
+- configuration;
+- secrets;
+- artifacts;
+- migration timing;
+- health checks;
+- rollback;
+- monitoring;
+- release approval.
+
+Operational runbooks support deployment policy.
+
+They must not redefine governance.
+
+---
+
+## 48. Search and Geo Authority Validation
+
+Establish authority for:
+
+- searchable entities;
+- searchable fields;
+- ranking;
+- weights;
+- geo radius;
+- coordinate system;
+- spatial types;
+- filters;
+- sorting;
+- pagination;
+- fallback behavior.
+
+Database and search documents may split responsibility.
+
+The split must be explicit.
+
+---
+
+## 49. SEO Authority Validation
+
+Establish authority for:
+
+- canonical URLs;
+- slugs;
+- metadata;
+- structured data;
+- sitemap;
+- robots;
+- redirects;
+- indexing rules;
+- duplicate-content handling.
+
+Frontend implementation is not authority.
+
+---
+
+## 50. AI Authority Validation
+
+Establish authority for:
+
+- approved AI use cases;
+- prohibited use cases;
+- input data;
+- output schema;
+- confidence;
+- human review;
+- model versioning;
+- provenance;
+- logging;
+- cost limits;
+- fallback behavior.
+
+Prompt files may be implementation artifacts unless governance declares them
+authoritative for prompt behavior.
+
+---
+
+## 51. Roadmap Authority Validation
+
+The roadmap is authoritative for sequencing and milestone intent.
+
+It is not authoritative for detailed architecture unless explicitly defined.
+
+Validate:
+
+- milestone scope;
+- phase ordering;
+- dependencies;
+- release targets;
+- deferrals;
+- compatibility with architecture.
+
+---
+
+## 52. Sprint Authority Validation
+
+Sprint documentation is authoritative for:
+
+- Sprint scope;
+- Sprint goals;
+- deliverables;
+- acceptance criteria;
+- scheduled deferrals.
+
+It cannot override global architecture, ADRs, database, or OpenAPI contracts.
+
+---
+
+## 53. Batch Authority Validation
+
+Batch documentation is authoritative for the execution scope of the Batch.
+
+It must remain subordinate to:
+
+- Sprint scope;
+- freeze baseline;
+- architecture;
+- domain specifications;
+- coding standards.
+
+A Batch cannot create new architecture authority.
+
+---
+
+## 54. README Authority Validation
+
+README files are normally supporting navigation and onboarding artifacts.
+
+A README may be authoritative only when governance explicitly says so.
+
+Common defect:
+
+- README describes old architecture;
+- authoritative architecture changed;
+- README remains presented as current.
+
+Classify as documentation drift, not authority change.
+
+---
+
+## 55. Glossary Authority Validation
+
+The glossary may be authoritative for terminology.
+
+It must define:
+
+- canonical terms;
+- prohibited synonyms;
+- abbreviations;
+- domain meanings.
+
+The glossary must not redefine data or API contracts.
+
+---
+
+## 56. Diagram Authority Validation
+
+Diagrams may be:
+
+- authoritative;
+- supporting;
+- derived.
+
+Determine the role from metadata and governance.
+
+A diagram that is the only definition of critical behavior must be readable,
+versioned, and complete.
+
+If a canonical diagram is unavailable or ambiguous, report a blocker.
+
+---
+
+## 57. Competing Authority Detection
+
+Search for competing authority using:
+
+- repeated “source of truth” claims;
+- repeated “canonical” claims;
+- duplicate specifications;
+- multiple current versions;
+- module docs redefining global contracts;
+- API narrative redefining OpenAPI;
+- database docs and Data Dictionary both defining types differently;
+- Accepted ADRs with conflicting decisions;
+- multiple RBAC matrices;
+- duplicated workflow definitions.
+
+For each candidate conflict, compare:
+
+- subject;
+- scope;
+- version;
+- status;
+- owner;
+- authority claim;
+- content;
+- supersession.
+
+---
+
+## 58. Ambiguous Authority Detection
+
+Authority is ambiguous when:
+
+- several sources exist;
+- they do not directly contradict;
+- governance does not identify which is canonical;
+- future changes could diverge;
+- implementation agents cannot know which to update.
+
+Ambiguous authority may block freeze even without current contradiction.
+
+Example:
+
+Two identical enum lists exist in separate authoritative-looking documents.
+
+The values currently match.
+
+No source is designated canonical.
+
+This is an authority ambiguity.
+
+---
+
+## 59. Hidden Authority Detection
+
+Hidden authority exists when a document or file governs implementation but is
+not indexed or declared.
+
+Examples:
+
+- private spreadsheet defines permissions;
+- source-code enum is treated as canonical;
+- migration comments define fields absent from docs;
+- Slack transcript or chat history defines workflow;
+- module README contains unique database rules;
+- test fixtures define accepted API values.
+
+Hidden authority is prohibited.
+
+Required implementation truth must move into approved documentation through
+change control.
+
+The auditor must report the gap, not perform the move.
+
+---
+
+## 60. Authority Drift
+
+Authority drift occurs when the authority model changes without formal
+governance.
+
+Examples:
+
+- OpenAPI stops being contract authority and controllers become de facto source;
+- new database tables are documented only in migrations;
+- a Draft module document is used to drive implementation;
+- a generated schema becomes manually edited;
+- Decision Register no longer tracks active ADRs;
+- examples become more current than the specification.
+
+Authority drift is normally High or Critical.
+
+---
+
+## 61. Authority Inheritance
+
+A child artifact may inherit constraints from a parent authority.
+
+Example:
+
+```text
+Architecture
+→ module boundary
+→ module specification
+→ OpenAPI
+→ implementation
+```
+
+Inheritance means the child must comply.
+
+It does not mean the child may leave its own required contract undefined.
+
+Example:
+
+Architecture may require RBAC.
+
+The RBAC specification must still define exact roles and permissions.
+
+---
+
+## 62. Authority Delegation
+
+A higher-level document may delegate exact detail.
+
+Example:
+
+```text
+Architecture delegates public API contracts to OpenAPI.
+```
+
+Valid delegation must define:
+
+- delegated domain;
+- target artifact;
+- scope;
+- version;
+- ownership;
+- constraints.
+
+Undefined delegation creates authority ambiguity.
+
+---
+
+## 63. Authority Override
+
+An authority may be overridden only through approved governance.
+
+Typical process:
+
+```text
+Change Request
+↓
+Impact Analysis
+↓
+ADR
+↓
+Decision Register Update
+↓
+Authoritative Document Update
+↓
+Synchronization
+↓
+Revalidation
+↓
+Re-freeze
+```
+
+Lower-level sources cannot override higher-level authority through
+implementation alone.
+
+---
+
+## 64. Supersession Rules
+
+When authority changes:
+
+- old source remains historical;
+- replacement is identified;
+- effective version is recorded;
+- supporting sources are synchronized;
+- freeze baseline is invalidated;
+- re-freeze is required.
+
+Never overwrite architectural history silently.
+
+---
+
+## 65. Partial Freeze Authority
+
+A partial freeze must establish authority for:
+
+- included scope;
+- external dependencies;
+- shared contracts;
+- excluded domains;
+- version boundary.
+
+An in-scope source depending on unresolved out-of-scope authority prevents
+partial freeze.
+
+Example:
+
+Places persistence cannot be frozen if media ownership is external and
+undefined but required by the Place schema.
+
+---
+
+## 66. Authority and Completeness
+
+Authority and completeness are independent.
+
+Possible states:
+
+| Authority | Completeness | Result |
+|---|---|---|
+| Clear | Complete | Valid SSOT |
+| Clear | Incomplete | Incomplete Authority |
+| Ambiguous | Complete | Ambiguous Authority |
+| Conflicting | Complete | Conflicting Authority |
+| Missing | N/A | Missing Authority |
+| Draft | Complete | Draft Authority |
+| Superseded | Complete | Superseded Authority |
+
+Freeze requires both clear authority and contractual completeness.
+
+---
+
+## 67. Authority and Consistency
+
+A clear authority does not make contradictory supporting documents acceptable.
+
+The authority determines the correction target.
+
+Example:
+
+- OpenAPI is authoritative;
+- README differs;
+- result is documentation drift in README.
+
+The freeze may still be blocked if the stale supporting document is presented as
+current and creates implementation ambiguity.
+
+---
+
+## 68. Authority and Evidence
+
+Every authority conclusion must cite:
+
+- source path;
+- document status;
+- version;
+- owner;
+- authority statement;
+- governance reference;
+- scope;
+- related ADR or decision;
+- competing candidates;
+- supporting sources.
+
+Do not state:
+
+```text
+OpenAPI is authoritative.
+```
+
+without repository evidence.
+
+---
+
+## 69. Authority Score
+
+An SSOT score may be calculated from 0 to 100.
+
+Recommended model:
+
+| Dimension | Weight |
+|---|---:|
+| Domain coverage | 20 |
+| Authority uniqueness | 20 |
+| Authority completeness | 15 |
+| Lifecycle validity | 10 |
+| Version clarity | 10 |
+| Ownership clarity | 5 |
+| Supporting-source alignment | 10 |
+| Traceability | 10 |
+| **Total** | **100** |
+
+Interpretation:
+
+- 95–100: Strong SSOT
+- 85–94: Valid with minor gaps
+- 70–84: Authority weaknesses
+- 50–69: Major authority gaps
+- 0–49: Invalid SSOT
+
+The score is informative.
+
+Any blocking conflict overrides the score.
+
+---
+
+## 70. SSOT Validation Matrix
+
+Use:
+
+| Domain | Authoritative Source | Status | Version | Owner | Supporting Sources | Conflicts | Result |
+|---|---|---|---|---|---|---|---|
+
+---
+
+## 71. Authority Candidate Matrix
+
+Use:
+
+| Domain | Candidate | Claim | Lifecycle | Scope | Completeness | Priority | Final Classification |
+|---|---|---|---|---|---|---|---|
+
+---
+
+## 72. Competing Authority Matrix
+
+Use:
+
+| ID | Domain | Source A | Source B | Scope | Version | Conflict | Severity | Blocking |
+|---|---|---|---|---|---|---|---|---:|
+
+---
+
+## 73. Missing Authority Matrix
+
+Use:
+
+| Domain | Why Required | Candidates Checked | Missing Contract | Impact | Severity | Blocking |
+|---|---|---|---|---|---|---:|
+
+---
+
+## 74. Authority Finding Format
+
+Every finding must contain:
+
+```text
+ID:
+Domain:
+Subject:
+Authority Candidate:
+Other Candidates:
+Declared Status:
+Version:
+Scope:
+Owner:
+Authority Evidence:
+Conflict:
+Completeness:
+Implementation Impact:
+Severity:
+Blocking:
+Required Fix:
+```
+
+Do not provide a design solution unless already established by authority.
+
+---
+
+## 75. Required Fix Guidance
+
+### Good
+
+```text
+Designate one approved source as authoritative for the Place status enum and
+synchronize all supporting sources through change control.
+```
+
+### Bad
+
+```text
+Use the enum from database.md.
+```
+
+The second statement assumes authority unless evidence proves it.
+
+### Good
+
+```text
+Update the Decision Register so the active status of ADR-009 matches the ADR.
+```
+
+### Bad
+
+```text
+Mark ADR-009 Accepted.
+```
+
+The second statement changes governance rather than reporting the required
+alignment.
+
+---
+
+## 76. Severity Model
+
+### Critical
+
+Use when the SSOT is fundamentally invalid.
+
+Examples:
+
+- two competing architectures;
+- conflicting Accepted ADRs;
+- competing canonical database schemas;
+- two current RBAC authorities;
+- architecture and Decision Register define incompatible active decisions.
+
+### High
+
+Use when deterministic implementation is blocked.
+
+Examples:
+
+- no canonical enum source;
+- OpenAPI authority unclear;
+- entity count authority missing;
+- workflow authority Draft;
+- active source references Superseded decision.
+
+### Medium
+
+Use when authority is valid but supporting governance is weak.
+
+Examples:
+
+- missing owner;
+- missing version;
+- unindexed supporting file;
+- stale README.
+
+### Low
+
+Use for minor metadata or navigation issues.
+
+### Informational
+
+Use for observations with no contract impact.
+
+---
+
+## 77. Blocking Rules
+
+An SSOT finding blocks freeze when:
+
+- no authority exists for a required domain;
+- multiple authorities conflict;
+- authority is Draft;
+- authority is Superseded;
+- authority is incomplete;
+- authority version is unknown and required for baseline;
+- authority scope is unclear;
+- implementation must choose between candidates;
+- authority relies on inaccessible external content;
+- hidden authority governs code;
+- Decision Register cannot identify active decisions;
+- a partial-freeze dependency lacks authority.
+
+---
+
+## 78. Non-Blocking Gaps
+
+Examples:
+
+- authority owner missing but approval and version are clear;
+- supporting README is stale but cannot be mistaken for authority;
+- optional example is outdated;
+- historical document is not indexed;
+- derived artifact has formatting drift but contract remains valid.
+
+Non-blocking gaps must still be documented and scheduled.
+
+---
+
+## 79. SSOT Phase Decision
+
+Issue exactly one:
+
+- `SSOT VALIDATION PASS`
+- `SSOT VALIDATION PASS WITH NON-BLOCKING GAPS`
+- `SSOT VALIDATION FAIL`
+- `SSOT VALIDATION BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 80. Pass Criteria
+
+Issue `SSOT VALIDATION PASS` only when:
+
+- every required domain has one authority;
+- every authority is approved or frozen;
+- every authority is complete;
+- every authority is current;
+- scopes are explicit;
+- versions are compatible;
+- supporting sources are subordinate;
+- no competing authority exists;
+- no hidden authority exists;
+- implementation is not treated as authority;
+- traceability is complete.
+
+---
+
+## 81. Pass With Non-Blocking Gaps
+
+Use when:
+
+- every implementation-significant domain has valid SSOT;
+- remaining gaps are metadata, navigation, or supporting synchronization issues;
+- no code-generation choice is required;
+- no authority conflict remains.
+
+---
+
+## 82. Fail Criteria
+
+Issue `SSOT VALIDATION FAIL` when:
+
+- a required domain has missing authority;
+- authority is incomplete;
+- authority is ambiguous;
+- authority is Draft or Superseded;
+- supporting sources create material ambiguity;
+- hidden authority exists;
+- implementation has become de facto authority;
+- deterministic code generation is not possible.
+
+---
+
+## 83. Blocked Criteria
+
+Issue `SSOT VALIDATION BLOCKED` when:
+
+- repository access is incomplete;
+- governance documents cannot be read;
+- scope cannot be established;
+- authority evidence is unavailable;
+- required external sources are inaccessible;
+- lifecycle states cannot be determined.
+
+---
+
+## 84. Output Structure
+
+The SSOT validation report must contain:
+
+1. Executive Summary
+2. Scope
+3. Authority Method
+4. Authority Hierarchy
+5. Domain Authority Matrix
+6. Authority Candidate Matrix
+7. Valid Authorities
+8. Missing Authorities
+9. Ambiguous Authorities
+10. Conflicting Authorities
+11. Incomplete Authorities
+12. Draft Authorities
+13. Superseded Authorities
+14. Hidden Authorities
+15. Derived Artifact Relationships
+16. Supporting Source Alignment
+17. Authority Drift
+18. Partial-Freeze Dependencies
+19. SSOT Score
+20. Blocking Findings
+21. Required Fixes
+22. SSOT Phase Decision
+
+---
+
+## 85. Code-Generation Readiness Test
+
+For every domain, ask:
+
+```text
+Can Claude Code identify one approved source without using implementation,
+chat history, personal memory, or preference?
+```
+
+Then ask:
+
+```text
+Does that source contain enough exact information to generate the approved
+contract?
+```
+
+Then ask:
+
+```text
+Do all dependent and supporting sources agree?
+```
+
+If any answer is no, the domain does not have valid SSOT.
+
+---
+
+## 86. Example — Valid API SSOT
+
+```text
+Domain: Public API
+Authority: docs/api/openapi.yaml
+Status: Approved
+Version: 1.2.0
+Owner: API Architect
+Supporting:
+- docs/api/api-guidelines.md
+- docs/api/examples.md
+Derived:
+- generated Swagger UI
+- generated TypeScript client
+Conflicts: None
+Result: VALID SSOT
+```
+
+---
+
+## 87. Example — Ambiguous Database Authority
+
+```text
+Domain: Database Schema
+Candidate A: docs/data/database.md
+Candidate B: docs/data/data-dictionary.md
+Both define column types.
+Governance does not identify which source is canonical.
+Definitions currently match.
+
+Result: AMBIGUOUS AUTHORITY
+Severity: High
+Blocking: Yes
+```
+
+Matching values do not remove authority ambiguity.
+
+---
+
+## 88. Example — Supporting Source Drift
+
+```text
+Domain: Account Verification
+Authority: docs/workflow/workflow.md
+Supporting: docs/auth/README.md
+Authority requires inactive-until-verified.
+README says accounts activate immediately.
+
+Result:
+- Authority remains valid.
+- README is stale supporting documentation.
+- Documentation drift exists.
+```
+
+---
+
+## 89. Example — Implementation as False Authority
+
+```text
+Domain: Media Ownership
+Documentation is incomplete.
+Current migration uses a five-branch exclusive arc.
+No approved document defines the model.
+
+Result: MISSING AUTHORITY
+
+The migration is implementation evidence, not SSOT.
+```
+
+---
+
+## 90. Example — Accepted ADR and Domain Contract
+
+```text
+ADR-009 selects the exclusive FK arc.
+database.md defines exact branches, constraints, and indexes.
+
+Result:
+- ADR-009 is authority for the architectural decision.
+- database.md is authority for the exact database contract.
+- The sources are complementary, not competing.
+```
+
+---
+
+## 91. Example — Versioned Authority
+
+```text
+OpenAPI v1 and OpenAPI v2 both exist.
+v1 governs current production.
+v2 governs the approved future release.
+Scopes and versions are explicit.
+
+Result: No conflict.
+```
+
+---
+
+## 92. Example — Draft Workflow
+
+```text
+Domain: Email Verification Workflow
+Only source: docs/workflows/email-verification.md
+Status: Draft
+
+Result: DRAFT AUTHORITY
+Severity: High
+Blocking: Yes
+```
+
+---
+
+## 93. Example — Partial Freeze Dependency
+
+```text
+Partial Freeze Scope: Places Persistence
+Dependency: Media ownership model
+Media model is defined only in a Proposed ADR.
+
+Result:
+Places Persistence cannot be frozen because the required dependency lacks
+approved authority.
+```
+
+---
+
+## 94. Evidence Requirements
+
+Every authority conclusion must identify:
+
+- domain;
+- candidate path;
+- exact authority statement or governance rule;
+- status;
+- version;
+- owner;
+- scope;
+- supporting references;
+- conflicting candidates;
+- completeness result;
+- final classification.
+
+Preferred evidence format:
+
+```text
+docs/governance/authority-policy.md — Public API authority hierarchy
+docs/api/openapi.yaml — info.version: 1.2.0
+docs/api/README.md — declares OpenAPI as canonical contract
+```
+
+Do not rely on filenames alone.
+
+---
+
+## 95. Tooling Guidance
+
+Where available, use:
+
+- repository file enumeration;
+- metadata parsing;
+- front-matter parsing;
+- ADR indexing;
+- Decision Register parsing;
+- reference graph construction;
+- version comparison;
+- duplicate-content detection;
+- structured YAML parsing;
+- document-status extraction.
+
+Tool output is supporting evidence.
+
+Tool absence must be disclosed.
+
+---
+
+## 96. Self-Verification
+
+Before publishing:
+
+- verify every mandatory domain was evaluated;
+- verify authority was assessed per domain;
+- verify filenames alone were not used as proof;
+- verify Draft sources were not accepted;
+- verify Superseded sources were not accepted;
+- verify generated artifacts were classified as derived;
+- verify implementation was not treated as authority;
+- verify matching duplicate sources were still checked for ambiguity;
+- verify scopes and versions were considered;
+- verify partial-freeze dependencies were evaluated;
+- verify every blocker has evidence;
+- verify no conflict was resolved by preference;
+- verify no files were modified;
+- verify exactly one SSOT phase decision is present.
+
+---
+
+## 97. Success Criteria
+
+This policy succeeds when every implementation-significant domain in the frozen
+scope has:
+
+- exactly one current authority;
+- one explicit owner;
+- one clear scope;
+- one valid lifecycle state;
+- one compatible version;
+- complete implementation detail;
+- aligned supporting sources;
+- traceable dependent artifacts;
+- no hidden authority;
+- no competing authority;
+- no requirement for implementation guesswork.
+
+The final standard is:
+
+> Every Claude Code agent, developer, reviewer, tester, and release process can
+> identify the same approved source for every contract and derive the same
+> implementation expectations without relying on chat history, repository habit,
+> personal preference, or undocumented assumptions.

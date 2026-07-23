@@ -1,0 +1,971 @@
+# Drift Detection
+
+Version: 1.0
+
+Status
+
+Production
+
+Owner
+
+Chief Software Architect
+
+Applies To
+
+Architecture Review
+
+Documentation Freeze
+
+Sprint Planner
+
+Batch Generator
+
+Sprint Acceptance
+
+Production Gate
+
+Repository Analysis
+
+---
+
+# Purpose
+
+This document defines
+
+the official Drift Detection policy
+
+for the PhuQuocHub platform.
+
+Drift Detection exists
+
+to identify
+
+every deviation
+
+between
+
+implementation
+
+and
+
+the frozen documentation.
+
+The repository
+
+must always remain
+
+consistent
+
+with the Single Source of Truth (SSOT).
+
+---
+
+# Mission
+
+Protect architecture.
+
+Protect documentation.
+
+Detect implementation drift.
+
+Prevent undocumented changes.
+
+Guarantee long-term consistency.
+
+---
+
+# Core Principles
+
+Documentation
+
+is authoritative.
+
+Implementation
+
+must follow documentation.
+
+Review
+
+must compare
+
+documentation
+
+against implementation.
+
+Evidence
+
+always overrides assumptions.
+
+Every drift
+
+must be reproducible.
+
+---
+
+# Definition
+
+Drift
+
+is any inconsistency
+
+between
+
+Documentation
+
+and
+
+Implementation.
+
+Drift
+
+may be
+
+intentional,
+
+temporary,
+
+or accidental,
+
+but it must always
+
+be documented.
+
+Undocumented drift
+
+is never acceptable.
+
+---
+
+# Drift Categories
+
+Architecture Drift
+
+Documentation Drift
+
+Database Drift
+
+Entity Drift
+
+Migration Drift
+
+Repository Drift
+
+Module Drift
+
+Dependency Drift
+
+Folder Drift
+
+Naming Drift
+
+API Drift
+
+OpenAPI Drift
+
+RBAC Drift
+
+Workflow Drift
+
+Security Drift
+
+Performance Drift
+
+Testing Drift
+
+Deployment Drift
+
+Configuration Drift
+
+Infrastructure Drift
+
+Monitoring Drift
+
+Logging Drift
+
+Environment Drift
+
+---
+
+# Architecture Drift
+
+Occurs when
+
+implementation
+
+violates
+
+documented architecture.
+
+Examples
+
+Undocumented module
+
+Wrong layer
+
+Layer bypass
+
+Wrong ownership
+
+Missing boundary
+
+Circular dependency
+
+Unauthorized shared library
+
+Architecture contradiction
+
+---
+
+# Documentation Drift
+
+Occurs when
+
+implementation
+
+does not match
+
+Architecture
+
+ADR
+
+Decision Register
+
+README
+
+Coding Standard
+
+Workflow
+
+Database Documentation
+
+OpenAPI
+
+Examples
+
+Missing documentation
+
+Outdated documentation
+
+Conflicting documentation
+
+Undocumented implementation
+
+---
+
+# Database Drift
+
+Occurs when
+
+database
+
+differs
+
+from
+
+ERD
+
+Data Dictionary
+
+Migration Policy
+
+Examples
+
+Undocumented table
+
+Undocumented column
+
+Missing index
+
+Missing constraint
+
+Wrong datatype
+
+Wrong relationship
+
+Wrong naming
+
+Migration inconsistency
+
+---
+
+# Entity Drift
+
+Occurs when
+
+Entity
+
+and
+
+Database
+
+are inconsistent.
+
+Examples
+
+Missing column mapping
+
+Wrong enum
+
+Missing relation
+
+Wrong relation
+
+Wrong nullable rule
+
+Different naming
+
+---
+
+# Migration Drift
+
+Occurs when
+
+Migration
+
+does not match
+
+Entity
+
+or
+
+Database Documentation.
+
+Examples
+
+Migration missing
+
+Rollback failure
+
+Missing index
+
+Wrong constraint
+
+Outdated migration
+
+---
+
+# Repository Drift
+
+Occurs when
+
+Repository Structure
+
+changes
+
+without documentation.
+
+Examples
+
+Unexpected folder
+
+Unexpected module
+
+Missing package
+
+Dead code
+
+Duplicate implementation
+
+---
+
+# Module Drift
+
+Occurs when
+
+Module
+
+violates
+
+its responsibilities.
+
+Examples
+
+Business logic
+
+inside controller
+
+Repository
+
+contains business logic
+
+Cross-module access
+
+Shared ownership
+
+---
+
+# Dependency Drift
+
+Occurs when
+
+Dependency Graph
+
+violates
+
+Architecture.
+
+Examples
+
+Circular dependency
+
+Reverse dependency
+
+Undocumented dependency
+
+Private module access
+
+Shared dependency violation
+
+---
+
+# Folder Drift
+
+Occurs when
+
+Folder Structure
+
+differs
+
+from
+
+Repository Standard.
+
+Examples
+
+Unexpected directory
+
+Wrong nesting
+
+Duplicate folders
+
+Wrong ownership
+
+---
+
+# Naming Drift
+
+Occurs when
+
+Naming Convention
+
+is violated.
+
+Examples
+
+Wrong casing
+
+Wrong suffix
+
+Wrong prefix
+
+Plural mismatch
+
+Abbreviation
+
+Undocumented terminology
+
+---
+
+# API Drift
+
+Occurs when
+
+Controller
+
+does not match
+
+API Documentation.
+
+Examples
+
+Undocumented endpoint
+
+Missing endpoint
+
+Wrong response
+
+Wrong request
+
+Wrong validation
+
+---
+
+# OpenAPI Drift
+
+Occurs when
+
+OpenAPI
+
+differs
+
+from implementation.
+
+Examples
+
+Missing schema
+
+Missing DTO
+
+Wrong property
+
+Wrong response
+
+Dangling reference
+
+---
+
+# RBAC Drift
+
+Occurs when
+
+Permissions
+
+Roles
+
+Authorization
+
+do not match
+
+RBAC documentation.
+
+Examples
+
+Missing permission
+
+Wrong permission
+
+Unauthorized access
+
+Role mismatch
+
+---
+
+# Workflow Drift
+
+Occurs when
+
+Implementation
+
+does not follow
+
+Workflow documentation.
+
+Examples
+
+Wrong registration flow
+
+Wrong approval flow
+
+Wrong publish flow
+
+Wrong notification flow
+
+---
+
+# Security Drift
+
+Occurs when
+
+Implementation
+
+violates
+
+Security Architecture.
+
+Examples
+
+Missing validation
+
+Missing authorization
+
+Weak authentication
+
+Missing audit log
+
+Secret exposure
+
+OWASP violation
+
+---
+
+# Performance Drift
+
+Occurs when
+
+Implementation
+
+violates
+
+Performance standards.
+
+Examples
+
+Missing index
+
+N+1 query
+
+No pagination
+
+No caching
+
+Expensive query
+
+Memory leak
+
+---
+
+# Testing Drift
+
+Occurs when
+
+Implementation
+
+is not
+
+adequately tested.
+
+Examples
+
+Missing tests
+
+Low coverage
+
+Untested migration
+
+Untested workflow
+
+Broken CI
+
+---
+
+# Deployment Drift
+
+Occurs when
+
+Deployment
+
+violates
+
+Deployment Guide.
+
+Examples
+
+Wrong environment
+
+Missing rollback
+
+Wrong Docker config
+
+Wrong infrastructure
+
+---
+
+# Severity Model
+
+Critical
+
+Architecture violation
+
+Security violation
+
+Data loss risk
+
+Production blocker
+
+High
+
+Merge blocker
+
+Major documentation contradiction
+
+Database inconsistency
+
+Medium
+
+Technical debt
+
+Partial implementation
+
+Documentation mismatch
+
+Low
+
+Naming
+
+Formatting
+
+Minor optimization
+
+Informational
+
+Observation only
+
+---
+
+# Drift Identification
+
+Every drift
+
+must include
+
+Identifier
+
+Category
+
+Description
+
+Expected State
+
+Actual State
+
+Evidence
+
+Impact
+
+Severity
+
+Recommendation
+
+Owner
+
+Target Sprint
+
+Status
+
+---
+
+# Drift Status
+
+Detected
+
+Accepted
+
+Deferred
+
+In Progress
+
+Resolved
+
+Verified
+
+Closed
+
+---
+
+# Evidence Policy
+
+Every drift
+
+requires evidence.
+
+Evidence may come from
+
+Repository
+
+Documentation
+
+ADR
+
+Decision Register
+
+OpenAPI
+
+Migration
+
+Database
+
+Tests
+
+CI
+
+Configuration
+
+If evidence
+
+does not exist
+
+Output
+
+NOT FOUND
+
+Never infer.
+
+Never fabricate.
+
+---
+
+# Compliance Matrix
+
+Every review
+
+must produce
+
+Architecture
+
+PASS / FAIL
+
+Database
+
+PASS / FAIL
+
+Repository
+
+PASS / FAIL
+
+Documentation
+
+PASS / FAIL
+
+API
+
+PASS / FAIL
+
+RBAC
+
+PASS / FAIL
+
+Workflow
+
+PASS / FAIL
+
+Security
+
+PASS / FAIL
+
+Performance
+
+PASS / FAIL
+
+Testing
+
+PASS / FAIL
+
+Deployment
+
+PASS / FAIL
+
+---
+
+# Report Output
+
+Executive Summary
+
+Drift Summary
+
+Compliance Matrix
+
+Critical Drift
+
+High Drift
+
+Medium Drift
+
+Low Drift
+
+Technical Debt
+
+Known Risks
+
+Recommendations
+
+Final Decision
+
+---
+
+# Final Decisions
+
+PASS
+
+READY AFTER FIXES
+
+FAIL
+
+BLOCKED
+
+ARCHITECTURE DRIFT DETECTED
+
+NO DRIFT DETECTED
+
+---
+
+# Blocking Conditions
+
+Immediately return
+
+BLOCKED
+
+if
+
+Repository unavailable
+
+Documentation unavailable
+
+Architecture unavailable
+
+Decision Register unavailable
+
+OpenAPI unavailable
+
+Mandatory evidence unavailable
+
+---
+
+# Self Verification
+
+Before publishing
+
+verify
+
+Every drift categorized
+
+Evidence attached
+
+Severity assigned
+
+Recommendation documented
+
+No assumptions
+
+No generated code
+
+No modified repository
+
+Exactly one decision
+
+---
+
+# Success Criteria
+
+Drift Detection succeeds when
+
+every deviation
+
+between
+
+implementation
+
+and
+
+the frozen documentation
+
+is identified,
+
+classified,
+
+supported by evidence,
+
+assigned a severity,
+
+tracked,
+
+and reported
+
+before it can reach
+
+production.
+
+No undocumented drift
+
+may ever enter
+
+the PhuQuocHub platform.

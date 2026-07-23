@@ -1,0 +1,1321 @@
+# Documentation Completeness Policy
+
+Version: 1.0.0  
+Status: Production  
+Owner: Chief Documentation Architect  
+Priority: Critical  
+Execution Mode: Read-only  
+Applies To: Documentation Freeze, SSOT validation, pre-code-generation readiness
+
+---
+
+## 1. Purpose
+
+This document defines the official completeness evaluation policy for all
+documentation reviewed by the Documentation Freeze skill.
+
+Its purpose is to determine whether each authoritative document contains enough
+precise, actionable, and internally complete information to support
+deterministic implementation.
+
+A document is not complete merely because:
+
+- the file exists;
+- it contains many pages;
+- it has professional formatting;
+- it lists intended topics;
+- it includes diagrams;
+- it contains examples;
+- it uses enterprise terminology.
+
+A document is complete only when it fully performs its declared responsibility.
+
+---
+
+## 2. Core Principle
+
+Existence is not completeness.
+
+Length is not completeness.
+
+Structure is not completeness.
+
+A complete document must remove implementation-significant ambiguity.
+
+If Claude Code must guess how to implement a documented subject, the document is
+not complete.
+
+---
+
+## 3. Objectives
+
+This policy must identify:
+
+- missing required documents;
+- incomplete authoritative documents;
+- incomplete sections;
+- empty sections;
+- outline-only content;
+- placeholder-only content;
+- unresolved decisions;
+- insufficient implementation detail;
+- missing contracts;
+- missing ownership;
+- missing lifecycle metadata;
+- missing cross-references;
+- documents that appear complete but cannot support code generation.
+
+---
+
+## 4. Execution Mode
+
+Completeness evaluation is strictly read-only.
+
+Claude Code may:
+
+- read documents;
+- inspect headings;
+- inspect tables;
+- inspect diagrams;
+- inspect examples;
+- inspect cross-references;
+- compare document responsibilities with actual content;
+- determine required sections;
+- classify completeness;
+- generate findings.
+
+Claude Code must not:
+
+- write missing sections;
+- complete the document;
+- propose a hidden design;
+- convert assumptions into requirements;
+- change document status;
+- create missing contracts;
+- infer undocumented decisions;
+- mark a document complete based on intent alone.
+
+---
+
+## 5. Completeness States
+
+Every reviewed document must receive exactly one completeness state:
+
+- `COMPLETE`
+- `COMPLETE WITH NON-BLOCKING GAPS`
+- `PARTIAL`
+- `OUTLINE ONLY`
+- `PLACEHOLDER ONLY`
+- `EMPTY`
+- `NOT FOUND`
+- `NOT APPLICABLE`
+- `NOT VERIFIED`
+
+### COMPLETE
+
+The document fully satisfies its declared purpose and supports deterministic use.
+
+### COMPLETE WITH NON-BLOCKING GAPS
+
+The document satisfies its authoritative purpose, but contains minor editorial,
+example, or supporting gaps that do not require implementation decisions.
+
+### PARTIAL
+
+The document contains meaningful content but lacks one or more required
+implementation-significant sections or decisions.
+
+### OUTLINE ONLY
+
+The document mostly contains headings, bullet lists, or topic names without
+usable definitions or contracts.
+
+### PLACEHOLDER ONLY
+
+The document largely defers content through placeholders, promises, or open
+questions.
+
+### EMPTY
+
+The file contains no meaningful content.
+
+### NOT FOUND
+
+The required artifact does not exist.
+
+### NOT APPLICABLE
+
+The document type is demonstrably outside the approved scope.
+
+### NOT VERIFIED
+
+The document exists but could not be evaluated with available evidence or tools.
+
+`NOT VERIFIED` is never equivalent to `COMPLETE`.
+
+---
+
+## 6. Completeness Dimensions
+
+Every authoritative document must be evaluated across the following dimensions.
+
+### 6.1 Purpose completeness
+
+The document clearly states:
+
+- why it exists;
+- what problem it governs;
+- what is included;
+- what is excluded;
+- who uses it.
+
+### 6.2 Scope completeness
+
+The document defines:
+
+- affected modules;
+- affected domains;
+- lifecycle scope;
+- technical scope;
+- exclusions;
+- dependencies.
+
+### 6.3 Definition completeness
+
+All important concepts are defined.
+
+No implementation-significant term remains ambiguous.
+
+### 6.4 Contract completeness
+
+The document specifies exact behavior, structure, or constraints where required.
+
+### 6.5 Decision completeness
+
+The document records final decisions rather than unresolved alternatives.
+
+### 6.6 Dependency completeness
+
+The document identifies required upstream and downstream dependencies.
+
+### 6.7 Validation completeness
+
+The document defines how compliance or success can be verified.
+
+### 6.8 Traceability completeness
+
+The document references related authoritative artifacts.
+
+### 6.9 Metadata completeness
+
+The document includes the metadata needed for governance.
+
+### 6.10 Lifecycle completeness
+
+The document status, approval, version, and supersession state are clear.
+
+---
+
+## 7. Metadata Requirements
+
+Authoritative documents should contain, where governance requires:
+
+- title;
+- document ID;
+- version;
+- status;
+- owner;
+- approval authority;
+- approval date;
+- last updated date;
+- review date;
+- applies-to scope;
+- classification;
+- supersedes;
+- superseded by;
+- related documents.
+
+Missing metadata becomes blocking when it prevents:
+
+- authority determination;
+- lifecycle determination;
+- version-baseline creation;
+- ownership determination;
+- approval verification;
+- supersession validation.
+
+---
+
+## 8. Structural Completeness
+
+A document must have a structure appropriate to its purpose.
+
+Typical required sections include:
+
+- Purpose
+- Scope
+- Definitions
+- Principles
+- Rules or Contract
+- Dependencies
+- Validation
+- Failure Conditions
+- Evidence
+- References
+- Success Criteria
+
+Not every document requires all sections.
+
+Required structure must be derived from the document type.
+
+---
+
+## 9. Content Quality Threshold
+
+Content is sufficient only when it is:
+
+- specific;
+- actionable;
+- testable;
+- internally consistent;
+- implementation-relevant;
+- free from unresolved alternatives;
+- free from hidden dependencies;
+- precise enough to generate acceptance criteria.
+
+Content such as the following is insufficient:
+
+- “Use best practices.”
+- “Ensure security.”
+- “Optimize performance.”
+- “Support scalability.”
+- “Add indexes where needed.”
+- “Use appropriate permissions.”
+- “Implement later.”
+- “Handle errors properly.”
+
+Such statements may express intent but do not define a contract.
+
+---
+
+## 10. Implementation-Significant Information
+
+The following information must not remain implicit when relevant:
+
+- entity names;
+- field names;
+- field types;
+- nullability;
+- defaults;
+- enum values;
+- discriminator values;
+- relationship cardinality;
+- FK ownership;
+- unique constraints;
+- index requirements;
+- cascade behavior;
+- API paths;
+- HTTP methods;
+- request fields;
+- response fields;
+- status codes;
+- pagination;
+- authentication;
+- authorization;
+- roles;
+- permissions;
+- workflow states;
+- transitions;
+- transition guards;
+- error behavior;
+- migration strategy;
+- naming rules;
+- module boundaries;
+- dependency direction;
+- security controls.
+
+If any required item is missing, the affected document is not complete.
+
+---
+
+## 11. Architecture Document Completeness
+
+An authoritative architecture document is complete only when it defines:
+
+### 11.1 System context
+
+- users or actors;
+- external systems;
+- major interactions;
+- trust boundaries.
+
+### 11.2 Architectural style
+
+Examples:
+
+- modular monolith;
+- microservices;
+- event-driven;
+- layered architecture.
+
+The selected style must be explicit.
+
+### 11.3 Major components
+
+- applications;
+- services;
+- modules;
+- packages;
+- infrastructure components;
+- external dependencies.
+
+### 11.4 Module ownership
+
+For every module:
+
+- responsibility;
+- owned entities;
+- public interface;
+- allowed dependencies;
+- forbidden dependencies.
+
+### 11.5 Layer boundaries
+
+- controller responsibilities;
+- service responsibilities;
+- repository responsibilities;
+- persistence responsibilities;
+- dependency direction.
+
+### 11.6 Technology stack
+
+- runtime;
+- framework;
+- ORM;
+- database;
+- cache;
+- search;
+- storage;
+- deployment model.
+
+### 11.7 Cross-cutting concerns
+
+- authentication;
+- authorization;
+- logging;
+- monitoring;
+- error handling;
+- configuration;
+- testing;
+- security.
+
+### 11.8 Constraints
+
+- prohibited patterns;
+- accepted trade-offs;
+- scalability assumptions;
+- compatibility requirements.
+
+A diagram without textual definitions is not sufficient.
+
+---
+
+## 12. ADR Completeness
+
+An ADR is complete only when it contains:
+
+- unique ID;
+- title;
+- status;
+- date;
+- context;
+- problem;
+- decision;
+- alternatives considered;
+- consequences;
+- affected domains;
+- related ADRs;
+- supersession information;
+- approval or acceptance evidence.
+
+The following are incomplete:
+
+- ADR with only a title;
+- ADR with alternatives but no decision;
+- ADR marked Accepted without consequences;
+- ADR with no affected components;
+- ADR whose status conflicts with the Decision Register.
+
+---
+
+## 13. Decision Register Completeness
+
+The Decision Register is complete only when it includes:
+
+- every active ADR;
+- every Proposed ADR when governance requires tracking;
+- status;
+- title;
+- ADR reference;
+- owner;
+- date;
+- affected domains;
+- implementation status;
+- supersession state.
+
+It must allow the reviewer to determine which decisions are currently active.
+
+---
+
+## 14. Vision and Product Completeness
+
+Vision and product documents are complete only when they define:
+
+- target users;
+- problem statement;
+- value proposition;
+- product boundaries;
+- primary capabilities;
+- excluded capabilities;
+- success metrics;
+- release priorities;
+- assumptions;
+- dependencies.
+
+General ambitions without scope boundaries are incomplete.
+
+---
+
+## 15. Roadmap Completeness
+
+A roadmap is complete only when it defines:
+
+- milestones;
+- phases;
+- Sprint sequence;
+- dependencies;
+- expected outcomes;
+- acceptance conditions;
+- scope boundaries;
+- deferred work;
+- release target.
+
+A roadmap consisting only of module names is partial.
+
+---
+
+## 16. Database Specification Completeness
+
+The authoritative database specification must define:
+
+- database engine;
+- schema ownership;
+- naming convention;
+- entity-to-table mapping;
+- table names;
+- column names;
+- column types;
+- nullability;
+- defaults;
+- primary keys;
+- foreign keys;
+- unique constraints;
+- check constraints;
+- indexes;
+- partial indexes;
+- spatial indexes;
+- full-text search;
+- cascade behavior;
+- soft deletion;
+- audit fields;
+- timestamps;
+- versioning;
+- verification fields;
+- provenance;
+- migration rules;
+- rollback expectations.
+
+Statements such as “add indexes as needed” are incomplete.
+
+---
+
+## 17. ERD Completeness
+
+An ERD is complete only when:
+
+- every accepted entity appears;
+- every relationship appears;
+- cardinality is visible;
+- optionality is visible or documented;
+- ownership is identifiable;
+- associative entities are shown;
+- self-references are shown;
+- exclusive arcs are defined;
+- legends are provided;
+- deprecated entities are clearly marked;
+- the entity count can be reconciled.
+
+A diagram image without readable labels or legend is not fully complete.
+
+---
+
+## 18. Data Dictionary Completeness
+
+For every entity, the Data Dictionary must define:
+
+- entity purpose;
+- table name;
+- field name;
+- database column;
+- data type;
+- length or precision;
+- nullability;
+- default;
+- PK/FK status;
+- constraints;
+- enum reference;
+- description;
+- example;
+- sensitivity classification where relevant;
+- indexing;
+- relationship.
+
+A list of entity names without field definitions is outline-only.
+
+---
+
+## 19. Entity Catalog Completeness
+
+An entity catalog is complete only when it defines:
+
+- authoritative entity count;
+- counting rule;
+- entity names;
+- domain ownership;
+- aggregate ownership where applicable;
+- entity classification;
+- table mapping;
+- API applicability;
+- workflow applicability;
+- lifecycle;
+- relationships.
+
+The count must be reproducible.
+
+---
+
+## 20. Enum Catalog Completeness
+
+An enum definition is complete only when it defines:
+
+- enum name;
+- exact values;
+- casing;
+- storage representation;
+- API representation;
+- default;
+- allowed transitions where applicable;
+- deprecated values;
+- extension policy.
+
+“Status may be pending, approved, etc.” is incomplete.
+
+---
+
+## 21. API Documentation Completeness
+
+Narrative API documentation is complete only when it defines:
+
+- API style;
+- base path;
+- versioning;
+- naming convention;
+- authentication;
+- authorization;
+- request envelope;
+- response envelope;
+- error model;
+- pagination;
+- filtering;
+- sorting;
+- rate limits;
+- idempotency where applicable;
+- deprecation policy.
+
+---
+
+## 22. OpenAPI Completeness
+
+OpenAPI is complete for the frozen scope only when:
+
+- OpenAPI version is declared;
+- info block is present;
+- servers or deployment context are defined where required;
+- every approved path exists;
+- every operation has an operation ID;
+- parameters are defined;
+- request bodies are defined;
+- success responses are defined;
+- error responses are defined;
+- security schemes are defined;
+- operation security is defined;
+- schemas are defined;
+- required fields are marked;
+- references resolve;
+- examples are provided where governance requires;
+- pagination and filtering schemas are defined;
+- field casing is deterministic.
+
+A documented endpoint referencing an undefined schema is incomplete.
+
+---
+
+## 23. RBAC Completeness
+
+RBAC documentation is complete only when it defines:
+
+- role catalog;
+- permission catalog;
+- permission naming convention;
+- permission scopes;
+- inheritance;
+- wildcard behavior;
+- deny behavior;
+- default behavior;
+- role assignment rules;
+- revocation rules;
+- business or tenant scope;
+- enforcement mechanism;
+- endpoint permission mapping;
+- privileged operations;
+- audit requirements.
+
+A list of role names alone is not complete.
+
+---
+
+## 24. Workflow Completeness
+
+Each workflow must define:
+
+- workflow ID;
+- purpose;
+- actors;
+- preconditions;
+- initial state;
+- all states;
+- allowed transitions;
+- prohibited transitions;
+- transition guards;
+- permissions;
+- side effects;
+- notifications;
+- audit events;
+- failure handling;
+- retry behavior;
+- terminal states;
+- recovery behavior.
+
+A flowchart without transition rules is incomplete.
+
+---
+
+## 25. Security Documentation Completeness
+
+Security documentation is complete only when it provides actionable controls for:
+
+- authentication;
+- authorization;
+- credentials;
+- secrets;
+- encryption in transit;
+- encryption at rest;
+- sensitive-data classification;
+- input validation;
+- output encoding;
+- security headers;
+- CORS;
+- CSRF where applicable;
+- rate limiting;
+- audit logging;
+- token lifecycle;
+- password handling;
+- dependency security;
+- incident response;
+- backup security;
+- privileged action controls.
+
+A document containing only “follow OWASP” is incomplete.
+
+---
+
+## 26. Search Documentation Completeness
+
+Search documentation is complete only when it defines:
+
+- searchable entities;
+- searchable fields;
+- indexing strategy;
+- ranking factors;
+- weights;
+- filters;
+- sorting;
+- typo handling;
+- language handling;
+- accent handling;
+- geo search;
+- radius behavior;
+- pagination;
+- freshness;
+- verification boost;
+- popularity boost;
+- fallback behavior;
+- reindexing;
+- performance targets.
+
+---
+
+## 27. SEO Documentation Completeness
+
+SEO documentation is complete only when it defines:
+
+- canonical URL policy;
+- slug policy;
+- metadata fields;
+- Open Graph;
+- Twitter cards;
+- structured data;
+- sitemap;
+- robots;
+- indexing rules;
+- pagination rules;
+- duplicate-content handling;
+- internal linking;
+- language behavior;
+- redirect strategy.
+
+---
+
+## 28. AI Policy Completeness
+
+AI documentation is complete only when it defines:
+
+- approved use cases;
+- prohibited use cases;
+- input data;
+- data sensitivity;
+- prompt governance;
+- output schema;
+- confidence model;
+- review requirements;
+- human approval;
+- hallucination handling;
+- provenance;
+- logging;
+- model versioning;
+- cost limits;
+- fallback behavior;
+- safety controls.
+
+---
+
+## 29. Coding Standard Completeness
+
+Coding standards are complete only when they define:
+
+- repository layout;
+- module layout;
+- file naming;
+- class naming;
+- interface naming;
+- DTO naming;
+- entity naming;
+- dependency direction;
+- error handling;
+- logging;
+- validation;
+- testing;
+- migration rules;
+- API rules;
+- security rules;
+- formatting;
+- linting;
+- review expectations.
+
+---
+
+## 30. Repository Standard Completeness
+
+Repository standards are complete only when they define:
+
+- allowed top-level directories;
+- application structure;
+- package structure;
+- module structure;
+- ownership;
+- import boundaries;
+- shared code;
+- generated code;
+- tests;
+- infrastructure;
+- documentation;
+- branch policy;
+- merge expectations.
+
+---
+
+## 31. Testing Strategy Completeness
+
+Testing documentation is complete only when it defines:
+
+- unit tests;
+- integration tests;
+- repository tests;
+- E2E tests;
+- migration tests;
+- security tests;
+- performance tests;
+- coverage expectations;
+- test data;
+- mocking policy;
+- CI requirements;
+- acceptance gates;
+- flaky-test handling.
+
+---
+
+## 32. Deployment Documentation Completeness
+
+Deployment documentation is complete only when it defines:
+
+- environments;
+- environment promotion;
+- configuration;
+- secrets;
+- build artifacts;
+- CI/CD;
+- database migration timing;
+- health checks;
+- rollback;
+- monitoring;
+- deployment verification;
+- ownership;
+- incident escalation.
+
+---
+
+## 33. Operations Documentation Completeness
+
+Operations documentation should define:
+
+- monitoring;
+- alerting;
+- logging;
+- runbooks;
+- backup;
+- restore;
+- incident response;
+- disaster recovery;
+- maintenance;
+- support ownership;
+- production access.
+
+---
+
+## 34. Glossary Completeness
+
+The glossary is complete only when it defines:
+
+- canonical domain terms;
+- canonical technical terms;
+- abbreviations;
+- deprecated terms;
+- forbidden synonyms;
+- entity terminology;
+- workflow terminology;
+- role and permission terminology.
+
+A glossary need not define common language, but it must define ambiguous project
+language.
+
+---
+
+## 35. Example and Template Completeness
+
+Supporting examples and templates are complete only when they:
+
+- match the authoritative contract;
+- use current terminology;
+- reference current versions;
+- contain all mandatory fields;
+- avoid deprecated paths or schemas;
+- are clearly marked as examples or templates.
+
+Examples must not create hidden authority.
+
+---
+
+## 36. Semantic Completeness Checks
+
+Claude Code must not rely only on headings or keyword presence.
+
+Evaluate whether the content answers implementation questions.
+
+Examples:
+
+### Weak
+
+```text
+Media may belong to different objects.
+```
+
+### Complete
+
+```text
+A media record must reference exactly one of:
+place_id, event_id, review_id, post_id, wiki_revision_id.
+The database enforces the exclusive arc using a CHECK constraint.
+```
+
+### Weak
+
+```text
+Use RBAC for access.
+```
+
+### Complete
+
+```text
+The endpoint requires Place.Update:Managed.
+Authorization uses deny-by-default.
+Explicit deny overrides inherited allow.
+```
+
+---
+
+## 37. Completeness Scoring
+
+Completeness may be scored from 0 to 100 for each document.
+
+Recommended model:
+
+| Dimension | Weight |
+|---|---:|
+| Purpose and scope | 10 |
+| Definitions | 10 |
+| Contract detail | 25 |
+| Decisions resolved | 15 |
+| Dependencies | 10 |
+| Validation criteria | 10 |
+| Traceability | 10 |
+| Metadata and lifecycle | 10 |
+| **Total** | **100** |
+
+Suggested interpretation:
+
+- 90–100: Complete
+- 75–89: Complete with non-blocking gaps
+- 50–74: Partial
+- 20–49: Outline only
+- 1–19: Placeholder only
+- 0: Empty or not found
+
+The score is informative.
+
+Any implementation-significant unresolved item may still block freeze regardless
+of score.
+
+---
+
+## 38. Blocking Completeness Gaps
+
+A completeness gap blocks freeze when it leaves any of the following undefined:
+
+- architecture choice;
+- module boundary;
+- technology choice;
+- authoritative entity;
+- field type;
+- relationship ownership;
+- FK;
+- enum;
+- discriminator;
+- API path;
+- request schema;
+- response schema;
+- auth requirement;
+- permission;
+- workflow transition;
+- security behavior;
+- migration behavior;
+- acceptance criteria.
+
+---
+
+## 39. Non-Blocking Completeness Gaps
+
+Examples may include:
+
+- missing optional example;
+- missing diagram caption;
+- editorial wording;
+- missing non-authoritative screenshot;
+- minor metadata field that does not affect authority;
+- absent future roadmap detail outside frozen scope.
+
+Every non-blocking gap must still be reported.
+
+---
+
+## 40. Completeness Finding Format
+
+Every finding must contain:
+
+```text
+ID:
+Document:
+Section:
+Domain:
+Expected Content:
+Actual Content:
+Missing Detail:
+Implementation Impact:
+Severity:
+Blocking:
+Evidence:
+Required Fix:
+```
+
+Do not write the missing content.
+
+Describe what category of information must be supplied.
+
+---
+
+## 41. Document Completeness Matrix
+
+Use:
+
+| Document | Domain | State | Score | Blocking Gaps | Evidence |
+|---|---|---|---:|---:|---|
+
+---
+
+## 42. Domain Completeness Matrix
+
+Use:
+
+| Domain | Authority | Required Sections | Complete | Missing | Status |
+|---|---|---|---:|---:|---|
+
+---
+
+## 43. Required Fix Guidance
+
+Required fixes must be minimal and non-prescriptive.
+
+### Good
+
+```text
+Define the exact discriminator values and casing for media ownership.
+```
+
+### Bad
+
+```text
+Use lowercase values place, event, review, post, wiki_revision.
+```
+
+The second statement invents the design unless already supported by evidence.
+
+---
+
+## 44. Interaction With Placeholder Detection
+
+`placeholder-detection.md` identifies explicit and semantic placeholders.
+
+This policy determines whether those placeholders make the document incomplete.
+
+A placeholder may exist in:
+
+- historical notes;
+- rejected alternatives;
+- future non-scope sections;
+- templates.
+
+Context must be considered.
+
+---
+
+## 45. Interaction With Consistency Validation
+
+A document may be individually complete but inconsistent with another document.
+
+Completeness and consistency are separate gates.
+
+Examples:
+
+- database document fully defines a field as `status`;
+- Data Dictionary fully defines the same field as `state`.
+
+Both documents may be complete, but the system is inconsistent.
+
+---
+
+## 46. Interaction With SSOT Validation
+
+A document may be complete but not authoritative.
+
+A document may be authoritative but incomplete.
+
+Both conditions must be evaluated independently.
+
+Freeze requires an authoritative and complete source for every required domain.
+
+---
+
+## 47. Completeness Decision
+
+At the end of the completeness phase, issue exactly one:
+
+- `COMPLETENESS PASS`
+- `COMPLETENESS PASS WITH NON-BLOCKING GAPS`
+- `COMPLETENESS FAIL`
+- `COMPLETENESS BLOCKED`
+
+This is not the final Documentation Freeze decision.
+
+---
+
+## 48. Completeness Pass Criteria
+
+Issue `COMPLETENESS PASS` only when:
+
+- every required document exists;
+- every authoritative document is complete;
+- no blocking section is missing;
+- no implementation-significant ambiguity remains;
+- metadata is sufficient for freeze governance;
+- validation criteria can be derived.
+
+---
+
+## 49. Completeness Pass With Non-Blocking Gaps
+
+Use only when:
+
+- all authoritative contracts are complete;
+- remaining gaps are editorial or supporting;
+- no code-generation guess is required;
+- gaps are explicitly recorded.
+
+---
+
+## 50. Completeness Fail Criteria
+
+Issue `COMPLETENESS FAIL` when:
+
+- one or more required documents are partial;
+- blocking sections are missing;
+- contract detail is insufficient;
+- implementation decisions remain unresolved;
+- code generation would require guessing.
+
+---
+
+## 51. Completeness Blocked Criteria
+
+Issue `COMPLETENESS BLOCKED` when:
+
+- required documents cannot be accessed;
+- the scope is unknown;
+- authority cannot be established;
+- file formats cannot be inspected;
+- a dependency prevents evaluation;
+- evidence is unavailable.
+
+---
+
+## 52. Output Structure
+
+The completeness report must contain:
+
+1. Executive Summary
+2. Scope
+3. Evaluation Method
+4. Document Completeness Matrix
+5. Complete Documents
+6. Complete With Non-Blocking Gaps
+7. Partial Documents
+8. Outline-Only Documents
+9. Placeholder-Only Documents
+10. Empty Documents
+11. Missing Documents
+12. Blocking Completeness Gaps
+13. Non-Blocking Gaps
+14. Code-Generation Impact
+15. Required Fixes
+16. Completeness Decision
+
+---
+
+## 53. Evidence Requirements
+
+Every completeness judgment must cite:
+
+- exact document path;
+- section;
+- missing section;
+- heading;
+- table;
+- schema;
+- key;
+- unique text.
+
+Do not write:
+
+```text
+The document is incomplete.
+```
+
+Write:
+
+```text
+docs/data/database.md — Media section defines ownership branches but does not
+define FK ownership or cascade rules.
+```
+
+---
+
+## 54. Self-Verification
+
+Before publishing:
+
+- verify all authoritative documents were evaluated;
+- verify no document was marked complete based only on file existence;
+- verify semantic completeness was checked;
+- verify every score has a reason;
+- verify every blocker identifies missing information;
+- verify no missing design was invented;
+- verify non-blocking gaps do not require code-generation decisions;
+- verify limitations are disclosed;
+- verify exactly one completeness decision is present;
+- verify no files were modified.
+
+---
+
+## 55. Success Criteria
+
+This policy succeeds when the Documentation Freeze audit can distinguish between:
+
+- a document that exists;
+- a document that looks complete;
+- a document that is structurally complete;
+- a document that is contractually complete;
+- a document that is sufficiently precise for deterministic implementation.
+
+The ultimate standard is:
+
+> Every authoritative document contains enough exact information for Claude Code
+> to implement, test, and review the approved scope without inventing missing
+> behavior or making architectural decisions.

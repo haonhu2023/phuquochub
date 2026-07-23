@@ -1,0 +1,12 @@
+Fix ONLY issues reported
+by the previous review.
+
+Do not refactor.
+
+Do not optimize.
+
+Do not generate unrelated code.
+
+Stop after fixes.
+
+Generate Fix Report.

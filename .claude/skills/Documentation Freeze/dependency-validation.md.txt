@@ -1,0 +1,4452 @@
+---
+title: Dependency Validation
+version: 2.0.0
+status: Production
+owner: Chief Documentation Architect
+classification: Internal
+priority: Critical
+applies_to:
+  - SSOT
+  - Documentation Freeze
+  - Architecture Review
+  - Sprint Planner
+  - Batch Generator
+  - Repository Analysis
+review_cycle: Every Freeze
+---
+
+# Dependency Validation
+
+---
+
+# 1. Purpose
+
+This document defines the official Dependency Validation Framework
+for the PhuQuocHub platform.
+
+Dependency Validation ensures that
+
+every engineering artifact,
+
+every documentation asset,
+
+every architectural decision,
+
+every specification,
+
+every implementation artifact,
+
+and every governance document
+
+depends only upon
+
+approved,
+
+existing,
+
+compatible,
+
+and synchronized sources.
+
+The Dependency Validation Engine guarantees that
+
+no engineering artifact
+
+is built
+
+upon
+
+missing,
+
+obsolete,
+
+invalid,
+
+or conflicting dependencies.
+
+---
+
+# 2. Mission
+
+Guarantee
+
+Complete Dependency Integrity
+
+Architecture Integrity
+
+Repository Integrity
+
+Implementation Integrity
+
+Documentation Integrity
+
+Traceability
+
+Governance
+
+Repeatability
+
+Reproducibility
+
+---
+
+# 3. Why Dependency Validation Exists
+
+Engineering documentation
+
+forms
+
+a dependency network.
+
+No document
+
+exists
+
+independently.
+
+Example
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Repository
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Implementation
+
+If one dependency
+
+becomes invalid,
+
+every downstream artifact
+
+may become invalid.
+
+Dependency Validation
+
+detects
+
+these failures
+
+before
+
+Documentation Freeze.
+
+---
+
+# 4. Scope
+
+Dependency Validation applies to
+
+Architecture
+
+ADR
+
+Decision Register
+
+Business Requirements
+
+SSOT
+
+Repository
+
+Coding Standards
+
+Database Documentation
+
+ERD
+
+Prisma Schema
+
+Migration Documentation
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Security
+
+Monitoring
+
+Deployment
+
+Testing
+
+Templates
+
+Examples
+
+AI Governance
+
+Every document
+
+participating
+
+in Documentation Freeze.
+
+---
+
+# 5. Objectives
+
+Dependency Validation guarantees
+
+Every dependency exists
+
+Every dependency is approved
+
+Every dependency is active
+
+Every dependency is synchronized
+
+No dependency cycle
+
+No orphan dependency
+
+No missing dependency
+
+No obsolete dependency
+
+No conflicting dependency
+
+Complete dependency traceability
+
+---
+
+# 6. Dependency Principles
+
+---
+
+## Principle 1
+
+Every dependency
+
+must be explicit.
+
+Hidden dependencies
+
+are prohibited.
+
+---
+
+## Principle 2
+
+Every dependency
+
+must point
+
+to an existing artifact.
+
+---
+
+## Principle 3
+
+Every dependency
+
+must point
+
+to an approved artifact.
+
+Draft artifacts
+
+cannot satisfy
+
+production dependencies.
+
+---
+
+## Principle 4
+
+Dependencies
+
+always flow
+
+from
+
+higher authority
+
+to
+
+lower authority.
+
+Lower authority
+
+must never
+
+govern
+
+higher authority.
+
+---
+
+## Principle 5
+
+Circular dependencies
+
+are prohibited.
+
+---
+
+## Principle 6
+
+Dependency validation
+
+is read-only.
+
+The validator
+
+must never
+
+modify
+
+documentation.
+
+---
+
+## Principle 7
+
+Missing dependencies
+
+block
+
+Documentation Freeze.
+
+---
+
+## Principle 8
+
+One dependency
+
+must have
+
+one authoritative target.
+
+Multiple targets
+
+for the same dependency
+
+are prohibited.
+
+---
+
+## Principle 9
+
+Dependency validation
+
+must be deterministic.
+
+The same dependency graph
+
+must always produce
+
+the same validation result.
+
+---
+
+## Principle 10
+
+Every dependency
+
+must be traceable
+
+to
+
+an approved engineering source.
+
+---
+
+# 7. Dependency Definition
+
+A dependency exists
+
+when
+
+one artifact
+
+requires
+
+another artifact
+
+to remain
+
+correct,
+
+complete,
+
+or valid.
+
+Removing
+
+the upstream artifact
+
+invalidates
+
+the downstream artifact.
+
+---
+
+# 8. Dependency Lifecycle
+
+Every dependency
+
+passes through
+
+the following lifecycle.
+
+Declared
+
+↓
+
+Resolved
+
+↓
+
+Validated
+
+↓
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Active
+
+↓
+
+Superseded
+
+↓
+
+Archived
+
+Only
+
+Approved,
+
+Frozen,
+
+or Active
+
+dependencies
+
+may satisfy
+
+Documentation Freeze.
+
+---
+
+# 9. Dependency Authority
+
+Dependencies
+
+do not create authority.
+
+Authority
+
+already exists.
+
+Dependencies
+
+must follow
+
+authority.
+
+Authority
+
+always wins.
+
+Dependencies
+
+never redefine
+
+engineering truth.
+
+---
+
+# 10. Dependency Hierarchy
+
+Business Requirements
+
+↓
+
+Architecture
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+↓
+
+Policies
+
+↓
+
+Standards
+
+↓
+
+Specifications
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+↓
+
+Testing
+
+↓
+
+Deployment
+
+↓
+
+Production
+
+Dependencies
+
+must always
+
+flow downward.
+
+Reverse dependencies
+
+are prohibited.
+
+---
+
+# 11. Dependency Categories
+
+The engine
+
+supports
+
+multiple dependency categories.
+
+Architectural
+
+Functional
+
+Technical
+
+Repository
+
+Database
+
+API
+
+Workflow
+
+Security
+
+Deployment
+
+Operational
+
+Documentation
+
+Governance
+
+Planning
+
+Testing
+
+Reference
+
+Every dependency
+
+must belong
+
+to exactly one
+
+primary category.
+
+---
+
+# 12. Dependency Metadata
+
+Every dependency
+
+must record
+
+Dependency ID
+
+Source
+
+Target
+
+Category
+
+Authority
+
+Version
+
+Status
+
+Owner
+
+Review Date
+
+Approval Status
+
+Validation Status
+
+Last Synchronization
+
+---
+
+# 13. Dependency Inputs
+
+Architecture
+
+ADR
+
+Decision Register
+
+Repository
+
+Database
+
+OpenAPI
+
+Workflow
+
+RBAC
+
+Security
+
+Deployment
+
+Monitoring
+
+SSOT
+
+Reference Standards
+
+Documentation Inventory
+
+---
+
+# 14. Dependency Outputs
+
+Dependency Graph
+
+Dependency Report
+
+Broken Dependency Report
+
+Circular Dependency Report
+
+Impact Analysis
+
+Synchronization Report
+
+Validation Report
+
+Freeze Recommendation
+
+---
+
+# 15. Validation States
+
+NOT_STARTED
+
+↓
+
+COLLECTING
+
+↓
+
+RESOLVING
+
+↓
+
+VERIFYING
+
+↓
+
+VALIDATING
+
+↓
+
+ANALYZING
+
+↓
+
+REPORTING
+
+↓
+
+PASS
+
+or
+
+WARNING
+
+or
+
+FAIL
+
+or
+
+BLOCKED
+
+Every execution
+
+must terminate
+
+with exactly one
+
+final state.
+
+---
+
+# 16. Preconditions
+
+Dependency Validation
+
+may begin
+
+only when
+
+Document Inventory exists
+
+Authority Matrix exists
+
+Dependency Metadata exists
+
+Lifecycle State known
+
+Versions identified
+
+Owners assigned
+
+---
+
+# 17. Exit Conditions
+
+Dependency Validation
+
+completes only when
+
+Every dependency resolved
+
+Every dependency validated
+
+Every dependency classified
+
+Every dependency reported
+
+Every conflict analyzed
+
+Recommendation generated
+
+Evidence archived
+
+---
+
+# 18. Foundation Success Criteria
+
+The Dependency Validation Framework succeeds when
+
+every engineering artifact
+
+depends only upon
+
+approved,
+
+traceable,
+
+compatible,
+
+and synchronized sources,
+
+forming
+
+a complete,
+
+acyclic,
+
+auditable,
+
+and deterministic dependency graph
+
+that guarantees
+
+Documentation Freeze
+
+can proceed
+
+without hidden engineering risk.
+
+---
+
+# 19. Dependency Graph Engine
+
+## Purpose
+
+The Dependency Graph Engine
+
+constructs
+
+the complete engineering dependency graph
+
+for
+
+all documentation
+
+participating
+
+in Documentation Freeze.
+
+The graph
+
+becomes
+
+the authoritative model
+
+used by
+
+all validation engines.
+
+Every dependency
+
+must appear
+
+inside
+
+the dependency graph.
+
+No hidden dependency
+
+is permitted.
+
+---
+
+# 20. Dependency Graph Principles
+
+The dependency graph
+
+must satisfy
+
+the following principles.
+
+Connected
+
+Deterministic
+
+Directed
+
+Acyclic
+
+Traceable
+
+Version-aware
+
+Authority-aware
+
+Reproducible
+
+---
+
+Every dependency edge
+
+must represent
+
+an engineering requirement.
+
+Decorative relationships
+
+must not appear
+
+inside
+
+the graph.
+
+---
+
+# 21. Graph Components
+
+Every dependency graph
+
+contains
+
+Nodes
+
+Edges
+
+Authority
+
+Metadata
+
+Versions
+
+Owners
+
+Lifecycle State
+
+Validation Status
+
+---
+
+## Node
+
+A node
+
+represents
+
+one engineering artifact.
+
+Examples
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database Documentation
+
+OpenAPI
+
+Workflow
+
+Repository
+
+Security Policy
+
+Deployment Policy
+
+---
+
+## Edge
+
+An edge
+
+represents
+
+one dependency.
+
+Example
+
+Architecture
+
+↓
+
+Repository
+
+means
+
+Repository
+
+depends upon
+
+Architecture.
+
+---
+
+# 22. Node Metadata
+
+Every node
+
+must include
+
+Document ID
+
+Title
+
+Category
+
+Version
+
+Owner
+
+Lifecycle State
+
+Approval Status
+
+Authority Level
+
+Last Validation
+
+Freeze Version
+
+Checksum
+
+---
+
+# 23. Edge Metadata
+
+Every dependency edge
+
+must include
+
+Dependency ID
+
+Source
+
+Target
+
+Dependency Type
+
+Priority
+
+Mandatory Flag
+
+Version Constraint
+
+Approval Requirement
+
+Validation Status
+
+Last Synchronization
+
+---
+
+# 24. Dependency Types
+
+Every dependency
+
+belongs
+
+to exactly one type.
+
+---
+
+## Structural Dependency
+
+Defines
+
+engineering structure.
+
+Examples
+
+Architecture
+
+↓
+
+Repository
+
+Architecture
+
+↓
+
+Database
+
+---
+
+## Functional Dependency
+
+Defines
+
+functional behavior.
+
+Examples
+
+Workflow
+
+↓
+
+Business Rules
+
+Workflow
+
+↓
+
+API
+
+---
+
+## Technical Dependency
+
+Defines
+
+implementation technology.
+
+Examples
+
+Repository
+
+↓
+
+Coding Standards
+
+Database
+
+↓
+
+Prisma
+
+---
+
+## Governance Dependency
+
+Defines
+
+approval hierarchy.
+
+Examples
+
+Documentation Freeze
+
+↓
+
+Architecture Review
+
+Sprint Planner
+
+↓
+
+SSOT
+
+---
+
+## Reference Dependency
+
+Used only
+
+for
+
+documentation references.
+
+Reference dependencies
+
+never define
+
+engineering truth.
+
+---
+
+# 25. Mandatory vs Optional Dependencies
+
+Dependencies
+
+must be classified.
+
+---
+
+## Mandatory
+
+Required
+
+for
+
+correct implementation.
+
+If missing
+
+↓
+
+FAIL
+
+Examples
+
+Architecture
+
+↓
+
+ADR
+
+ADR
+
+↓
+
+Decision Register
+
+Database
+
+↓
+
+ERD
+
+---
+
+## Optional
+
+Helpful
+
+but
+
+not required.
+
+If missing
+
+↓
+
+WARNING
+
+Examples
+
+Examples
+
+Tutorials
+
+Appendices
+
+Reference Guides
+
+---
+
+# 26. Hard vs Soft Dependencies
+
+---
+
+## Hard Dependency
+
+The downstream artifact
+
+cannot exist
+
+without
+
+the upstream artifact.
+
+Examples
+
+OpenAPI
+
+↓
+
+API Specification
+
+Database Schema
+
+↓
+
+ERD
+
+Repository
+
+↓
+
+Architecture
+
+---
+
+## Soft Dependency
+
+The downstream artifact
+
+remains valid
+
+even if
+
+the upstream artifact
+
+is temporarily unavailable.
+
+Examples
+
+Examples
+
+Reference Documents
+
+Design Notes
+
+FAQ
+
+---
+
+# 27. Dependency Priority
+
+Every dependency
+
+has
+
+one priority.
+
+Critical
+
+High
+
+Medium
+
+Low
+
+---
+
+## Critical
+
+Failure
+
+↓
+
+BLOCKED
+
+Examples
+
+Architecture
+
+ADR
+
+Decision Register
+
+Database
+
+OpenAPI
+
+---
+
+## High
+
+Failure
+
+↓
+
+FAIL
+
+Examples
+
+Workflow
+
+Repository
+
+Security
+
+---
+
+## Medium
+
+Failure
+
+↓
+
+WARNING
+
+Examples
+
+Templates
+
+Examples
+
+---
+
+## Low
+
+Failure
+
+↓
+
+INFO
+
+Examples
+
+Appendices
+
+Reference Material
+
+---
+
+# 28. Dependency Resolution
+
+The engine
+
+must resolve
+
+every dependency
+
+before
+
+comparison begins.
+
+Resolution Algorithm
+
+Locate Source
+
+↓
+
+Locate Target
+
+↓
+
+Verify Target Exists
+
+↓
+
+Verify Version
+
+↓
+
+Verify Status
+
+↓
+
+Verify Authority
+
+↓
+
+Verify Compatibility
+
+↓
+
+Register Dependency
+
+↓
+
+Continue
+
+---
+
+# 29. Dependency Resolution Rules
+
+If
+
+Target Missing
+
+↓
+
+FAIL
+
+---
+
+If
+
+Target Archived
+
+↓
+
+FAIL
+
+---
+
+If
+
+Target Draft
+
+and
+
+dependency
+
+requires
+
+Approved
+
+↓
+
+FAIL
+
+---
+
+If
+
+Target Superseded
+
+↓
+
+FAIL
+
+---
+
+If
+
+Multiple Targets
+
+↓
+
+BLOCKED
+
+---
+
+If
+
+Authority Unknown
+
+↓
+
+BLOCKED
+
+---
+
+# 30. Version Constraints
+
+Dependencies
+
+must satisfy
+
+version constraints.
+
+Supported Types
+
+Exact
+
+Minimum
+
+Maximum
+
+Compatible
+
+Latest Approved
+
+---
+
+Examples
+
+Architecture
+
+1.3.0
+
+↓
+
+Repository
+
+must reference
+
+Architecture
+
+1.3.x
+
+---
+
+OpenAPI
+
+2.1
+
+↓
+
+Controller
+
+must implement
+
+OpenAPI
+
+2.1
+
+---
+
+# 31. Compatibility Rules
+
+A dependency
+
+is compatible
+
+only when
+
+Version Compatible
+
+Authority Compatible
+
+Lifecycle Compatible
+
+Approval Compatible
+
+Schema Compatible
+
+Terminology Compatible
+
+---
+
+Failure
+
+↓
+
+FAIL
+
+---
+
+# 32. Authority Dependency Matrix
+
+Authority
+
+must determine
+
+dependency direction.
+
+Business Requirements
+
+↓
+
+Architecture
+
+Architecture
+
+↓
+
+ADR
+
+ADR
+
+↓
+
+Decision Register
+
+Decision Register
+
+↓
+
+Policies
+
+Policies
+
+↓
+
+Standards
+
+Standards
+
+↓
+
+Specifications
+
+Specifications
+
+↓
+
+Repository
+
+Repository
+
+↓
+
+Implementation
+
+No reverse edge
+
+is permitted.
+
+---
+
+# 33. Canonical Dependency Resolution
+
+When
+
+multiple candidate targets
+
+exist
+
+Claude Code
+
+must
+
+select
+
+the canonical target
+
+using
+
+Authority
+
+↓
+
+Approval Status
+
+↓
+
+Lifecycle State
+
+↓
+
+Version
+
+↓
+
+Freeze Baseline
+
+↓
+
+Latest Approved
+
+If
+
+ambiguity remains
+
+↓
+
+BLOCKED
+
+Never guess.
+
+---
+
+# 34. Dependency Integrity
+
+The graph
+
+is considered
+
+valid
+
+only when
+
+Every Node Exists
+
+Every Edge Exists
+
+No Missing Node
+
+No Missing Edge
+
+No Duplicate Edge
+
+No Circular Dependency
+
+No Invalid Version
+
+No Invalid Authority
+
+No Broken Reference
+
+Complete Traceability
+
+---
+
+# 35. Dependency Graph Validation
+
+Before
+
+Documentation Freeze
+
+verify
+
+✓ Every node registered
+
+✓ Every edge registered
+
+✓ Every authority resolved
+
+✓ Every dependency classified
+
+✓ Every version compatible
+
+✓ Every lifecycle compatible
+
+✓ Every approval verified
+
+✓ No unresolved dependency
+
+✓ No duplicate dependency
+
+✓ No circular dependency
+
+---
+
+# 36. Part 2 Success Criteria
+
+The Dependency Graph Engine succeeds when
+
+every engineering artifact
+
+can be positioned
+
+inside
+
+one complete,
+
+directed,
+
+acyclic,
+
+authority-aware,
+
+version-aware,
+
+and fully traceable dependency graph,
+
+allowing
+
+Claude Code
+
+to determine
+
+the exact dependency order
+
+for validation,
+
+freeze,
+
+implementation,
+
+and long-term governance.
+---
+
+# 37. Architecture Dependency Validation
+
+## Purpose
+
+Architecture
+
+is the root dependency
+
+of the engineering system.
+
+Every downstream artifact
+
+must ultimately
+
+depend upon
+
+the approved architecture.
+
+---
+
+## Validation Sources
+
+Architecture
+
+↓
+
+Architecture Boundary
+
+↓
+
+Architecture Decisions
+
+↓
+
+Architecture Review
+
+↓
+
+ADR
+
+↓
+
+Decision Register
+
+---
+
+## Validation Rules
+
+Verify
+
+Architecture Exists
+
+Architecture Approved
+
+Architecture Active
+
+Architecture Version Compatible
+
+Architecture Owner Assigned
+
+Architecture Review Passed
+
+Architecture Dependencies Complete
+
+---
+
+## Compare
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Security
+
+↓
+
+Deployment
+
+---
+
+## Failure Conditions
+
+Missing Architecture
+
+Architecture Drift
+
+Multiple Architecture Sources
+
+Superseded Architecture
+
+Architecture Dependency Missing
+
+↓
+
+BLOCKED
+
+---
+
+# 38. ADR Dependency Validation
+
+## Purpose
+
+Ensure
+
+every architectural decision
+
+depends upon
+
+approved architecture
+
+and
+
+is correctly represented
+
+throughout
+
+the documentation system.
+
+---
+
+## Required Dependencies
+
+ADR
+
+↓
+
+Architecture
+
+↓
+
+Decision Register
+
+↓
+
+Repository
+
+↓
+
+Implementation
+
+---
+
+## Validate
+
+ADR Exists
+
+ADR Approved
+
+ADR Status Active
+
+ADR References Architecture
+
+ADR Registered
+
+ADR Version Compatible
+
+---
+
+## Failure
+
+Missing ADR
+
+Duplicate ADR
+
+Superseded ADR Used
+
+Decision Register Missing Entry
+
+↓
+
+FAIL
+
+---
+
+# 39. Decision Register Dependency Validation
+
+## Purpose
+
+Validate
+
+Decision Register
+
+as
+
+the operational index
+
+of architectural decisions.
+
+---
+
+## Dependencies
+
+Decision Register
+
+↓
+
+ADR
+
+↓
+
+Architecture
+
+---
+
+## Validate
+
+Decision Exists
+
+ADR Exists
+
+Status Matches
+
+Owner Matches
+
+Version Matches
+
+Approval Matches
+
+---
+
+## Failure
+
+Decision Missing
+
+Decision Drift
+
+Invalid Status
+
+Broken ADR Reference
+
+↓
+
+FAIL
+
+---
+
+# 40. Repository Dependency Validation
+
+## Purpose
+
+Ensure
+
+repository structure
+
+implements
+
+approved architecture.
+
+---
+
+## Dependencies
+
+Repository
+
+↓
+
+Architecture
+
+↓
+
+Repository Policy
+
+↓
+
+Coding Standards
+
+↓
+
+Naming Standards
+
+---
+
+## Validate
+
+Folder Structure
+
+Module Structure
+
+Package Ownership
+
+Dependency Direction
+
+Import Rules
+
+Visibility Rules
+
+---
+
+## Failure
+
+Repository Drift
+
+Circular Module Dependency
+
+Undocumented Module
+
+↓
+
+FAIL
+
+---
+
+# 41. Database Dependency Validation
+
+## Purpose
+
+Ensure
+
+database documentation
+
+remains synchronized
+
+with
+
+all dependent artifacts.
+
+---
+
+## Dependencies
+
+Database
+
+↓
+
+ERD
+
+↓
+
+Prisma Schema
+
+↓
+
+Migration
+
+↓
+
+Workflow
+
+↓
+
+OpenAPI
+
+---
+
+## Validate
+
+Entity Exists
+
+Relationship Exists
+
+Constraint Exists
+
+Enum Exists
+
+Migration Exists
+
+Version Compatible
+
+Approval Complete
+
+---
+
+## Failure
+
+Schema Drift
+
+Missing Entity
+
+Relationship Drift
+
+Migration Drift
+
+↓
+
+FAIL
+
+---
+
+# 42. OpenAPI Dependency Validation
+
+## Purpose
+
+Ensure
+
+API contracts
+
+depend upon
+
+approved documentation.
+
+---
+
+## Dependencies
+
+OpenAPI
+
+↓
+
+Architecture
+
+↓
+
+Workflow
+
+↓
+
+Database
+
+↓
+
+Security
+
+↓
+
+Repository
+
+---
+
+## Validate
+
+Endpoint Exists
+
+DTO Exists
+
+Schema Exists
+
+Authentication Exists
+
+Authorization Exists
+
+Error Responses Exist
+
+Examples Exist
+
+---
+
+## Failure
+
+Undocumented Endpoint
+
+Schema Drift
+
+Version Drift
+
+Authentication Drift
+
+↓
+
+FAIL
+
+---
+
+# 43. Workflow Dependency Validation
+
+## Purpose
+
+Validate
+
+business workflows.
+
+---
+
+## Dependencies
+
+Workflow
+
+↓
+
+Business Rules
+
+↓
+
+Database
+
+↓
+
+API
+
+↓
+
+RBAC
+
+↓
+
+Notifications
+
+---
+
+## Validate
+
+States
+
+Transitions
+
+Permissions
+
+Triggers
+
+Business Rules
+
+Terminal States
+
+Compensation
+
+---
+
+## Failure
+
+Workflow Drift
+
+Missing State
+
+Missing Transition
+
+Broken Business Rule
+
+↓
+
+FAIL
+
+---
+
+# 44. RBAC Dependency Validation
+
+## Purpose
+
+Validate
+
+role-based access control.
+
+---
+
+## Dependencies
+
+RBAC
+
+↓
+
+Workflow
+
+↓
+
+API
+
+↓
+
+Security
+
+↓
+
+Repository
+
+---
+
+## Validate
+
+Roles
+
+Permissions
+
+Scopes
+
+Inheritance
+
+Ownership
+
+Guards
+
+Policies
+
+Audit Rules
+
+---
+
+## Failure
+
+Permission Drift
+
+Undefined Role
+
+Missing Scope
+
+↓
+
+FAIL
+
+---
+
+# 45. Security Dependency Validation
+
+## Purpose
+
+Ensure
+
+security controls
+
+depend upon
+
+approved security governance.
+
+---
+
+## Dependencies
+
+Security
+
+↓
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Infrastructure
+
+↓
+
+Deployment
+
+↓
+
+RBAC
+
+↓
+
+API
+
+---
+
+## Validate
+
+Authentication
+
+Authorization
+
+Secrets
+
+Encryption
+
+Certificates
+
+Logging
+
+Rate Limits
+
+Audit
+
+---
+
+## Failure
+
+Security Drift
+
+Authentication Conflict
+
+Missing Secret Policy
+
+↓
+
+BLOCKED
+
+---
+
+# 46. Deployment Dependency Validation
+
+## Purpose
+
+Validate
+
+deployment readiness.
+
+---
+
+## Dependencies
+
+Deployment
+
+↓
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Monitoring
+
+↓
+
+Rollback
+
+↓
+
+Release Policy
+
+↓
+
+Documentation Freeze
+
+---
+
+## Validate
+
+Deployment Strategy
+
+Rollback Strategy
+
+Environment Matrix
+
+Configuration
+
+Infrastructure
+
+Monitoring
+
+Alerts
+
+---
+
+## Failure
+
+Missing Rollback
+
+Missing Monitoring
+
+Deployment Drift
+
+↓
+
+FAIL
+
+---
+
+# 47. Testing Dependency Validation
+
+## Purpose
+
+Ensure
+
+testing
+
+covers
+
+approved documentation.
+
+---
+
+## Dependencies
+
+Testing
+
+↓
+
+Requirements
+
+↓
+
+Architecture
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Database
+
+---
+
+## Validate
+
+Test Coverage
+
+API Coverage
+
+Workflow Coverage
+
+Security Coverage
+
+Regression Coverage
+
+Acceptance Coverage
+
+---
+
+## Failure
+
+Missing Tests
+
+Coverage Gap
+
+Broken Mapping
+
+↓
+
+WARNING
+
+or
+
+FAIL
+
+---
+
+# 48. AI Governance Dependency Validation
+
+## Purpose
+
+Validate
+
+AI execution
+
+against
+
+approved governance.
+
+---
+
+## Dependencies
+
+AI Governance
+
+↓
+
+SSOT
+
+↓
+
+Documentation Freeze
+
+↓
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Security
+
+---
+
+## Validate
+
+Allowed Actions
+
+Forbidden Actions
+
+Approval Boundaries
+
+Logging
+
+Evidence
+
+Automation Scope
+
+---
+
+## Failure
+
+AI exceeds authority
+
+AI bypasses Freeze
+
+AI modifies approved documentation
+
+↓
+
+BLOCKED
+
+---
+
+# 49. Cross-Domain Dependency Validation
+
+Every engineering domain
+
+must validate
+
+its dependencies
+
+against
+
+every related domain.
+
+Architecture
+
+↓
+
+Database
+
+↓
+
+OpenAPI
+
+↓
+
+Workflow
+
+↓
+
+Repository
+
+↓
+
+Security
+
+↓
+
+Deployment
+
+↓
+
+Monitoring
+
+No isolated domain
+
+is permitted.
+
+---
+
+# 50. Domain Validation Result
+
+Each domain
+
+must return
+
+exactly one result.
+
+PASS
+
+↓
+
+Dependencies valid.
+
+WARNING
+
+↓
+
+Minor issue.
+
+FAIL
+
+↓
+
+Dependency inconsistency.
+
+BLOCKED
+
+↓
+
+Critical dependency violation.
+
+---
+
+# 51. Part 3 Completion Criteria
+
+Dependency Validation
+
+for engineering domains
+
+is complete
+
+when
+
+every governed domain
+
+has
+
+its own
+
+dependency model,
+
+validation rules,
+
+failure conditions,
+
+evidence requirements,
+
+and standardized validation outcome,
+
+ensuring
+
+that every engineering artifact
+
+depends only upon
+
+approved,
+
+compatible,
+
+traceable,
+
+and synchronized upstream artifacts.
+---
+
+# 52. Dependency Analysis Engine
+
+## Purpose
+
+The Dependency Analysis Engine
+
+evaluates
+
+the integrity
+
+of the complete engineering dependency graph.
+
+The engine
+
+must detect
+
+missing,
+
+invalid,
+
+obsolete,
+
+conflicting,
+
+duplicated,
+
+or circular dependencies
+
+before
+
+Documentation Freeze
+
+may continue.
+
+The objective
+
+is to guarantee
+
+that every engineering artifact
+
+depends only upon
+
+valid,
+
+approved,
+
+and synchronized upstream artifacts.
+
+---
+
+# 53. Missing Dependency Detection
+
+## Purpose
+
+Detect
+
+required dependencies
+
+that do not exist.
+
+---
+
+## Detection Algorithm
+
+For every document
+
+↓
+
+Read Required Dependencies
+
+↓
+
+Locate Target
+
+↓
+
+Target Exists?
+
+↓
+
+YES
+
+↓
+
+Continue
+
+↓
+
+NO
+
+↓
+
+Generate Missing Dependency Finding
+
+↓
+
+FAIL
+
+---
+
+## Required Output
+
+Dependency ID
+
+Source Document
+
+Missing Target
+
+Dependency Category
+
+Severity
+
+Recommendation
+
+---
+
+## Examples
+
+Workflow
+
+requires
+
+Business Rules
+
+↓
+
+Business Rules document missing
+
+↓
+
+FAIL
+
+---
+
+OpenAPI
+
+references
+
+Authentication Policy
+
+↓
+
+Authentication Policy missing
+
+↓
+
+FAIL
+
+---
+
+# 54. Circular Dependency Detection
+
+## Purpose
+
+Ensure
+
+the dependency graph
+
+is acyclic.
+
+---
+
+## Algorithm
+
+Build Dependency Graph
+
+↓
+
+Depth First Search
+
+↓
+
+Detect Back Edge
+
+↓
+
+Cycle Found?
+
+↓
+
+YES
+
+↓
+
+Generate Circular Dependency Report
+
+↓
+
+BLOCKED
+
+---
+
+## Example
+
+Architecture
+
+↓
+
+Repository
+
+↓
+
+Workflow
+
+↓
+
+Architecture
+
+↓
+
+BLOCKED
+
+---
+
+## Output
+
+Cycle Path
+
+Root Cause
+
+Affected Documents
+
+Recommendation
+
+---
+
+# 55. Orphan Dependency Detection
+
+## Purpose
+
+Detect
+
+artifacts
+
+that
+
+are not connected
+
+to
+
+the engineering dependency graph.
+
+---
+
+## Definition
+
+An orphan artifact
+
+has
+
+No Parent
+
+No Child
+
+No Authority
+
+No References
+
+No Incoming Dependency
+
+No Outgoing Dependency
+
+---
+
+## Example
+
+Database Migration Guide
+
+exists
+
+but
+
+nothing references it.
+
+↓
+
+WARNING
+
+---
+
+## Critical Orphan
+
+Architecture
+
+exists
+
+without
+
+any downstream dependency.
+
+↓
+
+BLOCKED
+
+---
+
+# 56. Duplicate Dependency Detection
+
+## Purpose
+
+Ensure
+
+dependencies
+
+are unique.
+
+---
+
+## Invalid Example
+
+Architecture
+
+↓
+
+Repository
+
+Architecture
+
+↓
+
+Repository
+
+Architecture
+
+↓
+
+Repository
+
+Repeated
+
+three times.
+
+↓
+
+Duplicate Dependency
+
+---
+
+## Detection
+
+For every edge
+
+↓
+
+Normalize
+
+↓
+
+Hash
+
+↓
+
+Compare
+
+↓
+
+Duplicate?
+
+↓
+
+YES
+
+↓
+
+Generate Finding
+
+---
+
+# 57. Version Dependency Validation
+
+## Purpose
+
+Ensure
+
+every dependency
+
+references
+
+compatible versions.
+
+---
+
+## Validation
+
+Source Version
+
+↓
+
+Target Version
+
+↓
+
+Compatibility Rule
+
+↓
+
+PASS
+
+or
+
+FAIL
+
+---
+
+## Examples
+
+Architecture
+
+v2.0
+
+↓
+
+Repository
+
+v1.0
+
+↓
+
+FAIL
+
+---
+
+OpenAPI
+
+2.1
+
+↓
+
+Implementation
+
+2.1
+
+↓
+
+PASS
+
+---
+
+# 58. Lifecycle Dependency Validation
+
+Dependencies
+
+must also
+
+share
+
+compatible lifecycle states.
+
+---
+
+## Valid
+
+Approved
+
+↓
+
+Frozen
+
+↓
+
+Active
+
+---
+
+## Invalid
+
+Draft
+
+↓
+
+Production
+
+---
+
+Draft
+
+↓
+
+Freeze
+
+---
+
+Archived
+
+↓
+
+Implementation
+
+---
+
+Superseded
+
+↓
+
+Production
+
+---
+
+# 59. Approval Dependency Validation
+
+Every dependency
+
+must reference
+
+approved upstream artifacts.
+
+---
+
+## Validate
+
+Approval Exists
+
+Approval Active
+
+Approval Current
+
+Approval Not Expired
+
+Approval Version Compatible
+
+---
+
+Failure
+
+↓
+
+FAIL
+
+---
+
+# 60. Dependency Drift Detection
+
+## Purpose
+
+Detect
+
+dependency changes
+
+introduced
+
+after
+
+Documentation Freeze.
+
+---
+
+## Types
+
+Authority Drift
+
+Version Drift
+
+Reference Drift
+
+Relationship Drift
+
+Lifecycle Drift
+
+Repository Drift
+
+Architecture Drift
+
+Workflow Drift
+
+Database Drift
+
+---
+
+## Detection Workflow
+
+Compare
+
+Current Dependency Graph
+
+↓
+
+Freeze Baseline Graph
+
+↓
+
+Difference?
+
+↓
+
+YES
+
+↓
+
+Generate Drift Report
+
+---
+
+# 61. Dependency Impact Analysis
+
+Every dependency issue
+
+must include
+
+an impact analysis.
+
+---
+
+## Impact Categories
+
+Architecture
+
+Repository
+
+Database
+
+API
+
+Workflow
+
+Security
+
+Deployment
+
+Monitoring
+
+Testing
+
+Documentation
+
+---
+
+## Impact Levels
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Informational
+
+---
+
+## Required Analysis
+
+Affected Documents
+
+Affected Domains
+
+Affected Modules
+
+Affected APIs
+
+Affected Tables
+
+Affected Workflows
+
+Affected Permissions
+
+Affected Releases
+
+Affected Baselines
+
+---
+
+# 62. Root Cause Analysis
+
+Every dependency issue
+
+must identify
+
+its root cause.
+
+---
+
+## Possible Causes
+
+Missing Documentation
+
+Outdated Documentation
+
+Architecture Change
+
+Repository Change
+
+ADR Missing
+
+Version Conflict
+
+Human Error
+
+Manual Modification
+
+Improper Merge
+
+Unapproved Change
+
+---
+
+## Output
+
+Root Cause
+
+Confidence
+
+Evidence
+
+Recommendation
+
+---
+
+# 63. Dependency Resolution Workflow
+
+Dependency Issue
+
+↓
+
+Collect Evidence
+
+↓
+
+Resolve Authority
+
+↓
+
+Locate Correct Target
+
+↓
+
+Validate Version
+
+↓
+
+Validate Lifecycle
+
+↓
+
+Synchronize Documents
+
+↓
+
+Revalidate
+
+↓
+
+Close Issue
+
+---
+
+## Resolution Rules
+
+Missing Dependency
+
+↓
+
+Create
+
+or
+
+Restore
+
+the dependency.
+
+---
+
+Invalid Dependency
+
+↓
+
+Replace
+
+with
+
+approved target.
+
+---
+
+Circular Dependency
+
+↓
+
+Redesign
+
+dependency graph.
+
+---
+
+Version Conflict
+
+↓
+
+Synchronize versions.
+
+---
+
+# 64. Dependency Failure Matrix
+
+| Failure | Result |
+|----------|--------|
+| Missing Dependency | FAIL |
+| Duplicate Dependency | WARNING |
+| Circular Dependency | BLOCKED |
+| Invalid Version | FAIL |
+| Invalid Lifecycle | FAIL |
+| Invalid Authority | BLOCKED |
+| Orphan Critical Document | BLOCKED |
+| Orphan Supporting Document | WARNING |
+| Drift Detected | FAIL |
+
+---
+
+# 65. Dependency Evidence
+
+Every finding
+
+must contain
+
+Finding ID
+
+Dependency ID
+
+Source
+
+Target
+
+Category
+
+Severity
+
+Evidence
+
+Validator
+
+Timestamp
+
+Recommendation
+
+Current Status
+
+---
+
+# 66. Analysis Completion Criteria
+
+Dependency Analysis
+
+is complete
+
+when
+
+every dependency
+
+has been
+
+identified,
+
+classified,
+
+validated,
+
+version checked,
+
+lifecycle checked,
+
+authority verified,
+
+impact analysed,
+
+root cause identified,
+
+and
+
+assigned
+
+a deterministic validation outcome.
+
+---
+---
+
+# 67. Dependency Validation State Machine
+
+The Dependency Validation Engine
+
+shall operate
+
+as
+
+a deterministic state machine.
+
+Every execution
+
+must follow
+
+the same lifecycle.
+
+```text
+NOT_STARTED
+        ↓
+COLLECT_DOCUMENTS
+        ↓
+COLLECT_DEPENDENCIES
+        ↓
+BUILD_GRAPH
+        ↓
+RESOLVE_AUTHORITIES
+        ↓
+VERIFY_VERSIONS
+        ↓
+VERIFY_LIFECYCLE
+        ↓
+VERIFY_DEPENDENCIES
+        ↓
+ANALYZE_IMPACT
+        ↓
+GENERATE_REPORT
+        ↓
+PASS
+WARNING
+FAIL
+BLOCKED
+```
+
+No state
+
+may be skipped.
+
+---
+
+# 68. Dependency Validation Workflow
+
+Every validation
+
+shall execute
+
+the following workflow.
+
+---
+
+## Phase 1
+
+Inventory Collection
+
+Collect
+
+every participating document.
+
+Collect
+
+dependency metadata.
+
+Collect
+
+authority metadata.
+
+---
+
+## Phase 2
+
+Dependency Resolution
+
+Resolve
+
+every dependency
+
+to
+
+exactly one
+
+approved target.
+
+---
+
+## Phase 3
+
+Graph Construction
+
+Generate
+
+Dependency Graph
+
+Authority Graph
+
+Relationship Graph
+
+Validation Graph
+
+---
+
+## Phase 4
+
+Validation
+
+Execute
+
+Missing Dependency Detection
+
+Duplicate Detection
+
+Circular Detection
+
+Version Validation
+
+Lifecycle Validation
+
+Authority Validation
+
+---
+
+## Phase 5
+
+Impact Analysis
+
+Determine
+
+affected domains
+
+affected modules
+
+affected documentation
+
+affected baselines
+
+affected releases
+
+---
+
+## Phase 6
+
+Report Generation
+
+Generate
+
+Dependency Report
+
+Impact Report
+
+Drift Report
+
+Recommendation
+
+---
+
+# 69. Dependency Decision Matrix
+
+Every validation
+
+must terminate
+
+with
+
+one overall decision.
+
+| Condition | Result |
+|-----------|--------|
+| Graph valid | PASS |
+| Minor observations | WARNING |
+| Dependency inconsistency | FAIL |
+| Authority conflict or circular dependency | BLOCKED |
+
+---
+
+# 70. Claude Code Execution Rules
+
+Claude Code
+
+must execute
+
+Dependency Validation
+
+in read-only mode.
+
+Claude Code
+
+must never
+
+modify
+
+dependency metadata.
+
+---
+
+Claude Code
+
+must always
+
+build
+
+the dependency graph
+
+before
+
+performing
+
+validation.
+
+---
+
+Claude Code
+
+must always
+
+resolve authority
+
+before
+
+resolving dependencies.
+
+---
+
+Claude Code
+
+must never
+
+assume
+
+missing dependencies.
+
+---
+
+Claude Code
+
+must never
+
+invent
+
+relationships.
+
+---
+
+Claude Code
+
+must report
+
+NOT FOUND
+
+when
+
+required dependencies
+
+cannot be located.
+
+---
+
+Claude Code
+
+must stop
+
+validation
+
+immediately
+
+when
+
+Critical dependency violations
+
+are detected.
+
+---
+
+# 71. Automation Rules
+
+The following
+
+may be automated.
+
+✓ Dependency Discovery
+
+✓ Dependency Resolution
+
+✓ Graph Generation
+
+✓ Version Validation
+
+✓ Lifecycle Validation
+
+✓ Duplicate Detection
+
+✓ Circular Detection
+
+✓ Drift Detection
+
+✓ Dependency Reports
+
+✓ Dependency Metrics
+
+---
+
+The following
+
+require
+
+human approval.
+
+Architecture Changes
+
+ADR Approval
+
+Dependency Overrides
+
+Exception Approval
+
+Freeze Approval
+
+Production Approval
+
+---
+
+# 72. Dependency Validation Report
+
+Every execution
+
+must generate
+
+a standardized report.
+
+---
+
+## Report Metadata
+
+Validation ID
+
+Timestamp
+
+Validator
+
+Repository Commit
+
+Git Tag
+
+Baseline ID
+
+Validation Version
+
+Freeze Version
+
+---
+
+## Summary
+
+Dependencies Analysed
+
+Dependencies Passed
+
+Warnings
+
+Failures
+
+Blocked
+
+---
+
+## Missing Dependencies
+
+Dependency ID
+
+Source
+
+Target
+
+Severity
+
+Recommendation
+
+---
+
+## Circular Dependencies
+
+Cycle
+
+Affected Nodes
+
+Severity
+
+Recommendation
+
+---
+
+## Version Issues
+
+Source Version
+
+Target Version
+
+Constraint
+
+Result
+
+---
+
+## Drift Summary
+
+Architecture Drift
+
+Repository Drift
+
+Database Drift
+
+Workflow Drift
+
+API Drift
+
+Security Drift
+
+---
+
+## Recommendation
+
+PASS
+
+Proceed.
+
+WARNING
+
+Proceed with observations.
+
+FAIL
+
+Correct dependency issues.
+
+BLOCKED
+
+Architecture Review required.
+
+---
+
+# 73. Dependency Metrics
+
+The engine
+
+shall collect
+
+the following metrics.
+
+---
+
+## Graph Metrics
+
+Total Nodes
+
+Total Edges
+
+Average Degree
+
+Maximum Depth
+
+Graph Density
+
+Disconnected Nodes
+
+---
+
+## Validation Metrics
+
+Resolved Dependencies
+
+Missing Dependencies
+
+Circular Dependencies
+
+Duplicate Dependencies
+
+Version Conflicts
+
+Lifecycle Conflicts
+
+---
+
+## Quality Metrics
+
+Dependency Integrity Score
+
+Authority Score
+
+Version Compatibility Score
+
+Synchronization Score
+
+Traceability Score
+
+---
+
+## Operational Metrics
+
+Execution Time
+
+Graph Build Time
+
+Validation Time
+
+Report Generation Time
+
+Average Resolution Time
+
+---
+
+## Historical Metrics
+
+Repeated Dependency Failures
+
+Dependency Drift Trend
+
+Baseline Stability
+
+Architecture Stability
+
+Repository Stability
+
+---
+
+# 74. Anti-patterns
+
+The validator
+
+must reject
+
+the following practices.
+
+---
+
+Using
+
+Draft
+
+documents
+
+as dependencies.
+
+---
+
+Depending
+
+upon
+
+Archived
+
+documents.
+
+---
+
+Depending
+
+upon
+
+Superseded
+
+documents.
+
+---
+
+Using
+
+implementation
+
+as
+
+dependency authority.
+
+---
+
+Ignoring
+
+Decision Register.
+
+---
+
+Ignoring
+
+version compatibility.
+
+---
+
+Ignoring
+
+dependency lifecycle.
+
+---
+
+Creating
+
+hidden dependencies.
+
+---
+
+Creating
+
+circular dependencies.
+
+---
+
+Resolving
+
+dependencies
+
+without evidence.
+
+---
+
+# 75. Compliance Checklist
+
+Before
+
+Documentation Freeze
+
+verify
+
+□ Every dependency declared.
+
+□ Every dependency resolved.
+
+□ Every authority resolved.
+
+□ No duplicate dependency.
+
+□ No circular dependency.
+
+□ No orphan dependency.
+
+□ No invalid version.
+
+□ No invalid lifecycle.
+
+□ No invalid authority.
+
+□ Dependency graph complete.
+
+□ Impact analysis complete.
+
+□ Validation report generated.
+
+□ Evidence archived.
+
+---
+
+# 76. Self Verification
+
+Before returning PASS
+
+Claude Code
+
+must verify
+
+✓ Every dependency analysed.
+
+✓ Every authority resolved.
+
+✓ Every graph complete.
+
+✓ Every version compatible.
+
+✓ Every lifecycle compatible.
+
+✓ Every conflict classified.
+
+✓ Every report generated.
+
+✓ Every recommendation justified.
+
+✓ No undocumented assumptions used.
+
+✓ Validation reproducible.
+
+---
+
+# 77. Success Criteria
+
+Dependency Validation succeeds when
+
+every engineering artifact,
+
+every architectural decision,
+
+every API contract,
+
+every database definition,
+
+every workflow,
+
+every repository rule,
+
+every deployment artifact,
+
+every governance document,
+
+and every planning artifact
+
+depends only upon
+
+approved,
+
+compatible,
+
+traceable,
+
+version-consistent,
+
+lifecycle-consistent,
+
+and authoritative upstream artifacts,
+
+forming
+
+one complete,
+
+directed,
+
+acyclic,
+
+fully synchronized,
+
+and fully auditable dependency graph,
+
+allowing
+
+Documentation Freeze,
+
+Architecture Review,
+
+SSOT,
+
+Repository Analysis,
+
+Sprint Planning,
+
+and implementation
+
+to operate
+
+from one deterministic engineering dependency model.
+
+---
+
+# End of Document
+
+Status
+
+Production
+
+Dependency Validation Engine
+
+Complete
+
+Documentation Freeze
+
+Enterprise Ready

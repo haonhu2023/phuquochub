@@ -1,0 +1,132 @@
+schema_version: "1.0"
+
+id: PLACE-019
+workstream: place
+title: "Pre-BUILD repository readiness remediation (F-3, G-1, G-2, G-3, F-33, build)"
+type: governance_remediation
+status: completed
+started_at: "2026-07-23"
+completed_at: "2026-07-23"
+
+run_status:
+  implementation: complete
+  validation: passed
+  outcome: PARTIALLY_REMEDIATED     # all 11 ACs pass, but F-3 only partially cleared and F-2 untouched
+  results:
+    - "git init → exit 0; work tree confirmed via non-persistent -c safe.directory (user config NOT modified)"
+    - "git status --short → 22 entries; NO node_modules/dist/coverage/log path; only .env.example (placeholders)"
+    - "governance validation (26 YAML, 8 categories) → 0 failures, exit 0 (baseline: 2 failures)"
+    - "npx tsc -p tsconfig.json --noEmit → exit 0"
+    - "npx nest build → exit 0; 120 files; dist/main.js present (baseline: dist held only tsconfig.tsbuildinfo)"
+    - "npx jest → 210/210, 29 suites, exit 0"
+    - "npx eslint places + geo --max-warnings=0 → exit 0"
+  mandatory_criteria: "AC1..AC11 all PASS"
+  report: docs/delivery/reports/PLACE-019-pre-build-readiness-report.md
+  evidence_index: docs/delivery/evidence/PLACE-019-pre-build-readiness-evidence-index.md
+  changed_files:
+    - docs/delivery/project-registry.yaml                              # G-1 YAML repair
+    - docs/delivery/tasks/PLACE-001.yaml                               # G-2 schema normalization
+    - docs/delivery/state.yaml                                         # G-3 comment refresh + task lifecycle
+    - apps/api/src/modules/places/repositories/places.repository.ts    # F-33 bbox() removed
+    - apps/api/src/modules/places/repositories/places.repository.spec.ts  # F-33 regression spec
+  resolves: "G-1, G-2, G-3, F-33 — all RESOLVED"
+  f3_disposition: >-
+    PARTIALLY CLEARED, not cleared. The repository is now a Git work tree, but NO COMMIT was made
+    (governance does not require one and the authorization forbids it otherwise), so there is still
+    no rollback point and no diff-verified change scope. Git also cannot operate here without a
+    safe.directory exception — a user-level config change explicitly outside this authorization —
+    or relocation to an NTFS volume. F-3 still blocks BUILD.
+  f2_disposition: "OPEN, UNCHANGED. Docker installation was explicitly NOT authorized."
+  build_note: >-
+    `nest build` exiting 0 proves the code COMPILES and emits an entry point. No service was
+    started; production startup remains NOT VERIFIED. Build reproducibility moves from
+    PARTIALLY PROVEN to PROVEN-for-compilation only.
+  process_note: >-
+    The first F-33 edit was wrong — it left a renamed placeholder method instead of removing the
+    code, which would have been worse dead surface than the defect itself. Caught on review and
+    replaced with a genuine deletion, verified absent from the compiled artifact.
+  build_authorization: "NOT GRANTED. No BUILD task created or activated; READY_FOR_BUILD not asserted."
+
+authority:
+  source: "Repository owner instruction — 'Authorize Pre-BUILD Repository Readiness Remediation', 2026-07-23"
+  note: >-
+    This is NOT a BUILD task and NOT new Place feature work. ADR-DELIVERY-001 makes state.yaml the
+    execution gate, so a task record is created and activated before any repository change, then
+    executed and closed in the same turn as the owner directed. It does not reopen or modify
+    PLACE-001..PLACE-018 implementation behaviour.
+
+depends_on: []      # PLACE-001..PLACE-018 are all completed; none is active, so nothing is displaced.
+
+objective: >-
+  Perform the repository-local work the owner authorized to prepare the completed Place workstream
+  for a future BUILD transition: initialize version control, repair the malformed governance
+  registry, normalize legacy task schema drift, refresh objectively stale governance comments,
+  remediate F-33 if and only if it is repository-local and unambiguous, and run the production
+  build. Leave BUILD unauthorized unless every documented prerequisite is genuinely satisfied.
+
+scope_authorized_by_owner:
+  - "git init (local only — no remote, no push, no user config rewrite)"
+  - "repair docs/delivery/project-registry.yaml YAML syntax (G-1)"
+  - "resolve PLACE-001.yaml schema drift (G-2)"
+  - "refresh objectively stale governance comments (G-3) without weakening any gate VALUE"
+  - "F-33 remediation IF repository-local and fully documented"
+  - "run the NestJS production build"
+  - "validation + report/evidence records for this operation"
+
+out_of_scope:
+  - "Docker installation, deployment, production release, database mutation"
+  - "creating or activating any BUILD task"
+  - "modifying PLACE-001..PLACE-018 implementation behaviour"
+  - "rerunning the Final Release Readiness Review"
+  - "F-2 (Docker), F-24, F-28, F-34, GAP-05/10, GAP-15, SearchResult.score, authoritative bbox — all need infrastructure or an owner decision"
+
+acceptance_criteria:
+  # Derived from the documented failures G-1, G-2, G-3, F-33, F-3 and the recorded BUILD-readiness
+  # rules. NOT invented for this task.
+  - { id: AC1, mandatory: true,  text: "git rev-parse --is-inside-work-tree succeeds; repository is under local version control (F-3 condition)." }
+  - { id: AC2, mandatory: true,  text: ".gitignore verifiably excludes dependencies, build output, secrets/env, coverage, temp, logs, editor/OS artifacts; no secret or node_modules path appears in git status." }
+  - { id: AC3, mandatory: true,  text: "docs/delivery/project-registry.yaml parses with the SAME parser used by governance validation; intended values preserved; no project decision silently changed (G-1)." }
+  - { id: AC4, mandatory: true,  text: "ALL governance YAML files parse, not only the repaired one." }
+  - { id: AC5, mandatory: true,  text: "PLACE-001.yaml schema drift resolved with HISTORICALLY ACCURATE values traceable to its report/evidence; status and historical meaning preserved; recorded as schema normalization, NOT re-execution (G-2)." }
+  - { id: AC6, mandatory: true,  text: "Every refreshed comment records old statement, contradicting evidence, replacement, and why no gate was weakened; no gate VALUE changed (G-3)." }
+  - { id: AC7, mandatory: true,  text: "F-33 either remediated with a documented consumer sweep + regression coverage, or left OPEN with the exact missing authority stated." }
+  - { id: AC8, mandatory: true,  text: "The repository-authoritative NestJS build command runs; exit code, dist/ contents and production entry point recorded." }
+  - { id: AC9, mandatory: true,  text: "Full jest suite and API typecheck exit 0; web typecheck run if shared contracts were affected." }
+  - { id: AC10, mandatory: true, text: "F-2 remains OPEN; database, migration, HTTP, authz-guard, geospatial, EXPLAIN and e2e gaps remain unverified; no runtime claim made from compilation alone." }
+  - { id: AC11, mandatory: true, text: "No BUILD task created or activated; READY_FOR_BUILD not asserted from tests + compilation." }
+
+validation_commands:
+  # Node is a portable extract and is NOT on the system PATH. Prepend it first:
+  #   $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.18.0-win-x64;$env:Path"
+  - "git rev-parse --is-inside-work-tree && git status --short"
+  - "governance YAML + state + task + dependency + evidence validation"
+  - "cd apps/api && npx jest"
+  - "cd apps/api && npx tsc -p tsconfig.json --noEmit"
+  - "cd apps/api && npx nest build"
+
+rollback_plan: >-
+  Governance edits are individually revertible. `git init` is reversible by deleting .git. The F-33
+  removal is a single method deletion, restorable from this task's report. No schema, data,
+  migration or contract is involved.
+
+stop_conditions:
+  - "F-33 turns out to have a consumer, or its expected behaviour is ambiguous — STOP and leave it OPEN."
+  - "The build fails for a reason needing global software or machine configuration — STOP and record it as an external blocker."
+  - "Any change would weaken a gate value or alter PLACE-001..PLACE-018 behaviour — STOP."
+  - "A commit would include secrets or node_modules — STOP and do not commit."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state:
+      current.task: none
+      current.status: awaiting_task_authorization
+  requires_evidence:
+    - "git initialized and inspected"
+    - "all governance YAML parsing"
+    - "build exit code + dist contents"
+    - "F-2 preserved OPEN"
+
+non_claims: >-
+  Completing this task does NOT authorize BUILD, does NOT prove runtime behaviour, and does NOT
+  close any Docker-dependent verification gap. A successful compilation is not a working system.
