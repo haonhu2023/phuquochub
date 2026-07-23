@@ -31,6 +31,6 @@ describe('Health (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/api/health');
     // 200 nếu tất cả 'up'; 503 nếu có 'down'. Cả hai đều có trường status.
     expect([200, 503]).toContain(res.status);
-    expect(res.body).toHaveProperty('status');
+    expect(res.body.data).toHaveProperty('status');
   });
 });
