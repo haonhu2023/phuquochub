@@ -1,0 +1,29 @@
+# PLACE-026 — keep the Docker build context lean. Mirrors .gitignore's build-artifact exclusions.
+# Everything is built FRESH inside the Docker build stages, so host build output is excluded.
+node_modules
+**/node_modules
+dist
+**/dist
+.next
+**/.next
+.turbo
+**/.turbo
+coverage
+**/coverage
+*.tsbuildinfo
+**/*.tsbuildinfo
+.git
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+.env
+.env.local
+.env.*.local
+.data
+docs
+delivery
+prompts
+enterprise-engineering-framework
+.claude

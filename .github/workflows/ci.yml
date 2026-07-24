@@ -89,3 +89,114 @@ jobs:
 
       - name: API e2e
         run: npm run test:e2e --workspace @phuquochub/api
+
+  # PLACE-026 (OD2-2..9) — production deployment pipeline. Builds the same Dockerfiles used for a
+  # real deploy and validates them against real Postgres/Redis service containers (same pattern as
+  # the `e2e` job above), proving the images are viable production artifacts.
+  docker-build:
+    name: Docker build & validate (deployment pipeline)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: phuquoc
+          POSTGRES_PASSWORD: phuquoc
+          POSTGRES_DB: phuquochub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U phuquoc -d phuquochub"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install (only to run migrations against the DB the built image will connect to)
+        run: npm ci
+
+      - name: Run migrations
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: phuquoc
+          DB_PASSWORD: phuquoc
+          DB_NAME: phuquochub
+        run: npm run migration:run --workspace @phuquochub/api
+
+      - name: Build API image
+        run: docker build -f apps/api/Dockerfile -t phuquochub-api:ci .
+
+      - name: Build web image
+        run: docker build -f apps/web/Dockerfile -t phuquochub-web:ci .
+
+      - name: Boot API image and verify /api/health (PLACE-026 AC2)
+        run: |
+          docker run -d --name api-ci --network host \
+            -e NODE_ENV=production -e API_PORT=4000 -e API_GLOBAL_PREFIX=api \
+            -e DB_HOST=localhost -e DB_PORT=5432 -e DB_USER=phuquoc -e DB_PASSWORD=phuquoc -e DB_NAME=phuquochub \
+            -e DB_SSL=false -e DB_SYNCHRONIZE=false -e DB_LOGGING=false \
+            -e REDIS_HOST=localhost -e REDIS_PORT=6379 -e REDIS_URL=redis://localhost:6379 \
+            -e JWT_ACCESS_SECRET=ci-access-secret-please-change -e JWT_REFRESH_SECRET=ci-refresh-secret-please-change \
+            phuquochub-api:ci
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/health || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          curl -sf http://localhost:4000/api/health | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+          grep -q '"database":{"status":"up"}' /tmp/health.json
+          grep -q '"redis":{"status":"up"' /tmp/health.json
+          docker logs api-ci
+          docker rm -f api-ci
+
+      - name: Boot web image and verify it serves (PLACE-026 AC3)
+        run: |
+          docker run -d --name web-ci --network host -e NODE_ENV=production phuquochub-web:ci
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          curl -sfo /dev/null -w "web status: %{http_code}\n" http://localhost:3000/
+          docker logs web-ci
+          docker rm -f web-ci
+
+      # PLACE-026 (OD2-7): GHCR via the auto-provided GITHUB_TOKEN — no new secret required.
+      # NOT exercised by a live run in this session: this repository has no git remote configured
+      # here, so no Actions run has ever executed this workflow. The steps below follow the
+      # documented GHCR login/push pattern and are expected to work once a remote exists; treat
+      # them as unverified until the first real push-triggered run confirms it.
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push images to GHCR
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        run: |
+          IMAGE_API=ghcr.io/${{ github.repository }}/api
+          IMAGE_WEB=ghcr.io/${{ github.repository }}/web
+          docker tag phuquochub-api:ci "$IMAGE_API:${{ github.sha }}"
+          docker tag phuquochub-web:ci "$IMAGE_WEB:${{ github.sha }}"
+          docker push "$IMAGE_API:${{ github.sha }}"
+          docker push "$IMAGE_WEB:${{ github.sha }}"

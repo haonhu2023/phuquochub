@@ -6,13 +6,17 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { bbox as fetchBbox, type BboxMarker } from './api/geo.api';
 import type { GeoPoint } from '@/modules/places/types';
 
-// Raster OSM (không cần API key). Sản xuất nên self-host/MapTiler (search.md/architecture).
+// PLACE-026 (OD2-8): nguồn tile cấu hình được qua NEXT_PUBLIC_MAP_TILE_URL — mặc định GIỮ
+// NGUYÊN URL OpenStreetMap hiện tại (không cần API key, không đổi hành vi hiện có). Đổi sang
+// MapTiler production: đặt biến này ra URL tile MapTiler thật (kèm API key), không cần sửa code.
+const TILE_URL = process.env.NEXT_PUBLIC_MAP_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
 const STYLE: StyleSpecification = {
   version: 8,
   sources: {
     osm: {
       type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tiles: [TILE_URL],
       tileSize: 256,
       attribution: '© OpenStreetMap contributors',
     },
