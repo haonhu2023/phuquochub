@@ -30,12 +30,13 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-020 completed 2026-07-24 (RECONCILED). It recorded the
-                                  # certified D: runtime facts: F-2 (Docker) and F-3 (version
-                                  # control) — the two in-repo release blockers PLACE-016..019
-                                  # named as "not fixable in-repo" — are now RESOLVED. The sole
-                                  # remaining release blocker is GAP-05/10, an OWNER product
-                                  # decision no engineering task can supply. No BUILD task exists.
+  task: none                      # PLACE-021 completed 2026-07-24 (GAP-05/10 RESOLVED). The sole
+                                  # hard release blocker (list-pagination contract) is CLEARED by
+                                  # owner decision OD-B1 (offset ratified) + doc reconciliation +
+                                  # contract tests; runtime unchanged. Remaining owner-approved work
+                                  # (OD-B2/B3/B4/B7) is AUTHORIZED-but-not-activated as PLACE-022..025;
+                                  # OD-B5 accepted risk, OD-B6 deferred. Next: PLACE-022 (F-24), on
+                                  # owner authorization. No BUILD task exists.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -135,43 +136,98 @@ owner_decisions:
     A recorded decision is NOT an implementation and NOT a resolved finding. F-1, F-6 and F-17 all
     remain release blockers with implementation_status PENDING and validation_status PENDING.
 
+owner_decisions_2026_07_24:
+  # Release-blocker adjudication from the Owner Decision Package. Approval: owner instruction
+  # in-session 2026-07-24. Consolidated record: docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  # Evidence base preserved: docs/delivery/reports/OWNER-DECISION-PACKAGE-2026-07-24.md
+  recorded_at: "2026-07-24"
+  record: docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  decisions:
+    - { id: OD-B1, item: "GAP-05/GAP-10", option: B1-A, class: implementation, status: APPROVED,
+        also: "ADR-010 Proposed -> Accepted", remediation_task: PLACE-021,
+        summary: "Ratify offset page/limit; status/sort/cursor stay deprecated (400), not deleted; NO cursor pagination; runtime preserved, OpenAPI reconciled to runtime." }
+    - { id: OD-B2, item: F-24, option: B2-A, class: implementation, status: "APPROVED (impl PENDING)",
+        summary: "Rename getCardById to privileged name + architecture test barring @Public reach. Not executed here." }
+    - { id: OD-B3, item: F-34, option: B3-A, class: implementation, status: "APPROVED (impl PENDING)",
+        summary: "bboxClusters deterministic truncation ORDER BY cnt DESC, cell ASC before LIMIT 500. Not executed here." }
+    - { id: OD-B4, item: SearchResult.score, option: B4-A, class: implementation, status: "APPROVED (impl PENDING)",
+        summary: "Remove score from public /search payload; retain ts_rank for ordering. Not executed here." }
+    - { id: OD-B5, item: "F-1/PROVISIONAL-bbox", option: B5-B, class: accepted_temporary_risk, status: ACCEPTED,
+        summary: "Provisional bbox accepted as documented non-authoritative boundary for initial release; softened behaviour (PLACE-016) retained; NO new code. Authoritative boundary remains future work." }
+    - { id: OD-B6, item: "GAP-06/F-15", option: B6-A, class: deferred_optimization, status: DEFERRED,
+        summary: "Defer EXPLAIN/index-planner proof to a future performance task at scale. Do NOT add or alter indexes now." }
+    - { id: OD-B7, item: GAP-15, option: B7-A, class: implementation, status: "APPROVED (impl PENDING)",
+        summary: "Record TypeORM migrations/entities as authoritative runtime persistence; Prisma reference-only. Authority note is a separate PENDING task; not executed here." }
+  approval_does_not_imply: >-
+    Only OD-B1 is authorized for implementation (PLACE-021). OD-B2/B3/B4/B7 are APPROVED but
+    implementation PENDING; OD-B5 is an accepted documented risk (no new code); OD-B6 is deferred.
+    None of B2..B7 may be represented as implemented.
+
 proposed_tasks:
-  # Derived from approved decisions, deliberately NOT activated. Governance carries a single
-  # current.task and PLACE-015 already holds it, so activating any of these would create a second
-  # active task. Each requires explicit owner authorization to become current.task.
+  # Derived from approved decisions, deliberately NOT activated except PLACE-021 (OD-B1, this turn).
+  # Each other requires explicit owner authorization to become current.task.
   - { id: PLACE-016, status: COMPLETED, decision: OD-F-1, file: docs/delivery/tasks/PLACE-016.yaml,
       completed: "2026-07-23" }
   - { id: PLACE-017, status: COMPLETED, decision: OD-F-6, file: docs/delivery/tasks/PLACE-017.yaml,
       completed: "2026-07-23" }
   - { id: PLACE-018, status: COMPLETED, decision: OD-F-17, file: docs/delivery/tasks/PLACE-018.yaml,
       completed: "2026-07-23" }
+  - { id: PLACE-021, status: COMPLETED, decision: OD-B1, file: docs/delivery/tasks/PLACE-021.yaml,
+      completed: "2026-07-24", note: "B1 — GAP-05/10 RESOLVED; offset ratified; docs reconciled to runtime; runtime unchanged." }
+  - { id: PLACE-022, status: PROPOSED, decision: OD-B2, note: "F-24 privileged card rename + arch test. Needs authorization." }
+  - { id: PLACE-023, status: PROPOSED, decision: OD-B3, note: "F-34 deterministic bbox truncation. Needs authorization." }
+  - { id: PLACE-024, status: PROPOSED, decision: OD-B4, note: "SearchResult.score removal. Needs authorization." }
+  - { id: PLACE-025, status: PROPOSED, decision: OD-B7, note: "TypeORM authority note (GAP-15). Needs authorization." }
 
 next_action:
-  task_id: none
-  status: awaiting_task_authorization
+  task_id: PLACE-022
+  status: authorized_not_activated
   objective: >-
-    NO further Place ENGINEERING task is defined or authorized. PLACE-001..PLACE-018 are complete,
-    all three owner-approved remediations (OD-F-1, OD-F-6, OD-F-17) are implemented AND validated,
-    and PLACE-019 + PLACE-020 (governance operations) are closed. PLACE-020 (2026-07-24) recorded
-    that the two infrastructure blockers previously described as "not fixable in-repo" are now
-    RESOLVED with certified evidence: F-2 (Docker installed & running; e2e 22/22 green against real
-    Postgres/PostGIS + Redis; API health db=up/redis=up) and F-3 (repository under version control
-    with a rollback point). F-33 was already removed by PLACE-019. What remains needs an OWNER
-    PRODUCT DECISION that no engineering task can supply and that must NOT be invented:
-    GAP-05/10 (openapi list params vs implementation — the SOLE outstanding release blocker),
-    F-24 (privileged-vs-public card schema), F-34 (bboxClusters truncation policy), the public
-    SearchResult.score, and an AUTHORITATIVE Phú Quốc boundary to retire the PROVISIONAL bbox.
-    One non-blocking Docker-backed evidence item is now executable but not release-critical:
-    EXPLAIN proof that the planner uses idx_places_status_active (GAP-06 / F-15). Deriving another
-    engineering task to keep the sequence moving is explicitly NOT authorized.
-  awaiting_owner_decision:
-    - "GAP-05/10 — openapi listPlaces declares status/sort/cursor; implementation uses offset page/limit. Sole outstanding release blocker; needs contract adjudication."
-    - "F-24 — privileged vs public PlaceCard schema (getCardById filter omission)."
-    - "F-34 — bboxClusters truncation policy at 500."
-    - "SearchResult.score — public exposure decision."
-    - "Authoritative Phú Quốc boundary — to replace the PROVISIONAL bbox constant."
+    The SOLE hard release blocker (GAP-05/10 list-pagination contract) is CLEARED by PLACE-021
+    (2026-07-24): owner decision OD-B1 ratified offset pagination, ADR-010 is Accepted, the OpenAPI/
+    api.md are reconciled to runtime, and contract tests pin the behaviour — runtime unchanged. The
+    remaining owner-approved decisions are recorded (OWNER-DECISIONS-2026-07-24) and mapped to tasks
+    that are AUTHORIZED-BY-DECISION but NOT activated (single-active-task discipline): PLACE-022
+    (OD-B2 / F-24 privileged card rename + arch test) is the next in sequence, then PLACE-023
+    (OD-B3 / F-34 deterministic bbox truncation), PLACE-024 (OD-B4 / SearchResult.score removal),
+    PLACE-025 (OD-B7 / TypeORM authority note for GAP-15). OD-B5 (provisional bbox) is an ACCEPTED
+    DOCUMENTED RISK requiring no new code; OD-B6 (GAP-06/F-15 EXPLAIN) is DEFERRED to a scale
+    performance task. None of B2..B7 is implemented. Activation of PLACE-022 needs explicit owner
+    authorization (this session executed exactly PLACE-021 and stopped).
+  next_authorized_task:
+    id: PLACE-022
+    decision: OD-B2
+    item: F-24
+    summary: "Rename PlacesRepository.getCardById to a privileged-signalling name + add an architecture test barring any @Public route from reaching it. Behaviour unchanged."
+    status: authorized_by_decision_not_activated
+  release_blockers_remaining: "NONE hard. GAP-05/10 RESOLVED (PLACE-021). OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker."
+  remaining_approved_work:
+    - "PLACE-022 — OD-B2 / F-24 (next)."
+    - "PLACE-023 — OD-B3 / F-34 (deterministic bbox truncation)."
+    - "PLACE-024 — OD-B4 / SearchResult.score removal."
+    - "PLACE-025 — OD-B7 / GAP-15 TypeORM authority note."
+    - "OD-B5 — accepted documented risk (provisional bbox), no new code."
+    - "OD-B6 — deferred: EXPLAIN proof for idx_places_status_active (GAP-06/F-15) at representative scale."
 
 completed_tasks:
+  - id: PLACE-021
+    completed: "2026-07-24"
+    result: >-
+      GAP-05 & GAP-10 RESOLVED. B1-A (OD-B1): the existing OFFSET page/limit pagination is ratified as
+      the authoritative public list contract; ADR-010 Accepted as the governing versioning decision; NO
+      cursor pagination. Documentation/contract reconciliation to runtime ONLY — no application source,
+      DTO, controller, service, repository or schema change (git diff limited to docs/** + one new test).
+      openapi listPlaces + api.md corrected: invalid page/limit/price_range documented 422 -> 400 (the
+      runtime returns 400 via ValidationPipe default + AllExceptionsFilter statusToCode, NEVER 422 —
+      confirmed live), a '400' response added, and status/sort/cursor KEPT deprecated (400) per OD-F-6
+      with cursor decided-against for v1. 11 new HTTP contract tests (production-equivalent pipe:
+      whitelist+transform+forbidNonWhitelisted) pin default(1/20), explicit(2/5), limit>100 clamp,
+      invalid page/limit -> 400, deprecated param -> 400, and meta shape. Verified on the booted
+      production build (default total=49/totalPages=3; all cases green). Full lint + typecheck + unit
+      210/210 + e2e 33/33 (22+11) green; clean build 4/4; health 200 db+redis up; web 200; ports freed.
+      Runtime behaviour UNCHANGED. Sole hard release blocker cleared.
+    report: docs/delivery/reports/PLACE-021-list-pagination-contract-report.md
+    evidence_index: docs/delivery/evidence/PLACE-021-list-pagination-contract-evidence-index.md
   - id: PLACE-020
     completed: "2026-07-24"
     result: >-

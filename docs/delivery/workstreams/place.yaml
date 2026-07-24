@@ -99,10 +99,10 @@ testing_surface:
 deployment_status: not_started   # no evidence of any deploy/canary/hypercare
 
 known_gaps:                      # source: BUILD_001 gap register
-  - { id: GAP-05/10, priority: P1, summary: "openapi listPlaces declares status/sort/cursor; impl uses offset page/limit (needs owner adjudication)", status: parked }
-  - { id: GAP-15, priority: P2, summary: "Prisma model vs TypeORM runtime dual-source; packages/database empty" }
+  - { id: GAP-15, priority: P2, summary: "Prisma model vs TypeORM runtime dual-source; packages/database empty", status: "decided OD-B7 (TypeORM authoritative); authority-note task PENDING" }
 
 resolved_gaps:
+  - { id: "GAP-05/10", by: PLACE-021, date: "2026-07-24", summary: "Offset page/limit ratified as the authoritative list contract (OD-B1/B1-A; ADR-010 Accepted). openapi listPlaces + api.md reconciled to runtime: invalid page/limit/price_range corrected 422->400 (runtime is 400, NOT 422); '400' response added; status/sort/cursor kept deprecated (400) per OD-F-6 with cursor decided-against for v1. 11 HTTP contract tests pin the behaviour; runtime UNCHANGED (no src/ change). GAP-05 + GAP-10 RESOLVED by decision + evidence." }
   - { id: GAP-13, by: PLACE-007, date: "2026-07-22", summary: "getCardBySlug REMOVED. Four-pass repository-wide sweep found zero consumers (incl. the exported PlacesRepository surface); tsc exit 0 confirms no compile-time caller. Removal chosen over adding a status filter because getCardById deliberately omits it for moderation reads. jest places 51/51, GAP-02/04 regression specs unmodified." }
   - { id: GAP-14, by: PLACE-006, date: "2026-07-22", summary: "opening_hours validated against places.md §4 via @IsOpeningHours() on both write DTOs. 18 specs, 30/30 green, mutation check fails 9 without it. SSOT example passes verbatim; unknown keys tolerated per openapi additionalProperties:true; open<close not enforced (overnight ranges legitimate). No seeded data invalidated. Response type still untyped — F-20." }
   - { id: GAP-11, by: PLACE-005, date: "2026-07-22", summary: "Place response types declared once in packages/shared-types/src/place.ts; apps/api mapper imports + re-exports, apps/web types.ts is a pure re-export. Wire payload unchanged (mapper specs passed UNMODIFIED, jest places 33/33); apps/api + apps/web tsc exit 0. Findings F-17 (openapi PlaceCard omits status/score), F-18 (row verification_status typed string), F-19 (Date vs string timestamps) raised." }
@@ -131,7 +131,20 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-020 completed 2026-07-24; awaiting OWNER product decision (GAP-05/10). No engineering task is derivable.
+next_task: none        # PLACE-021 completed 2026-07-24 (GAP-05/10 RESOLVED). Next authorized-but-not-executed: PLACE-022 (OD-B2/F-24). Awaiting owner authorization to activate.
+
+place_021_status: >-
+  COMPLETED 2026-07-24 — GAP-05 & GAP-10 RESOLVED. B1-A: offset page/limit ratified as the
+  authoritative public list contract (OD-B1; ADR-010 Accepted). Documentation/contract reconciliation
+  to runtime ONLY — no src/ change, no cursor pagination. openapi listPlaces + api.md corrected: invalid
+  page/limit/price_range documented 422->400 (the runtime returns 400 via ValidationPipe default +
+  AllExceptionsFilter, NOT 422); '400' response added; status/sort/cursor kept deprecated (400) per
+  OD-F-6, descriptions updated to state cursor is decided-against for v1. 11 new HTTP contract tests
+  (production-equivalent pipe) pin default/explicit/clamp/invalid/deprecated/meta. Verified live on the
+  booted production build. Full lint/typecheck/unit(210)/e2e(33) green; clean build 4/4; health 200
+  db+redis up; web 200; ports freed. Runtime behaviour UNCHANGED. See
+  reports/PLACE-021-list-pagination-contract-report.md and
+  evidence/PLACE-021-list-pagination-contract-evidence-index.md.
 
 place_020_status: >-
   COMPLETED 2026-07-24 — RECONCILED. Owner-authorized delivery-state reconciliation, governance-only

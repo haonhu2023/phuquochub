@@ -1,0 +1,89 @@
+schema_version: "1.0"
+
+id: PLACE-021
+workstream: place
+title: "List-pagination contract reconciliation (B1 / GAP-05 / GAP-10)"
+type: contract_remediation
+status: authorized            # -> in_progress -> completed within this turn (owner-authorized)
+started_at: "2026-07-24"
+
+authority:
+  source: "Owner decision OD-B1 (B1-A) + ADR-010 Accept, 2026-07-24 — docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md"
+  note: >-
+    Ratify the EXISTING offset pagination as the authoritative public contract and reconcile the
+    documentation to runtime. NO cursor pagination. Runtime pagination behaviour is preserved unless
+    evidence shows it violates the approved decision. Scope is GAP-05/GAP-10 (listPlaces) only —
+    B2..B7 are explicitly out of scope.
+
+depends_on:
+  - "OD-B1 approved (2026-07-24)"
+  - "ADR-010 Accepted (2026-07-24)"
+  - "PLACE-017 (prior openapi list reconciliation) completed 2026-07-23"
+
+objective: >-
+  Make the public GET /api/places contract unambiguous and consistent with the ratified offset
+  runtime: page/limit ranges/defaults, invalid-value behaviour (HTTP 400 — the actual runtime code,
+  not the previously-documented 422), fixed server ordering, and pagination metadata. Correct the
+  deprecated status/sort/cursor declarations so they reflect the FINAL decision (offset ratified per
+  ADR-010; cursor not adopted) while remaining deprecated (not deleted) per OD-F-6. Add contract
+  tests proving the accepted behaviour. Resolve GAP-05 and GAP-10 by decision + evidence.
+
+scope:
+  - "docs/api/openapi.yaml GET /api/places: correct invalid page/limit/price_range from 422 to 400 (match runtime); add a 400 response ref; refresh operation + deprecated-param descriptions to cite ADR-010 Accepted / GAP-05/10 resolved."
+  - "docs/api/api.md: reconcile the list-place params section if it contradicts the ratified contract."
+  - "Add contract tests (public HTTP e2e mirroring production pipe) for: default pagination, explicit page/limit, invalid page (400), invalid limit (400), limit clamp >100, deprecated param rejection (400), meta shape."
+  - "Governance evidence resolving GAP-05 and GAP-10 (report + evidence index + workstream/state update)."
+
+out_of_scope:
+  - "Cursor/keyset pagination implementation (explicitly excluded)."
+  - "Any runtime change to pagination behaviour (page/limit/clamp/ordering all preserved)."
+  - "Database query changes (unless strictly needed to preserve approved offset behaviour — none expected)."
+  - "The shared 422->400 inconsistency on OTHER endpoints (POST/PATCH etc.) — NOT this task (no unrelated endpoint cleanup); record as a follow-up finding only."
+  - "B2 (F-24), B3 (F-34), B4 (score), B5 (bbox), B6 (index), B7 (Prisma) — separate tasks."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "openapi listPlaces documents page (int>=1, default 1), limit (int>=1, default 20, >100 clamped to 100), fixed ordering, and meta (timestamp/page/pageSize/total/totalPages)." }
+  - { id: AC2, mandatory: true, text: "Invalid page/limit/price_range documented as HTTP 400 (matching runtime), NOT 422; a 400 response is declared on the operation." }
+  - { id: AC3, mandatory: true, text: "status/sort/cursor remain deprecated:true (return 400), descriptions updated to state ADR-010 accepted + cursor not adopted; NOT deleted (OD-F-6)." }
+  - { id: AC4, mandatory: true, text: "Contract tests pass over the real HTTP API with a production-equivalent pipe: default, explicit page/limit, invalid page->400, invalid limit->400, limit>100 clamp, deprecated param->400, meta shape." }
+  - { id: AC5, mandatory: true, text: "Runtime pagination behaviour UNCHANGED — no controller/service/repository/DTO logic altered (DTO/query byte-identical); proven by existing places specs unchanged." }
+  - { id: AC6, mandatory: true, text: "No cursor pagination introduced anywhere." }
+  - { id: AC7, mandatory: true, text: "GAP-05 and GAP-10 marked RESOLVED-by-decision with evidence; ADR-010 recorded Accepted." }
+  - { id: AC8, mandatory: true, text: "openapi parses; governance YAML parse; full lint/typecheck/unit/e2e green; clean build; HTTP pagination verification green." }
+
+validation_commands:
+  - "node -e (js-yaml load openapi.yaml)      # openapi parses"
+  - "governance YAML parse (docs/delivery/**)"
+  - "cd apps/api && eslint 'src/**/*.ts' --max-warnings=0"
+  - "cd apps/api && tsc -p tsconfig.json --noEmit"
+  - "cd apps/api && jest                       # full unit"
+  - "cd apps/api && jest --config test/jest-e2e.json  # full e2e incl. new contract spec"
+  - "turbo run build --force                   # clean build"
+  - "boot API+web; curl list-place pagination behaviours"
+
+rollback_plan: >-
+  Doc/test-only change plus governance records. `git revert` restores the prior openapi/api.md and
+  removes the contract spec. No runtime code, schema, migration or data is touched, so no runtime
+  rollback is required.
+
+stop_conditions:
+  - "Live HTTP evidence shows invalid page/limit returns a status OTHER than the runtime default (e.g. actually 422) — STOP, re-derive, document truth (never change runtime to fit docs)."
+  - "Reconciling the contract would require changing pagination RUNTIME behaviour — STOP (decision is to ratify existing runtime)."
+  - "Any B2..B7 change becomes necessary — STOP (out of scope)."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state:
+      current.task: none
+      current.status: awaiting_task_authorization
+    resolves: [GAP-05, GAP-10]
+  requires_evidence:
+    - "openapi listPlaces corrected + parses"
+    - "contract tests green over real HTTP (400 for invalid page/limit + deprecated params; clamp; meta)"
+    - "runtime unchanged (existing places specs unmodified)"
+    - "full lint/typecheck/unit/e2e + clean build green"
+
+non_claims: >-
+  Resolving GAP-05/GAP-10 does NOT implement B2..B7, does NOT add cursor pagination, and does NOT
+  assert overall release readiness. It ratifies and documents the existing offset contract only.
