@@ -98,10 +98,10 @@ testing_surface:
 
 deployment_status: not_started   # no evidence of any deploy/canary/hypercare
 
-known_gaps:                      # source: BUILD_001 gap register
-  - { id: GAP-15, priority: P2, summary: "Prisma model vs TypeORM runtime dual-source; packages/database empty", status: "decided OD-B7 (TypeORM authoritative); authority-note task PENDING" }
+known_gaps: []                   # source: BUILD_001 gap register — all previously-open items now resolved
 
 resolved_gaps:
+  - { id: GAP-15, by: PLACE-025, date: "2026-07-24", summary: "Runtime persistence authority reconciled (OD-B7/B7-A). Evidence-based investigation confirmed TypeORM entities+migrations+PostgreSQL are the ONLY runtime persistence layer (database.module.ts TypeOrmModule.forRootAsync, synchronize:false; 20 real migrations); Prisma never executes anywhere (no prisma/@prisma/client dependency in any package.json, no CI/script invocation, no generated client ever produced/imported). Reworded the one genuinely contradictory heading (database.md §11 'chuẩn bị sinh Prisma' implied active codegen intent) and added a durable ADR-013 closing addendum recording the determination. prisma/schema.prisma untouched, kept as reference-only data-model documentation. Documentation/governance only — zero code/schema/migration/entity/API change; full unit+e2e totals identical to PLACE-024, proving zero runtime impact." }
   - { id: "GAP-05/10", by: PLACE-021, date: "2026-07-24", summary: "Offset page/limit ratified as the authoritative list contract (OD-B1/B1-A; ADR-010 Accepted). openapi listPlaces + api.md reconciled to runtime: invalid page/limit/price_range corrected 422->400 (runtime is 400, NOT 422); '400' response added; status/sort/cursor kept deprecated (400) per OD-F-6 with cursor decided-against for v1. 11 HTTP contract tests pin the behaviour; runtime UNCHANGED (no src/ change). GAP-05 + GAP-10 RESOLVED by decision + evidence." }
   - { id: GAP-13, by: PLACE-007, date: "2026-07-22", summary: "getCardBySlug REMOVED. Four-pass repository-wide sweep found zero consumers (incl. the exported PlacesRepository surface); tsc exit 0 confirms no compile-time caller. Removal chosen over adding a status filter because getCardById deliberately omits it for moderation reads. jest places 51/51, GAP-02/04 regression specs unmodified." }
   - { id: GAP-14, by: PLACE-006, date: "2026-07-22", summary: "opening_hours validated against places.md §4 via @IsOpeningHours() on both write DTOs. 18 specs, 30/30 green, mutation check fails 9 without it. SSOT example passes verbatim; unknown keys tolerated per openapi additionalProperties:true; open<close not enforced (overnight ranges legitimate). No seeded data invalidated. Response type still untyped — F-20." }
@@ -131,7 +131,25 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-024 completed 2026-07-24 (F-35 RESOLVED). Next authorized-but-not-executed: PLACE-025 (OD-B7/GAP-15). Awaiting owner authorization to activate.
+next_task: none        # PLACE-025 completed 2026-07-24 (GAP-15 RESOLVED). All 7 owner decisions (OD-B1..OD-B7) now implemented or otherwise disposed (OD-B5 accepted risk, OD-B6 deferred). No further Place engineering task is authorized.
+
+place_025_status: >-
+  COMPLETED 2026-07-24 — GAP-15 RESOLVED. OD-B7/B7-A documentation/governance reconciliation ONLY —
+  zero code, schema, migration, entity, repository, service, SQL, or API contract change (full
+  unit+e2e totals IDENTICAL to PLACE-024, proving zero runtime impact). Evidence-based investigation
+  (Phase 2) confirmed TypeORM entities+migrations+PostgreSQL are the SOLE runtime persistence layer
+  (database.module.ts TypeOrmModule.forRootAsync, synchronize:false, autoLoadEntities:true; 20 real
+  migrations via a dedicated data-source.ts) and that Prisma NEVER executes anywhere: no prisma/
+  @prisma/client dependency in any package.json, no CI/script invocation, no generated client ever
+  produced or imported (the schema's own header self-declares "KHÔNG sinh migration, KHÔNG sinh code,
+  KHÔNG sinh API"). Most existing documentation (README.md, project-registry.yaml, the EEF
+  repository-map, architecture.md) was ALREADY consistent with this. The one genuinely contradictory
+  line — database.md §11's heading "chuẩn bị sinh Prisma" (implying active future codegen intent) —
+  was reworded, and a durable closing addendum was added to ADR-013 (Superseded status unchanged)
+  formally recording the runtime-persistence-authority determination, giving GAP-15 a citable
+  architecture-layer answer. prisma/schema.prisma was NOT modified, NOT removed, NOT regenerated — kept
+  as reference-only data-model documentation. See reports/PLACE-025-persistence-authority-report.md and
+  evidence/PLACE-025-persistence-authority-evidence-index.md.
 
 place_024_status: >-
   COMPLETED 2026-07-24 — F-35 RESOLVED. OD-B4/B4-A contract cleanup: `SearchResult.score` (the public
