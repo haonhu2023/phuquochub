@@ -1,6 +1,28 @@
 # PhuQuocHub — Triển khai & Hạ tầng (Deployment Architecture)
 
-> **Mục đích:** thiết kế **kiến trúc triển khai/DevOps** — cách đóng gói, đưa lên các môi trường, vận hành, sao lưu và giám sát. Tài liệu **chỉ thiết kế** (không code; **không** Docker Compose / Kubernetes / Terraform — đoạn cấu hình chỉ minh họa ý niệm). Kiến trúc ứng dụng ở [architecture.md](./architecture.md); công nghệ ở [tech-stack.md](./tech-stack.md); quy trình nhánh ở [coding-standard.md §10](../standards/coding-standard.md).
+> **Mục đích:** thiết kế **kiến trúc triển khai/DevOps** — cách đóng gói, đưa lên các môi trường, vận hành, sao lưu và giám sát. Tài liệu này vẫn là **thiết kế mục tiêu đầy đủ** (VPS Hostinger, Cloudflare, PgBouncer, Prometheus/Grafana…) — phần lớn CHƯA triển khai. Kiến trúc ứng dụng ở [architecture.md](./architecture.md); công nghệ ở [tech-stack.md](./tech-stack.md); quy trình nhánh ở [coding-standard.md §10](../standards/coding-standard.md).
+>
+> **Trạng thái triển khai (PLACE-026, 2026-07-24 — OD2-2..9).** Phần "repository-supported" của
+> §6-§9/§11 đã có code thật, đã kiểm chứng chạy được thật (không phải giả lập):
+> - `apps/api/Dockerfile`, `apps/web/Dockerfile` — build production đa giai đoạn, **đã build +
+>   chạy thật** kết nối Postgres/Redis thật, `/api/health` trả 200.
+> - `docker-compose.prod.yml` — ráp api+web+postgres+redis+minio dạng "giống production", cục bộ.
+> - WAL archiving (§11.1) — `infrastructure/docker/postgres/wal-archive.sh` +
+>   `postgresql.prod.conf`, **đã kiểm chứng thật**: `archive_mode=on`, WAL segment thật được sao
+>   lưu sau `pg_switch_wal()`. Đích lưu là **thư mục cục bộ** (biến `WAL_ARCHIVE_DIR`) — CHƯA trỏ
+>   tới đích offsite thật (§11.1 khuyến nghị R2/Backblaze) vì session này không có credential.
+> - `.github/workflows/ci.yml` job `docker-build` — build + validate hai image tự động trong CI.
+>   Bước đẩy lên GHCR (§6.8, OD2-7) dùng `GITHUB_TOKEN` có sẵn — **CHƯA được một lần chạy CI thật
+>   xác nhận** vì repo này chưa có git remote trong session.
+> - Map tile provider (§14, OD2-8) — `apps/web/src/modules/map/MapView.tsx` đọc
+>   `NEXT_PUBLIC_MAP_TILE_URL`, mặc định giữ nguyên OpenStreetMap hiện tại; đổi sang MapTiler thật
+>   chỉ cần set biến môi trường, không cần sửa code.
+>
+> **CHƯA triển khai (cần owner cung cấp credential/tài khoản thật, không thể giả lập trong
+> session):** VPS Hostinger thật (§6.1, OD2-2), bucket R2/MinIO production thật (§6.6, OD2-3), đích
+> offsite backup thật + mã hoá (§11.2/11.3, OD2-5), tài khoản MapTiler thật (§14, OD2-8), Cloudflare
+> (§6.7), PgBouncer (§6.4), và toàn bộ Prometheus/Grafana/Sentry (§12). Xem
+> `docs/delivery/reports/PLACE-026-deployment-pipeline-report.md` cho chi tiết đầy đủ.
 
 ---
 
