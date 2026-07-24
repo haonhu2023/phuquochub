@@ -1988,12 +1988,14 @@ components:
                     tags: { type: array, items: { type: string } }
     SearchResult:
       type: object
+      # F-35 / OD-B4 (2026-07-24): `score` (Postgres ts_rank) REMOVED from the public contract.
+      # Relevance still determines server-side ORDER BY internally (unchanged); the numeric,
+      # engine-specific ranking value itself is no longer part of the public response.
       properties:
         type: { type: string, enum: [place, hotel, restaurant, tour, event, community] }
         id: { type: string, format: uuid }
         title: { type: string }
         slug: { type: string }
-        score: { type: number }
         snippet: { type: [string, 'null'] }
     AiJob:
       type: object

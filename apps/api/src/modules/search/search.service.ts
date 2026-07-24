@@ -16,12 +16,17 @@ export class SearchService {
       this.placesRepo.searchFullText(dto.q, limit, (page - 1) * limit),
       this.placesRepo.searchCount(dto.q),
     ]);
+    // F-35 / OD-B4 (PLACE-024, 2026-07-24): `r.score` (ts_rank nội bộ) KHÔNG được ánh xạ ra
+    // SearchResult công khai nữa. Nó vẫn quyết định THỨ TỰ hoàn toàn — searchFullText() đã
+    // ORDER BY score DESC, p.id ASC ở tầng SQL (places.repository.ts) TRƯỚC KHI rows tới đây —
+    // nên bỏ trường này khỏi payload không đổi thứ tự client thấy, chỉ ngừng lộ giá trị
+    // ts_rank cụ thể của Postgres ra hợp đồng công khai (không đổi tên/thay thế bằng trường nào
+    // khác). Xem findings/F-35.yaml.
     const results = rows.map((r) => ({
       type: 'place',
       id: r.id,
       title: r.name,
       slug: r.slug,
-      score: r.score !== undefined ? Number(r.score) : 0,
       snippet: r.short_description,
     }));
     return paginate(results, page, limit, total);

@@ -421,7 +421,7 @@ Nguyên tắc: cùng mô hình dữ liệu, khác **bề mặt** — Public/Part
 | POST | `/api/search/reindex` | `Search.Reindex` | W |
 
 - **Request:** `?q=&type=(place,hotel,restaurant,tour,event,community)&lat=&lng=&page/cursor`; suggest `?q=` (autocomplete).
-- **Response:** kết quả trộn nhiều loại + `type` + điểm liên quan; hỗ trợ tìm **không dấu** (unaccent, tiếng Việt).
+- **Response:** kết quả trộn nhiều loại + `type`, sắp xếp theo mức liên quan do server quyết định (F-35/OD-B4, 2026-07-24: điểm số ts_rank là tín hiệu NỘI BỘ, không phát ra trong payload công khai); hỗ trợ tìm **không dấu** (unaccent, tiếng Việt).
 - **Validation:** `q` tối thiểu 1–2 ký tự; sanitize; giới hạn độ dài.
 - **Rate Limit:** suggest **cao nhưng nhẹ**; search tiêu chuẩn; ghi log **0-kết-quả** → tín hiệu cho AI/Analytics.
 - **Caching:** suggest cache mạnh (prefix, TTL ngắn); search cache theo `(q, filters)` TTL ngắn; Postgres FTS → Meilisearch khi lớn.

@@ -1,11 +1,12 @@
 import { apiGet } from '@/lib/http';
 
+// F-35 / OD-B4 (2026-07-24): `score` REMOVED — the API no longer emits Postgres ts_rank in the
+// public payload. Server-side relevance ordering is unchanged; nothing in the web app read `.score`.
 export interface SearchResult {
   type: string;
   id: string;
   title: string;
   slug: string;
-  score: number;
   snippet: string | null;
 }
 
