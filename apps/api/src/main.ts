@@ -7,9 +7,20 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { correlationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { AppLoggerService } from './core/logger/app-logger.service';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // PLACE-030: bufferLogs giữ log phát sinh trước khi useLogger() gắn xong, tránh mất dòng log
+  // bootstrap sớm. app.useLogger(...) hoàn thiện TD-03 — một khi gắn, MỌI Logger nội bộ của
+  // framework lẫn `new Logger(x)` ở nơi khác trong app đều tự động đi qua AppLoggerService
+  // (Logger.overrideLogger), không cần sửa từng call site. AppLoggerService là Scope.TRANSIENT
+  // nên PHẢI dùng app.resolve() (async) — app.get() ném lỗi runtime cho provider scoped
+  // (xác nhận qua Docker boot thật: "Request and transient-scoped providers can't be used in
+  // combination with get() method. Please, use resolve() instead.").
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+  app.useLogger(await app.resolve(AppLoggerService));
+
   const config = app.get(ConfigService);
 
   const prefix = config.get<string>('api.globalPrefix') ?? 'api';
@@ -24,6 +35,10 @@ async function bootstrap(): Promise<void> {
     app.set('trust proxy', trustProxyHops);
   }
 
+  // PLACE-030: gắn TRƯỚC mọi thứ khác — mọi request (kể cả preflight OPTIONS) đều có
+  // correlation ID trước khi chạm guard/interceptor/filter nào.
+  app.use(correlationIdMiddleware);
+
   app.setGlobalPrefix(prefix);
   app.enableCors({
     origin: allowedOrigins,
@@ -34,8 +49,15 @@ async function bootstrap(): Promise<void> {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }),
   );
-  app.useGlobalInterceptors(new LoggingInterceptor(), new TransformInterceptor());
-  app.useGlobalFilters(new AllExceptionsFilter());
+  app.useGlobalInterceptors(
+    new LoggingInterceptor((await app.resolve(AppLoggerService)).setContext('HTTP')),
+    new TransformInterceptor(),
+  );
+  app.useGlobalFilters(
+    new AllExceptionsFilter(
+      (await app.resolve(AppLoggerService)).setContext(AllExceptionsFilter.name),
+    ),
+  );
   app.enableShutdownHooks();
 
   await app.listen(port);

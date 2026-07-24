@@ -4,20 +4,30 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
-  Logger,
+  LoggerService,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { ApiErrorBody } from '@phuquochub/shared-types';
+import { AppLoggerService } from '../../core/logger/app-logger.service';
+import { getCorrelationId } from '../middleware/correlation-id.middleware';
 
 // Chuẩn hóa mọi lỗi thành envelope { error, meta }. Map HttpException → code ổn định.
+// PLACE-030: dùng AppLoggerService (tham số có default, không phá vỡ các chỗ gọi
+// `new AllExceptionsFilter()` không đối số hiện có trong các file e2e-spec); mọi log lỗi 5xx
+// và meta.requestId của response đều mang cùng correlation ID với response header.
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  private readonly logger = new Logger(AllExceptionsFilter.name);
+  constructor(
+    private readonly logger: LoggerService = new AppLoggerService().setContext(
+      AllExceptionsFilter.name,
+    ),
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const correlationId = getCorrelationId(request);
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_SERVER_ERROR';
@@ -45,9 +55,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = exception.message;
     }
 
+    // Chỉ log lỗi không mong đợi (>=500) — lỗi nghiệp vụ (400/401/403/404/429...) đã có ý nghĩa
+    // tự thân, log ở đây sẽ tạo nhiễu không kiểm soát được (giữ nguyên hành vi trước PLACE-030).
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
-        `${request.method} ${request.url} → ${status}: ${message}`,
+        {
+          correlationId,
+          method: request.method,
+          path: request.url,
+          statusCode: status,
+          errorType: exception instanceof Error ? exception.constructor.name : typeof exception,
+          message,
+        },
         exception instanceof Error ? exception.stack : undefined,
       );
     }
@@ -55,7 +74,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const body: ApiErrorBody = {
       success: false,
       error: { code, message, details },
-      meta: { timestamp: new Date().toISOString() },
+      meta: { timestamp: new Date().toISOString(), requestId: correlationId },
     };
     response.status(status).json(body);
   }
