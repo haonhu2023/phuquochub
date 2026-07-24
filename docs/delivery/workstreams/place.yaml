@@ -131,7 +131,24 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-025 completed 2026-07-24 (GAP-15 RESOLVED). All 7 owner decisions (OD-B1..OD-B7) now implemented or otherwise disposed (OD-B5 accepted risk, OD-B6 deferred). No further Place engineering task is authorized.
+next_task: none        # PLACE-026 completed 2026-07-24 (production deployment pipeline, Eligible Candidate 1). Candidates 2/3 remain APPROVED but NOT activated — need explicit owner authorization naming a specific candidate.
+
+place_026_status: >-
+  COMPLETED 2026-07-24 — Eligible PLACE Candidate 1 (production deployment pipeline) implemented for
+  the repository-supported subset of OD2-2,3,4,5,7,8,9. apps/api/Dockerfile + apps/web/Dockerfile
+  (multi-stage, Next.js standalone output) BUILT and BOOTED for real against the actual dev
+  Postgres/Redis: /api/health 200 (database=up, redis=up), web GET / 200 incl. a real static asset.
+  WAL/PITR archiving (OD2-4) verified LIVE — archive_mode=on, wal_level=replica, a forced
+  pg_switch_wal() produced 4 real archived WAL segments. CI gained a docker-build job reproducing
+  this automatically, plus a GHCR push step (OD2-7, auto GITHUB_TOKEN) explicitly documented as
+  unverified — no git remote exists in this session. Map tile provider (OD2-8) made env-configurable
+  with the default UNCHANGED. No real VPS/R2/offsite-backup/MapTiler credentials were provisioned or
+  fabricated. An incident during verification (docker-compose.prod.yml briefly removed the dev
+  postgres container due to a shared default project name) was caught immediately, the volume was
+  never touched, and data integrity was verified intact before continuing — recorded in the report.
+  Full lint/typecheck + unit (221/221) + e2e (44/44) IDENTICAL to PLACE-025, zero regression. See
+  reports/PLACE-026-deployment-pipeline-report.md and
+  evidence/PLACE-026-deployment-pipeline-evidence-index.md.
 
 place_025_status: >-
   COMPLETED 2026-07-24 — GAP-15 RESOLVED. OD-B7/B7-A documentation/governance reconciliation ONLY —

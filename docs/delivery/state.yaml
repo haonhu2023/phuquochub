@@ -30,13 +30,15 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-025 completed 2026-07-24 (GAP-15 RESOLVED — documentation/
-                                  # governance only; TypeORM confirmed as sole runtime persistence
-                                  # authority, Prisma reference-only, zero runtime impact). ALL SEVEN
-                                  # owner decisions (OD-B1..OD-B7) are now implemented or otherwise
-                                  # disposed: OD-B5 accepted documented risk, OD-B6 deferred to a
-                                  # future performance task. No further Place engineering task is
-                                  # authorized. No BUILD task exists.
+  task: none                      # PLACE-026 completed 2026-07-24 (production deployment pipeline —
+                                  # Eligible PLACE Candidate 1 / Execution Group A; OD2-2,3,4,5,7,8,9
+                                  # implemented for the repository-supported subset: Dockerfiles for
+                                  # api+web verified to build+boot+health-check against real Postgres/
+                                  # Redis; WAL/PITR archiving verified live (4 real WAL segments
+                                  # archived); CI docker-build job added; map tile provider + registry
+                                  # + backup target all env-configurable. No real VPS/R2/offsite-
+                                  # backup/MapTiler credentials exist or were fabricated. Zero
+                                  # regression: unit 221/221, e2e 44/44, identical to PLACE-025.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -187,27 +189,52 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    GAP-15 is RESOLVED (PLACE-025, 2026-07-24): TypeORM entities+migrations+PostgreSQL are confirmed
-    (evidence-based) as the sole runtime persistence authority; Prisma never executes anywhere and
-    remains reference-only documentation; a durable ADR-013 addendum records this. ALL SEVEN owner
-    decisions from the 2026-07-24 Owner Decision Package are now disposed: OD-B1 (GAP-05/10, PLACE-021),
-    OD-B2 (F-24, PLACE-022), OD-B3 (F-34, PLACE-023), OD-B4 (F-35, PLACE-024), OD-B7 (GAP-15, PLACE-025)
-    all IMPLEMENTED; OD-B5 (provisional Phú Quốc bbox) is an ACCEPTED DOCUMENTED RISK requiring no new
-    code; OD-B6 (GAP-06/F-15 EXPLAIN) is DEFERRED to a future performance task at representative scale.
-    NO further Place engineering task is defined or authorized. Deriving another task to keep the
-    sequence moving is explicitly NOT authorized — see PLACE-015/016/020 next_action rationale for the
-    same standing rule.
-  owner_decision_disposition:
-    - "OD-B1 — GAP-05/10 — IMPLEMENTED (PLACE-021)."
-    - "OD-B2 — F-24 — IMPLEMENTED (PLACE-022)."
-    - "OD-B3 — F-34 — IMPLEMENTED (PLACE-023)."
-    - "OD-B4 — F-35/SearchResult.score — IMPLEMENTED (PLACE-024)."
-    - "OD-B5 — provisional Phú Quốc bbox — ACCEPTED DOCUMENTED RISK, no code (behaviour already implemented by PLACE-016)."
-    - "OD-B6 — GAP-06/F-15 EXPLAIN proof — DEFERRED to a future performance task at scale; no index/migration change now."
-    - "OD-B7 — GAP-15 persistence authority — IMPLEMENTED (PLACE-025)."
-  release_blockers_remaining: "NONE. GAP-05/10 (PLACE-021), F-24 (PLACE-022), F-34 (PLACE-023), F-35 (PLACE-024), GAP-15 (PLACE-025) all RESOLVED. OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker. OD-B6 is deferred, non-blocking."
+    PLACE-026 (2026-07-24) implemented Eligible PLACE Candidate 1 (production deployment pipeline)
+    from the Owner Approval Session: OD2-2,3,4,5,7,8,9 implemented for the repository-supported
+    subset — Dockerfiles for api+web (verified to build + boot + connect to real Postgres/Redis +
+    pass /api/health), WAL/PITR archiving (verified live — 4 real WAL segments archived), a CI
+    docker-build job, and env-configurable registry/tile-provider/backup-target surfaces. No real
+    VPS/Cloudflare R2/offsite-backup/MapTiler credentials exist or were fabricated; the GHCR push
+    step is unverified pending a real git remote. Zero regression (unit 221/221, e2e 44/44, identical
+    to PLACE-025). Eligible Candidates 2 (OD2-11, dependency remediation) and 3 (OD2-12/13, rate-limit
+    + CORS) remain APPROVED but NOT activated. Deriving another task without explicit owner
+    authorization naming a specific candidate is NOT permitted.
+  eligible_candidate_disposition:
+    - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
+    - "Candidate 2 (dependency remediation, OD2-11) — APPROVED, NOT activated."
+    - "Candidate 3 (rate-limit + CORS, OD2-12/13) — APPROVED, NOT activated."
+    - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
+    - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
+    - "OD2-10 (AI budget) — DEFERRED, unchanged."
+  release_blockers_remaining: "NONE hard, from an application-code standpoint. Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-026
+    completed: "2026-07-24"
+    result: >-
+      Production deployment pipeline (Eligible PLACE Candidate 1 / Execution Group A) implemented
+      for the repository-supported subset of OD2-2,3,4,5,7,8,9. apps/api/Dockerfile and
+      apps/web/Dockerfile (multi-stage, Next.js standalone output) BOTH BUILT and BOOTED for real
+      against the actual dev Postgres/Redis containers: /api/health returned 200 with database=up,
+      redis=up (PONG); web GET / returned 200 including a real static asset. WAL/PITR archiving
+      (OD2-4) verified LIVE in an isolated postgres container running the exact -c flags from
+      docker-compose.prod.yml: archive_mode=on, wal_level=replica, and a forced pg_switch_wal()
+      produced 4 real archived WAL segment files. .github/workflows/ci.yml gained a docker-build job
+      reproducing this same build+boot+health-check sequence automatically, plus a GHCR push step
+      (OD2-7) using the auto-provided GITHUB_TOKEN — EXPLICITLY documented as unverified by a live
+      Actions run, since this repository has no git remote in this session. Map tile provider (OD2-8)
+      made env-configurable (NEXT_PUBLIC_MAP_TILE_URL) with the default UNCHANGED from the existing
+      OSM URL. No real VPS, Cloudflare R2 bucket, offsite backup target, or MapTiler account was
+      provisioned or fabricated — all remain owner-supplied follow-ups. An incident occurred during
+      verification: testing docker-compose.prod.yml without an explicit project name caused Compose
+      to remove the running dev phuquoc-postgres container (shared default project name with the
+      existing docker-compose.yml); the underlying data volume was untouched, the container was
+      recreated, and data integrity was verified intact (20 migrations, 49 places, 6 extensions)
+      before continuing — recorded in the report so it isn't repeated. Full lint/typecheck (api+web)
+      + unit (221/221) + e2e (44/44) IDENTICAL to PLACE-025's baseline, proving zero regression;
+      clean build 4/4, artifacts 153==153. Eligible Candidates 2 and 3 remain APPROVED, NOT activated.
+    report: docs/delivery/reports/PLACE-026-deployment-pipeline-report.md
+    evidence_index: docs/delivery/evidence/PLACE-026-deployment-pipeline-evidence-index.md
   - id: PLACE-025
     completed: "2026-07-24"
     result: >-

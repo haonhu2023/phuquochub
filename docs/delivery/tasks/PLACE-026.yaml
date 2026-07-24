@@ -1,0 +1,113 @@
+schema_version: "1.0"
+
+id: PLACE-026
+workstream: place
+title: "Production deployment pipeline (Eligible PLACE Candidate 1 / Execution Group A)"
+type: deployment_infrastructure
+status: completed              # activated and executed this turn by explicit owner authorization
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'execution of the first approved engineering task: PLACE-026 — Production Deployment Pipeline'."
+  decision: "Eligible PLACE Candidate 1, docs/delivery/decisions/OWNER-APPROVAL-SESSION-2026-07-24.md — implements OD2-2, OD2-3, OD2-4, OD2-5, OD2-7, OD2-8, OD2-9 (all in the Approved Decision Set)."
+  note: >-
+    The owner named Candidate 1 (deploy pipeline) first, ahead of this package's own suggested-first
+    Candidate 2 (dependency remediation). This is a legitimate owner prerogative — Candidate 1 is
+    fully within the Approved Decision Set and has no dependency on Candidate 2 or 3 — and is executed
+    as directed, not treated as a discrepancy.
+
+depends_on:
+  - "PLACE-025 completed 2026-07-24 (GAP-15 resolved)"
+  - "Production Readiness Assessment completed (docs/delivery/reports/PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md)"
+  - "Production Readiness Backlog completed (docs/delivery/reports/PRODUCTION-READINESS-BACKLOG-2026-07-24.md)"
+  - "Owner Decision Package v2 completed (docs/delivery/decisions/OWNER-DECISION-PACKAGE-V2-2026-07-24.md)"
+  - "Owner Approval Session completed (docs/delivery/decisions/OWNER-APPROVAL-SESSION-2026-07-24.md) — OD2-2,3,4,5,7,8,9 all APPROVED"
+
+scope_boundary:
+  # Recorded BEFORE implementation, per the session's evidence-over-fabrication discipline.
+  note: >-
+    Several OD2-x sub-decisions name a REAL external target (a provisioned Hostinger VPS, a real
+    Cloudflare R2 bucket, a real offsite backup destination, a real MapTiler API key, an actual `git
+    push` to a remote with a live GitHub Actions run). None of these exist in this repository or
+    session: `git remote -v` is empty (no remote configured), no cloud credentials of any kind are
+    present, and no VPS is reachable from here. This task implements every item that is genuinely
+    "repository-supported" (Scope, per the owner's own instruction wording): a reproducible Docker
+    build for both apps, CI build+validate automation, WAL/PITR configuration scaffolding, and
+    environment-variable-driven config surfaces for registry/tile-provider/backup-target so real
+    credentials can be supplied later with zero further code change. It does NOT claim to have
+    provisioned a VPS, pushed a live image to a running registry, or verified a real offsite restore
+    — those require an owner action (supplying credentials / a remote) this session cannot fabricate.
+
+objective: >-
+  Make the repository reproducibly deployable: a deterministic multi-stage Docker build for apps/api
+  and apps/web, a CI job that builds and validates those images against real Postgres/PostGIS/Redis
+  (boot + health check), WAL/PITR archiving configuration for Postgres, and configurable (not
+  hardcoded) registry/tile-provider/backup-target surfaces — without provisioning real cloud
+  infrastructure this session has no credentials or remote to reach.
+
+scope:
+  - "apps/api/Dockerfile — multi-stage build (deps -> build -> lean runtime), handles bcrypt native module correctly."
+  - "apps/web/Dockerfile — multi-stage build using Next.js standalone output."
+  - "apps/web/next.config.js — add `output: 'standalone'` (build-packaging only, zero route/behavior change)."
+  - "Root .dockerignore — keep build context lean."
+  - "docker-compose.prod.yml (new) — wires api+web alongside the existing postgres/redis/minio for a full local production-shaped run; does not modify the existing dev docker-compose.yml."
+  - "infrastructure/docker/postgres/postgresql.prod.conf (new) — WAL archiving configuration (OD2-4), archive_command configurable via env, default target is a local path (no real offsite credentials fabricated)."
+  - ".github/workflows/ci.yml — new job: build both Docker images, boot api against the existing e2e-style Postgres/Redis services, curl /api/health, tear down; a GHCR push step using the auto-provided GITHUB_TOKEN (OD2-7), explicitly gated and documented as UNTESTABLE from this session (no remote exists to run it)."
+  - "apps/web/src/modules/map/MapView.tsx — tile source made configurable via NEXT_PUBLIC_MAP_TILE_URL (OD2-8), default UNCHANGED (still the current OSM URL) — zero behavior change unless a real key is supplied later."
+  - "docs/architecture/deployment.md — a short 'Implementation status' addendum distinguishing what PLACE-026 built vs. what still needs owner-supplied credentials (VPS, R2, offsite backup, MapTiler key, a git remote)."
+
+out_of_scope:
+  - "Any new product feature, API change, database redesign, authentication redesign, or frontend redesign."
+  - "Performance optimizations not required by OD2-2..OD2-9."
+  - "Unrelated refactoring."
+  - "Actually provisioning a VPS, Cloudflare R2 bucket, offsite backup target, or MapTiler account — these need owner-supplied credentials this session cannot fabricate."
+  - "Blue-green deployment orchestration (OD2-9 recommends a maintenance-window-first approach — no blue-green complexity is built)."
+  - "B2/B3/B4 (Eligible Candidates 2/3) or any other decision outside OD2-2,3,4,5,7,8,9."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "apps/api/Dockerfile and apps/web/Dockerfile both build successfully via `docker build`, verified locally." }
+  - { id: AC2, mandatory: true, text: "The built api image boots, connects to Postgres+Redis, and GET /api/health returns 200 with database:up and redis:up, verified via a real container run against the existing docker-compose Postgres/Redis." }
+  - { id: AC3, mandatory: true, text: "The built web image boots and GET / returns 200, verified via a real container run." }
+  - { id: AC4, mandatory: true, text: "CI gains a build-and-validate job performing the same checks as AC1/AC2/AC3 automatically; a GHCR push step exists but is explicitly documented as unverified in this session (no remote/live Actions run available)." }
+  - { id: AC5, mandatory: true, text: "Postgres WAL archiving configuration exists and is verified to start successfully with archive_mode=on in a real container; the archive target is env-configurable, defaulting to a local path (no fabricated offsite credentials)." }
+  - { id: AC6, mandatory: true, text: "Registry (OD2-7), tile-provider (OD2-8), and offsite-backup-target (OD2-5) values are all environment-variable-driven, not hardcoded, so real credentials can be supplied later with zero code change." }
+  - { id: AC7, mandatory: true, text: "Full lint/typecheck/unit/e2e green and UNCHANGED in count from PLACE-025's baseline (proves zero regression to existing application behaviour)." }
+  - { id: AC8, mandatory: true, text: "docs/architecture/deployment.md records exactly what is implemented vs. what needs owner-supplied external credentials." }
+
+validation_commands:
+  - "docker build -f apps/api/Dockerfile -t phuquochub-api:test ."
+  - "docker build -f apps/web/Dockerfile -t phuquochub-web:test ."
+  - "docker run against existing postgres/redis network; curl /api/health"
+  - "docker run web image; curl /"
+  - "cd apps/api && eslint + tsc + jest + jest-e2e (full, unchanged totals)"
+  - "turbo run build --force (tsbuildinfo purged); artifact verification"
+  - "docker compose -f docker-compose.prod.yml config (syntax validation)"
+
+rollback_plan: >-
+  All new files (Dockerfiles, docker-compose.prod.yml, postgresql.prod.conf, CI job, deployment.md
+  addendum) are additive. `next.config.js`'s standalone output and MapView.tsx's env-driven tile URL
+  are both behavior-preserving by default. `git revert` removes all of it cleanly; no schema,
+  migration, or existing-file behavior is at risk.
+
+stop_conditions:
+  - "Any change would require modifying existing application behavior, API contracts, or the database schema — STOP (out of scope)."
+  - "A Docker build fails for a reason requiring an application-code change beyond packaging — STOP and report, do not paper over with a workaround that changes behavior."
+  - "Any step would require fabricating real cloud credentials — STOP, do not fabricate; document as an owner-supplied follow-up instead."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    implements: "OD2-2, OD2-3, OD2-4, OD2-5, OD2-7, OD2-8, OD2-9 (repository-supported subset)"
+    next_authorized_task: "Eligible PLACE Candidate 2 (dependency-vulnerability remediation, OD2-11) or Candidate 3 (rate-limit + CORS, OD2-12/13) — recorded, NOT activated"
+  requires_evidence:
+    - "both Docker images build and boot successfully, verified locally"
+    - "CI gains an equivalent automated build-and-validate job"
+    - "WAL archiving configuration verified to start"
+    - "full unit + e2e totals unchanged from PLACE-025 baseline"
+
+non_claims: >-
+  This task does NOT provision a real VPS, Cloudflare R2 bucket, offsite backup destination, or
+  MapTiler account, and does NOT verify a live GHCR push or a real disaster-recovery restore — none
+  of those are possible without owner-supplied external credentials this session does not have and
+  will not fabricate. It also does NOT implement Candidates 2 or 3, and does NOT begin PLACE-027.
