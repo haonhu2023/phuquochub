@@ -131,7 +131,20 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-022 completed 2026-07-24 (F-24 RESOLVED). Next authorized-but-not-executed: PLACE-023 (OD-B3/F-34). Awaiting owner authorization to activate.
+next_task: none        # PLACE-023 completed 2026-07-24 (F-34 RESOLVED). Next authorized-but-not-executed: PLACE-024 (OD-B4/SearchResult.score). Awaiting owner authorization to activate.
+
+place_023_status: >-
+  COMPLETED 2026-07-24 — F-34 RESOLVED. OD-B3/B3-A: bboxClusters truncation made deterministic by
+  adding `ORDER BY cnt DESC, sample_id ASC` immediately before `LIMIT $6` (densest-first; sample_id =
+  min p.id per cell = unique stable cell key, an existing returned field reusing the repo's p.id ASC
+  convention). ORDERING ONLY — GROUP BY, cell size ($5), aggregation, WHERE, returned schema and the
+  LIMIT $6 parameter byte-identical; no DTO/contract/pagination/authz/schema change, no index, no
+  migration, no randomness. Proven: 4 SQL-shape unit tests + a new real-DB e2e (5 tests) run 5x
+  consecutively (byte-identical output at zoom 9 & 14; densest-first; ties strictly ascending by id)
+  + live HTTP /api/geo/bbox x5 → single identical SHA-256. Full unit 220/220 (216+4) + e2e 38/38
+  (33+5) green; clean build 4/4; health 200 db+redis up; web 200; ports freed. See
+  reports/PLACE-023-bbox-deterministic-ordering-report.md and
+  evidence/PLACE-023-bbox-deterministic-ordering-evidence-index.md.
 
 place_022_status: >-
   COMPLETED 2026-07-24 — F-24 RESOLVED. OD-B2/B2-A: PlacesRepository.getCardById renamed to

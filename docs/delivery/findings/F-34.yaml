@@ -1,0 +1,59 @@
+schema_version: "1.0"
+
+id: F-34
+title: "bboxClusters truncated with LIMIT 500 but no ORDER BY — nondeterministic survivor set"
+workstream: place
+origin:
+  task: PLACE-014
+  recorded_in: docs/delivery/reports/PLACE-014-geo-ordering-analysis.md
+  consolidated_by: docs/delivery/reports/OWNER-DECISION-PACKAGE-2026-07-24.md
+
+decision_status: APPROVED             # OD-B3 (B3-A), owner instruction 2026-07-24
+implementation_status: DONE           # PLACE-023, 2026-07-24
+validation_status: PASSED             # SQL-shape unit tests + real-DB determinism (5x consecutive identical) + live HTTP (5x identical)
+release_blocker_status: NOT_A_BLOCKER # classified as a product/correctness decision, non-blocking; hardened by PLACE-023
+
+interim_state: RESOLVED
+
+decision:
+  id: OD-B3
+  option: B3-A
+  record: docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  date: "2026-07-24"
+  owner: Project Owner
+  approval_source: owner instruction (explicit activation of PLACE-023)
+  summary: >-
+    Make LIMIT-500 truncation deterministic via ORDER BY cnt DESC, <stable cell key> ASC (densest-first).
+    Change ONLY the ordering; keep clustering, cell size, aggregation and returned schema identical.
+
+problem: >-
+  PlacesRepository.bboxClusters grouped points into grid cells and returned at most 500 with `LIMIT 500`
+  but NO ORDER BY. When more than 500 cells matched, which 500 survived was planner-dependent, so two
+  identical requests could return different clusters and dense clusters could be dropped arbitrarily.
+  At the current seed (49 places, <500 cells) the cap is never reached, so this was a correctness/
+  scale defect, not an active production failure.
+
+resolution:                            # PLACE-023, 2026-07-24
+  change: "Added `ORDER BY cnt DESC, sample_id ASC` immediately before `LIMIT $6`."
+  stable_key: sample_id
+  stable_key_rationale: >-
+    sample_id = (array_agg(p.id ORDER BY p.id))[1] = the minimum p.id in each cell. Each place belongs
+    to exactly one cell, so the per-cell minimum id is UNIQUE across cells; p.id is an immutable PK; and
+    p.id ASC is the established unique final key in list()/nearby()/searchFullText(). It is an existing
+    RETURNED field — not invented — and required no new column, index or migration.
+  behaviour_change: "ordering only — grouping, cell size ($5), aggregation, WHERE and returned schema byte-identical."
+  determinism_proof:
+    - "unit: emitted SQL asserted `ORDER BY cnt DESC, sample_id ASC` immediately before LIMIT; grouping/aggregation/WHERE/cell-size unchanged"
+    - "e2e (real DB): 5 consecutive full runs, each doing 5 identical fetches at zoom 9 and 14 — byte-identical output every time"
+    - "live HTTP (production build): /api/geo/bbox fetched 5x → single identical SHA-256 (37 items)"
+    - "tie handling: equal-cnt single-point cells returned in strictly ascending id order (sample_id ASC)"
+
+remediation_task: PLACE-023           # COMPLETED 2026-07-24
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-023-bbox-deterministic-ordering-report.md
+  evidence_index: docs/delivery/evidence/PLACE-023-bbox-deterministic-ordering-evidence-index.md
+
+not_claimed:
+  - "no clustering algorithm, cell size, aggregation or returned-schema change"
+  - "no DTO, HTTP contract, pagination, authorization, DB schema, migration or index change"
+  - "LIMIT-500 truncation is never reached at the current seed (<500 cells); determinism is proven by the ORDER-before-LIMIT SQL shape plus repeated identical real-DB/HTTP output"

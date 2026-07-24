@@ -1,0 +1,94 @@
+schema_version: "1.0"
+
+id: PLACE-023
+workstream: place
+title: "Deterministic bbox cluster truncation (B3 / F-34)"
+type: correctness_hardening
+status: authorized            # activated this turn by explicit owner authorization
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'activation and execution of PLACE-023 — OD-B3 / F-34'."
+  decision: OD-B3 (B3-A), docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  note: >-
+    Make LIMIT-500 truncation deterministic ONLY. Do not change clustering, cell size, aggregation,
+    returned schema, DTO, HTTP contract, pagination, authorization, DB schema; no migration, no index,
+    no randomness. Scope is F-34 only — no B4..B7 work.
+
+depends_on:
+  - "OD-B3 approved 2026-07-24"
+  - "PLACE-022 completed 2026-07-24 (F-24 resolved)"
+
+evidence:
+  method: "PlacesRepository.bboxClusters (apps/api/src/modules/places/repositories/places.repository.ts)"
+  caller: "GeoService.bbox (geo.service.ts) — calls with limit BBOX_MAX = 500"
+  endpoint: "GET /api/geo/bbox (public)"
+  before_sql: >-
+    SELECT count(*)::int AS cnt, avg(ST_X(...)) AS lng, avg(ST_Y(...)) AS lat,
+    (array_agg(p.id ORDER BY p.id))[1] AS sample_id, (array_agg(p.slug ORDER BY p.id))[1] AS sample_slug,
+    (array_agg(p.name ORDER BY p.id))[1] AS sample_name FROM places p
+    WHERE p.deleted_at IS NULL AND p.status='published' AND ST_Intersects(..., ST_MakeEnvelope($1,$2,$3,$4,4326))
+    GROUP BY floor(ST_X(...)/$5), floor(ST_Y(...)/$5) LIMIT $6
+  defect: "No ORDER BY before LIMIT $6 → when >500 cells match, which 500 survive is planner-dependent (nondeterministic)."
+  stable_key: "sample_id = (array_agg(p.id ORDER BY p.id))[1] — min p.id per cell; unique per cell (each id in exactly one cell); p.id is an immutable PK; p.id ASC is the established repo ordering key (list/nearby/searchFullText)."
+
+objective: >-
+  Add `ORDER BY cnt DESC, sample_id ASC` immediately before `LIMIT $6` in bboxClusters so the LIMIT-500
+  truncation keeps the densest clusters and breaks cnt ties by a unique stable cell key. Everything else
+  (grouping, cell size, aggregation, WHERE, returned columns) byte-identical.
+
+chosen_stable_key: sample_id
+chosen_stable_key_rationale: >-
+  Existing returned field (NOT invented); uniquely + stably identifies the cluster cell (per-cell min
+  p.id is distinct across cells; PK immutable); and reuses the repository's universal ordering key
+  p.id ASC (already the unique final key in list/nearby/searchFullText). No new key, no new column,
+  no index.
+
+scope:
+  - "Add ORDER BY cnt DESC, sample_id ASC before LIMIT in bboxClusters; document rationale in the comment."
+  - "Repository spec: assert the emitted ORDER BY shape + grouping/aggregation/WHERE/cell-size unchanged."
+  - "New e2e determinism spec: real-DB repeated-run identical output + tie handling."
+
+out_of_scope:
+  - "Clustering algorithm, cell size ($5), aggregation, returned schema/columns."
+  - "DTOs, HTTP contracts, API versioning, pagination, authorization."
+  - "DB schema, migrations, indexes; any randomness."
+  - "B4 (score), B5 (bbox authority), B6 (index EXPLAIN), B7 (Prisma)."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "bboxClusters emits `ORDER BY cnt DESC, sample_id ASC` immediately before LIMIT $6; nothing else in the SQL changes (GROUP BY, cell size $5, aggregation, WHERE byte-identical)." }
+  - { id: AC2, mandatory: true, text: "Returned schema (cnt/lng/lat/sample_id/sample_slug/sample_name) unchanged; no DTO/contract change." }
+  - { id: AC3, mandatory: true, text: "Repeated real-DB execution of the bbox endpoint returns IDENTICAL output across >=5 consecutive runs (deterministic ordering + identical counts + identical cluster contents)." }
+  - { id: AC4, mandatory: true, text: "Tie handling proven: among equal-cnt cells the order is strictly by sample_id ASC (unique) — no ambiguity." }
+  - { id: AC5, mandatory: true, text: "No clustering/cell-size/aggregation/authorization/schema/migration/index change; no randomness." }
+  - { id: AC6, mandatory: true, text: "Full lint/typecheck/unit/e2e green; clean build; health+web 200; bbox endpoint stable across runs; ports freed." }
+
+validation_commands:
+  - "cd apps/api && eslint + tsc + jest places.repository (SQL-shape)"
+  - "jest bbox determinism e2e; repeat 5x"
+  - "jest (full unit) + jest --config test/jest-e2e.json (full e2e)"
+  - "turbo run build --force (tsbuildinfo purged); artifacts"
+  - "boot; curl /api/geo/bbox x5 compare identical; /api/health; web /"
+
+rollback_plan: >-
+  Single ORDER BY line + tests. `git revert` restores the prior SQL. No schema, migration, index or
+  data change, so no runtime rollback is required.
+
+stop_conditions:
+  - "No existing field uniquely/stably identifies the cell — STOP (do not invent a key). [Evidence: sample_id qualifies.]"
+  - "Any non-ordering change (clustering/cell-size/aggregation/schema) becomes necessary — STOP (out of scope)."
+  - "Repeated executions differ unexpectedly after the change — STOP immediately."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    finding: "F-34 RESOLVED"
+    next_authorized_task: PLACE-024 (OD-B4 / SearchResult.score) — recorded, NOT activated
+  requires_evidence:
+    - "emitted ORDER BY cnt DESC, sample_id ASC before LIMIT; rest of SQL unchanged"
+    - ">=5 identical consecutive real-DB runs; tie order by sample_id ASC"
+    - "full unit + e2e green; clean build; runtime otherwise unchanged"
+
+non_claims: >-
+  This only makes truncation deterministic. It does NOT change clustering/cell-size/aggregation/schema,
+  does NOT implement B4..B7, and adds no index or migration.
