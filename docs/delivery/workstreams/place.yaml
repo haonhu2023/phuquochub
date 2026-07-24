@@ -131,7 +131,23 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-026 completed 2026-07-24 (production deployment pipeline, Eligible Candidate 1). Candidates 2/3 remain APPROVED but NOT activated — need explicit owner authorization naming a specific candidate.
+next_task: none        # PLACE-027 completed 2026-07-24 (dependency security remediation, safe-only subset of Eligible Candidate 2). Candidate 3 remains APPROVED but NOT activated; the NestJS/Next major-version migration is a PENDING owner decision, not yet authorized.
+
+place_027_status: >-
+  COMPLETED 2026-07-24 — Eligible PLACE Candidate 2 (dependency security remediation), SAFE-ONLY
+  subset per this task's explicit narrower authorization. `npm audit fix` (non-force) applied
+  EXACTLY ONE change (fast-uri 3.1.3->3.1.4, dev-only, zero package.json touched). Fresh evidence:
+  prod vulnerabilities BEFORE/AFTER unchanged at 17 total (1 critical, 6 high, 10 moderate, 0 low) —
+  every one requires a coordinated NestJS 10->11 (9 direct packages) or Next.js 14->16 major-version
+  bump; `npm outdated` confirms Wanted==Current for all of them (no non-major path exists). `tar`
+  (critical, transitive via bcrypt) also needs a genuine 6->7 major bump — npm's own non-force
+  resolver declined to apply it. Full 5-category classification recorded (1 safe-patch applied, 0
+  safe-minor, 12 major-review, 20 deferred pass-through transitives, 0 accepted-risk). Full
+  lint/typecheck + unit (221/221) + e2e (44/44) IDENTICAL to PLACE-026, zero regression; Docker
+  images rebuilt with the updated lockfile and re-verified for real (api /api/health 200, web GET /
+  200). The NestJS/Next major-version migration remains a PENDING owner decision — NOT performed,
+  reported instead. See reports/PLACE-027-dependency-security-report.md and
+  evidence/PLACE-027-dependency-security-evidence-index.md.
 
 place_026_status: >-
   COMPLETED 2026-07-24 — Eligible PLACE Candidate 1 (production deployment pipeline) implemented for
