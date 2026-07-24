@@ -1,0 +1,94 @@
+schema_version: "1.0"
+
+id: PLACE-022
+workstream: place
+title: "Privileged Place-card access hardening (B2 / F-24)"
+type: security_hardening
+status: authorized            # activated this turn by explicit owner authorization
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'activation and execution of PLACE-022 — OD-B2 / F-24'."
+  decision: OD-B2 (B2-A), docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  note: >-
+    Remove ambiguity and prevent future misuse of the unfiltered card-fetch; NOT a redesign of Place
+    authorization. Behaviour must stay identical. Scope is F-24 only — no B3..B7 work.
+
+depends_on:
+  - "OD-B2 approved 2026-07-24"
+  - "PLACE-021 completed 2026-07-24 (GAP-05/10 resolved)"
+
+evidence_call_graph:
+  privileged_method: "PlacesRepository.getCardById (no status filter — returns inactive/non-published rows)"
+  approved_callers:              # PlacesService methods; each behind a permission-gated, non-@Public route
+    - { service_method: create,  controller_route: "POST /places",           public: false, guard: Place.Create }
+    - { service_method: update,  controller_route: "PATCH /places/:id",       public: false, guard: Place.Edit.Managed }
+    - { service_method: archive, controller_route: "DELETE /places/:id",      public: false, guard: Place.Archive }
+    - { service_method: approve, controller_route: "POST /places/:id/approve", public: false, guard: Place.Approve }
+  public_routes: ["list -> repo.list", "listRevisions -> revisionsService", "getBySlug -> repo.getDetailBySlug (status=published)"]
+  public_reachability: "NONE — no @Public route reaches the privileged method. Global APP_GUARD JwtAuthGuard+PermissionsGuard enforce it."
+
+objective: >-
+  Rename PlacesRepository.getCardById to getCardByIdIncludingInactive (a name that explicitly signals it
+  may return inactive/non-public records and that authorization must already be established), update its
+  callers/mocks/tied comment, and add an enforceable architecture test that fails if any @Public route can
+  reach it. Runtime behaviour, SQL, returned fields and exceptions unchanged.
+
+chosen_name: getCardByIdIncludingInactive
+chosen_name_rationale: >-
+  Satisfies OD-B2's first-listed quality ("explicit that inactive or non-public records may be returned"),
+  matches the SQL (only `deleted_at IS NULL`, NO status filter ⇒ includes pending/draft/archived), and is
+  consistent with neighbouring getCardById/getDetailBySlug/existsBySlug naming. The authorization
+  precondition is documented in the method comment.
+
+scope:
+  - "Rename PlacesRepository.getCardById -> getCardByIdIncludingInactive (signature/SQL/returns identical)."
+  - "Update the 5 call sites in places.service.ts (create/update/archive/approve)."
+  - "Update places.service.spec.ts mock + references."
+  - "Add architecture test proving no @Public route reaches the privileged method + documenting approved callers."
+  - "Update the method's tied comment; F-24 evidence/report/state."
+
+out_of_scope:
+  - "SQL semantics; adding/removing any status predicate; returned fields; exception behaviour."
+  - "Controller contracts, routes, DTOs, pagination, or any authorization/guard change."
+  - "Refactoring unrelated repository methods."
+  - "B3 (F-34), B4 (score), B5 (bbox), B6 (index), B7 (Prisma)."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Method renamed to getCardByIdIncludingInactive; SQL, parameters, return type and null-handling byte-identical to the prior getCardById." }
+  - { id: AC2, mandatory: true, text: "All 5 service call sites + the mock + all spec references updated; no reference to the old name remains." }
+  - { id: AC3, mandatory: true, text: "An architecture test fails if any @Public PlacesController route can reach the privileged method; it documents the approved callers and is deterministic." }
+  - { id: AC4, mandatory: true, text: "The arch test does NOT pass merely because of the rename — it enforces the public-reachability rule and the approved-caller allowlist." }
+  - { id: AC5, mandatory: true, text: "Existing authorized-caller behaviour proven unchanged (places.service.spec green, unmodified assertions except the rename)." }
+  - { id: AC6, mandatory: true, text: "No public Place endpoint exposes inactive/non-published content (getDetailBySlug still status=published; list still published-only)." }
+  - { id: AC7, mandatory: true, text: "Full lint/typecheck/unit/e2e green; clean build; health+web 200; ports freed." }
+
+validation_commands:
+  - "grep getCardById (old name) → only the new name remains"
+  - "cd apps/api && eslint + tsc + jest (repository/service/arch specs, then full)"
+  - "jest arch spec x3 (determinism)"
+  - "jest --config test/jest-e2e.json (full e2e)"
+  - "turbo run build --force (tsbuildinfo purged)"
+  - "boot + curl /api/health, web /, public list excludes inactive"
+
+rollback_plan: >-
+  Pure rename + new test file. `git revert` restores the prior method name and removes the arch test.
+  No SQL, schema, migration, contract or data change, so no runtime rollback is required.
+
+stop_conditions:
+  - "A @Public route legitimately requires the privileged method — STOP and report (renaming would conceal an authz problem). [Evidence: not the case.]"
+  - "Any change to SQL/status predicate/returned fields/exceptions/controller contract becomes necessary — STOP (out of scope)."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    finding: "F-24 RESOLVED"
+    next_authorized_task: PLACE-023 (OD-B3 / F-34) — recorded, NOT activated
+  requires_evidence:
+    - "old name absent; new name present; SQL/returns identical"
+    - "arch test green x3; documents approved callers"
+    - "full unit + e2e green; clean build; runtime unchanged"
+
+non_claims: >-
+  Renaming + the architecture test do NOT redesign Place authorization and do NOT implement B3..B7.
+  Behaviour is identical; this only removes ambiguity and prevents future public misuse.

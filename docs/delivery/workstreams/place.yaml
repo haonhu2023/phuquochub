@@ -131,7 +131,23 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-021 completed 2026-07-24 (GAP-05/10 RESOLVED). Next authorized-but-not-executed: PLACE-022 (OD-B2/F-24). Awaiting owner authorization to activate.
+next_task: none        # PLACE-022 completed 2026-07-24 (F-24 RESOLVED). Next authorized-but-not-executed: PLACE-023 (OD-B3/F-34). Awaiting owner authorization to activate.
+
+place_022_status: >-
+  COMPLETED 2026-07-24 — F-24 RESOLVED. OD-B2/B2-A: PlacesRepository.getCardById renamed to
+  getCardByIdIncludingInactive (signals it returns inactive/non-published rows; authorization must
+  already be established). Pure rename — SQL, params, return type, null-handling and exceptions
+  byte-identical; NO status filter added; no controller/DTO/guard/schema change. 5 service call sites
+  + mock + 13 spec refs updated. New architecture test
+  (apps/api/src/modules/places/places-privileged-access.arch.spec.ts, 6 tests) combines runtime
+  @Public metadata with static controller->service->repo reachability + an approved-caller allowlist;
+  it fails if any @Public route reaches the privileged method — MUTATION-CHECKED (a @Public leak fails
+  it, restore -> 6/6) and 3x deterministic. Approved privileged callers: create/update/archive/approve
+  (all permission-gated, non-@Public). No @Public route reaches the method. Full unit 216/216 (210+6)
+  + e2e 33/33 green; clean build 4/4; health 200 db+redis up; web 200; public list published-only;
+  unauth write 401; ports freed. Runtime behaviour UNCHANGED. See
+  reports/PLACE-022-privileged-card-access-report.md and
+  evidence/PLACE-022-privileged-card-access-evidence-index.md.
 
 place_021_status: >-
   COMPLETED 2026-07-24 — GAP-05 & GAP-10 RESOLVED. B1-A: offset page/limit ratified as the

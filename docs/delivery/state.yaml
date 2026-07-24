@@ -30,13 +30,12 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-021 completed 2026-07-24 (GAP-05/10 RESOLVED). The sole
-                                  # hard release blocker (list-pagination contract) is CLEARED by
-                                  # owner decision OD-B1 (offset ratified) + doc reconciliation +
-                                  # contract tests; runtime unchanged. Remaining owner-approved work
-                                  # (OD-B2/B3/B4/B7) is AUTHORIZED-but-not-activated as PLACE-022..025;
-                                  # OD-B5 accepted risk, OD-B6 deferred. Next: PLACE-022 (F-24), on
-                                  # owner authorization. No BUILD task exists.
+  task: none                      # PLACE-022 completed 2026-07-24 (F-24 RESOLVED — privileged
+                                  # card-fetch renamed + architecture test). No hard release blocker
+                                  # remains. Remaining owner-approved work is AUTHORIZED-but-not-
+                                  # activated: PLACE-023 (OD-B3/F-34, next), PLACE-024 (OD-B4),
+                                  # PLACE-025 (OD-B7); OD-B5 accepted risk, OD-B6 deferred. No BUILD
+                                  # task exists.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -174,42 +173,59 @@ proposed_tasks:
       completed: "2026-07-23" }
   - { id: PLACE-021, status: COMPLETED, decision: OD-B1, file: docs/delivery/tasks/PLACE-021.yaml,
       completed: "2026-07-24", note: "B1 — GAP-05/10 RESOLVED; offset ratified; docs reconciled to runtime; runtime unchanged." }
-  - { id: PLACE-022, status: PROPOSED, decision: OD-B2, note: "F-24 privileged card rename + arch test. Needs authorization." }
+  - { id: PLACE-022, status: COMPLETED, decision: OD-B2, file: docs/delivery/tasks/PLACE-022.yaml,
+      completed: "2026-07-24", note: "F-24 RESOLVED — getCardById -> getCardByIdIncludingInactive + mutation-checked architecture test; runtime unchanged." }
   - { id: PLACE-023, status: PROPOSED, decision: OD-B3, note: "F-34 deterministic bbox truncation. Needs authorization." }
   - { id: PLACE-024, status: PROPOSED, decision: OD-B4, note: "SearchResult.score removal. Needs authorization." }
   - { id: PLACE-025, status: PROPOSED, decision: OD-B7, note: "TypeORM authority note (GAP-15). Needs authorization." }
 
 next_action:
-  task_id: PLACE-022
+  task_id: PLACE-023
   status: authorized_not_activated
   objective: >-
-    The SOLE hard release blocker (GAP-05/10 list-pagination contract) is CLEARED by PLACE-021
-    (2026-07-24): owner decision OD-B1 ratified offset pagination, ADR-010 is Accepted, the OpenAPI/
-    api.md are reconciled to runtime, and contract tests pin the behaviour — runtime unchanged. The
-    remaining owner-approved decisions are recorded (OWNER-DECISIONS-2026-07-24) and mapped to tasks
-    that are AUTHORIZED-BY-DECISION but NOT activated (single-active-task discipline): PLACE-022
-    (OD-B2 / F-24 privileged card rename + arch test) is the next in sequence, then PLACE-023
-    (OD-B3 / F-34 deterministic bbox truncation), PLACE-024 (OD-B4 / SearchResult.score removal),
-    PLACE-025 (OD-B7 / TypeORM authority note for GAP-15). OD-B5 (provisional bbox) is an ACCEPTED
-    DOCUMENTED RISK requiring no new code; OD-B6 (GAP-06/F-15 EXPLAIN) is DEFERRED to a scale
-    performance task. None of B2..B7 is implemented. Activation of PLACE-022 needs explicit owner
-    authorization (this session executed exactly PLACE-021 and stopped).
+    F-24 is RESOLVED (PLACE-022, 2026-07-24): the privileged card-fetch is renamed and guarded by a
+    mutation-checked architecture test; runtime unchanged. No hard release blocker remains. The next
+    owner-approved-but-not-activated task is PLACE-023 (OD-B3 / F-34 — make bboxClusters truncation
+    deterministic with ORDER BY cnt DESC, cell ASC before LIMIT 500), then PLACE-024 (OD-B4 /
+    SearchResult.score removal) and PLACE-025 (OD-B7 / TypeORM authority note for GAP-15). OD-B5
+    (provisional bbox) is an ACCEPTED DOCUMENTED RISK requiring no new code; OD-B6 (GAP-06/F-15
+    EXPLAIN) is DEFERRED to a scale performance task. None of B3..B7 is implemented. Activation of
+    PLACE-023 needs explicit owner authorization (this session executed exactly PLACE-022 and stopped).
   next_authorized_task:
-    id: PLACE-022
-    decision: OD-B2
-    item: F-24
-    summary: "Rename PlacesRepository.getCardById to a privileged-signalling name + add an architecture test barring any @Public route from reaching it. Behaviour unchanged."
+    id: PLACE-023
+    decision: OD-B3
+    item: F-34
+    summary: "Make bboxClusters truncation deterministic: ORDER BY cnt DESC, <cell key> ASC before LIMIT 500 (densest-first). Additive to a currently unordered endpoint."
     status: authorized_by_decision_not_activated
-  release_blockers_remaining: "NONE hard. GAP-05/10 RESOLVED (PLACE-021). OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker."
+  release_blockers_remaining: "NONE hard. GAP-05/10 RESOLVED (PLACE-021); F-24 RESOLVED (PLACE-022). OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker."
   remaining_approved_work:
-    - "PLACE-022 — OD-B2 / F-24 (next)."
-    - "PLACE-023 — OD-B3 / F-34 (deterministic bbox truncation)."
+    - "PLACE-023 — OD-B3 / F-34 (deterministic bbox truncation) — NEXT."
     - "PLACE-024 — OD-B4 / SearchResult.score removal."
     - "PLACE-025 — OD-B7 / GAP-15 TypeORM authority note."
     - "OD-B5 — accepted documented risk (provisional bbox), no new code."
     - "OD-B6 — deferred: EXPLAIN proof for idx_places_status_active (GAP-06/F-15) at representative scale."
 
 completed_tasks:
+  - id: PLACE-022
+    completed: "2026-07-24"
+    result: >-
+      F-24 RESOLVED. OD-B2/B2-A security hardening: PlacesRepository.getCardById renamed to
+      getCardByIdIncludingInactive — a name that signals it returns inactive/non-published rows and
+      that authorization must already be established. PURE RENAME: SQL, parameters, return type,
+      null-handling and exceptions byte-identical; NO status predicate added/removed; no controller,
+      DTO, guard, pagination or schema change. 5 service call sites + mock + 13 spec references
+      updated. Added an enforceable architecture test (places-privileged-access.arch.spec.ts, 6
+      tests) that combines runtime @Public metadata with static controller->service->repo
+      reachability and an approved-caller allowlist; it fails if any @Public route can reach the
+      privileged method (MUTATION-CHECKED: a synthetic @Public leak fails tests #4 and #6 naming the
+      path; restore -> 6/6) and is 3x deterministic. Approved privileged callers:
+      create/update/archive/approve (all non-@Public, permission-gated); NO @Public route reaches it
+      (global APP_GUARD JwtAuthGuard+PermissionsGuard). Full unit 216/216 (210+6) + e2e 33/33 green;
+      clean build 4/4 (tsbuildinfo purged); artifacts 153==153; health 200 db+redis up; web 200;
+      public list published-only; non-existent detail 404; unauth write 401; ports freed. Runtime
+      behaviour UNCHANGED.
+    report: docs/delivery/reports/PLACE-022-privileged-card-access-report.md
+    evidence_index: docs/delivery/evidence/PLACE-022-privileged-card-access-evidence-index.md
   - id: PLACE-021
     completed: "2026-07-24"
     result: >-

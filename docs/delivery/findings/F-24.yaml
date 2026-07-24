@@ -1,0 +1,63 @@
+schema_version: "1.0"
+
+id: F-24
+title: "PlacesRepository unfiltered card-fetch (getCardById) returned inactive rows with an ambiguous name — latent public-exposure trap"
+workstream: place
+origin:
+  task: PLACE-007
+  recorded_in: docs/delivery/reports/PLACE-007-dead-code-report.md
+  consolidated_by: docs/delivery/reports/OWNER-DECISION-PACKAGE-2026-07-24.md
+
+decision_status: APPROVED             # OD-B2 (B2-A), owner instruction 2026-07-24
+implementation_status: DONE           # PLACE-022, 2026-07-24
+validation_status: PASSED             # rename + architecture test (mutation-checked), full unit 216 + e2e 33 green, runtime unchanged
+release_blocker_status: NOT_A_BLOCKER # classified NON_BLOCKING at PLACE-010; hardened by PLACE-022
+
+interim_state: RESOLVED
+
+decision:
+  id: OD-B2
+  option: B2-A
+  record: docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  date: "2026-07-24"
+  owner: Project Owner
+  approval_source: owner instruction (explicit activation of PLACE-022)
+  summary: >-
+    Rename the unfiltered card-fetch to a name that clearly signals privileged/internal access and
+    add an enforceable architecture test preventing any @Public route from reaching it. Preserve
+    runtime behaviour; do NOT add a status filter (it is intentionally omitted for moderation reads).
+
+problem: >-
+  PlacesRepository.getCardById filtered only `deleted_at IS NULL` (no `status`), so it returned
+  inactive/non-published rows (pending/draft/archived). This is correct for the permission-gated
+  moderation/write flows that use it, but the general name gave no signal of the hazard: a future
+  developer could wire it to a @Public route and re-expose unpublished content (the GAP-02/04 class
+  of defect). No public route reached it at the time (verified), so this was a LATENT trap, not an
+  active leak.
+
+resolution:                            # PLACE-022, 2026-07-24
+  renamed_from: PlacesRepository.getCardById
+  renamed_to: PlacesRepository.getCardByIdIncludingInactive
+  name_rationale: >-
+    Satisfies OD-B2's first-listed quality ("explicit that inactive or non-public records may be
+    returned"), matches the SQL (only deleted_at IS NULL, no status filter), and is consistent with
+    neighbouring getCardById/getDetailBySlug/existsBySlug naming. The authorization precondition is
+    documented in the method comment.
+  behaviour_change: "NONE — SQL, parameters, return type, null-handling and exception behaviour byte-identical."
+  approved_privileged_callers:         # PlacesService methods; each on a non-@Public, permission-gated route
+    - { service_method: create,  route: "POST /places",            guard: Place.Create }
+    - { service_method: update,  route: "PATCH /places/:id",        guard: Place.Edit.Managed }
+    - { service_method: archive, route: "DELETE /places/:id",       guard: Place.Archive }
+    - { service_method: approve, route: "POST /places/:id/approve", guard: Place.Approve }
+  public_reachability: "NONE — proven by an enforceable, mutation-checked architecture test."
+  architecture_test: apps/api/src/modules/places/places-privileged-access.arch.spec.ts
+
+remediation_task: PLACE-022           # COMPLETED 2026-07-24
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-022-privileged-card-access-report.md
+  evidence_index: docs/delivery/evidence/PLACE-022-privileged-card-access-evidence-index.md
+
+not_claimed:
+  - "no Place authorization redesign was performed"
+  - "no status predicate was added or removed; the method still returns inactive rows by design"
+  - "no controller contract, DTO, pagination or guard change"
