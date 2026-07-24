@@ -30,11 +30,12 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-023 completed 2026-07-24 (F-34 RESOLVED — bboxClusters
-                                  # truncation made deterministic, ordering-only). No hard release
-                                  # blocker remains. Remaining owner-approved work is AUTHORIZED-but-
-                                  # not-activated: PLACE-024 (OD-B4, next), PLACE-025 (OD-B7); OD-B5
-                                  # accepted risk, OD-B6 deferred. No BUILD task exists.
+  task: none                      # PLACE-024 completed 2026-07-24 (F-35 RESOLVED — SearchResult.score
+                                  # removed from the public payload; ts_rank stays internal, ordering
+                                  # empirically proven unchanged). No hard release blocker remains.
+                                  # Remaining owner-approved work is AUTHORIZED-but-not-activated:
+                                  # PLACE-025 (OD-B7, next); OD-B5 accepted risk, OD-B6 deferred.
+                                  # No BUILD task exists.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -176,35 +177,55 @@ proposed_tasks:
       completed: "2026-07-24", note: "F-24 RESOLVED — getCardById -> getCardByIdIncludingInactive + mutation-checked architecture test; runtime unchanged." }
   - { id: PLACE-023, status: COMPLETED, decision: OD-B3, file: docs/delivery/tasks/PLACE-023.yaml,
       completed: "2026-07-24", note: "F-34 RESOLVED — ORDER BY cnt DESC, sample_id ASC before LIMIT; ordering-only; determinism proven 5x." }
-  - { id: PLACE-024, status: PROPOSED, decision: OD-B4, note: "SearchResult.score removal. Needs authorization." }
+  - { id: PLACE-024, status: COMPLETED, decision: OD-B4, file: docs/delivery/tasks/PLACE-024.yaml,
+      completed: "2026-07-24", note: "F-35 RESOLVED — score removed from public /search payload; ts_rank internal; ordering empirically unchanged." }
   - { id: PLACE-025, status: PROPOSED, decision: OD-B7, note: "TypeORM authority note (GAP-15). Needs authorization." }
 
 next_action:
-  task_id: PLACE-024
+  task_id: PLACE-025
   status: authorized_not_activated
   objective: >-
-    F-34 is RESOLVED (PLACE-023, 2026-07-24): bboxClusters truncation is deterministic
-    (ORDER BY cnt DESC, sample_id ASC before LIMIT), ordering-only, proven across repeated runs. No
-    hard release blocker remains. The next owner-approved-but-not-activated task is PLACE-024 (OD-B4 /
-    remove SearchResult.score from the public /search payload, retaining ts_rank for ordering), then
-    PLACE-025 (OD-B7 / TypeORM authority note for GAP-15). OD-B5 (provisional bbox) is an ACCEPTED
-    DOCUMENTED RISK requiring no new code; OD-B6 (GAP-06/F-15 EXPLAIN) is DEFERRED to a scale
-    performance task. None of B4..B7 is implemented. Activation of PLACE-024 needs explicit owner
-    authorization (this session executed exactly PLACE-023 and stopped).
+    F-35 is RESOLVED (PLACE-024, 2026-07-24): SearchResult.score is removed from the public /search
+    payload, ts_rank stays internal, and result ordering is empirically proven unchanged (baseline
+    id-order match, live + contract-tested). No hard release blocker remains. The next
+    owner-approved-but-not-activated task is PLACE-025 (OD-B7 / record TypeORM migrations+entities as
+    the authoritative runtime persistence model; Prisma reference-only — GAP-15). OD-B5 (provisional
+    bbox) is an ACCEPTED DOCUMENTED RISK requiring no new code; OD-B6 (GAP-06/F-15 EXPLAIN) is
+    DEFERRED to a scale performance task. None of B5..B7 code work is implemented beyond PLACE-025's
+    documentation-only scope. Activation of PLACE-025 needs explicit owner authorization (this session
+    executed exactly PLACE-024 and stopped).
   next_authorized_task:
-    id: PLACE-024
-    decision: OD-B4
-    item: SearchResult.score
-    summary: "Remove `score` from the public /search payload; retain ts_rank internally for ordering only. Contract cleanup before it becomes a depended-upon field."
+    id: PLACE-025
+    decision: OD-B7
+    item: GAP-15
+    summary: "Record TypeORM migrations/entities as the authoritative runtime persistence model; Prisma schema is reference-only, not executable schema authority. Documentation/governance only."
     status: authorized_by_decision_not_activated
-  release_blockers_remaining: "NONE hard. GAP-05/10 RESOLVED (PLACE-021); F-24 RESOLVED (PLACE-022); F-34 RESOLVED (PLACE-023). OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker."
+  release_blockers_remaining: "NONE hard. GAP-05/10 RESOLVED (PLACE-021); F-24 RESOLVED (PLACE-022); F-34 RESOLVED (PLACE-023); F-35 RESOLVED (PLACE-024). OD-B5 provisional bbox is an accepted documented GA caveat, not a blocker."
   remaining_approved_work:
-    - "PLACE-024 — OD-B4 / SearchResult.score removal — NEXT."
-    - "PLACE-025 — OD-B7 / GAP-15 TypeORM authority note."
+    - "PLACE-025 — OD-B7 / GAP-15 TypeORM authority note — NEXT."
     - "OD-B5 — accepted documented risk (provisional bbox), no new code."
     - "OD-B6 — deferred: EXPLAIN proof for idx_places_status_active (GAP-06/F-15) at representative scale."
 
 completed_tasks:
+  - id: PLACE-024
+    completed: "2026-07-24"
+    result: >-
+      F-35 RESOLVED. OD-B4/B4-A contract cleanup: `SearchResult.score` (the public leak of Postgres
+      ts_rank) REMOVED from search.service.ts's public mapping, docs/api/openapi.yaml SearchResult
+      schema, docs/api/api.md §22, and the web SearchResult TypeScript interface. ts_rank computation
+      and `ORDER BY score DESC, p.id ASC` RETAINED byte-identical in places.repository.ts — purely
+      internal now, proven by places.repository.spec 21/21 UNCHANGED. No renamed equivalent field
+      introduced (verified by a recursive scan for score/rank/ts_rank/searchRank at every JSON nesting
+      depth). Ordering preservation was EMPIRICALLY PROVEN: id order captured against the pre-change
+      production build for two queries ('bien', 'phu quoc') plus a page-2/limit-3 pagination case
+      matched EXACTLY post-change, both in a new contract e2e (6 tests) and independently via live
+      curl. No frontend component read `.score` (confirmed by a full source grep before the change,
+      zero hits beyond the interface declaration); apps/web tsc exit 0 confirms nothing broke. Full
+      unit 221/221 (220+1) + e2e 44/44 (38+6) green; clean build 4/4 (tsbuildinfo purged); artifacts
+      153==153; health 200 db+redis up; web 200; live /search 0 score occurrences, identical order,
+      repeated query byte-identical hash; ports freed. Runtime otherwise UNCHANGED.
+    report: docs/delivery/reports/PLACE-024-search-score-removal-report.md
+    evidence_index: docs/delivery/evidence/PLACE-024-search-score-removal-evidence-index.md
   - id: PLACE-023
     completed: "2026-07-24"
     result: >-

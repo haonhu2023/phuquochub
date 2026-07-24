@@ -1,0 +1,98 @@
+schema_version: "1.0"
+
+id: PLACE-024
+workstream: place
+title: "Remove SearchResult.score from the public search payload (B4 / OD-B4)"
+type: contract_cleanup
+status: completed             # activated and executed this turn by explicit owner authorization
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'activation and execution of PLACE-024 — OD-B4'."
+  decision: OD-B4 (B4-A), docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  note: >-
+    Decouple the public API contract from Postgres ts_rank while preserving observable result ordering.
+    Keep ts_rank internal for ordering; remove `score` from the public /search payload, OpenAPI and web
+    type. Do NOT expose the rank under a renamed field; do not redesign search or change the algorithm.
+
+depends_on:
+  - "OD-B4 approved 2026-07-24"
+  - "PLACE-023 completed 2026-07-24 (F-34 resolved)"
+
+data_flow_map:
+  sql: "places.repository.ts searchFullText — ts_rank(...) AS score; ORDER BY score DESC, p.id ASC (INTERNAL — retained)"
+  repository_row: "PlaceCardRow.score?: number (repository-row-only ranking — RETAINED as the internal representation)"
+  service_leak: "search.service.ts:24 — score: r.score ... copies ts_rank into the public SearchResult (THE PUBLIC LEAK — removed)"
+  controller: "GET /api/search (@Public) -> searchService.search -> paginate(results)"
+  public_types:
+    - "OpenAPI SearchResult schema: `score: { type: number }` (docs/api/openapi.yaml:1996) — removed"
+    - "web SearchResult interface: `score: number` (apps/web/src/modules/search/api/search.api.ts:8) — removed (frontend only DECLARES it)"
+  frontend_dependency: "NONE — grep `.score` in apps/web/src shows only the interface declaration; no component reads/sorts/displays it."
+  other_score_usages_unrelated:
+    - "InitPlaces migration ai_moderation_score (unrelated column)"
+    - "places.mapper(.spec) — asserts score NEVER on PlaceCard (F-17); unchanged"
+    - "places.repository.spec search ORDER BY score DESC tests — SQL-level, unchanged (verify ranking stays internal)"
+
+objective: >-
+  Remove `score` from the public /search response (the object built in search.service.ts), from the
+  OpenAPI SearchResult schema, and from the web SearchResult type — while keeping the ts_rank SQL and
+  `ORDER BY score DESC, p.id ASC` exactly as-is (ranking + ordering stay internal and behaviourally
+  identical). Repository-row `PlaceCardRow.score` is retained as the internal representation.
+
+internal_representation_retained: "PlaceCardRow.score (ts_rank), used solely for SQL ORDER BY — never serialized to the public response."
+
+scope:
+  - "search.service.ts: drop `score` from the mapped public result object (keep type/id/title/slug/snippet)."
+  - "OpenAPI SearchResult: remove the `score` property."
+  - "web search.api.ts: remove `score` from the SearchResult interface."
+  - "search.service.spec.ts: assert the public result has NO `score`."
+  - "New public-contract test: /search payload contains no score; ordering + pagination unchanged."
+
+out_of_scope:
+  - "ts_rank expression, ranking weights, ORDER BY relevance/tie-break, query parsing, Postgres FTS config."
+  - "Pagination, validation, error responses, status/visibility filtering."
+  - "PlaceCardRow.score (internal), places.repository search SQL, places.mapper (F-17)."
+  - "Renaming score to any other public field; adding indexes/migrations; unrelated list/geo endpoints."
+  - "B5 (bbox), B6 (index), B7 (Prisma)."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Public /search JSON contains NO `score` (and no renamed equivalent rank field) at top level or nested." }
+  - { id: AC2, mandatory: true, text: "SQL still computes ts_rank AS score and orders by `score DESC, p.id ASC` (byte-identical) — ranking stays internal." }
+  - { id: AC3, mandatory: true, text: "Result identifier order is identical before and after the change for a fixed dataset (empirical baseline vs after)." }
+  - { id: AC4, mandatory: true, text: "OpenAPI SearchResult no longer exposes `score`; web SearchResult type no longer exposes `score`." }
+  - { id: AC5, mandatory: true, text: "Pagination metadata (page/pageSize/total/totalPages/timestamp) and all other result fields unchanged; empty-result shape unchanged." }
+  - { id: AC6, mandatory: true, text: "No Postgres config / ranking weight / query parsing / pagination / index / migration change; frontend components unaffected (none read score)." }
+  - { id: AC7, mandatory: true, text: "Full lint/typecheck/unit/e2e green; clean build; health+web 200; /search HTTP stable across runs; ports freed." }
+
+validation_commands:
+  - "cd apps/api && eslint + tsc + jest search + jest places.repository (SQL ranking unchanged)"
+  - "cd apps/web && tsc --noEmit (SearchResult type)"
+  - "public-contract e2e: /search no score, order stable, pagination unchanged, empty-result shape"
+  - "baseline vs after: capture /search id order before change, compare after"
+  - "jest (full unit) + jest --config test/jest-e2e.json (full e2e)"
+  - "turbo run build --force (tsbuildinfo purged); artifacts"
+  - "boot; curl /api/search normal/no-result/paginated/repeated; /api/health; web /"
+
+rollback_plan: >-
+  Doc/type/service-mapping change plus governance records. `git revert` restores the `score` property.
+  No SQL, schema, migration, index or data change, so no runtime rollback is required.
+
+stop_conditions:
+  - "Repository evidence shows a client legitimately depends on the numeric score — STOP and report. [Evidence: frontend does not read it.]"
+  - "Removing the public field would require changing ranking/ordering/query semantics — STOP (out of scope)."
+  - "Result order differs from baseline after the change — STOP immediately."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    finding: "F-35 — SearchResult.score public exposure REMOVED"
+    next_authorized_task: PLACE-025 (OD-B7 / GAP-15 TypeORM authority note) — recorded, NOT activated
+  requires_evidence:
+    - "public /search has no score; nested none; OpenAPI + web type dropped it"
+    - "SQL ts_rank + ORDER BY unchanged; id order identical to baseline"
+    - "full unit + e2e green; clean build; pagination/empty-shape unchanged"
+
+non_claims: >-
+  Removing the public `score` field does NOT change ranking, ordering or query semantics, does NOT
+  redesign search, and does NOT implement B5..B7. ts_rank stays internal and behaviourally identical.

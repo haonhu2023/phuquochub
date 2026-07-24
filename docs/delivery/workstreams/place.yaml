@@ -131,7 +131,22 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-023 completed 2026-07-24 (F-34 RESOLVED). Next authorized-but-not-executed: PLACE-024 (OD-B4/SearchResult.score). Awaiting owner authorization to activate.
+next_task: none        # PLACE-024 completed 2026-07-24 (F-35 RESOLVED). Next authorized-but-not-executed: PLACE-025 (OD-B7/GAP-15). Awaiting owner authorization to activate.
+
+place_024_status: >-
+  COMPLETED 2026-07-24 — F-35 RESOLVED. OD-B4/B4-A contract cleanup: `SearchResult.score` (the public
+  leak of Postgres ts_rank) REMOVED from search.service.ts's mapping, docs/api/openapi.yaml, and the
+  web SearchResult TypeScript interface. ts_rank + `ORDER BY score DESC, p.id ASC` RETAINED unchanged
+  in places.repository.ts (SQL-level, purely internal — proven by places.repository.spec 21/21
+  unaffected). Ordering-preservation was empirically proven: id order captured against the pre-change
+  build for 2 queries + a page-2/limit-3 pagination case matched EXACTLY post-change, both in a
+  dedicated contract e2e (6 tests, incl. a recursive no-rank-key-anywhere scan) and independently via
+  live curl against the booted production build. No frontend component read `.score` (confirmed by a
+  full source grep before the change); apps/web tsc exit 0 confirms nothing broke. Full unit 221/221
+  (220+1) + e2e 44/44 (38+6) green; clean build 4/4; health 200 db+redis up; web 200; live /search
+  0 score occurrences, identical order, repeated query byte-identical; ports freed. Runtime otherwise
+  UNCHANGED. See reports/PLACE-024-search-score-removal-report.md and
+  evidence/PLACE-024-search-score-removal-evidence-index.md.
 
 place_023_status: >-
   COMPLETED 2026-07-24 — F-34 RESOLVED. OD-B3/B3-A: bboxClusters truncation made deterministic by

@@ -1,0 +1,69 @@
+schema_version: "1.0"
+
+id: F-35
+title: "SearchResult.score exposed the internal Postgres ts_rank value in the public /search payload"
+workstream: place
+origin:
+  task: PLACE-014
+  recorded_in: docs/delivery/reports/PLACE-014-geo-ordering-analysis.md
+  consolidated_by: docs/delivery/reports/OWNER-DECISION-PACKAGE-2026-07-24.md
+  note: >-
+    Raised as "B4 / SearchResult.score exposure" in the Owner Decision Package (no F-number assigned
+    at that time). Assigned F-35 at PLACE-024 execution (2026-07-24), the next unused finding id
+    after F-34.
+
+decision_status: APPROVED             # OD-B4 (B4-A), owner instruction 2026-07-24
+implementation_status: DONE           # PLACE-024, 2026-07-24
+validation_status: PASSED             # contract e2e (baseline id-order match) + full unit/e2e green
+release_blocker_status: NOT_A_BLOCKER # classified as contract-cleanup, non-blocking; resolved by PLACE-024
+
+interim_state: RESOLVED
+
+decision:
+  id: OD-B4
+  option: B4-A
+  record: docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  date: "2026-07-24"
+  owner: Project Owner
+  approval_source: owner instruction (explicit activation of PLACE-024)
+  summary: >-
+    Remove `score` from the public /search payload; continue using ts_rank internally for ordering;
+    preserve current search ordering and relevance behaviour; do not expose the ranking value through
+    another renamed public field; do not redesign the search API or change the algorithm.
+
+problem: >-
+  SearchService.search() copied the internal Postgres ts_rank value (`r.score`, computed by
+  PlacesRepository.searchFullText) directly into the public SearchResult object, and both the OpenAPI
+  SearchResult schema and the web SearchResult TypeScript interface declared `score: number`. This
+  coupled the public API contract to a Postgres-specific, engine-dependent ranking value that a future
+  search-engine migration (search.md's planned Meilisearch/ES move) would have made a breaking change
+  to remove, and gave clients no meaningful way to interpret a raw ts_rank float.
+
+data_flow_before:
+  sql: "places.repository.ts searchFullText() — ts_rank(...) AS score; ORDER BY score DESC, p.id ASC"
+  repository_row: "PlaceCardRow.score?: number (repository-row-only ranking, already internal per F-17/OD-F-17)"
+  service_leak: "search.service.ts — score: r.score !== undefined ? Number(r.score) : 0 — copied into the PUBLIC SearchResult"
+  public_types: "openapi.yaml SearchResult.score; apps/web/.../search.api.ts SearchResult.score"
+  frontend: "NONE read `.score` — confirmed by full grep of apps/web/src (only the interface declaration existed)"
+
+resolution:                            # PLACE-024, 2026-07-24
+  removed_from: "search.service.ts public result mapping; docs/api/openapi.yaml SearchResult schema; apps/web SearchResult interface"
+  retained_internal: "PlaceCardRow.score (ts_rank) — used ONLY for places.repository.ts ORDER BY; never serialized to the public response"
+  behaviour_change: "NONE observable — ts_rank expression, ORDER BY score DESC/p.id ASC, query semantics, status filtering, pagination and error responses all byte-identical"
+  ordering_proof: >-
+    Result identifier order captured against the pre-change build (three fixed queries: 'bien',
+    'phu quoc', and a page-2/limit-3 pagination) and asserted identical post-change in a dedicated
+    contract e2e spec — all three sequences matched exactly, and independently reproduced live via
+    curl against the booted production build.
+  no_renamed_leak: "Verified by a recursive key scan (search-contract.e2e-spec.ts) asserting no score/rank/ts_rank/searchRank key exists at any nesting depth in the response."
+
+remediation_task: PLACE-024           # COMPLETED 2026-07-24
+remediation_evidence:
+  report: docs/delivery/reports/PLACE-024-search-score-removal-report.md
+  evidence_index: docs/delivery/evidence/PLACE-024-search-score-removal-evidence-index.md
+
+not_claimed:
+  - "no ts_rank expression, ranking weight, ORDER BY direction, or query-parsing change"
+  - "no Postgres FTS configuration change; no search algorithm redesign"
+  - "no pagination, validation, error-response, or status/visibility-filtering change"
+  - "no B5..B7 work"
