@@ -30,16 +30,15 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-027 completed 2026-07-24 (dependency security remediation —
-                                  # Eligible PLACE Candidate 2 / OD2-11, safe-only subset). npm audit
-                                  # fix (non-force) applied exactly one change (fast-uri 3.1.3->3.1.4,
-                                  # dev-only). Every remaining vulnerability (1 critical + 6 high + 10
-                                  # moderate, prod) requires a coordinated NestJS 10->11 / Next 14->16
-                                  # major-version migration — evidence-based (npm outdated confirms
-                                  # Wanted==Current for every affected package), STOPPED and REPORTED
-                                  # per this task's explicit constraint, NOT performed. Zero package.json
-                                  # touched; zero regression: unit 221/221, e2e 44/44, Docker build+boot
-                                  # re-verified, identical to PLACE-026.
+  task: none                      # PLACE-028 completed 2026-07-24 (API bootstrap hardening — Eligible
+                                  # PLACE Candidate 3 / OD2-12 rate limiting + OD2-13 CORS). Global
+                                  # in-memory rate limit (@nestjs/throttler, no NestJS major bump),
+                                  # stricter limit on /api/auth/login+register, /api/health exempted.
+                                  # CORS reworked from permissive origin:true to an explicit env-driven
+                                  # allow-list, fail-fast in production, credentials default false (zero
+                                  # cookie usage anywhere). Live 429 + CORS allow/reject/preflight proven
+                                  # against a real Docker container; zero regression: unit 223/223
+                                  # (221+2 new), e2e 51/51 (44+7 new).
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -190,27 +189,80 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-027 (2026-07-24) implemented Eligible PLACE Candidate 2 (dependency security remediation)
-    from the Owner Approval Session, safe-only subset: `npm audit fix` (non-force) applied exactly
-    one change (fast-uri 3.1.3->3.1.4, dev-only, zero package.json touched). Fresh npm audit/outdated
-    evidence confirms every remaining vulnerability (1 critical + 6 high + 10 moderate, production)
-    requires a coordinated major-version migration — NestJS 10.x->11.x across 9 direct packages, and
-    Next.js 14.x->16.x — which this task's explicit authorization did not permit performing without a
-    separate owner decision. Reported, not silently applied. Zero regression (unit 221/221, e2e 44/44,
-    identical to PLACE-026); Docker build+boot+health re-verified with the updated lockfile. Eligible
-    Candidate 3 (OD2-12/13, rate-limit + CORS) remains APPROVED but NOT activated. Deriving another
-    task without explicit owner authorization naming a specific candidate is NOT permitted.
+    PLACE-028 (2026-07-24) implemented Eligible PLACE Candidate 3 (API bootstrap hardening) from the
+    Owner Approval Session: OD2-12 (rate limiting) and OD2-13 (CORS), the last of the three Eligible
+    Candidates. Global in-memory rate limit (@nestjs/throttler@6.4.0, no NestJS major bump — verified
+    peer-compatible with ^10.4.4), env-configurable, default 100 req/60s; stricter 10 req/60s limit on
+    /api/auth/login and /api/auth/register (evidenced brute-force/spam mitigation); /api/health exempt.
+    CORS reworked from permissive `origin:true` to an explicit env-driven allow-list
+    (CORS_ALLOWED_ORIGINS), required and fail-fast at boot in production; CORS_CREDENTIALS defaults
+    false (zero cookie usage anywhere, grep-verified — bearer-token auth only). TRUST_PROXY_HOPS added,
+    default 0 (no real reverse proxy deployed yet). All three claims proven live against a real Docker
+    container on the real dev Postgres/Redis: 429 after the configured limit, correct CORS
+    allow/reject/preflight headers, production boot succeeding only with CORS_ALLOWED_ORIGINS set.
+    Zero regression: unit 223/223 (221+2 new), e2e 51/51 (44+7 new). CI's docker-build job's API boot
+    step was given CORS_ALLOWED_ORIGINS to avoid breaking under the new production requirement. All
+    three Eligible PLACE Candidates from the Owner Approval Session are now implemented (Candidate 2
+    partially, per its own narrower authorization). Deriving another task without explicit owner
+    authorization is NOT permitted.
   eligible_candidate_disposition:
     - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
     - "Candidate 2 (dependency remediation, OD2-11) — PARTIALLY IMPLEMENTED (PLACE-027): safe-only subset applied (fast-uri); the NestJS/Next major-version migration remains PENDING a separate owner decision."
-    - "Candidate 3 (rate-limit + CORS, OD2-12/13) — APPROVED, NOT activated."
+    - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "Whether to authorize the coordinated NestJS 10->11 / Next.js 14->16 major-version migration to close the remaining 1 critical + 17 high/moderate/low vulnerabilities (production + dev). Not decided by PLACE-027 — see docs/delivery/reports/PLACE-027-dependency-security-report.md §6."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 1 critical + 6 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decision above. Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote) that no engineering task can fabricate."
+  pending_owner_decision: "Whether to authorize the coordinated NestJS 10->11 / Next.js 14->16 major-version migration to close the remaining 1 critical + 17 high/moderate/low vulnerabilities (production + dev). Not decided by PLACE-027 — see docs/delivery/reports/PLACE-027-dependency-security-report.md §6. No further Eligible PLACE Candidate is currently defined — all three from the Owner Approval Session are now IMPLEMENTED (fully or per their own narrower scope)."
+  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 1 critical + 6 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decision above. Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-028
+    completed: "2026-07-24"
+    result: >-
+      API bootstrap hardening (Eligible PLACE Candidate 3), implementing OD2-12 (rate limiting) and
+      OD2-13 (CORS) — the last of the three Eligible Candidates from the Owner Approval Session.
+      Before this task: apps/api/src/main.ts had `enableCors({origin:true, credentials:true})` (fully
+      permissive) and NO rate limiting anywhere. Investigation (fresh, not memory) confirmed
+      `@nestjs/throttler@6.4.0`'s peerDependencies (`@nestjs/core`/`@nestjs/common: ^7..^11`) are
+      compatible with the installed `^10.4.4` — no NestJS major bump required, honoring PLACE-027's
+      deferred-migration boundary. A repo-wide grep for `credentials|document.cookie|Set-Cookie|
+      res.cookie` found only the CORS config line itself — zero cookie usage anywhere, confirming
+      bearer-token-only auth and justifying CORS_CREDENTIALS defaulting to false. Implemented: a new
+      RateLimitModule (global APP_GUARD, ThrottlerModule.forRootAsync, env-configurable
+      RATE_LIMIT_TTL/RATE_LIMIT_LIMIT, default 100 req/60s); a stricter @Throttle() override on
+      /api/auth/login and /api/auth/register (RATE_LIMIT_AUTH_TTL/RATE_LIMIT_AUTH_LIMIT, default 10
+      req/60s — an evidenced brute-force/spam mitigation); @SkipThrottle() on /api/health (container
+      liveness/readiness probe, must never be limited); an explicit CORS allow-list via
+      CORS_ALLOWED_ORIGINS (comma-separated), REQUIRED and fail-fast at boot when NODE_ENV=production
+      (Joi conditional schema, mirroring the existing JWT-secret precedent), defaulting to
+      http://localhost:3000 in dev; explicit methods/allowedHeaders (GET/POST/PATCH/DELETE/OPTIONS,
+      Content-Type/Authorization — grep-verified, no PUT exists); TRUST_PROXY_HOPS (default 0, since
+      no real reverse proxy is deployed yet — confirmed via PLACE-026's own findings). Two new focused
+      test files: rate-limit.spec.ts (isolated ThrottlerGuard mechanism, deliberately low limit=3,
+      2 tests) and security-hardening.e2e-spec.ts (CORS allow/reject/credentials/preflight/no-origin
+      + real /api/auth/login 429 at the default RATE_LIMIT_AUTH_LIMIT=10 + /api/health never
+      throttled, 7 tests). Full regression: unit 223/223 (221 baseline + 2 new, 31 suites), e2e 51/51
+      (44 baseline + 7 new, 9 suites) — zero regression to auth/authz/validation/response-contract
+      behaviour. Docker image rebuilt and booted against the REAL dev Postgres/Redis containers with
+      NODE_ENV=production (proving the new fail-fast CORS requirement is satisfiable): live curl
+      proofs — CORS allowed origin reflected, disallowed origin not reflected, OPTIONS preflight
+      returns 204 with the exact configured methods/headers, and (with a RATE_LIMIT_AUTH_LIMIT=5 test
+      override) 5 login requests succeed (401, bad credentials) then the 6th returns 429, while
+      /api/health stays 200 throughout. CI's docker-build job's API boot step was given
+      CORS_ALLOWED_ORIGINS=http://localhost:3000 — without this the job would have started failing
+      fast under the new production requirement. docker-compose.prod.yml's api service env block
+      extended with all seven new variables, defaulting to the stack's own local web origin (NOT a
+      real domain — none has been provisioned, per PLACE-026). Verified `docker compose -p
+      phuquochub-place028-verify -f docker-compose.prod.yml config` resolves cleanly under an
+      isolated project name; the dev stack (phuquoc-postgres/-redis/-minio) was confirmed healthy and
+      completely untouched before and after all Docker verification, with no stray verification
+      containers or volumes left behind. Not claimed: no NestJS/Next major-version migration (remains
+      deferred per PLACE-027); no distributed/Redis-backed rate limiter (single-instance in-memory,
+      limitation documented in docs/architecture/deployment.md); no real production CORS domain
+      provisioned. All three Eligible PLACE Candidates are now implemented (Candidate 2 partially, per
+      its own explicit narrower scope). No PLACE-029 defined or started.
+    report: docs/delivery/reports/PLACE-028-api-bootstrap-hardening-report.md
+    evidence_index: docs/delivery/evidence/PLACE-028-api-bootstrap-hardening-evidence-index.md
   - id: PLACE-027
     completed: "2026-07-24"
     result: >-

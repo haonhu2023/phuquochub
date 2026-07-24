@@ -131,7 +131,35 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-027 completed 2026-07-24 (dependency security remediation, safe-only subset of Eligible Candidate 2). Candidate 3 remains APPROVED but NOT activated; the NestJS/Next major-version migration is a PENDING owner decision, not yet authorized.
+next_task: none        # PLACE-028 completed 2026-07-24 (API bootstrap hardening — Eligible Candidate 3, OD2-12+OD2-13). All three Eligible PLACE Candidates from the Owner Approval Session are now implemented (Candidate 2 partially, per its own narrower scope). The NestJS/Next major-version migration remains a PENDING owner decision, not yet authorized.
+
+place_028_status: >-
+  COMPLETED 2026-07-24 — Eligible PLACE Candidate 3 (API bootstrap hardening), implementing OD2-12
+  (rate limiting) and OD2-13 (CORS) — the last of the three Eligible Candidates. Before: main.ts had
+  `enableCors({origin:true, credentials:true})` (fully permissive) and NO rate limiting anywhere.
+  `@nestjs/throttler@6.4.0` confirmed peer-compatible with the installed NestJS `^10.4.4` — NO major
+  bump, honoring PLACE-027's deferred-migration boundary. A repo-wide grep for cookie usage found
+  NONE — justifying CORS_CREDENTIALS defaulting to false (bearer-token-only auth). Implemented:
+  global in-memory rate limit (RATE_LIMIT_TTL/LIMIT, default 100 req/60s), a stricter override on
+  /api/auth/login+register (RATE_LIMIT_AUTH_TTL/LIMIT, default 10 req/60s — evidenced brute-force
+  mitigation), /api/health exempted (@SkipThrottle); an explicit CORS allow-list
+  (CORS_ALLOWED_ORIGINS), REQUIRED and fail-fast at boot in production, defaulting to
+  http://localhost:3000 in dev; TRUST_PROXY_HOPS (default 0, no real proxy deployed yet). Two new
+  focused test files (9 tests total): isolated ThrottlerGuard mechanism at a deliberately low limit,
+  and a full e2e proving CORS allow/reject/preflight/credentials plus a REAL 429 on
+  /api/auth/login at the default limit with /api/health never throttled. Full regression: unit
+  223/223 (221+2), e2e 51/51 (44+7) — zero regression. Docker image rebuilt and booted against the
+  real dev Postgres/Redis with NODE_ENV=production, proving the CORS fail-fast requirement is
+  satisfiable; live curl proofs for CORS allow/reject/preflight and a 429 (test override
+  RATE_LIMIT_AUTH_LIMIT=5) while /api/health stayed 200. CI's docker-build job's API boot step was
+  given CORS_ALLOWED_ORIGINS to avoid a new CI failure under the production requirement.
+  docker-compose.prod.yml's api env block extended (defaults are the stack's own local origin, NOT a
+  real domain — none provisioned). Dev stack confirmed healthy and untouched throughout, isolated
+  Compose project name used for all verification, no stray containers/volumes left. NOT performed: any
+  NestJS/Next major-version migration; any distributed/Redis-backed limiter (single-instance
+  in-memory, limitation documented); any real production CORS domain. See
+  reports/PLACE-028-api-bootstrap-hardening-report.md and
+  evidence/PLACE-028-api-bootstrap-hardening-evidence-index.md.
 
 place_027_status: >-
   COMPLETED 2026-07-24 — Eligible PLACE Candidate 2 (dependency security remediation), SAFE-ONLY
