@@ -1,0 +1,109 @@
+schema_version: "1.0"
+
+id: PLACE-030
+workstream: place
+title: "Production observability foundation — AppLoggerService wiring + correlation-ID propagation (Candidate D, logging sub-scope)"
+type: observability
+status: completed
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'PLACE-030 — Production Observability Foundation... Implement the logging sub-scope of Candidate D'."
+  decision: "docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md, Candidate D — logging-correlation sub-scope, explicitly noted as ELIGIBLE NOW without further Owner decision (the monitoring-provider sub-scope of Candidate D is NOT in scope here)."
+
+depends_on:
+  - "PLACE-029 completed 2026-07-24 (critical dependency hardening)"
+
+preconditions_verified:
+  - "PLACE-029 completed — state.yaml completed_tasks"
+  - "Working tree clean at task start"
+  - "current.task: none"
+  - "No docs/delivery/tasks/PLACE-030.yaml existed before this task"
+  - "No conflicting observability task active"
+
+investigation_findings:
+  applogger_dead: "grep -rn useLogger apps/api/src -> zero hits before this task; AppLoggerService (core/logger/app-logger.service.ts) fully built (redaction, Scope.TRANSIENT per-consumer context) but never passed to NestFactory/app.useLogger — confirms TD-03 exactly as diagnosed in the reassessment."
+  correlation_id_absent: "grep -i 'correlation|X-Request-Id|requestId|traceId' across apps/api/src -> zero hits for any HTTP-level mechanism. ApiMeta.requestId?: string already exists in packages/shared-types/src/api-response.ts and docs/api/openapi.yaml (line 1714) but is never populated anywhere — a pre-existing, unpopulated wire-contract field this task completes rather than invents."
+  no_header_convention: "No repository document defines an approved correlation-ID header name. X-Request-Id (industry-standard) is adopted; this choice is a fresh convention decision, recorded explicitly rather than assumed pre-existing."
+  exception_filter_already_quiet_for_4xx: "apps/api/src/common/filters/all-exceptions.filter.ts:48 already gates .error() logging on status >= 500 only — 4xx business errors (validation/401/403/404) are already quiet. Preserved unchanged."
+  constructor_blast_radius: "grep found `new AllExceptionsFilter()`/`new TransformInterceptor()` called with zero args in 9 separate e2e spec files plus main.ts. A REQUIRED new constructor parameter on AllExceptionsFilter/LoggingInterceptor would break all 9. Mitigation: optional constructor parameter with a default (`= new AppLoggerService()`), so none of the 9 pre-existing spec files need modification."
+  no_middleware_precedent: "apps/api/src/common/middleware/ was .gitkeep-only before this task — first middleware added here."
+  db_credential_failfast_unaffected: "main.ts changes (this task) occur after NestFactory.create(AppModule,...) resolves; ConfigModule's Joi validation (PLACE-029) runs during module compilation inside that call, before any of this task's new lines execute — re-verified live in Phase 4/7 to confirm no regression."
+
+objective: >-
+  Implement the logging sub-scope of PLACE-029 Candidate D: wire the existing AppLoggerService into
+  the API runtime, introduce request-scoped correlation-ID propagation, and provide consistent
+  structured request/exception logging with explicit sensitive-data redaction — without any
+  framework migration, external infrastructure, or product-functionality change.
+
+scope:
+  - "apps/api/src/common/middleware/correlation-id.middleware.ts (new): per-request correlation ID — accepts a valid incoming X-Request-Id header or generates one via crypto.randomUUID(); attaches to the request object (not mutable global state) and echoes it on the response header."
+  - "apps/api/src/main.ts: app.useLogger(app.get(AppLoggerService)) with bufferLogs:true (completes TD-03 — the officially-documented NestJS pattern for a Scope.TRANSIENT custom LoggerService); app.use(correlationIdMiddleware) registered first, before any other global wiring; AppLoggerService instances passed into LoggingInterceptor/AllExceptionsFilter."
+  - "apps/api/src/common/interceptors/logging.interceptor.ts: optional AppLoggerService constructor param (default-instantiated, preserving all no-arg call sites); structured request-lifecycle log object (correlationId, method, path, statusCode, durationMs) — single log point per request, unchanged from before (no duplicate logging introduced)."
+  - "apps/api/src/common/filters/all-exceptions.filter.ts: optional AppLoggerService constructor param (same default pattern); structured 5xx-only error log object (correlationId, method, path, statusCode, errorType, message) with stack trace as before; meta.requestId populated in the error response body."
+  - "apps/api/src/common/interceptors/transform.interceptor.ts: meta.requestId populated in the success response body (completes the existing, previously-unpopulated ApiMeta.requestId wire-contract field)."
+  - "apps/api/src/core/logger/app-logger.service.ts: REDACTED_KEYS expanded (snake_case access_token/refresh_token/password_hash, cookie, db/redis credential key variants) and matching made case-insensitive."
+  - "New/updated tests: correlation-id.middleware.spec.ts, all-exceptions.filter.spec.ts (new — none existed), logging.interceptor.spec.ts (updated), transform.interceptor.spec.ts (updated — mock context needed a working switchToHttp), app-logger.service.spec.ts (updated), apps/api/test/observability.e2e-spec.ts (new)."
+
+out_of_scope:
+  - "NestJS 10->11 or Next.js 14->16 migration."
+  - "Any broad dependency upgrade."
+  - "Database schema change."
+  - "New business feature or API contract redesign (ApiMeta.requestId already existed in the contract, unpopulated; this task populates it, does not add a new field)."
+  - "Authentication redesign."
+  - "Replacing AppLoggerService with a new logging abstraction — it is repaired/completed, not replaced."
+  - "Integration with any paid external observability vendor (Sentry, Datadog, etc.) — the monitoring-provider sub-scope of Candidate D, explicitly deferred pending a separate Owner decision on provider choice (OD2-6)."
+  - "CORS allowedHeaders/exposedHeaders changes in main.ts — deliberately not touched; the correlation-ID response header is present on the wire regardless of CORS configuration (CORS only gates browser-JS visibility, not raw HTTP header presence), so reopening the PLACE-028-hardened CORS surface was judged unnecessary for this task's actual requirements."
+  - "Modifying any of the 9 pre-existing e2e spec files that manually construct AllExceptionsFilter/TransformInterceptor with no arguments — preserved via an optional-constructor-parameter default instead."
+  - "Any change to RedisService/DatabaseModule startup logging — reviewed, no credential leakage or clarity gap found requiring a change."
+  - "PLACE-031 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "A request without an incoming correlation-ID header receives a generated one; a request with a valid incoming X-Request-Id header has it propagated unchanged; an invalid/malformed incoming value is rejected and replaced with a generated one." }
+  - { id: AC2, mandatory: true, text: "Every HTTP response includes the X-Request-Id header, and the same ID appears in the JSON response body's meta.requestId (success and error envelopes)." }
+  - { id: AC3, mandatory: true, text: "The request-lifecycle log line and, for unexpected (>=500) exceptions, the error log line both carry the identical correlation ID as the response." }
+  - { id: AC4, mandatory: true, text: "Expected business errors (400/401/403/404/429) remain quiet — no uncontrolled error-level log noise, unchanged from pre-task behavior." }
+  - { id: AC5, mandatory: true, text: "Representative sensitive values (password, password_hash, access_token, refresh_token, Authorization header value, a cookie-named field, a db/redis credential-named field) are proven absent/redacted from log output via a dedicated test." }
+  - { id: AC6, mandatory: true, text: "PLACE-029's DB-credential fail-fast behavior (missing and empty-string DB_PASSWORD in production) is unaffected, re-verified live." }
+  - { id: AC7, mandatory: true, text: "Existing health and authentication behavior (login/register/wrong-password, /api/health) is unchanged." }
+  - { id: AC8, mandatory: true, text: "Full lint/typecheck/unit/e2e green; all 9 pre-existing e2e spec files that manually construct AllExceptionsFilter/TransformInterceptor continue to pass with zero modification to those files." }
+  - { id: AC9, mandatory: true, text: "No request or response body is logged in full by default; no new dependency is added (crypto.randomUUID is a Node built-in)." }
+
+validation_commands:
+  - "npm run lint && npm run typecheck (api); npm run typecheck (web, unaffected regression check)"
+  - "jest (full unit) ; jest --config test/jest-e2e.json (full e2e, including all 9 pre-existing files + the new observability spec)"
+  - "turbo run build --force"
+  - "docker build -f apps/api/Dockerfile . ; docker run against real dev Postgres/Redis, NODE_ENV=production"
+  - "curl-based live verification: X-Request-Id generation/propagation, meta.requestId, health, auth round-trip, DB_PASSWORD missing/empty fail-fast"
+
+rollback_plan: >-
+  All changes are additive (new middleware file, new optional constructor parameters with safe
+  defaults, new response-body/log fields). `git revert` of the observability-runtime commit fully
+  restores the pre-task bootstrap/interceptor/filter behavior; no schema, migration, or API contract
+  removal is involved (the requestId field already existed in the contract as optional).
+
+stop_conditions:
+  - "Wiring AppLoggerService via app.useLogger() breaks PLACE-029's DB-credential fail-fast ordering — not found; Joi validation runs during NestFactory.create() itself, before any of this task's new lines execute, re-verified live."
+  - "A required (non-optional) constructor change would force editing the 9 pre-existing e2e spec files — avoided via an optional-parameter default instead."
+  - "Any regression appears in auth/authz/validation/response-contract behaviour — none found; full e2e suite green, unchanged assertions."
+  - "AsyncLocalStorage would be required for correctness — not needed; every log/response point needing the correlation ID already has direct access to the request object (interceptor/filter both receive it via ExecutionContext/ArgumentsHost)."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    implements: "PLACE-029 Candidate Selection report, Candidate D — logging sub-scope only, fully implemented"
+    next_authorized_task: "None currently defined — see final report for the recommended (not authorized) PLACE-031 candidate"
+  requires_evidence:
+    - "live correlation-ID generation, propagation, response-header, and meta.requestId proof"
+    - "live redaction proof (representative secrets absent from log output)"
+    - "live DB-credential fail-fast re-verification (missing + empty DB_PASSWORD)"
+    - "full unit + e2e totals, including all 9 pre-existing e2e files passing unmodified"
+    - "dev-stack integrity confirmed unchanged after all verification"
+
+non_claims: >-
+  This task does NOT integrate any external/paid observability vendor (the monitoring-provider
+  sub-scope of Candidate D remains a separate Owner decision, OD2-6). It does NOT introduce
+  AsyncLocalStorage (judged unnecessary given the current request/response-scoped access pattern).
+  It does NOT modify CORS configuration. It does NOT perform any NestJS/Next.js migration. It does
+  NOT create or start PLACE-031.

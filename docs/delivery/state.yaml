@@ -30,21 +30,22 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-029 completed 2026-07-24 (Critical dependency hardening,
-                                  # Candidate A). bcrypt 5.1.1 -> 6.0.0 (clean, isolated major bump)
-                                  # removes the entire node-pre-gyp/tar chain outright — critical `tar`
-                                  # and high `@mapbox/node-pre-gyp` findings gone tree-wide, not
-                                  # mitigated. DB_HOST/DB_USER/DB_PASSWORD/DB_NAME now required() in
-                                  # production via the same when(NODE_ENV) pattern already proven by
-                                  # CORS_ALLOWED_ORIGINS; empty-string DB_PASSWORD also now rejected.
-                                  # npm audit --omit=dev: 18 -> 15 (1 critical -> 0, 7 high -> 5, 10
-                                  # moderate unchanged). Docker-verified live: bcrypt.hash/compare
-                                  # round-trip via real register/login/wrong-password calls against the
-                                  # built production image on Alpine/musl (no compile step needed —
-                                  # bcrypt 6's prebuildify binary loaded directly); DB-credential
-                                  # fail-fast proven for both missing and empty-string DB_PASSWORD.
-                                  # Zero regression: unit 231/231 (223+8 new), e2e 51/51 (unchanged).
-                                  # No NestJS/Next migration performed (remains Owner decision).
+  task: none                      # PLACE-030 completed 2026-07-24 (Production observability foundation —
+                                  # Candidate D, logging sub-scope). AppLoggerService wired via
+                                  # app.useLogger(await app.resolve(...)) (TD-03 closed); correlation-ID
+                                  # middleware (X-Request-Id, crypto.randomUUID, per-request state, no
+                                  # new dependency); structured request/exception logging; meta.requestId
+                                  # populated (wire-contract field existed, was unused); redaction
+                                  # expanded (snake_case + cookie/DB/Redis-credential keys, case-
+                                  # insensitive). Two real runtime bugs found+fixed via live Docker
+                                  # verification: app.get() on a Scope.TRANSIENT provider throws (fixed:
+                                  # app.resolve()); AppLoggerService's own `new Logger()` delegate caused
+                                  # infinite recursion once overridden (fixed: ConsoleLogger delegate).
+                                  # Unit 251/251 (231+20 new), e2e 59/59 (51+8 new) — all 9 pre-existing
+                                  # e2e files unmodified. Live-verified: correlation ID header+body match,
+                                  # structured logs, zero secret leakage across a real register/login,
+                                  # PLACE-029's DB-credential fail-fast unaffected. See
+                                  # docs/delivery/tasks/PLACE-030.yaml.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -223,14 +224,66 @@ next_action:
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
     - "PLACE-029 Candidate B (NestJS 10->11), Candidate C (Next.js 14->16) — ELIGIBLE AFTER OWNER INPUT, not yet authorized."
-    - "PLACE-029 Candidate D (observability: logging correlation + monitoring signal) — ELIGIBLE AFTER OWNER INPUT for the monitoring half; the logging-only sub-scope is ELIGIBLE NOW if the Owner chooses to split it. Recommended PLACE-030 candidate."
+    - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (external signal + alert channel, OD2-6) remains ELIGIBLE AFTER OWNER INPUT, not yet authorized."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-030 candidate selection: recommended is Candidate D's logging sub-scope (docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md), which needs no Owner decision. Separately, whether/when to authorize the NestJS 10->11 and/or Next.js 14->16 migrations (Candidates B/C) — both independently recommended 'before public launch', not urgent for staging/beta. See docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md Phase 5-7 for the full decision form."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 5 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decisions above (down from 1 critical + 7 high after PLACE-029). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
+  pending_owner_decision: "Whether/when to authorize the NestJS 10->11 and/or Next.js 14->16 migrations (Candidates B/C from docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md) — both independently recommended 'before public launch', not urgent for staging/beta. Separately, the monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is now IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision."
+  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 5 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decisions above (unchanged since PLACE-029). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-030
+    completed: "2026-07-24"
+    result: >-
+      Production observability foundation (PLACE-029 Candidate Selection report, Candidate D —
+      logging sub-scope only; the monitoring-provider sub-scope remains a separate Owner decision,
+      OD2-6, not started here). Preflight (fresh, not memory) confirmed AppLoggerService was fully
+      built but never wired (grep useLogger -> zero hits, TD-03 exactly as diagnosed), no correlation-
+      ID mechanism existed anywhere, and ApiMeta.requestId already existed in the wire contract
+      (shared-types + openapi.yaml) but was never populated. Implemented: a new
+      correlation-id.middleware.ts (X-Request-Id header, accepts a valid incoming value or generates
+      via crypto.randomUUID() -- Node built-in, zero new dependency; state lives on the per-request
+      Express Request object, not module-level global state); app.useLogger(await
+      app.resolve(AppLoggerService)) in main.ts with bufferLogs:true, completing TD-03; LoggingInterceptor
+      and AllExceptionsFilter given an OPTIONAL LoggerService constructor parameter (default
+      new AppLoggerService()) specifically so the 9 pre-existing e2e spec files that construct them
+      with zero arguments needed NO changes -- confirmed all 9 pass unmodified; structured
+      (not plain-string) request-lifecycle and exception logs, both carrying the same correlation ID
+      as the response; meta.requestId populated in every response body; AppLoggerService's
+      REDACTED_KEYS expanded to cover this repo's actual snake_case wire format (access_token,
+      refresh_token, password_hash -- the prior camelCase-only list would never have matched real
+      payloads) plus cookie/DB-credential/Redis-credential keys, with matching made case-insensitive.
+      TWO REAL RUNTIME BUGS were found and fixed via live Docker verification (neither could have
+      been caught by the unit/e2e suite, since neither exercises main.ts's actual bootstrap()): (1)
+      app.get(AppLoggerService) threw at runtime because the provider is Scope.TRANSIENT -- fixed
+      with app.resolve() (async); (2) after fixing (1), AppLoggerService's own internal `delegate =
+      new Logger()` caused infinite recursion once app.useLogger() made Logger.staticInstanceRef
+      point back at the AppLoggerService instance itself -- fixed by changing the delegate to
+      ConsoleLogger (the concrete, non-overridable implementation class), preserving identical visual
+      log output. Both fixes were verified by re-running the FULL affected verification chain
+      (typecheck -> full unit -> full e2e -> clean build -> Docker rebuild -> Docker reboot) from
+      scratch, not merely the failing step. Full regression: unit 251/251 (231 baseline + 20 new, 34
+      suites), e2e 59/59 (51 baseline + 8 new, 10 suites) -- zero regression, all 9 pre-existing e2e
+      files untouched. Docker images (api+web) rebuilt and booted live against the real dev
+      Postgres/Redis with NODE_ENV=production: a real register->login(200)->login-wrong-password(401)
+      flow proved bcrypt/auth unaffected; the response X-Request-Id header and body meta.requestId
+      matched exactly for both a generated and a client-supplied ID; container logs showed structured
+      per-request log lines with the correct correlation ID each time; the 401 produced zero
+      ERROR-level log lines (quiet-business-error behavior preserved); a full grep of the container's
+      log history for the real test password and both issued JWT tokens found zero matches; PLACE-029's
+      DB-credential fail-fast (missing and empty-string DB_PASSWORD) re-verified live, unaffected by
+      this task's main.ts changes; web image rebuilt per convention, booted, GET / -> 200 (zero
+      apps/web file touched). Dev stack confirmed healthy and unaffected throughout (migrations=20,
+      places=49 unchanged); all live-verification test users deleted afterward; verification
+      containers/images removed. Not claimed: no live Docker proof of the unexpected-500 exception
+      path (no debug route exists in the shipped image by design; proven instead at the e2e level via
+      a controller that exists only inside the test file's own compiled module, never registered in
+      production app.module.ts); no CORS allowedHeaders/exposedHeaders change (deliberate scope
+      boundary -- the header is present on the wire regardless); no NestJS/Next migration; no paid
+      observability vendor integration. No PLACE-031 created or started.
+    report: docs/delivery/reports/PLACE-030-observability-foundation-report.md
+    evidence_index: docs/delivery/evidence/PLACE-030-observability-foundation-evidence-index.md
+    observability_assessment: docs/delivery/reports/PLACE-030-OBSERVABILITY-ASSESSMENT-2026-07-24.md
   - id: PLACE-029
     completed: "2026-07-24"
     result: >-
