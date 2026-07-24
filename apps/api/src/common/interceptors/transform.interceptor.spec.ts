@@ -1,9 +1,14 @@
 import { lastValueFrom, of } from 'rxjs';
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { TransformInterceptor } from './transform.interceptor';
+import type { RequestWithCorrelationId } from '../middleware/correlation-id.middleware';
 
-function makeContext(): ExecutionContext {
-  return {} as ExecutionContext;
+function makeContext(correlationId?: string): ExecutionContext {
+  const req = correlationId ? { correlationId } : {};
+  return {
+    getType: () => 'http',
+    switchToHttp: () => ({ getRequest: () => req as RequestWithCorrelationId }),
+  } as unknown as ExecutionContext;
 }
 
 function makeHandler<T>(value: T): CallHandler<T> {
@@ -36,5 +41,20 @@ describe('TransformInterceptor', () => {
     );
     expect(result.success).toBe(true);
     expect(result.data).toBe('pong');
+  });
+
+  // PLACE-030: meta.requestId hoàn thiện trường ApiMeta.requestId (khớp header X-Request-Id).
+  it('điền meta.requestId từ correlation ID của request', async () => {
+    const result = await lastValueFrom(
+      interceptor.intercept(makeContext('corr-abc-123'), makeHandler({ id: 1 })),
+    );
+    expect(result.meta.requestId).toBe('corr-abc-123');
+  });
+
+  it('meta.requestId là "unknown" khi request không có correlation ID (không throw)', async () => {
+    const result = await lastValueFrom(
+      interceptor.intercept(makeContext(), makeHandler({ id: 1 })),
+    );
+    expect(result.meta.requestId).toBe('unknown');
   });
 });
