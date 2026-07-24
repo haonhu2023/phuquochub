@@ -315,6 +315,15 @@ export class PlacesRepository {
   /**
    * Gom cụm điểm theo lưới đều `cellDeg` (độ) trong bbox — trả điểm gom cụm cho bản đồ
    * (api.md §11 "clustered points"). Cell 1 điểm ⇒ trả điểm; nhiều điểm ⇒ cụm (count+centroid).
+   *
+   * F-34 / OD-B3 (PLACE-023, 2026-07-24): `ORDER BY cnt DESC, sample_id ASC` được thêm TRƯỚC
+   * `LIMIT $6` để việc CẮT ở 500 là XÁC ĐỊNH. Trước đây không có ORDER BY nên khi số cell vượt 500,
+   * planner tự chọn 500 hàng nào sống sót ⇒ hai lần gọi giống hệt có thể trả tập khác nhau và cụm
+   * dày có thể bị bỏ tuỳ tiện. Nay: giữ các cụm DÀY nhất trước (`cnt DESC`), và `sample_id ASC` là
+   * khoá phụ DUY NHẤT chốt cuối. `sample_id` = `(array_agg(p.id ORDER BY p.id))[1]` = id nhỏ nhất
+   * trong cell; mỗi place thuộc đúng một cell nên id-nhỏ-nhất-mỗi-cell là DUY NHẤT giữa các cell,
+   * và p.id là PK bất biến — đúng khoá `p.id ASC` mà list()/nearby()/searchFullText() đã dùng. Chỉ
+   * đổi THỨ TỰ: grouping, cell size, tổng hợp và WHERE giữ nguyên; schema trả về không đổi.
    */
   async bboxClusters(params: {
     minLng: number;
@@ -335,6 +344,7 @@ export class PlacesRepository {
        WHERE p.deleted_at IS NULL AND p.status = 'published'
          AND ST_Intersects(p.location::geometry, ST_MakeEnvelope($1,$2,$3,$4,4326))
        GROUP BY floor(ST_X(p.location::geometry) / $5), floor(ST_Y(p.location::geometry) / $5)
+       ORDER BY cnt DESC, sample_id ASC
        LIMIT $6`,
       [params.minLng, params.minLat, params.maxLng, params.maxLat, params.cellDeg, params.limit],
     );
