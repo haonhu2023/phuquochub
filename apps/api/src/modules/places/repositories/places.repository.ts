@@ -137,11 +137,18 @@ export class PlacesRepository {
   // repository, và nó chỉ lọc `deleted_at IS NULL` — thiếu lọc `status` mà đường đọc công khai
   // theo slug (`getDetailBySlug`) bắt buộc phải có. Giữ lại là để sẵn một cái bẫy: ai đó nối
   // vào route công khai sau này sẽ làm tái xuất đúng lỗ hổng GAP-02/04 đã vá.
-  // KHÔNG "sửa" bằng cách thêm lọc status: `getCardById` bên dưới cố tình KHÔNG lọc status vì
-  // luồng kiểm duyệt (approve/archive) cần đọc cả bản chưa publish. Thêm lọc là đoán ý định
-  // mà repository không xác định được; gỡ bỏ thì câu hỏi đó tự biến mất.
-  // Cần đọc card theo slug trong tương lai: viết mới, và quyết định lọc status ngay tại đó.
-  async getCardById(id: string): Promise<PlaceCardRow | null> {
+  //
+  // F-24 / OD-B2 (PLACE-022, 2026-07-24): phương thức dưới đây ĐÃ ĐỔI TÊN từ `getCardById` thành
+  // `getCardByIdIncludingInactive` để tên GỌI RÕ rủi ro. Nó CỐ TÌNH KHÔNG lọc `status` — trả về
+  // cả bản `pending`/`draft`/`archived` (không public) — vì luồng kiểm duyệt/ghi (create/update/
+  // archive/approve) cần đọc bản chưa publish. Vì thế:
+  //   • Đây là truy cập ĐẶC QUYỀN: caller PHẢI đã được kiểm tra quyền TRƯỚC (route gắn
+  //     @RequirePermissions, KHÔNG bao giờ @Public). Xem test kiến trúc
+  //     apps/api/test/places-privileged-access.arch.spec.ts (chặn mọi đường @Public chạm tới đây).
+  //   • KHÔNG "sửa" bằng cách thêm lọc status: thêm lọc là đoán ý định mà repository không xác
+  //     định được và sẽ phá luồng kiểm duyệt. Cần đọc card công khai: dùng `getDetailBySlug`
+  //     (đã lọc `status = published`) hoặc viết truy vấn mới có lọc status ngay tại đó.
+  async getCardByIdIncludingInactive(id: string): Promise<PlaceCardRow | null> {
     const rows: PlaceCardRow[] = await this.repo.query(
       `SELECT ${CARD_COLS} FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
       [id],

@@ -157,7 +157,7 @@ export class PlacesService {
       status: PlaceStatus.PENDING,
       createdBy: userId,
     });
-    const row = await this.placesRepo.getCardById(id);
+    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
     const card = toPlaceCard(row!);
     // WF-14: mỗi thay đổi nội dung sinh một wiki_revision. Place tạo mới ở trạng thái
     // `pending` (chờ kiểm duyệt) → revision khởi tạo cũng `pending`. Vòng đời duyệt đầy
@@ -175,7 +175,7 @@ export class PlacesService {
   }
 
   async update(id: string, dto: UpdatePlaceDto, userId: string) {
-    const existing = await this.placesRepo.getCardById(id);
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
@@ -200,7 +200,7 @@ export class PlacesService {
     if (dto.location) {
       await this.placesRepo.updateLocation(id, dto.location.lng, dto.location.lat);
     }
-    const row = await this.placesRepo.getCardById(id);
+    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
     const card = toPlaceCard(row!);
     // WF-14: ghi vết phiên bản. Ở giai đoạn này bản sửa được áp trực tiếp → revision
     // `approved`; Sprint 4 sẽ chuyển sang luồng `pending` chờ duyệt trước khi materialize.
@@ -220,7 +220,7 @@ export class PlacesService {
   }
 
   async archive(id: string, actorId: string) {
-    const existing = await this.placesRepo.getCardById(id);
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
@@ -238,7 +238,7 @@ export class PlacesService {
   }
 
   async approve(id: string, actorId: string) {
-    const existing = await this.placesRepo.getCardById(id);
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
