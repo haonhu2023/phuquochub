@@ -23,6 +23,25 @@
 > offsite backup thật + mã hoá (§11.2/11.3, OD2-5), tài khoản MapTiler thật (§14, OD2-8), Cloudflare
 > (§6.7), PgBouncer (§6.4), và toàn bộ Prometheus/Grafana/Sentry (§12). Xem
 > `docs/delivery/reports/PLACE-026-deployment-pipeline-report.md` cho chi tiết đầy đủ.
+>
+> **Trạng thái triển khai (PLACE-028, 2026-07-24 — OD2-12 rate limiting + OD2-13 CORS).** Bootstrap
+> API (`apps/api/src/main.ts`) đã có, **đã kiểm chứng thật**:
+> - **Rate limiting:** `@nestjs/throttler` — giới hạn toàn cục qua `RATE_LIMIT_TTL`/`RATE_LIMIT_LIMIT`
+>   (mặc định 100 req/60s), giới hạn riêng nghiêm ngặt hơn cho `/api/auth/login`+`/api/auth/register`
+>   qua `RATE_LIMIT_AUTH_TTL`/`RATE_LIMIT_AUTH_LIMIT` (mặc định 10 req/60s), `/api/health` được miễn
+>   trừ (`@SkipThrottle`). **Chỉ in-memory, một instance** — chưa phải "hai lớp (CF + Redis)" như
+>   thiết kế mục tiêu ở [security.md §1](./security.md) mô tả; khi API chạy nhiều instance/hàng ngang
+>   cần chuyển sang `ThrottlerStorageRedisService` (đã tương thích sẵn với `@nestjs/throttler`, chưa
+>   triển khai — không cần thiết ở quy mô một instance hiện tại).
+> - **CORS:** allow-list tường minh qua `CORS_ALLOWED_ORIGINS` (thay cho `origin: true` trước đây);
+>   **bắt buộc và fail-fast khi khởi động** nếu thiếu lúc `NODE_ENV=production`; `CORS_CREDENTIALS`
+>   mặc định `false` (xác thực dùng bearer token qua header `Authorization`, không dùng cookie).
+> - `TRUST_PROXY_HOPS` (mặc định `0`) — chưa có reverse proxy thật đứng trước API nên header
+>   `X-Forwarded-*` chưa được tin cậy; tăng giá trị này khi nginx/Cloudflare thật được triển khai.
+> - Domain production thật **CHƯA được cung cấp** — `CORS_ALLOWED_ORIGINS` trong
+>   `docker-compose.prod.yml` hiện trỏ về `http://localhost:3000` (khớp cổng service `web` cục bộ),
+>   PHẢI đổi thành domain thật trước khi triển khai thật. Xem
+>   `docs/delivery/reports/PLACE-028-api-bootstrap-hardening-report.md` cho chi tiết đầy đủ.
 
 ---
 
