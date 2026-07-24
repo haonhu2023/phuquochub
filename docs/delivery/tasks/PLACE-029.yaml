@@ -1,0 +1,110 @@
+schema_version: "1.0"
+
+id: PLACE-029
+workstream: place
+title: "Critical dependency hardening — bcrypt 5->6 (tar/node-pre-gyp removal) + DB-credential fail-fast (Candidate A)"
+type: security_hardening
+status: completed
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'Owner authorizes execution of the selected engineering task... Candidate A'."
+  decision: "docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md, Candidate A (Bcrypt major upgrade + DB-credential fail-fast hardening) — the only candidate requiring no further Owner decision."
+
+depends_on:
+  - "PLACE-028 completed 2026-07-24 (API bootstrap hardening)"
+  - "PLACE-029 Candidate Selection report — Candidate A selected by the Owner"
+
+preconditions_verified:
+  - "PLACE-028 completed — state.yaml completed_tasks"
+  - "docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md exists"
+  - "Candidate A authorized by explicit Owner instruction"
+  - "Working tree clean at task start"
+  - "current.task: none"
+  - "state.yaml status: awaiting_task_authorization"
+
+investigation_findings:
+  bcrypt_before: "bcrypt@5.1.1 -> @mapbox/node-pre-gyp@1.0.11 -> tar@6.2.1 (npm ls, fresh)"
+  bcrypt_6_metadata: "npm view bcrypt@6.0.0: dependencies { node-addon-api: ^8.3.0, node-gyp-build: ^4.8.4 }, engines { node: >=18 } — zero node-pre-gyp/tar anywhere in the tree"
+  bcrypt_changelog: "6.0.0 removes node-pre-gyp in favor of prebuildify (prebuilt binaries shipped with the package); no breaking changes to the public JS API (hash/compare/hashSync/compareSync/genSalt); drops support for Node<=16 (Node 17+ required) — pinned Node v20.20.2 and both Dockerfiles' node:20-alpine satisfy this"
+  bcrypt_usage: "apps/api/src/modules/auth/auth.service.ts — only bcrypt.hash and bcrypt.compare used, both stable across the 5->6 boundary"
+  docker_musl_toolchain: "apps/api/Dockerfile already carries `apk add python3 make g++` as a compile fallback for musl (added for bcrypt 5); confirmed unnecessary for bcrypt 6 in practice — npm ci showed no gyp/prebuild-install compile step, meaning a prebuilt linux-musl-x64 binary from prebuildify loaded directly"
+  db_credential_schema_before: "apps/api/src/core/config/env.validation.ts — DB_HOST/DB_USER/DB_NAME used Joi.string().default(...); DB_PASSWORD used Joi.string().allow('').default('phuquoc') — all silently accept missing/empty values in every environment including production"
+  db_credential_precedent: "JWT_ACCESS_SECRET/JWT_REFRESH_SECRET already Joi.string().min(16).required(); CORS_ALLOWED_ORIGINS (PLACE-028) already uses Joi.string().when('NODE_ENV',{is:'production',then:Joi.required(),otherwise:...}) — the exact pattern mirrored here"
+  connection_string_surface: "No DATABASE_URL/connection-string variable exists anywhere in the schema — DB config is five discrete fields (DB_HOST/PORT/USER/PASSWORD/NAME), so 'malformed connection string' is not an applicable attack surface in this codebase"
+  docker_compose_prod_db_values: "docker-compose.prod.yml already sets DB_PASSWORD etc. explicitly (not relying on Joi defaults) for its local prod-shaped verification stack — unaffected by making the schema stricter"
+
+objective: >-
+  Complete Candidate A exactly as authorized: eliminate the remaining critical dependency exposure
+  (bcrypt's node-pre-gyp/tar chain) via a clean, isolated major-version bump, and harden database
+  credential validation with fail-fast behavior mirroring the existing JWT-secret/CORS-origin
+  precedent. No framework migration, no external infrastructure, no functional change.
+
+scope:
+  - "apps/api/package.json: bcrypt ^5.1.1 -> ^6.0.0 (only dependency touched)."
+  - "apps/api/src/core/config/env.validation.ts: DB_HOST/DB_USER/DB_PASSWORD/DB_NAME made required() in production via the existing when('NODE_ENV',...) pattern; empty-string DB_PASSWORD now rejected in production (no .allow('') in the production branch); non-production defaults unchanged."
+  - "apps/api/src/core/config/env.validation.spec.ts (new): 8 focused unit specs pinning the production-required / dev-default / empty-string-rejected / JWT-unchanged behavior directly against the Joi schema."
+  - "npm install (workspace root) to regenerate package-lock.json — no --force, no peer-dependency bypass, no audit-fix."
+  - "Full verification ladder: lint, typecheck (api+web), unit, e2e, clean build, Docker image build+boot (api+web), live auth round-trip (bcrypt hash/compare), live DB-credential fail-fast (missing + empty), health endpoint, dev-stack integrity."
+
+out_of_scope:
+  - "Any NestJS or Next.js major-version change."
+  - "Any other dependency upgrade (only bcrypt's own transitive chain moved, as a direct consequence of the bcrypt bump itself)."
+  - "Any API contract, DTO, schema, or migration change."
+  - "Any authentication-logic redesign — bcrypt.hash/bcrypt.compare call sites in auth.service.ts untouched."
+  - "Any configuration-architecture redesign — no new env-var concept introduced; DB_HOST/USER/PASSWORD/NAME reuse the exact when(NODE_ENV) pattern already proven by CORS_ALLOWED_ORIGINS."
+  - "Monitoring, backup systems, staging deployment, product functionality."
+  - "PLACE-030 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "npm audit --omit=dev reports 0 critical (down from 1); tar and @mapbox/node-pre-gyp no longer appear anywhere in npm ls --all." }
+  - { id: AC2, mandatory: true, text: "Starting the API with NODE_ENV=production and any of DB_HOST/DB_USER/DB_PASSWORD/DB_NAME missing OR DB_PASSWORD set to an empty string fails fast with a clear Joi validation error, before any DB connection attempt." }
+  - { id: AC3, mandatory: true, text: "Non-production environments (development/test) retain their existing DB-credential defaults unchanged — zero impact to local dev quick-start." }
+  - { id: AC4, mandatory: true, text: "bcrypt.hash and bcrypt.compare continue to function correctly at runtime — proven via a live register/login/wrong-password round-trip against the built Docker image." }
+  - { id: AC5, mandatory: true, text: "Full lint/typecheck/unit/e2e green; unit total is the PLACE-028 baseline (223) plus exactly the new env-validation specs; e2e total identical to the PLACE-028 baseline (51) — zero regression to any existing behavior." }
+  - { id: AC6, mandatory: true, text: "Docker images (api+web) rebuild and boot successfully; the API image compiles/loads bcrypt's native binding successfully on Alpine/musl; dev Postgres/Redis/MinIO and their data remain untouched and healthy throughout." }
+  - { id: AC7, mandatory: true, text: "No NestJS package, no Next.js package, and no dependency outside bcrypt's own transitive chain appears in the package-lock.json diff." }
+
+validation_commands:
+  - "npm install (workspace root, pinned Node v20.20.2/npm 10.8.2)"
+  - "npm audit --omit=dev --json ; npm audit --json (before/after comparison)"
+  - "cd apps/api && eslint + tsc ; cd apps/web && tsc"
+  - "jest (full unit) ; jest --config test/jest-e2e.json (full e2e, real Postgres/PostGIS+Redis)"
+  - "rm apps/api/tsconfig.build.tsbuildinfo (hygiene, per the reassessment's own documented hazard) ; turbo run build --force"
+  - "docker build -f apps/api/Dockerfile . (uncached, full log captured) ; docker build -f apps/web/Dockerfile ."
+  - "docker run (api, network phuquochub_default, NODE_ENV=production, real DB/Redis) ; curl /api/health ; curl register/login/wrong-password"
+  - "docker run (api, NODE_ENV=production, DB_PASSWORD unset) — must crash ; (DB_PASSWORD='') — must crash"
+  - "docker run (web) ; curl / -> 200"
+  - "docker ps / psql row counts before+after — dev stack integrity"
+
+rollback_plan: >-
+  Both changes are additive/config-driven and independently revertible via `git revert`. The bcrypt
+  bump touches exactly one dependency and its own lockfile entries — no code depends on any
+  bcrypt-major-specific API surface. The DB-credential change is a pure Joi-schema tightening with no
+  code, schema, or migration involvement; reverting restores the prior (default-based) behavior
+  immediately.
+
+stop_conditions:
+  - "bcrypt 6 requires a code change beyond the version bump to keep hash/compare working — none found; call sites unchanged."
+  - "bcrypt 6's native binding fails to build/load on Alpine/musl — none found; a prebuilt binary loaded directly, no compilation needed."
+  - "Any regression appears in auth/authz/validation/response-contract behaviour — none found; e2e totals identical to baseline."
+  - "The critical tar finding cannot be removed without a NestJS/Next major migration — false; removed entirely via the isolated bcrypt bump alone."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    implements: "PLACE-029 Candidate Selection report, Candidate A — fully implemented"
+    next_authorized_task: "None currently defined — see final report for the recommended (not authorized) PLACE-030 candidate"
+  requires_evidence:
+    - "npm audit before/after totals (prod: 18 -> 15; critical 1 -> 0)"
+    - "live Docker-boot bcrypt hash/compare round-trip (register + correct-password login + wrong-password rejection)"
+    - "live Docker-boot DB-credential fail-fast (missing DB_PASSWORD; empty-string DB_PASSWORD)"
+    - "full unit + e2e totals compared to PLACE-028 baseline"
+    - "dev-stack integrity confirmed unchanged (migrations=20, places=49) after all verification"
+
+non_claims: >-
+  This task does NOT perform the NestJS 10->11 or Next.js 14->16 migration (both remain Owner
+  decisions per the PLACE-029 Candidate Selection report, Phase 5). It does NOT close the remaining
+  15 production dependency findings — all require one of those two migrations. It does NOT provision
+  any external infrastructure, add monitoring, or touch any API contract or database schema.

@@ -131,7 +131,34 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-028 completed 2026-07-24 (API bootstrap hardening — Eligible Candidate 3, OD2-12+OD2-13). All three Eligible PLACE Candidates from the Owner Approval Session are now implemented (Candidate 2 partially, per its own narrower scope). The NestJS/Next major-version migration remains a PENDING owner decision, not yet authorized.
+next_task: none        # PLACE-029 completed 2026-07-24 (Critical dependency hardening — Candidate A). npm audit --omit=dev: 18->15 (1 critical->0, 7 high->5). NestJS 10->11 / Next.js 14->16 migrations (Candidates B/C) and the observability candidate (D) remain Owner decisions, not yet authorized — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md.
+
+place_029_status: >-
+  COMPLETED 2026-07-24 — PLACE-029 Candidate Selection report, Candidate A (the only candidate
+  requiring no further Owner decision). bcrypt 5.1.1 -> 6.0.0: a clean, isolated major bump (only
+  dependency touched) removes the entire @mapbox/node-pre-gyp/tar chain outright — confirmed gone
+  tree-wide via npm ls, not merely mitigated. No breaking change to bcrypt's public API; the two call
+  sites in auth.service.ts (hash/compare) were left untouched and proven live via a real
+  register->login->wrong-password round-trip against the built production Docker image on
+  Alpine/musl (bcrypt 6's prebuildify binary loaded directly — no compile step needed, despite the
+  pre-existing python3/make/g++ fallback toolchain being available). env.validation.ts:
+  DB_HOST/DB_USER/DB_PASSWORD/DB_NAME changed from Joi .default() to the identical
+  when('NODE_ENV',{is:'production',then:required()}) pattern already proven by CORS_ALLOWED_ORIGINS
+  (PLACE-028); DB_PASSWORD's .allow('') removed from the production branch, closing the empty-string
+  gap. 8 new focused specs pin the schema directly. Fresh npm audit --omit=dev: 18 -> 15 total (1
+  critical -> 0, 7 high -> 5, 10 moderate unchanged) — the critical tar and high
+  @mapbox/node-pre-gyp/bcrypt findings are physically absent afterward, not deferred. All 15
+  remaining findings require a NestJS 10->11 or Next.js 14->16 migration — neither performed, both
+  remain Owner decisions (recommended "before public launch"). Full regression: unit 231/231 (223+8
+  new, 32 suites), e2e 51/51 (9 suites, identical to PLACE-028 baseline) — zero regression. Docker
+  images (api+web) rebuilt and booted live against real dev Postgres/Redis; two separate boots
+  (DB_PASSWORD unset, DB_PASSWORD='') both crashed immediately with the expected named Joi error
+  before any DB connection attempt; /api/health confirmed database=up/redis=up throughout; web GET /
+  -> 200. Dev stack confirmed healthy and unaffected (migrations=20, places=49 unchanged); the one
+  live-created test user was deleted after verification, verification containers/images removed. See
+  reports/PLACE-029-critical-dependency-hardening-report.md,
+  evidence/PLACE-029-critical-dependency-hardening-evidence-index.md, and
+  reports/PLACE-029-SECURITY-ASSESSMENT-2026-07-24.md.
 
 place_028_status: >-
   COMPLETED 2026-07-24 — Eligible PLACE Candidate 3 (API bootstrap hardening), implementing OD2-12

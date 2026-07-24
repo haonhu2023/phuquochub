@@ -30,15 +30,21 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-028 completed 2026-07-24 (API bootstrap hardening — Eligible
-                                  # PLACE Candidate 3 / OD2-12 rate limiting + OD2-13 CORS). Global
-                                  # in-memory rate limit (@nestjs/throttler, no NestJS major bump),
-                                  # stricter limit on /api/auth/login+register, /api/health exempted.
-                                  # CORS reworked from permissive origin:true to an explicit env-driven
-                                  # allow-list, fail-fast in production, credentials default false (zero
-                                  # cookie usage anywhere). Live 429 + CORS allow/reject/preflight proven
-                                  # against a real Docker container; zero regression: unit 223/223
-                                  # (221+2 new), e2e 51/51 (44+7 new).
+  task: none                      # PLACE-029 completed 2026-07-24 (Critical dependency hardening,
+                                  # Candidate A). bcrypt 5.1.1 -> 6.0.0 (clean, isolated major bump)
+                                  # removes the entire node-pre-gyp/tar chain outright — critical `tar`
+                                  # and high `@mapbox/node-pre-gyp` findings gone tree-wide, not
+                                  # mitigated. DB_HOST/DB_USER/DB_PASSWORD/DB_NAME now required() in
+                                  # production via the same when(NODE_ENV) pattern already proven by
+                                  # CORS_ALLOWED_ORIGINS; empty-string DB_PASSWORD also now rejected.
+                                  # npm audit --omit=dev: 18 -> 15 (1 critical -> 0, 7 high -> 5, 10
+                                  # moderate unchanged). Docker-verified live: bcrypt.hash/compare
+                                  # round-trip via real register/login/wrong-password calls against the
+                                  # built production image on Alpine/musl (no compile step needed —
+                                  # bcrypt 6's prebuildify binary loaded directly); DB-credential
+                                  # fail-fast proven for both missing and empty-string DB_PASSWORD.
+                                  # Zero regression: unit 231/231 (223+8 new), e2e 51/51 (unchanged).
+                                  # No NestJS/Next migration performed (remains Owner decision).
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -189,33 +195,82 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-028 (2026-07-24) implemented Eligible PLACE Candidate 3 (API bootstrap hardening) from the
-    Owner Approval Session: OD2-12 (rate limiting) and OD2-13 (CORS), the last of the three Eligible
-    Candidates. Global in-memory rate limit (@nestjs/throttler@6.4.0, no NestJS major bump — verified
-    peer-compatible with ^10.4.4), env-configurable, default 100 req/60s; stricter 10 req/60s limit on
-    /api/auth/login and /api/auth/register (evidenced brute-force/spam mitigation); /api/health exempt.
-    CORS reworked from permissive `origin:true` to an explicit env-driven allow-list
-    (CORS_ALLOWED_ORIGINS), required and fail-fast at boot in production; CORS_CREDENTIALS defaults
-    false (zero cookie usage anywhere, grep-verified — bearer-token auth only). TRUST_PROXY_HOPS added,
-    default 0 (no real reverse proxy deployed yet). All three claims proven live against a real Docker
-    container on the real dev Postgres/Redis: 429 after the configured limit, correct CORS
-    allow/reject/preflight headers, production boot succeeding only with CORS_ALLOWED_ORIGINS set.
-    Zero regression: unit 223/223 (221+2 new), e2e 51/51 (44+7 new). CI's docker-build job's API boot
-    step was given CORS_ALLOWED_ORIGINS to avoid breaking under the new production requirement. All
-    three Eligible PLACE Candidates from the Owner Approval Session are now implemented (Candidate 2
-    partially, per its own narrower authorization). Deriving another task without explicit owner
-    authorization is NOT permitted.
+    PLACE-029 (2026-07-24) implemented Candidate A (Critical dependency hardening) from
+    docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md, the only candidate requiring
+    no further Owner decision. bcrypt 5.1.1 -> 6.0.0: a clean, isolated major bump (only dependency
+    touched) that removes the entire @mapbox/node-pre-gyp/tar install-tooling chain outright —
+    confirmed via npm ls returning empty for both tar and @mapbox/node-pre-gyp tree-wide, not merely
+    within bcrypt's own branch. No breaking change to bcrypt's public API (hash/compare unchanged);
+    verified live via a real register -> login -> wrong-password round-trip against the built
+    production Docker image on Alpine/musl (bcrypt 6's prebuildify-shipped binary loaded directly, no
+    compile step needed despite the pre-existing python3/make/g++ toolchain being available as a
+    fallback). DB_HOST/DB_USER/DB_PASSWORD/DB_NAME changed from Joi .default() to a
+    when(NODE_ENV,{is:'production',then:required()}) pattern identical to the one already proven by
+    CORS_ALLOWED_ORIGINS (PLACE-028); empty-string DB_PASSWORD also now rejected in production.
+    Live-proven: booting with NODE_ENV=production and DB_PASSWORD unset, or set to '', both crash
+    immediately with a named Joi error, before any DB connection attempt. npm audit --omit=dev: 18 ->
+    15 total (1 critical -> 0, 7 high -> 5 [multer/file-type/lodash still open, both no-reachable-path
+    or config-only-input], 10 moderate unchanged). Zero regression: unit 231/231 (223 baseline + 8 new
+    env.validation.spec.ts), e2e 51/51 (identical to PLACE-028 baseline). Dev stack confirmed healthy
+    and unaffected throughout (migrations=20, places=49 both unchanged); one live-created test user
+    deleted after verification. NOT performed: NestJS 10->11 or Next.js 14->16 migration (both remain
+    Owner decisions, recommended timing "before public launch" per the Candidate Selection report's
+    Phase 5); the remaining 15 production dependency findings are unchanged in count/character.
+    Deriving another task without explicit owner authorization is NOT permitted.
   eligible_candidate_disposition:
     - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
-    - "Candidate 2 (dependency remediation, OD2-11) — PARTIALLY IMPLEMENTED (PLACE-027): safe-only subset applied (fast-uri); the NestJS/Next major-version migration remains PENDING a separate owner decision."
+    - "Candidate 2 (dependency remediation, OD2-11) — PARTIALLY IMPLEMENTED (PLACE-027 safe-only subset; PLACE-029 closed the critical tar finding via the isolated bcrypt bump); the NestJS/Next major-version migration remains PENDING a separate owner decision."
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
+    - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
+    - "PLACE-029 Candidate B (NestJS 10->11), Candidate C (Next.js 14->16) — ELIGIBLE AFTER OWNER INPUT, not yet authorized."
+    - "PLACE-029 Candidate D (observability: logging correlation + monitoring signal) — ELIGIBLE AFTER OWNER INPUT for the monitoring half; the logging-only sub-scope is ELIGIBLE NOW if the Owner chooses to split it. Recommended PLACE-030 candidate."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "Whether to authorize the coordinated NestJS 10->11 / Next.js 14->16 major-version migration to close the remaining 1 critical + 17 high/moderate/low vulnerabilities (production + dev). Not decided by PLACE-027 — see docs/delivery/reports/PLACE-027-dependency-security-report.md §6. No further Eligible PLACE Candidate is currently defined — all three from the Owner Approval Session are now IMPLEMENTED (fully or per their own narrower scope)."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 1 critical + 6 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decision above. Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
+  pending_owner_decision: "PLACE-030 candidate selection: recommended is Candidate D's logging sub-scope (docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md), which needs no Owner decision. Separately, whether/when to authorize the NestJS 10->11 and/or Next.js 14->16 migrations (Candidates B/C) — both independently recommended 'before public launch', not urgent for staging/beta. See docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md Phase 5-7 for the full decision form."
+  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 5 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decisions above (down from 1 critical + 7 high after PLACE-029). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-029
+    completed: "2026-07-24"
+    result: >-
+      Critical dependency hardening (PLACE-029 Candidate Selection report, Candidate A) — the only
+      candidate requiring no further Owner decision. bcrypt 5.1.1 -> 6.0.0: a clean, isolated
+      major-version bump (apps/api/package.json, one line; only dependency touched) that removes the
+      entire @mapbox/node-pre-gyp/tar install-tooling chain outright, confirmed by `npm ls tar --all`
+      and `npm ls @mapbox/node-pre-gyp --all` both returning empty tree-wide after `npm install`
+      (added 1 package, removed 31, no --force, no peer bypass). bcrypt's public API (hash/compare)
+      has no breaking change between 5.x and 6.x (confirmed via the upstream CHANGELOG); the two call
+      sites in auth.service.ts were left untouched. Docker/musl compatibility investigated up front:
+      apps/api/Dockerfile already carries a python3/make/g++ compile fallback for musl (added for
+      bcrypt 5); in practice this task's full uncached Docker build log shows bcrypt 6's
+      prebuildify-shipped binary loading directly with zero compile step. env.validation.ts:
+      DB_HOST/DB_USER/DB_PASSWORD/DB_NAME changed from Joi .default() to
+      when('NODE_ENV',{is:'production',then:Joi.required()}), the identical pattern already proven
+      live by CORS_ALLOWED_ORIGINS (PLACE-028); DB_PASSWORD's .allow('') was removed from the
+      production branch, closing the empty-string gap. 8 new focused unit specs
+      (env.validation.spec.ts) pin the schema directly. Fresh npm audit --omit=dev: 18 -> 15 total
+      (1 critical -> 0, 7 high -> 5, 10 moderate unchanged, 0 low unchanged) — tar/node-pre-gyp/bcrypt
+      itself all gone from the audit output, not mitigated. All 15 remaining findings require a
+      NestJS 10->11 or Next.js 14->16 migration (neither performed; both remain Owner decisions,
+      recorded recommendation "before public launch" in the Candidate Selection report). Full
+      regression: unit 231/231 (223 baseline + 8 new, 32 suites), e2e 51/51 (9 suites, identical to
+      PLACE-028 baseline) — zero regression. Docker images (api+web) rebuilt and booted live against
+      the real dev Postgres/Redis with NODE_ENV=production: a real register -> login (correct
+      password, 200) -> login (wrong password, 401) round-trip proved bcrypt.hash/bcrypt.compare
+      function correctly at runtime in the new native-binding loading path; two separate boots (
+      DB_PASSWORD unset, and DB_PASSWORD='') both crashed immediately with the expected named Joi
+      error, before any DB connection attempt. /api/health confirmed database=up, redis=up (PONG)
+      throughout. Web image booted, GET / -> 200. Dev stack (phuquoc-postgres/-redis/-minio) confirmed
+      healthy and unaffected before/during/after all verification (migrations=20, places=49, both
+      unchanged); the one test user created during the live auth round-trip was deleted afterward
+      (0 matching rows confirmed). Verification containers and images removed after use. Not claimed:
+      no NestJS/Next major-version migration (both remain Owner decisions); the remaining 15
+      production dependency findings are unchanged in count or character; no external infrastructure
+      touched; no API contract, schema, or product feature change. No PLACE-030 created or started.
+    report: docs/delivery/reports/PLACE-029-critical-dependency-hardening-report.md
+    evidence_index: docs/delivery/evidence/PLACE-029-critical-dependency-hardening-evidence-index.md
+    security_assessment: docs/delivery/reports/PLACE-029-SECURITY-ASSESSMENT-2026-07-24.md
   - id: PLACE-028
     completed: "2026-07-24"
     result: >-
