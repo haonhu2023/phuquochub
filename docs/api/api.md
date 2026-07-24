@@ -65,10 +65,12 @@ Nguyên tắc: cùng mô hình dữ liệu, khác **bề mặt** — Public/Part
 > Xem `openapi.yaml` để biết tham số thực tế của từng operation.
 
 - **Offset (Web):** `?page=&limit=` (mặc định `page=1`, `limit=20`). `limit > 100` **bị cắt xuống
-  100**, không bị từ chối; `page`/`limit` `< 1` bị từ chối 422. — ✅ **đã triển khai**
+  100**, không bị từ chối; `page`/`limit` `< 1` hoặc không phải số nguyên bị từ chối **400**. — ✅
+  **đã triển khai** — hợp đồng chính thức đã chốt (ADR-010 Accepted / OD-B1, 2026-07-24).
 - **Cursor (Mobile/Public):** `?cursor=&limit=` → `meta.next_cursor`. — ❌ **chưa triển khai**
-  (`?cursor=` → 400; `meta.next_cursor` không được phát ra). Chuyển sang keyset là câu hỏi hợp
-  đồng còn treo (GAP-05/10) và cần ADR-010 được chấp nhận trước.
+  (`?cursor=` → 400; `meta.next_cursor` không được phát ra). Cursor/keyset ĐÃ QUYẾT ĐỊNH KHÔNG áp
+  dụng cho v1 (OD-B1 / ADR-010 Accepted 2026-07-24; GAP-05/10 resolved); nếu có sau này phải là một
+  major version mới theo ADR-010.
 - **Lọc:** `?field=value` — ✅ **đã triển khai** (tập trường tuỳ endpoint).
 - **Sắp xếp:** `?sort=field_asc|field_desc` — ❌ **chưa triển khai** (`?sort=` → 400). Thứ tự do
   server quyết định cố định; xem `description` của từng operation trong `openapi.yaml`.

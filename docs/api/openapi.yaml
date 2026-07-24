@@ -462,10 +462,11 @@ paths:
       security: []
       description: >-
         Danh sách Place công khai — CHỈ trả về Place `published`.
+        Hợp đồng phân trang OFFSET (`page`/`limit`) đã được CHỐT là hợp đồng chính thức
+        (ADR-010 Accepted 2026-07-24 / OD-B1; GAP-05, GAP-10 resolved). KHÔNG hỗ trợ cursor.
         Sắp xếp CỐ ĐỊNH phía server: `rating_avg DESC NULLS LAST, created_at DESC, id ASC`
         (khoá cuối duy nhất ⇒ phân trang xác định). Client KHÔNG điều khiển được thứ tự.
-        Phân trang theo OFFSET (`page`/`limit`); KHÔNG hỗ trợ cursor.
-        Tham số không nằm trong danh sách dưới đây bị TỪ CHỐI 400
+        Tham số không nằm trong danh sách dưới đây bị TỪ CHỐI **400**
         (`ValidationPipe` chạy với `whitelist` + `forbidNonWhitelisted`).
         Bộ lọc địa lý KHÔNG có ở endpoint này — dùng `/geo/nearby` hoặc `/geo/bbox`.
       parameters:
@@ -479,24 +480,26 @@ paths:
           schema: { type: string }
         - name: price_range
           in: query
-          description: Lọc theo khoảng giá. Giá trị ngoài enum → 422.
+          description: Lọc theo khoảng giá. Giá trị ngoài enum bị TỪ CHỐI **400** (VALIDATION_ERROR).
           schema: { $ref: '#/components/schemas/PriceRange' }
         - name: page
           in: query
-          description: Trang, bắt đầu từ 1. Giá trị `< 1` bị TỪ CHỐI 422; bỏ trống → 1.
+          description: Trang, bắt đầu từ 1. Giá trị `< 1` hoặc không phải số nguyên bị TỪ CHỐI **400**; bỏ trống → 1.
           schema: { type: integer, minimum: 1, default: 1 }
         - name: limit
           in: query
           description: >-
-            Số bản ghi mỗi trang. Bỏ trống → 20. Giá trị `< 1` bị TỪ CHỐI 422.
+            Số bản ghi mỗi trang. Bỏ trống → 20. Giá trị `< 1` hoặc không phải số nguyên bị TỪ CHỐI **400**.
             LƯU Ý: giá trị `> 100` KHÔNG bị từ chối mà bị CẮT XUỐNG 100 (`clampLimit`) —
             response vẫn 200 và `meta.pageSize` phản ánh giá trị đã cắt.
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
-        # ---- Không được triển khai (F-6 / OD-F-6, 2026-07-23) ----
+        # ---- Không được triển khai (F-6 / OD-F-6, 2026-07-23; xác nhận lại OD-B1 2026-07-24) ----
         # Ba tham số dưới đây từng được công bố nhưng CHƯA BAO GIỜ được triển khai. Vì
         # `forbidNonWhitelisted` đang bật, gửi chúng lên sẽ nhận HTTP 400 chứ không phải bị bỏ qua.
-        # Chúng được đánh dấu deprecated thay vì xoá thẳng: kho mã không có version control,
-        # deployment, telemetry hay client registry, nên KHÔNG thể loại trừ consumer bên ngoài.
+        # QUYẾT ĐỊNH ĐÃ CHỐT (OD-B1 / ADR-010 Accepted 2026-07-24): hợp đồng chính thức là OFFSET
+        # `page`/`limit`; cursor KHÔNG được áp dụng cho v1. Ba tham số này GIỮ deprecated (không xoá)
+        # theo OD-F-6 — chưa loại trừ được consumer ngoài — và sẽ chỉ được gỡ ở một major version
+        # mới kèm header `Deprecation`/`Sunset` theo ADR-010. Chúng KHÔNG phải tham số hợp lệ.
         - name: status
           in: query
           deprecated: true
@@ -517,8 +520,9 @@ paths:
           deprecated: true
           description: >-
             KHÔNG ĐƯỢC TRIỂN KHAI — gửi lên sẽ nhận HTTP 400. Endpoint này phân trang bằng
-            OFFSET (`page`/`limit`). Việc chuyển sang cursor/keyset là câu hỏi hợp đồng còn treo
-            (GAP-05/10) và cần ADR-010 (API Versioning) được chấp nhận trước.
+            OFFSET (`page`/`limit`). Cursor/keyset ĐÃ ĐƯỢC QUYẾT ĐỊNH KHÔNG áp dụng cho v1
+            (OD-B1 / ADR-010 Accepted 2026-07-24; GAP-05/10 resolved). Nếu áp dụng về sau, phải
+            đi kèm một major version mới theo ADR-010 — không tái sử dụng tham số offset hiện tại.
           schema: { type: string }
       responses:
         '200':
@@ -530,6 +534,7 @@ paths:
                   - $ref: '#/components/schemas/SuccessEnvelope'
                   - properties:
                       data: { type: array, items: { $ref: '#/components/schemas/PlaceCard' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
     post:
       tags: [Places]
       summary: Tạo địa điểm (đi qua contribution/revision)
