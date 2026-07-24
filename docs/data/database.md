@@ -525,9 +525,11 @@ Mọi `Place`, `Contact`, `PriceHistory` đều có vòng đời xác minh (`pen
 
 Nhóm phân tích (`PageView`, `PlaceView`, `SearchAnalytics`, `PopularPlace`, `TrendingKeyword`) theo hướng **aggregate-first**: không lưu log thô, chỉ giữ bảng tổng hợp theo mốc thời gian (rollup `giờ→ngày→tháng`) và bảng xếp hạng materialized cho dashboard đọc nhanh — thiết kế trong [module-analytics.md](./modules/analytics.md).
 
-## 11. Danh mục thực thể (Entity Catalog) — chuẩn bị sinh Prisma
+## 11. Danh mục thực thể (Entity Catalog)
 
 > Tổng hợp **mọi thực thể đã phê duyệt**, tài liệu định nghĩa trường **authoritative**, và **trạng thái nhất quán**. Không định nghĩa lại trường ở đây để tránh lệch với tài liệu nguồn. Ký hiệu: ✅ sẵn sàng · ⚠️ cần quyết định · ⛔ bị chặn (phụ thuộc thực thể chưa phê duyệt).
+>
+> **Thẩm quyền runtime (GAP-15 / OD-B7, 2026-07-24):** danh mục này từng được lập để chuẩn bị cho một schema Prisma; quyết định thực thi cuối cùng chọn **TypeORM** làm thẩm quyền persistence runtime (entities + migrations + PostgreSQL) — xem [ADR-013, mục Addendum](../99-decisions/ADR-013-prisma-readiness.md#addendum-runtime-persistence-authority-od-b7-2026-07-24). `prisma/schema.prisma` chỉ còn là **tài liệu tham chiếu mô hình dữ liệu**, không sinh migration/code/API.
 
 | Thực thể | Định nghĩa tại | Trạng thái | Ghi chú |
 |---|---|---|---|
