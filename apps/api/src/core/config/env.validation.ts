@@ -7,11 +7,29 @@ export const envValidationSchema = Joi.object({
   API_PORT: Joi.number().port().default(4000),
   API_GLOBAL_PREFIX: Joi.string().default('api'),
 
-  DB_HOST: Joi.string().default('localhost'),
+  // PLACE-029: DB credentials required in production — fail fast rather than silently
+  // connecting with known dev defaults (mirrors the JWT-secret/CORS-origin precedent above).
+  DB_HOST: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.string().default('localhost'),
+  }),
   DB_PORT: Joi.number().port().default(5432),
-  DB_USER: Joi.string().default('phuquoc'),
-  DB_PASSWORD: Joi.string().allow('').default('phuquoc'),
-  DB_NAME: Joi.string().default('phuquochub'),
+  DB_USER: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.string().default('phuquoc'),
+  }),
+  DB_PASSWORD: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.string().allow('').default('phuquoc'),
+  }),
+  DB_NAME: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.string().default('phuquochub'),
+  }),
   DB_SSL: Joi.boolean().truthy('true').falsy('false').default(false),
   DB_SYNCHRONIZE: Joi.boolean().truthy('true').falsy('false').default(false),
   DB_LOGGING: Joi.boolean().truthy('true').falsy('false').default(false),
