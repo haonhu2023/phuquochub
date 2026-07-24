@@ -115,10 +115,14 @@ resolved_gaps:
 
 known_risks:
   - "Phú Quốc bbox is PROVISIONAL — derived from seed coordinates, not an authoritative source; owner confirmation required before any release claim"
-  - "Contract authority unresolved for list params (openapi vs implementation) — GAP-05/10 parked"
-  - "No DB-backed validation possible: Docker not installed; PostGIS/SRID/spatial-index behavior and the e2e suite remain unverified"
-  - "Node is a portable extract, not on system PATH; @phuquochub/* in node_modules are copies, not workspace symlinks (FAT32) and go stale if packages/* change"
-  - "Repository is not under version control (no .git) — no task can produce a diff-verified scope proof"
+  - "Contract authority unresolved for list params (openapi vs implementation) — GAP-05/10 parked; sole outstanding release blocker (owner adjudication)"
+  # PLACE-020 (2026-07-24): the following three risks are RESOLVED on the certified D: checkout and
+  # retained here as history. DB-backed validation now runs (e2e 22/22 against real Postgres/PostGIS
+  # + Redis); @phuquochub/* resolve via real workspace symlinks on NTFS; the repo is under version
+  # control with a rollback point.
+  - "[RESOLVED PLACE-020] DB-backed validation: Docker running; e2e suite executed green; PostGIS/SRID/spatial-index EXPLAIN evidence (F-15) still outstanding, non-blocking"
+  - "[RESOLVED PLACE-020] Workspace links: D: is NTFS; @phuquochub/{shared-types,utils} are real symlinks — FAT32 copy-staleness gone"
+  - "[RESOLVED PLACE-020] Version control: repo is a git work tree (branch master, HEAD 0ca958f, clean); diff-verified scope proof now possible"
 
 evidence_references:
   - delivery/sprint-01-core-data/BUILD_001_PLACE_INSPECTION_GAP_ANALYSIS.md
@@ -127,7 +131,22 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-019 completed 2026-07-23; awaiting task authorization
+next_task: none        # PLACE-020 completed 2026-07-24; awaiting OWNER product decision (GAP-05/10). No engineering task is derivable.
+
+place_020_status: >-
+  COMPLETED 2026-07-24 — RECONCILED. Owner-authorized delivery-state reconciliation, governance-only
+  (git diff limited to docs/delivery/**; no application source/test/schema/migration/contract change).
+  Recorded the certified D: runtime facts and closed the two blockers PLACE-016..019 called
+  "not fixable in-repo": F-2 (Docker) RESOLVED — Docker running, postgres/redis/minio healthy on
+  existing volumes, API e2e 5 suites / 22 tests green against real Postgres/PostGIS + Redis, API
+  /api/health 200 with database=up and redis=up; F-3 (version control) RESOLVED — three commits on
+  master (…0ca958f), clean tree, rollback point, no remote. verification_environment reconciled
+  (Node v20.20.2/npm 10.8.2 pinned; real workspace symlinks on NTFS; production startup verified).
+  NO gate VALUE advanced; NO owner product decision made — GAP-05/10 stays the sole outstanding
+  release blocker, F-24/F-34/score/authoritative-bbox stay OPEN, READY_FOR_BUILD not asserted, and
+  the workstream is NOT marked complete. Full lint + typecheck + unit (210/210) + e2e (22/22) re-run
+  green and UNCHANGED. See reports/PLACE-020-state-reconciliation-report.md and
+  evidence/PLACE-020-state-reconciliation-evidence-index.md.
 
 place_019_status: >-
   COMPLETED 2026-07-23 — PARTIALLY_REMEDIATED. Owner-authorized pre-BUILD readiness operation,

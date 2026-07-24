@@ -1,0 +1,138 @@
+schema_version: "1.0"
+
+id: PLACE-020
+workstream: place
+title: "Post-certification delivery-state reconciliation (F-2, F-3 closure; runtime verification recorded)"
+type: governance_remediation
+status: completed
+started_at: "2026-07-24"
+completed_at: "2026-07-24"
+
+run_status:
+  implementation: complete
+  validation: passed
+  outcome: RECONCILED               # objective facts recorded; no gate value over-advanced; no product decision made
+  results:
+    - "Docker daemon running; phuquoc-postgres (postgis/postgis:16-3.4), phuquoc-redis (redis:7-alpine), phuquoc-minio all report health=healthy on pre-existing volumes (NOT recreated)."
+    - "redis-cli ping -> PONG; pg_isready -> accepting connections; public.migrations table present with 20 rows (schema already migrated)."
+    - "API e2e suite EXECUTED against the real Postgres/PostGIS/Redis: 5 suites / 22 tests, exit 0 (previously can_run_e2e:false, never run)."
+    - "git log: 889d01f -> c661912 -> 0ca958f on branch master; working tree clean; no remote. Rollback point now exists (F-3 condition met)."
+    - "Node pinned to v20.20.2 / npm 10.8.2 (repo .nvmrc=20, CI node-version:20) used for all verification; portable v24 present but NOT used for certification."
+    - "Full turbo build --force (cache bypassed) -> 4/4 tasks, 0 cached. apps/api/dist/main.js + app.module.js + dist/core/ present; 153 non-spec .ts == 153 compiled .js; no spec leaked into dist. apps/web/.next present (BUILD_ID emitted)."
+    - "Production startup VERIFIED: node dist/main.js booted; GET /api/health -> 200 with data.status=ok, database=up, redis=up (PONG); web `next start` GET / -> 200. Both processes terminated; ports 4000/3000 free."
+    - "D: is NTFS; node_modules/@phuquochub/{shared-types,utils} are real workspace symlinks (FAT32 copy-staleness risk gone)."
+  mandatory_criteria: "AC1..AC8 all PASS"
+  report: docs/delivery/reports/PLACE-020-state-reconciliation-report.md
+  evidence_index: docs/delivery/evidence/PLACE-020-state-reconciliation-evidence-index.md
+  changed_files:
+    - docs/delivery/state.yaml                       # repository identity (F:->D:), verification_environment, gate COMMENTS, completed_tasks, next_action
+    - docs/delivery/project-registry.yaml            # repository.vcs none -> git (D: authoritative)
+    - docs/delivery/workstreams/place.yaml           # known_risks refresh, place_020_status, next_task note
+    - docs/delivery/tasks/PLACE-020.yaml             # this task record
+    - docs/delivery/reports/PLACE-020-state-reconciliation-report.md
+    - docs/delivery/evidence/PLACE-020-state-reconciliation-evidence-index.md
+  resolves: "F-2 (Docker) RESOLVED; F-3 (version control / rollback point) RESOLVED"
+  f2_disposition: >-
+    RESOLVED. Docker Desktop is installed and running; the three compose services are healthy on
+    existing volumes. The API e2e suite (22 tests) executed green against real Postgres/PostGIS and
+    Redis, and the API booted with /api/health reporting database=up and redis=up. Docker-dependent
+    verification (DB-backed behaviour, HTTP, authz enforcement over the wire) is now EXERCISED. The
+    single residual Docker-dependent item NOT yet gathered is EXPLAIN evidence that the planner
+    chooses idx_places_status_active (GAP-06 / F-15) — recorded as remaining, non-blocking work.
+  f3_disposition: >-
+    RESOLVED. The D: repository is under local version control with three commits on master and a
+    clean working tree; a rollback point exists and change scope is diff-verifiable. No remote is
+    configured and none was added (no push).
+  gate_note: >-
+    Following the PLACE-019 precedent, NO gate VALUE was advanced by this task. Only gate COMMENTS
+    contradicted by the certification evidence were refreshed. `implementation` and `testing` are
+    materially closer to `passed` (DB-backed e2e now green, production startup verified) but are
+    held at `in_progress` pending EXPLAIN evidence for the partial index, broader DB-backed
+    coverage judgement, and the open owner product decisions. `deployment` stays `not_started`
+    (nothing deployed).
+  product_decisions_note: >-
+    UNCHANGED and explicitly NOT decided here: GAP-05/10 (openapi list params vs implementation),
+    F-24 (privileged vs public card schema), F-34 (bboxClusters truncation policy),
+    SearchResult.score, and the PROVISIONAL Phu Quoc bbox (needs an authoritative boundary).
+    GAP-05/10 remains the sole outstanding release blocker and requires an OWNER adjudication that
+    no engineering task can supply.
+
+authority:
+  source: "Repository owner instruction, 2026-07-24 — 're-establish the authoritative delivery state ... execute exactly one valid next delivery task'."
+  note: >-
+    This is NOT new Place feature work and NOT a BUILD task. Per the EEF authority hierarchy
+    (explicit user instruction is #1) and ADR-DELIVERY-001 (state.yaml is the execution gate), a
+    task record is created, executed and closed in the same turn — the same pattern as PLACE-019.
+    It records objective, certified runtime facts and changes no PLACE-001..PLACE-019 behaviour and
+    no application source. It does not resolve any owner product decision and does not authorize BUILD.
+
+depends_on: []      # PLACE-001..PLACE-019 all completed; none active.
+
+objective: >-
+  Reconcile the authoritative delivery state with the newly certified D: runtime facts. Record F-2
+  (Docker) and F-3 (version control) as RESOLVED with objective command evidence; replace the
+  obsolete F: (FAT32, vcs none) repository description with the certified D: (NTFS, git) identity;
+  update verification_environment; and refresh gate comments that later evidence contradicts —
+  without advancing any gate value, resolving any product decision, or asserting READY_FOR_BUILD.
+
+scope:
+  - "Record F-2 and F-3 RESOLVED in state.yaml (findings narrative + completed_tasks + next_action)."
+  - "Update verification_environment: docker installed_and_running, can_run_e2e true, node pinned v20.20.2, build verified, workspace links real, volume D: NTFS."
+  - "Replace the repository identity block (F: obsolete) with the certified D: git identity."
+  - "project-registry.yaml repository.vcs none -> git; record branch/commit."
+  - "workstreams/place.yaml: refresh known_risks that are now resolved; add place_020_status; keep next_task none."
+  - "Create this task record, the execution report, and the evidence index."
+
+out_of_scope:
+  - "Any application/source/test/schema/migration/contract change."
+  - "GAP-05/10, F-24, F-34, SearchResult.score, PROVISIONAL bbox — owner product decisions."
+  - "Advancing any gate VALUE, asserting READY_FOR_BUILD, or marking the workstream complete."
+  - "Adding a remote, pushing, renaming the branch, or rewriting history."
+  - "EXPLAIN / index-usage evidence (GAP-06 / F-15) — remaining Docker-backed work, not this task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "F-2 recorded RESOLVED with command evidence: Docker services healthy + e2e 22/22 green against the real DB + API health db=up/redis=up." }
+  - { id: AC2, mandatory: true, text: "F-3 recorded RESOLVED with git evidence: commits on master, clean tree, rollback point; no remote added." }
+  - { id: AC3, mandatory: true, text: "verification_environment reflects certified facts (docker, e2e, node v20.20.2, build, NTFS symlinks) with no unsupported claim." }
+  - { id: AC4, mandatory: true, text: "Repository identity block describes the authoritative D: NTFS git checkout; the obsolete F: description is superseded, not silently deleted." }
+  - { id: AC5, mandatory: true, text: "No gate VALUE changed; only comments contradicted by evidence refreshed (each records old text, contradicting evidence, replacement)." }
+  - { id: AC6, mandatory: true, text: "No owner product decision (GAP-05/10, F-24, F-34, score, bbox) is made or implied; all remain OPEN." }
+  - { id: AC7, mandatory: true, text: "git diff touches ONLY docs/delivery/** (governance/docs); zero application source, test, schema, or contract files." }
+  - { id: AC8, mandatory: true, text: "Full lint + typecheck + unit + API e2e remain green and UNCHANGED (210 unit / 22 e2e); all governance YAML parse." }
+
+validation_commands:
+  # Node pinned: prepend %LOCALAPPDATA%\node-portable\node-v20.20.2-win-x64 to PATH.
+  - "cd apps/api && jest                     # unit: 210/210"
+  - "cd apps/api && jest --config ./test/jest-e2e.json --runInBand   # e2e: 22/22 (Docker up)"
+  - "cd apps/api && tsc -p tsconfig.json --noEmit                    # typecheck exit 0"
+  - "cd apps/api && eslint 'src/**/*.ts' --max-warnings=0            # lint exit 0"
+  - "node -e require('js-yaml') parse of all docs/delivery/**/*.yaml # governance YAML parse"
+  - "git diff --name-only                     # only docs/delivery/** changed"
+
+rollback_plan: >-
+  All edits are documentation/governance YAML and are individually revertible. The three new
+  PLACE-020 files are deletable. If committed, `git revert <sha>` restores the prior state. No code,
+  schema, data, migration or contract is involved, so no runtime rollback is required.
+
+stop_conditions:
+  - "Any change would require an owner product decision (GAP-05/10, F-24, F-34, score, bbox) — STOP and leave OPEN."
+  - "Any gate VALUE would need to change on non-unambiguous evidence — STOP and refresh the comment only."
+  - "Any application source, test, schema, migration or contract file would need to change — STOP; this task is governance-only."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state:
+      current.task: none
+      current.status: awaiting_task_authorization   # GAP-05/10 owner adjudication is the next gate; no engineering task is derivable
+  requires_evidence:
+    - "Docker service health + e2e 22/22 + API health db/redis up"
+    - "git commits + clean tree (F-3)"
+    - "git diff limited to docs/delivery/**"
+    - "full unit + e2e green and unchanged"
+
+non_claims: >-
+  Recording F-2 and F-3 as RESOLVED does NOT assert READY_FOR_BUILD, does NOT mark the Place
+  workstream complete, and does NOT resolve GAP-05/10 or any other owner product decision. A green
+  e2e run and a booting service are runtime evidence for the certified session; they are not a
+  release decision.

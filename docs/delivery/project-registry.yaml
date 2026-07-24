@@ -10,7 +10,13 @@ repository:
   tooling: "npm workspaces + Turborepo (turbo ^2.1.3)"
   package_manager: "npm@10.8.2"
   node_engine: ">=20.0.0"
-  vcs: none                # not a git working copy in this environment
+  # PLACE-020 (2026-07-24): authoritative checkout is D:\Projects\PhuQuocHub, a git work tree on
+  # NTFS (branch master, HEAD 0ca958f, clean, no remote). Prior `vcs: none` referred to the
+  # obsolete F: FAT32 checkout.
+  vcs: git
+  vcs_branch: master
+  vcs_head: 0ca958f
+  vcs_remote: none
   workspaces:
     - "apps/*"
     - "packages/*"

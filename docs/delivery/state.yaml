@@ -10,22 +10,32 @@ delivery:
   initialized: true
 
 repository:
-  # F:\PhuQuochub is NOT a git working copy (git rev-parse → "not a git repository").
-  # VCS-derived identity is therefore unknown, not fabricated.
-  inspected_at: "2026-07-22"
-  vcs: none
-  branch: unknown
-  commit: unknown
-  working_tree: unknown
-  volume: "F: (FAT-family / non-NTFS) — workspace symlinks unavailable"
+  # PLACE-020 (2026-07-24): the authoritative working copy is now D:\Projects\PhuQuocHub, a git
+  # working tree on NTFS. The prior F:\PhuQuochub inspection (FAT32, vcs none) is SUPERSEDED and
+  # treated as obsolete per owner instruction; it is recorded here as history, not deleted.
+  inspected_at: "2026-07-24"
+  path: "D:\\Projects\\PhuQuocHub"
+  vcs: git
+  branch: master
+  commit: 0ca958f                 # 889d01f (baseline) -> c661912 (health e2e fix) -> 0ca958f (hygiene)
+  working_tree: clean
+  remote: none                    # local only; no remote configured, nothing pushed
+  volume: "D: (NTFS) — real npm workspace symlinks available; FAT32 copy-staleness risk gone"
+  superseded_inspection:
+    path: "F:\\PhuQuochub"
+    volume: "F: (FAT-family / non-NTFS)"
+    vcs: none
+    note: "Obsolete checkout; not a git working copy when inspected 2026-07-22."
 
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-019 completed 2026-07-23 (PARTIALLY_REMEDIATED).
-                                  # G-1/G-2/G-3/F-33 resolved; nest build exit 0; F-3 only
-                                  # PARTIALLY cleared (no commit) and F-2 untouched — both still
-                                  # block BUILD. No BUILD task exists and none was created.
+  task: none                      # PLACE-020 completed 2026-07-24 (RECONCILED). It recorded the
+                                  # certified D: runtime facts: F-2 (Docker) and F-3 (version
+                                  # control) — the two in-repo release blockers PLACE-016..019
+                                  # named as "not fixable in-repo" — are now RESOLVED. The sole
+                                  # remaining release blocker is GAP-05/10, an OWNER product
+                                  # decision no engineering task can supply. No BUILD task exists.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -58,34 +68,34 @@ gates:
   # contradicted by later verified evidence. Every gate VALUE is unchanged and deliberately
   # conservative — no gate was advanced, and no transition condition was treated as met.
   repository_inspection: passed
-  architecture_baseline: partial   # docs/ SSOT + ADRs exist. Node IS available (portable extract) and typecheck/build DO run — but `partial` stands: no DB/HTTP/deploy evidence.
+  architecture_baseline: partial   # docs/ SSOT + ADRs exist; typecheck/build run. PLACE-020 refresh: DB + HTTP evidence now EXISTS (e2e 22/22 on real Postgres/PostGIS/Redis; /api/health 200 db=up/redis=up). Value stays `partial` — deploy/canary evidence still absent.
   place_domain_analysis: passed    # PLACE-001 completed 2026-07-22 (evidence/PLACE-001-baseline.md)
-  implementation: in_progress      # PLACE-002..PLACE-018 landed + validated (18/18 complete); still NOT passed — nothing is exercised against a database or over HTTP.
-  testing: in_progress             # 209/209 unit+integration specs green incl. service (PLACE-008) and controller (PLACE-009); still NOT passed — every one runs with the DB mocked or absent, and the 5 e2e specs have never run (needs Docker).
+  implementation: in_progress      # PLACE-020 refresh: the old rationale ("nothing is exercised against a database or over HTTP") is now FALSE — the API booted from its production build and the DB-backed e2e paths run green. Value held at `in_progress` conservatively pending EXPLAIN evidence (F-15) and the open owner decisions; no gate advanced by a governance task.
+  testing: in_progress             # PLACE-020 refresh: the old rationale ("DB mocked or absent; the 5 e2e specs have never run") is now FALSE — the e2e suite ran 5 suites / 22 tests green against real Postgres/PostGIS + Redis under Node v20.20.2. Value held at `in_progress` pending EXPLAIN/index-usage proof (GAP-06/F-15) and broader DB-backed coverage judgement.
   deployment: not_started
   canary: not_started
   hypercare: not_started
   stabilization: not_started
 
 verification_environment:
-  # Updated 2026-07-22. Node installed as a PORTABLE extract (no admin): the winget MSI
-  # failed at the UAC elevation prompt (exit 1602) in a non-interactive session.
-  node_runtime: available              # v24.18.0 at %LOCALAPPDATA%\node-portable, npm 11.16.0
-  node_on_system_path: false           # must be prepended per shell; NOT a system install
-  workspace_packages_linked: false     # FAT32 cannot symlink; packages MATERIALIZED as real dirs
+  # PLACE-020 (2026-07-24): reconciled to the certified D: (NTFS) checkout. The pinned repository
+  # runtime Node v20.20.2 / npm 10.8.2 (repo .nvmrc=20, CI node-version:20) was used for all
+  # certification. The portable v24.18.0 extract still exists but was NOT used for certification.
+  node_runtime: available              # PINNED v20.20.2 / npm 10.8.2 at %LOCALAPPDATA%\node-portable\node-v20.20.2-win-x64 (used); v24.18.0 also present, not used
+  node_on_system_path: false           # portable; prepended per shell
+  workspace_packages_linked: true      # D: is NTFS — node_modules/@phuquochub/{shared-types,utils} are REAL workspace symlinks
   workspace_packages_materialized: >-
-    node_modules/@phuquochub/{shared-types,utils} contain a copied package.json + prebuilt
-    dist/. This is a local workaround, not an npm workspace link; it will go stale if either
-    package's source changes. Re-copy, or relocate to NTFS and run `npm install`, after any
-    change to packages/*.
-  can_run_lint: true                   # verified: eslint on places+geo → exit 0
-  can_run_typecheck: true              # verified: tsc --noEmit → exit 0
-  can_run_build: verified_via_tsc      # PLACE-013: tsc -p tsconfig.build.json → exit 0, main.js emitted. Full `nest build` still unrun.
-  can_run_unit_tests: true             # verified: jest places.dto 12/12, geo.dto 9/9
-  can_run_e2e: false                   # Docker NOT installed; needs Postgres/PostGIS/Redis
-  docker: not_installed                # blocks db:up, migration:run, EXPLAIN verification
-  volume: "F: FAT32 removable. NTFS targets available: D: (255 GB free), C: (92 GB free)"
-  highest_leverage_fix: "Install Docker Desktop (for DB-backed validation); relocate to NTFS (for durable workspace links)"
+    Superseded on D:. On the NTFS checkout the @phuquochub/* packages resolve via real npm
+    workspace symlinks, so the FAT32 copy-staleness workaround no longer applies.
+  can_run_lint: true                   # verified: eslint src/**/*.ts --max-warnings=0 → exit 0
+  can_run_typecheck: true              # verified: tsc -p tsconfig.json --noEmit → exit 0
+  can_run_build: verified              # full `turbo run build --force` → 4/4, 0 cached; api dist/main.js+app.module.js+core/ present, 153 src==153 js; web .next present; production startup VERIFIED (see below)
+  can_run_unit_tests: true             # verified: jest → 210/210, 29 suites
+  can_run_e2e: true                    # verified: jest --config test/jest-e2e.json → 5 suites / 22 tests green against real Postgres/PostGIS + Redis
+  production_startup: verified         # node dist/main.js booted; GET /api/health → 200 (data.status=ok, database=up, redis=up); web `next start` GET / → 200; processes terminated, ports freed
+  docker: installed_and_running        # phuquoc-postgres (postgis:16-3.4), phuquoc-redis (redis:7-alpine), phuquoc-minio all health=healthy on EXISTING volumes (not recreated); migrations table = 20 rows
+  volume: "D: NTFS (D:\\Projects\\PhuQuocHub). Prior F: FAT32 checkout is obsolete."
+  highest_leverage_fix: "Obtain OWNER adjudication on GAP-05/10 (openapi list params) — the sole outstanding release blocker; gather EXPLAIN evidence for idx_places_status_active (GAP-06/F-15)."
   runbook: docs/delivery/ENVIRONMENT-SETUP-RUNBOOK.md
 
 owner_decisions:
@@ -140,18 +150,49 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    NO further Place execution task is defined or authorized. PLACE-001..PLACE-018 are complete and
-    all three owner-approved remediations (OD-F-1, OD-F-6, OD-F-17) are implemented AND validated.
-    Every remaining item needs infrastructure or an owner decision that no task can supply:
-    install Docker (unblocks DB/migration/HTTP/authz/e2e/EXPLAIN evidence — the largest gap by far),
-    put the repository under version control, obtain an AUTHORITATIVE Phú Quốc boundary, and decide
-    the open product questions (GAP-05/10 cursor+sort, F-24 privileged-vs-public card schema, F-34
-    bboxClusters truncation policy, and the public SearchResult.score). The only clearly executable
-    engineering item left is F-33 (remove the consumerless PlacesRepository.bbox()), which is small
-    and does not justify claiming the workstream is progressing. Deriving another task to keep the
-    sequence moving is explicitly NOT authorized — see PLACE-015/016 next_candidate_task rationale.
+    NO further Place ENGINEERING task is defined or authorized. PLACE-001..PLACE-018 are complete,
+    all three owner-approved remediations (OD-F-1, OD-F-6, OD-F-17) are implemented AND validated,
+    and PLACE-019 + PLACE-020 (governance operations) are closed. PLACE-020 (2026-07-24) recorded
+    that the two infrastructure blockers previously described as "not fixable in-repo" are now
+    RESOLVED with certified evidence: F-2 (Docker installed & running; e2e 22/22 green against real
+    Postgres/PostGIS + Redis; API health db=up/redis=up) and F-3 (repository under version control
+    with a rollback point). F-33 was already removed by PLACE-019. What remains needs an OWNER
+    PRODUCT DECISION that no engineering task can supply and that must NOT be invented:
+    GAP-05/10 (openapi list params vs implementation — the SOLE outstanding release blocker),
+    F-24 (privileged-vs-public card schema), F-34 (bboxClusters truncation policy), the public
+    SearchResult.score, and an AUTHORITATIVE Phú Quốc boundary to retire the PROVISIONAL bbox.
+    One non-blocking Docker-backed evidence item is now executable but not release-critical:
+    EXPLAIN proof that the planner uses idx_places_status_active (GAP-06 / F-15). Deriving another
+    engineering task to keep the sequence moving is explicitly NOT authorized.
+  awaiting_owner_decision:
+    - "GAP-05/10 — openapi listPlaces declares status/sort/cursor; implementation uses offset page/limit. Sole outstanding release blocker; needs contract adjudication."
+    - "F-24 — privileged vs public PlaceCard schema (getCardById filter omission)."
+    - "F-34 — bboxClusters truncation policy at 500."
+    - "SearchResult.score — public exposure decision."
+    - "Authoritative Phú Quốc boundary — to replace the PROVISIONAL bbox constant."
 
 completed_tasks:
+  - id: PLACE-020
+    completed: "2026-07-24"
+    result: >-
+      RECONCILED. Owner-authorized delivery-state reconciliation (governance-only; zero application
+      source, test, schema, migration or contract change — git diff limited to docs/delivery/**).
+      Recorded the certified D: runtime facts and closed the two in-repo release blockers that
+      PLACE-016..019 called "not fixable in-repo": F-2 (Docker) RESOLVED — Docker running,
+      phuquoc-postgres/redis/minio healthy on EXISTING volumes (not recreated), API e2e 5 suites /
+      22 tests green against real Postgres/PostGIS + Redis, migrations table = 20 rows; and F-3
+      (version control) RESOLVED — three commits on master (…0ca958f), clean tree, rollback point,
+      no remote added. verification_environment reconciled to the D: NTFS checkout (Node v20.20.2 /
+      npm 10.8.2 pinned and used; real workspace symlinks; docker installed_and_running;
+      can_run_e2e true; production_startup verified: /api/health 200 db=up/redis=up, web / 200).
+      Repository identity block moved from the obsolete F: (FAT32, vcs none) to D: (NTFS, git).
+      NO gate VALUE was advanced (PLACE-019 precedent); only comments contradicted by evidence were
+      refreshed. NO owner product decision was made: GAP-05/10 remains the sole outstanding release
+      blocker and F-24/F-34/score/authoritative-bbox stay OPEN. READY_FOR_BUILD NOT asserted; the
+      workstream is NOT marked complete. Full lint + typecheck + unit (210/210) + e2e (22/22)
+      re-run green and UNCHANGED; all governance YAML parse.
+    report: docs/delivery/reports/PLACE-020-state-reconciliation-report.md
+    evidence_index: docs/delivery/evidence/PLACE-020-state-reconciliation-evidence-index.md
   - id: PLACE-019
     completed: "2026-07-23"
     result: >-
