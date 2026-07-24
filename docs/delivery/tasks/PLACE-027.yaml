@@ -1,0 +1,94 @@
+schema_version: "1.0"
+
+id: PLACE-027
+workstream: place
+title: "Dependency security remediation (Eligible PLACE Candidate 2 / OD2-11)"
+type: security_hardening
+status: completed               # activated and executed this turn by explicit owner authorization
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'execution of the next approved engineering task: PLACE-027 — Dependency Security Remediation (OD2-11)'."
+  decision: "Eligible PLACE Candidate 2, docs/delivery/decisions/OWNER-APPROVAL-SESSION-2026-07-24.md — implements OD2-11 (Approved)."
+  note: >-
+    OD2-11's own recommended option (in OWNER-DECISION-PACKAGE-V2-2026-07-24.md) favored a full
+    migration accepting major-version bumps. This task's explicit authorization is NARROWER: only
+    safe patch/minor upgrades are to be implemented; any fix requiring a major version bump must be
+    STOPPED and REPORTED, not performed, absent a separate explicit owner approval. This is the
+    owner's prerogative to scope more conservatively than the prior recommendation, and is followed
+    exactly, not treated as a discrepancy.
+
+depends_on:
+  - "PLACE-026 completed 2026-07-24 (production deployment pipeline)"
+  - "Owner Approval Session completed (docs/delivery/decisions/OWNER-APPROVAL-SESSION-2026-07-24.md) — OD2-11 APPROVED"
+
+preconditions_verified:
+  - "PLACE-026 completed successfully — state.yaml completed_tasks"
+  - "Candidate 2 (OD2-11) approved — OWNER-APPROVAL-SESSION-2026-07-24.md"
+  - "No active PLACE task — state.yaml current.task: none"
+  - "Working tree clean — git status --short empty at task start"
+
+objective: >-
+  Reduce production security risk by remediating dependency vulnerabilities while preserving
+  runtime behaviour. Security hardening only, not feature development. Implement exactly the safe
+  (non-breaking) patch/minor upgrade path; any vulnerability whose only fix requires a major version
+  bump is documented as deferred pending separate owner approval, not silently performed.
+
+scope:
+  - "Fresh, evidence-based inventory of every vulnerable package (package/version/severity/direct-or-transitive/workspace/runtime-impact/exploitability/upgrade-path)."
+  - "Classification of every flagged dependency into exactly one of: Safe patch / Safe minor / Major (needs review) / Deferred / Accepted risk."
+  - "Implementation: `npm audit fix` (non-force — the standard tool boundary for 'safe, non-breaking' fixes) plus any CI step needed to reflect the new lockfile."
+  - "Full verification ladder + before/after npm audit comparison."
+
+out_of_scope:
+  - "Any major version upgrade (npm audit fix --force or manual major bump) without separate explicit owner approval."
+  - "New libraries, application code rewrites, architecture changes."
+  - "Removing any package unless proven unused."
+  - "Any feature, API, database, schema, or authentication change."
+  - "Deployment changes beyond what upgraded packages require (e.g. no Dockerfile/base-image change unless a dependency upgrade strictly requires it)."
+  - "Eligible Candidate 3 (OD2-12/13) or any other decision."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Every flagged vulnerability (from a fresh npm audit, not memory) is inventoried with package/version/severity/direct-or-transitive/workspace/runtime-impact/exploitability/upgrade-path." }
+  - { id: AC2, mandatory: true, text: "Every flagged dependency is classified into exactly one of the five categories, with an explanation." }
+  - { id: AC3, mandatory: true, text: "Only safe patch/minor upgrades are applied (via `npm audit fix`, no --force); any major-only fix is left unapplied and reported, not performed." }
+  - { id: AC4, mandatory: true, text: "Before/after vulnerability counts (total/critical/high/moderate/low) are recorded from real `npm audit` output, not estimated." }
+  - { id: AC5, mandatory: true, text: "Full lint/typecheck/unit/e2e green; totals compared to the PLACE-026 baseline (221 unit / 44 e2e) to prove zero behavioural regression." }
+  - { id: AC6, mandatory: true, text: "Docker build + boot + health verification re-run against the upgraded lockfile." }
+  - { id: AC7, mandatory: true, text: "git diff contains no feature/API/database/schema/authentication/unrelated-deployment change — dependency + lockfile + any strictly-required CI change only." }
+
+validation_commands:
+  - "npm audit --omit=dev (before)"
+  - "npm audit fix (safe only)"
+  - "npm audit --omit=dev (after)"
+  - "npm ls (integrity check)"
+  - "cd apps/api && eslint + tsc + jest + jest-e2e (full, compared to PLACE-026 baseline)"
+  - "cd apps/web && tsc --noEmit + next lint"
+  - "turbo run build --force (tsbuildinfo purged); artifact verification"
+  - "docker build -f apps/api/Dockerfile . ; docker build -f apps/web/Dockerfile . ; boot + health check"
+
+rollback_plan: >-
+  `package-lock.json` (and any `package.json` range bump `npm audit fix` makes within existing
+  semver ranges) can be reverted via `git revert`. No schema, migration, or application-code change
+  is involved, so no runtime rollback beyond redeploying the prior image is required.
+
+stop_conditions:
+  - "A fix requires a major version bump — STOP, do not apply, report as Deferred/Major-review pending separate owner approval."
+  - "Any test regression appears after `npm audit fix` — STOP, investigate before proceeding; do not weaken any assertion to force green."
+  - "Any change would touch API contracts, schema, or auth logic — STOP (out of scope)."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    implements: "OD2-11 (safe patch/minor subset only)"
+    next_authorized_task: "Eligible PLACE Candidate 3 (rate-limit + CORS, OD2-12/13) — recorded, NOT activated"
+  requires_evidence:
+    - "fresh before/after npm audit counts"
+    - "full unit + e2e totals identical to PLACE-026 baseline"
+    - "Docker build + boot + health re-verified"
+
+non_claims: >-
+  This task does NOT perform any major-version dependency upgrade, does NOT implement Eligible
+  Candidate 3, and does NOT begin PLACE-028. Any vulnerability requiring a major bump remains open
+  and is reported, not silently resolved or hidden.
