@@ -33,7 +33,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     placesRepo = createMock<Ctor[0]>({
       list: jest.fn(),
       createPlace: jest.fn(),
-      getCardById: jest.fn(),
+      getCardByIdIncludingInactive: jest.fn(),
       getDetailBySlug: jest.fn(),
       listFaqs: jest.fn(),
       updateScalars: jest.fn(),
@@ -111,7 +111,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       categoriesRepo.findById.mockResolvedValue({ id: CATEGORY_ID });
       placesRepo.existsBySlug.mockResolvedValue(false);
       placesRepo.createPlace.mockResolvedValue('p1');
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
 
       await service.create(dto, 'u1');
 
@@ -127,7 +127,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       categoriesRepo.findById.mockResolvedValue({ id: CATEGORY_ID });
       placesRepo.existsBySlug.mockResolvedValue(false);
       placesRepo.createPlace.mockResolvedValue('p1');
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
 
       await service.create(dto, 'u1');
 
@@ -144,7 +144,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       // Lần đầu trùng, lần sau rảnh → phải gọi existsBySlug 2 lần và đổi slug.
       placesRepo.existsBySlug.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
       placesRepo.createPlace.mockResolvedValue('p1');
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
 
       await service.create(dto, 'u1');
 
@@ -161,11 +161,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   // -------------------------------------------------------------------------
   describe('update', () => {
     beforeEach(() => {
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
     });
 
     it('không tìm thấy → NotFound', async () => {
-      placesRepo.getCardById.mockResolvedValue(null);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
 
       await expect(service.update('p1', {} as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(
         NotFoundException,
@@ -247,7 +247,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   // -------------------------------------------------------------------------
   describe('archive', () => {
     it('không tìm thấy → NotFound, KHÔNG archive, KHÔNG audit', async () => {
-      placesRepo.getCardById.mockResolvedValue(null);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
 
       await expect(service.archive('p1', 'admin1')).rejects.toBeInstanceOf(NotFoundException);
       expect(placesRepo.archive).not.toHaveBeenCalled();
@@ -255,7 +255,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
 
     it('ghi audit place.status_changed với permission Place.Archive và from/to đúng', async () => {
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
 
       await service.archive('p1', 'admin1');
 
@@ -274,7 +274,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
   describe('approve', () => {
     it('không tìm thấy → NotFound, KHÔNG đổi trạng thái, KHÔNG audit', async () => {
-      placesRepo.getCardById.mockResolvedValue(null);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
 
       await expect(service.approve('p1', 'admin1')).rejects.toBeInstanceOf(NotFoundException);
       expect(placesRepo.setStatus).not.toHaveBeenCalled();
@@ -282,7 +282,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
 
     it('đặt PUBLISHED và ghi audit với permission Place.Approve, from = trạng thái cũ', async () => {
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
 
       await service.approve('p1', 'admin1');
 
@@ -335,7 +335,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       categoriesRepo.findById.mockResolvedValue({ id: CATEGORY_ID });
       placesRepo.existsBySlug.mockResolvedValue(false);
       placesRepo.createPlace.mockResolvedValue('p1');
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PENDING });
     }
 
     it('create ngoài hộp: KHÔNG ném lỗi, vẫn ghi Place, và phát cảnh báo có cấu trúc', async () => {
@@ -391,7 +391,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
 
     it('update ngoài hộp: phát tín hiệu kèm place_id', async () => {
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
       const warn = spyWarn();
 
       await service.update('p1', { location: OUT_OF_BOX } as UpdatePlaceDto, 'u2');
@@ -401,7 +401,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
 
     it('update KHÔNG đổi location: không phát tín hiệu', async () => {
-      placesRepo.getCardById.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
       const warn = spyWarn();
 
       await service.update('p1', { name: 'Tên mới' } as UpdatePlaceDto, 'u2');
