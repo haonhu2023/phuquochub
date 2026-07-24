@@ -1,0 +1,96 @@
+schema_version: "1.0"
+
+id: PLACE-025
+workstream: place
+title: "Runtime persistence authority reconciliation (B7 / OD-B7 / GAP-15)"
+type: documentation_governance
+status: completed              # activated and executed this turn by explicit owner authorization
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'activation and execution of PLACE-025 — OD-B7 / GAP-15'."
+  decision: OD-B7 (B7-A), docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md
+  note: >-
+    Documentation and governance reconciliation ONLY. No runtime behaviour change. TypeORM
+    entities+migrations+PostgreSQL are the runtime persistence authority; prisma/schema.prisma is
+    reference documentation only. Objective is to eliminate ambiguity, not to alter any code.
+
+depends_on:
+  - "OD-B7 approved 2026-07-24"
+  - "PLACE-024 completed 2026-07-24 (F-35 resolved)"
+
+investigation_findings:               # Phase 2, evidence-based
+  runtime_layer: "TypeORM — apps/api/src/core/database/database.module.ts: TypeOrmModule.forRootAsync, synchronize:false, autoLoadEntities:true"
+  migrations_owner: "TypeORM — 20 real migrations in apps/api/src/core/database/migrations/; dedicated data-source.ts for CLI (migration:run/revert/generate)"
+  entities_owner: "TypeORM — @Entity classes across apps/api/src/modules/*/entities/*.entity.ts"
+  prisma_executes: false        # no prisma/@prisma/client dependency in any package.json; no binary in node_modules/.bin; zero CI mentions
+  prisma_runtime_dependency: false
+  prisma_documentation_only: true   # schema self-declares 'KHÔNG sinh migration, KHÔNG sinh code, KHÔNG sinh API'; 4 entity/enum comments cite it only for field-consistency cross-reference
+  prisma_generated_client_used: false  # generator client block declared but never run; zero @prisma/client import; no generated artifact
+  removing_prisma_authority_changes_behavior: false  # Prisma never held runtime authority; pure documentation reconciliation
+  already_consistent_docs:
+    - "README.md:98 — 'prisma/schema.prisma là artifact thiết kế cũ... đã chọn TypeORM'"
+    - "docs/delivery/project-registry.yaml:45 — 'reference model (ADR-013); NOT the runtime ORM'"
+    - "enterprise-engineering-framework/project-profile/repository-map.md:146 — 'stale/orphaned artifact... Actual persistence layer is TypeORM'"
+    - "docs/architecture/architecture.md:130 — 'ORM: TypeORM — hỗ trợ PostGIS geometry tốt hơn Prisma'"
+  genuine_ambiguity_found:
+    - "docs/data/database.md §11 heading 'chuẩn bị sinh Prisma' implies active forward-looking Prisma codegen intent — contradicts settled TypeORM-authoritative decision"
+  stop_condition_triggered: false   # evidence fully supports OD-B7; nothing contradicts it
+
+objective: >-
+  Eliminate any remaining ambiguity about runtime persistence authority. Reword the one contradictory
+  documentation heading (database.md §11), add a durable ADR-level closing addendum (ADR-013) formally
+  recording TypeORM as runtime authority and Prisma as reference-only, and close GAP-15 in delivery
+  governance with this evidence. No code, schema, migration, entity, or API contract change.
+
+scope:
+  - "docs/data/database.md §11: reword the heading + add a one-line clarifying note; entity catalog table content unchanged."
+  - "docs/99-decisions/ADR-013-prisma-readiness.md: add a closing addendum recording the OD-B7 authority determination (ADR already Superseded; addendum only, no other section altered)."
+  - "docs/delivery/workstreams/place.yaml: move GAP-15 known_gaps -> resolved_gaps."
+  - "docs/delivery/state.yaml: state transition (completed_tasks + next_action)."
+  - "New task/report/evidence-index for PLACE-025."
+
+out_of_scope:
+  - "Removing, modifying, or regenerating prisma/schema.prisma."
+  - "Any entity, migration, repository, service, SQL, or runtime configuration change."
+  - "Any API contract, DTO, or test-behaviour change."
+  - "B5 (bbox), B6 (index EXPLAIN) — not this task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "docs/data/database.md §11 heading no longer implies active Prisma codegen intent; entity catalog table rows unchanged." }
+  - { id: AC2, mandatory: true, text: "ADR-013 gains a closing addendum stating TypeORM entities+migrations+PostgreSQL are the runtime persistence authority and prisma/schema.prisma is reference-only; no other ADR-013 section altered; ADR status (Superseded) unchanged." }
+  - { id: AC3, mandatory: true, text: "GAP-15 moved to resolved_gaps in workstreams/place.yaml with evidence; delivery state advanced." }
+  - { id: AC4, mandatory: true, text: "prisma/schema.prisma is NOT modified; no entity/migration/repository/service/SQL file is modified." }
+  - { id: AC5, mandatory: true, text: "Full lint/typecheck/unit/e2e green and UNCHANGED (proves zero runtime impact); clean build; health/db/redis verified; ports freed." }
+  - { id: AC6, mandatory: true, text: "git diff is documentation/governance only." }
+
+validation_commands:
+  - "governance YAML + doc parse"
+  - "cd apps/api && eslint + tsc (full)"
+  - "jest (full unit) + jest --config test/jest-e2e.json (full e2e) — must be BYTE-IDENTICAL totals to PLACE-024's"
+  - "turbo run build --force (tsbuildinfo purged); artifacts"
+  - "boot API; curl /api/health; terminate; ports free"
+
+rollback_plan: >-
+  Documentation-only change. `git revert` restores prior wording. No code, schema, migration, or data
+  is touched, so no runtime rollback is required.
+
+stop_conditions:
+  - "Repository evidence contradicts OD-B7 (e.g., Prisma actually executes somewhere) — STOP and report. [Evidence: not the case.]"
+  - "Any non-documentation change becomes necessary — STOP (out of scope)."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    finding: "GAP-15 RESOLVED"
+    next_authorized_task: none — all seven owner decisions (OD-B1..OD-B7) now implemented or otherwise disposed (OD-B5 accepted risk, OD-B6 deferred)
+  requires_evidence:
+    - "database.md §11 heading reworded; ADR-013 addendum added"
+    - "GAP-15 moved to resolved_gaps"
+    - "full unit + e2e totals IDENTICAL to PLACE-024 (proves zero runtime impact)"
+
+non_claims: >-
+  This task does NOT change any runtime behaviour, does NOT modify prisma/schema.prisma, and does NOT
+  implement B5 or B6. It only records, at the architecture-documentation layer, an authority
+  determination that was already true in practice.
