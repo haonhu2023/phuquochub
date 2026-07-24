@@ -21,6 +21,17 @@ export interface AppConfig {
     accessTtl: number;
     refreshTtl: number;
   };
+  rateLimit: {
+    ttl: number;
+    limit: number;
+    authTtl: number;
+    authLimit: number;
+  };
+  cors: {
+    allowedOrigins: string[];
+    credentials: boolean;
+  };
+  trustProxyHops: number;
 }
 
 export default (): AppConfig => ({
@@ -50,4 +61,18 @@ export default (): AppConfig => ({
     accessTtl: parseInt(process.env.JWT_ACCESS_TTL ?? '900', 10),
     refreshTtl: parseInt(process.env.JWT_REFRESH_TTL ?? '1209600', 10),
   },
+  rateLimit: {
+    ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
+    limit: parseInt(process.env.RATE_LIMIT_LIMIT ?? '100', 10),
+    authTtl: parseInt(process.env.RATE_LIMIT_AUTH_TTL ?? '60', 10),
+    authLimit: parseInt(process.env.RATE_LIMIT_AUTH_LIMIT ?? '10', 10),
+  },
+  cors: {
+    allowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:3000')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
+    credentials: (process.env.CORS_CREDENTIALS ?? 'false') === 'true',
+  },
+  trustProxyHops: parseInt(process.env.TRUST_PROXY_HOPS ?? '0', 10),
 });

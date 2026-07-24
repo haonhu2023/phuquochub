@@ -153,6 +153,7 @@ jobs:
             -e DB_SSL=false -e DB_SYNCHRONIZE=false -e DB_LOGGING=false \
             -e REDIS_HOST=localhost -e REDIS_PORT=6379 -e REDIS_URL=redis://localhost:6379 \
             -e JWT_ACCESS_SECRET=ci-access-secret-please-change -e JWT_REFRESH_SECRET=ci-refresh-secret-please-change \
+            -e CORS_ALLOWED_ORIGINS=http://localhost:3000 \
             phuquochub-api:ci
           for i in $(seq 1 20); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/health || true)

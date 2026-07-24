@@ -111,6 +111,16 @@ services:
       # Đổi hai secret này khi chạy thật — đây là placeholder cho môi trường local/staging.
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret-min-16-chars}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-min-16-chars}
+      # PLACE-028 (OD2-12/OD2-13): NODE_ENV=production ở đây bắt buộc CORS_ALLOWED_ORIGINS phải
+      # có giá trị (fail-fast nếu thiếu) — mặc định khớp cổng của service `web` bên dưới (3000).
+      # Đổi thành domain thật khi có (chưa có domain production nào được xác nhận trong repo này).
+      RATE_LIMIT_TTL: ${RATE_LIMIT_TTL:-60}
+      RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-100}
+      RATE_LIMIT_AUTH_TTL: ${RATE_LIMIT_AUTH_TTL:-60}
+      RATE_LIMIT_AUTH_LIMIT: ${RATE_LIMIT_AUTH_LIMIT:-10}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      CORS_CREDENTIALS: ${CORS_CREDENTIALS:-false}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
     ports:
       - "4000:4000"
 

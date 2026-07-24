@@ -4,6 +4,7 @@ import { LoggerModule } from './core/logger/logger.module';
 import { AuditModule } from './core/audit/audit.module';
 import { DatabaseModule } from './core/database/database.module';
 import { RedisModule } from './core/redis/redis.module';
+import { RateLimitModule } from './core/rate-limit/rate-limit.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -31,6 +32,7 @@ import { SourcesModule } from './modules/sources/sources.module';
     AuditModule,
     DatabaseModule,
     RedisModule,
+    RateLimitModule,
     HealthModule,
     AuthModule,
     UsersModule,
