@@ -1,0 +1,103 @@
+schema_version: "1.0"
+
+id: PLACE-028
+workstream: place
+title: "API bootstrap hardening — rate limiting (OD2-12) + CORS (OD2-13)"
+type: security_hardening
+status: completed
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'execution of Eligible Candidate 3: PLACE-028 — API Bootstrap Hardening'."
+  decision: "Eligible PLACE Candidate 3, docs/delivery/decisions/OWNER-APPROVAL-SESSION-2026-07-24.md — implements OD2-12 + OD2-13 (both Approved)."
+
+depends_on:
+  - "PLACE-027 completed 2026-07-24 (dependency security remediation)"
+  - "Owner Approval Session — OD2-12, OD2-13 APPROVED"
+
+preconditions_verified:
+  - "PLACE-027 completed — state.yaml completed_tasks"
+  - "Working tree clean at task start"
+  - "current.task: none"
+  - "Eligible Candidate 3 approved, not yet activated"
+  - "Current bootstrap behaviour understood: apps/api/src/main.ts:18 `enableCors({origin:true,credentials:true})`, no rate limiting anywhere, no trust-proxy config"
+
+investigation_findings:
+  cors_current: "Permissive: origin:true (reflects any origin), credentials:true. Zero cookie usage anywhere in the codebase (grep-verified) — bearer-token auth only (Authorization header), so credentials serves no purpose today."
+  rate_limit_current: "None. No @nestjs/throttler or equivalent dependency anywhere."
+  proxy_trust_current: "Not configured (no app.set('trust proxy', ...)). No real reverse proxy deployed yet (infrastructure/nginx is a .gitkeep stub, per PLACE-026)."
+  dev_origin: "http://localhost:3000 (apps/web `next dev -p 3000`)"
+  production_origin: "UNKNOWN — no real domain provisioned. Must be env-configurable, never hardcoded."
+  http_methods_in_use: "GET, POST, PATCH, DELETE only (grep-verified across all controllers) — no PUT."
+  openapi_runtime: "None — no SwaggerModule/DocumentBuilder bootstrap exists; docs/api/openapi.yaml is hand-maintained only, nothing to break."
+  busiest_e2e_file_request_count: "~14 requests (geo-bbox-determinism.e2e-spec.ts) — sizes the default rate limit floor."
+
+objective: >-
+  Harden the public API bootstrap for production: rate limiting (OD2-12) and an explicit,
+  environment-aware CORS allow-list (OD2-13). Preserve all valid existing API behaviour. Security
+  hardening only — no product feature, API contract, schema, or auth-logic change.
+
+scope:
+  - "Install @nestjs/throttler (^6.4.0, compatible with the installed NestJS ^10.4.4 — no major bump)."
+  - "Global rate limit, env-configurable (RATE_LIMIT_TTL/RATE_LIMIT_LIMIT), default 60s/100 req."
+  - "Stricter limit on /api/auth/login and /api/auth/register (RATE_LIMIT_AUTH_TTL/RATE_LIMIT_AUTH_LIMIT, default 60s/10) — evidenced brute-force mitigation."
+  - "/api/health exempted from throttling (@SkipThrottle) — liveness/readiness probe."
+  - "Explicit CORS allow-list via CORS_ALLOWED_ORIGINS (comma-separated); dev default localhost:3000; production REQUIRED (fail-fast at boot if missing/empty, matching the existing JWT-secret precedent)."
+  - "CORS_CREDENTIALS env var, default false (no cookie usage exists); methods/headers explicitly listed."
+  - "TRUST_PROXY_HOPS env var, default 0 (safe — no real proxy deployed); app.set('trust proxy', N) only when N>0."
+  - ".env.example, env.validation.ts, configuration.ts, docker-compose.prod.yml, deployment.md/security.md documentation."
+  - "Focused rate-limit + CORS tests; full regression verification; Docker rebuild + boot + live 429/CORS/preflight verification."
+
+out_of_scope:
+  - "Any NestJS or Next.js major-version change (PLACE-027's deferred migration stays deferred)."
+  - "A distributed/Redis-backed limiter (not required by OD2-12; single-instance in-memory limiter, limitation recorded)."
+  - "Any API contract, DTO, schema, migration, or authentication-logic change."
+  - "Hardcoding an unverified production domain."
+  - "Any product feature."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Requests below the configured limit succeed unchanged; requests above return HTTP 429 with a documented default limit." }
+  - { id: AC2, mandatory: true, text: "/api/health is exempt from throttling; no other endpoint is exempted without evidence." }
+  - { id: AC3, mandatory: true, text: "CORS allows only configured origin(s); rejects unapproved origins; requests without an Origin header remain usable; OPTIONS preflight succeeds for supported methods/headers." }
+  - { id: AC4, mandatory: true, text: "Credentials are not enabled unless CORS_CREDENTIALS=true is explicitly set; wildcard origin is never combined with credentials." }
+  - { id: AC5, mandatory: true, text: "Production boot fails fast if CORS_ALLOWED_ORIGINS is missing/empty; malformed rate-limit config fails safely (falls back to documented defaults, does not crash on an invalid value)." }
+  - { id: AC6, mandatory: true, text: "Full lint/typecheck/unit/e2e green, totals identical to the PLACE-027 baseline (221 unit / 44 e2e) plus the new focused tests — proving zero regression to auth/authz/validation/response-contract behaviour." }
+  - { id: AC7, mandatory: true, text: "Docker images rebuild and boot from the updated code; live 429, CORS-allow, CORS-reject, and preflight checks pass against the running container; dev Postgres/Redis and their data remain untouched." }
+
+validation_commands:
+  - "cd apps/api && eslint + tsc"
+  - "jest (rate-limit unit tests with a deliberately low limit) + jest (CORS unit/e2e tests)"
+  - "jest (full unit, compare 221 baseline) + jest-e2e (full e2e, compare 44 baseline)"
+  - "turbo run build --force (tsbuildinfo purged)"
+  - "docker build -f apps/api/Dockerfile . ; docker build -f apps/web/Dockerfile ."
+  - "docker compose -p <isolated-project-name> -f docker-compose.prod.yml config"
+  - "boot API image; curl /api/health; curl with allowed/disallowed Origin; OPTIONS preflight; low-limit 429 proof"
+
+rollback_plan: >-
+  All changes are additive and config-driven (new dependency, new env vars, new guard registration,
+  documentation). `git revert` fully restores the prior permissive-CORS/no-rate-limit behaviour. No
+  schema, migration, or API contract is touched.
+
+stop_conditions:
+  - "Evidence contradicts OD2-12/OD2-13 (none found) — STOP and report."
+  - "A NestJS major bump is required to install the throttler — STOP (none required; verified compatible)."
+  - "Any regression appears in auth/authz/validation/response-contract behaviour — STOP, investigate, do not weaken assertions."
+  - "Any Docker Compose verification command would reconcile/remove the dev stack — STOP; always use an isolated -p project name."
+
+completion_transition:
+  on_success:
+    task_status: completed
+    set_state: { current.task: none, current.status: awaiting_task_authorization }
+    implements: "OD2-12, OD2-13 (Eligible Candidate 3 — fully implemented)"
+    next_authorized_task: "None currently defined — see final report for the exact next governance action"
+  requires_evidence:
+    - "live 429 proof with a deliberately low test limit"
+    - "live CORS allow/reject + preflight proof"
+    - "full unit + e2e totals compared to PLACE-027 baseline, plus new focused tests"
+    - "Docker rebuild + boot re-verified; dev Postgres data confirmed intact afterward"
+
+non_claims: >-
+  This task does NOT perform the NestJS/Next major-version migration (remains deferred, per
+  PLACE-027). It does NOT implement a distributed rate limiter — the in-memory limiter's
+  single-instance limitation is explicitly recorded. It does NOT provision a real production CORS
+  origin — that value remains an owner-supplied environment variable.
