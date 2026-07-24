@@ -305,3 +305,85 @@ describe('PlacesRepository.list — thứ tự phân trang xác định (GAP-12)
     expect(sql(repo.query.mock.calls[0][0])).not.toContain('ORDER BY');
   });
 });
+
+// F-34 (PLACE-023): bboxClusters phải CẮT ở LIMIT một cách XÁC ĐỊNH.
+describe('PlacesRepository.bboxClusters — cắt LIMIT xác định (F-34)', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo);
+  });
+
+  async function capturedQuery(): Promise<string> {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.bboxClusters({
+      minLng: 103.4,
+      minLat: 9.8,
+      maxLng: 104.2,
+      maxLat: 10.5,
+      cellDeg: 0.01,
+      limit: 500,
+    });
+    return repo.query.mock.calls[0][0] as string;
+  }
+
+  it('có ORDER BY cnt DESC, sample_id ASC NGAY TRƯỚC LIMIT', async () => {
+    const q = sql(await capturedQuery());
+    expect(q).toContain('ORDER BY cnt DESC, sample_id ASC LIMIT');
+  });
+
+  // ORDER BY nội bộ trong `array_agg(p.id ORDER BY p.id)` khiến orderKeysFrom (bắt ORDER BY ĐẦU
+  // TIÊN) không dùng được ở đây; trích mệnh đề TRUNCATION = ORDER BY CUỐI CÙNG trước LIMIT.
+  function truncationOrderKeys(query: string): OrderKey[] {
+    const s = sql(query);
+    const clause = s.slice(s.lastIndexOf('ORDER BY')).replace(/^ORDER BY /, '').replace(/ LIMIT.*$/, '');
+    return clause
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => ({ col: p.split(/\s+/)[0], dir: /\bDESC\b/.test(p) ? 'DESC' : 'ASC', nullsLast: false }));
+  }
+
+  it('ORDER BY truncation trích từ SQL thật = [cnt DESC, sample_id ASC] và kết thúc bằng khoá DUY NHẤT sample_id', async () => {
+    const keys = truncationOrderKeys(await capturedQuery());
+    expect(keys).toEqual([
+      { col: 'cnt', dir: 'DESC', nullsLast: false },
+      { col: 'sample_id', dir: 'ASC', nullsLast: false },
+    ]);
+    // Khoá cuối là DUY NHẤT (id nhỏ nhất mỗi cell) ⇒ đủ cho thứ tự toàn phần trước khi cắt.
+    expect(keys[keys.length - 1].col).toBe('sample_id');
+    expect(keys[keys.length - 1].dir).toBe('ASC');
+  });
+
+  it('CHỈ đổi thứ tự: grouping, cell size ($5), tổng hợp và WHERE giữ nguyên', async () => {
+    const q = sql(await capturedQuery());
+    // Grouping theo lưới đều không đổi.
+    expect(q).toContain('GROUP BY floor(ST_X(p.location::geometry) / $5), floor(ST_Y(p.location::geometry) / $5)');
+    // Tổng hợp/centroid + sample không đổi.
+    expect(q).toContain('count(*)::int AS cnt');
+    expect(q).toContain('avg(ST_X(p.location::geometry)) AS lng');
+    expect(q).toContain('avg(ST_Y(p.location::geometry)) AS lat');
+    expect(q).toContain('(array_agg(p.id ORDER BY p.id))[1] AS sample_id');
+    // WHERE (chỉ published, chưa xoá, trong envelope) không đổi.
+    expect(q).toContain("p.deleted_at IS NULL AND p.status = 'published'");
+    expect(q).toContain('ST_Intersects(p.location::geometry, ST_MakeEnvelope($1,$2,$3,$4,4326))');
+    // LIMIT vẫn là tham số $6 (không đổi cơ chế/không hard-code 500).
+    expect(q).toContain('LIMIT $6');
+  });
+
+  it('comparator theo ORDER BY thật: cnt DESC rồi sample_id ASC là thứ tự toàn phần trên cell hoà cnt', async () => {
+    const keys = truncationOrderKeys(await capturedQuery());
+    const cmp = comparatorFor(keys);
+    // 3 cell hoà cnt=1 (tie) — phải xếp theo sample_id ASC một cách xác định.
+    const rows: SortRow[] = [
+      { cnt: 1, sample_id: 'c' },
+      { cnt: 1, sample_id: 'a' },
+      { cnt: 1, sample_id: 'b' },
+      { cnt: 5, sample_id: 'z' }, // cụm dày nhất phải lên đầu (cnt DESC)
+    ];
+    const sorted = [...rows].sort(cmp).map((r) => r.sample_id);
+    expect(sorted).toEqual(['z', 'a', 'b', 'c']);
+  });
+});
