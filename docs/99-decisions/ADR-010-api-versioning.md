@@ -1,6 +1,51 @@
 # ADR-010 — Chiến lược phiên bản API (API Versioning)
 
-**Status:** Proposed
+**Status:** Accepted (2026-07-24)
+
+> **Accepted 2026-07-24** by owner decision OD-B1 (`docs/delivery/decisions/OWNER-DECISIONS-2026-07-24.md`).
+> Adjudicated alongside the list-pagination contract (GAP-05/GAP-10). The versioning strategy below
+> (URI-prefix major versioning, additive-within-major, deprecation via `Deprecation`/`Sunset`) is
+> now the governing policy for evolving every API contract. The list-pagination addendum below
+> applies that policy to `GET /api/places`.
+
+## Addendum — List pagination contract (GAP-05 / GAP-10, accepted 2026-07-24)
+
+**Decision context.** `openapi.yaml listPlaces` historically advertised `status`/`sort`/`cursor`
+parameters that the implementation never built; the runtime uses OFFSET `page`/`limit` and rejects
+unknown params with HTTP 400 (`whitelist + forbidNonWhitelisted`). Owner decision B1-A ratifies the
+**existing offset behaviour** as the authoritative contract rather than building cursor pagination.
+
+**Selected offset-pagination contract (`GET /api/places`).**
+- `page`: integer ≥ 1, default **1**. Invalid (`< 1` or non-integer) → **HTTP 400** (`VALIDATION_ERROR`).
+- `limit`: integer ≥ 1, default **20**, values `> 100` are **clamped to 100** (response still 200, `meta.pageSize` reflects the clamp). Invalid (`< 1` or non-integer) → **HTTP 400**.
+- Ordering: **fixed server-side** `rating_avg DESC NULLS LAST, created_at DESC, id ASC` (unique final key ⇒ deterministic paging). Client cannot control ordering.
+- Response pagination metadata (`meta`): `timestamp`, `page`, `pageSize`, `total`, `totalPages`.
+- Unknown / unsupported params (incl. deprecated `status`/`sort`/`cursor`) → **HTTP 400**.
+
+**Compatibility rules.** This is a `v1` clarification, fully backward compatible — no request that
+previously succeeded now fails, and no response shape changes. Correcting the documented error code
+(422 → 400 for invalid `page`/`limit`/`price_range` on this endpoint) aligns the contract with the
+long-standing runtime; it is a documentation correction, not a behaviour change.
+
+**Future cursor-pagination policy.** Cursor/keyset pagination is **explicitly not adopted** for `v1`.
+If introduced later it MUST arrive as a **new major version** (`/api/v2` or a `/public/v1` variant)
+per this ADR's additive-vs-breaking rules — never by silently repurposing the offset params.
+
+**Migration / versioning expectations.** The deprecated `status`/`sort`/`cursor` params are RETAINED
+in the OpenAPI as `deprecated: true` (returning 400), not deleted, because no client registry exists
+to rule out external consumers (obligation carried from OD-F-6). Their removal is a **breaking change**
+deferred to the next major version, signalled via `Deprecation` + `Sunset` headers with the ≥ 6-month
+window defined below.
+
+**Consequences.** The public list contract is now unambiguous and matches runtime; GAP-05/GAP-10 are
+resolved by decision. The cost is carrying three documented-but-deprecated params until a major bump.
+
+**Rejected alternatives (for the list contract).** B1-B (implement cursor pagination) — rejected as
+premature and breaking at current scale. B1-C (delete the deprecated params immediately) — rejected
+because external consumers cannot be ruled out without version control history at the time of OD-F-6.
+
+---
+
 
 ## Mục đích
 Chốt **chiến lược quản lý phiên bản (versioning)** cho toàn bộ bề mặt API của PhuQuocHub, để có thể phát triển hợp đồng (contract) mà không phá vỡ client hiện có — thống nhất giữa 4 kênh Web · Mobile · Public · Partner (xem [api.md §2](../api/api.md)).

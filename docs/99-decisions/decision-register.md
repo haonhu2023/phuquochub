@@ -17,7 +17,7 @@
 | [ADR-007](ADR-007-rbac-model.md) | Mô hình Role/Permission (RBAC, bỏ role ENUM) | **Accepted** (2026-07-12) | ✓ |
 | [ADR-008](ADR-008-verification-model.md) | Mô hình xác minh (Verification; bỏ `is_verified`, dùng `verification_status`) | **Accepted** (2026-07-12) | ✓ |
 | [ADR-009](ADR-009-media-model.md) | Mô hình media (một bảng `media`, exclusive arc) | **Accepted** (2026-07-12) | ✓ |
-| [ADR-010](ADR-010-api-versioning.md) | Chiến lược phiên bản API (API Versioning) | Proposed | ✗ |
+| [ADR-010](ADR-010-api-versioning.md) | Chiến lược phiên bản API (API Versioning) | **Accepted** (2026-07-24) | ✗ |
 | [ADR-014](ADR-014-revision-model.md) | Mô hình phiên bản (`wiki_revisions`, retire `place_revisions`) | **Accepted** (2026-07-12) | ✓ |
 | [ADR-015](ADR-015-business-ownership-model.md) | Mô hình sở hữu cơ sở (Business Place-centric; `business_claims`+`business_members`; `business_id→places`) | **Accepted** (2026-07-13) | ✓ |
 | [ADR-016](ADR-016-audit-log-model.md) | Mô hình Nhật ký Kiểm toán (`audit_logs` append-only, đa hình, không cascade) — Trust Layer GAP-1 | **Accepted** (2026-07-13) | ✓ |
