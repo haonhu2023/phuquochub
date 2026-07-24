@@ -30,22 +30,23 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-030 completed 2026-07-24 (Production observability foundation —
-                                  # Candidate D, logging sub-scope). AppLoggerService wired via
-                                  # app.useLogger(await app.resolve(...)) (TD-03 closed); correlation-ID
-                                  # middleware (X-Request-Id, crypto.randomUUID, per-request state, no
-                                  # new dependency); structured request/exception logging; meta.requestId
-                                  # populated (wire-contract field existed, was unused); redaction
-                                  # expanded (snake_case + cookie/DB/Redis-credential keys, case-
-                                  # insensitive). Two real runtime bugs found+fixed via live Docker
-                                  # verification: app.get() on a Scope.TRANSIENT provider throws (fixed:
-                                  # app.resolve()); AppLoggerService's own `new Logger()` delegate caused
-                                  # infinite recursion once overridden (fixed: ConsoleLogger delegate).
-                                  # Unit 251/251 (231+20 new), e2e 59/59 (51+8 new) — all 9 pre-existing
-                                  # e2e files unmodified. Live-verified: correlation ID header+body match,
-                                  # structured logs, zero secret leakage across a real register/login,
-                                  # PLACE-029's DB-credential fail-fast unaffected. See
-                                  # docs/delivery/tasks/PLACE-030.yaml.
+  task: none                      # PLACE-031 completed 2026-07-24 (Release & rollback readiness).
+                                  # docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md written, distinct from
+                                  # ENVIRONMENT-SETUP-RUNBOOK.md; documents the rollback mechanism
+                                  # already designed in deployment.md §9 (redeploy previous image
+                                  # tag), not a new invention. A real local rollback rehearsal was
+                                  # executed and verified: build release-N, boot+health-check+auth
+                                  # round-trip; build release-N1 (simulated next release), boot+
+                                  # health-check; ROLLBACK (stop N1, redeploy N), health-check again;
+                                  # a user created while N1 was running remained fully usable after
+                                  # the rollback, confirming data continuity (state lives in
+                                  # Postgres, not the container). PLACE-029's DB-credential fail-fast
+                                  # and PLACE-030's correlation-ID/structured-logging guarantees both
+                                  # re-confirmed live throughout. Zero application code touched: unit
+                                  # 251/251 and e2e 59/59 both identical to the PLACE-030 baseline.
+                                  # Dev stack confirmed unchanged (migrations=20, places=49) before
+                                  # and after; all rehearsal containers/images/test data removed. See
+                                  # docs/delivery/tasks/PLACE-031.yaml.
   status: awaiting_task_authorization
 
 legacy_build_chain:
@@ -196,42 +197,79 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-029 (2026-07-24) implemented Candidate A (Critical dependency hardening) from
-    docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md, the only candidate requiring
-    no further Owner decision. bcrypt 5.1.1 -> 6.0.0: a clean, isolated major bump (only dependency
-    touched) that removes the entire @mapbox/node-pre-gyp/tar install-tooling chain outright —
-    confirmed via npm ls returning empty for both tar and @mapbox/node-pre-gyp tree-wide, not merely
-    within bcrypt's own branch. No breaking change to bcrypt's public API (hash/compare unchanged);
-    verified live via a real register -> login -> wrong-password round-trip against the built
-    production Docker image on Alpine/musl (bcrypt 6's prebuildify-shipped binary loaded directly, no
-    compile step needed despite the pre-existing python3/make/g++ toolchain being available as a
-    fallback). DB_HOST/DB_USER/DB_PASSWORD/DB_NAME changed from Joi .default() to a
-    when(NODE_ENV,{is:'production',then:required()}) pattern identical to the one already proven by
-    CORS_ALLOWED_ORIGINS (PLACE-028); empty-string DB_PASSWORD also now rejected in production.
-    Live-proven: booting with NODE_ENV=production and DB_PASSWORD unset, or set to '', both crash
-    immediately with a named Joi error, before any DB connection attempt. npm audit --omit=dev: 18 ->
-    15 total (1 critical -> 0, 7 high -> 5 [multer/file-type/lodash still open, both no-reachable-path
-    or config-only-input], 10 moderate unchanged). Zero regression: unit 231/231 (223 baseline + 8 new
-    env.validation.spec.ts), e2e 51/51 (identical to PLACE-028 baseline). Dev stack confirmed healthy
-    and unaffected throughout (migrations=20, places=49 both unchanged); one live-created test user
-    deleted after verification. NOT performed: NestJS 10->11 or Next.js 14->16 migration (both remain
-    Owner decisions, recommended timing "before public launch" per the Candidate Selection report's
-    Phase 5); the remaining 15 production dependency findings are unchanged in count/character.
-    Deriving another task without explicit owner authorization is NOT permitted.
+    PLACE-031 (2026-07-24) implemented Release & Rollback Readiness, Candidate E from a fresh
+    PLACE-031 candidate assessment performed after PLACE-030 (weighted score 5.77/10,
+    RECOMMENDED FOR PLACE-031 — the highest-scoring candidate with zero Owner dependency;
+    Candidate B, NestJS 10->11, scored higher at 6.06/10 but was reported separately as HIGHEST
+    STRATEGIC PRIORITY -- BLOCKED BY OWNER INPUT since its migration timing was never separately
+    decided). Closed two gaps named still-open in the production-readiness reassessment and
+    untouched through PLACE-030: no release/rollback runbook existed
+    (ENVIRONMENT-SETUP-RUNBOOK.md is a dev-machine environment-relocation guide, confirmed by full
+    read to have zero overlap), and no rollback had ever been rehearsed, not even locally. Wrote
+    docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md, grounded in the mechanism already designed in
+    deployment.md §9 (redeploy the previous immutable image tag) -- documented, not invented.
+    Executed and live-verified a real local rollback rehearsal against the actual dev
+    Postgres/Redis: built+booted release-N (health 200, full auth round-trip 201/200/401,
+    structured [HTTP] logs with correct correlation IDs), built+booted release-N1 (simulated next
+    release, same reviewed commit, health 200), then ROLLED BACK (stopped N1, redeployed N,
+    health 200 again) and proved DATA CONTINUITY -- a user created while N1 was running remained
+    fully usable after the rollback, confirming state lives in Postgres, not the container.
+    PLACE-029's DB-credential fail-fast re-confirmed live after the full cycle. Zero apps/api,
+    apps/web, or packages/* file touched: unit 251/251 and e2e 59/59 both IDENTICAL to the
+    PLACE-030 baseline, plus a clean 4/4 build. Dev stack confirmed unchanged (migrations=20,
+    places=49) before and after; all rehearsal artifacts removed. NOT performed: any real
+    staging/production rollback (no target host exists); NestJS 10->11 or Next.js 14->16
+    migration (both remain Owner decisions on timing); the remaining 15 production dependency
+    findings are unchanged. Deriving another task without explicit owner authorization is NOT
+    permitted.
   eligible_candidate_disposition:
     - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
-    - "Candidate 2 (dependency remediation, OD2-11) — PARTIALLY IMPLEMENTED (PLACE-027 safe-only subset; PLACE-029 closed the critical tar finding via the isolated bcrypt bump); the NestJS/Next major-version migration remains PENDING a separate owner decision."
+    - "Candidate 2 (dependency remediation, OD2-11) — PARTIALLY IMPLEMENTED (PLACE-027 safe-only subset; PLACE-029 closed the critical tar finding via the isolated bcrypt bump); the NestJS/Next major-version migration remains PENDING a separate owner decision on timing."
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
-    - "PLACE-029 Candidate B (NestJS 10->11), Candidate C (Next.js 14->16) — ELIGIBLE AFTER OWNER INPUT, not yet authorized."
+    - "PLACE-029 Candidate B (NestJS 10->11), Candidate C (Next.js 14->16) — ELIGIBLE AFTER OWNER INPUT (migration-timing decision), not yet authorized. Candidate B is the current HIGHEST STRATEGIC PRIORITY per the fresh PLACE-031 assessment, blocked only on that decision."
     - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (external signal + alert channel, OD2-6) remains ELIGIBLE AFTER OWNER INPUT, not yet authorized."
+    - "PLACE-031 candidate assessment Candidate E (release & rollback readiness) — IMPLEMENTED (PLACE-031). Candidate F (product delivery acceleration) — DEFER, no evidence-backed bounded scope currently exists."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "Whether/when to authorize the NestJS 10->11 and/or Next.js 14->16 migrations (Candidates B/C from docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md) — both independently recommended 'before public launch', not urgent for staging/beta. Separately, the monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is now IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision."
+  pending_owner_decision: "Whether/when to authorize the NestJS 10->11 and/or Next.js 14->16 migrations (Candidates B/C from docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md, re-scored in the fresh PLACE-031 candidate assessment) — B is now the highest-scoring candidate overall (6.06/10) but blocked purely on a migration-timing confirmation (before staging/beta/public-launch/defer) that has never been separately made since PLACE-027 narrowed OD2-11's original 'full migration' policy approval. Separately: the monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is now IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision. No answer to either is assumed or invented here."
   release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 5 high + 10 moderate (prod) dependency vulnerabilities remain OPEN pending the major-version migration decisions above (unchanged since PLACE-029). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-031
+    completed: "2026-07-24"
+    result: >-
+      Release & rollback readiness (fresh PLACE-031 candidate assessment, Candidate E, weighted
+      score 5.77/10, RECOMMENDED FOR PLACE-031 — the highest-scoring candidate with zero Owner
+      dependency; Candidate B, NestJS 10->11, scored higher at 6.06/10 but was reported separately
+      as HIGHEST STRATEGIC PRIORITY -- BLOCKED BY OWNER INPUT since its migration timing was never
+      separately decided). Closed two gaps named as still-open in the production-readiness
+      reassessment and untouched by PLACE-026 through PLACE-030: no release/rollback runbook
+      existed (ENVIRONMENT-SETUP-RUNBOOK.md is a dev-machine environment-relocation guide, confirmed
+      by full read to have zero overlap), and no rollback had ever been rehearsed, not even
+      locally. Wrote docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md, grounded in the rollback mechanism
+      already designed in docs/architecture/deployment.md §9 (redeploy the previous immutable image
+      tag) -- documented, not invented. Executed a real local rollback rehearsal against the actual
+      dev Postgres/Redis: built phuquochub-api:release-N (current HEAD) and booted it (health 200,
+      full auth round-trip register->login->wrong-password 201/200/401, structured [HTTP] logs with
+      correct correlation IDs); built phuquochub-api:release-N1 (a simulated next release from the
+      same reviewed commit) and booted it (health 200); executed the ROLLBACK (stopped N1, redeployed
+      N); re-verified health 200; and proved DATA CONTINUITY -- a user created while N1 was running
+      remained fully queryable and able to log in after the rollback to N, confirming application
+      state lives in Postgres/Redis, not the container. PLACE-029's DB-credential fail-fast
+      (DB_PASSWORD unset -> immediate crash) was re-confirmed live after the full rehearsal cycle,
+      unaffected. Zero apps/api, apps/web, or packages/* file was touched -- confirmed by full
+      regression: unit 251/251 (34 suites) and e2e 59/59 (10 suites), BOTH IDENTICAL to the
+      PLACE-030 baseline, plus a clean 4/4 production build. Dev-stack integrity confirmed
+      unchanged (migrations=20, places=49, both before and after); the one rehearsal-created test
+      user was deleted, both rehearsal images and the container removed. Not claimed: no real
+      staging/production rollback was performed (no target host exists in this repository/session);
+      no blue-green/zero-downtime cutover; no CI/CD-automated rollback wiring; no
+      docker-compose.prod.yml modification (deliberately avoided -- the rehearsal used plain docker
+      build/run with distinct tags instead). No PLACE-032 created or started.
+    report: docs/delivery/reports/PLACE-031-release-rollback-readiness-report.md
+    evidence_index: docs/delivery/evidence/PLACE-031-release-rollback-readiness-evidence-index.md
   - id: PLACE-030
     completed: "2026-07-24"
     result: >-

@@ -1,0 +1,124 @@
+schema_version: "1.0"
+
+id: PLACE-031
+workstream: place
+title: "Release & rollback readiness — runbook + locally-rehearsed rollback drill"
+type: operational_readiness
+status: completed
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'PLACE-031 — Execute the Approved Recommended Candidate'."
+  decision: "Fresh PLACE-031 candidate assessment (this session, 2026-07-24) — Candidate E (Release & Rollback Readiness), weighted score 5.77/10, disposition RECOMMENDED FOR PLACE-031, the only near-top-scoring candidate with zero Owner dependency."
+
+depends_on:
+  - "PLACE-030 completed 2026-07-24 (production observability foundation)"
+
+preconditions_verified:
+  - "PLACE-029 completed — state.yaml completed_tasks"
+  - "PLACE-030 completed — state.yaml completed_tasks"
+  - "Working tree clean at task start"
+  - "current.task: none"
+  - "No docs/delivery/tasks/PLACE-031.yaml existed before this task"
+  - "No conflicting delivery task active"
+  - "No unresolved Owner decision blocks this candidate (confirmed: candidate requires none)"
+  - "Docker Desktop running; phuquoc-postgres/-redis/-minio healthy"
+
+repository_evidence_supporting_selection:
+  - "PRODUCTION-READINESS-REASSESSMENT-V2-2026-07-24.md Phase 3, item #21 (Rollback readiness): 'STILL OPEN — no deployed environment exists to roll back from; no rollback rehearsal has ever been performed; git revert capability exists at the code level only.' — unchanged by PLACE-029/030, neither touched deployment mechanics."
+  - "Same report, item #38 (Release runbook): 'STILL OPEN — docs/delivery/ENVIRONMENT-SETUP-RUNBOOK.md exists but is a local dev-environment setup guide, not a release/rollback runbook; no such document exists.' — confirmed by direct read of that file in this task's preflight: it is a 2026-07-22 F:->D: environment-relocation guide, zero overlap with release/rollback."
+  - "docs/architecture/deployment.md §9 already designs the intended rollback mechanism precisely: 'Rollback: deploy lại image tag trước (immutable) + migration forward-fix; smoke fail -> tự rollback' — this task rehearses exactly that mechanism locally, it does not invent a new one."
+  - "docker-compose.prod.yml and both Dockerfiles confirmed present and unchanged since PLACE-026/028/029/030 — the build/boot mechanics this task rehearses already exist and are already proven individually; what has never been proven is the ROLLBACK step specifically."
+
+objective: >-
+  Close two evidence-named, still-open operational-readiness gaps — the absence of a
+  release/rollback runbook and the fact that a rollback has never been rehearsed, not even
+  locally — entirely within the repository, with zero external infrastructure and zero Owner
+  decision, by producing a genuine runbook and executing a real local rollback drill using the
+  exact Docker verification pattern already proven in PLACE-026/028/029/030.
+
+scope:
+  - "docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md (new): pre-release checklist, deploy procedure (using the existing Dockerfiles / docker-compose.prod.yml build mechanics), health-verification steps, and an explicit rollback procedure (redeploy the prior image tag), mirroring deployment.md §9's already-designed mechanism."
+  - "A locally-rehearsed rollback drill: build image tag N (baseline = current HEAD), boot, verify health; build image tag N+1 (a trivial simulated 'release' — a no-op rebuild at a distinct tag); boot, verify health; execute the documented rollback (stop N+1, redeploy N); verify health again. Proves the mechanic works without a real staging host."
+  - "Delivery evidence (report, evidence index) and state updates, per repository convention."
+
+out_of_scope:
+  - "Any application code change (apps/api, apps/web, packages/*)."
+  - "Any dependency change."
+  - "Any NestJS or Next.js migration."
+  - "Any monitoring/alerting integration."
+  - "Any modification to docker-compose.prod.yml's actual configuration values — the rehearsal uses plain `docker build`/`docker run` with distinct tags, entirely outside docker-compose, specifically to avoid touching the PLACE-026-established config."
+  - "Any real staging deployment, domain, TLS, or hosting-provider action — none of those exist in this repository/session and none is created here."
+  - "PLACE-032 or any successor task."
+
+implementation_phases:
+  - phase: 1
+    name: "Write the runbook"
+    detail: "docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md, grounded in deployment.md §9's existing design language and the actual repository build/boot commands already proven in prior PLACE tasks."
+  - phase: 2
+    name: "Rehearse the rollback locally"
+    detail: "Build+boot+verify tag N; build+boot+verify tag N+1; execute rollback to N; verify again. All against the real dev Postgres/Redis, with baseline row counts recorded before and confirmed unchanged after."
+  - phase: 3
+    name: "Verify no regression"
+    detail: "Since no application code is touched, confirm lint/typecheck/unit/e2e/build are unaffected (expected: identical totals to PLACE-030's baseline) and dev-stack integrity is preserved."
+  - phase: 4
+    name: "Delivery evidence + state"
+    detail: "Report, evidence index, state.yaml/workstreams update, grouped commits."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md exists, is distinct from ENVIRONMENT-SETUP-RUNBOOK.md, and covers pre-release checklist, deploy procedure, health verification, and an explicit rollback procedure as one coherent document." }
+  - { id: AC2, mandatory: true, text: "A real two-tag rollback rehearsal is performed and evidenced: tag N boots and passes health check; tag N+1 boots and passes health check; the documented rollback restores tag N and it again passes health check — all against the real dev Postgres/Redis." }
+  - { id: AC3, mandatory: true, text: "No apps/api, apps/web, or packages/* source file is changed; no dependency, schema, or migration is touched." }
+  - { id: AC4, mandatory: true, text: "Full lint/typecheck/unit/e2e/build totals are unaffected (identical to the PLACE-030 baseline), confirming zero regression from a task that touches no application code." }
+  - { id: AC5, mandatory: true, text: "PLACE-029 guarantees (bcrypt register/login, DB_PASSWORD fail-fast) and PLACE-030 guarantees (AppLoggerService wiring, correlation-ID propagation, structured logging, redaction, quiet 4xx) are all re-confirmed live during the rehearsal, unaffected." }
+  - { id: AC6, mandatory: true, text: "Dev-stack integrity (migrations/places row counts) is confirmed unchanged before and after; all rehearsal-created verification containers/images are removed afterward." }
+
+test_requirements:
+  - "No new automated test is required — this task adds no application code. Regression proof is the full existing lint/typecheck/unit/e2e suite passing unchanged, plus live Docker verification of the rollback mechanic itself."
+
+runtime_verification:
+  - "Build phuquochub-api:release-N (current HEAD) and phuquochub-api:release-n1 (simulated next release) via plain docker build with distinct tags — no docker-compose.prod.yml change."
+  - "Boot each against the real dev Postgres/Redis; curl /api/health for each; confirm database:up, redis:up."
+  - "Live-prove PLACE-030's correlation-ID + structured logging and PLACE-029's DB-credential fail-fast are unaffected during this rehearsal."
+  - "Execute the rollback step (stop N+1, run N) and re-verify health, proving the mechanic — not just the individual images — works end to end."
+  - "Record migrations/places row counts before and after; confirm unchanged."
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-031-release-rollback-readiness-report.md"
+  - "docs/delivery/evidence/PLACE-031-release-rollback-readiness-evidence-index.md"
+
+cleanup_requirements:
+  - "Remove all rehearsal containers and images (release-N, release-n1 tags) after verification."
+  - "Delete any temporary test data created during health/auth re-verification."
+  - "Confirm dev stack (phuquoc-postgres/-redis/-minio) healthy and unaffected."
+
+rollback_plan: >-
+  This task's own deliverable IS a rollback procedure; the task's changes to the repository
+  itself (one new documentation file plus delivery evidence) are purely additive and reversible
+  via a single `git revert` — no application code, dependency, schema, or running-service state
+  is touched by the task's repository changes.
+
+stop_conditions:
+  - "Any application code, dependency, or schema change would be required — none was; the task stayed documentation + a Docker verification exercise."
+  - "The rollback rehearsal reveals the documented mechanism does not actually work — would require investigation and honest documentation, not concealment (see task instructions §8)."
+  - "docker-compose.prod.yml would need to change to complete the rehearsal — avoided by using plain docker build/run with distinct tags instead."
+
+commit_strategy:
+  - "1) primary implementation — the runbook document"
+  - "2) delivery evidence and state updates"
+  - "(No separate 'tests' commit — this task adds no test files, per its own scope.)"
+
+definition_of_done: >-
+  The runbook exists and is evidence-grounded; a real local rollback rehearsal (build N, boot,
+  verify; build N+1, boot, verify; rollback to N, verify) has been executed and documented with
+  live command output; zero application code was touched; full existing regression suite totals
+  are unaffected; PLACE-029 and PLACE-030 guarantees are re-confirmed live; dev-stack integrity
+  is unchanged; all verification artifacts are cleaned up; delivery evidence exists; state.yaml
+  and workstreams/place.yaml are updated and current.task returns to none; PLACE-032 is not
+  created or started.
+
+non_claims: >-
+  This task does NOT deploy anything to a real staging or production environment — none exists
+  in this repository/session. It does NOT provision any external infrastructure, domain, TLS, or
+  hosting. It does NOT perform an NestJS/Next.js migration or any dependency change. It does NOT
+  create PLACE-032.

@@ -131,7 +131,37 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-030 completed 2026-07-24 (Production observability foundation — Candidate D logging sub-scope). AppLoggerService wired, correlation-ID propagation live-proven. NestJS 10->11 / Next.js 14->16 migrations (Candidates B/C) and Candidate D's monitoring-provider sub-scope remain Owner decisions, not yet authorized — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md.
+next_task: none        # PLACE-031 completed 2026-07-24 (Release & rollback readiness). Runbook written + a real local rollback rehearsal proven (build/boot/health-check/rollback/re-verify, with data continuity confirmed). NestJS 10->11 (highest-scoring remaining candidate, 6.06/10) is blocked purely on a migration-timing confirmation from the Owner; Next.js 14->16 and the monitoring-provider sub-scope remain separate Owner decisions — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md and the fresh PLACE-031 candidate assessment recorded in this session.
+
+place_031_status: >-
+  COMPLETED 2026-07-24 — fresh PLACE-031 candidate assessment, Candidate E (Release & Rollback
+  Readiness), weighted score 5.77/10, RECOMMENDED FOR PLACE-031 as the highest-scoring candidate
+  with zero Owner dependency (Candidate B, NestJS 10->11, scored higher at 6.06/10 but was
+  reported separately as HIGHEST STRATEGIC PRIORITY -- BLOCKED BY OWNER INPUT). Closed two gaps
+  named still-open in the production-readiness reassessment and untouched through PLACE-030: no
+  release/rollback runbook existed (ENVIRONMENT-SETUP-RUNBOOK.md confirmed by full read to be an
+  unrelated dev-machine environment-relocation guide), and no rollback had ever been rehearsed,
+  not even locally. Wrote docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md, grounded in the rollback
+  mechanism already designed in docs/architecture/deployment.md §9 (redeploy the previous
+  immutable image tag) -- documented an existing design, did not invent a new one. Executed a
+  real local rollback rehearsal against the actual dev Postgres/Redis, using plain `docker
+  build`/`run` with distinct tags rather than touching docker-compose.prod.yml: built+booted
+  release-N (health 200; full auth round-trip register->login->wrong-password, 201/200/401;
+  structured [HTTP] logs each carrying the correct correlation ID); built+booted release-N1 (a
+  simulated next release from the same reviewed commit, health 200); executed the ROLLBACK
+  (stopped N1, redeployed N, health 200 again); and proved DATA CONTINUITY -- a user created
+  while N1 was running remained fully queryable and able to log in after the rollback to N,
+  confirming application state lives in Postgres/Redis, not the container image. PLACE-029's
+  DB-credential fail-fast (DB_PASSWORD unset -> immediate crash) was re-confirmed live after the
+  full rehearsal cycle. Zero apps/api, apps/web, or packages/* file was touched -- confirmed by
+  full regression: unit 251/251 (34 suites) and e2e 59/59 (10 suites), both IDENTICAL to the
+  PLACE-030 baseline, plus a clean 4/4 production build. Dev-stack integrity confirmed unchanged
+  (migrations=20, places=49) before and after; the one rehearsal-created test user was deleted,
+  both rehearsal images and the container removed. Not claimed: no real staging/production
+  rollback (no target host exists in this repository/session); no blue-green/zero-downtime
+  cutover; no CI/CD-automated rollback wiring; no docker-compose.prod.yml modification
+  (deliberate). See reports/PLACE-031-release-rollback-readiness-report.md and
+  evidence/PLACE-031-release-rollback-readiness-evidence-index.md.
 
 place_030_status: >-
   COMPLETED 2026-07-24 — PLACE-029 Candidate Selection report, Candidate D, logging sub-scope only
