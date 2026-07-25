@@ -1,0 +1,34 @@
+# PLACE-038 — reverse proxy for the single-VPS Topology A stack (Owner-approved PLACE-037/038).
+#
+# Two addresses on the SAME site block (a documented, supported Caddy pattern): the real
+# production domain (automatic HTTPS via ACME once real DNS points at a real VPS -- NOT
+# available in this repository/session) and a plain-HTTP local test port (`:8080`) that
+# exercises the IDENTICAL routing logic for local verification, with no DNS or TLS involved.
+# `:8080` is verification-only -- it is not part of the intended production surface.
+phuquochub.com, :8080 {
+	encode gzip
+
+	# API traffic: everything under /api goes to the NestJS service. The API's own
+	# X-Request-Id correlation middleware (PLACE-030) reads a client-supplied header if
+	# present or generates one -- Caddy's reverse_proxy forwards all request headers
+	# unmodified by default, so no extra directive is needed to preserve it.
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	# Everything else: the Next.js web app.
+	handle {
+		reverse_proxy web:3000
+	}
+
+	# Caddy's reverse_proxy sets X-Forwarded-For/X-Forwarded-Proto/X-Forwarded-Host
+	# automatically -- matches apps/api's TRUST_PROXY_HOPS=1 expectation (one proxy hop)
+	# with no further configuration required here.
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

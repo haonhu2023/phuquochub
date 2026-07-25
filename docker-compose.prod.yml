@@ -1,16 +1,26 @@
 # ============================================================================
-# PhuQuocHub — production-shaped compose stack (PLACE-026 / OD2-2..9)
-# Dùng để build + chạy thử api/web + hạ tầng ở dạng gần giống production, HOÀN TOÀN LOCAL.
+# PhuQuocHub — production-shaped compose stack (PLACE-026 / OD2-2..9; topology finalized PLACE-038)
+# Dùng để build + chạy thử toàn bộ stack (caddy + web + api + postgres + redis + minio) ở dạng
+# gần giống production, HOÀN TOÀN LOCAL.
 #
-# KHÔNG thay thế cho một VPS/Cloudflare/R2 thật — không có target đó trong repo hay session
-# này (không có remote git, không có credential cloud nào). Dùng để:
-#   - build hai image production thật (không phải `next dev`/`nest start --watch`)
-#   - kiểm chứng chúng khởi động + kết nối Postgres/Redis đúng
-#   - kiểm chứng cấu hình WAL archiving khởi động thành công (OD2-4)
-#   - có sẵn chỗ đổi sang MinIO→R2 thật (OD2-3) và registry image thật (OD2-7) khi có credential
+# KHÔNG thay thế cho một VPS/Hostinger/Cloudflare/R2 THẬT — không có target đó trong repo hay
+# session này (không có remote git, không có credential cloud nào). PLACE-038 chỉ chuẩn bị hạ
+# tầng do repo kiểm soát; KHÔNG triển khai lên Internet (xem docs/delivery/tasks/PLACE-038.yaml).
+#
+# Topology (PLACE-037 Topology A, Owner-approved PLACE-038): chỉ `caddy` publish cổng ra host/
+# Internet (80/443). postgres/redis/minio/api/web CHỈ nằm trên mạng Docker nội bộ — khớp nguyên
+# tắc "DB/Redis/MinIO không lộ ra Internet" (deployment.md §2/§13). Domain đã chốt: phuquochub.com,
+# API qua path /api cùng domain (không dùng subdomain riêng).
 #
 # Dùng: docker compose -f docker-compose.prod.yml up -d --build
+# Kiểm chứng cục bộ (không cần domain/TLS thật): xem docs/delivery/RELEASE-ROLLBACK-RUNBOOK.md
+# và docs/delivery/evidence/PLACE-038-production-readiness-implementation-evidence-index.md.
 # ============================================================================
+# PLACE-038: tên project cố định (thay vì suy ra từ tên thư mục, vốn không xác định trước và
+# không nhất quán chữ hoa/thường) -- để scripts/*.sh tham chiếu mạng Docker nội bộ
+# (phuquochub-prod_default) một cách chắc chắn.
+name: phuquochub-prod
+
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -18,13 +28,17 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: phuquoc
-      POSTGRES_PASSWORD: phuquoc
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
       POSTGRES_DB: phuquochub
-      # OD2-4: đích lưu WAL cục bộ mặc định — đổi sang đích thật (R2/Backblaze, OD2-5) bằng
-      # cách thay nội dung wal-archive.sh, KHÔNG cần đổi biến này hay postgresql config.
+      # OD2-4/OD2-5: đích lưu WAL cục bộ luôn bật (PITR tại chỗ); đồng bộ thêm sang Cloudflare R2
+      # (Owner-approved offsite destination, PLACE-038) nếu đủ 4 biến R2_* — xem wal-archive.sh.
       WAL_ARCHIVE_DIR: /var/lib/postgresql/wal_archive
-    ports:
-      - "5432:5432"
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
+    # PLACE-038: KHÔNG publish 5432 ra host — chỉ mạng Docker nội bộ (Topology A). Truy cập cục bộ
+    # để kiểm chứng qua `docker exec phuquoc-postgres-prod psql ...`, không qua host port.
     volumes:
       - pg_data_prod:/var/lib/postgresql/data
       - wal_archive_prod:/var/lib/postgresql/wal_archive
@@ -32,46 +46,65 @@ services:
       - ./infrastructure/docker/postgres/wal-archive.sh:/opt/wal-archive.sh:ro
     # OD2-4: bật WAL archiving qua cờ `-c` (cách được tài liệu Docker Hub khuyến nghị) thay vì
     # thay hẳn postgresql.conf mặc định — an toàn hơn, không có nguy cơ thiếu setting mặc định.
-    command: >
-      postgres
-      -c wal_level=replica
-      -c archive_mode=on
-      -c archive_command=sh /opt/wal-archive.sh %p %f
-      -c archive_timeout=300
-      -c max_wal_senders=3
+    # PLACE-038: chuyển sang dạng LIST YAML thay vì chuỗi gộp (`>`) -- một lỗi thật, có sẵn từ
+    # trước (PLACE-026), được phát hiện khi thực sự khởi động toàn bộ stack lần đầu qua chính
+    # file compose này: dạng chuỗi khiến Compose tách theo khoảng trắng, biến giá trị nhiều từ
+    # của `archive_command=sh /opt/wal-archive.sh %p %f` thành nhiều argv riêng biệt sai --
+    # postgres crash ngay khi khởi động với "invalid argument: /opt/wal-archive.sh". Dạng list,
+    # mỗi phần tử là một argv riêng, không qua tách shell nào cả -- không còn mơ hồ.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - "archive_command=sh /opt/wal-archive.sh %p %f"
+      - -c
+      - archive_timeout=300
+      - -c
+      - max_wal_senders=3
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U phuquoc -d phuquochub"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   redis:
     image: redis:7-alpine
     container_name: phuquoc-redis-prod
     restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+    # PLACE-038: mật khẩu Redis bắt buộc (deployment.md §6.5 khuyến nghị nhưng chưa triển khai
+    # trước đây) — closes the gap PLACE-037 flagged. KHÔNG publish 6379 ra host.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}"]
     volumes:
       - redis_data_prod:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
-  # OD2-3: MinIO đứng thay cho Cloudflare R2 THẬT (chưa có credential) — API tương thích S3 nên
-  # đổi sang R2 chỉ là đổi endpoint/credential, không đổi code.
+  # OD2-3: MinIO đứng thay cho Cloudflare R2 THẬT khi tính năng upload thật sự cần (hiện tại CHƯA
+  # cần — application code không gọi tới object storage nào, xác nhận tại PLACE-037 §4/§6). Giữ
+  # định nghĩa service để sẵn sàng khi cần, không publish cổng, không phải phần khởi chạy bắt buộc.
   minio:
     image: minio/minio:latest
     container_name: phuquoc-minio-prod
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-me-minio-password}
     command: ["server", "/data", "--console-address", ":9001"]
     volumes:
       - minio_data_prod:/data
@@ -80,12 +113,45 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # PLACE-038: migration runner -- reuses the SAME multi-stage Dockerfile's intermediate `build`
+  # stage (which already has the full TypeScript source + ts-node/typeorm-ts-node-commonjs),
+  # rather than the lean `runtime` stage the `api` service uses (which ships compiled dist/ only
+  # and intentionally excludes migration tooling). NOT started by `docker compose up` (no
+  # `restart:`, not a dependency of anything) -- invoked on demand: `docker compose -f
+  # docker-compose.prod.yml run --rm migrate`. Reached postgres/redis by service name on the
+  # same internal network as every other service here, exactly like a real VPS deploy would --
+  # this is also why migrations cannot simply run via bare `npm run migration:run` on the host
+  # once postgres's port is no longer published (Topology A's own private-networking design).
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    working_dir: /repo/apps/api
+    entrypoint: []
+    command: ["npx", "typeorm-ts-node-commonjs", "migration:run", "-d", "src/core/database/data-source.ts"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: phuquoc
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
+      DB_NAME: phuquochub
+      DB_SSL: "false"
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    image: phuquochub-api:local
+    # PLACE-038: tag parameterized (defaults to :local for `docker compose up --build`) so
+    # scripts/deploy.sh can point an already-built, commit-SHA-tagged image at this service
+    # without rebuilding, and scripts/rollback.sh can point it back at a PREVIOUS tag.
+    image: phuquochub-api:${API_IMAGE_TAG:-local}
     container_name: phuquoc-api-prod
     restart: unless-stopped
     depends_on:
@@ -100,50 +166,94 @@ services:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: phuquoc
-      DB_PASSWORD: phuquoc
+      DB_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
       DB_NAME: phuquochub
       DB_SSL: "false"
       DB_SYNCHRONIZE: "false"
       DB_LOGGING: "false"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      REDIS_URL: redis://redis:6379
+      # PLACE-038: mật khẩu nhúng trong URL (ioredis hỗ trợ redis://:PASSWORD@host:port) — khớp
+      # REDIS_PASSWORD của service `redis` phía trên.
+      REDIS_URL: redis://:${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}@redis:6379
       # Đổi hai secret này khi chạy thật — đây là placeholder cho môi trường local/staging.
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change-me-access-secret-min-16-chars}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-refresh-secret-min-16-chars}
-      # PLACE-028 (OD2-12/OD2-13): NODE_ENV=production ở đây bắt buộc CORS_ALLOWED_ORIGINS phải
-      # có giá trị (fail-fast nếu thiếu) — mặc định khớp cổng của service `web` bên dưới (3000).
-      # Đổi thành domain thật khi có (chưa có domain production nào được xác nhận trong repo này).
       RATE_LIMIT_TTL: ${RATE_LIMIT_TTL:-60}
       RATE_LIMIT_LIMIT: ${RATE_LIMIT_LIMIT:-100}
       RATE_LIMIT_AUTH_TTL: ${RATE_LIMIT_AUTH_TTL:-60}
       RATE_LIMIT_AUTH_LIMIT: ${RATE_LIMIT_AUTH_LIMIT:-10}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      # PLACE-038: domain sản xuất đã được Owner chốt (phuquochub.com); API phục vụ qua path
+      # /api cùng domain (không có subdomain api. riêng) — xem infrastructure/caddy/Caddyfile.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://phuquochub.com}
       CORS_CREDENTIALS: ${CORS_CREDENTIALS:-false}
-      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
-    ports:
-      - "4000:4000"
+      # PLACE-038: Caddy giờ đứng trước API trong topology này -> tin 1 hop proxy để lấy đúng
+      # client IP thật cho rate limiting qua X-Forwarded-For (trước đây là 0, chưa có proxy nào).
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+    # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
+    # mạng Docker nội bộ bằng tên service `api:4000`.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    image: phuquochub-web:local
+      # PLACE-038: sửa lỗi thật — NEXT_PUBLIC_* được Next.js nhúng cứng lúc BUILD, không đọc lúc
+      # container chạy. Trước đây các biến này chỉ được đặt ở `environment:` (runtime), hoàn
+      # toàn không có tác dụng — đã kiểm chứng: bundle build cũ có sẵn "localhost:4000/api" cứng
+      # dù `environment:` có override. Domain sản xuất đã chốt: phuquochub.com.
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}
+        NEXT_PUBLIC_MAP_TILE_URL: ${NEXT_PUBLIC_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+    # PLACE-038: tag parameterized, same reasoning as the api service above.
+    image: phuquochub-web:${WEB_IMAGE_TAG:-local}
     container_name: phuquoc-web-prod
     restart: unless-stopped
     depends_on:
       - api
     environment:
       NODE_ENV: production
-      # OD2-8: đổi sang MapTiler thật bằng cách set biến này khi có API key; mặc định giữ
-      # NGUYÊN URL OpenStreetMap hiện tại (không đổi hành vi nếu không cấu hình gì thêm).
-      NEXT_PUBLIC_MAP_TILE_URL: ${NEXT_PUBLIC_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
-      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
+    # service `web:3000`.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # PLACE-038: reverse proxy công khai DUY NHẤT của stack (Topology A) — TLS tự động (Caddy),
+  # định tuyến / -> web, /api -> api, chuyển tiếp X-Request-Id + client IP thật. Domain thật
+  # (phuquochub.com) cần trỏ DNS về VPS thật để Caddy tự lấy chứng chỉ TLS qua ACME — CHƯA có
+  # DNS/VPS thật trong session này, xem infrastructure/caddy/Caddyfile để biết cách kiểm chứng
+  # định tuyến cục bộ (Host header, không cần DNS/TLS thật).
+  caddy:
+    image: caddy:2-alpine
+    container_name: phuquoc-caddy-prod
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
     ports:
-      - "3000:3000"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data_prod:/data
+      - caddy_config_prod:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   pg_data_prod:
   wal_archive_prod:
   redis_data_prod:
   minio_data_prod:
+  caddy_data_prod:
+  caddy_config_prod:
