@@ -30,7 +30,13 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-032 completed 2026-07-24 (NestJS 10->11 migration). 10
+  task: none                      # PLACE-035 completed 2026-07-25 (Next.js 14->16 migration). 3
+                                  # approved packages bumped (next/eslint-config-next -> 16.2.11,
+                                  # eslint -> 9.39.5); ESLint flat-config migration + 5 mandatory
+                                  # async-params conversions completed; zero apps/api or packages/*
+                                  # file touched. See docs/delivery/tasks/PLACE-035.yaml.
+                                  # ---- prior state (PLACE-032, completed 2026-07-24) ----
+                                  # PLACE-032 completed 2026-07-24 (NestJS 10->11 migration). 10
                                   # approved packages bumped to their NestJS-11-line versions
                                   # (@nestjs/common/core/platform-express/testing/cli/schematics ->
                                   # 11.1.28-family, @nestjs/config -> 4.0.4, @nestjs/jwt -> 11.0.2,
@@ -211,40 +217,108 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-032 (2026-07-24) executed the NestJS 10->11 migration, per the read-only migration-
-    readiness assessment's APPROVE PLACE-032 EXECUTION recommendation and the Owner's timing
-    decision (execute now, before staging). Bumped exactly 10 approved packages to their approved
-    NestJS-11-line versions; @nestjs/throttler settled in-range at 6.5.0. apps/api/package.json diff
-    is exactly those 10 lines; zero apps/web change. A REAL INSTALLATION DEFECT was found and fixed:
-    incremental npm install left @nestjs/config/jwt/throttler resolving a stale nested
-    @nestjs/common@10.4.22 copy alongside the new top-level 11.1.28 (confirmed via
-    require.resolve(), not just npm ls); npm dedupe failed (ERESOLVE); fixed via a full clean
-    reinstall (node_modules + lockfile deleted, regenerated from package.json alone) -- verified a
-    single 11.1.28 copy throughout afterward. redis.health.ts (deprecated
-    HealthIndicator/HealthCheckError) confirmed compiling and working correctly unchanged -- left
-    as-is per the task's decision rule, deprecation recorded as a follow-up. npm audit --omit=dev:
-    15 -> 2 (13 @nestjs/*-rooted findings closed; 2 remaining, next/postcss, are Next.js-rooted, out
-    of scope). Unit 251/251 and e2e 59/59 both IDENTICAL to the PLACE-031 baseline -- zero
-    regression. Docker-verified live: health/auth/rate-limiting/correlation-ID (explicit
-    header-vs-body match)/structured logs/quiet 4xx/zero secret leakage/DB+CORS fail-fast all
-    confirmed unaffected; web unaffected. Full N11->N10->N11 rollback rehearsal succeeded,
-    including explicit data-continuity proof. Dev stack unchanged (migrations=20, places=49)
-    throughout. Deriving another task without explicit owner authorization is NOT permitted.
+    PLACE-035 (2026-07-25) executed the Next.js 14->16 migration, resolving the three open Owner
+    decisions from the PLACE-034 decision gate (timing = now; ESLint flat-config migration bundled;
+    fetch-caching behavior = accept Next 16 defaults). Bumped exactly 3 approved packages
+    (next/eslint-config-next -> 16.2.11, eslint -> 9.39.5); apps/web/package.json diff is exactly
+    those 3 lines plus the lint script (next lint -> eslint . --max-warnings=0, forced by next
+    lint's removal, not mere deprecation). Zero apps/api or packages/* file touched. Legacy
+    .eslintrc.json replaced with a native flat-config eslint.config.mjs; one real lint delta (a new
+    react-hooks/set-state-in-effect rule from the bundled eslint-plugin-react-hooks@7.1.1) fixed
+    with a single targeted, documented eslint-disable-next-line comment. All 5 dynamic-route files
+    converted params from sync to Promise<{slug:string}> + await, purely mechanical. TURBOPACK: an
+    initial build's alarming ~25-minute static-generation timing was investigated and reproduced as
+    self-inflicted resource contention from this task's own concurrent Docker/audit work, NOT a
+    Turbopack defect -- an isolated re-run completed in 31s with zero retries. SECURITY AUDIT: a
+    CORRECTED EXPECTATION from PLACE-032/034 -- re-tracing each finding's via/range/nodes fields
+    showed the assumption that this migration would close the next/postcss findings was FALSE (both
+    already had the same unpatched-upstream characteristics at the Next-14 baseline); one new,
+    fully-explained finding (sharp, from next@16.2.11's own new optionalDependency) appeared. Net:
+    npm audit --omit=dev 7 -> 8, +1, fully explained, zero unapproved package installed. Full
+    regression: web unit 17/17 + api unit 251/251 + api e2e 59/59, ALL IDENTICAL to baseline -- zero
+    regression. Docker-verified live (via a support API container sharing the web container's
+    network namespace): all routes byte-identical to baseline, including a PRE-EXISTING, unrelated
+    /places/[slug] not-found status-code quirk reproduced unchanged (deliberately left unfixed, out
+    of this task's authorized scope). Full N16->N14-baseline->N16 rollback rehearsal succeeded with
+    ZERO DATABASE INVOLVEMENT (places=49, migrations=20 unchanged throughout -- the web app has no
+    direct DB access). Deriving another task without explicit owner authorization is NOT permitted.
   eligible_candidate_disposition:
     - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
-    - "Candidate 2 (dependency remediation, OD2-11) — IMPLEMENTED (PLACE-027 safe subset + PLACE-029 bcrypt/tar closure + PLACE-032 NestJS-11 closure of 13 findings). Only the Next.js 14->16 leg (Candidate C) remains open."
+    - "Candidate 2 (dependency remediation, OD2-11) — IMPLEMENTED (PLACE-027 safe subset + PLACE-029 bcrypt/tar closure + PLACE-032 NestJS-11 closure of 13 findings + PLACE-035 Next.js-16 migration, though the next/postcss findings themselves remain open pending an upstream fix — see place_035_status)."
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
-    - "PLACE-029 Candidate B (NestJS 10->11) — IMPLEMENTED (PLACE-032). Candidate C (Next.js 14->16) — ELIGIBLE AFTER OWNER INPUT (migration-timing decision), not yet authorized — the only remaining framework-migration candidate."
+    - "PLACE-029 Candidate B (NestJS 10->11) — IMPLEMENTED (PLACE-032). Candidate C (Next.js 14->16) — IMPLEMENTED (PLACE-035, via PLACE-033/034's readiness assessment and decision gate). All three PLACE-029 candidate framework-migration items are now closed."
     - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (external signal + alert channel, OD2-6) remains ELIGIBLE AFTER OWNER INPUT, not yet authorized."
     - "PLACE-031 candidate assessment Candidate E (release & rollback readiness) — IMPLEMENTED (PLACE-031). Candidate F (product delivery acceleration) — DEFER, no evidence-backed bounded scope currently exists."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "Whether/when to authorize the Next.js 14->16 migration (Candidate C from docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md) — the sole remaining framework-migration candidate, independently decidable from the now-completed NestJS migration, requiring its own migration-timing confirmation (before staging/beta/public-launch/defer). Separately: the monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision. No answer to either is assumed or invented here."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 2 high + 0 moderate (prod) dependency findings remain OPEN, both Next.js-rooted (next, postcss), pending the Next.js migration-timing decision above (down from 15 after PLACE-029/before PLACE-032). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
+  pending_owner_decision: "The monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision, sequenced after a real deploy target exists. No other framework-migration candidate remains open — both NestJS (PLACE-032) and Next.js (PLACE-035) are now implemented. No answer is assumed or invented here."
+  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-035 (up from 7 -- see place_035_status for the corrected next/postcss-not-closed finding and the new, explained sharp finding; both next/postcss and sharp are blocked on an upstream fix outside this repository's control, not an unaddressed local defect). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
 
 completed_tasks:
+  - id: PLACE-035
+    completed: "2026-07-25"
+    result: >-
+      Next.js 14.2.35 -> 16.2.11 controlled migration execution, resolving the three open Owner
+      decisions from the PLACE-034 decision gate (timing = now; ESLint flat-config migration
+      bundled into this task; fetch-caching behavior = accept Next 16 defaults as-is). Bumped
+      exactly 3 approved packages (next, eslint-config-next -> 16.2.11; eslint -> 9.39.5);
+      apps/web/package.json diff is exactly those 3 lines plus the lint script (next lint -> eslint
+      . --max-warnings=0, forced by next lint's complete removal in Next 16, not mere deprecation).
+      Zero apps/api or packages/* file touched; react/react-dom/typescript confirmed unchanged;
+      next/react single-copy dependency tree confirmed; eslint resolves to two physical copies
+      (root 9.39.5 which actually runs, plus a nested 8.57.1 used only by 3 of eslint-config-next's
+      own sub-plugins whose peer ranges don't yet include eslint 9) -- normal npm resolution for the
+      eslint 8->9 ecosystem transition, not an ERESOLVE error, verified functionally clean. Legacy
+      .eslintrc.json replaced with a native flat-config eslint.config.mjs (eslint-config-next@16
+      ships eslint-config-next/core-web-vitals as a flat array natively, no FlatCompat wrapper
+      needed) -- one real lint delta surfaced (react-hooks/set-state-in-effect, a new rule from the
+      bundled eslint-plugin-react-hooks@7.1.1), fixed with a single targeted, documented
+      eslint-disable-next-line comment in AuthProvider.tsx rather than an out-of-scope
+      rearchitecture. All 5 dynamic-route files (events/hotels/places/restaurants/tours
+      [slug]/page.tsx) converted params from sync to Promise<{slug:string}> + await, in both
+      generateMetadata and the page component -- purely mechanical, zero logic change, confirmed
+      via grep (zero stale params.slug references) and tsc. TURBOPACK: an initial build showed
+      alarming ~25-minute static-generation timing with repeated 60s-timeout retries; investigated
+      rather than accepted -- reproduced as self-inflicted resource contention from this task's own
+      concurrent Docker/audit work, NOT a Turbopack defect; an isolated re-run completed in 31s
+      (1.7s static generation), zero retries, confirming full compatibility, no --webpack fallback
+      needed. SECURITY AUDIT: a CORRECTED EXPECTATION from PLACE-032/034 -- the assumption that this
+      migration would close the next/postcss findings was FALSE, caught by re-tracing each finding's
+      via/range/nodes fields rather than trusting the prior claim: next's own advisory range already
+      extended through a near-current unreleased canary/preview boundary at the Next-14 baseline too
+      (no stable release, 14.x or 16.x, is marked fixed); postcss's finding (not a direct dependency
+      anywhere in this repo, purely next's own transitive choice) carried the identical 3 CVEs/range
+      before and after. One genuinely NEW finding, sharp, is fully explained -- next@16.2.11 itself
+      declares sharp@^0.34.5 as a new optionalDependency absent from next@14.2.35. Net: npm audit
+      --omit=dev 7 -> 8, +1, fully explained, zero unapproved package installed to chase a cleaner
+      number. Full regression: web unit 17/17 (3 suites) + api unit 251/251 (34 suites) + api e2e
+      59/59 (10 suites), ALL IDENTICAL to baseline -- zero test added, skipped, or weakened; web
+      build 15 routes both before/after; api build (nest build) unaffected. Docker: baseline
+      (phuquochub-web:place035-next14-baseline) and migrated (phuquochub-web:place035-next16) images
+      both built, tagged, retained (the migrated image's first build attempt hit a transient npm ci
+      EIDLETIMEOUT registry timeout, non-reproducible on retry). Live-verified via a support API
+      container (unmodified NestJS 11 source, real dev Postgres/Redis) sharing the web container's
+      network namespace: all static routes 200 on both images; unknown route 404; /places/dinh-cau
+      (the only seeded entity type -- hotels/restaurants/tours/events have zero dev-DB rows, a
+      pre-existing gap) renders real data byte-identically including SEO metadata (og:*/twitter:*/
+      canonical); the other 4 dynamic routes correctly 404 on a nonexistent slug on both images; one
+      PRE-EXISTING baseline quirk (/places/nonexistent-slug returns 200 not 404, traced to a custom
+      not-found.tsx + conditional notFound() call, correct UI/fallback-title still render) reproduced
+      BYTE-IDENTICALLY post-migration -- confirmed unrelated to this migration, deliberately left
+      unfixed as out of this task's authorized scope. Full N16->N14-baseline->N16 rollback rehearsal
+      executed: rollback verified, forward recovery verified identically; ZERO DATABASE INVOLVEMENT
+      proven -- places=49, migrations=20 unchanged at every checkpoint. Verification
+      containers/disposable API image removed afterward; both web images retained per the rollback
+      plan; dev stack confirmed healthy throughout. Not claimed: no real deployment; no React 19,
+      Node.js, or TypeScript upgrade; the /places/[slug] not-found quirk not fixed (pre-existing,
+      out of scope); hotels/restaurants/tours/events dynamic routes not verified with real data (no
+      seed data exists); next/postcss/sharp audit findings not closed (blocked on upstream). No
+      PLACE-036 created or started.
+    report: docs/delivery/reports/PLACE-035-nextjs-16-migration-report.md
+    evidence_index: docs/delivery/evidence/PLACE-035-nextjs-16-migration-evidence-index.md
+    migration_assessment: docs/delivery/reports/PLACE-035-NEXTJS-16-MIGRATION-ASSESSMENT-2026-07-25.md
   - id: PLACE-032
     completed: "2026-07-24"
     result: >-

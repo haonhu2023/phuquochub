@@ -1,0 +1,131 @@
+schema_version: "1.0"
+
+id: PLACE-035
+workstream: place
+title: "Next.js 14 -> 16 controlled migration execution"
+type: framework_migration
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: "Owner explicit authorization 2026-07-25 — 'PLACE-035 — Next.js 14 to 16 Controlled Migration Execution'. Authorizes migration timing (now) and bundling the ESLint flat-config migration into this same task (both implicit in the prompt's own scope, per PLACE-034's own framing of these as the open Owner decisions)."
+  decision: "docs/delivery/reports/PLACE-034-NEXTJS-16-DECISION-GATE-2026-07-25.md — gate result AUTHORIZED WITH CONDITIONS. docs/delivery/tasks/PLACE-034.yaml (draft, status: draft_pending_owner_authorization) supplied the approved package set, scope, and acceptance criteria this task authority adapts."
+
+depends_on:
+  - "PLACE-032 completed 2026-07-24 (NestJS 10->11 migration) — rollback/verification pattern precedent"
+  - "PLACE-033 (2026-07-25, read-only readiness assessment) and PLACE-034 (2026-07-25, decision gate) — scope authority; both persisted in docs/delivery/reports/PLACE-034-NEXTJS-16-DECISION-GATE-2026-07-25.md"
+
+preconditions_verified:
+  - "PLACE-032 completed — state.yaml completed_tasks"
+  - "PLACE-033/034 complete — PLACE-034 report + draft task authority both exist and were independently re-verified in the PLACE-034 turn"
+  - "current.task: none, working tree clean at task start"
+  - "No docs/delivery/tasks/PLACE-035.yaml existed before this task"
+  - "Node v20.20.2/npm 10.8.2 pinned; Docker running; dev services healthy; ~254GB disk free"
+  - "Owner decisions resolved: (1) timing = now, per this task's own authorization; (2) fetch-caching behavior = accept Next 16's new defaults as-is (PLACE-034's own recommended default; no override requested); (3) ESLint flat-config bundled into this same task, per this task's own explicit Phase 4 scope"
+  - "Deployment-provider (Hostinger) uncertainty confirmed NOT a blocker for this task — PLACE-034 explicitly scoped this migration to local/Docker implementation and verification only, no real deployment"
+
+owner_decisions_resolution_record:
+  migration_timing: "NOW — this task's own authorization instruction"
+  fetch_caching_behavior: "ACCEPT Next 16 defaults as-is (PLACE-034's recommended default; conditional change C-1 — explicit cache directives — NOT implemented, since no override was requested)"
+  eslint_restructuring_bundling: "BUNDLED into this task, per its own explicit Phase 4 scope"
+  react_19: "NOT bundled — react/react-dom explicitly listed as must-remain-unchanged in the approved package set"
+
+objective: >-
+  Migrate apps/web from Next.js 14.2.35 to 16.2.11, migrate ESLint from legacy .eslintrc to flat
+  config (forced by eslint-config-next@16 requiring eslint>=9 and by next lint being removed
+  entirely), and convert the 5 dynamic-route files identified by PLACE-033/034 from synchronous to
+  asynchronous params -- while preserving every existing functional, build, Docker, SEO, routing,
+  authentication, and environment guarantee. Local/Docker implementation and verification only; no
+  real deployment.
+
+approved_package_set:
+  changes:
+    - { package: "next", from: "^14.2.5", to: "^16.2.11" }
+    - { package: "eslint-config-next", from: "^14.2.5", to: "^16.2.11" }
+    - { package: "eslint", from: "^8.57.0", to: "^9.x (exact version pinned during installation, against eslint-config-next@16's actual peer floor)" }
+  must_remain_unchanged: ["react", "react-dom", "@types/react", "@types/react-dom", "typescript",
+    "maplibre-gl", "jest", "ts-jest", "turbo", "Node.js version", "all apps/api and packages/* dependencies"]
+  prohibited: ["npm update", "npm audit fix", "npm audit fix --force", "npm install --force",
+    "npm install --legacy-peer-deps", "silent peer-conflict suppression"]
+
+scope:
+  - "apps/web/package.json: exactly the 3 approved package changes, plus the lint script (next lint -> direct eslint invocation)."
+  - "5 dynamic-route files: apps/web/src/app/(public)/{events,hotels,places,restaurants,tours}/[slug]/page.tsx -- convert params to Promise<{slug:string}> + await, in both generateMetadata and the default page component."
+  - "apps/web/.eslintrc.json -> apps/web/eslint.config.mjs (flat config, importing the flat next/core-web-vitals preset), preserving --max-warnings=0 and all existing rule semantics."
+  - "Full baseline capture + re-verification: dependency tree, lint, typecheck, unit tests, clean build, Docker build+boot for BOTH the pre-migration (tagged, retained) and post-migration images, live HTTP/SEO/metadata checks, audit before/after comparison, full N16->N14-baseline->N16 rollback rehearsal with forward recovery."
+
+out_of_scope:
+  - "React 19 (must remain unchanged, per the approved package set)."
+  - "Node.js version change (not mandatory per PLACE-034)."
+  - "The 5 unrelated typeorm-chain security findings (apps/api-side, separate governance item)."
+  - "Any apps/api or packages/* change."
+  - "Any real deployment (Hostinger or otherwise)."
+  - "UI redesign, new features, SEO expansion, unrelated performance refactors, authentication redesign, broad dependency modernization, observability-provider integration, content changes, unrelated test cleanup."
+  - "PLACE-036 or any successor task."
+
+implementation_phases:
+  - { phase: 1, name: "Baseline capture", detail: "Full repo+verification baseline; build+tag+boot phuquochub-web:place035-next14-baseline; retain image." }
+  - { phase: 2, name: "Approved dependency changes", detail: "next/eslint-config-next/eslint bumped; verify single-copy dependency tree, no ERESOLVE, no unrelated package touched." }
+  - { phase: 3, name: "Node/runtime alignment", detail: "SKIPPED -- not mandatory per PLACE-034's approved package set." }
+  - { phase: 4, name: "ESLint migration", detail: "Flat config, preserving semantics and --max-warnings=0." }
+  - { phase: 5, name: "Mandatory Next.js API migrations", detail: "5 async-params conversions." }
+  - { phase: 6, name: "Turbopack/build-tool compatibility", detail: "Verify default Turbopack build works; no custom Webpack config exists to migrate." }
+  - { phase: 7, name: "Focused compatibility verification", detail: "Per-area checks for every changed area." }
+  - { phase: 8, name: "Full regression suite", detail: "lint/typecheck/test/build, compared against the Phase 1 baseline." }
+  - { phase: 9, name: "Security audit comparison", detail: "Before/after, classified by root cause." }
+  - { phase: 10, name: "Production Docker build", detail: "phuquochub-web:place035-next16, distinct tag; baseline image retained." }
+  - { phase: 11, name: "Live runtime verification", detail: "Boot/HTTP/SEO/behavioral/logging checks." }
+  - { phase: 12, name: "Rollback rehearsal", detail: "N16 -> N14-baseline -> N16, full route/asset/connectivity verification each step." }
+  - { phase: 13, name: "Cleanup", detail: "Remove temporary containers/test data; confirm dev services healthy." }
+  - { phase: 14, name: "Delivery evidence", detail: "Report, evidence index, migration assessment." }
+  - { phase: 15, name: "State updates", detail: "state.yaml/workstreams/place.yaml, current.task -> none." }
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "next/eslint-config-next/eslint installed at approved target versions; every must-remain-unchanged package confirmed unchanged; zero apps/api/packages/* file touched; no prohibited install flag used." }
+  - { id: AC2, mandatory: true, text: "Dependency tree valid: single React/Next copy, no ERESOLVE, no extraneous/mixed-major-version tree." }
+  - { id: AC3, mandatory: true, text: "ESLint works through the new flat-config invocation; --max-warnings=0 preserved; no rule silently weakened." }
+  - { id: AC4, mandatory: true, text: "All 5 async-params conversions complete; generateMetadata and page components both updated; no other component refactored." }
+  - { id: AC5, mandatory: true, text: "Lint/typecheck/unit-test/build totals match the Phase 1 baseline, or any difference is explicitly explained; no test deleted or skipped to obtain a green result." }
+  - { id: AC6, mandatory: true, text: "npm audit shows no unexplained NEW production finding. CORRECTED 2026-07-25 after live re-verification (the draft's 'next/postcss closed-by-migration' assumption was FALSE and is superseded here): next's own advisory range (9.3.4-canary.0 - 16.3.0-preview.7 pre-migration; extends to the same unpatched upstream boundary post-migration) already covered next@14.2.35 at baseline and still covers next@16.2.11 -- NOT closed, no stable fixed release exists upstream as of this task. postcss's top-level finding (range <=8.5.17, same 3 CVEs) also already existed at baseline and persists unchanged post-migration -- NOT closed; postcss is not a direct dependency anywhere in this repo, purely next's own transitive choice. One genuinely NEW finding, sharp (range <0.35.0, libvips CVEs), is explained and traced: next@16.2.11 itself declares sharp@^0.34.5 as a new optionalDependency (absent from next@14.2.35's tree) for its image-optimization feature; no unapproved package on our side caused this. The unrelated typeorm-chain findings (glob/minimatch/brace-expansion/typeorm/typeorm-naming-strategies) are unchanged and remain out-of-scope." }
+  - { id: AC7, mandatory: true, text: "phuquochub-web:place035-next16 builds and boots; all critical routes (including the 5 converted dynamic routes), static assets, and metadata verified live." }
+  - { id: AC8, mandatory: true, text: "Full N16->N14-baseline->N16 rollback rehearsal succeeds, including forward recovery, with zero database involvement confirmed." }
+  - { id: AC9, mandatory: true, text: "Delivery evidence complete; state.yaml/workstreams updated accurately; current.task returns to none; working tree clean after commits; nothing pushed." }
+
+rollback_plan: >-
+  Application-level: git revert of the migration commit(s) restores Next.js 14 exactly, zero
+  schema/data involvement (frontend has no database access). Deployment-level: retain
+  phuquochub-web:place035-next14-baseline through the full rehearsal (Phase 12) before any cleanup
+  decision; the rehearsal itself proves the mechanism end-to-end including forward recovery.
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-035-nextjs-16-migration-report.md"
+  - "docs/delivery/evidence/PLACE-035-nextjs-16-migration-evidence-index.md"
+  - "docs/delivery/reports/PLACE-035-NEXTJS-16-MIGRATION-ASSESSMENT-2026-07-25.md"
+
+stop_conditions:
+  - "Any approved package fails to resolve without an unresolved peer conflict."
+  - "An unapproved package would need to change to satisfy resolution not proven minimal/necessary/documented."
+  - "A live Turbopack build reveals an incompatibility with no bounded fix."
+  - "Any async-params conversion changes observable route behavior beyond the mechanical conversion."
+  - "Docker boot fails without a bounded, in-scope fix."
+  - "Rollback or forward recovery cannot be demonstrated."
+  - "Resolving any migration-caused failure would require unrelated architecture redesign, unapproved framework replacement, broad dependency modernization, force flags, disabling tests, or weakening security controls -- any of these requires reporting BLOCKED, not silent workaround."
+
+commit_strategy:
+  - "1) dependency and runtime version changes"
+  - "2) ESLint and configuration migration"
+  - "3) mandatory source compatibility changes (5 async-params conversions)"
+  - "4) delivery evidence and state updates"
+  - "(groups combined where no meaningful separation exists, per the task's own instruction)"
+
+definition_of_done: >-
+  All 9 acceptance criteria pass; delivery evidence exists; state.yaml/workstreams/place.yaml
+  updated accurately (Next.js 16 recorded as implemented locally, NOT as deployed to production);
+  current.task returns to none; PLACE-036 proposed but not created; working tree clean; nothing
+  pushed.
+
+non_claims: >-
+  This task does NOT deploy to any real production environment -- a successful local Docker
+  migration is not production deployment. It does NOT upgrade React, Node.js, or TypeScript. It
+  does NOT touch apps/api or the unrelated typeorm-chain security findings. It does NOT create
+  PLACE-036.
