@@ -65,8 +65,17 @@ echo "[deploy] === Step 10: health checks ==="
 sleep 5
 $COMPOSE ps
 
-echo "[deploy] === Step 11: route checks (see scripts/smoke-routes.sh pattern from the PLACE-038"
-echo "[deploy]     evidence index for the exact checks used during local verification) ==="
+echo "[deploy] === Step 11: route checks ==="
+# PLACE-040: this previously only echoed a pointer to a "scripts/smoke-routes.sh pattern" that
+# was never actually committed -- "$SCRIPT_DIR/smoke-test.sh" now runs the real checks (health,
+# web home, unknown-route 404, optional real-slug data check) against Caddy's local :8080
+# verification address (identical routing to the real domain, no DNS/TLS required for this check).
+if ! "$SCRIPT_DIR/smoke-test.sh" "http://127.0.0.1:8080" "${SMOKE_TEST_SLUG:-}"; then
+  echo "[deploy] ERROR: smoke test FAILED after cutover. The new version is live but unhealthy --" >&2
+  echo "[deploy]        investigate immediately, or run scripts/rollback.sh <previous-tag> now." >&2
+  exit 1
+fi
+
 echo "[deploy] Deploy of $TAG complete. Remaining PLACE-037 §23 steps (12-15: monitoring"
 echo "[deploy] activation, observation period, rollback-criteria review, release evidence) are"
 echo "[deploy] manual/operational, not scripted here."
