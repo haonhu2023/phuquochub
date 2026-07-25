@@ -209,6 +209,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}
         NEXT_PUBLIC_MAP_TILE_URL: ${NEXT_PUBLIC_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+        # MVP SEO pass: metadataBase/sitemap.ts/robots.ts need the real web origin at build time,
+        # same NEXT_PUBLIC_ build-time-baked reasoning as the two vars above (PLACE-038).
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}
     # PLACE-038: tag parameterized, same reasoning as the api service above.
     image: phuquochub-web:${WEB_IMAGE_TAG:-local}
     container_name: phuquoc-web-prod

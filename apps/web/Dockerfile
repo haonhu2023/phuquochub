@@ -25,8 +25,10 @@ RUN npm run build --workspace=@phuquochub/shared-types
 # `docker build` still behaves exactly as before.
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api
 ARG NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
+ARG NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_MAP_TILE_URL=$NEXT_PUBLIC_MAP_TILE_URL
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 # next.config.mjs sets output:'standalone' (PLACE-026) — produces a self-contained
 # server.js + pruned node_modules under .next/standalone.
 RUN npm run build --workspace=@phuquochub/web
