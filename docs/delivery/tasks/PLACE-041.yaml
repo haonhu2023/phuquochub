@@ -1,0 +1,104 @@
+schema_version: "1.0"
+
+id: PLACE-041
+workstream: place
+title: "Enterprise production audit: repository health, backend, frontend, infra, ops, security, performance"
+type: implementation
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: >-
+    Owner explicit instruction 2026-07-25, in-session. Requested a full enterprise production
+    audit across 10 sections (repository health, backend, frontend, infrastructure, operations,
+    security, performance, a final score, a prioritized action list, and immediate execution of
+    everything locally completable), explicitly forbidding new features, unnecessary refactors,
+    and new technical debt.
+  decision: >-
+    Verified PLACE-037/038/039/040 already completed (HEAD 5ca81cd at task start, clean tree, no
+    current.task authorized). This Owner instruction is itself the authorization, same precedent
+    as PLACE-039/040. The audit surfaced one real, evidence-backed CORRECTNESS bug affecting 4
+    routes (hotels/restaurants/tours/events detail pages blanket-caught every error, including
+    5xx/network failures, into a 404 response -- masking real outages as "not found" and risking
+    incorrect search-engine de-indexing), plus 3 real MISSING items (no security response headers,
+    no error/loading boundaries for those same 4 routes or a root-level catch-all, no
+    incident-response runbook). All four fixed; each mirrors an existing, already-proven pattern
+    elsewhere in this repository rather than introducing a new one.
+
+depends_on:
+  - "PLACE-040 completed 2026-07-25 -- production configuration inventory. This task performs the broader enterprise audit (backend/frontend/security/performance dimensions PLACE-040 did not cover) and executes the same class of local-only fix."
+  - "PLACE-035/036 completed 2026-07-25 -- established the places/[slug] 404-vs-error pattern this task extends to hotels/restaurants/tours/events, and the /places error.tsx/loading.tsx precedent this task's new boundaries follow."
+  - "PLACE-029/030 -- established the fail-fast config and correlation-ID-middleware conventions this task's security-headers middleware follows exactly."
+
+preconditions_verified:
+  - "current.task: none, working tree clean at task start (HEAD 5ca81cd, branch master)"
+  - "No git remotes configured; nothing to push regardless"
+  - "docs/delivery/tasks/PLACE-037/038/039/040.yaml all status: completed"
+  - "Docker engine NOT reachable this session (same unreachable state as PLACE-039/040's sessions)"
+  - "Pinned Node v20.20.2/npm 10.8.2 used for all lint/typecheck/test/build commands"
+
+objective: >-
+  Produce a full, evidence-backed enterprise production audit (10 Owner-specified sections) with
+  a scored assessment per dimension and a prioritized (Critical/High/Medium/Low) action list, then
+  execute every genuinely missing item that is both real (evidence-backed, not speculative) and
+  completable with zero Owner/VPS/DNS/real-secret dependency -- explicitly without adding product
+  features, without refactoring working code that isn't broken, and without introducing new
+  technical debt (every new file mirrors an existing, already-tested pattern in this repository).
+
+scope:
+  - "apps/web/src/app/(public)/{hotels,restaurants,tours,events}/[slug]/page.tsx: fix a real correctness bug found by this audit -- the main page body's catch block previously mapped EVERY error (including 5xx/network failures) to notFound(), unlike places/[slug]/page.tsx's own correct ApiError.isNotFound-based distinction (PLACE-035/036 baseline). Fixed identically in all 4 files: rethrow non-404 errors instead of masking them."
+  - "apps/web/src/app/(public)/{hotels,restaurants,tours,events}/[slug]/error.tsx + loading.tsx: new -- these 4 routes had zero error/loading boundary before this task (confirmed by a repository-wide find), so the rethrown errors from the fix above previously had nowhere safe to land. Minimal, dependency-free (no CSS-module coupling, matching these pages' existing plain-HTML style)."
+  - "apps/web/src/app/global-error.tsx: new -- root-level catch-all, did not exist anywhere in the app."
+  - "apps/api/src/common/middleware/security-headers.middleware.ts (+ .spec.ts): new -- X-Content-Type-Options/X-Frame-Options/Referrer-Policy, found completely absent (no helmet, no manual equivalent). Implemented as a small manual middleware rather than adding the `helmet` npm dependency, to avoid a lockfile-wide dependency change for a 3-header need; structured identically to the existing, proven correlation-id.middleware.ts pattern (own file + own unit spec), not inline in main.ts."
+  - "apps/api/src/main.ts: wire in the new security-headers middleware, immediately after the existing correlation-ID middleware."
+  - "docs/delivery/INCIDENT-RESPONSE-RUNBOOK.md: new -- found completely missing (no incident-response or disaster-recovery document existed anywhere in docs/)."
+  - "Task/report/evidence/state/workstream governance files for this task."
+
+out_of_scope:
+  - "Any real Hostinger/VPS/DNS/R2/uptime-monitor-account action -- Owner-side, unchanged since PLACE-039."
+  - "The migration:revert rehearsal -- still open, Docker engine unreachable this session (same as PLACE-039/040)."
+  - "Adding the `helmet` npm package, or any other new production dependency -- deliberately avoided; the 3-header need was met with a small manual middleware instead, per this task's own no-new-tech-debt / minimal-footprint instruction."
+  - "Error/loading boundaries for the remaining route segments this audit found also lacking them (explore/map/search/dashboard, and any hotels/restaurants/tours list page) -- reported in the prioritized action list (Medium), not executed, since it was judged lower-value than the 4 detail routes (which had an actual masked-error bug, not just a missing boundary) and this task's own scope discipline against unbounded sprawl."
+  - "Building list/browse pages for hotels, restaurants, or tours (confirmed via this audit to not exist at all) -- explicitly a new feature, forbidden by this task's own instruction."
+  - "Sitemap.xml/robots.txt, a live Swagger/OpenAPI UI, frontend component/integration tests, an accessibility audit beyond what this audit's grep-based inventory found, HSTS at the Caddy layer, MinIO image-tag pinning -- all real, evidence-backed gaps, all reported in the prioritized action list, none executed (see the report for why each was judged out of this task's immediate-execution bar)."
+  - "PLACE-042 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Active task/dependency chain/repository state verified fresh from disk before any file was written." }
+  - { id: AC2, mandatory: true, text: "All 10 Owner-specified audit sections are covered with evidence (file:line or command output) for every claim; no verdict asserted without evidence." }
+  - { id: AC3, mandatory: true, text: "The 404-vs-error masking bug is fixed identically in all 4 affected files, verified against the already-correct places/[slug]/page.tsx pattern used as the fix template." }
+  - { id: AC4, mandatory: true, text: "apps/api full unit suite passes with zero regression (256/256, up from 254/254 by exactly the 2 new security-headers-middleware tests)." }
+  - { id: AC5, mandatory: true, text: "apps/web typechecks, lints, and produces a clean production build (11/11 routes) with zero regression after the page.tsx fixes and the 9 new boundary files." }
+  - { id: AC6, mandatory: true, text: "A single production-readiness score is reported per audited dimension (architecture/backend/frontend/infrastructure/operations/security/performance/documentation/testing) plus one overall production-readiness percentage, each with a stated evidentiary basis -- no dimension scored without citing what was checked." }
+  - { id: AC7, mandatory: true, text: "A prioritized action list (Critical/High/Medium/Low) lists every gap this audit found and was NOT executed, with a one-line reason for each." }
+  - { id: AC8, mandatory: true, text: "Zero new npm dependency added; zero real secret written anywhere." }
+  - { id: AC9, mandatory: true, text: "state.yaml/workstreams/place.yaml updated consistently; current.task returns to none; PLACE-042 not created; working tree clean after commit(s); nothing pushed." }
+
+stop_conditions:
+  - "Any fix found would require real Hostinger/DNS/R2/monitoring-account access -- record as BLOCKED (Owner-side), do not attempt or simulate."
+  - "Any fix would require a live Docker stack to verify (e.g. the migration:revert rehearsal) -- Docker engine is unreachable this session; do not fabricate an execution result."
+  - "Any finding would require adding a product feature (e.g. a hotels/restaurants/tours list page) to fully close -- report it, do not build it, per this task's explicit no-new-features instruction."
+
+commit_strategy:
+  - "1) apps/web/src/app/(public)/{hotels,restaurants,tours,events}/[slug]/page.tsx (404-vs-error fix) + their new error.tsx/loading.tsx + global-error.tsx"
+  - "2) apps/api/src/common/middleware/security-headers.middleware.ts (+spec) + main.ts wiring"
+  - "3) docs/delivery/INCIDENT-RESPONSE-RUNBOOK.md"
+  - "4) delivery evidence and state updates (task file, report, evidence index, state.yaml, workstreams/place.yaml)"
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-041-enterprise-production-audit-report.md"
+  - "docs/delivery/evidence/PLACE-041-enterprise-production-audit-evidence-index.md"
+
+definition_of_done: >-
+  All 9 acceptance criteria pass; delivery evidence exists; state.yaml/workstreams/place.yaml
+  updated accurately; current.task returns to none; PLACE-042 proposed but not created; working
+  tree clean; nothing pushed.
+
+non_claims: >-
+  This task does NOT conclude "production ready" -- real go-live remains blocked on Owner-side
+  Hostinger/DNS/R2/monitoring actions, and the migration:revert rehearsal remains unperformed
+  (Docker engine unreachable). It does NOT add the `helmet` package or any other new dependency.
+  It does NOT build any list/browse page for hotels/restaurants/tours. It does NOT add error/
+  loading boundaries to every remaining route segment, a sitemap/robots.txt, a live Swagger UI,
+  frontend component tests, or an accessibility remediation -- all reported, none executed. It
+  does NOT create PLACE-042.

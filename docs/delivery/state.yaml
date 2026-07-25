@@ -30,7 +30,47 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-040 completed 2026-07-25 (production configuration
+  task: none                      # PLACE-041 completed 2026-07-25 (enterprise production audit:
+                                  # repository health, backend, frontend, infra, ops, security,
+                                  # performance). Re-verified active authority first (HEAD
+                                  # 5ca81cd, clean tree, PLACE-037/038/039/040 all completed). Full
+                                  # 10-section audit per Owner instruction, explicitly no new
+                                  # features/refactors/tech debt. Found and FIXED a real
+                                  # correctness bug: hotels/restaurants/tours/events [slug] pages
+                                  # blanket-caught EVERY error (incl. 5xx/network) into a 404
+                                  # response, unlike places/[slug] (PLACE-035/036), which correctly
+                                  # distinguishes 404 from other errors -- masking real outages as
+                                  # "not found" (misleading + wrong for SEO de-indexing risk).
+                                  # Fixed identically in all 4 files using the exact
+                                  # already-proven places pattern. Also fixed 3 further gaps, each
+                                  # mirroring an existing proven pattern: added error.tsx/
+                                  # loading.tsx to those same 4 routes (previously had ZERO
+                                  # boundary, confirmed via repo-wide find) + a new root
+                                  # global-error.tsx; added apps/api security response headers
+                                  # (X-Content-Type-Options/X-Frame-Options/Referrer-Policy) via a
+                                  # new security-headers.middleware.ts mirroring correlation-id.
+                                  # middleware.ts's exact file+spec structure (NOT the helmet
+                                  # package -- avoided a new dependency for a 3-header need);
+                                  # wrote docs/delivery/INCIDENT-RESPONSE-RUNBOOK.md (was
+                                  # completely absent). apps/api unit suite 256/256 (was 254/34
+                                  # suites -> 256/35), apps/web tsc/eslint/jest(17/17)/next-build
+                                  # (11/11 routes) all clean. Full 8-dimension score recorded
+                                  # (Architecture 88, Backend 90, Frontend 74, Infrastructure 93,
+                                  # Operations 87, Security 86, Performance 83, Documentation 95,
+                                  # Testing 79); repository-controlled production readiness held
+                                  # at ~92% (PLACE-040 methodology unchanged). NOT concluded
+                                  # "production ready" -- Critical/High items remain: Hostinger
+                                  # VPS/DNS/R2/uptime-account (Owner-side) + migration:revert
+                                  # rehearsal (Docker engine unreachable this session, same as
+                                  # PLACE-039/040). Prioritized action list recorded for
+                                  # everything found but NOT executed (frontend component tests,
+                                  # remaining segments' error/loading boundaries, live Swagger UI,
+                                  # sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO
+                                  # tag pinning, hotels/restaurants/tours list pages -- the last
+                                  # explicitly a new feature, not built). See
+                                  # docs/delivery/tasks/PLACE-041.yaml.
+                                  # ---- prior state (PLACE-040, completed 2026-07-25) ----
+                                  # PLACE-040 completed 2026-07-25 (production configuration
                                   # inventory, gap analysis, and local-only readiness closure).
                                   # Re-verified active authority first (HEAD 15dac59, clean tree,
                                   # current.task: none, PLACE-037/038/039 all completed). Full
@@ -327,6 +367,17 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    PLACE-041 (2026-07-25) ran a full 10-section enterprise production audit (repository health,
+    backend, frontend, infra, ops, security, performance) and fixed the one real correctness bug
+    found: hotels/restaurants/tours/events [slug] pages masked every error (incl. 5xx/network) as
+    404, unlike places/[slug]'s already-correct pattern -- fixed identically in all 4 files, plus
+    error/loading boundaries for those routes + a root global-error.tsx, new security-response-
+    headers middleware, and a new INCIDENT-RESPONSE-RUNBOOK.md. 256/256 api unit tests (was 254),
+    apps/web tsc/eslint/17-unit/11-route-build all clean. 8-dimension score recorded; repository-
+    controlled readiness held at ~92%. NOT concluded production-ready -- see the report's
+    Critical/High action list (Owner-side VPS/DNS/R2/monitoring + the still-Docker-blocked
+    migration:revert rehearsal). See docs/delivery/tasks/PLACE-041.yaml.
+    ---- prior state (PLACE-040, completed 2026-07-25) ----
     PLACE-040 (2026-07-25) ran a full 20-category production configuration inventory (evidence-
     backed READY/PARTIAL/MISSING/BLOCKED verdicts, see its report) and fixed two real gaps found:
     REDIS_URL now production-required (mirrors DB_HOST, closes a silent-misconfiguration risk);
@@ -401,10 +452,79 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-038/039/040's own scope is complete; PLACE-040 (2026-07-25) closed two real repository-level gaps (REDIS_URL fail-fast, deploy.sh's dangling smoke-test reference) but, like PLACE-039, resolved none of the underlying real-world steps, which remain entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. Additionally, the migration:revert rehearsal (PLACE-037 §12) remains open — blocked across both the PLACE-039 and PLACE-040 sessions on an unreachable Docker engine, not on Owner input; worth retrying once Docker is available locally."
+  pending_owner_decision: "PLACE-038/039/040/041's own scope is complete; PLACE-041 (2026-07-25) closed one real correctness bug (404-vs-error masking, 4 routes) plus 3 further resilience/ops gaps (error/loading boundaries, security headers, incident-response runbook), but resolved none of the underlying real-world steps, which remain entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. Additionally, the migration:revert rehearsal (PLACE-037 §12) remains open — blocked across the PLACE-039/040/041 sessions on an unreachable Docker engine, not on Owner input; worth retrying once Docker is available locally. See PLACE-041's report §10 for the full prioritized action list of everything else found but not executed (Medium/Low items: frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:
+  - id: PLACE-041
+    completed: "2026-07-25"
+    result: >-
+      Enterprise production audit (repository health, backend, frontend, infrastructure,
+      operations, security, performance, an 8-dimension final score, and a prioritized action
+      list), authorized by an Owner instruction explicitly forbidding new features, unnecessary
+      refactors, and new technical debt. Re-verified active authority first (HEAD 5ca81cd, clean
+      tree, PLACE-037/038/039/040 all completed) before any file was touched. Found and FIXED one
+      real, evidence-backed CORRECTNESS bug: hotels/restaurants/tours/events [slug] page
+      components blanket-caught EVERY error from their data fetch -- including 5xx/network
+      failures -- into a 404 Not Found response, unlike places/[slug]/page.tsx (the PLACE-035/036
+      baseline), which correctly distinguishes a genuine 404 (via ApiError.isNotFound) from other
+      errors and rethrows the latter to its own error.tsx. This masked real outages as "page
+      doesn't exist," misleading to users and incorrect for search-engine indexing (a transient
+      server error should never assert permanent non-existence to a crawler). Fixed identically
+      in all 4 files using the exact already-proven places/[slug] pattern -- confirmed via direct
+      comparison read of both the buggy and correct versions before editing. Three further real
+      gaps were found and closed, each mirroring an existing, already-tested repository pattern
+      rather than inventing a new one: (1) those same 4 routes (confirmed via a repository-wide
+      find to have ZERO error/loading boundary before this task, unlike /places) now have
+      error.tsx + loading.tsx, plus a new root-level global-error.tsx (also confirmed absent) --
+      necessary since the fix above now lets real errors reach these routes instead of being
+      silently masked; (2) apps/api had ZERO security response headers anywhere (confirmed via
+      grep -- no helmet package, no manual equivalent) -- fixed via a new, small, dependency-free
+      security-headers.middleware.ts (X-Content-Type-Options/X-Frame-Options/Referrer-Policy,
+      deliberately NOT Strict-Transport-Security, which belongs at the Caddy layer once real HTTPS
+      is live) structured identically to the existing, proven correlation-id.middleware.ts pattern
+      (own file + own unit spec) rather than inline in main.ts or via the helmet npm package (
+      avoided adding a new dependency for a 3-header need, per this task's own no-new-tech-debt
+      instruction); (3) docs/delivery/INCIDENT-RESPONSE-RUNBOOK.md written (confirmed completely
+      absent from docs/ beforehand) -- triage steps, a symptom-to-response table cross-referencing
+      the existing release/rollback/backup scripts, and an explicit statement of what it does NOT
+      cover (no on-call rotation or status page exist yet, honestly, not invented). Every other
+      audited item across all 7 technical sections was found already correctly implemented by
+      prior PLACE tasks (026/028/029/030/035/036/037/038/040) and left unchanged, OR is a
+      deliberately-approved deferral (MinIO/object storage, EXPLAIN-at-scale evidence per OD-B6,
+      no staging per the Owner's MVP decision) -- re-confirmed, not newly closed. Also newly
+      discovered and explicitly NOT built (a new feature, forbidden by this task's own
+      instruction): hotels/restaurants/tours have NO list/browse page at all (confirmed via find
+      -- only their [slug] detail routes exist; only places and events have list pages). Full
+      validation: apps/api unit suite 256/256 across 35 suites (was 254/34 -- +2 new tests from
+      security-headers.middleware.spec.ts, zero regression); tsc/eslint both exit 0; nest build
+      produced dist/common/middleware/security-headers.middleware.js cleanly. apps/web: tsc/eslint
+      both exit 0; unit suite unchanged 17/17; a full `next build` (Turbopack) succeeded with
+      ZERO error, all 11 routes generated and correctly classified static-vs-dynamic -- direct
+      proof the 4 fixed pages + 9 new boundary files compile and build correctly. Full monorepo
+      e2e was NOT re-run (Docker engine unreachable this session, same as PLACE-039/040's sessions
+      -- confirmed via the identical docker ps/version npipe-connection-failure check); judged
+      unaffected since zero backend business logic changed (only a new, independently-unit-tested
+      header-setting middleware). An 8-dimension score was recorded with a cited evidentiary basis
+      per dimension (Architecture 88, Backend 90, Frontend 74, Infrastructure 93, Operations 87,
+      Security 86, Performance 83, Documentation 95, Testing 79) plus repository-controlled
+      production readiness held at ~92% (PLACE-040's methodology, unchanged -- this task's fixes
+      are correctness/resilience additions, not newly-scored readiness-category items). Explicitly
+      did NOT conclude "production ready" -- Critical/High items remain genuinely open: the real
+      Hostinger VPS/DNS/R2-credentials/uptime-monitor-account items are Owner-side and unchanged
+      since PLACE-039, and the migration:revert rehearsal remains blocked on this session's
+      unreachable Docker engine, not on Owner input. A full prioritized action list (Medium/Low)
+      was recorded for every other real gap found but deliberately not executed this task
+      (zero frontend component/integration tests exist; remaining route segments still lack
+      error/loading boundaries; no live Swagger/OpenAPI UI exists, only the manually-maintained
+      spec file; sitemap.xml/robots.txt remain absent (pre-existing, SEO-only); accessibility
+      coverage is thin (8 files use aria-*/role repository-wide) and no dedicated audit tool was
+      run; HSTS deliberately deferred to when a real domain/TLS is live; MinIO's compose image tag
+      is unpinned (:latest) while the service itself remains unused) -- each with a one-line reason
+      it was judged out of this task's own immediate-execution bar. Zero new npm dependency added.
+      Zero real secret written anywhere. No PLACE-042 created or started.
+    report: docs/delivery/reports/PLACE-041-enterprise-production-audit-report.md
+    evidence_index: docs/delivery/evidence/PLACE-041-enterprise-production-audit-evidence-index.md
   - id: PLACE-040
     completed: "2026-07-25"
     result: >-

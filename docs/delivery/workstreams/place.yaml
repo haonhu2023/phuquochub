@@ -131,7 +131,35 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-040 completed 2026-07-25 (production configuration inventory, gap analysis, local-only readiness closure). Re-verified active authority first (PLACE-037/038/039 all completed, current.task: none). Full 20-category evidence-backed inventory (env vars/Docker/Compose/proxy/ports/health/Redis/Postgres/MinIO/upload/JWT/cookies/CORS/rate-limit/logging/backup/restore/email/monitoring/build/static-assets), each given a READY/PARTIAL/MISSING/BLOCKED verdict. Found and fixed 2 real gaps: REDIS_URL had no production fail-fast rule (fixed, mirrors DB_HOST; 254/254 api unit tests, was 251/251); scripts/deploy.sh pointed at a never-committed "smoke-routes.sh" (fixed via new scripts/smoke-test.sh, wired in). New docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md. Repository-controlled readiness ~92%; migration:revert still blocked (Docker engine unreachable this session, not Owner input). Zero compose/Dockerfile/Caddyfile change — already correct. See docs/delivery/reports/PLACE-040-production-configuration-inventory-report.md.
+next_task: none        # PLACE-041 completed 2026-07-25 (enterprise production audit: repository health/backend/frontend/infra/ops/security/performance, 8-dimension score, prioritized action list). Fixed a real correctness bug: hotels/restaurants/tours/events [slug] pages masked every error (incl. 5xx/network) as 404, unlike places/[slug]'s already-correct pattern -- fixed identically in all 4 using that same proven pattern. Also added error/loading boundaries to those routes + root global-error.tsx, new security-response-headers middleware (no new dependency), and a new INCIDENT-RESPONSE-RUNBOOK.md. apps/api 256/256 unit tests, apps/web tsc/eslint/17-unit/11-route-build all clean. Repository-controlled readiness held ~92%; NOT concluded production-ready (Owner-side VPS/DNS/R2/monitoring + Docker-blocked migration:revert rehearsal remain open). See docs/delivery/reports/PLACE-041-enterprise-production-audit-report.md. Re-verified active authority first (PLACE-037/038/039 all completed, current.task: none). Full 20-category evidence-backed inventory (env vars/Docker/Compose/proxy/ports/health/Redis/Postgres/MinIO/upload/JWT/cookies/CORS/rate-limit/logging/backup/restore/email/monitoring/build/static-assets), each given a READY/PARTIAL/MISSING/BLOCKED verdict. Found and fixed 2 real gaps: REDIS_URL had no production fail-fast rule (fixed, mirrors DB_HOST; 254/254 api unit tests, was 251/251); scripts/deploy.sh pointed at a never-committed "smoke-routes.sh" (fixed via new scripts/smoke-test.sh, wired in). New docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md. Repository-controlled readiness ~92%; migration:revert still blocked (Docker engine unreachable this session, not Owner input). Zero compose/Dockerfile/Caddyfile change — already correct. See docs/delivery/reports/PLACE-040-production-configuration-inventory-report.md.
+
+place_041_status: >-
+  COMPLETED 2026-07-25 -- enterprise production audit (repository health, backend, frontend,
+  infrastructure, operations, security, performance; 8-dimension score; prioritized action list).
+  Re-verified active authority first (HEAD 5ca81cd, clean tree, PLACE-037/038/039/040 all
+  completed). Found and FIXED a real correctness bug: hotels/restaurants/tours/events [slug]
+  pages blanket-caught EVERY error (incl. 5xx/network) into a 404 response, unlike
+  places/[slug]'s already-correct ApiError.isNotFound-based distinction (PLACE-035/036) -- masked
+  real outages as "not found", misleading and wrong for SEO. Fixed identically in all 4 files
+  using that exact proven pattern. Also fixed 3 further gaps, each mirroring an existing tested
+  pattern: error.tsx/loading.tsx added to those 4 routes (previously zero boundary) + a new root
+  global-error.tsx; a new security-headers.middleware.ts (X-Content-Type-Options/X-Frame-Options/
+  Referrer-Policy, no new npm dependency, mirrors correlation-id.middleware.ts's structure)
+  wired into main.ts; a new docs/delivery/INCIDENT-RESPONSE-RUNBOOK.md (was completely absent).
+  Also confirmed (not built -- a new feature): hotels/restaurants/tours have NO list/browse page
+  at all, only [slug] detail routes. apps/api unit suite 256/256 across 35 suites (was 254/34);
+  tsc/eslint/nest-build all clean. apps/web tsc/eslint clean, unit 17/17 unchanged, a full
+  `next build` succeeded with 11/11 routes generated, zero error. Full e2e not re-run (Docker
+  engine unreachable this session, same as PLACE-039/040) -- judged unaffected, zero backend
+  logic changed. 8-dimension score recorded (Architecture 88, Backend 90, Frontend 74,
+  Infrastructure 93, Operations 87, Security 86, Performance 83, Documentation 95, Testing 79);
+  repository-controlled readiness held ~92%. Explicitly NOT concluded "production ready" --
+  Critical/High items remain: Owner-side Hostinger VPS/DNS/R2/uptime-account, and the
+  migration:revert rehearsal (Docker-blocked, not Owner-blocked). Full prioritized Medium/Low
+  action list recorded for everything else found but not executed. Zero new npm dependency; zero
+  real secret written. No PLACE-042 created or started. See
+  reports/PLACE-041-enterprise-production-audit-report.md and
+  evidence/PLACE-041-enterprise-production-audit-evidence-index.md.
 
 place_040_status: >-
   COMPLETED 2026-07-25 -- production configuration inventory, gap analysis, and local-only
