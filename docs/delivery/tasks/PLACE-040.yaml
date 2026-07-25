@@ -1,0 +1,103 @@
+schema_version: "1.0"
+
+id: PLACE-040
+workstream: place
+title: "Production configuration inventory, gap analysis, and local-only readiness closure"
+type: implementation
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: >-
+    Owner explicit instruction 2026-07-25, in-session. Instructed re-verification of active
+    authority (task/dependency chain/repository state) before any work, a full production
+    configuration inventory across environment variables, Docker images/Compose, reverse proxy,
+    ports, health endpoints, Redis, PostgreSQL, MinIO, upload storage, JWT, cookies, CORS, rate
+    limiting, logging, backup, restore, email, monitoring, build artifacts, and static assets, a
+    READY/PARTIAL/MISSING/BLOCKED gap analysis with evidence for every item, and execution of
+    every locally-completable item (no real VPS required) -- explicitly no real secrets, only
+    placeholders.
+  decision: >-
+    Verified PLACE-037/038/039 already completed (HEAD 15dac59 at task start, clean tree). No
+    current.task was authorized in state.yaml (task: none), so this Owner instruction itself is
+    the authorization for a new task, following the same precedent as PLACE-039's own creation.
+    The inventory surfaced one genuine, previously-undiscovered production-safety gap (REDIS_URL
+    had no production fail-fast rule) and one dangling reference (deploy.sh pointed at a
+    "scripts/smoke-routes.sh" that was never committed) -- both fixed, both locally verifiable,
+    neither requiring real infrastructure.
+
+depends_on:
+  - "PLACE-039 completed 2026-07-25 -- pre-deployment checklist (Hostinger preflight + secrets inventory). This task performs the deeper configuration audit that checklist's §2 summarized at a high level."
+  - "PLACE-038 completed 2026-07-25 -- implemented the Topology A stack this inventory audits."
+  - "PLACE-029 completed 2026-07-24 -- established the DB-credential fail-fast precedent (env.validation.ts) this task's REDIS_URL fix directly mirrors."
+
+preconditions_verified:
+  - "current.task: none, working tree clean at task start (HEAD 15dac59, branch master)"
+  - "No git remotes configured; nothing to push regardless"
+  - "docs/delivery/tasks/PLACE-037.yaml / PLACE-038.yaml / PLACE-039.yaml all status: completed"
+  - "Docker engine NOT reachable this session (docker ps/version failed to connect to npipe:////./pipe/dockerDesktopLinuxEngine, same as PLACE-039's session) -- `docker compose config --quiet` still works (pure client-side YAML validation, no daemon needed) and was used instead where applicable"
+  - "Pinned Node v20.20.2 / npm 10.8.2 (repo .nvmrc=20) located at the portable path used by prior PLACE tasks and used for all lint/typecheck/test/build commands in this task"
+
+objective: >-
+  Produce an evidence-backed production configuration inventory and gap analysis (READY/PARTIAL/
+  MISSING/BLOCKED per area, no speculation), then implement every item the analysis found both
+  genuinely missing/broken AND completable without real infrastructure: an application-level
+  fail-fast fix for a previously-unenforced Redis production config, a real smoke-test script
+  closing a dangling reference in scripts/deploy.sh, and an operator-facing release/rollback/
+  backup/restore checklist. No VPS/DNS/R2/monitoring-account action attempted -- those remain
+  Owner-side per PLACE-039.
+
+scope:
+  - "apps/api/src/core/config/env.validation.ts: require REDIS_URL in production (mirrors the existing DB_HOST/CORS_ALLOWED_ORIGINS pattern) -- a real gap found by this task's own audit, since RedisService reads only `redis.url` and previously had no production-required rule, so a misconfigured deploy would have silently connected to the unauthenticated `redis://localhost:6379` dev default instead of failing fast."
+  - "apps/api/src/core/config/env.validation.spec.ts: new PLACE-040 describe block pinning the REDIS_URL fail-fast behavior (pass/fail/dev-default cases, mirroring the existing PLACE-029 DB-credential suite's structure exactly); existing PLACE-029 suite's baseProdEnv fixture updated to include REDIS_URL so it is unaffected by the new production-required rule."
+  - "scripts/smoke-test.sh: new -- consolidates the ad hoc health/route checks used during PLACE-038's manual verification into one reusable, exit-code-driven script (API health, web home, unknown-route 404, optional real-slug data check), run against Caddy's documented local :8080 test address by default."
+  - "scripts/deploy.sh: Step 11 changed from an inert echo pointing at a nonexistent 'scripts/smoke-routes.sh' to an actual invocation of the new scripts/smoke-test.sh, halting with a rollback instruction on failure."
+  - "docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md: new -- operator checkbox checklist for pre-release, deploy, smoke test, rollback-trigger criteria, rollback, restore, routine backup, startup verification, and shutdown verification, each step naming the exact script/command."
+  - "docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md: updated -- REDIS_URL row added to the secrets table noting the new fail-fast enforcement; cross-link added to the new release/rollback checklist."
+  - "Task/report/evidence/state/workstream governance files for this task."
+
+out_of_scope:
+  - "Any real Hostinger/VPS/DNS/R2/uptime-monitor-account action -- all remain Owner-side (PLACE-039 §1/§3)."
+  - "The migration:revert rehearsal -- still open (PLACE-037 §12, PLACE-038 NX-5, PLACE-039 carried it forward); Docker engine still unreachable this session, so still not attempted."
+  - "Executing scripts/smoke-test.sh, scripts/deploy.sh, or scripts/rollback.sh against a live stack -- Docker engine unreachable this session; smoke-test.sh is syntax-checked (`sh -n`) only, not run end-to-end."
+  - "Any change to docker-compose.prod.yml, Dockerfiles, or Caddyfile -- the audit found these already correct (PLACE-038); `docker compose config --quiet` confirms the compose file is still valid unchanged."
+  - "MinIO/object-storage integration, transactional email, sitemap/robots.txt -- all pre-existing, deliberately deferred items (PLACE-037/PLACE-036), re-confirmed still open in this task's inventory but not newly scoped for closure here."
+  - "PLACE-041 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Active task/dependency chain/repository state verified fresh from disk (git + state.yaml + all PLACE-037/038/039 task files) before any file was written; no reliance on conversational memory." }
+  - { id: AC2, mandatory: true, text: "A production configuration inventory covering every category the Owner listed (env vars, Docker images/Compose, reverse proxy, ports, health endpoints, Redis, PostgreSQL, MinIO, upload storage, JWT, cookies, CORS, rate limiting, logging, backup, restore, email, monitoring, build artifacts, static assets) is recorded with a READY/PARTIAL/MISSING/BLOCKED verdict and a cited file:line or command-output for every item -- no verdict asserted without evidence." }
+  - { id: AC3, mandatory: true, text: "The REDIS_URL fail-fast fix is implemented, and the full apps/api unit suite passes with zero regression (254/254, up from the pre-existing 251/251 baseline by exactly the 3 new PLACE-040 tests)." }
+  - { id: AC4, mandatory: true, text: "apps/api typechecks (tsc --noEmit) and builds (nest build, dist/main.js produced) cleanly after the change." }
+  - { id: AC5, mandatory: true, text: "scripts/smoke-test.sh and the edited scripts/deploy.sh both pass `sh -n` syntax validation; docker-compose.prod.yml still passes `docker compose config --quiet`." }
+  - { id: AC6, mandatory: true, text: "Zero real secret value is written anywhere; only variable names and the pre-existing `change-me-*` placeholder convention are referenced." }
+  - { id: AC7, mandatory: true, text: "A single production-readiness score is reported, explicitly separating repository-controlled readiness (scored) from Owner-side real-world blockers (not scored, listed by name)." }
+  - { id: AC8, mandatory: true, text: "state.yaml/workstreams/place.yaml updated consistently; current.task returns to none; PLACE-041 not created; working tree clean after commit(s); nothing pushed." }
+
+stop_conditions:
+  - "Any check would require actually running a script against a live Docker stack -- Docker engine is unreachable this session; syntax-check only, do not fabricate an execution result."
+  - "Any gap found would require real Hostinger/DNS/R2/monitoring-account access to close -- record it as BLOCKED (Owner-side), do not attempt or simulate."
+
+commit_strategy:
+  - "1) apps/api/src/core/config/env.validation.ts + env.validation.spec.ts (REDIS_URL fail-fast fix + tests)"
+  - "2) scripts/smoke-test.sh (new) + scripts/deploy.sh (wire it in)"
+  - "3) docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md (new) + docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md (cross-link + REDIS_URL row)"
+  - "4) delivery evidence and state updates (task file, report, evidence index, state.yaml, workstreams/place.yaml)"
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-040-production-configuration-inventory-report.md"
+  - "docs/delivery/evidence/PLACE-040-production-configuration-inventory-evidence-index.md"
+
+definition_of_done: >-
+  All 8 acceptance criteria pass; delivery evidence exists; state.yaml/workstreams/place.yaml
+  updated accurately; current.task returns to none; PLACE-041 proposed but not created; working
+  tree clean; nothing pushed.
+
+non_claims: >-
+  This task does NOT verify or provision any real Hostinger VPS, DNS record, Cloudflare R2
+  credential, or uptime-monitor account. It does NOT perform the migration:revert rehearsal
+  (Docker engine unreachable this session). It does NOT execute scripts/smoke-test.sh,
+  scripts/deploy.sh, or scripts/rollback.sh against any live stack -- syntax-checked only. It does
+  NOT close the pre-existing MinIO/object-storage, transactional-email, or sitemap/robots.txt gaps
+  (all deliberately deferred by prior Owner decisions, re-confirmed open here, not newly closed).
+  It does NOT create PLACE-041.

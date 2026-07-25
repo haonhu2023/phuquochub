@@ -30,7 +30,43 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-039 completed 2026-07-25 (pre-deployment checklist:
+  task: none                      # PLACE-040 completed 2026-07-25 (production configuration
+                                  # inventory, gap analysis, and local-only readiness closure).
+                                  # Re-verified active authority first (HEAD 15dac59, clean tree,
+                                  # current.task: none, PLACE-037/038/039 all completed). Full
+                                  # 20-category inventory (env vars, Docker images/Compose,
+                                  # reverse proxy, ports, health endpoints, Redis, PostgreSQL,
+                                  # MinIO, upload storage, JWT, cookies, CORS, rate limiting,
+                                  # logging, backup, restore, email, monitoring, build artifacts,
+                                  # static assets) each given a READY/PARTIAL/MISSING/BLOCKED
+                                  # verdict with cited evidence. Found and FIXED two real,
+                                  # previously-undiscovered gaps: (1) REDIS_URL had no
+                                  # production-required Joi rule (unlike DB_HOST/
+                                  # CORS_ALLOWED_ORIGINS) -- RedisService reads only redis.url, so
+                                  # a misconfigured deploy would have silently connected to the
+                                  # unauthenticated redis://localhost:6379 dev default instead of
+                                  # failing fast; fixed to mirror the DB_HOST pattern exactly, 3
+                                  # new tests added, full apps/api suite 254/254 (was 251/251),
+                                  # tsc/eslint/nest-build all clean. (2) scripts/deploy.sh Step 11
+                                  # pointed at a "scripts/smoke-routes.sh" that was never actually
+                                  # committed (an inert no-op); fixed by writing the real
+                                  # scripts/smoke-test.sh (health/route/optional-real-data checks
+                                  # against Caddy's local :8080 address) and wiring it in with a
+                                  # rollback instruction on failure. New
+                                  # docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md (operator
+                                  # checkbox checklist: pre-release/deploy/smoke-test/rollback-
+                                  # triggers/rollback/restore/backup/startup/shutdown, each step
+                                  # naming the exact script). Repository-controlled production
+                                  # readiness scored ~92% (16 READY + 1 PARTIAL(monitoring) out of
+                                  # 18 scored items; migration:revert still BLOCKED this session --
+                                  # Docker engine unreachable, same as PLACE-039's session; real
+                                  # VPS/DNS/R2/uptime-account items are pure Owner-side and
+                                  # excluded from scoring, not fabricated). Zero
+                                  # docker-compose.prod.yml/Dockerfile/Caddyfile change --
+                                  # `docker compose config --quiet` confirms these were already
+                                  # correct (PLACE-038). See docs/delivery/tasks/PLACE-040.yaml.
+                                  # ---- prior state (PLACE-039, completed 2026-07-25) ----
+                                  # PLACE-039 completed 2026-07-25 (pre-deployment checklist:
                                   # Hostinger VPS preflight + secrets/environment go-live
                                   # inventory). Re-verified repository truth first: PLACE-037 and
                                   # PLACE-038 were ALREADY completed at task start (HEAD 13539a1);
@@ -291,6 +327,16 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    PLACE-040 (2026-07-25) ran a full 20-category production configuration inventory (evidence-
+    backed READY/PARTIAL/MISSING/BLOCKED verdicts, see its report) and fixed two real gaps found:
+    REDIS_URL now production-required (mirrors DB_HOST, closes a silent-misconfiguration risk);
+    scripts/deploy.sh's dangling smoke-test reference replaced with a real, working
+    scripts/smoke-test.sh. New docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md (operator checkbox
+    checklist). Repository-controlled readiness scored ~92%; migration:revert remains BLOCKED
+    (Docker engine unreachable this session, not Owner input). Zero
+    docker-compose.prod.yml/Dockerfile/Caddyfile change -- audit found these already correct. See
+    docs/delivery/tasks/PLACE-040.yaml.
+    ---- prior state (PLACE-039, completed 2026-07-25) ----
     PLACE-039 (2026-07-25) produced docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md: a Hostinger VPS
     hPanel preflight (8 non-sensitive facts, explicit no-credential instruction) plus a production
     secrets/environment go-live inventory (every DB_PASSWORD/REDIS_PASSWORD/JWT_*/R2_* placeholder
@@ -355,10 +401,65 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-038's own scope is complete; PLACE-039 (2026-07-25) added an actionable checklist (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md) but resolved none of the underlying real-world steps, which remain entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (checklist §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. Additionally, the migration:revert rehearsal (PLACE-037 §12) remains open — blocked this PLACE-039 session on an unreachable Docker engine, not on Owner input; worth retrying once Docker is available locally."
+  pending_owner_decision: "PLACE-038/039/040's own scope is complete; PLACE-040 (2026-07-25) closed two real repository-level gaps (REDIS_URL fail-fast, deploy.sh's dangling smoke-test reference) but, like PLACE-039, resolved none of the underlying real-world steps, which remain entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. Additionally, the migration:revert rehearsal (PLACE-037 §12) remains open — blocked across both the PLACE-039 and PLACE-040 sessions on an unreachable Docker engine, not on Owner input; worth retrying once Docker is available locally."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:
+  - id: PLACE-040
+    completed: "2026-07-25"
+    result: >-
+      Production configuration inventory, gap analysis, and local-only readiness closure,
+      authorized by an Owner instruction requesting a full 20-category audit (environment
+      variables, Docker images/Compose, reverse proxy, ports, health endpoints, Redis, PostgreSQL,
+      MinIO, upload storage, JWT, cookies, CORS, rate limiting, logging, backup, restore, email,
+      monitoring, build artifacts, static assets) with a READY/PARTIAL/MISSING/BLOCKED verdict and
+      cited evidence per item, then execution of every locally-completable gap. Re-verified active
+      authority first (HEAD 15dac59, clean tree, current.task: none, PLACE-037/038/039 all
+      completed) before any file was touched. TWO REAL, PREVIOUSLY-UNDISCOVERED GAPS found and
+      fixed: (1) REDIS_URL had no production-required Joi validation rule -- unlike
+      DB_HOST/CORS_ALLOWED_ORIGINS, which already fail-fast in production, RedisService
+      (apps/api/src/core/redis/redis.service.ts) reads only config.get('redis.url'), so a
+      misconfigured production deploy missing REDIS_URL would have silently connected to the
+      unauthenticated redis://localhost:6379 dev default instead of crashing at boot. Fixed in
+      apps/api/src/core/config/env.validation.ts to mirror the exact DB_HOST
+      required-in-production pattern; 3 new tests added to env.validation.spec.ts (pass-when-set,
+      fail-fast-when-missing, dev-default-unaffected), and the pre-existing PLACE-029 DB-credential
+      test suite's baseProdEnv fixture updated to include REDIS_URL (it would otherwise have newly
+      failed under the stricter schema) -- full apps/api unit suite re-run clean afterward: 254/254
+      across 34 suites (up from the 251/251 pre-PLACE-040 baseline by exactly the 3 new tests,
+      zero regression). tsc --noEmit and eslint both exit 0; `nest build` produced dist/main.js
+      cleanly. (2) scripts/deploy.sh's own Step 11 pointed at a "scripts/smoke-routes.sh" that was
+      never actually committed anywhere in this repository -- a dangling reference, functionally
+      an inert echo with no real check performed. Fixed by writing scripts/smoke-test.sh (new): a
+      reusable, exit-code-driven script checking /api/health (200), the web home page (200), an
+      unknown route (404 -- deliberately NOT /places/<bogus-slug>, which PLACE-035/036 already
+      documented as having an unrelated, accepted 200-not-404 quirk), and an optional real-slug
+      content check, run by default against Caddy's own documented local :8080 test address (
+      identical routing to the real domain, no DNS/TLS required); scripts/deploy.sh Step 11 now
+      calls it directly and halts with an explicit rollback instruction on failure. New
+      docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md: an operator-facing, checkbox-style
+      companion covering pre-release, deploy, smoke-test, rollback-trigger criteria, rollback,
+      restore, routine backup, startup verification, and shutdown verification, each step naming
+      the exact script/command -- distinct from and cross-linked to PLACE-039's
+      PRE-DEPLOYMENT-CHECKLIST.md (which was updated with a REDIS_URL secrets-table row and a
+      cross-link to this new document). Every OTHER audited category (Docker images, Docker
+      Compose topology, reverse proxy, ports, health endpoints, PostgreSQL/migrations, JWT
+      secrets, CORS, rate limiting, logging, backup/restore scripts, build artifacts) was found
+      ALREADY correctly implemented by prior PLACE tasks (026/028/029/030/038) and left completely
+      unchanged -- confirmed via `docker compose config --quiet` (exit 0, zero drift) rather than
+      re-implemented. MinIO/object-storage integration, transactional email, and sitemap/robots.txt
+      remain open, but as pre-existing, deliberately-approved deferrals (PLACE-036/037), not newly
+      discovered defects -- re-confirmed still open, not newly closed. This session's Docker engine
+      was again unreachable (same as PLACE-039's) -- the migration:revert rehearsal (PLACE-037 §12)
+      remains carried forward, and scripts/smoke-test.sh/deploy.sh were syntax-checked (`sh -n`)
+      only, never executed against a live stack. Repository-controlled production readiness scored
+      approximately 92% (16 READY + 1 PARTIAL(monitoring, infra-native done/uptime-account pending)
+      out of 18 scored items; the 19th, migration:revert, scored 0 as session-BLOCKED). Real
+      go-live readiness explicitly NOT scored -- it depends entirely on 4 Owner-side real-world
+      actions (Hostinger VPS, DNS, R2, uptime-monitor account) no repository evidence can resolve.
+      Zero real secret value written anywhere. No PLACE-041 created or started.
+    report: docs/delivery/reports/PLACE-040-production-configuration-inventory-report.md
+    evidence_index: docs/delivery/evidence/PLACE-040-production-configuration-inventory-evidence-index.md
   - id: PLACE-039
     completed: "2026-07-25"
     result: >-

@@ -131,7 +131,33 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-039 completed 2026-07-25 (pre-deployment checklist: Hostinger VPS preflight + secrets/environment go-live inventory). Repository truth re-verified first: PLACE-037/038 were already completed and the Owner's 5 restated decisions matched exactly, so nothing was reopened. New docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md gives 8 non-sensitive Hostinger hPanel facts to confirm plus a go-live secrets/environment inventory. This session's Docker engine was unreachable, so the still-open migration:revert rehearsal (PLACE-037 §12) was not attempted — carried forward, blocked on Docker availability, not Owner input. Zero code/Dockerfile/Compose/script touched — see docs/delivery/reports/PLACE-039-pre-deployment-checklist-report.md.
+next_task: none        # PLACE-040 completed 2026-07-25 (production configuration inventory, gap analysis, local-only readiness closure). Re-verified active authority first (PLACE-037/038/039 all completed, current.task: none). Full 20-category evidence-backed inventory (env vars/Docker/Compose/proxy/ports/health/Redis/Postgres/MinIO/upload/JWT/cookies/CORS/rate-limit/logging/backup/restore/email/monitoring/build/static-assets), each given a READY/PARTIAL/MISSING/BLOCKED verdict. Found and fixed 2 real gaps: REDIS_URL had no production fail-fast rule (fixed, mirrors DB_HOST; 254/254 api unit tests, was 251/251); scripts/deploy.sh pointed at a never-committed "smoke-routes.sh" (fixed via new scripts/smoke-test.sh, wired in). New docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md. Repository-controlled readiness ~92%; migration:revert still blocked (Docker engine unreachable this session, not Owner input). Zero compose/Dockerfile/Caddyfile change — already correct. See docs/delivery/reports/PLACE-040-production-configuration-inventory-report.md.
+
+place_040_status: >-
+  COMPLETED 2026-07-25 -- production configuration inventory, gap analysis, and local-only
+  readiness closure. Re-verified active authority first (HEAD 15dac59, clean tree, current.task:
+  none, PLACE-037/038/039 all completed) -- this Owner instruction is itself the authorization,
+  same precedent as PLACE-039. Full 20-category inventory with READY/PARTIAL/MISSING/BLOCKED
+  verdicts, each backed by a cited file:line or command output (see the report's section 3 table).
+  TWO REAL GAPS found and fixed: (1) REDIS_URL had no production-required Joi rule -- RedisService
+  reads only redis.url, so a misconfigured deploy would silently fall back to the unauthenticated
+  redis://localhost:6379 dev default instead of failing fast; fixed to mirror DB_HOST exactly, 3
+  new tests added, full apps/api suite 254/254 (was 251/251), tsc/eslint/nest-build all clean. (2)
+  scripts/deploy.sh Step 11 pointed at a "scripts/smoke-routes.sh" never actually committed
+  anywhere -- fixed by writing the real scripts/smoke-test.sh (health/route/optional-real-data
+  checks against Caddy's local :8080 address) and wiring it in with a rollback instruction on
+  failure. New docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md (operator checkbox checklist:
+  pre-release/deploy/smoke-test/rollback-triggers/rollback/restore/backup/startup/shutdown).
+  Every other audited category confirmed already correctly implemented by prior PLACE tasks and
+  left unchanged (docker compose config --quiet exit 0, zero drift). MinIO/object-storage,
+  transactional email, sitemap/robots.txt remain open as pre-existing, deliberately-approved
+  deferrals, re-confirmed not newly closed. Docker engine unreachable again this session --
+  migration:revert rehearsal still carried forward; smoke-test.sh/deploy.sh syntax-checked only,
+  not executed live. Repository-controlled readiness scored ~92%; real go-live readiness
+  explicitly not scored (depends on 4 Owner-side real-world actions no repository evidence can
+  resolve). Zero real secret written. No PLACE-041 created or started. See
+  reports/PLACE-040-production-configuration-inventory-report.md and
+  evidence/PLACE-040-production-configuration-inventory-evidence-index.md.
 
 place_039_status: >-
   COMPLETED 2026-07-25 -- pre-deployment checklist (Hostinger VPS preflight + production
