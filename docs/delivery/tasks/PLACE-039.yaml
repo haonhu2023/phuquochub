@@ -1,0 +1,100 @@
+schema_version: "1.0"
+
+id: PLACE-039
+workstream: place
+title: "Pre-deployment checklist: Hostinger VPS preflight + secrets/environment go-live inventory"
+type: implementation
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: >-
+    Owner explicit instruction 2026-07-25, in-session. The Owner reaffirmed the 5 conditions
+    already recorded and implemented under PLACE-037/PLACE-038 (Hostinger KVM VPS as deployment
+    target pending real-account provisioning verification; ~1-2 million VND/month budget;
+    phuquochub.com domain with https://phuquochub.com/api same-domain path, no api. subdomain;
+    email as the operational notification channel; no staging environment for the first release,
+    explicitly recorded as an MVP decision to be revisited once production is stable), and
+    instructed a re-verification of repository truth, correct closure bookkeeping for PLACE-037,
+    and identification/execution of the next authorized, locally-executable task.
+  decision: >-
+    PLACE-037 and PLACE-038 were found ALREADY COMPLETED (HEAD 13539a1 at task start) with all 5
+    Owner decisions already recorded and already matching the Owner's restated decisions exactly
+    -- no contradiction, no new decision, nothing to re-close. This task's own scope is therefore
+    NOT "closing PLACE-037" (already closed) but the next genuinely open, locally-executable gap:
+    a consolidated pre-deployment checklist covering the one remaining Owner-side verification
+    (Hostinger VPS real-account status) and the production secrets/environment values that must
+    be replaced before any real deploy.
+
+depends_on:
+  - "PLACE-038 completed 2026-07-25 -- production readiness implementation (repository-controlled). Its own pending_owner_decision explicitly named Hostinger VPS verification/provisioning as the first remaining real-world step; this task addresses that gap with an actionable checklist, not by performing the real-world step itself."
+  - "PLACE-037 completed 2026-07-25 -- production deployment/monitoring decision gate. §12 flagged the migration:revert rehearsal as a genuine gap; §25 classified Hostinger compatibility as unknown, not assumed."
+
+preconditions_verified:
+  - "current.task: none, working tree clean at task start (HEAD 13539a1, branch master)"
+  - "No git remotes configured; nothing to push regardless"
+  - "PLACE-037.yaml status: completed; PLACE-038.yaml status: completed; state.yaml next_action.status: awaiting_task_authorization"
+  - "Owner's 5 restated decisions cross-checked line-by-line against PLACE-038.yaml owner_approved_decisions and docs/architecture/deployment.md's \"DA CHOT\" section -- byte-for-byte consistent, no drift found"
+  - "Docker engine NOT reachable this session: `docker ps`/`docker version` failed to connect to npipe:////./pipe/dockerDesktopLinuxEngine; no Docker Desktop process running (Get-Process); no installation found at the standard C:\\Program Files\\Docker path. This session's local Docker-based verification capability is therefore materially different from the capability recorded in state.yaml's verification_environment (which reflects a prior session) -- scoped this task to documentation-only work accordingly, and did not attempt the still-open migration:revert rehearsal to avoid a false claim."
+
+owner_decisions_reaffirmed:
+  deployment_provider: "Hostinger KVM VPS -- unchanged from PLACE-038. Real-account provisioning status still NOT VERIFIED by this repository; this task adds an explicit, non-sensitive-only preflight checklist for the Owner to run in hPanel (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1)."
+  monthly_budget: "~1-2 million VND -- unchanged"
+  production_domain: "phuquochub.com -- unchanged"
+  api_routing: "https://phuquochub.com/api, same-domain path, no subdomain -- unchanged"
+  notification_channel: "Email -- unchanged"
+  staging: "Not deployed for the first release -- unchanged, and explicitly documented in this task's checklist (§4) as an MVP decision with a stated revisit trigger, per the Owner's instruction to record it as such rather than as a permanent architectural stance."
+
+objective: >-
+  Produce a single, actionable pre-deployment checklist consolidating (a) the exact, non-sensitive
+  facts the Owner must confirm in the Hostinger hPanel dashboard before any real deploy is
+  authorized, and (b) every production environment variable/secret that currently holds a
+  placeholder value and must be replaced with a real value at real-deploy time -- without
+  performing, simulating, or assuming completion of any real Hostinger/DNS/R2/monitoring account
+  action, and without touching any application code, Dockerfile, Compose file, or script (all
+  already correctly implemented by PLACE-038).
+
+scope:
+  - "New docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md: §0 re-confirms the 5 already-recorded Owner decisions with citations (no re-decision); §1 Hostinger VPS preflight (hPanel navigation + 8 non-sensitive facts to report, explicit no-password/no-SSH-key/no-token instruction, and the pre-deployment-prerequisite framing if no VPS yet exists); §2 secrets/environment go-live inventory (every DB_PASSWORD/REDIS_PASSWORD/JWT_*/R2_* placeholder cross-referenced to .env.example and docker-compose.prod.yml, plus confirmation that NEXT_PUBLIC_*/CORS_ALLOWED_ORIGINS/TRUST_PROXY_HOPS are already correctly set); §3 a numbered summary of all 8 outstanding pre-deployment prerequisites, explicitly including the still-open migration:revert rehearsal (not performed here -- Docker engine unreachable this session); §4 the staging MVP decision recorded with its revisit trigger."
+  - "docs/delivery/tasks/PLACE-039.yaml (this file), docs/delivery/reports/PLACE-039-pre-deployment-checklist-report.md, docs/delivery/evidence/PLACE-039-pre-deployment-checklist-evidence-index.md."
+  - "docs/delivery/state.yaml and docs/delivery/workstreams/place.yaml updated to record PLACE-039 completion and return current.task to none."
+
+out_of_scope:
+  - "Any real Hostinger dashboard login, VPS purchase/provisioning, DNS record creation, Cloudflare R2 account/bucket creation, or uptime-monitor account signup -- all remain Owner-side actions this repository cannot perform."
+  - "Any application code, Dockerfile, docker-compose.prod.yml, or scripts/*.sh change -- PLACE-038 already implemented these correctly; nothing here found that requires changing them."
+  - "The migration:revert rehearsal itself -- carried forward as still open (PLACE-037 §12, PLACE-038 evidence NX-5); not attempted because this session's Docker engine is unreachable, and forcing it via a workaround would not constitute genuine verification."
+  - "PLACE-040 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Repository truth (git branch/HEAD/status, PLACE-037/038 task files, state.yaml, workstreams/place.yaml) read and reconciled BEFORE any new file was written; findings recorded in the report." }
+  - { id: AC2, mandatory: true, text: "The Owner's 5 restated decisions this session are verified identical to PLACE-037/038's already-recorded decisions; any discrepancy would have been surfaced, none was found." }
+  - { id: AC3, mandatory: true, text: "docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md's Hostinger section requests only non-sensitive facts (plan name, status, OS, IPv4, region, CPU/RAM/storage, root-access flag, DNS-manager location) and explicitly instructs the Owner never to share password/SSH key/API token." }
+  - { id: AC4, mandatory: true, text: "The secrets/environment inventory names every variable that is currently a placeholder (DB_PASSWORD, REDIS_PASSWORD, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET) with zero real secret value written anywhere in the repository." }
+  - { id: AC5, mandatory: true, text: "The still-open migration:revert rehearsal and the Docker-engine-unreachable finding are both explicitly recorded, not silently dropped or claimed complete." }
+  - { id: AC6, mandatory: true, text: "Zero application code, Dockerfile, Compose, or script file touched; git diff limited to documentation and delivery-governance files." }
+  - { id: AC7, mandatory: true, text: "state.yaml/workstreams/place.yaml updated consistently; current.task returns to none; PLACE-040 not created; working tree clean after commit(s); nothing pushed." }
+
+stop_conditions:
+  - "Any step would require an actual Hostinger/Cloudflare/uptime-monitor login or action -- document the required Owner action instead, do not attempt or simulate it."
+  - "Any step would require a working Docker engine that is not actually reachable this session -- record the gap, do not fabricate a verification result."
+
+commit_strategy:
+  - "1) docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md (new checklist)"
+  - "2) delivery evidence and state updates (task file, report, evidence index, state.yaml, workstreams/place.yaml)"
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-039-pre-deployment-checklist-report.md"
+  - "docs/delivery/evidence/PLACE-039-pre-deployment-checklist-evidence-index.md"
+
+definition_of_done: >-
+  All 7 acceptance criteria pass; docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md exists and contains no
+  real secret; delivery evidence exists; state.yaml/workstreams/place.yaml updated accurately;
+  current.task returns to none; PLACE-040 proposed but not created; working tree clean; nothing
+  pushed.
+
+non_claims: >-
+  This task does NOT verify or provision any real Hostinger VPS. It does NOT create any DNS
+  record. It does NOT create any Cloudflare R2 bucket or credential. It does NOT create any
+  uptime-monitor account. It does NOT perform the migration:revert rehearsal (Docker engine
+  unreachable this session; carried forward as still open). It does NOT change any application
+  code, Dockerfile, Compose file, or script. It does NOT create PLACE-040.

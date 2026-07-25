@@ -131,7 +131,28 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-038 completed 2026-07-25 (production readiness implementation — repository-controlled infrastructure prep). Implemented PLACE-037's Topology A (single VPS + Docker Compose + Caddy) under Owner authorization; external deployment NOT authorized/performed. Two real, previously-undiscovered defects found via required local verification and fixed: NEXT_PUBLIC_* vars were build-time-baked but only ever set at runtime (zero effect); postgres's WAL-archiving command crash-looped on boot (pre-existing since PLACE-026). Redis password, Docker HEALTHCHECKs, Caddy routing, migrations, backup/restore/rollback scripts all verified live against a local test stack, then fully torn down. Remaining work is entirely Owner-side (Hostinger provisioning, real DNS, real R2 credentials, uptime-monitor signup) — see docs/delivery/reports/PLACE-038-production-readiness-implementation-report.md.
+next_task: none        # PLACE-039 completed 2026-07-25 (pre-deployment checklist: Hostinger VPS preflight + secrets/environment go-live inventory). Repository truth re-verified first: PLACE-037/038 were already completed and the Owner's 5 restated decisions matched exactly, so nothing was reopened. New docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md gives 8 non-sensitive Hostinger hPanel facts to confirm plus a go-live secrets/environment inventory. This session's Docker engine was unreachable, so the still-open migration:revert rehearsal (PLACE-037 §12) was not attempted — carried forward, blocked on Docker availability, not Owner input. Zero code/Dockerfile/Compose/script touched — see docs/delivery/reports/PLACE-039-pre-deployment-checklist-report.md.
+
+place_039_status: >-
+  COMPLETED 2026-07-25 -- pre-deployment checklist (Hostinger VPS preflight + production
+  secrets/environment go-live inventory). Authorized by an Owner instruction restating PLACE-037/
+  038's 5 conditions and requiring repository truth to be re-established first. Found PLACE-037/
+  038 ALREADY COMPLETED (HEAD 13539a1 at task start) with all 5 decisions already recorded and
+  BYTE-FOR-BYTE IDENTICAL to the Owner's restatement -- no reopening, no re-decision. New
+  docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md written: section 1 gives exactly 8 non-sensitive
+  Hostinger hPanel facts to confirm before any real deploy (plan name/status/OS/IPv4/region/
+  CPU-RAM-storage/root-access/DNS-manager location), explicitly instructing the Owner never to
+  share a password, SSH key, or API token; section 2 names every DB_PASSWORD/REDIS_PASSWORD/
+  JWT_*/R2_* variable that currently holds a placeholder in .env.example/docker-compose.prod.yml
+  and must be replaced with a real value before any real deploy -- zero real secret value written
+  anywhere. This session's Docker engine was found UNREACHABLE (docker ps/version failed to
+  connect to npipe:////./pipe/dockerDesktopLinuxEngine; no Docker Desktop process running; no
+  installation found at the standard path) -- a materially different local capability than a
+  prior session's. The migration:revert rehearsal flagged open since PLACE-037 §12 / PLACE-038
+  evidence NX-5 was therefore NOT attempted, to avoid a false claim -- carried forward in the new
+  checklist section 3. Zero application code, Dockerfile, Compose file, or script touched. No
+  PLACE-040 created or started. See reports/PLACE-039-pre-deployment-checklist-report.md and
+  evidence/PLACE-039-pre-deployment-checklist-evidence-index.md.
 
 place_038_status: >-
   COMPLETED 2026-07-25 — production readiness implementation (repository-controlled
