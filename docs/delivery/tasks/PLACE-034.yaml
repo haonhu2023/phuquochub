@@ -1,0 +1,117 @@
+schema_version: "1.0"
+
+id: PLACE-034
+workstream: place
+title: "Next.js 14 -> 16 migration (DRAFT — Owner authorization required before activation)"
+type: framework_migration
+
+# ============================================================================
+# THIS IS A DRAFT TASK AUTHORITY. IT IS NOT ACTIVE.
+# It was produced by the PLACE-034 decision gate (docs/delivery/reports/
+# PLACE-034-NEXTJS-16-DECISION-GATE-2026-07-25.md), which found no technical
+# blocker but returned AUTHORIZED WITH CONDITIONS, not an unconditional
+# authorization. current.task in state.yaml was NOT changed by the decision
+# gate and remains "none". This file must NOT be executed until the Owner
+# explicitly authorizes it, naming this task and confirming the conditions
+# listed below.
+# ============================================================================
+status: draft_pending_owner_authorization
+completed_at: null
+
+authority:
+  source: "NOT YET AUTHORIZED. Drafted by the PLACE-034 decision gate per its own governance rule (§16): a draft, inactive task authority may be created when the gate result is AUTHORIZED WITH CONDITIONS, but it must remain inactive and not be executed."
+  decision: "docs/delivery/reports/PLACE-034-NEXTJS-16-DECISION-GATE-2026-07-25.md — gate result AUTHORIZED WITH CONDITIONS, contingent on the three Owner decisions and one process condition listed in that report's §24, none of which have been made or accepted as of this draft's creation."
+
+depends_on:
+  - "PLACE-032 completed 2026-07-24 (NestJS 10->11 migration) — precedent for this migration's rollback/verification pattern"
+  - "The PLACE-033 read-only migration-readiness assessment (2026-07-25, this session) — its findings are persisted in and superseded-in-authority by the PLACE-034 decision gate report"
+  - "Explicit, separate Owner authorization naming this task and confirming the conditions in the decision gate report §24 — NOT YET GIVEN"
+
+preconditions_to_verify_before_activation:
+  - "Owner has decided migration timing (before staging / before restricted beta / before public launch / defer)"
+  - "Owner has decided the fetch-caching behavior trade-off (accept Next 16 defaults, or require explicit cache directives — conditional change C-1 in the decision gate report)"
+  - "Owner has confirmed bundling the ESLint flat-config restructuring into this same task"
+  - "current.task is none at the moment of activation"
+  - "Working tree is clean at the moment of activation"
+  - "No newer decision gate or assessment has superseded this draft's findings"
+
+objective: >-
+  (DRAFT SCOPE — subject to the Owner decisions above before this can be activated.) Migrate the
+  web app from Next.js 14.2.35 to 16.2.11, migrate ESLint from legacy .eslintrc to flat config
+  (forced by eslint-config-next@16 requiring eslint>=9 and by `next lint` being removed entirely in
+  Next 16), and convert exactly 5 dynamic-route files from synchronous to async `params`. No
+  Node.js, React, or TypeScript version change is required. No apps/api change. No deployment to
+  any real environment (none exists yet; Hostinger compatibility remains unverified per the
+  decision gate report §14).
+
+approved_package_set:
+  changes:
+    - { package: "next", from: "^14.2.5", to: "^16.2.11" }
+    - { package: "eslint-config-next", from: "^14.2.5", to: "^16.2.11" }
+    - { package: "eslint", from: "^8.57.0", to: "^9.x (exact version pinned at implementation time)" }
+  must_remain_unchanged: ["react", "react-dom", "@types/react", "@types/react-dom", "typescript",
+    "maplibre-gl", "jest", "ts-jest", "turbo", "all apps/api and packages/* dependencies"]
+  prohibited: ["--force", "--legacy-peer-deps", "silent peer-conflict suppression", "broad npm update",
+    "npm audit fix (with or without --force)"]
+
+scope:
+  - "apps/web/package.json: exactly the 3 approved package changes above, plus the lint script (next lint -> direct eslint invocation)."
+  - "5 dynamic-route files: apps/web/src/app/(public)/{events,hotels,places,restaurants,tours}/[slug]/page.tsx — convert params to Promise<{slug:string}> + await, in both generateMetadata and the default page component."
+  - "apps/web/.eslintrc.json -> apps/web/eslint.config.mjs (flat config, importing the flat next/core-web-vitals preset)."
+  - "Full baseline re-verification mirroring PLACE-032's Phase 1-10 structure: dependency tree, lint, typecheck, unit tests, clean build, Docker build+boot, live HTTP smoke test across all routes including the 5 converted dynamic routes, audit before/after comparison, rollback rehearsal (nextjs14-baseline <-> nextjs16, with forward recovery)."
+
+out_of_scope:
+  - "React 19 (separate, independently-timed decision — repository evidence confirms React 18.3.1 already satisfies Next 16's actual peer range)."
+  - "The 5 unrelated typeorm-chain security findings surfaced during the PLACE-033/034 security audits (glob/minimatch/brace-expansion/typeorm/typeorm-naming-strategies) — apps/api-side, a separate governance item."
+  - "Any apps/api or packages/* change."
+  - "Any real deployment (Hostinger or otherwise) — no such environment exists yet."
+  - "UI redesign, new features, SEO expansion, unrelated performance refactors, authentication redesign, broad dependency modernization, observability-provider integration, content changes, unrelated test cleanup."
+  - "Adding a Dockerfile HEALTHCHECK (a pre-existing, migration-unrelated gap — may be folded in opportunistically only with explicit sign-off, per the decision gate report's conditional-change register)."
+  - "PLACE-035 or any successor task."
+
+conditional_scope_pending_live_investigation:
+  - "A temporary --webpack fallback flag, only if a live Turbopack build (which cannot be executed by a read-only gate) surfaces an incompatibility — none is predicted, since no custom Webpack config exists today."
+  - "Explicit cache/next:{revalidate} directives in apps/web/src/lib/http.ts's apiGet(), only if the Owner's caching-behavior decision (see preconditions above) requires preserving today's implicit fetch-caching characteristics."
+  - "data-scroll-behavior=\"smooth\" on <html> in layout.tsx, only if smoke-testing reveals reliance on the old scroll default."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "next/eslint-config-next/eslint installed at their approved target versions; every 'must remain unchanged' package confirmed unchanged; zero apps/api or packages/* file touched." }
+  - { id: AC2, mandatory: true, text: "npm ls shows zero peer-dependency conflicts." }
+  - { id: AC3, mandatory: true, text: "Lint (via the new flat-config eslint invocation) reports zero warnings/errors, matching today's --max-warnings=0 discipline." }
+  - { id: AC4, mandatory: true, text: "Typecheck, unit tests (3/3 suites, 17/17 tests or an explained delta), and a clean monorepo build all pass." }
+  - { id: AC5, mandatory: true, text: "Live Docker verification: all baseline routes plus all 5 converted dynamic-slug routes return correct HTTP status codes with real data; generateMetadata output inspected on at least one dynamic route." }
+  - { id: AC6, mandatory: true, text: "npm audit --omit=dev shows the next/postcss findings closed; the unrelated typeorm-chain findings unaffected (not claimed as fixed)." }
+  - { id: AC7, mandatory: true, text: "Full nextjs16 -> nextjs14-baseline -> nextjs16 rollback rehearsal succeeds, mirroring PLACE-031/032's exact mechanism." }
+  - { id: AC8, mandatory: true, text: "No deployment to any real environment occurs as part of this task." }
+
+stop_conditions:
+  - "Any approved package fails to resolve without an unresolved peer conflict."
+  - "An unapproved package would need to change to satisfy resolution — report BLOCKED, do not absorb silently (mirrors PLACE-032's own documented installation-defect handling)."
+  - "A live Turbopack build reveals an incompatibility that cannot be resolved via the C-3 temporary-fallback allowance."
+  - "Any async-params conversion changes observable route behavior beyond the mechanical sync->async conversion."
+  - "Docker boot fails without a bounded, in-scope fix."
+  - "Rollback cannot be demonstrated."
+  - "Working tree is not clean at task start."
+  - "The three Owner decisions in the preconditions above have not all been confirmed."
+
+rollback_plan: >-
+  Identical in structure to PLACE-031/032's proven mechanism: git revert of the migration commit(s)
+  restores Next.js 14 exactly, with zero schema/data involvement (this migration touches no
+  database code). Deployment-level rollback reuses the retained nextjs14-baseline image tag,
+  rehearsed as part of this task's own acceptance criteria (AC7) before the task is considered done.
+
+commit_strategy:
+  - "1) Next.js/ESLint dependency migration + the 5 async-params conversions"
+  - "2) ESLint flat-config migration (if kept as a logically separable commit from (1))"
+  - "3) delivery evidence and state updates"
+
+definition_of_done: >-
+  All acceptance criteria pass; delivery evidence (report, evidence index, standalone migration
+  assessment, mirroring PLACE-032's three-document pattern) exists; state.yaml and
+  workstreams/place.yaml updated; current.task returns to none; PLACE-035 not created or started.
+
+non_claims: >-
+  This draft does NOT authorize its own execution. It does NOT claim any Owner decision has been
+  made. It does NOT claim Next.js 16 is implemented. Activating this task requires a separate,
+  explicit Owner instruction confirming the conditions in
+  docs/delivery/reports/PLACE-034-NEXTJS-16-DECISION-GATE-2026-07-25.md §24.
