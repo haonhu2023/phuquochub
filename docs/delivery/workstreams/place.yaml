@@ -131,43 +131,52 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-043 (2026-07-25, Hostinger VPS provisioning verification and production access readiness, Owner explicit written authorization) is BLOCKED, not completed -- no repository evidence confirms the real Hostinger VPS is actually provisioned, and Claude has no Dashboard access. Completed all repository-side work: existing-assumption inventory (Hostinger-KVM-VPS is an OWNER-STATED decision, not a confirmed fact; no real IPv4/hostname/DNS exists anywhere in this repository), a 3-tier resource-suitability assessment grounded in the actual docker-compose.prod.yml topology, a new 24-stage HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md (zero destructive command, correct SSH-hardening sequencing to avoid self-lockout), and a new PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md. Live SSH verification not attempted (no IPv4/SSH detail supplied). Stops at an explicit OWNER INPUT REQUIRED request for 11 non-sensitive Hostinger facts -- no password/key/token requested. See docs/delivery/reports/PLACE-043-hostinger-vps-readiness-report.md.
+next_task: none        # PLACE-043 (2026-07-25) is now COMPLETED -- "COMPLETED -- VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED". Reopened same-day (NOT PLACE-044) per Owner authorization to record Owner-confirmed facts: Hostinger Web Hosting active (50GB NVMe/daily backup/CDN/Node.js); Hostinger KVM VPS NOT PURCHASED; DNS managed at Hostinger (nameservers atlas.dns-parking.com/hyperion.dns-parking.com; apex A -> 2.57.91.91, explicitly NOT a VPS IP; www CNAME -> phuquochub.com). New Web Hosting Suitability Assessment: not confirmed suitable for the current multi-service Docker topology without material redesign (none attempted) -- Web Hosting can still serve domain/DNS/email/a landing-or-maintenance page; the NestJS API/Postgres-PostGIS/Redis/Docker-Compose/reverse-proxy/system-level monitoring all require a VPS. Production deployment BLOCKED UNTIL VPS OR EQUIVALENT INFRASTRUCTURE IS PURCHASED -- a real prerequisite, not an open task item. All repository-side deliverables (existing-assumption inventory, 3-tier resource-suitability assessment, 24-stage HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md, PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md) remain valid, ready for when a VPS is purchased. Owner action recorded (not urgent): don't purchase yet, keep developing locally, purchase at go-live readiness, re-check pricing first, reopen the bootstrap runbook after purchase. Never claims VPS/SSH/production ready or deployment complete; never classifies 2.57.91.91 as a VPS address. See docs/delivery/reports/PLACE-043-hostinger-vps-readiness-report.md.
 
 place_043_status: >-
-  BLOCKED 2026-07-25 -- Hostinger VPS provisioning verification and production access readiness,
-  under explicit Owner written authorization. NOT marked completed: re-verified repository truth
-  first (HEAD 9a3471b, clean tree, PLACE-037..042 all completed, current.task: none), then found
-  that NO repository evidence anywhere confirms the real Hostinger VPS is actually provisioned --
-  "Hostinger KVM VPS" is consistently an OWNER-STATED DECISION (PLACE-038) about the target
-  provider, never a CONFIRMED fact about a real, running machine; no IPv4, hostname, or DNS state
-  has ever appeared anywhere in this repository. Claude has no Hostinger Dashboard access and did
-  not fabricate a result. Completed every part of this task possible from the repository alone: a
-  full existing-assumption inventory (CONFIRMED/OWNER-STATED/INFERRED/PLACEHOLDER/UNVERIFIED/
-  OUTDATED classification for every prior Hostinger-related claim -- zero OUTDATED items found,
-  every prior record already carries its own correct verification-pending caveat); a 3-tier
-  resource-suitability assessment (Minimum Viable / Recommended-already-Owner-approved / Upgrade
-  Threshold) grounded in docker-compose.prod.yml's actual 6-service topology (postgres/redis/
-  minio/api/web/caddy + one-shot migrate), not generic VPS marketing sizing, leaving the
-  ~1-2M-VND/month budget decision unchanged; a new docs/delivery/HOSTINGER-VPS-BOOTSTRAP-
-  RUNBOOK.md (24 stages, pre-access confirmation through rollback/recovery access, each with
-  purpose/action/expected-result/safety-note/rollback-method/evidence-to-retain, zero destructive
-  command anywhere, SSH hardening -- disabling password/root login -- correctly sequenced AFTER
-  key-based access is verified to avoid a self-lockout, Hostinger's own recovery console named as
-  the standing fallback at every risky stage); a new docs/delivery/PRODUCTION-ACCESS-AND-SECRET-
-  BOUNDARIES.md (what may be known to this repository -- public IPv4/spec/OS/region/domain/DNS-
-  provider/public-SSH-key/non-sensitive-usernames/public-ports -- versus what must never be
-  stored -- any password, private SSH key, DB/JWT/SMTP/Cloudflare/Hostinger/R2 secret, backup-
-  encryption key, or recovery code -- naming only the pre-existing, already-adopted storage
-  locations (VPS-only .env file, Owner's password manager), no new secrets-management service
-  invented). Live SSH verification (Phase 11) explicitly NOT attempted -- no public IPv4 or
-  non-sensitive SSH username was supplied this session, and no local SSH key was confirmed
-  available; this is stated as a scope boundary, not a technical failure. Zero DNS change, zero
-  application deployment, zero real secret used or stored anywhere. Stops at an explicit, minimal
-  "OWNER INPUT REQUIRED -- NON-SENSITIVE HOSTINGER FACTS" request for exactly 11 items (VPS
-  plan/status/OS-version/region/public-IPv4/vCPU/RAM/storage/DNS-provider/nameservers/
-  backup-snapshot-availability) -- no password, private key, token, or recovery code is ever
-  requested. No PLACE-044 created or started. See
-  reports/PLACE-043-hostinger-vps-readiness-report.md and
+  COMPLETED 2026-07-25 -- "COMPLETED -- VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED".
+  Hostinger VPS provisioning verification and production access readiness, under explicit Owner
+  written authorization, reopened same-day (NOT PLACE-044, same task) after its original
+  completion at status blocked. Original completion (re-verified repository truth first, HEAD
+  9a3471b, clean tree, PLACE-037..042 all completed, current.task: none) found NO repository
+  evidence anywhere confirmed the real Hostinger VPS was actually provisioned -- "Hostinger KVM
+  VPS" was consistently an OWNER-STATED DECISION (PLACE-038), never a CONFIRMED fact -- and
+  completed every part of this task possible from the repository alone: a full existing-
+  assumption inventory, a 3-tier resource-suitability assessment (Minimum Viable / Recommended-
+  already-Owner-approved / Upgrade Threshold) grounded in docker-compose.prod.yml's actual
+  6-service topology, a new 24-stage docs/delivery/HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md (zero
+  destructive command, SSH hardening correctly sequenced after key-based access verification), and
+  a new docs/delivery/PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md -- then stopped at an explicit
+  "OWNER INPUT REQUIRED" request for 11 non-sensitive Hostinger facts. This reopening records the
+  Owner's direct answers: Hostinger Web Hosting CONFIRMED active (50GB NVMe, daily backup, CDN,
+  Node.js support); Hostinger KVM VPS CONFIRMED NOT PURCHASED; DNS CONFIRMED managed at Hostinger,
+  nameservers atlas.dns-parking.com/hyperion.dns-parking.com, apex A -> 2.57.91.91 (EXPLICITLY
+  recorded as NOT a VPS IP -- Hostinger's current Web-Hosting/DNS-parking target, no VPS exists to
+  have an IP), www CNAME -> phuquochub.com; Web Hosting backup CONFIRMED (daily); VPS backup/
+  snapshot and OS/region/vCPU/RAM/storage spec all recorded NOT APPLICABLE (no VPS purchased, so
+  nothing to have a spec). Added a new, evidence-based Web Hosting Suitability Assessment:
+  reviewed the actual multi-service Docker Compose topology (postgres/redis/minio/api/web/caddy)
+  against Hostinger Web Hosting's confirmed capabilities (Node.js support, not Docker support) and
+  this repository's own connectivity code (apps/api/src/core/database/data-source.ts needs a
+  directly-reachable Postgres+PostGIS server; apps/api/src/core/redis/redis.service.ts needs a
+  directly-reachable Redis server; infrastructure/caddy/Caddyfile needs to own ports 80/443) --
+  concluded NOT confirmed suitable for the current topology without material redesign; explicitly
+  did NOT recommend or attempt any redesign; named what Web Hosting CAN still serve today (domain/
+  DNS/email/a temporary landing-or-maintenance page/a static informational page) versus what
+  genuinely requires a VPS (NestJS API runtime, PostgreSQL/PostGIS, Redis, Docker Compose
+  orchestration, reverse-proxy port ownership, system-level monitoring/backup controls). Recorded
+  the governing conclusion: production deployment using the current Docker/PostgreSQL/PostGIS/
+  Redis topology is BLOCKED UNTIL VPS OR EQUIVALENT INFRASTRUCTURE IS PURCHASED -- a real,
+  unavoidable prerequisite, not an unresolved verification gap. Recorded the exact future Owner
+  action (not urgent): do not purchase a VPS immediately, continue local development and Docker
+  production-like validation, purchase only once go-live readiness is reached, re-check real
+  Hostinger KVM pricing against the Recommended tier and the ~1-2M-VND/month budget before
+  purchasing, reopen the bootstrap runbook after purchase. Explicitly never claims "VPS ready",
+  "SSH ready", "production ready", or "deployment complete"; explicitly never classifies
+  2.57.91.91 as a VPS address; explicitly does not recommend rewriting the architecture to fit
+  shared Web Hosting. Zero application code/Dockerfile/Compose/script touched; zero DNS
+  modification (read-only recording only); zero real secret used or stored. No PLACE-044 created
+  or started. See reports/PLACE-043-hostinger-vps-readiness-report.md and
   evidence/PLACE-043-hostinger-vps-readiness-evidence-index.md.
 
 place_042_status: >-

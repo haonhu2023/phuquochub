@@ -4,17 +4,24 @@ id: PLACE-043
 workstream: place
 title: "Hostinger VPS provisioning verification and production access readiness"
 type: implementation
-status: blocked
-completed_at: null
-blocked_reason: >-
-  Owner has not yet supplied the non-sensitive Hostinger VPS facts this task requires (plan name,
-  status, OS, region, public IPv4, vCPU/RAM/storage, DNS provider, nameservers, backup/snapshot
-  availability). Claude has no Hostinger Dashboard access and cannot verify or fabricate these
-  facts. Every part of this task completable from the repository alone (governance, existing-
-  assumption inventory, SSH-readiness baseline, resource-suitability analysis, the VPS bootstrap
-  runbook, the access/secret-boundaries document) IS complete -- see the report. Only the
-  Owner-verification-dependent conclusions (actual provisioning status, actual DNS state, live VPS
-  baseline command output) remain AWAITING_OWNER_VERIFICATION.
+status: completed
+completed_at: "2026-07-25"
+outcome: "COMPLETED — VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED"
+reopened_note: >-
+  Originally completed at status `blocked` (2026-07-25), pending 11 non-sensitive Hostinger facts
+  requested from the Owner (see the original "OWNER INPUT REQUIRED" table, now answered in the
+  report's §3). The Owner supplied those facts directly in-session and explicitly authorized
+  reopening PLACE-043 to record them -- not to create PLACE-044. This is a status update to the
+  SAME task, not a new task. Reopening authorization: Owner explicit written message 2026-07-25,
+  "OWNER AUTHORIZATION: Toi chinh thuc cho phep mo lai va cap nhat PLACE-043 ... Khong tao
+  PLACE-044." The verification task itself is now genuinely finished: every question this task
+  could ask has been asked and answered (Hostinger Web Hosting confirmed active; Hostinger KVM VPS
+  confirmed NOT PURCHASED; DNS confirmed managed at Hostinger, nameservers atlas.dns-parking.com/
+  hyperion.dns-parking.com, apex A -> 2.57.91.91 explicitly NOT a VPS IP, www CNAME ->
+  phuquochub.com). What remains -- purchasing a VPS -- is a future Owner action, not an open task
+  item, so this task is now correctly `completed` with an honest, unflattering outcome, not
+  "blocked" (there is nothing left to unblock by waiting) and not a false "VPS ready"/"production
+  ready" claim.
 
 authority:
   source: >-
@@ -63,6 +70,7 @@ scope:
   - "docs/delivery/evidence/PLACE-043-hostinger-vps-readiness-evidence-index.md: evidence for every repository-side check performed."
   - "Task/state/workstream governance files for this task."
   - "An explicit, minimal 'OWNER INPUT REQUIRED — NON-SENSITIVE HOSTINGER FACTS' request for exactly the facts named in the Owner's own authorization text (VPS plan/status/OS-version/region/public-IPv4/vCPU/RAM/storage/DNS-provider/nameservers/backup-snapshot-availability) -- no password, private key, or token ever requested."
+  - "(Reopening, same day) Record the Owner's direct answers to that request: Hostinger Web Hosting CONFIRMED active (50GB NVMe/daily backup/CDN/Node.js); Hostinger KVM VPS CONFIRMED NOT PURCHASED; DNS CONFIRMED managed at Hostinger (nameservers atlas.dns-parking.com/hyperion.dns-parking.com, apex A -> 2.57.91.91 explicitly NOT a VPS IP, www CNAME -> phuquochub.com). Add a new Web Hosting Suitability Assessment (report §5): evidence-based, grounded in docker-compose.prod.yml/data-source.ts/redis.service.ts/Caddyfile, concluding not confirmed suitable for the current multi-service Docker topology without material redesign -- no redesign attempted. Update the production-bootstrap gap analysis, SSH readiness, and resource-suitability sections to reflect NOT APPLICABLE / BLOCKED UNTIL VPS PURCHASED where the VPS-dependent items now have a definitive (negative) answer instead of an open question. Update task/report/evidence/state/workstream to close this task at status completed with outcome 'COMPLETED — VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED'."
 
 out_of_scope:
   - "Any real Hostinger Dashboard login, VPS purchase/provisioning action, or DNS record creation/change -- Owner-side only; this task performs read-only inspection guidance, never a mutation."
@@ -78,34 +86,40 @@ acceptance_criteria:
   - { id: AC3, mandatory: true, text: "A 3-tier resource-suitability assessment is derived from this repository's actual docker-compose.prod.yml service list (postgres/redis/minio/api/web/caddy + Docker build layers + log/backup storage), not generic VPS marketing sizing, and does not alter the ~1-2M VND/month budget decision." }
   - { id: AC4, mandatory: true, text: "The VPS bootstrap runbook covers all 24 required stages, each with purpose/command/expected-result/safety-note/rollback-method/evidence-to-retain, uses only named placeholders (no real value), and contains zero destructive command (disk format, firewall reset, package purge, user deletion, container/volume deletion, DB deletion, reboot, OS reinstall, password change, or SSH lock-down before verified alternate access)." }
   - { id: AC5, mandatory: true, text: "The access/secret-boundaries document correctly separates what may be known from what must never be stored, and names only existing, already-adopted secret-holding locations (no new service invented)." }
-  - { id: AC6, mandatory: true, text: "No live VPS SSH verification is attempted or fabricated -- the report states plainly that Phase 11 was not performed because no IPv4/SSH detail was supplied, not that it was blocked by a technical failure." }
+  - { id: AC6, mandatory: true, text: "No live VPS SSH verification is attempted or fabricated -- the report states plainly that Phase 11/9 was not performed because no VPS exists, not that it was blocked by a technical failure." }
   - { id: AC7, mandatory: true, text: "Zero real secret, password, private key, or token is written anywhere in any new or modified file." }
   - { id: AC8, mandatory: true, text: "state.yaml/workstreams/place.yaml updated consistently and WITHOUT internal contradiction (task file status matches state.yaml; workstream does not claim an active task while current.task is none; PLACE-043 is never described as an application deployment); current.task returns to none; PLACE-044 not created; working tree clean after commit(s); nothing pushed." }
-  - { id: AC9, mandatory: true, text: "This task's final status is exactly 'blocked' (repository schema's closest match to 'awaiting Owner input'), not 'completed' -- since actual VPS provisioning could not be verified this session." }
+  - { id: AC9, mandatory: true, text: "This task's final status is exactly 'completed' with outcome 'COMPLETED — VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED' -- the verification task itself is finished (every askable question was asked and Owner-answered); the report never claims 'VPS ready', 'SSH ready', 'production ready', or 'deployment complete', and never classifies 2.57.91.91 as a VPS address." }
+  - { id: AC10, mandatory: true, text: "The Web Hosting suitability assessment (report §5) is evidence-based, grounded in this repository's actual docker-compose.prod.yml/data-source.ts/redis.service.ts/Caddyfile requirements, concludes 'not confirmed suitable for the current multi-service Docker topology without material redesign', and does not recommend or attempt any such redesign." }
 
 stop_conditions:
   - "Any step would require Claude to access the real Hostinger Dashboard, a real VPS, or any real credential -- do not attempt, do not simulate a result."
-  - "The Owner has not supplied the non-sensitive facts this task needs to conclude provisioning status -- stop at an explicit, minimal, non-sensitive-only request; do not guess, do not mark the task completed."
+  - "(Original completion) The Owner had not supplied the non-sensitive facts this task needed -- resolved by this reopening; the Owner has now supplied them directly."
 
 commit_strategy:
   - "1) docs(ops): add Hostinger VPS bootstrap runbook"
   - "2) docs(security): define production access and secret boundaries"
   - "3) docs(delivery): record PLACE-043 VPS readiness status"
+  - "4) docs(delivery): record PLACE-043 VPS not purchased outcome (this reopening)"
 
 evidence_requirements:
   - "docs/delivery/reports/PLACE-043-hostinger-vps-readiness-report.md"
   - "docs/delivery/evidence/PLACE-043-hostinger-vps-readiness-evidence-index.md"
 
 definition_of_done: >-
-  All repository-completable acceptance criteria pass; delivery evidence exists; the bootstrap
-  runbook and access/secret-boundaries document exist; state.yaml/workstreams/place.yaml updated
-  accurately and without contradiction; current.task returns to none; PLACE-044 proposed but not
-  created; working tree clean; nothing pushed; task status is exactly 'blocked' pending the
-  Owner's non-sensitive Hostinger facts, not 'completed'.
+  All acceptance criteria pass; delivery evidence exists; the bootstrap runbook and access/secret-
+  boundaries document exist; state.yaml/workstreams/place.yaml updated accurately and without
+  contradiction; current.task returns to none; PLACE-044 NOT created; working tree clean; nothing
+  pushed; task status is 'completed' with the explicit outcome 'COMPLETED — VPS NOT PURCHASED;
+  PRODUCTION DEPLOYMENT DEFERRED' -- verification finished, purchase remains a distinct future
+  Owner action.
 
 non_claims: >-
-  This task does NOT confirm the Hostinger VPS is actually provisioned -- that remains
-  AWAITING_OWNER_VERIFICATION. It does NOT deploy any application. It does NOT change any DNS
-  record. It does NOT use or store any real secret, password, private key, or token. It does NOT
-  perform a live SSH session against a real VPS (no IPv4/SSH detail was supplied this session). It
-  does NOT invent a new secret-management service. It does NOT create PLACE-044.
+  This task does NOT claim the Hostinger VPS is provisioned -- the Owner confirmed it is NOT
+  PURCHASED. It does NOT claim 2.57.91.91 is a VPS address -- it is Hostinger's current DNS target
+  for Web Hosting/parking, nothing more. It does NOT deploy any application. It does NOT change
+  any DNS record (read-only inspection/recording only). It does NOT use or store any real secret,
+  password, private key, or token. It does NOT perform a live SSH session against a real VPS
+  (none exists). It does NOT invent a new secret-management service. It does NOT recommend or
+  attempt redesigning the architecture to fit shared Web Hosting. It does NOT claim "VPS ready",
+  "SSH ready", "production ready", or "deployment complete". It does NOT create PLACE-044.
