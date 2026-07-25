@@ -1,0 +1,109 @@
+schema_version: "1.0"
+
+id: PLACE-042
+workstream: place
+title: "Database migration rollback rehearsal and recovery verification"
+type: implementation
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: >-
+    Owner explicit written authorization 2026-07-25: "OWNER AUTHORIZATION — PLACE-042 ... Toi,
+    Owner cua du an PhuQuocHub, chinh thuc cho phep tao va thuc hien nhiem vu tiep theo: PLACE-042
+    — Database Migration Rollback Rehearsal and Recovery Verification." Explicit constraints: no
+    production deployment, no Hostinger access, no DNS change, no production credential, no new
+    product feature.
+  decision: >-
+    Repository state verified fresh from disk first (git/state.yaml/task files), confirming
+    PLACE-041 completed and current.task: none -- this authorization is the explicit, in-session
+    Owner instruction required to create and execute PLACE-042. Docker engine, found unreachable
+    in the PLACE-039/040/041 sessions, was diagnosed (docker context ls confirmed the correct
+    "desktop-linux" context was already selected -- not a context misconfiguration) and restored
+    by launching the already-installed Docker Desktop application directly (a safe, reversible
+    action equivalent to a user double-clicking the app icon -- no reinstall, no OS configuration
+    change). The daemon came up within 5 seconds and the pre-existing dev stack
+    (phuquoc-postgres/-redis/-minio) auto-restarted healthy. This unblocked a REAL, live rollback
+    rehearsal rather than a documentation-only exercise.
+
+depends_on:
+  - "PLACE-041 completed 2026-07-25 -- enterprise production audit; confirmed no current.task was authorized and no contradicting repository state existed before this task began."
+  - "PLACE-037 (2026-07-25, decision gate) -- explicitly flagged the migration:revert rehearsal as a genuine, unresolved gap (its report section 12: \"this repository has never exercised a real migration:revert in production-shaped conditions\")."
+  - "PLACE-038/039/040/041 -- each carried the same gap forward as still-open, explicitly not attempted, because this session's Docker engine (or the sessions before it) was unreachable."
+  - "PLACE-031 -- established the prior rollback-rehearsal discipline (application-container rollback, rehearsed 3x across PLACE-031/032/036) that this task extends to the database/migration layer specifically."
+
+preconditions_verified:
+  - "current.task: none, working tree clean at task start (HEAD 8d6c5c7, branch master)"
+  - "No git remotes configured; nothing to push regardless"
+  - "docs/delivery/tasks/PLACE-037/038/039/040/041.yaml all status: completed"
+  - "Docker engine diagnosed unreachable at task start (docker version/info/ps all failed with the same npipe connection error as PLACE-039/040/041's sessions), then successfully restored by launching Docker Desktop (see authority.decision) -- confirmed with docker ps showing the pre-existing dev stack healthy"
+  - "20 migrations on disk, 20 rows in the live migrations table, head = AddPlacesStatusPartialIndex1720001900000, zero pending (migration:show, all [X]) -- confirmed BEFORE any rehearsal action"
+  - "Pinned Node v20.20.2/npm 10.8.2 used for all migration CLI invocations"
+
+objective: >-
+  Prove, via a real (not simulated) local rehearsal, that the current-head TypeORM migration can
+  be reverted using the repository's own official migration:revert command, that the database and
+  designed test data remain fully intact and consistent throughout, and that it can be re-applied
+  to restore the exact original migration head -- with an explicit, evidence-based recovery
+  procedure for every failure mode a real release could hit. No production deployment, no
+  Hostinger/DNS/production-credential access, no new product feature.
+
+scope:
+  - "Selected AddPlacesStatusPartialIndex1720001900000 (the current head, PLACE-003) as the rehearsal migration: its down() only drops the one index its own up() creates, has no dependency on any other migration for its own revert, and is purely structural (zero data mutation) -- the safest and most representative migration available, since all 20 migrations in this repository are additive (no destructive down() exists to rehearse against instead)."
+  - "Inserted 2 minimal, clearly-marked test rows into the local dev `places` table (slug prefix `place-042-rehearsal-*`, no real personal data) -- one with deleted_at IS NULL, one soft-deleted -- to empirically verify data survives the revert/re-apply cycle (chosen over a schema-assertion-only approach because this migration's own object, a partial index on `places`, is directly about this exact table)."
+  - "Executed the official migration:revert then migration:run commands directly against the local dev database (not a disposable throwaway stack) -- justified because this specific migration's down()/up() pair only ever touches an index, never a data row, making it safe against the persistent dev database that also holds real seeded dev data (49 places, unaffected throughout)."
+  - "Verified schema (index existence + exact definition), migration-table state (row count, head, no duplicate names), and test-data integrity at every step: before revert, after revert, after re-apply."
+  - "Performed one safe failure-mode test (an intentionally nonexistent local DB_NAME) to observe migration:revert's failure behavior without any risk to the real database -- confirmed a clean non-zero exit at the connection stage, and confirmed the real database was completely unaffected afterward."
+  - "New scripts/migration-rollback-rehearsal.sh: a reusable, safety-guarded wrapper of this exact revert -> status -> re-apply -> status sequence (refuses to run under NODE_ENV=production or a non-localhost DB_HOST) -- run live, end-to-end, exit code 0."
+  - "New docs/delivery/DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md: what this rehearsal proved and did NOT prove, a decision tree for every real-release failure mode Phase 8 asked about, how to confirm migration head after recovery, and who has decision authority."
+  - "docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md updated: a cross-reference from the existing Restore checklist (section 6) to the new rehearsal script and runbook."
+  - "Cleaned up: both PLACE-042 test rows deleted after the rehearsal completed; dev database confirmed back to its exact original 49-place baseline."
+  - "Task/report/evidence/state/workstream governance files for this task."
+
+out_of_scope:
+  - "Any real production deployment, Hostinger access, DNS change, or production credential -- none exist in this repository/session and none were used."
+  - "Any new product feature."
+  - "Rehearsing a destructive (non-additive) migration's down() -- none exists in this repository today; the runbook (section 2) explicitly requires this rehearsal be repeated against the first such migration before it is ever deployed for real."
+  - "A real backup/restore rehearsal in this task -- scripts/backup.sh/restore.sh were already actually executed successfully in PLACE-038; this task's own recovery-verification method was the safe connection-failure test (Phase 8's own listed acceptable method), not a repeated backup/restore cycle, since the reference case for THAT already exists."
+  - "PLACE-043 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "Repository truth (git/state.yaml/task files) verified fresh from disk before any file was written or any command run against the database." }
+  - { id: AC2, mandatory: true, text: "Docker/PostgreSQL availability is diagnosed with real commands (docker version/info/context ls), not assumed; if restoration were not possible the task would report BLOCKED and not fabricate a rehearsal result -- in this case restoration succeeded and is evidenced." }
+  - { id: AC3, mandatory: true, text: "The selected migration for rehearsal is justified with direct evidence from its own up()/down() content, not chosen arbitrarily." }
+  - { id: AC4, mandatory: true, text: "migration:revert is invoked via the repository's own official command (not a hand-written SQL substitute), its exit code recorded, and the resulting schema+migration-table state independently verified via direct SQL queries." }
+  - { id: AC5, mandatory: true, text: "The same is true for the re-apply step via migration:run, confirming the exact original migration head is restored." }
+  - { id: AC6, mandatory: true, text: "Designed test data (2 marked rows) is verified present and unchanged before revert, after revert, and after re-apply -- proving no data loss empirically, not just by code inspection." }
+  - { id: AC7, mandatory: true, text: "A safe failure-mode test is performed (not merely reviewed in the abstract) and its result -- and the real database's unaffected state afterward -- is independently verified." }
+  - { id: AC8, mandatory: true, text: "The new DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md explicitly answers every Phase-8-required question (revert fails / re-apply fails / app-schema incompatible / when to stop / when to restore backup / how to confirm head / how to keep evidence / who decides)." }
+  - { id: AC9, mandatory: true, text: "The new scripts/migration-rollback-rehearsal.sh has working safety guards (verified by two guard-triggering test runs, not just code review) and was itself run live end-to-end with a real exit code." }
+  - { id: AC10, mandatory: true, text: "Both test rows are deleted and the dev database is confirmed back at its exact pre-rehearsal baseline (49 places) before this task is considered complete." }
+  - { id: AC11, mandatory: true, text: "state.yaml/workstreams/place.yaml updated consistently; current.task returns to none; PLACE-043 not created; working tree clean after commit(s); nothing pushed." }
+
+stop_conditions:
+  - "If Docker/PostgreSQL cannot be restored to a working state via safe diagnostic commands and a manual Docker Desktop launch (no reinstall, no risky OS config change) -- report BLOCKED, complete only the inspection/design/runbook work that doesn't require a live database, and do not claim any rehearsal step succeeded."
+  - "If the current-head migration were found unsuitable for isolated rehearsal (a real dependency on another migration for its own revert) -- select the smallest valid migration pair/chain instead and justify with evidence, per this task's own instruction. (Not needed here: the head migration has zero such dependency.)"
+  - "Never delete the database volume before completing the full revert -> verify -> re-apply -> verify cycle."
+
+commit_strategy:
+  - "1) test(db): add guarded migration rollback rehearsal script (scripts/migration-rollback-rehearsal.sh)"
+  - "2) docs(ops): record database rollback and recovery procedure (DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md + RELEASE-AND-ROLLBACK-CHECKLIST.md cross-link)"
+  - "3) docs(delivery): complete PLACE-042 evidence and state (task file, report, evidence index, state.yaml, workstreams/place.yaml)"
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-042-migration-rollback-rehearsal-report.md"
+  - "docs/delivery/evidence/PLACE-042-migration-rollback-rehearsal-evidence-index.md"
+
+definition_of_done: >-
+  All 11 acceptance criteria pass; delivery evidence exists; the database rollback/recovery
+  runbook exists and answers every required recovery question; state.yaml/workstreams/place.yaml
+  updated accurately; current.task returns to none; PLACE-043 proposed but not created; working
+  tree clean; nothing pushed; the dev database is back at its exact pre-task baseline.
+
+non_claims: >-
+  This task does NOT deploy to production, access Hostinger, change DNS, or use any production
+  credential. It does NOT add a new product feature. It does NOT rehearse a destructive
+  (non-additive) migration's down() -- none exists in this repository; the runbook requires this
+  be repeated against the first such migration before it is ever deployed. It does NOT perform a
+  new backup/restore cycle (already proven in PLACE-038; this task's recovery-verification method
+  was the safe connection-failure test instead). It does NOT create PLACE-043.

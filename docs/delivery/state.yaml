@@ -30,7 +30,60 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-041 completed 2026-07-25 (enterprise production audit:
+  task: none                      # PLACE-042 completed 2026-07-25 (database migration rollback
+                                  # rehearsal and recovery verification). Owner explicit written
+                                  # authorization. Re-verified repository truth first (HEAD
+                                  # 8d6c5c7, clean tree, PLACE-037..041 all completed,
+                                  # current.task: none). Docker engine -- unreachable across the
+                                  # PLACE-039/040/041 sessions -- was diagnosed (docker context ls
+                                  # confirmed the correct "desktop-linux" context was already
+                                  # active, ruling out a misconfiguration) and RESTORED by
+                                  # launching the already-installed Docker Desktop application
+                                  # directly (safe, reversible, no reinstall, no OS config change)
+                                  # -- daemon reachable within 5s, pre-existing dev stack
+                                  # (phuquoc-postgres/-redis/-minio) auto-restarted healthy. This
+                                  # unblocked a REAL, live rehearsal. Selected
+                                  # AddPlacesStatusPartialIndex1720001900000 (current head,
+                                  # PLACE-003) -- its down() only drops the one index its own up()
+                                  # creates, zero dependency on any other migration, zero data
+                                  # mutation -- the safest available candidate since all 20
+                                  # migrations in this repository are additive. Inserted 2 marked
+                                  # test rows (place-042-rehearsal-active/-deleted) into the LOCAL
+                                  # DEV database (not production, not a disposable stack --
+                                  # justified because this migration's up()/down() never touch row
+                                  # data). Ran the OFFICIAL migration:revert command (exit 0):
+                                  # verified via direct SQL that idx_places_status_active was
+                                  # dropped, migrations table 20->19, head moved back one step,
+                                  # BOTH marker rows unchanged. Ran the OFFICIAL migration:run
+                                  # command (exit 0): verified the index was recreated
+                                  # byte-identically, migrations table back to 20, head restored
+                                  # to AddPlacesStatusPartialIndex1720001900000, zero duplicate
+                                  # migration name or index, migration:show reporting all 20 [X]
+                                  # with zero pending. A safe failure-mode test (an intentionally
+                                  # nonexistent local DB_NAME) confirmed migration:revert fails
+                                  # loudly (exit 1) at the connection stage -- the real database
+                                  # was independently confirmed completely unaffected afterward.
+                                  # New scripts/migration-rollback-rehearsal.sh (safety-guarded:
+                                  # refuses under NODE_ENV=production or a non-localhost DB_HOST,
+                                  # both guards actually tested and confirmed refusing) wraps this
+                                  # exact sequence and was itself run live end-to-end, exit 0. New
+                                  # docs/delivery/DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md answers
+                                  # every required recovery question (revert fails / re-apply
+                                  # fails / app-schema incompatible / when to stop / when to
+                                  # restore backup / how to confirm head / evidence retention /
+                                  # decision authority). Backup/restore procedure reviewed but NOT
+                                  # operationally re-rehearsed in this task (already actually
+                                  # executed for real in PLACE-038; not repeated). Both marker rows
+                                  # deleted afterward; dev database confirmed back at its exact
+                                  # original 49-place baseline. Does NOT prove a real production
+                                  # rollback, nor a destructive (non-additive) migration's down()
+                                  # -- none exists in this repository yet; the runbook requires
+                                  # this exact procedure be repeated against the first one
+                                  # authored, before it is ever deployed for real. Zero production
+                                  # deployment, zero Hostinger/DNS/production-credential action,
+                                  # zero new product feature. See docs/delivery/tasks/PLACE-042.yaml.
+                                  # ---- prior state (PLACE-041, completed 2026-07-25) ----
+                                  # PLACE-041 completed 2026-07-25 (enterprise production audit:
                                   # repository health, backend, frontend, infra, ops, security,
                                   # performance). Re-verified active authority first (HEAD
                                   # 5ca81cd, clean tree, PLACE-037/038/039/040 all completed). Full
@@ -367,6 +420,20 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    PLACE-042 (2026-07-25) proved, via a real live rehearsal (not simulated -- Docker was
+    successfully restored this session by launching the already-installed Docker Desktop app),
+    that the current-head migration (AddPlacesStatusPartialIndex1720001900000) can be reverted
+    via the official migration:revert command, leaves 2 designed marker rows fully intact, and can
+    be re-applied via migration:run to restore the exact original migration head -- with zero
+    duplicate/inconsistent migration-table state. A safe failure-mode test (invalid local DB_NAME)
+    confirmed migration:revert fails safely without touching the real database. New
+    scripts/migration-rollback-rehearsal.sh (safety-guarded, both guards tested) wraps this cycle
+    and ran live end-to-end. New DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md answers every required
+    recovery question. Backup/restore procedure reviewed but NOT operationally re-rehearsed here
+    (already actually executed for real in PLACE-038). This proves the LOCAL rollback mechanism
+    only -- it does NOT prove a real production rollback, nor cover a destructive (non-additive)
+    migration, none of which exists in this repository yet. See docs/delivery/tasks/PLACE-042.yaml.
+    ---- prior state (PLACE-041, completed 2026-07-25) ----
     PLACE-041 (2026-07-25) ran a full 10-section enterprise production audit (repository health,
     backend, frontend, infra, ops, security, performance) and fixed the one real correctness bug
     found: hotels/restaurants/tours/events [slug] pages masked every error (incl. 5xx/network) as
@@ -452,10 +519,76 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-038/039/040/041's own scope is complete; PLACE-041 (2026-07-25) closed one real correctness bug (404-vs-error masking, 4 routes) plus 3 further resilience/ops gaps (error/loading boundaries, security headers, incident-response runbook), but resolved none of the underlying real-world steps, which remain entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. Additionally, the migration:revert rehearsal (PLACE-037 §12) remains open — blocked across the PLACE-039/040/041 sessions on an unreachable Docker engine, not on Owner input; worth retrying once Docker is available locally. See PLACE-041's report §10 for the full prioritized action list of everything else found but not executed (Medium/Low items: frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
+  pending_owner_decision: "PLACE-038/039/040/041/042's own scope is complete. PLACE-042 (2026-07-25) closed the migration:revert rehearsal gap flagged since PLACE-037 §12 — proven, live, on the local dev database (see docs/delivery/reports/PLACE-042-migration-rollback-rehearsal-report.md) — but this proves the LOCAL mechanism only; it does not and cannot resolve the remaining real-world steps, which stay entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. See PLACE-041's report §10 for the full prioritized action list of everything else found but not executed (Medium/Low items: frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:
+  - id: PLACE-042
+    completed: "2026-07-25"
+    result: >-
+      Database migration rollback rehearsal and recovery verification, under explicit Owner
+      written authorization. Re-verified repository truth first (HEAD 8d6c5c7, clean tree,
+      PLACE-037..041 all completed, current.task: none). Docker engine -- unreachable across the
+      PLACE-039/040/041 sessions -- was diagnosed (docker context ls confirmed the correct
+      "desktop-linux" context was already active, ruling out a misconfiguration as the cause) and
+      RESTORED by launching the already-installed Docker Desktop application directly (a safe,
+      fully reversible action -- no reinstall, no OS configuration change); the daemon became
+      reachable within 5 seconds and the pre-existing dev stack (phuquoc-postgres/-redis/-minio)
+      auto-restarted healthy via its own restart:unless-stopped policy. This unblocked a REAL,
+      live rehearsal rather than a documentation-only exercise. Selected
+      AddPlacesStatusPartialIndex1720001900000 (the current head, authored PLACE-003) as the
+      rehearsal migration: its down() only drops the one index its own up() creates, has zero
+      dependency on any other migration for its own revert, and is purely structural (zero data
+      mutation) -- the safest and most representative migration available, since all 20
+      migrations in this repository are additive (independently re-confirmed by reading every
+      down() this task, not merely citing the prior PLACE-037/038 claim). Inserted 2 minimal,
+      clearly-marked test rows (place-042-rehearsal-active with deleted_at NULL,
+      place-042-rehearsal-deleted soft-deleted) directly into the LOCAL DEV database -- not a
+      disposable throwaway stack, justified because this specific migration never touches row
+      data, only an index. Ran the OFFICIAL migration:revert command (exit 0): independently
+      verified via direct SQL that idx_places_status_active was dropped, the migrations table
+      went from 20 to 19 rows with the head correctly moved back one step, and BOTH marker rows
+      remained completely unchanged. Ran the OFFICIAL migration:run command (exit 0):
+      independently verified the index was recreated with a byte-identical definition, the
+      migrations table returned to exactly 20 rows with the head restored to
+      AddPlacesStatusPartialIndex1720001900000, zero duplicate migration name or index object
+      exists, and migration:show reports all 20 as [X] with zero pending. Noted and explicitly
+      explained (not hidden) a cosmetic id-column gap in the migrations table after each
+      revert+re-apply cycle -- normal Postgres SERIAL/IDENTITY behavior following DELETE+INSERT,
+      carrying no significance since TypeORM tracks migration identity by (timestamp, name), not
+      id, and migration:show's own name-based output was correct and consistent at every check.
+      Performed a real (not merely reviewed) safe failure-mode test: migration:revert invoked with
+      an intentionally nonexistent local DB_NAME, confirming a clean, loud failure (exit 1) at the
+      connection stage before any transaction opens -- independently re-verified the real
+      phuquochub database was completely unaffected afterward (unchanged migration count/head/
+      marker data). Wrote a new, reusable, safety-guarded script,
+      scripts/migration-rollback-rehearsal.sh, wrapping migration:show -> migration:revert ->
+      migration:show -> migration:run -> migration:show with two guards (refuses under
+      NODE_ENV=production; refuses unless DB_HOST resolves to localhost/127.0.0.1) -- BOTH guards
+      were actually triggered and confirmed refusing (not merely reviewed), and the script was
+      then run live, end-to-end, for real, exit code 0, with neither guard tripped. Wrote a new
+      docs/delivery/DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md answering every required recovery
+      question with an explicit decision table: what to do if migration:revert fails; what to do
+      if revert succeeds but re-apply fails; what to do if application code and schema become
+      incompatible; when to stop a release; when a real backup restore is required instead of
+      relying on down(); how to confirm migration head after any recovery action; how to retain
+      logs/evidence; and who holds decision authority (the Owner, for anything beyond deploy.sh's
+      own automatic halt). Cross-linked from RELEASE-AND-ROLLBACK-CHECKLIST.md section 6.
+      EXPLICITLY: "Backup/restore procedure reviewed but not operationally rehearsed in
+      PLACE-042" -- scripts/backup.sh/restore.sh were already actually executed for real in the
+      separate, prior PLACE-038 task; this task did not repeat that cycle and does not claim to.
+      Both test marker rows deleted after the rehearsal and its automation run completed; the dev
+      database was independently re-verified back at its exact original 49-place baseline before
+      this task was considered complete. Explicitly did NOT conclude a production rollback was
+      proven -- only the LOCAL migration:revert/migration:run mechanism, the migration-tracking
+      table, and the new safety-guarded script were proven, live, against the local dev database,
+      for one representative additive migration. Does NOT cover a destructive (non-additive)
+      migration's down() -- none exists in this repository yet; the new runbook requires this
+      exact procedure be repeated against the first one ever authored, before it is deployed for
+      real. Zero production deployment, zero Hostinger/DNS/production-credential action, zero new
+      product feature, zero new npm dependency. No PLACE-043 created or started.
+    report: docs/delivery/reports/PLACE-042-migration-rollback-rehearsal-report.md
+    evidence_index: docs/delivery/evidence/PLACE-042-migration-rollback-rehearsal-evidence-index.md
   - id: PLACE-041
     completed: "2026-07-25"
     result: >-
