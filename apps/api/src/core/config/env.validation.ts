@@ -36,7 +36,15 @@ export const envValidationSchema = Joi.object({
 
   REDIS_HOST: Joi.string().default('localhost'),
   REDIS_PORT: Joi.number().port().default(6379),
-  REDIS_URL: Joi.string().default('redis://localhost:6379'),
+  // PLACE-040: found via production-configuration audit -- unlike DB_HOST/CORS_ALLOWED_ORIGINS
+  // above, REDIS_URL had no production-required rule, so a misconfigured deploy would silently
+  // fall back to the unauthenticated `redis://localhost:6379` dev default instead of failing
+  // fast (RedisService reads only `redis.url`, mirrors the DB-credential precedent exactly).
+  REDIS_URL: Joi.string().when('NODE_ENV', {
+    is: 'production',
+    then: Joi.required(),
+    otherwise: Joi.string().default('redis://localhost:6379'),
+  }),
 
   // Sprint 1: bắt buộc secret cho JWT (production nên đặt chuỗi mạnh).
   JWT_ACCESS_SECRET: Joi.string().min(16).required(),
