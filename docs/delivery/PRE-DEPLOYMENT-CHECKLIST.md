@@ -7,6 +7,10 @@ implemented (repository-controlled only) in
 does not decide anything new — it is the operational go/no-go gate the Owner uses before running
 `scripts/deploy.sh` against real infrastructure for the first time.
 
+**See also:** [`RELEASE-AND-ROLLBACK-CHECKLIST.md`](RELEASE-AND-ROLLBACK-CHECKLIST.md) (PLACE-040)
+— the operator checklist for what to do *during* an actual release, rollback, or backup/restore,
+once everything in this document is answered.
+
 **Nothing in this document requires or requests a password, private key, or any credential value.**
 Where a real secret is needed, this document names the environment variable only — the Owner
 supplies the actual value directly into a real (untracked) `.env`/deploy-time environment, never
@@ -97,6 +101,7 @@ value, and no real value is ever to be committed to this repository.
 |---|---|---|---|
 | `DB_PASSWORD` | `change-me-db-password` (compose default) | A strong, generated password, set only in the real deploy-time environment (not in git) | `postgres`, `api`, `migrate` services |
 | `REDIS_PASSWORD` | `change-me-redis-password-min-16-chars` | A strong, generated password ≥16 chars | `redis`, `api` (embedded into `REDIS_URL`) |
+| `REDIS_URL` | must embed the real `REDIS_PASSWORD` above | **PLACE-040: now fail-fast enforced** — `apps/api/src/core/config/env.validation.ts` requires `REDIS_URL` in production (previously it silently fell back to the unauthenticated `redis://localhost:6379` dev default if unset, unlike `DB_HOST`/`CORS_ALLOWED_ORIGINS`, which already had this protection) | `api` (`RedisService` reads this exclusively) |
 | `JWT_ACCESS_SECRET` | `change-me-access-secret-min-16-chars` | A strong, random secret ≥16 chars, distinct from `JWT_REFRESH_SECRET` | `api` (access-token signing) |
 | `JWT_REFRESH_SECRET` | `change-me-refresh-secret-min-16-chars` | A strong, random secret ≥16 chars, distinct from `JWT_ACCESS_SECRET` | `api` (refresh-token signing) |
 | `R2_ACCOUNT_ID` | empty (sync disabled when empty — safe default) | Real Cloudflare R2 account ID | `wal-archive.sh` / `sync-offsite.sh` (offsite backup) |
