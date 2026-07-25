@@ -1,0 +1,213 @@
+schema_version: "1.0"
+
+id: PLACE-032
+workstream: place
+title: "NestJS 10 -> 11 migration"
+type: framework_migration
+status: completed
+completed_at: "2026-07-24"
+
+authority:
+  source: "Owner explicit authorization 2026-07-24 — 'PLACE-032 — Execute NestJS 10 to NestJS 11 Migration', timing decision: execute now, before staging."
+  decision: "PLACE-032 migration-readiness assessment (this session, read-only) — recommendation APPROVE PLACE-032 EXECUTION, overall migration risk 2/10 (Low), zero peer-dependency conflicts confirmed via a clean npm install --dry-run, recommended boundary: one bounded PLACE task."
+
+depends_on:
+  - "PLACE-031 completed 2026-07-24 (release & rollback readiness)"
+  - "PLACE-030 completed 2026-07-24 (production observability foundation)"
+  - "PLACE-029 completed 2026-07-24 (critical dependency hardening)"
+
+preconditions_verified:
+  - "PLACE-029, PLACE-030, PLACE-031 completed — state.yaml completed_tasks"
+  - "Working tree clean at task start"
+  - "current.task: none, status: awaiting_task_authorization"
+  - "No docs/delivery/tasks/PLACE-032.yaml existed before this task"
+  - "No conflicting delivery task active"
+  - "Node v20.20.2 / npm 10.8.2 pinned toolchain in use"
+  - "Docker Desktop running; phuquoc-postgres/-redis/-minio healthy"
+  - "No unresolved Owner decision remains — timing explicitly authorized: execute now, before staging"
+
+objective: >-
+  Migrate the API from NestJS 10 to NestJS 11 across exactly the ten packages identified as
+  peer-incompatible or peer-forced by the migration-readiness assessment, closing 9 of the 15
+  remaining production dependency findings (all rooted in the @nestjs/* line), while preserving
+  every PLACE-029 (bcrypt/DB-credential), PLACE-030 (observability/correlation-ID), and PLACE-031
+  (rollback) guarantee unchanged. No broad dependency modernization, no apps/web change, no
+  authentication redesign, no schema change.
+
+migration_rationale: >-
+  The migration-readiness assessment found: (1) 5 of the 9 currently-installed @nestjs/* packages
+  (@nestjs/config, @nestjs/jwt, @nestjs/typeorm, @nestjs/terminus, plus the version each is
+  peer-locked to) do not accept @nestjs/common/core ^11, confirmed via npm view peerDependencies
+  on the exact installed versions — these are mandatory, not optional; (2) a clean full-tree
+  `npm install --dry-run` across all 10 target packages produced zero ERESOLVE conflicts; (3) the
+  repository has no Swagger and no Passport dependency (confirmed via full-tree npm ls and source
+  grep), eliminating two entire categories of NestJS-11 breaking-change exposure; (4) every
+  Express-v5-relevant code pattern (wildcard routes, module-based middleware, nested/array query
+  params) was grep-confirmed absent from this codebase; (5) the sole concrete required-or-possibly-
+  required code change identified was apps/api/src/modules/health/indicators/redis.health.ts,
+  which extends the now-deprecated (not necessarily removed) HealthIndicator/HealthCheckError
+  pattern.
+
+approved_package_set:
+  runtime:
+    - { package: "@nestjs/common", from: "10.4.22", to: "11.1.28" }
+    - { package: "@nestjs/core", from: "10.4.22", to: "11.1.28" }
+    - { package: "@nestjs/platform-express", from: "10.4.22", to: "11.1.28" }
+    - { package: "@nestjs/config", from: "3.3.0", to: "4.0.4" }
+    - { package: "@nestjs/jwt", from: "10.2.0", to: "11.0.2" }
+    - { package: "@nestjs/typeorm", from: "10.0.2", to: "11.0.3" }
+    - { package: "@nestjs/terminus", from: "10.3.0", to: "11.1.1" }
+  dev:
+    - { package: "@nestjs/testing", from: "10.4.22", to: "11.1.28" }
+    - { package: "@nestjs/cli", from: "10.4.9", to: "11.0.24" }
+    - { package: "@nestjs/schematics", from: "10.2.3", to: "11.1.0" }
+  unchanged_unless_npm_auto_resolves_inrange: ["@nestjs/throttler"]
+  must_remain_unchanged: ["typeorm", "reflect-metadata", "rxjs", "class-validator",
+    "class-transformer", "bcrypt", "ioredis", "pg", "joi", "typeorm-naming-strategies",
+    "jest", "supertest", "typescript", "Node.js version", "all apps/web dependencies"]
+
+scope:
+  - "apps/api/package.json: exactly the 10 packages above, to the exact approved versions."
+  - "package-lock.json: regenerated entries for the above and their own transitive trees only."
+  - "apps/api/src/modules/health/indicators/redis.health.ts: adapted ONLY if compilation or runtime evidence requires it (decision rule in Phase 3 below) — not refactored merely to remove a deprecation notice."
+  - "Live re-verification (not code change) of every PLACE-029/030/031 guarantee against the new framework version."
+  - "Delivery evidence: report, evidence index, standalone migration assessment, state updates."
+
+out_of_scope:
+  - "Next.js migration or any apps/web dependency change."
+  - "Any dependency outside the approved package set (no npm audit fix --force, no broad update)."
+  - "Authentication redesign — the hand-rolled JwtAuthGuard stays hand-rolled; no Passport introduced."
+  - "Database schema or migration changes."
+  - "Refactoring any health indicator other than redis.health.ts, and only if genuinely required."
+  - "Correlation-ID/logging architectural redesign — PLACE-030's design is re-verified, not rebuilt."
+  - "PLACE-033 or any successor task."
+
+baseline_requirements:
+  - "Exact npm ls tree for all target packages, current versions."
+  - "npm audit --omit=dev and full audit totals."
+  - "lint, typecheck (api), full unit, full e2e, clean build — verified fresh, not assumed (expected: unit 251/251/34 suites, e2e 59/59/10 suites, build 4/4, per the migration-readiness assessment, but re-run to confirm)."
+  - "A live Docker boot of the current NestJS 10 image proving every PLACE-029/030 guarantee, with the image tagged and retained for the rollback rehearsal."
+
+implementation_phases:
+  - phase: 1
+    name: "Baseline capture"
+    detail: "Dependency tree, audit totals, full regression suite, and a live NestJS-10 Docker boot with all guarantees proven and the image tagged/retained."
+  - phase: 2
+    name: "Dependency changes"
+    detail: "Install exactly the approved package set. Inspect the diff. Stop on any unresolved conflict or unrelated upgrade."
+  - phase: 3
+    name: "Compile, diagnose, adapt"
+    detail: "Typecheck/build. Decide redis.health.ts's fate per the decision rule: if it compiles and behaves correctly, leave it and document the deprecation as a bounded follow-up; only adapt if it genuinely fails."
+  - phase: 4
+    name: "Breaking-change exposure verification"
+    detail: "Express 5 (routes/query/validation), Config v4 (precedence + fail-fast), auth/Reflector/guards, lifecycle/shutdown hooks, AppLoggerService/app.resolve()/ConsoleLogger non-recursion — all verified live, not assumed from the prior read-only assessment."
+  - phase: 5
+    name: "Focused validation"
+    detail: "Targeted unit specs across the areas this migration could plausibly touch."
+  - phase: 6
+    name: "Full regression"
+    detail: "lint, typecheck (api+web), full unit, full e2e, clean monorepo build, no cache."
+  - phase: 7
+    name: "Audit comparison"
+    detail: "Before/after npm audit, exact findings closed vs. remaining, prod vs. dev split."
+  - phase: 8
+    name: "Production Docker verification"
+    detail: "Build+boot the NestJS 11 image against real dev Postgres/Redis; full live verification matching the baseline's checklist exactly, plus web-image unaffected confirmation."
+  - phase: 9
+    name: "Rollback rehearsal"
+    detail: "Boot N11, create a temp verification user, stop, redeploy N10, verify health/data-continuity/auth, then redeploy N11 to prove forward recovery — reusing PLACE-031's exact mechanism."
+  - phase: 10
+    name: "Evidence and state"
+    detail: "Report, evidence index, standalone migration assessment; state.yaml/workstreams update; grouped commits; no push; no PLACE-033."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "All 10 approved packages installed at their exact approved versions; every 'must remain unchanged' package is unchanged; zero unrelated dependency touched; zero apps/web file touched." }
+  - { id: AC2, mandatory: true, text: "npm ls tree shows zero peer-dependency conflicts; package-lock.json diff contains only the approved packages' own dependency graphs." }
+  - { id: AC3, mandatory: true, text: "redis.health.ts's fate follows the decision rule exactly — adapted only if genuinely required, with evidence recorded either way." }
+  - { id: AC4, mandatory: true, text: "Full lint/typecheck/unit/e2e/build all green; unit and e2e totals identical to the PLACE-031 baseline (251/251, 34 suites; 59/59, 10 suites) unless a documented, evidence-backed reason explains any change." }
+  - { id: AC5, mandatory: true, text: "npm audit --omit=dev shows the 9 @nestjs/*-rooted findings closed; remaining findings (Next.js-rooted) unchanged in count/character." }
+  - { id: AC6, mandatory: true, text: "Live Docker verification on the NestJS 11 image reproduces every item in the baseline checklist: health, full auth round-trip, DB-credential fail-fast (missing + empty), correlation-ID header/body match, structured logs, quiet 4xx, zero secret leakage." }
+  - { id: AC7, mandatory: true, text: "Rollback rehearsal succeeds: N11 -> N10 (health + data continuity + auth verified) -> N11 again (forward recovery proven)." }
+  - { id: AC8, mandatory: true, text: "Dev-stack integrity (migration count, places row count) unchanged before and after; all temporary users/containers/images removed." }
+
+focused_tests:
+  - "apps/api/src/core/config/env.validation.spec.ts"
+  - "apps/api/src/modules/auth/auth.service.spec.ts"
+  - "apps/api/src/modules/authz/guards (JwtAuthGuard/PermissionsGuard specs, wherever covered)"
+  - "apps/api/src/modules/health/health.controller.spec.ts"
+  - "apps/api/src/common/middleware/correlation-id.middleware.spec.ts"
+  - "apps/api/src/common/interceptors/logging.interceptor.spec.ts"
+  - "apps/api/src/common/filters/all-exceptions.filter.spec.ts"
+  - "apps/api/src/common/interceptors/transform.interceptor.spec.ts"
+  - "apps/api/src/core/logger/app-logger.service.spec.ts"
+  - "apps/api/src/core/rate-limit/rate-limit.spec.ts"
+
+full_regression_requirements:
+  - "npm run lint --workspace=apps/api"
+  - "npm run typecheck --workspace=apps/api"
+  - "npm run typecheck --workspace=apps/web"
+  - "jest (full unit, apps/api)"
+  - "jest --config test/jest-e2e.json (full e2e, apps/api, real Postgres/PostGIS+Redis)"
+  - "turbo run build --force (tsbuildinfo purged first)"
+
+docker_verification:
+  - "docker build -f apps/api/Dockerfile -t phuquochub-api:nestjs11 . (full, uncached where feasible)"
+  - "Boot against real dev Postgres/Redis, NODE_ENV=production"
+  - "curl /api/health, register/login/wrong-password, DB_PASSWORD missing/empty fail-fast, correlation-ID header+meta.requestId match, structured [HTTP] logs, quiet 4xx, log grep for zero secret leakage"
+  - "Confirm apps/web unaffected (no rebuild required unless repository convention demands it — no apps/web dependency changed)"
+
+rollback_rehearsal:
+  - "Retain the pre-migration NestJS 10 image tag (phuquochub-api:nestjs10-baseline) from Phase 1."
+  - "Boot NestJS 11 (phuquochub-api:nestjs11), create a temp verification user, verify."
+  - "Stop N11, redeploy N10 (phuquochub-api:nestjs10-baseline), verify health + the N11-created user's login still works (data continuity) + full auth round-trip."
+  - "Redeploy N11 once more to prove forward recovery, per repository procedure (PLACE-031 precedent)."
+  - "Confirm migrations/places row counts unchanged throughout; no schema file touched."
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-032-nestjs-11-migration-report.md"
+  - "docs/delivery/evidence/PLACE-032-nestjs-11-migration-evidence-index.md"
+  - "docs/delivery/reports/PLACE-032-NESTJS-11-MIGRATION-ASSESSMENT-2026-07-24.md"
+
+cleanup_requirements:
+  - "Delete all temporary verification users."
+  - "Remove all rehearsal/verification containers."
+  - "Remove verification images not required by repository policy (retain none beyond what git already tracks)."
+  - "Confirm dev stack healthy and row counts unchanged."
+
+rollback_plan: >-
+  Application-level: a single coordinated commit (plus a second, small commit only if
+  redis.health.ts required adaptation) — `git revert` fully restores NestJS 10 with zero
+  schema/data involvement. Deployment-level: identical to the rehearsal in Phase 9 — the
+  pre-migration image tag remains valid and redeployable at any time.
+
+stop_conditions:
+  - "Any approved package fails to resolve without an unresolved peer conflict — none found in the prior dry-run; re-confirmed at install time."
+  - "An unrelated/unapproved package would need to change to satisfy resolution — not permitted; would require reporting BLOCKED, not absorbing silently."
+  - "NestJS 11 requires an unapproved Node.js platform change — not expected (engines already >=20)."
+  - "Authentication behavior changes unexpectedly, or would require a redesign — not permitted; would require reporting BLOCKED."
+  - "Correlation-ID or logging guarantees cannot be preserved — would require reporting BLOCKED, not silently weakening PLACE-030's design."
+  - "Production Docker boot fails without a bounded, in-scope fix — would require reporting BLOCKED."
+  - "Rollback cannot be demonstrated — would require reporting BLOCKED."
+  - "Express 5 requires broad routing redesign — not expected per the read-only assessment's grep-confirmed absence of wildcard routes and module-based middleware; would require reporting BLOCKED if found otherwise."
+
+commit_strategy:
+  - "1) NestJS 11 dependency migration + any required compatibility fix (redis.health.ts, only if needed)"
+  - "2) tests/validation changes, only if any focused test needed a genuine update (not expected)"
+  - "3) delivery evidence and state updates"
+
+definition_of_done: >-
+  All 10 approved packages at their exact target versions, zero unrelated dependency touched,
+  zero apps/web change; redis.health.ts's fate resolved per the decision rule with evidence;
+  full lint/typecheck/unit/e2e/build green with totals matching or explaining any change from the
+  PLACE-031 baseline; npm audit shows the 9 @nestjs/*-rooted findings closed; live Docker
+  verification on the NestJS 11 image reproduces every PLACE-029/030 guarantee; a full N11->N10
+  ->N11 rollback rehearsal is executed and evidenced, including data continuity; dev-stack
+  integrity confirmed unchanged; delivery evidence exists; state.yaml and workstreams/place.yaml
+  updated, current.task returned to none; PLACE-033 not created or started.
+
+non_claims: >-
+  This task does NOT touch Next.js or any apps/web dependency. It does NOT perform any broad
+  dependency modernization beyond the approved 10-package set. It does NOT redesign
+  authentication, correlation-ID propagation, or logging architecture — it re-verifies PLACE-030's
+  existing design against the new framework version. It does NOT change the database schema. It
+  does NOT create PLACE-033.

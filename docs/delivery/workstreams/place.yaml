@@ -131,7 +131,53 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-031 completed 2026-07-24 (Release & rollback readiness). Runbook written + a real local rollback rehearsal proven (build/boot/health-check/rollback/re-verify, with data continuity confirmed). NestJS 10->11 (highest-scoring remaining candidate, 6.06/10) is blocked purely on a migration-timing confirmation from the Owner; Next.js 14->16 and the monitoring-provider sub-scope remain separate Owner decisions — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md and the fresh PLACE-031 candidate assessment recorded in this session.
+next_task: none        # PLACE-032 completed 2026-07-24 (NestJS 10->11 migration). npm audit --omit=dev: 15->2 (13 @nestjs/*-rooted findings closed). Next.js 14->16 (the sole remaining framework-migration candidate) and the monitoring-provider sub-scope remain separate Owner decisions — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md.
+
+place_032_status: >-
+  COMPLETED 2026-07-24 — NestJS 10 -> 11 migration, executing the PLACE-032 read-only migration-
+  readiness assessment's APPROVE PLACE-032 EXECUTION recommendation (overall risk 2/10, zero peer
+  conflicts confirmed via npm install --dry-run); Owner timing decision: execute now, before
+  staging. Bumped exactly 10 approved packages
+  (@nestjs/common/core/platform-express/config/jwt/typeorm/terminus + dev
+  @nestjs/testing/cli/schematics) to their approved NestJS-11-line versions; @nestjs/throttler
+  settled in-range at 6.5.0. apps/api/package.json diff is exactly those 10 lines; zero apps/web
+  change; every "must remain unchanged" package (typeorm, reflect-metadata, rxjs,
+  class-validator/transformer, bcrypt, jest, supertest, typescript, Node version) confirmed
+  unchanged. A REAL INSTALLATION DEFECT was found and fixed during verification: the first
+  (incremental) npm install left @nestjs/config/jwt/throttler resolving a stale nested
+  @nestjs/common@10.4.22 copy alongside the new top-level 11.1.28 -- confirmed via
+  require.resolve() from within throttler's own resolution context, not merely npm ls output.
+  npm dedupe (the standard non-destructive fix) failed with an ERESOLVE error. Root-caused to
+  npm's incremental install preserving a lockfile-encoded stale subtree; fixed via a full clean
+  reinstall (node_modules + package-lock.json deleted, npm install regenerated both from
+  package.json alone) -- verified afterward: a single @nestjs/common@11.1.28 throughout the
+  entire tree. apps/api/src/modules/health/indicators/redis.health.ts (extends the now-deprecated
+  HealthIndicator/HealthCheckError) inspected post-bump: compiled cleanly (tsc, eslint both exit 0)
+  and functioned correctly at runtime (health.controller.spec.ts 2/2, health.e2e-spec.ts 1/1
+  against real Redis) -- left UNCHANGED per the task's explicit decision rule; the deprecation is
+  recorded as a bounded follow-up, not fixed here. npm audit --omit=dev: 15 -> 2 total (13
+  @nestjs/*-rooted findings closed -- every direct @nestjs/* package plus its transitive chain of
+  body-parser/express-4.x/qs/uuid/lodash/multer/file-type; the 2 remaining, next and postcss, are
+  entirely Next.js-rooted and were never in scope). Full regression: unit 251/251 (34 suites) and
+  e2e 59/59 (10 suites), BOTH IDENTICAL to the PLACE-031 baseline -- zero test added, skipped, or
+  weakened. Clean build 4/4, 0 cached, both before and after. Docker-verified live on a
+  freshly-built NestJS 11 image against real dev Postgres/Redis: health 200 db+redis up; full
+  register(201)->login-correct(200)->login-wrong(401) round-trip; protected route without token
+  401; correlation ID explicitly confirmed byte-identical between response header and
+  meta.requestId via a separate string comparison; structured [HTTP] logs present for every
+  request with correct correlation IDs; zero ERROR-level log lines for the 401s; a full
+  log-history grep for the real test password found zero matches; rate limiting unaffected;
+  DB_PASSWORD missing/empty and CORS_ALLOWED_ORIGINS missing all three still fail fast (one
+  cosmetic-only NestJS-11 stack-trace formatting difference noted, no functional change); web
+  image rebuilt and confirmed unaffected. Full N11->N10->N11 rollback rehearsal executed and
+  evidenced: N11 booted+verified; a temp user created; N11 stopped, N10-baseline redeployed;
+  health re-verified; DATA CONTINUITY explicitly proven -- the user created under N11 logged in
+  successfully against N10; auth behavior re-confirmed; row counts unchanged throughout
+  (migrations=20, places=49); N10 stopped, N11 redeployed once more, forward recovery proven. All
+  temp users/containers/images removed afterward; dev stack confirmed healthy; zero migration or
+  schema file touched. See reports/PLACE-032-nestjs-11-migration-report.md,
+  evidence/PLACE-032-nestjs-11-migration-evidence-index.md, and
+  reports/PLACE-032-NESTJS-11-MIGRATION-ASSESSMENT-2026-07-24.md.
 
 place_031_status: >-
   COMPLETED 2026-07-24 — fresh PLACE-031 candidate assessment, Candidate E (Release & Rollback
