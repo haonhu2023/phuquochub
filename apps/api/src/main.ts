@@ -8,6 +8,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { correlationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { securityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { AppLoggerService } from './core/logger/app-logger.service';
 
 async function bootstrap(): Promise<void> {
@@ -38,6 +39,9 @@ async function bootstrap(): Promise<void> {
   // PLACE-030: gắn TRƯỚC mọi thứ khác — mọi request (kể cả preflight OPTIONS) đều có
   // correlation ID trước khi chạm guard/interceptor/filter nào.
   app.use(correlationIdMiddleware);
+  // PLACE-041: security response headers — found missing by the production audit (no `helmet`
+  // and no manual equivalent existed).
+  app.use(securityHeadersMiddleware);
 
   app.setGlobalPrefix(prefix);
   app.enableCors({
