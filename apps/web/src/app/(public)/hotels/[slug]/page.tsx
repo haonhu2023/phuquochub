@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
+import { buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -34,6 +35,10 @@ export default async function HotelDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildHotelJsonLd(h)) }}
+      />
       <h1>{h.name}</h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
       {h.description && <p>{h.description}</p>}

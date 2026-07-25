@@ -8,6 +8,7 @@ import {
   type TourStop,
 } from '@/modules/tours/api/tours.api';
 import { ApiError } from '@/lib/http';
+import { buildTourJsonLd, serializeJsonLd } from '@/lib/structured-data';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -46,6 +47,10 @@ export default async function TourDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildTourJsonLd(t)) }}
+      />
       <h1>{t.name}</h1>
       {t.description && <p>{t.description}</p>}
 

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getEvent, type EventDetail } from '@/modules/events/api/events.api';
 import { ApiError } from '@/lib/http';
+import { buildEventJsonLd, serializeJsonLd } from '@/lib/structured-data';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -38,6 +39,10 @@ export default async function EventDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildEventJsonLd(ev)) }}
+      />
       <h1>{ev.title}</h1>
       <p style={{ color: '#4b5563' }}>
         {new Date(ev.start_at).toLocaleString('vi-VN')} → {new Date(ev.end_at).toLocaleString('vi-VN')}{' '}

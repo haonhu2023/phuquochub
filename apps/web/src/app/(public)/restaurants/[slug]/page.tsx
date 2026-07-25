@@ -6,6 +6,7 @@ import {
   type RestaurantDetail,
 } from '@/modules/restaurants/api/restaurants.api';
 import { ApiError } from '@/lib/http';
+import { buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -44,6 +45,10 @@ export default async function RestaurantDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRestaurantJsonLd(r)) }}
+      />
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
       {r.description && <p>{r.description}</p>}

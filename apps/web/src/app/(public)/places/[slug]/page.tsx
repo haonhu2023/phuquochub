@@ -6,6 +6,7 @@ import { formatPriceRange } from '@/modules/places/format';
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
+import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -74,6 +75,10 @@ export default async function PlaceDetailPage({ params }: Params) {
 
   return (
     <article className={styles.detail}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildPlaceJsonLd(place)) }}
+      />
       <nav className={styles.breadcrumb} aria-label="Breadcrumb">
         <Link href="/">Trang chủ</Link>
         <span className={styles.sep}>/</span>
