@@ -1,0 +1,106 @@
+schema_version: "1.0"
+
+id: PLACE-038
+workstream: place
+title: "Production readiness implementation (repository-controlled infrastructure preparation)"
+type: implementation
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: "Owner explicit authorization 2026-07-25 -- 'PLACE-038 Authorization'. Approved Owner decisions supplied directly (Hostinger KVM VPS pending upgrade; phuquochub.com domain, /api same-domain path; single VPS + Docker Compose topology; Ubuntu 24.04 LTS; 4 vCPU/16GB/200GB; Caddy reverse proxy with automatic HTTPS; infra-native monitoring + one external uptime check; email notification channel; daily7/weekly4/monthly6 backup retention; Cloudflare R2 offsite destination; no staging; ~1-2 million VND/month budget)."
+  decision: "Implements the scope proposed in docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md §27, using the Owner-approved decisions as authoritative input. Repository-controlled infrastructure preparation ONLY -- external production deployment explicitly NOT authorized."
+
+depends_on:
+  - "PLACE-037 completed 2026-07-25 (production deployment/monitoring decision gate) -- gate result READY WITH CONDITIONS, all 5 conditions now resolved by direct Owner authorization"
+  - "PLACE-036 completed 2026-07-25 -- current stable frontend baseline (Next.js 16.2.11) this task's Docker/Compose changes must not regress"
+  - "PLACE-032 completed 2026-07-24 -- current stable backend baseline (NestJS 11.1.28)"
+
+preconditions_verified:
+  - "current.task: none, working tree clean at task start (HEAD c93963c)"
+  - "No git remotes configured; nothing to push regardless"
+  - "PLACE-037's 5 blocking Owner conditions all directly answered in this task's authorization message"
+
+owner_approved_decisions:
+  deployment_provider: "Hostinger KVM VPS (upgrade if current account is not yet VPS-tier) -- verification of actual account status remains a pre-deployment check, not resolved by this task"
+  deployment_scope: "Infrastructure preparation only. External production deployment NOT authorized."
+  production_domain: "phuquochub.com"
+  api_routing: "https://phuquochub.com/api -- same-domain /api path, no separate api. subdomain"
+  topology: "Single VPS, Docker Compose, web+API+PostgreSQL/PostGIS+Redis on the VPS, object storage deferred"
+  operating_system: "Ubuntu Server 24.04 LTS"
+  server_sizing: "4 vCPU / 16 GB RAM / 200 GB NVMe (estimates, per PLACE-037 §10)"
+  reverse_proxy: "Caddy, automatic HTTPS"
+  monitoring: "Existing structured logging + correlation IDs + Docker health checks + one external uptime monitor"
+  notification_channel: "Email"
+  backup_policy: "Daily 7 / Weekly 4 / Monthly 6"
+  offsite_backup_destination: "Cloudflare R2"
+  staging: "Not required for initial release"
+  monthly_budget: "~1-2 million VND"
+  external_deployment_authorized: false
+  dns_changes_authorized: false
+  cloud_provisioning_authorized: false
+  public_launch_authorized: false
+
+objective: >-
+  Implement ONLY repository-controlled production readiness matching PLACE-037's recommended
+  topology and the Owner's approved decisions: production Docker Compose adjustments, Caddy
+  reverse-proxy configuration, deployment/backup/restore/rollback scripts, monitoring/health-check
+  improvements, logging improvements, environment templates, and documentation -- verified entirely
+  locally (build + boot on this machine only). No deployment to the Internet, no DNS change, no
+  cloud resource provisioning, no Hostinger/Cloudflare connection, no backup upload, no exposed
+  production endpoint, no production database migration, nothing pushed to any remote.
+
+scope:
+  - "apps/web/Dockerfile: add build-time ARG/ENV support for NEXT_PUBLIC_API_URL and NEXT_PUBLIC_MAP_TILE_URL (a real, independently-discovered defect: these NEXT_PUBLIC_ vars are baked in by Next.js at build time, but docker-compose.prod.yml only ever set them as inert runtime environment: values); add a Docker-native HEALTHCHECK instruction."
+  - "apps/api/Dockerfile: add a Docker-native HEALTHCHECK instruction; apply the same --chown=node:node COPY pattern PLACE-036 proved necessary for apps/web, as a defensive consistency fix (no direct evidence of an API runtime write-path issue, but no evidence it's safe either -- applying the proven-safe pattern removes the open question)."
+  - "docker-compose.prod.yml: add a caddy service (reverse proxy, automatic HTTPS placeholder for the real domain); remove direct host-port publishing for postgres/redis/minio/api/web (Topology A's own private-networking requirement -- only Caddy is a public endpoint); add a Redis password; add per-service logging: rotation blocks; move NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL to build.args (the only place they take effect); update CORS_ALLOWED_ORIGINS and TRUST_PROXY_HOPS defaults to reflect the approved domain and proxy topology."
+  - "infrastructure/caddy/Caddyfile: new -- routes phuquochub.com / to web, /api to api, forwards correlation-ID and real client IP, automatic HTTPS."
+  - "infrastructure/docker/postgres/wal-archive.sh: extend with an optional Cloudflare R2 upload step (gated on env vars; falls back to local-only copy, unchanged default behavior, if R2 credentials are not configured) -- no credential is created or used, only the configurable code path."
+  - "scripts/deploy.sh, scripts/backup.sh, scripts/restore.sh, scripts/rollback.sh -- new, documented, meant to run on a real provisioned VPS; not executed against any real infrastructure in this task."
+  - ".env.example: add REDIS_PASSWORD and R2_* placeholder variables; update domain-related comments to reflect the approved phuquochub.com decision."
+  - "docs/architecture/deployment.md: reconcile the 'CHƯA triển khai' status notes for the items this task actually implements (Caddy config, Redis password, HEALTHCHECK, R2-ready WAL script, scripts/)."
+  - "Local verification only: build every changed image, boot the full stack locally (Docker network only, zero public exposure), verify Caddy routing via Host-header curl (no real DNS/TLS needed for this), verify HEALTHCHECK instructions report correctly, verify Redis auth works, verify scripts are syntactically valid (shellcheck-equivalent manual review + a dry-run where safe)."
+
+out_of_scope:
+  - "Any deployment to the Internet, any real VPS provisioning, any Hostinger/Cloudflare account connection, any DNS record creation or change, any purchase, any real backup upload, any production database migration, any public endpoint exposure, any push to a remote."
+  - "Product feature development, UI redesign, backend business-logic changes, database-schema redesign, unrelated dependency upgrades, content population, broad performance optimization."
+  - "PLACE-039 or any successor task."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "The NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL build-time-vs-runtime defect is fixed and verified: a freshly built web image, given a build.args override, serves the overridden URL in its client bundle -- not the old localhost default." }
+  - { id: AC2, mandatory: true, text: "Both Dockerfiles declare a working Docker-native HEALTHCHECK, verified via docker ps / docker inspect showing a healthy status after boot." }
+  - { id: AC3, mandatory: true, text: "docker-compose.prod.yml no longer publishes postgres/redis/minio/api/web ports directly to the host; only Caddy does." }
+  - { id: AC4, mandatory: true, text: "Redis requires a password in the production compose file; the API successfully authenticates to it; RedisHealthIndicator still reports healthy." }
+  - { id: AC5, mandatory: true, text: "Caddy correctly routes / to web and /api to api, verified locally via Host-header requests (no real DNS/TLS required for this verification)." }
+  - { id: AC6, mandatory: true, text: "wal-archive.sh's R2 upload path is present, correctly gated (no-op without credentials, unchanged local-copy behavior preserved), and does not attempt any real network call in this task's own verification." }
+  - { id: AC7, mandatory: true, text: "scripts/deploy.sh, backup.sh, restore.sh, rollback.sh exist, are internally consistent with the actual compose/Dockerfile changes made, and are not executed against any real infrastructure." }
+  - { id: AC8, mandatory: true, text: "Full local regression (lint/typecheck/unit/e2e/build) unaffected -- zero apps/api or apps/web application-source behavior change beyond the two Dockerfiles' own build/runtime mechanics." }
+  - { id: AC9, mandatory: true, text: "Zero DNS modification, zero cloud resource created, zero purchase, zero push, zero secret value committed." }
+  - { id: AC10, mandatory: true, text: "Delivery evidence complete; state.yaml/workstreams updated; current.task returns to none; working tree clean after commits; PLACE-039 not created." }
+
+stop_conditions:
+  - "Any change would require actually connecting to Hostinger, Cloudflare, or R2 -- report BLOCKED for that specific sub-item, do not simulate a real connection."
+  - "Any change would require a real domain to be DNS-resolvable for verification -- use Host-header-based local verification instead, never attempt real resolution."
+  - "Any script would need to run destructively against real data -- do not execute it, review-only."
+
+commit_strategy:
+  - "1) Dockerfile fixes (NEXT_PUBLIC_ build-arg defect + HEALTHCHECK + api ownership consistency)"
+  - "2) docker-compose.prod.yml + Caddyfile (topology implementation)"
+  - "3) backup/deploy/restore/rollback scripts + wal-archive.sh R2 extension"
+  - "4) environment template + documentation reconciliation"
+  - "5) delivery evidence and state updates"
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-038-production-readiness-implementation-report.md"
+  - "docs/delivery/evidence/PLACE-038-production-readiness-implementation-evidence-index.md"
+
+definition_of_done: >-
+  All 10 acceptance criteria pass; delivery evidence exists; state.yaml/workstreams/place.yaml
+  updated accurately (recording repository-controlled readiness, NOT real deployment); current.task
+  returns to none; PLACE-039 proposed but not created; working tree clean; nothing pushed.
+
+non_claims: >-
+  This task does NOT deploy PhuQuocHub to the Internet. It does NOT provision any VPS. It does NOT
+  connect to Hostinger, Cloudflare, or R2. It does NOT create any DNS record. It does NOT purchase
+  anything. It does NOT upload any backup. It does NOT run a production database migration. It does
+  NOT create PLACE-039. All verification is local-only, on this machine, with zero public exposure.

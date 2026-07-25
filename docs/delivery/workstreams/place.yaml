@@ -131,7 +131,53 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-037 completed 2026-07-25 (production deployment target + monitoring provider decision gate). Gate result: READY WITH CONDITIONS. Recommended: single VPS running the existing docker-compose.prod.yml stack + Caddy for automatic TLS; infra-native monitoring (Docker healthchecks + existing structured/correlated logs) + one external uptime check at launch, Sentry as the first upgrade once real users exist. Hostinger classified UNKNOWN (not assumed compatible). 5 genuine Owner decisions remain (Hostinger plan, budget, domain, alert channel, offsite-backup destination) — see docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md. Decision-gate/planning only — zero code/config touched.
+next_task: none        # PLACE-038 completed 2026-07-25 (production readiness implementation — repository-controlled infrastructure prep). Implemented PLACE-037's Topology A (single VPS + Docker Compose + Caddy) under Owner authorization; external deployment NOT authorized/performed. Two real, previously-undiscovered defects found via required local verification and fixed: NEXT_PUBLIC_* vars were build-time-baked but only ever set at runtime (zero effect); postgres's WAL-archiving command crash-looped on boot (pre-existing since PLACE-026). Redis password, Docker HEALTHCHECKs, Caddy routing, migrations, backup/restore/rollback scripts all verified live against a local test stack, then fully torn down. Remaining work is entirely Owner-side (Hostinger provisioning, real DNS, real R2 credentials, uptime-monitor signup) — see docs/delivery/reports/PLACE-038-production-readiness-implementation-report.md.
+
+place_038_status: >-
+  COMPLETED 2026-07-25 — production readiness implementation (repository-controlled
+  infrastructure preparation), implementing PLACE-037's Topology A (single VPS + Docker Compose +
+  Caddy) under direct Owner authorization of all 5 PLACE-037 conditions; external deployment
+  explicitly NOT authorized or performed. TWO REAL, PREVIOUSLY-UNDISCOVERED DEFECTS found and
+  fixed, both surfaced only by this task's own required local build+boot verification, not by
+  review alone: (1) NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL are baked in by Next.js at BUILD
+  time; docker-compose.prod.yml previously set them only as a container-runtime environment:
+  value, which had ZERO effect -- proven via direct compiled-bundle inspection (both client and
+  server SSR chunks showed the old hardcoded default regardless of the runtime override). Fixed
+  via apps/web/Dockerfile ARG/ENV + compose build.args; re-verified with an explicit --build-arg
+  producing the correct URL throughout both bundles. (2) postgres's WAL-archiving command crashed
+  the container on every boot -- a pre-existing defect dating to PLACE-026 (YAML folded-scalar
+  command: shell-word-splitting a multi-word -c value into invalid argv entries), never previously
+  triggered because no prior task had actually booted this exact service through this exact
+  compose path end-to-end. Fixed by converting to YAML list form; re-verified via a clean
+  full-stack boot with postgres reporting healthy. Implemented: infrastructure/caddy/Caddyfile
+  (new, routes phuquochub.com correctly, automatic HTTPS, plus a documented local :8080 test
+  address sharing identical routing logic for verification without real DNS/TLS) -- verified via
+  both `caddy validate` and live local requests. Removed direct host-port publishing for
+  postgres/redis/minio/api/web (Topology A's own private-networking requirement, confirmed via
+  `docker compose config`). Added a Redis password -- verified genuinely enforced live
+  (unauthenticated ping fails NOAUTH, authenticated succeeds, API's RedisHealthIndicator confirmed
+  healthy through it). Added native Docker HEALTHCHECK to both Dockerfiles -- verified reporting
+  healthy live. Added --chown=node:node to apps/api/Dockerfile defensively (PLACE-036 precedent).
+  Added a new `migrate` compose service (reuses the Dockerfile's intermediate build stage with
+  full TS source + ts-node, since postgres's port is no longer host-published) -- verified live:
+  all 20 migrations applied cleanly to a fresh empty database. Wrote scripts/deploy.sh, backup.sh,
+  restore.sh, rollback.sh, sync-offsite.sh -- backup.sh and restore.sh ACTUALLY EXECUTED (not just
+  syntax-checked) against disposable local data (real valid gzip pg_dump produced; destructively
+  restored; row counts identical after); rollback.sh actually executed against two tagged images
+  (swap + health re-verification succeeded); sync-offsite.sh's safe no-credential exit path
+  exercised, never run against real R2. Web-to-API end-to-end data-fetching verified with real
+  seeded data through Caddy -- caught and corrected a genuine test-setup mistake along the way
+  (an initial attempt assumed localhost:8080 inside the web container would reach Caddy; it
+  doesn't, since localhost inside a container is its own loopback -- re-diagnosed and fixed the
+  test methodology, not the implementation, before claiming success). Full monorepo regression run
+  fresh post-change: zero application-source behavior change, identical totals to every prior
+  PLACE baseline. docs/architecture/deployment.md reconciled: status header + the original 9-item
+  Section-15 decision list now marked resolved/deferred against PLACE-037/038's actual outcomes.
+  ZERO real infrastructure touched anywhere (no DNS/VPS/Hostinger/Cloudflare/R2 connection, no
+  public exposure) -- entire local test stack fully torn down and cleaned up afterward; dev stack
+  confirmed unaffected throughout. See
+  reports/PLACE-038-production-readiness-implementation-report.md and
+  evidence/PLACE-038-production-readiness-implementation-evidence-index.md.
 
 place_037_status: >-
   COMPLETED 2026-07-25 — evidence-based production deployment-target and monitoring-provider

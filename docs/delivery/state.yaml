@@ -30,7 +30,29 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-037 completed 2026-07-25 (production deployment target +
+  task: none                      # PLACE-038 completed 2026-07-25 (production readiness
+                                  # implementation, repository-controlled infrastructure prep).
+                                  # Implemented PLACE-037's Topology A (single VPS + Docker
+                                  # Compose + Caddy) under Owner authorization. TWO REAL DEFECTS
+                                  # found and fixed via required local build+boot verification:
+                                  # (1) NEXT_PUBLIC_API_URL/MAP_TILE_URL were build-time-baked by
+                                  # Next.js but only ever set at container runtime -- had ZERO
+                                  # effect; fixed via Dockerfile ARG + compose build.args. (2)
+                                  # postgres's WAL-archiving command crashed on boot (shell
+                                  # word-splitting of a multi-word -c value, pre-existing since
+                                  # PLACE-026, never previously triggered); fixed via YAML list
+                                  # form. Full local stack (postgres/redis/minio/api/web/caddy)
+                                  # built, booted, health-verified; migrations (20) ran via a new
+                                  # `migrate` compose service; Redis auth genuinely enforced;
+                                  # Caddy routing verified live + via `caddy validate`; web->api
+                                  # data-fetching verified end-to-end with real seeded data;
+                                  # backup.sh/restore.sh/rollback.sh actually executed (not just
+                                  # syntax-checked) against disposable local data. Zero real
+                                  # infrastructure touched (no DNS/VPS/Hostinger/Cloudflare/R2
+                                  # connection). Full regression unaffected. See
+                                  # docs/delivery/tasks/PLACE-038.yaml.
+                                  # ---- prior state (PLACE-037, completed 2026-07-25) ----
+                                  # PLACE-037 completed 2026-07-25 (production deployment target +
                                   # monitoring provider decision gate). Gate result: READY WITH
                                   # CONDITIONS. Recommended topology: single VPS running the
                                   # existing docker-compose.prod.yml stack + Caddy for automatic
@@ -241,60 +263,142 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-037 (2026-07-25) produced an evidence-based production deployment-target and monitoring-
-    provider decision gate. GATE RESULT: READY WITH CONDITIONS. Architecture inventory (grounded in
-    direct code/config evidence, not deployment.md's target design alone): confirmed MinIO/object
-    storage exists in docker-compose.prod.yml but is NEVER called by application code (zero S3_*/
-    @aws-sdk/minio reference anywhere in apps/api/src) -- correctly deferrable, not mandatory;
-    confirmed no BullMQ worker, no scheduled jobs, no email provider exist despite appearing in
-    deployment.md's target diagram. Deployment readiness: Dockerfiles/Compose/CI all production-
-    ready or ready-with-configuration; two real gaps found and flagged (not fixed, per this task's
-    own no-code-change constraint): Redis has no password in docker-compose.prod.yml; neither
-    Dockerfile declares a native HEALTHCHECK instruction. apps/api/Dockerfile shares web's PLACE-036
-    COPY-without---chown pattern but with NO evidence the API ever writes to its own filesystem at
-    runtime -- flagged as an UNVERIFIED pre-launch check, explicitly not claimed as a defect absent
-    evidence (unlike web's proven case). HOSTINGER: classified UNKNOWN, not assumed compatible
-    merely because an account exists -- the specific plan tier (shared vs VPS/Docker access) is not
-    established anywhere in repository evidence. TOPOLOGY: recommended a single VPS running the
-    existing, already-verified docker-compose.prod.yml stack + Caddy (automatic TLS) -- reuses
-    proven infrastructure, matches the project's actual zero-real-user scale, keeps the exact
-    rollback mechanism already rehearsed three times this session (PLACE-031/032/036). MONITORING:
-    5-option scored decision matrix (infra-native/Sentry/Grafana-stack/OpenTelemetry/uptime-
-    provider) recommends infra-native (Docker healthchecks + existing structured/correlated logs,
-    PLACE-030) + one external uptime check as the launch-minimum -- zero new dependency, zero new
-    infrastructure; Sentry named as the correct first upgrade once real users exist; Grafana/
-    Prometheus and OpenTelemetry explicitly deferred as disproportionate to current (zero) traffic.
-    Full alert policy, logging/retention policy, health-check design, reverse-proxy/TLS
-    recommendation, DNS planning, 15-step rollout strategy (simple replace-and-rollback, not
-    canary/blue-green -- matched to actual project stage), and rollback requirements all designed,
-    none implemented. Owner-decision inventory: 5 genuine account/budget/naming/channel facts this
-    repository cannot resolve (Hostinger plan, budget ceiling, domain, notification channel,
-    offsite-backup destination) -- none reflect missing engineering work. Cross-referenced against
-    the pre-existing PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md ('E. NOT READY'): confirmed
-    PLACE-026..036 have since resolved most of its findings (deployment artifacts, rate-limiting,
-    CORS, DB-credential fail-fast, logging); monitoring and deployment-target selection remain
-    exactly as open as that assessment found them -- this gate is what finally addresses them.
-    Implementation-task scope proposed (nginx/Caddy config, Compose logging/Redis-password/WAL-
-    destination adjustments, Dockerfile HEALTHCHECK + api ownership verification, deploy/backup
-    scripts, doc reconciliation, a real-environment rollback rehearsal, a migration:revert
-    rehearsal) but NOT created. ZERO application code, package manifest, lockfile, Dockerfile, CI
-    file, or environment file touched -- decision-gate/planning only. Deriving another task without
+    PLACE-038 (2026-07-25) implemented PLACE-037's Topology A production readiness (single VPS +
+    Docker Compose + Caddy) under direct Owner authorization of all 5 PLACE-037 conditions --
+    repository-controlled infrastructure preparation ONLY, external deployment explicitly NOT
+    authorized. TWO REAL, PREVIOUSLY-UNDISCOVERED DEFECTS found and fixed, both surfaced only by
+    this task's own required local build+boot verification (not by review alone): (1)
+    NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL are baked in by Next.js at BUILD time, but
+    docker-compose.prod.yml only ever set them as a container-runtime environment: value, which had
+    ZERO effect (proven via direct compiled-bundle inspection, both client and server chunks) --
+    fixed via apps/web/Dockerfile ARG/ENV + compose build.args, re-verified with an explicit
+    --build-arg producing the correct URL throughout the bundle. (2) postgres's WAL-archiving
+    command crashed the container on every boot (invalid argument: /opt/wal-archive.sh) -- a
+    pre-existing defect dating to PLACE-026, caused by YAML folded-scalar command: shell-word-
+    splitting a multi-word -c value, NEVER previously triggered because no prior task had actually
+    booted this exact service through this exact compose path end-to-end; fixed by converting to
+    YAML list form, re-verified via a clean stack boot with postgres reporting healthy. Implemented:
+    Caddy reverse proxy (new infrastructure/caddy/Caddyfile, phuquochub.com + a documented local
+    :8080 test address sharing the identical routing logic, automatic HTTPS, verified via both
+    `caddy validate` and live local requests); removed direct host-port publishing for
+    postgres/redis/minio/api/web (Topology A's own private-networking requirement, only Caddy
+    publishes 80/443); added a Redis password (verified genuinely enforced -- unauthenticated ping
+    fails NOAUTH, authenticated succeeds, API's RedisHealthIndicator confirmed healthy); added
+    native Docker HEALTHCHECK to both apps/api and apps/web Dockerfiles (verified reporting healthy
+    live); added --chown=node:node to apps/api/Dockerfile defensively (PLACE-036 precedent, no
+    direct evidence of a runtime issue but no evidence of safety either); added a new `migrate`
+    compose service (reuses the Dockerfile's intermediate build stage with full TS source +
+    ts-node, since postgres's port is no longer host-published so migrations can't run from a bare
+    host process) -- verified live: all 20 migrations applied cleanly to a fresh empty database.
+    Wrote scripts/deploy.sh, backup.sh, restore.sh, rollback.sh, sync-offsite.sh -- backup.sh and
+    restore.sh actually EXECUTED (not just syntax-checked) against disposable local data (produced
+    a real, valid gzip pg_dump; destructively restored it; row counts identical after);
+    rollback.sh actually executed against two tagged images (swap + health re-verification
+    succeeded); sync-offsite.sh's safe no-credential exit path exercised, never run against real
+    R2 (no credentials exist in this session). Web-to-API data-fetching mechanism verified
+    end-to-end with real seeded data through Caddy -- caught and corrected a genuine test-setup
+    mistake along the way (an initial attempt pointed the web build at localhost:8080, which
+    cannot work cross-container; re-diagnosed, fixed the test methodology, not the
+    implementation). Full monorepo regression (lint/typecheck/unit web-17-api-251/e2e-59) run
+    fresh post-change: zero application-source behavior change, identical totals to every prior
+    PLACE baseline. docs/architecture/deployment.md reconciled: status header + the original
+    9-item Section-15 decision list now marked resolved/deferred against PLACE-037/038's actual
+    outcomes. ZERO real infrastructure touched anywhere (no DNS, no VPS, no Hostinger/Cloudflare/R2
+    connection, no public exposure) -- entirely local Docker verification, fully torn down and
+    cleaned up afterward; dev stack confirmed unaffected throughout. Deriving another task without
     explicit owner authorization is NOT permitted.
   eligible_candidate_disposition:
-    - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset. Real-infrastructure deployment now gated on PLACE-037's 5 Owner conditions, not on further engineering work."
+    - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026) + repository-controlled readiness IMPLEMENTED (PLACE-038, Topology A/Caddy/scripts). Real-infrastructure deployment now gated ONLY on Owner-side real-world steps (Hostinger plan verification/provisioning, real DNS, real R2 credentials) — no further engineering work required to reach a deployable state."
     - "Candidate 2 (dependency remediation, OD2-11) — IMPLEMENTED (PLACE-027 safe subset + PLACE-029 bcrypt/tar closure + PLACE-032 NestJS-11 closure of 13 findings + PLACE-035/036 Next.js-16 migration+stabilization, though the next/postcss/sharp findings themselves remain open pending an upstream fix — see place_036_status)."
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
     - "PLACE-029 Candidate B (NestJS 10->11) — IMPLEMENTED (PLACE-032). Candidate C (Next.js 14->16) — IMPLEMENTED and STABILIZED (PLACE-035/036). All three PLACE-029 candidate framework-migration items are now closed."
-    - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (OD2-6) now has a concrete PLACE-037 recommendation (infra-native + uptime check at launch, Sentry as first upgrade) — a future implementation task may proceed once the 5 PLACE-037 Owner conditions are answered."
+    - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (OD2-6) minimum stack IMPLEMENTED (PLACE-038 — Docker healthchecks + existing structured logs + Caddy); the external uptime-monitor account itself and any enhanced-stack (Sentry) decision remain Owner-side real-world steps."
     - "PLACE-031 candidate assessment Candidate E (release & rollback readiness) — IMPLEMENTED (PLACE-031). Candidate F (product delivery acceleration) — DEFER, no evidence-backed bounded scope currently exists."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
-    - "OD2-6 (monitoring) — APPROVED; PLACE-037 now supplies the concrete recommendation; still sequenced after a real deploy target and the 5 Owner conditions are resolved."
+    - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "The 5 conditions from PLACE-037 §31: (1) confirm the Hostinger plan supports Docker/VPS/root access or name an alternative provider; (2) a rough launch-budget ceiling; (3) the production domain name; (4) the alert-notification channel; (5) the offsite-backup destination (R2/Backblaze/other). None of these can be answered from repository evidence — no answer is assumed or invented here. Once answered, the PLACE-037-proposed implementation task (infra config, no product/business-logic change) may be authorized."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). Real production release requires the 5 Owner-side facts above (PLACE-037) that no engineering task can fabricate — deployment/monitoring engineering readiness itself is no longer the blocker; the recommended path (single VPS + docker-compose.prod.yml + Caddy; infra-native monitoring + uptime check) is fully specified and evidence-based, pending only those Owner inputs."
+  pending_owner_decision: "PLACE-038's own scope is complete. What remains is entirely Owner-side, real-world action: (1) verify/provision the Hostinger KVM VPS; (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here."
+  release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:
+  - id: PLACE-038
+    completed: "2026-07-25"
+    result: >-
+      Production readiness implementation (repository-controlled infrastructure preparation),
+      implementing PLACE-037's Topology A (single VPS + Docker Compose + Caddy) under direct Owner
+      authorization of all 5 PLACE-037 conditions -- external deployment explicitly NOT authorized.
+      TWO REAL, PREVIOUSLY-UNDISCOVERED DEFECTS found and fixed, both surfaced only by this task's
+      own required local build+boot verification: (1) NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL
+      are baked in by Next.js at BUILD time; docker-compose.prod.yml previously set them only as a
+      container-runtime environment: value, which had ZERO effect -- proven via direct compiled-
+      bundle inspection (both client static chunks and server SSR chunks showed the old hardcoded
+      default regardless of the runtime override). Fixed: apps/web/Dockerfile now accepts
+      ARG/ENV NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL before next build; docker-compose.prod.yml
+      passes them via build.args. Re-verified with an explicit --build-arg: phuquochub.com/api
+      correctly present throughout both bundles, zero localhost:4000/api occurrences. (2)
+      postgres's WAL-archiving `command:` crashed the container on every boot -- postgres: invalid
+      argument: "/opt/wal-archive.sh" -- a pre-existing defect dating to PLACE-026 (YAML
+      folded-scalar command: shell-word-splitting the multi-word -c archive_command value into
+      invalid separate argv entries), never previously triggered because no prior task had
+      actually booted this exact service through this exact compose file's code path end-to-end.
+      Fixed by converting command: to YAML list form (no shell splitting involved at all);
+      re-verified via a clean full-stack boot with postgres reporting healthy, zero crash-loop.
+      Implemented: infrastructure/caddy/Caddyfile (new) -- routes phuquochub.com/api-> api,
+      else-> web, automatic HTTPS, plus a documented local :8080 test address sharing the
+      IDENTICAL routing logic (a supported Caddy multi-address pattern) for verification without
+      real DNS/TLS -- verified via both `caddy validate` (Valid configuration) and live local
+      requests through Caddy (both / and /api/health returned 200 with correct content). Removed
+      direct host-port publishing for postgres/redis/minio/api/web (Topology A's own private-
+      networking requirement -- confirmed via `docker compose config`: only caddy has a ports:
+      block). Added a Redis password -- verified genuinely enforced live: unauthenticated
+      redis-cli ping fails NOAUTH, authenticated succeeds PONG, API's RedisHealthIndicator
+      confirmed reporting healthy through the authenticated connection. Added native Docker
+      HEALTHCHECK instructions to both apps/api/Dockerfile and apps/web/Dockerfile -- verified
+      both reporting `healthy` live after boot. Added --chown=node:node to apps/api/Dockerfile's
+      runtime COPY lines defensively, matching PLACE-036's proven web fix, with no direct evidence
+      of a runtime issue but none of safety either -- removes the open question at zero cost.
+      Added a new `migrate` compose service (reuses the Dockerfile's intermediate build stage,
+      which has the full TypeScript source + ts-node, unlike the lean runtime stage the api
+      service uses) since postgres's port is no longer host-published, so migrations can no
+      longer run via a bare host-side npm process -- verified live: all 20 migrations applied
+      cleanly to a fresh, empty database (places=49, migrations=20 confirmed after). Wrote
+      scripts/deploy.sh, backup.sh, restore.sh, rollback.sh, sync-offsite.sh. backup.sh and
+      restore.sh were ACTUALLY EXECUTED (not merely syntax-checked) against disposable local test
+      data: backup.sh produced a real, valid, non-empty gzip pg_dump; restore.sh (destructive,
+      confirmation-gated) dropped and restored the database from it, with places=49/migrations=20
+      confirmed identical afterward. rollback.sh was actually executed against two tagged images
+      (swap + health re-verification both succeeded). sync-offsite.sh's safe no-credential exit
+      path was exercised; it was never run against a real R2 endpoint (no credentials exist in
+      this session -- exactly the documented, correct behavior). Web-to-API end-to-end data-
+      fetching was verified with real seeded data flowing through Caddy -- and along the way, a
+      genuine test-setup mistake was caught and corrected rather than silently producing a false-
+      positive result: an initial attempt pointed the web image's build-time API URL at
+      localhost:8080 assuming it would reach Caddy, but localhost inside a container is that
+      container's own loopback, not another container -- this produced ECONNREFUSED in web's logs
+      and a fallback (not real) page title; re-diagnosed, rebuilt web pointed at the api service
+      by its correct internal Docker DNS name, and re-verified: the real seeded title
+      ("Dinh Cậu · PhuQuocHub") rendered correctly, zero fetch errors. Full monorepo regression
+      (lint/typecheck/unit web-17/api-251, e2e 59) run fresh after every change: zero application-
+      source behavior change, identical totals to every prior PLACE task's baseline -- confirming
+      the two defect fixes and all compose/Dockerfile/script changes touched only infrastructure
+      configuration, never application logic. docs/architecture/deployment.md reconciled: the
+      status header and the original 9-item Section-15 pre-production decision list are now marked
+      resolved/deferred against what PLACE-037 (decisions) and PLACE-038 (implementation) actually
+      closed, following this repository's own established discipline of keeping documented status
+      honest against verified reality rather than aspirational. ZERO real infrastructure touched
+      anywhere in this task -- no DNS record, no VPS, no Hostinger/Cloudflare/R2 connection, no
+      public exposure of any kind; the entire local test stack (6 containers, 6 named volumes, 1
+      network) was fully torn down and all disposable test images/tags/backup files removed after
+      verification; the actual dev stack (phuquoc-postgres/-redis/-minio) was confirmed unaffected
+      and healthy throughout. Not claimed: no real Hostinger/VPS provisioning; no real DNS for
+      phuquochub.com; no real R2 connection or upload; scripts/deploy.sh not run end-to-end against
+      a real environment (its constituent mechanisms were each verified individually instead,
+      since deploy.sh assumes a real VPS checkout this repository cannot provide); no
+      migration:revert rehearsal (carried forward as an open item); zero application
+      feature/UI/business-logic/schema change. No PLACE-039 created or started.
+    report: docs/delivery/reports/PLACE-038-production-readiness-implementation-report.md
+    evidence_index: docs/delivery/evidence/PLACE-038-production-readiness-implementation-evidence-index.md
   - id: PLACE-037
     completed: "2026-07-25"
     result: >-
