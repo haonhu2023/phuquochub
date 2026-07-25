@@ -17,6 +17,16 @@ COPY packages/shared-types packages/shared-types
 COPY packages/config packages/config
 COPY apps/web apps/web
 RUN npm run build --workspace=@phuquochub/shared-types
+# PLACE-038: NEXT_PUBLIC_* variables are inlined by Next.js into the client bundle at BUILD
+# time, not read at container runtime -- docker-compose.prod.yml previously set them only as
+# a runtime `environment:` value, which had NO effect (verified: the built image's client
+# bundle already had `localhost:4000/api` hardcoded regardless of that runtime override).
+# Accept them as build args, defaulting to the existing local-dev values so an unmodified
+# `docker build` still behaves exactly as before.
+ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api
+ARG NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_MAP_TILE_URL=$NEXT_PUBLIC_MAP_TILE_URL
 # next.config.mjs sets output:'standalone' (PLACE-026) — produces a self-contained
 # server.js + pruned node_modules under .next/standalone.
 RUN npm run build --workspace=@phuquochub/web
@@ -36,4 +46,9 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 USER node
+# PLACE-038: native container healthcheck, matching the pattern already used for
+# postgres/redis/minio in docker-compose.prod.yml. Uses Node itself (no curl/wget in the
+# alpine base image) to avoid adding a new package just for this check.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
+  CMD node -e "require('http').get('http://127.0.0.1:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"
 CMD ["node", "apps/web/server.js"]

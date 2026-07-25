@@ -32,15 +32,24 @@ FROM node:20-alpine AS runtime
 RUN apk add --no-cache dumb-init
 ENV NODE_ENV=production
 WORKDIR /repo
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/packages/shared-types ./packages/shared-types
-COPY --from=build /repo/packages/utils ./packages/utils
-COPY --from=build /repo/apps/api/dist ./apps/api/dist
-COPY --from=build /repo/apps/api/package.json ./apps/api/package.json
+# PLACE-038: --chown=node:node applied defensively for consistency with the proven-necessary
+# fix in apps/web/Dockerfile (PLACE-036). No direct evidence the API writes to its own
+# filesystem at runtime today (unlike Next.js's .next/cache), but no evidence it never will
+# either -- this removes that open question at zero cost rather than leaving it unverified.
+COPY --from=build --chown=node:node /repo/node_modules ./node_modules
+COPY --from=build --chown=node:node /repo/packages/shared-types ./packages/shared-types
+COPY --from=build --chown=node:node /repo/packages/utils ./packages/utils
+COPY --from=build --chown=node:node /repo/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /repo/apps/api/package.json ./apps/api/package.json
 
 WORKDIR /repo/apps/api
 EXPOSE 4000
 # Non-root runtime user (node:20-alpine ships a "node" user out of the box).
 USER node
+# PLACE-038: native container healthcheck, matching the pattern already used for
+# postgres/redis/minio in docker-compose.prod.yml. /api/health is @Public()+@SkipThrottle(),
+# safe to call repeatedly without auth or rate-limit impact.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
+  CMD node -e "require('http').get('http://127.0.0.1:4000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main.js"]
