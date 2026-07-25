@@ -30,7 +30,44 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-042 completed 2026-07-25 (database migration rollback
+  task: none                      # PLACE-043 (2026-07-25, Hostinger VPS provisioning
+                                  # verification and production access readiness) is BLOCKED, not
+                                  # completed -- Owner explicit written authorization received,
+                                  # but no repository evidence anywhere confirms the real
+                                  # Hostinger VPS is actually provisioned, and Claude has no
+                                  # Hostinger Dashboard access to verify it. Re-verified repository
+                                  # truth first (HEAD 9a3471b, clean tree, PLACE-037..042 all
+                                  # completed, current.task: none). Full existing-assumption
+                                  # inventory: every prior Hostinger reference classified
+                                  # CONFIRMED/OWNER-STATED/INFERRED/PLACEHOLDER/UNVERIFIED/
+                                  # OUTDATED -- found that "Hostinger KVM VPS" is an OWNER-STATED
+                                  # DECISION (PLACE-038), never a CONFIRMED provisioning fact; no
+                                  # real IPv4/hostname/DNS state has ever appeared anywhere in this
+                                  # repository. Completed everything repository-side possible: a
+                                  # 3-tier resource-suitability assessment grounded in the actual
+                                  # docker-compose.prod.yml 6-service topology (Minimum
+                                  # Viable/Recommended-already-Owner-approved/Upgrade-threshold,
+                                  # unchanged budget ~1-2M VND/month); a new, safe-by-construction
+                                  # 24-stage docs/delivery/HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md
+                                  # (zero destructive command anywhere; SSH hardening correctly
+                                  # sequenced AFTER key-access verification to avoid self-lockout);
+                                  # a new docs/delivery/PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md
+                                  # (what may be known -- IP/spec/OS/region/domain/DNS-provider/
+                                  # public-key/non-sensitive-usernames -- vs what must never be
+                                  # stored -- any password/private-key/DB-JWT-SMTP-Cloudflare-
+                                  # Hostinger-R2 secret/recovery-code -- naming only pre-existing
+                                  # storage locations, no new secrets service invented). Live SSH
+                                  # verification (Phase 11) explicitly NOT attempted -- no
+                                  # IPv4/SSH detail was supplied this session, not a technical
+                                  # failure. Zero DNS change, zero application deployment, zero
+                                  # real secret used or stored. Stops at an explicit, minimal
+                                  # OWNER INPUT REQUIRED request for exactly 11 non-sensitive facts
+                                  # (VPS plan/status/OS/region/IPv4/vCPU/RAM/storage/DNS-provider/
+                                  # nameservers/backup-snapshot-availability) -- no password,
+                                  # private key, or token ever requested. See
+                                  # docs/delivery/tasks/PLACE-043.yaml.
+                                  # ---- prior state (PLACE-042, completed 2026-07-25) ----
+                                  # PLACE-042 completed 2026-07-25 (database migration rollback
                                   # rehearsal and recovery verification). Owner explicit written
                                   # authorization. Re-verified repository truth first (HEAD
                                   # 8d6c5c7, clean tree, PLACE-037..041 all completed,
@@ -420,6 +457,19 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    PLACE-043 (2026-07-25, Hostinger VPS provisioning verification) is BLOCKED, status recorded
+    honestly, not completed: no repository evidence confirms the real Hostinger VPS is actually
+    provisioned, and Claude has no Dashboard access to verify it. Completed everything
+    repository-side possible: existing-assumption inventory (Hostinger-KVM-VPS is an OWNER-STATED
+    decision, never a confirmed fact; no real IPv4/hostname/DNS state exists anywhere in this
+    repository), a 3-tier resource-suitability assessment grounded in the actual
+    docker-compose.prod.yml topology, a new 24-stage HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md (zero
+    destructive command, correct SSH-hardening sequencing), and a new
+    PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md. Live SSH verification not attempted (no IPv4/SSH
+    detail supplied this session). Stops at an explicit OWNER INPUT REQUIRED request for 11
+    non-sensitive Hostinger facts -- no password/key/token ever requested. See
+    docs/delivery/tasks/PLACE-043.yaml.
+    ---- prior state (PLACE-042, completed 2026-07-25) ----
     PLACE-042 (2026-07-25) proved, via a real live rehearsal (not simulated -- Docker was
     successfully restored this session by launching the already-installed Docker Desktop app),
     that the current-head migration (AddPlacesStatusPartialIndex1720001900000) can be reverted
@@ -519,7 +569,7 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-038/039/040/041/042's own scope is complete. PLACE-042 (2026-07-25) closed the migration:revert rehearsal gap flagged since PLACE-037 §12 — proven, live, on the local dev database (see docs/delivery/reports/PLACE-042-migration-rollback-rehearsal-report.md) — but this proves the LOCAL mechanism only; it does not and cannot resolve the remaining real-world steps, which stay entirely Owner-side: (1) verify/provision the Hostinger KVM VPS (docs/delivery/PRE-DEPLOYMENT-CHECKLIST.md §1 gives the exact hPanel facts to gather, none sensitive); (2) point real DNS at it for phuquochub.com; (3) obtain real Cloudflare R2 credentials; (4) set up the external uptime monitor account; (5) decide when to actually run scripts/deploy.sh against that real environment for the first time. None of these can be performed or simulated by an engineering task in this repository — no answer is assumed or invented here. See PLACE-041's report §10 for the full prioritized action list of everything else found but not executed (Medium/Low items: frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
+  pending_owner_decision: "PLACE-043 (2026-07-25) is BLOCKED pending exactly 11 non-sensitive Hostinger facts the Owner must read from hPanel: (1) VPS plan; (2) VPS status (Running/Stopped/Provisioning/Not purchased); (3) OS and version; (4) region/datacenter; (5) public IPv4; (6) vCPU; (7) RAM; (8) storage; (9) DNS provider for phuquochub.com; (10) current nameservers; (11) backup/snapshot availability. See docs/delivery/reports/PLACE-043-hostinger-vps-readiness-report.md §11 for the exact table -- no password/private key/token/recovery code is ever requested. Once supplied: (a) if the VPS is not yet provisioned, the Owner purchase/upgrade action itself remains outside any engineering task; (b) if it is provisioned, docs/delivery/HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md's 24 stages are ready to execute against it, followed by real DNS (owner-side), real Cloudflare R2 credentials (owner-side), the external uptime-monitor account (owner-side, PLACE-039 §3), and finally scripts/deploy.sh's first real run. The prior migration:revert gap (PLACE-037 §12) is now CLOSED (PLACE-042, local mechanism proven). See PLACE-041's report §10 for the full prioritized action list of remaining Medium/Low items (frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:

@@ -131,7 +131,44 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-042 completed 2026-07-25 (database migration rollback rehearsal and recovery verification, Owner explicit written authorization). Docker engine -- unreachable across the PLACE-039/040/041 sessions -- was diagnosed (context confirmed correct, not misconfigured) and restored by launching the already-installed Docker Desktop app directly (safe, reversible, no reinstall). This unblocked a REAL, live rehearsal against the local dev database: selected AddPlacesStatusPartialIndex1720001900000 (current head, zero dependency on any other migration, zero data mutation) -- reverted via the official migration:revert (exit 0), verified index dropped + 2 marked test rows unchanged, re-applied via migration:run (exit 0), verified head restored + index byte-identical + zero duplicates. A safe failure-mode test (invalid local DB_NAME) confirmed migration:revert fails safely without touching the real database. New scripts/migration-rollback-rehearsal.sh (both safety guards tested, then run live end-to-end) + new DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md answering every required recovery question. Backup/restore procedure reviewed but NOT operationally re-rehearsed here (already executed for real in PLACE-038). Test markers cleaned up; dev DB back at its exact 49-place baseline. Proves the LOCAL rollback mechanism only -- NOT a production rollback, and does not cover a destructive (non-additive) migration (none exists yet). See docs/delivery/reports/PLACE-042-migration-rollback-rehearsal-report.md.
+next_task: none        # PLACE-043 (2026-07-25, Hostinger VPS provisioning verification and production access readiness, Owner explicit written authorization) is BLOCKED, not completed -- no repository evidence confirms the real Hostinger VPS is actually provisioned, and Claude has no Dashboard access. Completed all repository-side work: existing-assumption inventory (Hostinger-KVM-VPS is an OWNER-STATED decision, not a confirmed fact; no real IPv4/hostname/DNS exists anywhere in this repository), a 3-tier resource-suitability assessment grounded in the actual docker-compose.prod.yml topology, a new 24-stage HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md (zero destructive command, correct SSH-hardening sequencing to avoid self-lockout), and a new PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md. Live SSH verification not attempted (no IPv4/SSH detail supplied). Stops at an explicit OWNER INPUT REQUIRED request for 11 non-sensitive Hostinger facts -- no password/key/token requested. See docs/delivery/reports/PLACE-043-hostinger-vps-readiness-report.md.
+
+place_043_status: >-
+  BLOCKED 2026-07-25 -- Hostinger VPS provisioning verification and production access readiness,
+  under explicit Owner written authorization. NOT marked completed: re-verified repository truth
+  first (HEAD 9a3471b, clean tree, PLACE-037..042 all completed, current.task: none), then found
+  that NO repository evidence anywhere confirms the real Hostinger VPS is actually provisioned --
+  "Hostinger KVM VPS" is consistently an OWNER-STATED DECISION (PLACE-038) about the target
+  provider, never a CONFIRMED fact about a real, running machine; no IPv4, hostname, or DNS state
+  has ever appeared anywhere in this repository. Claude has no Hostinger Dashboard access and did
+  not fabricate a result. Completed every part of this task possible from the repository alone: a
+  full existing-assumption inventory (CONFIRMED/OWNER-STATED/INFERRED/PLACEHOLDER/UNVERIFIED/
+  OUTDATED classification for every prior Hostinger-related claim -- zero OUTDATED items found,
+  every prior record already carries its own correct verification-pending caveat); a 3-tier
+  resource-suitability assessment (Minimum Viable / Recommended-already-Owner-approved / Upgrade
+  Threshold) grounded in docker-compose.prod.yml's actual 6-service topology (postgres/redis/
+  minio/api/web/caddy + one-shot migrate), not generic VPS marketing sizing, leaving the
+  ~1-2M-VND/month budget decision unchanged; a new docs/delivery/HOSTINGER-VPS-BOOTSTRAP-
+  RUNBOOK.md (24 stages, pre-access confirmation through rollback/recovery access, each with
+  purpose/action/expected-result/safety-note/rollback-method/evidence-to-retain, zero destructive
+  command anywhere, SSH hardening -- disabling password/root login -- correctly sequenced AFTER
+  key-based access is verified to avoid a self-lockout, Hostinger's own recovery console named as
+  the standing fallback at every risky stage); a new docs/delivery/PRODUCTION-ACCESS-AND-SECRET-
+  BOUNDARIES.md (what may be known to this repository -- public IPv4/spec/OS/region/domain/DNS-
+  provider/public-SSH-key/non-sensitive-usernames/public-ports -- versus what must never be
+  stored -- any password, private SSH key, DB/JWT/SMTP/Cloudflare/Hostinger/R2 secret, backup-
+  encryption key, or recovery code -- naming only the pre-existing, already-adopted storage
+  locations (VPS-only .env file, Owner's password manager), no new secrets-management service
+  invented). Live SSH verification (Phase 11) explicitly NOT attempted -- no public IPv4 or
+  non-sensitive SSH username was supplied this session, and no local SSH key was confirmed
+  available; this is stated as a scope boundary, not a technical failure. Zero DNS change, zero
+  application deployment, zero real secret used or stored anywhere. Stops at an explicit, minimal
+  "OWNER INPUT REQUIRED -- NON-SENSITIVE HOSTINGER FACTS" request for exactly 11 items (VPS
+  plan/status/OS-version/region/public-IPv4/vCPU/RAM/storage/DNS-provider/nameservers/
+  backup-snapshot-availability) -- no password, private key, token, or recovery code is ever
+  requested. No PLACE-044 created or started. See
+  reports/PLACE-043-hostinger-vps-readiness-report.md and
+  evidence/PLACE-043-hostinger-vps-readiness-evidence-index.md.
 
 place_042_status: >-
   COMPLETED 2026-07-25 -- database migration rollback rehearsal and recovery verification, under
