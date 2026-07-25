@@ -24,9 +24,13 @@ RUN npm run build --workspace=@phuquochub/web
 FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build /repo/apps/web/.next/standalone ./
-COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build /repo/apps/web/public ./apps/web/public
+# PLACE-036: --chown=node:node (Next.js's own documented Docker pattern) -- Next.js 16's
+# runtime tries to write to .next/cache on request (a code path Next 14 never exercised
+# here); without this, root-owned copied files under the non-root USER node below fail
+# with EACCES + an unhandled rejection on first request.
+COPY --from=build --chown=node:node /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=node:node /repo/apps/web/public ./apps/web/public
 
 EXPOSE 3000
 ENV PORT=3000
