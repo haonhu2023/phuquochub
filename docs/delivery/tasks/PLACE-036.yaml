@@ -1,0 +1,141 @@
+schema_version: "1.0"
+
+id: PLACE-036
+workstream: place
+title: "Next.js 16 post-migration stabilization and final frontend review"
+type: stabilization_review
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: "Owner explicit authorization 2026-07-25 — 'PLACE-036 — Next.js 16 Post-Migration Stabilization and Final Frontend Review'. Primarily verification, stabilization, and bounded remediation; not a new feature or redesign task."
+  decision: "PLACE-035 (docs/delivery/tasks/PLACE-035.yaml, status: completed) is the subject under review. This task independently re-verifies PLACE-035's claims rather than trusting its final summary."
+
+depends_on:
+  - "PLACE-035 completed 2026-07-25 (Next.js 14->16 migration) — the subject of this stabilization review"
+  - "PLACE-032 completed 2026-07-24 (NestJS 10->11 migration) — unaffected, re-confirmed unaffected here"
+
+preconditions_verified:
+  - "PLACE-035 status: completed; docs/delivery/tasks/PLACE-035.yaml, report, evidence index, migration assessment all exist"
+  - "current.task: none, working tree clean at task start (HEAD dc4ed99)"
+  - "No git remotes configured; nothing to push"
+  - "Node v20.20.2/npm 10.8.2 pinned; Docker running; dev services (postgres/redis/minio) healthy"
+  - "Next 16.2.11 / React 18.3.1 / React-DOM 18.3.1 / TypeScript 5.9.3 / ESLint 9.39.5 (web) + 8.57.1 (root/api) / eslint-config-next 16.2.11 / Turborepo 2.10.6 all confirmed installed and coherent"
+  - "Both PLACE-035 web images (place035-next14-baseline, place035-next16) retained and independently re-booted successfully in this task"
+
+objective: >-
+  Independently verify PLACE-035's Next.js 14->16 migration is genuinely complete and stable
+  enough to become the new trusted frontend baseline; find and fix, within tight bounds, any
+  genuinely migration-caused defect PLACE-035 did not catch; and produce delivery evidence
+  reflecting the true, re-verified state -- not a restatement of PLACE-035's own claims.
+
+scope:
+  - "Independent re-verification: PLACE-035 evidence review, scope-compliance review of its 4 commits, dependency-tree integrity, configuration integrity, source-compatibility review, fresh lint/typecheck/test/e2e/build (forced, 0 cached), repeated clean builds, fresh production Docker rebuild (distinct tag), production-style runtime verification, security audit comparison, rollback viability recheck."
+  - "Bounded remediation of any genuinely migration-caused defect found, meeting ALL of: caused by the Next.js migration, root cause understood, fix small and local, no Owner decision required, no dependency scope broadening, behavior-preserving, verifiable."
+  - "apps/web/Dockerfile: the one bounded fix made (COPY --chown=node:node in the runtime stage)."
+
+out_of_scope:
+  - "New frontend features, UI redesign, broad dependency modernization."
+  - "Any apps/api or packages/* change (re-confirmed zero diff, same as PLACE-035)."
+  - "Fixing the pre-existing /places/[slug] not-found status-code quirk (confirmed unchanged, unrelated to this migration)."
+  - "Closing the next/postcss/sharp audit findings (blocked on an upstream fix, re-confirmed unchanged from PLACE-035)."
+  - "Seeding hotels/restaurants/tours/events dev-DB data (pre-existing gap, unrelated)."
+  - "A full destructive N16->N14->N16 rollback rehearsal (PLACE-035's evidence was found complete, fresh, and reproducible -- not repeated, per this task's own governance rule)."
+  - "PLACE-037 or any successor task."
+
+defect_found_and_fixed:
+  summary: >-
+    apps/web/Dockerfile's runtime stage COPY commands left .next/standalone (and static/public)
+    owned by root, while the container runs as the non-root `node` user (USER node). Next.js
+    14's runtime never wrote to .next/cache under the request patterns exercised by either
+    PLACE-035 or this task. Next.js 16's runtime DOES attempt to write to .next/cache on request
+    -- a code path Next 14 never exercised here -- causing EACCES: permission denied on
+    apps/web/.next/cache mkdir, followed by an unhandled promise rejection, on the very first
+    request to the place036-stabilization image before any fix was applied.
+  proof_of_causation: >-
+    Direct A/B test: booted the retained phuquochub-web:place035-next14-baseline image (root-owned
+    .next, identical permission structure) against the same identical request sequence (/,
+    /places/dinh-cau, /explore) -- zero EACCES, zero unhandled rejection, clean logs throughout.
+    Confirms the defect is migration-caused (a genuine Next-16 runtime behavior difference), not a
+    latent, always-present Dockerfile bug that both versions would have hit equally.
+  fix: >-
+    Added --chown=node:node to all three runtime-stage COPY --from=build commands in
+    apps/web/Dockerfile -- Next.js's own documented Docker deployment pattern. Rebuilt the
+    stabilization image; re-ran the identical trigger sequence; confirmed .next now
+    owned by node:node, writable, zero EACCES, zero unhandled rejection in logs. Full route
+    inventory (all static/index routes, all 5 dynamic [slug] routes including the pre-existing
+    not-found status-code quirk) re-verified byte-identical to the pre-fix behavior otherwise --
+    the fix eliminates the error without changing any observable application behavior.
+  regression_coverage: >-
+    Not a Jest-testable defect (container filesystem ownership under a non-root user is outside
+    Jest's execution model). Regression coverage is the Docker-level A/B demonstration itself: (1)
+    reproduced against the unfixed image, (2) reproduced as ABSENT against the Next-14 baseline
+    under the identical sequence (proving causation), (3) reproduced as ABSENT against the fixed
+    image under the identical sequence. This before/after/control triad is the appropriate and
+    sufficient regression evidence for a Dockerfile permission fix.
+  bounded_remediation_criteria_met:
+    - "Caused by the Next.js migration: YES, proven via A/B test against the retained baseline image"
+    - "Root cause understood: YES, root-owned COPY output vs non-root USER + Next 16's new runtime cache-write attempt"
+    - "Fix small and local: YES, 3-line Dockerfile change, zero application source touched"
+    - "No Owner decision required: YES, pure infra correctness fix, Next.js's own documented pattern"
+    - "No dependency scope broadening: YES, zero package.json change"
+    - "Behavior preserved: YES, full route inventory re-verified byte-identical otherwise"
+    - "Verifiable: YES, direct before/after/control Docker-level demonstration"
+
+fresh_verification_results:
+  lint: "6/6 tasks successful, 0 cached (forced) -- api/web/utils/shared-types all exit 0"
+  typecheck: "6/6 tasks successful, 0 cached (forced) -- all exit 0"
+  unit_tests: "web 17/17 (3 suites); api 251/251 (34 suites); utils 4/4 (1 suite) -- all forced, 0 cached, matches PLACE-035's claimed totals exactly, zero decrease"
+  e2e_tests: "59/59 (10 suites) -- fresh run, matches PLACE-035's claimed total exactly"
+  build_attempt_1: "succeeded, 15 routes, but Compiled in 26.1min -- self-inflicted resource contention from running a concurrent npm audit at the same time (same class of mistake PLACE-035 itself documented and this task independently repeated once before catching it)"
+  build_attempt_2: "isolated, succeeded in 27s total (8.7s compile + 1.4s static gen), 15 routes, identical route set to attempt 1 -- confirms zero nondeterministic failure, only timing variance fully explained by contention"
+  audit_fresh: "npm audit --omit=dev: 8 total (0/8/0/0), same 8 packages as PLACE-035's claim (brace-expansion/glob/minimatch/next/postcss/sharp/typeorm/typeorm-naming-strategies) -- zero drift"
+  dependency_tree: "next/react/react-dom single physical copy each; eslint dual-copy (root 9.39.5 + nested 8.57.1 for 3 sub-plugins) confirmed benign, same as PLACE-035; ONE genuinely extraneous package found and explained: @emnapi/runtime@1.10.0, an orphaned optional dependency of two wasm32-target optional packages (@img/sharp-wasm32, @unrs/resolver-binding-wasm32-wasi) that are themselves correctly skipped on this win32-x64 machine -- @emnapi/runtime itself carries no os/cpu restriction so npm's installer left it behind unconditionally; zero functional impact, not migration-application-code-caused, not remediated (fixing it would require an npm install/prune action this task's own governance discourages doing 'merely to make the tree appear healthy')"
+
+docker_rebuild:
+  image: "phuquochub-web:place036-stabilization"
+  digest_before_fix: "sha256:29aeed05e47a0e8031418126cea6abb532a3cf6c4e4f64217b0050c7fcb05657 (byte-identical to PLACE-035's own place035-next16 image -- proves true reproducibility from a clean repo state before any PLACE-036 change was made)"
+  digest_after_fix: "rebuilt after the Dockerfile chown fix; new digest, EACCES/unhandled-rejection eliminated, full route inventory re-verified"
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "PLACE-035 evidence independently reviewed, not merely trusted; every major claim classified." }
+  - { id: AC2, mandatory: true, text: "PLACE-035's 4 commits' full diff scope-reviewed; all 17 changed files classified, zero unauthorized/suspicious." }
+  - { id: AC3, mandatory: true, text: "Dependency tree valid: single React/Next copy confirmed fresh; one benign extraneous package found, explained, not remediated." }
+  - { id: AC4, mandatory: true, text: "Fresh lint/typecheck/unit/e2e/build all pass, 0 cached, totals match or exceed PLACE-035's claims." }
+  - { id: AC5, mandatory: true, text: "Repeated clean builds show zero nondeterministic failure." }
+  - { id: AC6, mandatory: true, text: "Fresh, distinctly-tagged Docker image builds and boots; production-style runtime verification complete across the full route inventory." }
+  - { id: AC7, mandatory: true, text: "One genuine migration-caused defect (Docker EACCES) found, root-caused via direct A/B proof, and fixed within bounded-remediation rules; re-verified fixed." }
+  - { id: AC8, mandatory: true, text: "Security audit compared fresh against PLACE-035: zero drift, zero secret/env leakage found." }
+  - { id: AC9, mandatory: true, text: "Rollback viability re-confirmed without a redundant destructive rehearsal, per this task's own governance rule -- PLACE-035's evidence found complete, fresh, and independently reproduced in part." }
+  - { id: AC10, mandatory: true, text: "Delivery evidence complete; state.yaml/workstreams updated accurately; current.task returns to none; working tree clean after commits; nothing pushed." }
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-036-nextjs-16-stabilization-report.md"
+  - "docs/delivery/evidence/PLACE-036-nextjs-16-stabilization-evidence-index.md"
+  - "docs/delivery/reports/PLACE-036-NEXTJS-16-BASELINE-DECLARATION-2026-07-25.md"
+
+commit_strategy:
+  - "1) bounded Docker remediation (apps/web/Dockerfile chown fix)"
+  - "2) delivery evidence and state updates"
+
+stabilization_decision: "STABILIZED WITH BOUNDED FOLLOW-UPS"
+decision_rationale: >-
+  All functional and safety checks pass after the one bounded fix; the remaining open items
+  (next/postcss/sharp audit findings pending an upstream fix, the pre-existing /places/[slug]
+  not-found status-code quirk, missing hotels/restaurants/tours/events seed data, the benign
+  @emnapi/runtime extraneous package, redis.health.ts's deprecated pattern, missing
+  sitemap/robots) are all low-risk deprecations or operational follow-ups that do not affect
+  correctness or rollback viability. None require action before treating Next.js 16 as the
+  trusted baseline.
+
+definition_of_done: >-
+  All 10 acceptance criteria pass; the one bounded Docker fix verified working; delivery evidence
+  (report, evidence index, baseline declaration) exists; state.yaml/workstreams/place.yaml
+  updated accurately; current.task returns to none; PLACE-037 proposed but not created; working
+  tree clean; nothing pushed.
+
+non_claims: >-
+  This task does NOT deploy to any real production environment. It does NOT close the
+  next/postcss/sharp audit findings (blocked on upstream). It does NOT fix the pre-existing
+  /places/[slug] quirk or seed missing dev-DB data (both explicitly out of scope). It does NOT
+  touch apps/api or packages/*. It does NOT create PLACE-037.
