@@ -20,3 +20,9 @@ export type HotelDetail = PlaceDetail & {
 export async function getHotel(slug: string): Promise<HotelDetail> {
   return apiGet<HotelDetail>(`/hotels/${encodeURIComponent(slug)}`, { cache: 'no-store' });
 }
+
+// MVP SEO pass: minimal slug list for sitemap.ts -- no list PAGE exists for /hotels, so this is
+// intentionally not wired into any UI, only the sitemap.
+export async function listHotelSlugs(limit = 100): Promise<Array<{ slug: string }>> {
+  return apiGet<Array<{ slug: string }>>(`/hotels?limit=${limit}`, { cache: 'no-store' });
+}

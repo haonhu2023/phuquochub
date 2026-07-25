@@ -30,3 +30,9 @@ export async function getRestaurant(slug: string): Promise<RestaurantDetail> {
 export async function getMenu(placeId: string): Promise<MenuSection[]> {
   return apiGet<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, { cache: 'no-store' });
 }
+
+// MVP SEO pass: minimal slug list for sitemap.ts -- no list PAGE exists for /restaurants, so this
+// is intentionally not wired into any UI, only the sitemap.
+export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string }>> {
+  return apiGet<Array<{ slug: string }>>(`/restaurants?limit=${limit}`, { cache: 'no-store' });
+}

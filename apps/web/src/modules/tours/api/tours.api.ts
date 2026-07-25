@@ -34,3 +34,9 @@ export async function getItinerary(placeId: string): Promise<TourStop[]> {
 export async function getSchedule(placeId: string): Promise<TourSchedule[]> {
   return apiGet<TourSchedule[]>(`/tours/${encodeURIComponent(placeId)}/schedule`, { cache: 'no-store' });
 }
+
+// MVP SEO pass: minimal slug list for sitemap.ts -- no list PAGE exists for /tours, so this is
+// intentionally not wired into any UI, only the sitemap.
+export async function listTourSlugs(limit = 100): Promise<Array<{ slug: string }>> {
+  return apiGet<Array<{ slug: string }>>(`/tours?limit=${limit}`, { cache: 'no-store' });
+}
