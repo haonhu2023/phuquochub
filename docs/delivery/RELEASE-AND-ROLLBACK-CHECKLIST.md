@@ -101,6 +101,12 @@ Run `scripts/restore.sh <backup-file>`:
 - [ ] Confirm this is genuinely needed — restore is destructive (drops and recreates the
       database from the dump). Container rollback (§5) alone is sufficient for the vast majority
       of cases, since all 20 migrations as of PLACE-040 are additive.
+- [ ] For a migration-level rollback specifically (not a full restore), use
+      `scripts/migration-rollback-rehearsal.sh` (PLACE-042) as the reference sequence — it
+      wraps the official `migration:revert` → `migration:run` cycle with safety guards
+      (refuses to run against production or a non-local `DB_HOST`). See
+      [`DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md`](DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md) for the
+      full rehearsal evidence and the failure/recovery decision tree.
 - [ ] The script itself gates on an explicit typed confirmation before proceeding — do not
       script around that gate.
 - [ ] After restore, verify row counts / a known-entity spot check look correct, then re-run
