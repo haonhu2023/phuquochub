@@ -30,7 +30,63 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-043 (2026-07-25, Hostinger VPS provisioning
+  task: none                      # (2026-07-25, ad-hoc, NOT a PLACE-numbered task per explicit
+                                  # Owner instruction -- "khong tao PLACE-044, khong tiep tuc
+                                  # chuoi infrastructure, chuyen trong tam tro lai hoan thien
+                                  # PhuQuocHub MVP") MVP gap analysis and roadmap, plus one
+                                  # selected+executed local-only task: SEO & Discoverability
+                                  # completeness. See docs/delivery/reports/MVP-GAP-ANALYSIS-AND-
+                                  # ROADMAP-2026-07-25.md (standalone report, same convention as
+                                  # PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md -- no new task
+                                  # file/evidence-index scheme invented). Gap analysis found the
+                                  # single biggest MVP gap: the web frontend has ZERO write
+                                  # capability beyond auth (login/register/logout) -- grepped, no
+                                  # POST/PATCH call exists outside auth.api.ts anywhere in
+                                  # apps/web; reviews/community/contributions/notifications are
+                                  # all empty .gitkeep-only stubs on the BACKEND too, despite
+                                  # "Reddit" being one of this project's three named pillars. Also
+                                  # found: no list/browse page exists for hotels/restaurants/tours
+                                  # (detail-only); zero frontend component tests exist (only 3
+                                  # unit files for lib/auth); /search's UI does not surface
+                                  # category/price/ward filters despite backend support. Selected
+                                  # and executed the highest-value fully-local task: SEO &
+                                  # Discoverability. Found and fixed a real, previously-
+                                  # undiscovered gap: no NEXT_PUBLIC_SITE_URL env var existed
+                                  # anywhere, so Next.js's metadataBase/canonical-URL/OG-image
+                                  # resolution silently fell back to http://localhost:3000 even
+                                  # in a production build -- fixed via the exact same
+                                  # ARG/ENV/build.args pattern PLACE-038 already established for
+                                  # NEXT_PUBLIC_API_URL/MAP_TILE_URL. Added metadataBase to
+                                  # layout.tsx; new apps/web/src/app/sitemap.ts (Next-native,
+                                  # force-dynamic, fetches all 5 entity types' slugs, verified
+                                  # NEVER attempted at next-build time -- classified ƒ dynamic in
+                                  # the build output, not ○ static, so no live-API build
+                                  # dependency was introduced); new apps/web/src/app/robots.ts
+                                  # (allow-all, disallows login/register/dashboard, references
+                                  # the sitemap); new apps/web/src/lib/structured-data.ts
+                                  # (schema.org JSON-LD builders for TouristAttraction/
+                                  # LodgingBusiness/Restaurant/TouristTrip/Event, wired into all 5
+                                  # detail pages -- the FIRST dangerouslySetInnerHTML use anywhere
+                                  # in this app, PLACE-041 had confirmed zero prior uses; a
+                                  # serializeJsonLd helper escapes `<` in the JSON string first,
+                                  # because these entities carry community-contributed name/
+                                  # description text that could otherwise contain </script> and
+                                  # break out of the inline script tag -- a real XSS-adjacent risk
+                                  # in the standard inline-JSON-LD pattern, caught and closed, not
+                                  # present before because no JSON-LD existed to carry it). Added
+                                  # listHotelSlugs/listRestaurantSlugs/listTourSlugs (sitemap-only,
+                                  # deliberately not wired into any UI -- no list page exists for
+                                  # those types). Full validation: apps/web tsc/eslint both exit 0,
+                                  # unit 17/17 unchanged, a full next build succeeded with ZERO
+                                  # error (13/13 routes, /robots.txt correctly static, /sitemap.xml
+                                  # correctly dynamic), docker compose config --quiet exit 0. Zero
+                                  # backend code touched. Does NOT claim the MVP is feature-
+                                  # complete -- the Critical/High roadmap items (write capability,
+                                  # reviews, hotel/restaurant/tour list pages, image upload,
+                                  # search filters, frontend test coverage) remain fully open. No
+                                  # PLACE-044 created.
+                                  # ---- prior state (PLACE-043, completed 2026-07-25) ----
+                                  # PLACE-043 (2026-07-25, Hostinger VPS provisioning
                                   # verification and production access readiness) is now
                                   # COMPLETED with outcome "COMPLETED -- VPS NOT PURCHASED;
                                   # PRODUCTION DEPLOYMENT DEFERRED" -- reopened same-day, same
@@ -459,6 +515,18 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    (2026-07-25, ad-hoc, not PLACE-numbered per explicit Owner instruction) MVP gap analysis and
+    roadmap completed -- see docs/delivery/reports/MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md.
+    Biggest finding: the web frontend has ZERO write capability beyond auth; reviews/community/
+    contributions/notifications are unimplemented backend stubs despite "Reddit" being a named
+    pillar. Selected and executed the highest-value fully-local task: SEO & Discoverability
+    completeness (NEXT_PUBLIC_SITE_URL + metadataBase fix, new sitemap.ts/robots.ts, JSON-LD
+    structured data on all 5 detail page types with an escaped-serialization helper closing a
+    real XSS-adjacent risk in the standard inline-JSON-LD pattern). Full validation clean
+    (tsc/eslint/unit/build all pass, zero backend touched). Critical/High roadmap items (write
+    capability, reviews, hotel/restaurant/tour list pages, image upload, search filters, frontend
+    test coverage) remain fully open for a future task. No PLACE-044 created.
+    ---- prior state (PLACE-043, completed 2026-07-25) ----
     PLACE-043 (2026-07-25, Hostinger VPS provisioning verification) is now COMPLETED --
     "COMPLETED -- VPS NOT PURCHASED; PRODUCTION DEPLOYMENT DEFERRED" -- reopened same-day per
     explicit Owner authorization to record Owner-supplied facts: Hostinger Web Hosting CONFIRMED
@@ -577,7 +645,7 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "PLACE-043 is CLOSED (completed, VPS NOT PURCHASED). Owner action recorded, none urgent: (1) do NOT purchase a Hostinger KVM VPS immediately -- continue local development and Docker production-like validation instead; (2) purchase a VPS (or equivalent managed infrastructure) only once go-live readiness is reached; (3) before purchasing, re-check real Hostinger KVM pricing against the Recommended tier (4 vCPU/16GB/200GB estimate, PLACE-037 §10) and the ~1-2M-VND/month budget; (4) after purchase, reopen docs/delivery/HOSTINGER-VPS-BOOTSTRAP-RUNBOOK.md's 24 stages against the real machine; (5) real DNS re-pointing (currently at Hostinger Web Hosting, 2.57.91.91), real Cloudflare R2 credentials, and the external uptime-monitor account (PLACE-039 §3) all remain Owner-side, unaffected by this update. The prior migration:revert gap (PLACE-037 §12) is CLOSED (PLACE-042, local mechanism proven). See PLACE-041's report §10 for the full prioritized action list of remaining Medium/Low items (frontend component tests, remaining segments' error/loading boundaries, live Swagger UI, sitemap/robots.txt, accessibility audit, HSTS-at-Caddy, MinIO tag pinning, hotels/restaurants/tours list pages)."
+  pending_owner_decision: "Focus is now MVP feature completeness (Owner instruction 2026-07-25), not infrastructure. See docs/delivery/reports/MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md §3 for the full prioritized roadmap. Critical: (1) the web frontend has ZERO write capability beyond auth -- no create/edit-place form, no review submission, no image upload, no business-claim UI exist anywhere, despite the backend supporting place CRUD; (2) reviews/community/contributions/notifications are unimplemented empty stubs on BOTH backend and frontend, despite 'Reddit' being a named product pillar. High: hotel/restaurant/tour list pages (detail-only today), image upload UI, search filters (category/price/ward) not surfaced in the /search UI, zero frontend component/integration tests. Medium/Low: business-claim workflow, accessibility pass, moderation queue UI, remaining error/loading boundaries, live Swagger UI, bundle-size budget, 8 open dependency findings (upstream-blocked). Infrastructure track remains CLOSED/DEFERRED (PLACE-043: VPS not purchased, not urgent; PLACE-042: migration:revert rehearsal proven locally) and is not to be resumed without new explicit Owner authorization."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:
