@@ -2,12 +2,13 @@ import { notFound } from 'next/navigation';
 import { getEvent, type EventDetail } from '@/modules/events/api/events.api';
 
 interface Params {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Params) {
+  const { slug } = await params;
   try {
-    const ev = await getEvent(params.slug);
+    const ev = await getEvent(slug);
     return { title: `${ev.title} · Sự kiện · PhuQuocHub`, description: ev.description ?? undefined };
   } catch {
     return { title: 'Sự kiện · PhuQuocHub' };
@@ -22,9 +23,10 @@ const STATUS_LABEL: Record<EventDetail['time_status'], string> = {
 
 // Server Component: chi tiết sự kiện (peer entity, ADR-002).
 export default async function EventDetailPage({ params }: Params) {
+  const { slug } = await params;
   let ev: EventDetail;
   try {
-    ev = await getEvent(params.slug);
+    ev = await getEvent(slug);
   } catch {
     notFound();
   }

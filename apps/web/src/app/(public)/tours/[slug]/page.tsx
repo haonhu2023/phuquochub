@@ -9,12 +9,13 @@ import {
 } from '@/modules/tours/api/tours.api';
 
 interface Params {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Params) {
+  const { slug } = await params;
   try {
-    const t = await getTour(params.slug);
+    const t = await getTour(slug);
     return { title: `${t.name} · Tour · PhuQuocHub`, description: t.short_description ?? undefined };
   } catch {
     return { title: 'Tour · PhuQuocHub' };
@@ -23,9 +24,10 @@ export async function generateMetadata({ params }: Params) {
 
 // Chi tiết tour = Place base + hành trình (itinerary) + lịch (schedule), satellite ADR-002.
 export default async function TourDetailPage({ params }: Params) {
+  const { slug } = await params;
   let t: TourDetail;
   try {
-    t = await getTour(params.slug);
+    t = await getTour(slug);
   } catch {
     notFound();
   }

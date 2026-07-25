@@ -8,7 +8,7 @@ import type { PlaceContact, PlaceDetail } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
 
 interface Params {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 const SITE = 'PhuQuocHub';
@@ -22,9 +22,10 @@ function metaDescription(place: PlaceDetail): string | undefined {
 // SEO: ưu tiên field mô tả sẵn có; API hiện chưa expose seo_title/seo_description riêng
 // → fallback name / short_description / description. Không để lỗi/slug sai làm crash.
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { slug } = await params;
   let place: PlaceDetail;
   try {
-    place = await getPlace(params.slug);
+    place = await getPlace(slug);
   } catch {
     return { title: `Địa điểm · ${SITE}` };
   }
@@ -53,9 +54,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
 // Server Component: chi tiết địa điểm (khớp openapi Place — contacts/prices/media/faqs).
 export default async function PlaceDetailPage({ params }: Params) {
+  const { slug } = await params;
   let place: PlaceDetail;
   try {
-    place = await getPlace(params.slug);
+    place = await getPlace(slug);
   } catch (err) {
     // Phân biệt: resource không tồn tại (404) → notFound(); lỗi khác → ném lên error.tsx.
     if (err instanceof ApiError && err.isNotFound) {

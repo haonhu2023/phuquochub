@@ -7,12 +7,13 @@ import {
 } from '@/modules/restaurants/api/restaurants.api';
 
 interface Params {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Params) {
+  const { slug } = await params;
   try {
-    const r = await getRestaurant(params.slug);
+    const r = await getRestaurant(slug);
     return { title: `${r.name} · Nhà hàng · PhuQuocHub`, description: r.short_description ?? undefined };
   } catch {
     return { title: 'Nhà hàng · PhuQuocHub' };
@@ -21,9 +22,10 @@ export async function generateMetadata({ params }: Params) {
 
 // Chi tiết nhà hàng = Place base + ẩm thực + thực đơn (satellite ADR-002).
 export default async function RestaurantDetailPage({ params }: Params) {
+  const { slug } = await params;
   let r: RestaurantDetail;
   try {
-    r = await getRestaurant(params.slug);
+    r = await getRestaurant(slug);
   } catch {
     notFound();
   }

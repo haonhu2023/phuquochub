@@ -2,12 +2,13 @@ import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 
 interface Params {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }
 
 export async function generateMetadata({ params }: Params) {
+  const { slug } = await params;
   try {
-    const h = await getHotel(params.slug);
+    const h = await getHotel(slug);
     return { title: `${h.name} · Khách sạn · PhuQuocHub`, description: h.short_description ?? undefined };
   } catch {
     return { title: 'Khách sạn · PhuQuocHub' };
@@ -16,9 +17,10 @@ export async function generateMetadata({ params }: Params) {
 
 // Chi tiết khách sạn = Place base + phòng + tiện nghi (satellite ADR-002).
 export default async function HotelDetailPage({ params }: Params) {
+  const { slug } = await params;
   let h: HotelDetail;
   try {
-    h = await getHotel(params.slug);
+    h = await getHotel(slug);
   } catch {
     notFound();
   }

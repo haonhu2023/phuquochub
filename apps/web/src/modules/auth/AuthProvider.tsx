@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Hydrate 1 lần sau mount (localStorage chỉ có ở client).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate-once-on-mount từ localStorage, không có external-store subscription để thay thế.
     setSession(readSession());
     setInitializing(false);
   }, []);
