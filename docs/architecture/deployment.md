@@ -42,6 +42,49 @@
 >   `docker-compose.prod.yml` hiện trỏ về `http://localhost:3000` (khớp cổng service `web` cục bộ),
 >   PHẢI đổi thành domain thật trước khi triển khai thật. Xem
 >   `docs/delivery/reports/PLACE-028-api-bootstrap-hardening-report.md` cho chi tiết đầy đủ.
+>
+> **Quyết định Owner đã chốt (PLACE-037, 2026-07-25).** Domain production: `phuquochub.com` (API
+> qua path `/api` cùng domain). Topology: 1 VPS Hostinger (KVM, chờ xác nhận/nâng cấp) + Docker
+> Compose (Topology A). Reverse proxy: Caddy (TLS tự động). Monitoring khởi điểm: structured
+> logging + correlation ID có sẵn (PLACE-030) + Docker healthcheck + 1 uptime monitor ngoài
+> (kênh cảnh báo: email). Backup offsite: Cloudflare R2. Xem
+> `docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md`.
+>
+> **Trạng thái triển khai (PLACE-038, 2026-07-25 — chuẩn bị hạ tầng do repo kiểm soát, CHƯA đưa
+> lên Internet).** Hiện thực hoá topology đã chốt ở PLACE-037, **đã kiểm chứng cục bộ thật**
+> (build + boot toàn bộ stack, KHÔNG DNS/TLS/VPS thật):
+> - **Lỗi thật được phát hiện và sửa:** biến `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_MAP_TILE_URL` được
+>   Next.js nhúng cứng lúc BUILD, không đọc lúc container chạy — `docker-compose.prod.yml` trước
+>   đây chỉ đặt chúng ở `environment:` (runtime), **hoàn toàn không có tác dụng** (đã kiểm chứng
+>   trực tiếp: bundle build cũ có sẵn `localhost:4000/api` cứng dù có override lúc chạy). Sửa:
+>   `apps/web/Dockerfile` nhận qua `ARG`/`ENV` lúc build; `docker-compose.prod.yml` truyền qua
+>   `build.args`.
+> - **Lỗi thật thứ hai:** `command:` dạng chuỗi gộp (`>`) của service `postgres` khiến Compose tách
+>   theo khoảng trắng, làm hỏng giá trị nhiều-từ của `archive_command` — postgres crash ngay khi
+>   khởi động (`invalid argument: /opt/wal-archive.sh`), có sẵn từ PLACE-026 nhưng chưa từng bị
+>   phát hiện vì đây là lần đầu toàn bộ stack thật sự được khởi động qua đúng file compose này.
+>   Sửa: chuyển sang dạng list YAML (không còn tách shell nào cả).
+> - `infrastructure/caddy/Caddyfile` — reverse proxy công khai DUY NHẤT của stack; định tuyến `/`→
+>   web, `/api`→api; TLS tự động cho `phuquochub.com`; đã kiểm chứng định tuyến cục bộ (địa chỉ
+>   `:8080` phụ, chỉ dùng để kiểm thử, cùng logic định tuyến, không cần DNS/TLS thật).
+> - Redis: thêm mật khẩu bắt buộc (`--requirepass`), đã kiểm chứng xác thực thật hoạt động.
+> - postgres/redis/minio/api/web: **không còn publish cổng ra host** — chỉ Caddy publish 80/443,
+>   khớp nguyên tắc "DB/Redis/MinIO không lộ ra Internet" (§2/§13).
+> - `HEALTHCHECK` gốc Docker cho `apps/api/Dockerfile`/`apps/web/Dockerfile` — đã kiểm chứng báo
+>   `healthy` thật sau khi khởi động.
+> - `scripts/deploy.sh`, `scripts/backup.sh`, `scripts/restore.sh`, `scripts/rollback.sh`,
+>   `scripts/sync-offsite.sh` — mới; `backup.sh`/`restore.sh`/`rollback.sh` đã kiểm chứng chạy
+>   thật (không giả lập) trên stack cục bộ tạm thời; `sync-offsite.sh` chưa chạy thật (không có
+>   credential R2 thật trong session này — bỏ qua an toàn nếu thiếu biến).
+> - Service `migrate` mới trong `docker-compose.prod.yml` — chạy migration tách biệt khỏi lúc
+>   container khởi động (`migrationsRun: false` không đổi), đã kiểm chứng chạy thật (20 migration
+>   áp dụng sạch trên DB rỗng qua đúng cơ chế này).
+>
+> **CHƯA triển khai (vẫn cần Owner cung cấp credential/tài khoản thật, không thể giả lập trong
+> session này):** VPS Hostinger thật, DNS trỏ `phuquochub.com`, credential R2 thật, uptime-monitor
+> ngoài thật, Cloudflare, PgBouncer, Prometheus/Grafana/Sentry. Xem
+> `docs/delivery/reports/PLACE-038-production-readiness-implementation-report.md` cho chi tiết
+> đầy đủ, bao gồm cả hai lỗi thật nêu trên.
 
 ---
 
@@ -341,15 +384,37 @@ Khớp [architecture.md §10](./architecture.md):
 
 ## 15. Quyết định cần chốt trước khi lên Production
 
-1. **Gói VPS Hostinger** cụ thể cho Prod (KVM 4 vs cao hơn) và **tách VPS Staging** ngay hay chung.
-2. **Media:** **Cloudflare R2** (khuyến nghị — RTO nhanh, đĩa nhỏ) vs **tự host MinIO** (đĩa ≥1 TB).
-3. **PITR:** bật **WAL archiving** từ đầu (RPO ≤15′) — xác nhận chi phí lưu WAL/offsite.
-4. **Nơi lưu offsite backup** (R2/Backblaze/S3) + **mã hóa** + con số **RPO/RTO cam kết**.
-5. **Bộ giám sát GĐ1:** Prometheus/Grafana (đầy đủ) vs Netdata (nhẹ); **kênh alert** (Telegram/Slack/email).
-6. **Registry image** (GHCR vs khác) + chính sách prune; **mirror source** thứ hai hay không.
-7. **Tile provider** bản đồ (MapTiler/tự host) — [architecture.md §11](./architecture.md).
-8. **Zero-downtime:** blue-green ngay hay chấp nhận maintenance-window ngắn ở GĐ1.
-9. **Ngưỡng ngân sách AI** & kill-switch (nếu bật dịch vụ AI ở GĐ đầu) — [ai-architecture.md §5.5](../ai/ai-architecture.md).
+> **Owner đã chốt phần lớn mục này ở PLACE-037 (2026-07-25)** — xem
+> `docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md`.
+> Danh sách gốc giữ nguyên bên dưới, đánh dấu trạng thái từng mục; mục 1 vẫn còn một bước xác
+> minh thật (kiểm tra dashboard Hostinger) trước khi triển khai thật được phép tiến hành.
+
+1. ~~**Gói VPS Hostinger** cụ thể cho Prod (KVM 4 vs cao hơn) và **tách VPS Staging** ngay hay chung.~~
+   **ĐÃ CHỐT:** Hostinger KVM VPS (4 vCPU/16GB/200GB, nâng cấp nếu tài khoản hiện tại chưa phải VPS
+   — **bước xác minh thật trên dashboard Hostinger vẫn còn**, xem PLACE-037 §31); không tách VPS
+   Staging cho lần phát hành đầu (Staging: không cần).
+2. ~~**Media:** **Cloudflare R2** (khuyến nghị — RTO nhanh, đĩa nhỏ) vs **tự host MinIO** (đĩa ≥1 TB).~~
+   **HOÃN:** object storage chưa cần — application code chưa gọi tới (PLACE-037 §4/§6); MinIO giữ
+   nguyên trong compose, chưa khởi chạy bắt buộc.
+3. ~~**PITR:** bật **WAL archiving** từ đầu (RPO ≤15′) — xác nhận chi phí lưu WAL/offsite.~~
+   **ĐÃ TRIỂN KHAI + KIỂM CHỨNG** (PLACE-026, tái xác nhận PLACE-038): `archive_mode=on` hoạt động
+   thật; đích offsite (mục 4 dưới) đã chốt là R2, script đồng bộ đã viết (`scripts/sync-offsite.sh`),
+   chưa chạy thật (chưa có credential R2 thật).
+4. ~~**Nơi lưu offsite backup** (R2/Backblaze/S3) + **mã hóa** + con số **RPO/RTO cam kết**.~~
+   **ĐÃ CHỐT:** Cloudflare R2; retention daily 7/weekly 4/monthly 6 (PLACE-037 §11).
+5. ~~**Bộ giám sát GĐ1:** Prometheus/Grafana (đầy đủ) vs Netdata (nhẹ); **kênh alert** (Telegram/Slack/email).~~
+   **ĐÃ CHỐT:** infra-native (Docker healthcheck + structured/correlated log có sẵn) + 1 uptime
+   monitor ngoài; kênh alert: email. Prometheus/Grafana hoãn có chủ đích (PLACE-037 §16 — không
+   tương xứng với quy mô traffic hiện tại = 0).
+6. **Registry image** (GHCR vs khác) + chính sách prune; **mirror source** thứ hai hay không. —
+   *chưa chốt, không chặn PLACE-038's scope.*
+7. **Tile provider** bản đồ (MapTiler/tự host) — [architecture.md §11](./architecture.md). —
+   *chưa chốt; mặc định OpenStreetMap giữ nguyên, không chặn.*
+8. ~~**Zero-downtime:** blue-green ngay hay chấp nhận maintenance-window ngắn ở GĐ1.~~
+   **ĐÃ CHỐT:** replace-and-rollback đơn giản (không blue-green/canary) cho lần phát hành đầu
+   (PLACE-037 §20 — tương xứng quy mô hiện tại, không phải phức tạp lý thuyết không cần thiết).
+9. **Ngưỡng ngân sách AI** & kill-switch (nếu bật dịch vụ AI ở GĐ đầu) — [ai-architecture.md §5.5](../ai/ai-architecture.md). —
+   *chưa chốt, ngoài phạm vi PLACE-037/038 (không có dịch vụ AI nào bật ở GĐ đầu).*
 
 ---
 

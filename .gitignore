@@ -37,5 +37,8 @@ Thumbs.db
 # Docker volumes (local)
 .data/
 
+# PLACE-038: real database backups produced by scripts/backup.sh -- never committed
+backups/
+
 # Claude Code per-machine local settings (not shared)
 .claude/settings.local.json
