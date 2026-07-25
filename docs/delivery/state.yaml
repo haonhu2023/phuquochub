@@ -30,7 +30,20 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # PLACE-036 completed 2026-07-25 (Next.js 16 post-migration
+  task: none                      # PLACE-037 completed 2026-07-25 (production deployment target +
+                                  # monitoring provider decision gate). Gate result: READY WITH
+                                  # CONDITIONS. Recommended topology: single VPS running the
+                                  # existing docker-compose.prod.yml stack + Caddy for automatic
+                                  # TLS. Recommended minimum monitoring: infrastructure-native
+                                  # (Docker healthchecks + existing structured/correlated logs) +
+                                  # one external uptime check; Sentry recommended as the first
+                                  # upgrade once real users exist. Hostinger compatibility
+                                  # classified UNKNOWN (not assumed compatible) pending Owner plan
+                                  # verification. Decision-gate/planning only -- zero application
+                                  # code, Dockerfile, Compose, CI, or env file touched. See
+                                  # docs/delivery/tasks/PLACE-037.yaml.
+                                  # ---- prior state (PLACE-036, completed 2026-07-25) ----
+                                  # PLACE-036 completed 2026-07-25 (Next.js 16 post-migration
                                   # stabilization). Decision: STABILIZED WITH BOUNDED FOLLOW-UPS.
                                   # Next.js 16.2.11 is now the trusted apps/web baseline -- see
                                   # docs/delivery/reports/PLACE-036-NEXTJS-16-BASELINE-DECLARATION-
@@ -228,47 +241,157 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    PLACE-036 (2026-07-25) independently re-verified PLACE-035's Next.js 16 migration rather than
-    trusting its final summary, and stabilized it. PLACE-035's evidence review: no claim found
-    contradictory, stale, or unsupported; every major claim (versions, scope, dependency tree,
-    audit numbers, rollback) independently re-verified fresh. Scope-compliance review of PLACE-035's
-    4 commits (17 files): zero unauthorized/suspicious change. Dependency integrity: single
-    React/Next copy confirmed fresh; one benign extraneous package found and explained
-    (@emnapi/runtime@1.10.0, an orphaned wasm32-optional leftover, zero functional impact, not
-    remediated per this task's own governance against installing merely to tidy the tree). Fresh
-    lint/typecheck/unit/e2e/build (forced, 0 cached) all match or exceed PLACE-035's claimed
-    totals; a repeated build attempt again showed the same self-inflicted-contention timing pattern
-    PLACE-035 documented (this task ran a concurrent audit by mistake once, caught and re-verified
-    isolated: 27s clean). ONE REAL MIGRATION-CAUSED DEFECT FOUND (not caught by PLACE-035):
-    apps/web/Dockerfile's runtime-stage COPY commands left .next owned by root while the container
-    runs as non-root `node`; Next.js 16's runtime attempts a .next/cache write on request (a path
-    Next 14 never exercised) producing EACCES + an unhandled rejection on first request. Proven
-    migration-caused via direct A/B test against the retained Next-14 baseline image under an
-    identical request sequence (zero error there). Fixed with the minimal, Next.js-documented
-    --chown=node:node pattern on the 3 COPY lines; rebuilt; re-verified zero EACCES, full route
-    inventory byte-identical otherwise (including the pre-existing /places/[slug] 200-not-404
-    quirk, deliberately reproduced unchanged, still out of scope to fix). Security audit fresh
-    re-check: 8 findings, identical to PLACE-035, zero drift, zero secret/env leakage. Rollback
-    viability re-confirmed WITHOUT repeating the full destructive rehearsal (PLACE-035's evidence
-    found complete/fresh/reproducible; this task independently re-booted the retained baseline image
-    itself as part of the defect A/B proof). DECISION: STABILIZED WITH BOUNDED FOLLOW-UPS. Next.js
-    16.2.11 is now the trusted apps/web baseline -- see PLACE-036-NEXTJS-16-BASELINE-DECLARATION.
-    Deriving another task without explicit owner authorization is NOT permitted.
+    PLACE-037 (2026-07-25) produced an evidence-based production deployment-target and monitoring-
+    provider decision gate. GATE RESULT: READY WITH CONDITIONS. Architecture inventory (grounded in
+    direct code/config evidence, not deployment.md's target design alone): confirmed MinIO/object
+    storage exists in docker-compose.prod.yml but is NEVER called by application code (zero S3_*/
+    @aws-sdk/minio reference anywhere in apps/api/src) -- correctly deferrable, not mandatory;
+    confirmed no BullMQ worker, no scheduled jobs, no email provider exist despite appearing in
+    deployment.md's target diagram. Deployment readiness: Dockerfiles/Compose/CI all production-
+    ready or ready-with-configuration; two real gaps found and flagged (not fixed, per this task's
+    own no-code-change constraint): Redis has no password in docker-compose.prod.yml; neither
+    Dockerfile declares a native HEALTHCHECK instruction. apps/api/Dockerfile shares web's PLACE-036
+    COPY-without---chown pattern but with NO evidence the API ever writes to its own filesystem at
+    runtime -- flagged as an UNVERIFIED pre-launch check, explicitly not claimed as a defect absent
+    evidence (unlike web's proven case). HOSTINGER: classified UNKNOWN, not assumed compatible
+    merely because an account exists -- the specific plan tier (shared vs VPS/Docker access) is not
+    established anywhere in repository evidence. TOPOLOGY: recommended a single VPS running the
+    existing, already-verified docker-compose.prod.yml stack + Caddy (automatic TLS) -- reuses
+    proven infrastructure, matches the project's actual zero-real-user scale, keeps the exact
+    rollback mechanism already rehearsed three times this session (PLACE-031/032/036). MONITORING:
+    5-option scored decision matrix (infra-native/Sentry/Grafana-stack/OpenTelemetry/uptime-
+    provider) recommends infra-native (Docker healthchecks + existing structured/correlated logs,
+    PLACE-030) + one external uptime check as the launch-minimum -- zero new dependency, zero new
+    infrastructure; Sentry named as the correct first upgrade once real users exist; Grafana/
+    Prometheus and OpenTelemetry explicitly deferred as disproportionate to current (zero) traffic.
+    Full alert policy, logging/retention policy, health-check design, reverse-proxy/TLS
+    recommendation, DNS planning, 15-step rollout strategy (simple replace-and-rollback, not
+    canary/blue-green -- matched to actual project stage), and rollback requirements all designed,
+    none implemented. Owner-decision inventory: 5 genuine account/budget/naming/channel facts this
+    repository cannot resolve (Hostinger plan, budget ceiling, domain, notification channel,
+    offsite-backup destination) -- none reflect missing engineering work. Cross-referenced against
+    the pre-existing PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md ('E. NOT READY'): confirmed
+    PLACE-026..036 have since resolved most of its findings (deployment artifacts, rate-limiting,
+    CORS, DB-credential fail-fast, logging); monitoring and deployment-target selection remain
+    exactly as open as that assessment found them -- this gate is what finally addresses them.
+    Implementation-task scope proposed (nginx/Caddy config, Compose logging/Redis-password/WAL-
+    destination adjustments, Dockerfile HEALTHCHECK + api ownership verification, deploy/backup
+    scripts, doc reconciliation, a real-environment rollback rehearsal, a migration:revert
+    rehearsal) but NOT created. ZERO application code, package manifest, lockfile, Dockerfile, CI
+    file, or environment file touched -- decision-gate/planning only. Deriving another task without
+    explicit owner authorization is NOT permitted.
   eligible_candidate_disposition:
-    - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset."
+    - "Candidate 1 (deploy pipeline, OD2-2,3,4,5,7,8,9) — IMPLEMENTED (PLACE-026), repository-supported subset. Real-infrastructure deployment now gated on PLACE-037's 5 Owner conditions, not on further engineering work."
     - "Candidate 2 (dependency remediation, OD2-11) — IMPLEMENTED (PLACE-027 safe subset + PLACE-029 bcrypt/tar closure + PLACE-032 NestJS-11 closure of 13 findings + PLACE-035/036 Next.js-16 migration+stabilization, though the next/postcss/sharp findings themselves remain open pending an upstream fix — see place_036_status)."
     - "Candidate 3 (rate-limit + CORS, OD2-12/13) — IMPLEMENTED (PLACE-028)."
     - "PLACE-029 Candidate A (bcrypt + DB-credential hardening) — IMPLEMENTED (PLACE-029)."
     - "PLACE-029 Candidate B (NestJS 10->11) — IMPLEMENTED (PLACE-032). Candidate C (Next.js 14->16) — IMPLEMENTED and STABILIZED (PLACE-035/036). All three PLACE-029 candidate framework-migration items are now closed."
-    - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (external signal + alert channel, OD2-6) remains ELIGIBLE AFTER OWNER INPUT, not yet authorized."
+    - "PLACE-029 Candidate D, logging sub-scope (AppLoggerService wiring + correlation-ID propagation) — IMPLEMENTED (PLACE-030). The monitoring-provider sub-scope (OD2-6) now has a concrete PLACE-037 recommendation (infra-native + uptime check at launch, Sentry as first upgrade) — a future implementation task may proceed once the 5 PLACE-037 Owner conditions are answered."
     - "PLACE-031 candidate assessment Candidate E (release & rollback readiness) — IMPLEMENTED (PLACE-031). Candidate F (product delivery acceleration) — DEFER, no evidence-backed bounded scope currently exists."
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
-    - "OD2-6 (monitoring) — APPROVED, sequenced after a real deploy target exists; not yet a candidate."
+    - "OD2-6 (monitoring) — APPROVED; PLACE-037 now supplies the concrete recommendation; still sequenced after a real deploy target and the 5 Owner conditions are resolved."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "The monitoring-provider choice for Candidate D's remaining sub-scope (OD2-6) — the logging half is IMPLEMENTED (PLACE-030); no PLACE candidate is currently proposed for the monitoring half pending that provider decision, sequenced after a real deploy target exists. No other framework-migration candidate remains open — NestJS (PLACE-032) and Next.js (PLACE-035/036) are both implemented and stabilized. No answer is assumed or invented here."
-  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (fresh-reconfirmed, unchanged from PLACE-035 — see place_036_status for the next/postcss/sharp explanation; all blocked on an upstream fix outside this repository's control, not an unaddressed local defect). Real production release still requires owner-supplied external credentials (VPS, R2, offsite backup, MapTiler, a git remote, and a real CORS origin domain) that no engineering task can fabricate."
+  pending_owner_decision: "The 5 conditions from PLACE-037 §31: (1) confirm the Hostinger plan supports Docker/VPS/root access or name an alternative provider; (2) a rough launch-budget ceiling; (3) the production domain name; (4) the alert-notification channel; (5) the offsite-backup destination (R2/Backblaze/other). None of these can be answered from repository evidence — no answer is assumed or invented here. Once answered, the PLACE-037-proposed implementation task (infra config, no product/business-logic change) may be authorized."
+  release_blockers_remaining: "NONE hard from a code-correctness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). Real production release requires the 5 Owner-side facts above (PLACE-037) that no engineering task can fabricate — deployment/monitoring engineering readiness itself is no longer the blocker; the recommended path (single VPS + docker-compose.prod.yml + Caddy; infra-native monitoring + uptime check) is fully specified and evidence-based, pending only those Owner inputs."
 
 completed_tasks:
+  - id: PLACE-037
+    completed: "2026-07-25"
+    result: >-
+      Production deployment-target and monitoring-provider decision gate. GATE RESULT: READY WITH
+      CONDITIONS. Decision/planning task only -- zero application code, package manifest, lockfile,
+      Dockerfile, CI file, or environment file touched; no deployment, no cloud provisioning, no
+      purchase, no DNS change, no monitoring integration, no SDK installed. Preflight: all 22
+      required facts verified (repo state, PLACE-032..036 completion, current Next.js
+      16.2.11/NestJS 11.1.28 baselines, toolchain versions, Docker/Compose versions, service health,
+      existing Dockerfiles/Compose/CI/deployment-docs/monitoring-docs/env-templates/health-endpoint/
+      logging-correlation-ID/rollback-docs). Architecture inventory grounded in direct evidence, not
+      deployment.md's target design alone: independently confirmed MinIO/object storage exists in
+      docker-compose.prod.yml but is NEVER called by application code (zero S3_*/@aws-sdk/minio
+      reference anywhere in apps/api/src, env.validation.ts doesn't even validate S3 vars) --
+      correctly classified deferrable, not mandatory, for initial launch; confirmed no BullMQ
+      worker, no scheduled jobs, no email provider exist despite appearing in deployment.md's target
+      diagram -- correctly excluded from required-services. Deployment readiness assessed area-by-
+      area: Dockerfiles/Compose/CI/env-validation/migrations all production-ready or ready-with-
+      configuration; two real gaps found and FLAGGED, not fixed (Dockerfile/Compose changes
+      prohibited by this task's own constraints): Redis has no password in docker-compose.prod.yml;
+      neither apps/api/Dockerfile nor apps/web/Dockerfile declares a native HEALTHCHECK instruction.
+      apps/api/Dockerfile shares apps/web/Dockerfile's PLACE-036 COPY-without---chown pattern, but
+      with NO evidence the API ever writes to its own filesystem at runtime (unlike Next.js's
+      proven .next/cache write) -- explicitly flagged as an UNVERIFIED pre-launch check, not
+      claimed as a defect absent evidence, honoring the discipline of not speculating without proof.
+      5 deployment models compared against actual repository constraints (single VPS Compose / VPS+
+      managed data / provider-native Node hosting / split-provider / current Hostinger account).
+      HOSTINGER: classified UNKNOWN, explicitly NOT assumed compatible merely because an account
+      exists (per this task's own instruction) -- the specific plan tier (shared hosting vs VPS/
+      Docker/root access) is not established anywhere in repository evidence; this is the first of
+      5 genuine Owner-side facts this repository cannot resolve. TOPOLOGY: two realistic options
+      presented (single-VPS-full-stack vs VPS-apps+managed-data-services); recommended single VPS
+      running the existing, already-verified docker-compose.prod.yml stack fronted by Caddy
+      (automatic TLS) -- reuses infrastructure already built and repeatedly verified locally
+      (PLACE-026 through PLACE-036), matches the project's actual zero-real-user current scale,
+      keeps the exact rollback mechanism already rehearsed three times this session (PLACE-031,
+      PLACE-032, PLACE-036), matching this task's own required priority order (reliability,
+      rollback simplicity, operational burden, cost, scalability) over deployment.md's own more
+      elaborate GD2/GD3 target design (correctly deferred, not skipped -- already the document's own
+      stated roadmap). Resource sizing, backup policy (daily-7/weekly-4/monthly-6 retention,
+      matching deployment.md's own pre-existing figures), migration strategy (grounded in the REAL
+      current TypeORM setup: migrationsRun:false confirmed in database.module.ts:25, migrations run
+      as a separate CI step already, not invented), and secrets strategy all designed as policy,
+      none executed. OBSERVABILITY: existing capabilities inventoried (structured logs/correlation-
+      ID/quiet-4xx/redaction/health-checks all IMPLEMENTED per PLACE-030; metrics/traces/dashboards/
+      alerting/uptime-checks all ABSENT, unchanged from the pre-existing PRODUCTION-READINESS-
+      ASSESSMENT-2026-07-24.md's own finding). 5-option MONITORING comparison (infra-native/Sentry/
+      Grafana-stack/OpenTelemetry/lightweight-uptime) with a scored decision matrix (12 criteria,
+      weighting explained: implementation/operational-effort/cost weighted highest given zero real
+      traffic today) recommends infra-native (Docker healthchecks + existing structured/correlated
+      logs) + one external uptime check as the launch-minimum stack -- zero new dependency, zero new
+      infrastructure, directly leverages the already-built correlation-ID work; Sentry named as the
+      correct FIRST upgrade once real users exist (best-scoped gap-filler for near-zero frontend
+      error visibility, no new infra to operate); Grafana/Prometheus and OpenTelemetry explicitly
+      deferred as disproportionate to current (zero) traffic, matching this task's own instruction
+      not to assume a paid platform is required. Minimum-launch-observability classified item by
+      item (uptime/API-health/web-health/disk-space/TLS-expiry = launch-blocking; DB/Redis/CPU/RAM/
+      restart/5xx alerts = strongly recommended; frontend-error-reporting/log-aggregation/metrics-
+      dashboard = post-launch follow-up; tracing = unnecessary). Full alert policy designed (10
+      signals) with notification channel explicitly marked an OWNER DECISION, not invented, per
+      instruction. Logging/retention policy designed (14-30 day recommendation; a REAL gap found and
+      flagged: docker-compose.prod.yml currently has no logging: size/rotation block configured on
+      any service). Health-check design: /api/health assessed sufficient for initial launch as a
+      combined liveness+readiness signal; the gap versus deployment.md's target /health+/health/
+      ready split explicitly NOT recommended to close preemptively (matches Docker-Compose's actual
+      operational model, not Kubernetes's). Reverse-proxy/TLS: Caddy recommended over nginx
+      specifically for automatic-TLS's lower single-operator operational risk. DNS: no production
+      domain represented anywhere in repository evidence; domain naming explicitly marked an OWNER
+      DECISION, not assumed. 15-step rollout strategy designed; simple replace-and-rollback
+      explicitly selected over canary/blue-green as correctly matched to actual project stage (zero
+      users), not the theoretical enterprise complexity this task's own instruction warns against.
+      Rollback requirements enumerated element-by-element; independently-rollback-able elements
+      (web/API images, proven separable in every PLACE-036 rehearsal) distinguished from the one
+      genuine dependency-on-database-restore case (a hypothetical FUTURE destructive migration --
+      none exist today, all 20 current migrations confirmed additive). 5 genuine OWNER DECISIONS
+      inventoried (Hostinger plan, budget ceiling, domain, notification channel, offsite-backup
+      destination) -- none reflect missing engineering work, none are normal engineering detail
+      escalated unnecessarily. Recommended first-launch architecture stated with explicit separation
+      of repository-evidence-based recommendation vs Owner-confirmation-required assumption. A
+      future, separately-authorized implementation-task scope proposed (nginx/Caddy config, Compose
+      logging/Redis-password/WAL-offsite-destination adjustments, Dockerfile HEALTHCHECK addition +
+      api file-ownership verification following PLACE-036's own proven method, deploy/backup
+      scripts, doc reconciliation, a REAL-environment rollback rehearsal, a migration:revert
+      rehearsal) -- explicitly excluding product features/UI/business-logic/schema
+      redesign/unrelated dependency upgrades/content population/broad performance work/production
+      deployment itself -- but NOT created, NOT activated. Final scored decision matrix (11
+      criteria, rollback-confidence and security-readiness weighted highest given this is a
+      first-ever real launch handling real user data) -> gate result READY WITH CONDITIONS. Cross-
+      referenced against the pre-existing PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md ('E. NOT
+      READY'): confirmed PLACE-026 through PLACE-036 have since resolved most of its findings
+      (deployment artifacts now exist and are verified, rate-limiting/CORS added, DB-credential
+      fail-fast closes its exact flagged permissive-default risk, AppLoggerService now wired) --
+      monitoring and deployment-target selection remain exactly as open as that assessment found
+      them, which is precisely what this gate now resolves with a concrete, evidence-based
+      recommendation. Not claimed: no Hostinger plan verified; no monitoring vendor account created;
+      no SDK installed; no infrastructure provisioned; no PLACE-038 created or started.
+    report: docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md
   - id: PLACE-036
     completed: "2026-07-25"
     result: >-

@@ -131,7 +131,65 @@ evidence_references:
   - docs/api/api.md
   - docs/api/openapi.yaml
 
-next_task: none        # PLACE-036 completed 2026-07-25 (Next.js 16 post-migration stabilization). Decision: STABILIZED WITH BOUNDED FOLLOW-UPS. Next.js 16.2.11 is now the trusted apps/web baseline. One real migration-caused Docker EACCES defect found (not caught by PLACE-035) and fixed. npm audit --omit=dev unchanged at 8 (fresh-reconfirmed). The monitoring-provider sub-scope (OD2-6) remains the sole open, deploy-target-gated Owner decision — see docs/delivery/reports/PLACE-029-CANDIDATE-SELECTION-2026-07-24.md.
+next_task: none        # PLACE-037 completed 2026-07-25 (production deployment target + monitoring provider decision gate). Gate result: READY WITH CONDITIONS. Recommended: single VPS running the existing docker-compose.prod.yml stack + Caddy for automatic TLS; infra-native monitoring (Docker healthchecks + existing structured/correlated logs) + one external uptime check at launch, Sentry as the first upgrade once real users exist. Hostinger classified UNKNOWN (not assumed compatible). 5 genuine Owner decisions remain (Hostinger plan, budget, domain, alert channel, offsite-backup destination) — see docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md. Decision-gate/planning only — zero code/config touched.
+
+place_037_status: >-
+  COMPLETED 2026-07-25 — evidence-based production deployment-target and monitoring-provider
+  decision gate; decision/planning only, zero application code, package manifest, lockfile,
+  Dockerfile, CI file, or environment file touched, no deployment/provisioning/purchase/DNS-change/
+  monitoring-integration/SDK-install of any kind. Architecture inventory grounded in direct
+  evidence rather than deployment.md's target design alone: confirmed MinIO/object storage exists
+  in docker-compose.prod.yml but is NEVER called by application code (zero S3_*/@aws-sdk/minio
+  reference anywhere in apps/api/src, env.validation.ts doesn't even validate S3 vars) --
+  correctly classified deferrable; confirmed no BullMQ worker/scheduled job/email provider exist
+  despite deployment.md's target diagram implying them. Deployment readiness assessed area-by-
+  area: Dockerfiles/Compose/CI/env-validation/migrations mostly production-ready; two real gaps
+  FLAGGED not fixed (Redis has no password in docker-compose.prod.yml; neither Dockerfile
+  declares a native HEALTHCHECK); apps/api/Dockerfile shares web's PLACE-036 COPY-without-
+  --chown pattern but with NO evidence the API ever writes to its own filesystem at runtime --
+  explicitly flagged as UNVERIFIED, not claimed as a defect absent proof (unlike web's proven
+  case). HOSTINGER: classified UNKNOWN, explicitly NOT assumed compatible merely because an
+  account exists, per this task's own instruction -- the specific plan tier is not established
+  anywhere in repository evidence. Two topologies compared (single-VPS-full-stack vs VPS+managed-
+  data); recommended single VPS running the existing, already-verified docker-compose.prod.yml
+  stack + Caddy (automatic TLS) -- reuses infrastructure already built and repeatedly verified
+  locally (PLACE-026 through PLACE-036), matches the project's actual zero-real-user scale, keeps
+  the exact rollback mechanism already rehearsed three times this session. Resource sizing/backup
+  policy (daily-7/weekly-4/monthly-6, matching deployment.md's own pre-existing figures)/migration
+  strategy (grounded in the REAL current setup: migrationsRun:false confirmed in
+  database.module.ts:25, migrations already run as a separate CI step)/secrets strategy all
+  designed as policy, none executed. Observability inventory: structured logs/correlation-ID/
+  quiet-4xx/redaction/health-checks all IMPLEMENTED (PLACE-030); metrics/traces/dashboards/
+  alerting/uptime-checks all ABSENT, unchanged from the pre-existing PRODUCTION-READINESS-
+  ASSESSMENT-2026-07-24.md's own finding. 5-option scored monitoring decision matrix (weighting:
+  implementation/operational-effort/cost weighted highest given zero real traffic today)
+  recommends infra-native + one external uptime check as the launch-minimum (zero new dependency,
+  zero new infra); Sentry named the correct first upgrade once real users exist; Grafana/
+  Prometheus/OpenTelemetry explicitly deferred as disproportionate to current traffic. Minimum-
+  launch-observability classified item by item; full 10-signal alert policy designed with
+  notification channel explicitly marked an OWNER DECISION, not invented; logging/retention policy
+  designed (a REAL gap flagged: docker-compose.prod.yml has no log rotation configured on any
+  service). Health-check design: /api/health assessed sufficient for launch as a combined
+  liveness+readiness signal, the gap vs deployment.md's target split explicitly NOT recommended to
+  close preemptively (matches Compose's actual operational model, not Kubernetes's). Caddy
+  recommended over nginx for automatic TLS's lower single-operator risk. No production domain
+  represented anywhere in repository evidence -- domain naming explicitly an OWNER DECISION.
+  15-step rollout strategy designed; simple replace-and-rollback explicitly selected over canary/
+  blue-green as matched to actual project stage, not theoretical enterprise complexity. Rollback
+  requirements enumerated; independently-rollback-able elements distinguished from the one genuine
+  future-destructive-migration case (none exist today, all 20 current migrations confirmed
+  additive). 5 genuine Owner decisions inventoried (Hostinger plan, budget ceiling, domain,
+  notification channel, offsite-backup destination) -- none reflect missing engineering work.
+  Future implementation-task scope proposed (nginx/Caddy config, Compose logging/Redis-password/
+  WAL-offsite-destination adjustments, Dockerfile HEALTHCHECK + api ownership verification, deploy/
+  backup scripts, doc reconciliation, a real-environment rollback rehearsal, a migration:revert
+  rehearsal) but NOT created. Final scored decision matrix (rollback-confidence and security-
+  readiness weighted highest, given this is a first-ever real launch handling real user data) ->
+  GATE RESULT READY WITH CONDITIONS. Cross-referenced against the pre-existing PRODUCTION-
+  READINESS-ASSESSMENT-2026-07-24.md ('E. NOT READY'): confirmed PLACE-026 through PLACE-036 have
+  since resolved most of its findings; monitoring and deployment-target selection remain exactly
+  as open as that assessment found them, which is precisely what this gate now resolves. See
+  reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md.
 
 place_036_status: >-
   COMPLETED 2026-07-25 — post-migration stabilization and independent review of PLACE-035's

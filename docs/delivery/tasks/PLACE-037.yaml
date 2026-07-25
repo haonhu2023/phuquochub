@@ -1,0 +1,94 @@
+schema_version: "1.0"
+
+id: PLACE-037
+workstream: place
+title: "Production deployment target and monitoring provider decision gate"
+type: decision_gate
+status: completed
+completed_at: "2026-07-25"
+
+authority:
+  source: "Owner explicit instruction 2026-07-25 — 'PLACE-037 — Production Deployment Target and Monitoring Provider Decision Gate'. Decision and planning task only."
+  decision: "Gate result READY WITH CONDITIONS. See docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md."
+
+depends_on:
+  - "PLACE-036 completed 2026-07-25 (Next.js 16 stabilization) — established the current stable frontend baseline this gate assesses deployment readiness against"
+  - "PLACE-026 completed 2026-07-24 — built and verified the Dockerfiles/docker-compose.prod.yml this gate's topology recommendation reuses"
+  - "docs/architecture/deployment.md — pre-existing target design, self-labeled mostly unimplemented; this gate's own §15 decisions were already enumerated there and are re-evaluated here with current evidence"
+  - "docs/delivery/reports/PRODUCTION-READINESS-ASSESSMENT-2026-07-24.md — pre-existing 'E. NOT READY' assessment; this gate confirms which of its findings PLACE-026..036 have since resolved and which (monitoring, deployment-target selection) remain exactly as open"
+
+preconditions_verified:
+  - "PLACE-032/035/036 completed; PLACE-033 read-only (no file, established precedent); PLACE-034 draft (expected, decision gate not execution task)"
+  - "current.task: none, working tree clean at task start (HEAD 1e68481)"
+  - "No git remotes configured; nothing to push"
+  - "Docker 29.6.2 / Docker Compose v5.3.1 available; dev services healthy"
+
+objective: >-
+  Produce an evidence-based decision gate covering the initial production deployment target, the
+  production runtime model, the monitoring/alerting provider, minimum production observability
+  scope, and rollout/rollback prerequisites -- without deploying, provisioning, purchasing,
+  modifying DNS, connecting monitoring providers, adding SDKs, or changing any application code,
+  package manifest, lockfile, Dockerfile, CI file, environment file, or delivery state beyond
+  this task's own governance records.
+
+scope:
+  - "Architecture inventory of currently-required services, evidence-based (not from deployment.md's target design alone)."
+  - "Deployment readiness assessment of every existing production artifact (Dockerfiles, Compose, CI, env validation, migrations, health checks)."
+  - "Comparison of 5 deployment models against this repository's actual constraints (single VPS Compose, VPS+managed data, provider-native Node hosting, split-provider, current Hostinger account)."
+  - "Two topology options with exactly one recommendation."
+  - "Resource sizing, backup policy, migration strategy, secrets strategy -- all labeled as estimates/policy design, none executed."
+  - "Observability inventory, 5-option monitoring comparison with a scored decision matrix, minimum launch observability classification, alert policy design, logging/retention policy design."
+  - "Health-check design assessment, reverse-proxy/TLS recommendation, DNS planning (no DNS change)."
+  - "Rollout strategy (model selection + 15-step sequence) and rollback requirements."
+  - "Owner-decision inventory with recommended defaults and whether the next implementation task can proceed without each."
+  - "Recommended first-launch architecture, separating repository-evidence-based recommendation from Owner-confirmation-required assumptions."
+  - "Proposed scope for a future, separately authorized implementation task -- not created or activated here."
+  - "Final scored decision matrix and exactly one gate result."
+
+out_of_scope:
+  - "Any production deployment, cloud resource creation, service purchase, DNS modification."
+  - "Connecting external monitoring providers or adding provider SDKs."
+  - "Any application code, package manifest, lockfile, Dockerfile, CI file, or environment file change."
+  - "PLACE-038 or any successor task."
+
+key_findings:
+  - "Deployment artifacts (Dockerfiles, docker-compose.prod.yml, CI docker-build job) are production-ready and repeatedly verified LOCALLY; none has ever run on real infrastructure -- the report is explicit not to confuse the two."
+  - "MinIO/object storage exists as infrastructure in docker-compose.prod.yml but is NEVER called by application code (zero S3_*/@aws-sdk/minio reference in apps/api/src) -- correctly classified as deferrable, not mandatory, for initial launch."
+  - "No BullMQ worker, no scheduled jobs, no email provider exist anywhere in code despite appearing in deployment.md's target architecture diagram -- correctly excluded from the required-services inventory."
+  - "Redis has no password configured in docker-compose.prod.yml -- a real, bounded gap flagged for the future implementation task, low risk today since Redis is never publicly exposed in the recommended topology."
+  - "Neither apps/api/Dockerfile nor apps/web/Dockerfile declares a Docker-native HEALTHCHECK instruction -- flagged as a gap, not fixed (Dockerfile changes are prohibited by this task's own constraints)."
+  - "apps/api/Dockerfile has the same COPY --from=build pattern without --chown that caused PLACE-036's real, proven EACCES defect in apps/web/Dockerfile -- but no evidence exists that the API ever writes to its own filesystem at runtime, so this is flagged as an UNVERIFIED pre-launch check, not a claimed defect (no speculation without evidence)."
+  - "Hostinger compatibility classified as 'unknown', not assumed compatible merely because an account exists, per this task's explicit instruction -- the specific plan tier (shared vs VPS) is not established anywhere in repository evidence."
+  - "Recommended topology: single VPS running the existing docker-compose.prod.yml stack, fronted by Caddy for automatic TLS -- reuses already-built, already-verified infrastructure and matches the project's actual current scale (zero real users)."
+  - "Recommended minimum monitoring stack: infrastructure-native monitoring (Docker healthchecks + existing structured/correlated logs) + one external uptime check -- zero new dependency, zero new infrastructure; Sentry recommended as the first upgrade once real users exist; Grafana/Prometheus and OpenTelemetry explicitly deferred as disproportionate to current traffic (zero)."
+
+acceptance_criteria:
+  - { id: AC1, mandatory: true, text: "All 22 required preflight facts verified and reported; no fact fabricated." }
+  - { id: AC2, mandatory: true, text: "Architecture inventory and deployment-readiness assessment grounded in direct repository evidence, not deployment.md's target design alone -- confirmed by independently checking for BullMQ/worker/nginx/S3-usage code that deployment.md's diagram implies but this repository does not actually have." }
+  - { id: AC3, mandatory: true, text: "At least 2 deployment topologies presented with exactly one recommendation, prioritized per this task's own stated order (reliability, rollback simplicity, operational burden, cost, scalability)." }
+  - { id: AC4, mandatory: true, text: "Hostinger compatibility classified honestly as unknown, not assumed compatible." }
+  - { id: AC5, mandatory: true, text: "All resource/cost figures labeled as estimates; no fabricated traffic or pricing figure." }
+  - { id: AC6, mandatory: true, text: "Monitoring options scored in a decision matrix with explained weighting; minimum stack recommendation does not exceed the project's actual current stage." }
+  - { id: AC7, mandatory: true, text: "Alert policy designed with notification channel explicitly marked as an Owner decision, not invented." }
+  - { id: AC8, mandatory: true, text: "Owner decisions genuinely require Owner input (account/budget/naming/channel facts this repository cannot resolve) -- not normal engineering detail escalated unnecessarily." }
+  - { id: AC9, mandatory: true, text: "Exactly one final gate result produced: READY WITH CONDITIONS." }
+  - { id: AC10, mandatory: true, text: "Zero application code, package manifest, lockfile, Dockerfile, CI file, or environment file touched; working tree clean after the governance-only commit; nothing pushed; PLACE-038 not created." }
+
+evidence_requirements:
+  - "docs/delivery/reports/PLACE-037-production-deployment-monitoring-decision-gate-2026-07-25.md"
+
+commit_strategy:
+  - "1) delivery evidence and state updates (single commit -- no code/config change exists to separate into its own group)"
+
+gate_result: "READY WITH CONDITIONS"
+
+definition_of_done: >-
+  All 10 acceptance criteria pass; delivery evidence exists; state.yaml/workstreams/place.yaml
+  updated accurately; current.task returns to none; PLACE-038 proposed but not created; working
+  tree clean after the single governance commit; nothing pushed.
+
+non_claims: >-
+  This task does NOT deploy to any real environment. It does NOT confirm Hostinger plan
+  compatibility (Owner-side fact, unverifiable from this repository). It does NOT select a final
+  monitoring vendor for the enhanced stack (recommends a category and a specific first upgrade,
+  Sentry, but does not create an account or install an SDK). It does NOT create PLACE-038.
