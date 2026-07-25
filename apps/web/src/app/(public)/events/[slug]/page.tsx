@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getEvent, type EventDetail } from '@/modules/events/api/events.api';
+import { ApiError } from '@/lib/http';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -27,8 +28,12 @@ export default async function EventDetailPage({ params }: Params) {
   let ev: EventDetail;
   try {
     ev = await getEvent(slug);
-  } catch {
-    notFound();
+  } catch (err) {
+    // PLACE-041: phân biệt 404 với lỗi khác — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ.
+    if (err instanceof ApiError && err.isNotFound) {
+      notFound();
+    }
+    throw err;
   }
 
   return (

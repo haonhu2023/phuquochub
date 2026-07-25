@@ -5,6 +5,7 @@ import {
   type MenuSection,
   type RestaurantDetail,
 } from '@/modules/restaurants/api/restaurants.api';
+import { ApiError } from '@/lib/http';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -26,8 +27,12 @@ export default async function RestaurantDetailPage({ params }: Params) {
   let r: RestaurantDetail;
   try {
     r = await getRestaurant(slug);
-  } catch {
-    notFound();
+  } catch (err) {
+    // PLACE-041: phân biệt 404 với lỗi khác — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ.
+    if (err instanceof ApiError && err.isNotFound) {
+      notFound();
+    }
+    throw err;
   }
   // Thực đơn qua endpoint riêng (:id/menu); lỗi → rỗng.
   let menu: MenuSection[] = [];

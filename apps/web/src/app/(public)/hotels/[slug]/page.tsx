@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
+import { ApiError } from '@/lib/http';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -21,8 +22,14 @@ export default async function HotelDetailPage({ params }: Params) {
   let h: HotelDetail;
   try {
     h = await getHotel(slug);
-  } catch {
-    notFound();
+  } catch (err) {
+    // PLACE-041: phân biệt 404 (không tồn tại) với lỗi khác (mạng/5xx) — trước đây mọi lỗi đều
+    // bị coi là 404, khiến sự cố server/mạng hiển thị sai thành "không tồn tại" (khớp
+    // places/[slug]/page.tsx, pattern đã đúng từ trước).
+    if (err instanceof ApiError && err.isNotFound) {
+      notFound();
+    }
+    throw err;
   }
 
   return (
