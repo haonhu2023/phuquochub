@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nest
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { HotelsService } from './hotels.service';
-import { UpdateHotelRoomsDto } from './dto/hotels.dto';
+import { ListHotelsQueryDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
 
 // openapi §Hotels. Đọc công khai; sửa rooms cần Place.Edit.Managed (Hotel là Place).
 @Controller('hotels')
@@ -11,8 +11,8 @@ export class HotelsController {
 
   @Public()
   @Get()
-  list(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.hotelsService.list(page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  list(@Query() query: ListHotelsQueryDto) {
+    return this.hotelsService.list(query);
   }
 
   // Route 2 đoạn khai báo trước ':slug' (1 đoạn) cho rõ ràng.

@@ -23,13 +23,14 @@ describe('HotelsService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('list: map + paginate (star_rating/hotel_type/location, rating_avg numeric)', async () => {
+  it('list: map + paginate (star_rating/hotel_type/location/cover_image_url, rating_avg numeric)', async () => {
     repo.listHotels.mockResolvedValue([
       {
         id: 'h1',
         name: 'Khách sạn A',
         slug: 'ks-a',
         short_description: 'gần biển',
+        cover_image_url: 'https://cdn/x.jpg',
         rating_avg: '4.5',
         rating_count: 12,
         star_rating: 4,
@@ -40,7 +41,7 @@ describe('HotelsService', () => {
     ]);
     repo.countHotels.mockResolvedValue(1);
 
-    const res = await service.list(1, 20);
+    const res = await service.list({ page: 1, limit: 20 });
 
     expect(res.success).toBe(true);
     expect(res.meta.total).toBe(1);
@@ -48,9 +49,30 @@ describe('HotelsService', () => {
       id: 'h1',
       star_rating: 4,
       hotel_type: 'resort',
+      cover_image_url: 'https://cdn/x.jpg',
       rating_avg: 4.5,
       location: { lat: 10.2, lng: 103.9 },
     });
+  });
+
+  it('list: không truyền query → dùng trang mặc định, không lọc', async () => {
+    repo.listHotels.mockResolvedValue([]);
+    repo.countHotels.mockResolvedValue(0);
+
+    await service.list();
+
+    expect(repo.listHotels).toHaveBeenCalledWith(20, 0, { stars: undefined, sort: undefined });
+    expect(repo.countHotels).toHaveBeenCalledWith({ stars: undefined, sort: undefined });
+  });
+
+  it('list: truyền stars/sort xuống repository nguyên vẹn', async () => {
+    repo.listHotels.mockResolvedValue([]);
+    repo.countHotels.mockResolvedValue(0);
+
+    await service.list({ stars: 5, sort: 'name_asc', page: 2, limit: 10 });
+
+    expect(repo.listHotels).toHaveBeenCalledWith(10, 10, { stars: 5, sort: 'name_asc' });
+    expect(repo.countHotels).toHaveBeenCalledWith({ stars: 5, sort: 'name_asc' });
   });
 
   it('getBySlug: ghép hotel_details/rooms/amenities lên base Place', async () => {

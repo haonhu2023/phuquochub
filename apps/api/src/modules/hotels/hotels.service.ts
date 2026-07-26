@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { HotelsRepository } from './repositories/hotels.repository';
-import { UpdateHotelRoomsDto } from './dto/hotels.dto';
+import { ListHotelsQueryDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 
 interface RoomRow {
@@ -37,15 +37,20 @@ export class HotelsService {
     private readonly repo: HotelsRepository,
   ) {}
 
-  async list(page?: number, limit?: number) {
-    const p = clampPage(page);
-    const l = clampLimit(limit);
-    const [rows, total] = await Promise.all([this.repo.listHotels(l, (p - 1) * l), this.repo.countHotels()]);
+  async list(query: ListHotelsQueryDto = {}) {
+    const p = clampPage(query.page);
+    const l = clampLimit(query.limit);
+    const filters = { stars: query.stars, sort: query.sort };
+    const [rows, total] = await Promise.all([
+      this.repo.listHotels(l, (p - 1) * l, filters),
+      this.repo.countHotels(filters),
+    ]);
     const items = rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       short_description: r.short_description,
+      cover_image_url: r.cover_image_url,
       rating_avg: r.rating_avg !== null ? Number(r.rating_avg) : null,
       rating_count: r.rating_count,
       star_rating: r.star_rating,
