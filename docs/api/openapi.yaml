@@ -929,9 +929,20 @@ paths:
       summary: Danh sách nhà hàng
       operationId: listRestaurants
       security: []
+      description: >-
+        `price_range`/`cuisine`/`sort`/`page`/`limit` are implemented (ListRestaurantsQueryDto).
+        `open_now` remains documented-but-unimplemented — sending it is rejected 400
+        (`forbidNonWhitelisted`), not silently ignored. Evaluating "open now" correctly needs a
+        timezone/overnight-range/holiday-exception-aware opening_hours evaluator that does not
+        exist yet anywhere in this codebase (common/opening-hours.ts only validates structure).
       parameters:
-        - { name: cuisine, in: query, schema: { type: string } }
+        - { name: cuisine, in: query, schema: { type: string }, description: 'Mã cuisines.code (vd seafood, vietnamese) — dữ liệu tham chiếu mở, không whitelist cố định.' }
         - { name: price_range, in: query, schema: { $ref: '#/components/schemas/PriceRange' } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [rating_desc, name_asc], default: rating_desc }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
         - { name: open_now, in: query, schema: { type: boolean } }
       responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
   /restaurants/{slug}:

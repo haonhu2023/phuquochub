@@ -24,14 +24,54 @@ describe('RestaurantsService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('list: paginate + map is_local_specialty/location/rating_avg', async () => {
+  it('list: paginate + map is_local_specialty/location/rating_avg/cover_image_url/cuisines', async () => {
     repo.listRestaurants.mockResolvedValue([
-      { id: 'r1', name: 'Quán A', slug: 'quan-a', short_description: 'hải sản', rating_avg: '4.0', rating_count: 5, is_local_specialty: true, lat: '10.1', lng: '103.8' },
+      {
+        id: 'r1',
+        name: 'Quán A',
+        slug: 'quan-a',
+        short_description: 'hải sản',
+        cover_image_url: 'https://cdn/a.jpg',
+        rating_avg: '4.0',
+        rating_count: 5,
+        price_range: 'mid',
+        is_local_specialty: true,
+        cuisines: ['Hải sản'],
+        lat: '10.1',
+        lng: '103.8',
+      },
     ]);
     repo.countRestaurants.mockResolvedValue(1);
     const res = await service.list();
     expect(res.meta.total).toBe(1);
-    expect(res.data[0]).toMatchObject({ id: 'r1', is_local_specialty: true, rating_avg: 4, location: { lat: 10.1, lng: 103.8 } });
+    expect(res.data[0]).toMatchObject({
+      id: 'r1',
+      is_local_specialty: true,
+      rating_avg: 4,
+      cover_image_url: 'https://cdn/a.jpg',
+      price_range: 'mid',
+      cuisines: ['Hải sản'],
+      location: { lat: 10.1, lng: 103.8 },
+    });
+  });
+
+  it('list: hàng không có cuisines (NULL từ array_agg rỗng) → mảng rỗng, không crash', async () => {
+    repo.listRestaurants.mockResolvedValue([
+      { id: 'r2', name: 'Quán B', slug: 'quan-b', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: null, is_local_specialty: false, cuisines: null, lat: '10', lng: '103' },
+    ]);
+    repo.countRestaurants.mockResolvedValue(1);
+    const res = await service.list();
+    expect(res.data[0]).toMatchObject({ cuisines: [] });
+  });
+
+  it('list: truyền price_range/cuisine/sort xuống repository nguyên vẹn', async () => {
+    repo.listRestaurants.mockResolvedValue([]);
+    repo.countRestaurants.mockResolvedValue(0);
+
+    await service.list({ price_range: 'high', cuisine: 'seafood', sort: 'name_asc', page: 2, limit: 10 } as Parameters<typeof service.list>[0]);
+
+    expect(repo.listRestaurants).toHaveBeenCalledWith(10, 10, { priceRange: 'high', cuisine: 'seafood', sort: 'name_asc' });
+    expect(repo.countRestaurants).toHaveBeenCalledWith({ priceRange: 'high', cuisine: 'seafood', sort: 'name_asc' });
   });
 
   it('getBySlug: ghép restaurant_details + cuisines', async () => {

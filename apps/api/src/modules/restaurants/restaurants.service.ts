@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { RestaurantsRepository } from './repositories/restaurants.repository';
-import { UpdateRestaurantMenuDto } from './dto/restaurants.dto';
+import { ListRestaurantsQueryDto, UpdateRestaurantMenuDto } from './dto/restaurants.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 
 function mapItem(i: Record<string, unknown>) {
@@ -23,21 +23,25 @@ export class RestaurantsService {
     private readonly repo: RestaurantsRepository,
   ) {}
 
-  async list(page?: number, limit?: number) {
-    const p = clampPage(page);
-    const l = clampLimit(limit);
+  async list(query: ListRestaurantsQueryDto = {}) {
+    const p = clampPage(query.page);
+    const l = clampLimit(query.limit);
+    const filters = { priceRange: query.price_range, cuisine: query.cuisine, sort: query.sort };
     const [rows, total] = await Promise.all([
-      this.repo.listRestaurants(l, (p - 1) * l),
-      this.repo.countRestaurants(),
+      this.repo.listRestaurants(l, (p - 1) * l, filters),
+      this.repo.countRestaurants(filters),
     ]);
     const items = rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       short_description: r.short_description,
+      cover_image_url: r.cover_image_url,
       rating_avg: r.rating_avg !== null ? Number(r.rating_avg) : null,
       rating_count: r.rating_count,
+      price_range: r.price_range,
       is_local_specialty: r.is_local_specialty,
+      cuisines: r.cuisines ?? [],
       location: { lat: Number(r.lat), lng: Number(r.lng) },
     }));
     return paginate(items, p, l, total);

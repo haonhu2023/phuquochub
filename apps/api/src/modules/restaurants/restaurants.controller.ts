@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nest
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { RestaurantsService } from './restaurants.service';
-import { UpdateRestaurantMenuDto } from './dto/restaurants.dto';
+import { ListRestaurantsQueryDto, UpdateRestaurantMenuDto } from './dto/restaurants.dto';
 
 // openapi §Restaurants. Đọc công khai; sửa menu cần Place.Edit.Managed.
 @Controller('restaurants')
@@ -11,8 +11,8 @@ export class RestaurantsController {
 
   @Public()
   @Get()
-  list(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.restaurantsService.list(page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  list(@Query() query: ListRestaurantsQueryDto) {
+    return this.restaurantsService.list(query);
   }
 
   @Public()
