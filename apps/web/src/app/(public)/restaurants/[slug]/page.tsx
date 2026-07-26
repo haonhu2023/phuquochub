@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   getMenu,
@@ -49,6 +50,17 @@ export default async function RestaurantDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRestaurantJsonLd(r)) }}
       />
+      <nav aria-label="Breadcrumb" style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
+        <Link href="/" style={{ color: '#6b7280' }}>
+          Trang chủ
+        </Link>
+        {' / '}
+        <Link href="/restaurants" style={{ color: '#6b7280' }}>
+          Nhà hàng
+        </Link>
+        {' / '}
+        <span aria-current="page">{r.name}</span>
+      </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
       {r.description && <p>{r.description}</p>}

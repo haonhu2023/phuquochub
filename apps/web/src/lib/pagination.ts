@@ -3,6 +3,7 @@ export type PageItem = number | 'ellipsis';
 /**
  * Danh sách số trang hiển thị quanh trang hiện tại (kiểu "1 … 4 5 [6] 7 8 … 20") — luôn giữ
  * trang đầu/cuối, tối đa 1 dấu "…" mỗi bên. Tách khỏi component để test được thuần không cần DOM.
+ * Dùng chung cho mọi trang browse có phân trang (hotels/restaurants/tours…).
  */
 export function buildPageList(current: number, totalPages: number, siblings = 1): PageItem[] {
   if (totalPages <= 1) return [1];

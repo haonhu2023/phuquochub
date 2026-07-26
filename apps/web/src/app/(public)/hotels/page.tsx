@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { listHotels } from '@/modules/hotels/api/hotels.api';
 import { HotelCard } from '@/modules/hotels/HotelCard';
 import { HotelFilters } from '@/modules/hotels/HotelFilters';
-import { HotelPagination } from '@/modules/hotels/HotelPagination';
+import { Pagination } from '@/components/ui/Pagination';
 import { HOTEL_SORT_VALUES, type HotelSort } from '@/modules/hotels/types';
 import placesStyles from '@/modules/places/places.module.css';
 
@@ -81,7 +81,12 @@ export default async function HotelsPage({ searchParams }: Props) {
               <HotelCard key={h.id} hotel={h} />
             ))}
           </div>
-          <HotelPagination page={meta.page} totalPages={meta.totalPages} baseQuery={baseQuery.toString()} />
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            basePath="/hotels"
+            baseQuery={baseQuery.toString()}
+          />
         </>
       )}
     </section>

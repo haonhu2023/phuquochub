@@ -1,0 +1,10 @@
+/* Riêng cho Restaurants. Toolbar/select/pagination dùng chung: components/ui/ui.module.css. */
+
+.cuisineTags {
+  color: var(--muted);
+}
+
+.specialtyBadge {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}

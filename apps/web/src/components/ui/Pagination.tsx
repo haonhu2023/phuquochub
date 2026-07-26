@@ -1,22 +1,25 @@
 import Link from 'next/link';
-import { buildPageList } from './pagination';
-import styles from './hotels.module.css';
+import { buildPageList } from '@/lib/pagination';
+import styles from './ui.module.css';
 
 interface Props {
   page: number;
   totalPages: number;
+  /** Route gốc, vd "/hotels" hoặc "/restaurants". */
+  basePath: string;
   /** Query string hiện tại TRỪ `page` (vd "stars=4&sort=name_asc") — giữ nguyên bộ lọc khi đổi trang. */
   baseQuery: string;
 }
 
-function hrefFor(page: number, baseQuery: string): string {
+function hrefFor(basePath: string, page: number, baseQuery: string): string {
   const params = new URLSearchParams(baseQuery);
   params.set('page', String(page));
-  return `/hotels?${params.toString()}`;
+  return `${basePath}?${params.toString()}`;
 }
 
 // Server Component thuần (link-based) — điều hướng phân trang hoạt động cả khi JS chưa chạy.
-export function HotelPagination({ page, totalPages, baseQuery }: Props) {
+// Dùng chung cho mọi trang browse (hotels/restaurants/tours…).
+export function Pagination({ page, totalPages, basePath, baseQuery }: Props) {
   if (totalPages <= 1) return null;
 
   const pages = buildPageList(page, totalPages);
@@ -24,7 +27,7 @@ export function HotelPagination({ page, totalPages, baseQuery }: Props) {
   return (
     <nav className={styles.pagination} aria-label="Phân trang">
       {page > 1 ? (
-        <Link className={styles.pageLink} href={hrefFor(page - 1, baseQuery)} rel="prev">
+        <Link className={styles.pageLink} href={hrefFor(basePath, page - 1, baseQuery)} rel="prev">
           ‹ Trước
         </Link>
       ) : (
@@ -43,14 +46,14 @@ export function HotelPagination({ page, totalPages, baseQuery }: Props) {
             {p}
           </span>
         ) : (
-          <Link key={p} className={styles.pageLink} href={hrefFor(p, baseQuery)}>
+          <Link key={p} className={styles.pageLink} href={hrefFor(basePath, p, baseQuery)}>
             {p}
           </Link>
         ),
       )}
 
       {page < totalPages ? (
-        <Link className={styles.pageLink} href={hrefFor(page + 1, baseQuery)} rel="next">
+        <Link className={styles.pageLink} href={hrefFor(basePath, page + 1, baseQuery)} rel="next">
           Sau ›
         </Link>
       ) : (

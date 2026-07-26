@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { HOTEL_SORT_VALUES, type HotelSort } from './types';
-import styles from './hotels.module.css';
+import styles from '@/components/ui/ui.module.css';
 
 const SORT_LABELS: Record<HotelSort, string> = {
   rating_desc: 'Đánh giá cao nhất',
