@@ -1,0 +1,104 @@
+/* Khối đánh giá trên trang chi tiết Place. Dùng chung design token với places.module.css. */
+
+.section {
+  margin: 1.75rem 0;
+}
+.sectionTitle {
+  font-size: 1.2rem;
+  margin: 0 0 0.75rem;
+}
+
+.empty {
+  color: var(--muted);
+  margin: 0 0 1rem;
+}
+
+.reviewList {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.reviewItem {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.reviewItem:last-child {
+  border-bottom: none;
+}
+.reviewHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+.reviewAuthor {
+  font-weight: 600;
+}
+.reviewStars {
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+.reviewDate {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.reviewContent {
+  margin: 0.4rem 0 0;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.hint {
+  color: var(--muted);
+}
+.hint a {
+  color: var(--accent);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 420px;
+  margin-top: 0.5rem;
+}
+.formLabel {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.formSelect,
+.formTextarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.formError {
+  color: var(--err);
+  margin: 0;
+  font-size: 0.85rem;
+}
+.btn {
+  align-self: flex-start;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -40,8 +40,31 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
   let sut: PlacesRepository;
 
   beforeEach(() => {
-    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    repo = createMock<Repository<Place>>({ query: jest.fn(), exists: jest.fn(), update: jest.fn() });
     sut = new PlacesRepository(repo);
+  });
+
+  describe('existsById', () => {
+    it('không lộ status/nội dung — chỉ trả boolean', async () => {
+      repo.exists.mockResolvedValue(true);
+
+      await expect(sut.existsById('p1')).resolves.toBe(true);
+      expect(repo.exists).toHaveBeenCalledWith({ where: { id: 'p1' } });
+    });
+  });
+
+  describe('recalculateRating', () => {
+    it('tính lại rating_avg/rating_count từ reviews published của đúng place', async () => {
+      repo.query.mockResolvedValue(undefined);
+
+      await sut.recalculateRating('p1');
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain("status = 'published'");
+      expect(sql(query)).toContain('rating_avg');
+      expect(sql(query)).toContain('rating_count');
+      expect(params).toEqual(['p1']);
+    });
   });
 
   describe('getDetailBySlug', () => {

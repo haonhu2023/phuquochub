@@ -1085,6 +1085,7 @@ paths:
                 media_ids: { type: array, items: { type: string, format: uuid } }
       responses:
         '201': { $ref: '#/components/responses/EmptySuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /reviews/{id}:
     patch:
@@ -2039,6 +2040,21 @@ components:
         start_at: { type: string, format: date-time }
         end_at: { type: string, format: date-time }
         status_override: { type: [string, 'null'], enum: [cancelled, postponed, null] }
+    Review:
+      type: object
+      description: >-
+        Đánh giá công khai của một Place (schema.prisma Review; migration InitReviews). MVP
+        hiện tại chưa có hàng đợi kiểm duyệt nên mọi review tạo mới đều `published` ngay —
+        route công khai (listPlaceReviews) chỉ trả các review `status=published`.
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        author_name: { type: string }
+        author_avatar_url: { type: [string, 'null'], format: uri }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        content: { type: [string, 'null'] }
+        status: { type: string, enum: [pending, published, hidden] }
+        created_at: { type: string, format: date-time }
     AuditLog:
       type: object
       description: >-

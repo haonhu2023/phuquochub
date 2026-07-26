@@ -24,6 +24,10 @@ export class ApiError extends Error {
   get isNotFound(): boolean {
     return this.status === 404;
   }
+
+  get isConflict(): boolean {
+    return this.status === 409;
+  }
 }
 
 // GET công khai (không auth) — unwrap envelope, ném ApiError nếu thất bại.
@@ -34,6 +38,34 @@ export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   // Body có thể không phải JSON (proxy lỗi, 502…) — không để res.json() ném lỗi trần.
+  let body: Envelope<T> | undefined;
+  try {
+    body = (await res.json()) as Envelope<T>;
+  } catch {
+    body = undefined;
+  }
+
+  if (!res.ok || !body || body.success === false) {
+    const message = body?.error?.message ?? `Yêu cầu thất bại (${res.status})`;
+    throw new ApiError(message, res.status, body?.error?.code);
+  }
+
+  return body.data;
+}
+
+// POST có xác thực (Bearer) — dùng cho các luồng ghi đầu tiên của FE (reviews, và các module
+// ghi sau này). Cùng envelope + lỗi với apiGet nên component xử lý ApiError thống nhất một chỗ.
+export async function apiPost<T>(path: string, accessToken: string, payload?: unknown): Promise<T> {
+  const res = await fetch(buildApiUrl(path), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  });
+
   let body: Envelope<T> | undefined;
   try {
     body = (await res.json()) as Envelope<T>;

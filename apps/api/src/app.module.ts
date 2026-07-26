@@ -21,6 +21,7 @@ import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { ToursModule } from './modules/tours/tours.module';
 import { EventsModule } from './modules/events/events.module';
 import { SourcesModule } from './modules/sources/sources.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -49,6 +50,7 @@ import { SourcesModule } from './modules/sources/sources.module';
     ToursModule,
     EventsModule,
     SourcesModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}

@@ -106,6 +106,15 @@ export class PlacesRepository {
     return rows.length > 0;
   }
 
+  /**
+   * Chỉ trả về CÓ/KHÔNG tồn tại (không lộ status/nội dung) — dùng cho các module khác cần xác
+   * nhận place_id hợp lệ (vd ReviewsService.create) mà không cần đọc `getCardByIdIncludingInactive`
+   * (privileged, xem places-privileged-access.arch.spec.ts) hay `getDetailBySlug` (chỉ published).
+   */
+  async existsById(id: string): Promise<boolean> {
+    return this.repo.exists({ where: { id } });
+  }
+
   async createPlace(input: CreatePlaceRow): Promise<string> {
     const rows: Array<{ id: string }> = await this.repo.query(
       `INSERT INTO places
@@ -211,6 +220,23 @@ export class PlacesRepository {
 
   async setStatus(id: string, status: PlaceStatus): Promise<void> {
     await this.repo.update({ id }, { status });
+  }
+
+  /**
+   * Tính lại rating_avg/rating_count từ reviews `published` — gọi ĐỒNG BỘ sau mỗi lần tạo
+   * review (ReviewsService.create). MVP chưa có moderation queue (mọi review tạo ra đã
+   * `published` ngay) nên tính trực tiếp ở đây là chính xác; nếu sau này có luồng ẩn/duyệt
+   * review, lời gọi này vẫn đúng vì luôn đọc lại từ trạng thái `published` hiện tại, không
+   * cộng dồn tăng/giảm thủ công (tránh lệch số khi review bị ẩn/xoá).
+   */
+  async recalculateRating(placeId: string): Promise<void> {
+    await this.repo.query(
+      `UPDATE places SET
+         rating_avg = (SELECT round(avg(rating)::numeric, 1) FROM reviews WHERE place_id = $1 AND status = 'published'),
+         rating_count = (SELECT count(*)::int FROM reviews WHERE place_id = $1 AND status = 'published')
+       WHERE id = $1`,
+      [placeId],
+    );
   }
 
   /**

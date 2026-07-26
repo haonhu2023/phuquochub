@@ -30,7 +30,19 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-07-25, ad-hoc, NOT a PLACE-numbered task per explicit
+  task: none                      # (2026-07-26, ad-hoc, NOT PLACE-numbered per explicit Owner
+                                  # instruction -- "stop creating new governance tasks, priority
+                                  # is PRODUCT COMPLETION, do not create PLACE-044") Re-verified
+                                  # the 2026-07-25 gap analysis fresh against the filesystem (still
+                                  # true: reviews/community/contributions/notifications were
+                                  # .gitkeep-only on both BE and FE), then selected + fully
+                                  # implemented the Reviews feature (roadmap Critical #2): backend
+                                  # migration+module (reviews table, Review.Create permission,
+                                  # rating aggregate recompute) and frontend (POST-capable http
+                                  # helper, ReviewsSection wired into the place detail page). See
+                                  # docs/delivery/reports/MVP-REVIEWS-FEATURE-2026-07-26.md.
+                                  # ---- prior state (2026-07-25 SEO task) ----
+                                  # (2026-07-25, ad-hoc, NOT a PLACE-numbered task per explicit
                                   # Owner instruction -- "khong tao PLACE-044, khong tiep tuc
                                   # chuoi infrastructure, chuyen trong tam tro lai hoan thien
                                   # PhuQuocHub MVP") MVP gap analysis and roadmap, plus one
@@ -645,7 +657,7 @@ next_action:
     - "OD2-1 (release scope), OD2-14 (Prisma stub) — APPROVED but require no PLACE candidate (OD2-1's action is the approval itself; OD2-14 is ordinary hygiene)."
     - "OD2-6 (monitoring) — APPROVED; minimum stack IMPLEMENTED (PLACE-038); enhanced-stack (Sentry) sequenced after real users exist, an Owner-side timing decision, not an engineering blocker."
     - "OD2-10 (AI budget) — DEFERRED, unchanged."
-  pending_owner_decision: "Focus is now MVP feature completeness (Owner instruction 2026-07-25), not infrastructure. See docs/delivery/reports/MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md §3 for the full prioritized roadmap. Critical: (1) the web frontend has ZERO write capability beyond auth -- no create/edit-place form, no review submission, no image upload, no business-claim UI exist anywhere, despite the backend supporting place CRUD; (2) reviews/community/contributions/notifications are unimplemented empty stubs on BOTH backend and frontend, despite 'Reddit' being a named product pillar. High: hotel/restaurant/tour list pages (detail-only today), image upload UI, search filters (category/price/ward) not surfaced in the /search UI, zero frontend component/integration tests. Medium/Low: business-claim workflow, accessibility pass, moderation queue UI, remaining error/loading boundaries, live Swagger UI, bundle-size budget, 8 open dependency findings (upstream-blocked). Infrastructure track remains CLOSED/DEFERRED (PLACE-043: VPS not purchased, not urgent; PLACE-042: migration:revert rehearsal proven locally) and is not to be resumed without new explicit Owner authorization."
+  pending_owner_decision: "(2026-07-26) Reviews (create+read) is now IMPLEMENTED -- see docs/delivery/reports/MVP-REVIEWS-FEATURE-2026-07-26.md. NOT yet run against a live database (no Docker/Postgres available in this environment) -- run `npm run migration:run --workspace=apps/api` before relying on it end-to-end. Remaining Critical/High from the 2026-07-25 roadmap, still fully open: general place write/edit UI (create/edit forms beyond auth), hotel/restaurant/tour list pages (detail-only today), image upload UI (no presign/upload endpoint or UI anywhere), search filters (category/price/ward) not surfaced in the /search UI, moderation queue UI, business-claim workflow, frontend component-test infrastructure (jest env=node, no jsdom/RTL -- structurally cannot render-test React components today). Reviews' own PATCH/DELETE/report/reply/vote endpoints (already documented in openapi.yaml) remain unimplemented too. Infrastructure track remains CLOSED/DEFERRED (PLACE-043: VPS not purchased, not urgent) and is not to be resumed without new explicit Owner authorization."
   release_blockers_remaining: "NONE from a code-correctness OR a repository-readiness standpoint. 0 critical + 8 high + 0 moderate (prod) dependency findings remain OPEN as of PLACE-036 (unchanged, blocked on an upstream fix outside this repository's control). The single-VPS Docker Compose + Caddy topology is now fully implemented and locally verified (PLACE-038); real production release requires only the Owner-side real-world steps listed above, which no engineering task can fabricate or substitute for."
 
 completed_tasks:

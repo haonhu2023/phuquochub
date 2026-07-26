@@ -7,6 +7,9 @@ import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
 import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { listReviews } from '@/modules/reviews/api/reviews.api';
+import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
+import type { Review } from '@/modules/reviews/types';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -65,6 +68,14 @@ export default async function PlaceDetailPage({ params }: Params) {
       notFound();
     }
     throw err;
+  }
+
+  // Đánh giá là khối phụ trợ — lỗi ở đây không được làm sập cả trang chi tiết Place.
+  let reviews: Review[] = [];
+  try {
+    reviews = await listReviews(place.id);
+  } catch {
+    reviews = [];
   }
 
   const openingHours = openingHoursEntries(place.opening_hours);
@@ -203,6 +214,8 @@ export default async function PlaceDetailPage({ params }: Params) {
           ))}
         </section>
       )}
+
+      <ReviewsSection placeId={place.id} initialReviews={reviews} />
     </article>
   );
 }

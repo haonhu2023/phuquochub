@@ -20,4 +20,19 @@ export class MediaRepository {
       order: { sortOrder: 'ASC' },
     });
   }
+
+  /**
+   * Gắn media MỒ CÔI (chưa thuộc arc nào) vào một review — chỉ media do chính `userId` upload,
+   * tránh việc chiếm dụng media của người khác qua media_ids (ReviewsService.create).
+   */
+  async attachToReview(mediaIds: string[], reviewId: string, userId: string): Promise<void> {
+    if (mediaIds.length === 0) return;
+    await this.repo.query(
+      `UPDATE media SET review_id = $1
+       WHERE id = ANY($2) AND uploaded_by = $3 AND deleted_at IS NULL
+         AND place_id IS NULL AND review_id IS NULL AND post_id IS NULL
+         AND business_id IS NULL AND event_id IS NULL`,
+      [reviewId, mediaIds, userId],
+    );
+  }
 }
