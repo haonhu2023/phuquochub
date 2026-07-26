@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
@@ -39,6 +40,17 @@ export default async function HotelDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildHotelJsonLd(h)) }}
       />
+      <nav aria-label="Breadcrumb" style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
+        <Link href="/" style={{ color: '#6b7280' }}>
+          Trang chủ
+        </Link>
+        {' / '}
+        <Link href="/hotels" style={{ color: '#6b7280' }}>
+          Khách sạn
+        </Link>
+        {' / '}
+        <span aria-current="page">{h.name}</span>
+      </nav>
       <h1>{h.name}</h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
       {h.description && <p>{h.description}</p>}

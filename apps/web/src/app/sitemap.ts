@@ -13,7 +13,7 @@ import { listEvents } from '@/modules/events/api/events.api';
 // clients the rest of the app already uses.
 export const dynamic = 'force-dynamic';
 
-const STATIC_ROUTES = ['', '/places', '/explore', '/map', '/search', '/events'];
+const STATIC_ROUTES = ['', '/places', '/hotels', '/explore', '/map', '/search', '/events'];
 
 // A single entity-type fetch must never take down the whole sitemap -- if one endpoint is
 // slow/erroring/empty, the sitemap should still list everything else correctly.

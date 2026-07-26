@@ -858,8 +858,17 @@ paths:
       summary: Danh sách khách sạn
       operationId: listHotels
       security: []
+      description: >-
+        `stars`/`sort`/`page`/`limit` are implemented (ListHotelsQueryDto). `amenities`/
+        `price_min`/`price_max` remain documented-but-unimplemented — sending them is rejected
+        400 (`forbidNonWhitelisted`), not silently ignored.
       parameters:
         - { name: stars, in: query, schema: { type: integer, minimum: 1, maximum: 5 } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [rating_desc, name_asc], default: rating_desc }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
         - { name: amenities, in: query, schema: { type: array, items: { type: string } }, style: form, explode: true }
         - { name: price_min, in: query, schema: { type: number } }
         - { name: price_max, in: query, schema: { type: number } }

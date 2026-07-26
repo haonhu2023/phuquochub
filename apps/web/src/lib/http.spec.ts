@@ -1,4 +1,4 @@
-import { ApiError, apiPost } from './http';
+import { ApiError, apiGetPaginated, apiPost } from './http';
 
 const realFetch = global.fetch;
 
@@ -46,5 +46,23 @@ describe('apiPost', () => {
     }) as unknown as typeof fetch;
 
     await expect(apiPost('/places/p1/reviews', 'tok', {})).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('apiGetPaginated', () => {
+  it('trả cả data và meta (page/pageSize/total/totalPages), không bỏ meta như apiGet', async () => {
+    const meta = { timestamp: 't', page: 2, pageSize: 10, total: 25, totalPages: 3 };
+    mockFetchOnce(200, { success: true, data: [{ id: 'h1' }], meta });
+
+    const res = await apiGetPaginated<{ id: string }>('/hotels?page=2&limit=10');
+
+    expect(res.data).toEqual([{ id: 'h1' }]);
+    expect(res.meta).toEqual(meta);
+  });
+
+  it('envelope lỗi → ném ApiError (cùng hành vi apiGet)', async () => {
+    mockFetchOnce(400, { success: false, error: { code: 'VALIDATION_ERROR', message: 'Sai tham số' } });
+
+    await expect(apiGetPaginated('/hotels?stars=9')).rejects.toBeInstanceOf(ApiError);
   });
 });
