@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { ToursRepository } from './repositories/tours.repository';
-import { CreateTourDto } from './dto/tours.dto';
+import { CreateTourDto, ListToursQueryDto } from './dto/tours.dto';
 import type { CreatePlaceDto } from '../places/dto/places.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 
@@ -38,17 +38,31 @@ export class ToursService {
     private readonly repo: ToursRepository,
   ) {}
 
-  async list(page?: number, limit?: number) {
-    const p = clampPage(page);
-    const l = clampLimit(limit);
-    const [rows, total] = await Promise.all([this.repo.listTours(l, (p - 1) * l), this.repo.countTours()]);
+  async list(query: ListToursQueryDto = {}) {
+    const p = clampPage(query.page);
+    const l = clampLimit(query.limit);
+    const filters = {
+      type: query.type,
+      difficulty: query.difficulty,
+      priceRange: query.price_range,
+      maxDurationMinutes: query.max_duration_minutes,
+      departureArea: query.departure_area,
+      sort: query.sort,
+    };
+    const [rows, total] = await Promise.all([
+      this.repo.listTours(l, (p - 1) * l, filters),
+      this.repo.countTours(filters),
+    ]);
     const items = rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       name: r.name,
       slug: r.slug,
       short_description: r.short_description,
+      cover_image_url: r.cover_image_url,
       rating_avg: r.rating_avg !== null ? Number(r.rating_avg) : null,
       rating_count: r.rating_count,
+      price_range: r.price_range,
+      ward: r.ward,
       tour_type: r.tour_type,
       duration_minutes: r.duration_minutes,
       difficulty: r.difficulty,

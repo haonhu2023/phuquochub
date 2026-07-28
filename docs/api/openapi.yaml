@@ -977,11 +977,30 @@ paths:
       summary: Danh sách tour
       operationId: listTours
       security: []
+      description: >-
+        `type`/`difficulty`/`price_range`/`max_duration_minutes`/`departure_area`/`sort`/`page`/
+        `limit` are implemented (ListToursQueryDto). Two previously documented params were
+        removed rather than left silently ignored — sending either is now rejected 400
+        (`forbidNonWhitelisted`): `duration` (ambiguous — exact match or upper bound? hours or
+        minutes?) is replaced by the explicit `max_duration_minutes`, and `price_max` is deferred
+        because per-tour prices live in `tour_schedules.price` per departure (a table with no seed
+        data and no write endpoint yet), and "cheapest departure within which window" is an
+        unmade policy decision. Filter by budget with `price_range` (places.price_range) instead.
+        `type` also now covers all six `tour_type` enum values from the InitTour migration, not
+        just the three originally listed here.
       parameters:
-        - { name: type, in: query, schema: { type: string, enum: [diving, fishing, trekking] } }
-        - { name: duration, in: query, schema: { type: integer } }
-        - { name: price_max, in: query, schema: { type: number } }
-        - { name: departure_area, in: query, schema: { type: string } }
+        - name: type
+          in: query
+          schema: { type: string, enum: [diving, fishing, trekking, sightseeing, cruise, other] }
+        - { name: difficulty, in: query, schema: { type: string, enum: [easy, moderate, hard] } }
+        - { name: price_range, in: query, schema: { $ref: '#/components/schemas/PriceRange' } }
+        - { name: max_duration_minutes, in: query, schema: { type: integer, minimum: 1 }, description: 'Thời lượng tối đa (phút). Tour chưa khai duration_minutes KHÔNG được coi là thoả.' }
+        - { name: departure_area, in: query, schema: { type: string, maxLength: 120 }, description: 'Khớp chính xác places.ward (vd An Thới, Dương Tơ) — dữ liệu tham chiếu mở, không whitelist cố định.' }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [rating_desc, name_asc, duration_asc], default: rating_desc }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
     post:
       tags: [Tours]

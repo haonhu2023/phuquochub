@@ -13,7 +13,7 @@ import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { ToursService } from './tours.service';
-import { CreateTourDto } from './dto/tours.dto';
+import { CreateTourDto, ListToursQueryDto } from './dto/tours.dto';
 
 // openapi §Tours. Đọc công khai; POST /tours cần Place.Create (Tour là Place → pending).
 @Controller('tours')
@@ -22,8 +22,8 @@ export class ToursController {
 
   @Public()
   @Get()
-  list(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.toursService.list(page ? Number(page) : undefined, limit ? Number(limit) : undefined);
+  list(@Query() query: ListToursQueryDto) {
+    return this.toursService.list(query);
   }
 
   @Post()

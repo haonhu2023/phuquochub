@@ -28,11 +28,57 @@ describe('ToursService', () => {
 
   it('list: map tour_type/duration/difficulty + paginate', async () => {
     repo.listTours.mockResolvedValue([
-      { id: 't1', name: 'Tour A', slug: 'tour-a', short_description: 'lặn', rating_avg: null, rating_count: 0, tour_type: 'boat', duration_minutes: 240, difficulty: 'easy', lat: '10.0', lng: '104.0' },
+      { id: 't1', name: 'Tour A', slug: 'tour-a', short_description: 'lặn', cover_image_url: null, rating_avg: null, rating_count: 0, price_range: null, ward: null, tour_type: 'boat', duration_minutes: 240, difficulty: 'easy', lat: '10.0', lng: '104.0' },
     ]);
     repo.countTours.mockResolvedValue(1);
     const res = await service.list();
     expect(res.data[0]).toMatchObject({ tour_type: 'boat', duration_minutes: 240, difficulty: 'easy', rating_avg: null, location: { lat: 10, lng: 104 } });
+  });
+
+  it('list: map cover_image_url/price_range/ward + rating_avg chuỗi → Number', async () => {
+    repo.listTours.mockResolvedValue([
+      { id: 't2', name: 'Tour B', slug: 'tour-b', short_description: null, cover_image_url: 'https://cdn/b.jpg', rating_avg: '4.5', rating_count: 12, price_range: 'mid', ward: 'An Thới', tour_type: 'cruise', duration_minutes: null, difficulty: null, lat: '9.9', lng: '104.01' },
+    ]);
+    repo.countTours.mockResolvedValue(1);
+
+    const res = await service.list();
+
+    expect(res.data[0]).toMatchObject({
+      cover_image_url: 'https://cdn/b.jpg',
+      rating_avg: 4.5,
+      rating_count: 12,
+      price_range: 'mid',
+      ward: 'An Thới',
+      duration_minutes: null,
+      difficulty: null,
+    });
+  });
+
+  it('list: truyền type/difficulty/price_range/max_duration_minutes/departure_area/sort xuống repository', async () => {
+    repo.listTours.mockResolvedValue([]);
+    repo.countTours.mockResolvedValue(0);
+
+    await service.list({
+      type: 'diving',
+      difficulty: 'easy',
+      price_range: 'mid',
+      max_duration_minutes: 240,
+      departure_area: 'An Thới',
+      sort: 'duration_asc',
+      page: 2,
+      limit: 10,
+    } as Parameters<typeof service.list>[0]);
+
+    const expected = {
+      type: 'diving',
+      difficulty: 'easy',
+      priceRange: 'mid',
+      maxDurationMinutes: 240,
+      departureArea: 'An Thới',
+      sort: 'duration_asc',
+    };
+    expect(repo.listTours).toHaveBeenCalledWith(10, 10, expected);
+    expect(repo.countTours).toHaveBeenCalledWith(expected);
   });
 
   it('getItinerary: mapStop; location null khi thiếu toạ độ', async () => {
