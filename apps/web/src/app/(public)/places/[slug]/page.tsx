@@ -28,6 +28,7 @@ const SITE = 'PhuQuocHub';
  */
 const BROWSE_LISTING_BY_CATEGORY: Record<string, { href: string; label: string }> = {
   attraction: { href: '/attractions', label: 'Điểm tham quan' },
+  beach: { href: '/beaches', label: 'Bãi biển' },
 };
 
 function metaDescription(place: PlaceDetail): string | undefined {

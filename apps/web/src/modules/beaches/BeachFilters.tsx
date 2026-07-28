@@ -1,16 +1,19 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ATTRACTION_SORT_VALUES, type AttractionSort } from './types';
+import { BEACH_SORT_VALUES, type BeachSort } from './types';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
 import styles from '@/components/ui/ui.module.css';
 
-const SORT_LABELS: Record<AttractionSort, string> = {
+const SORT_LABELS: Record<BeachSort, string> = {
   rating_desc: 'Đánh giá cao nhất',
   name_asc: 'Tên A → Z',
   newest: 'Mới thêm gần đây',
 };
 
+// Đúng 4 giá trị enum `price_range` của DB. Với dữ liệu hiện tại, bãi biển chỉ có `free` hoặc
+// NULL nên ba lựa chọn còn lại trả về 0 kết quả — đó là kết quả THẬT của bộ lọc, không phải lỗi;
+// giữ đủ enum để trang này không nói dối về tập giá trị mà backend chấp nhận.
 const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'free', label: 'Miễn phí' },
   { value: 'low', label: 'Bình dân' },
@@ -22,10 +25,10 @@ interface Props {
   total: number;
 }
 
-// Client Component: đổi sort/ward/price_range → điều hướng lại /attractions với query string
-// mới (page reset về 1 vì bộ lọc thay đổi làm tổng số trang thay đổi). Danh sách thật được
-// fetch ở Server Component cha (page.tsx) — component này chỉ đọc/ghi URL, không gọi API.
-export function AttractionFilters({ total }: Props) {
+// Client Component: đổi sort/ward/price_range → điều hướng lại /beaches với query string mới
+// (page reset về 1 vì bộ lọc thay đổi làm tổng số trang thay đổi). Danh sách thật được fetch ở
+// Server Component cha (page.tsx) — component này chỉ đọc/ghi URL, không gọi API.
+export function BeachFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -37,22 +40,22 @@ export function AttractionFilters({ total }: Props) {
       params.delete(key);
     }
     params.delete('page');
-    router.push(`/attractions${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`/beaches${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (
     <div className={styles.toolbar}>
       <div className={styles.field}>
-        <label className={styles.fieldLabel} htmlFor="attraction-sort">
+        <label className={styles.fieldLabel} htmlFor="beach-sort">
           Sắp xếp
         </label>
         <select
-          id="attraction-sort"
+          id="beach-sort"
           className={styles.select}
           value={searchParams.get('sort') ?? 'rating_desc'}
           onChange={(e) => updateParam('sort', e.target.value)}
         >
-          {ATTRACTION_SORT_VALUES.map((v) => (
+          {BEACH_SORT_VALUES.map((v) => (
             <option key={v} value={v}>
               {SORT_LABELS[v]}
             </option>
@@ -61,11 +64,11 @@ export function AttractionFilters({ total }: Props) {
       </div>
 
       <div className={styles.field}>
-        <label className={styles.fieldLabel} htmlFor="attraction-ward">
+        <label className={styles.fieldLabel} htmlFor="beach-ward">
           Khu vực
         </label>
         <select
-          id="attraction-ward"
+          id="beach-ward"
           className={styles.select}
           value={searchParams.get('ward') ?? ''}
           onChange={(e) => updateParam('ward', e.target.value)}
@@ -80,11 +83,11 @@ export function AttractionFilters({ total }: Props) {
       </div>
 
       <div className={styles.field}>
-        <label className={styles.fieldLabel} htmlFor="attraction-price-range">
+        <label className={styles.fieldLabel} htmlFor="beach-price-range">
           Mức giá
         </label>
         <select
-          id="attraction-price-range"
+          id="beach-price-range"
           className={styles.select}
           value={searchParams.get('price_range') ?? ''}
           onChange={(e) => updateParam('price_range', e.target.value)}
@@ -98,7 +101,7 @@ export function AttractionFilters({ total }: Props) {
         </select>
       </div>
 
-      <span className={styles.resultCount}>{total} điểm tham quan</span>
+      <span className={styles.resultCount}>{total} bãi biển</span>
     </div>
   );
 }

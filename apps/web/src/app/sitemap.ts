@@ -19,9 +19,10 @@ const STATIC_ROUTES = [
   '/hotels',
   '/restaurants',
   '/tours',
-  // Điểm tham quan KHÔNG có URL chi tiết riêng: chi tiết là /places/{slug}, vốn đã được liệt
-  // kê bên dưới qua listPlaces() — chỉ cần thêm chính trang duyệt vào sitemap.
+  // Điểm tham quan và bãi biển KHÔNG có URL chi tiết riêng: chi tiết là /places/{slug}, vốn đã
+  // được liệt kê bên dưới qua listPlaces() — chỉ cần thêm chính trang duyệt vào sitemap.
   '/attractions',
+  '/beaches',
   '/explore',
   '/map',
   '/search',

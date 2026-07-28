@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { TOUR_SORT_VALUES, type TourSort } from './types';
+import { PHU_QUOC_WARDS } from '@/modules/places/wards';
 import styles from '@/components/ui/ui.module.css';
 
 const SORT_LABELS: Record<TourSort, string> = {
@@ -42,20 +43,8 @@ const DURATION_OPTIONS: Array<{ value: string; label: string }> = [
   { value: '480', label: 'Tối đa 8 giờ' },
 ];
 
-// Khu vực khởi hành = `places.ward` — dữ liệu tham chiếu MỞ, không có endpoint tra cứu danh sách
-// ward nào để lấy động (xây một cái nằm ngoài phạm vi trang browse). Khoá tạm theo đúng tập ward
-// đã seed trong SeedInitialPlaces/SeedPlacesExpansion. Ward mới ở seed sau này cần cập nhật danh
-// sách này (backend KHÔNG whitelist — ward lạ vẫn lọc đúng, chỉ dropdown chưa có lựa chọn đó).
-const DEPARTURE_AREA_OPTIONS: string[] = [
-  'An Thới',
-  'Bãi Thơm',
-  'Cửa Cạn',
-  'Cửa Dương',
-  'Dương Đông',
-  'Dương Tơ',
-  'Gành Dầu',
-  'Hàm Ninh',
-];
+// Khu vực khởi hành = `places.ward` — dùng chung danh sách ward với Attractions/Beaches
+// (modules/places/wards.ts), nơi ghi rõ vì sao danh sách này là tĩnh.
 
 interface Props {
   total: number;
@@ -186,7 +175,7 @@ export function TourFilters({ total }: Props) {
           onChange={(e) => updateParam('departure_area', e.target.value)}
         >
           <option value="">Tất cả</option>
-          {DEPARTURE_AREA_OPTIONS.map((w) => (
+          {PHU_QUOC_WARDS.map((w) => (
             <option key={w} value={w}>
               {w}
             </option>
