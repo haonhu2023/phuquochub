@@ -20,6 +20,7 @@ import { HotelsModule } from './modules/hotels/hotels.module';
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { ToursModule } from './modules/tours/tours.module';
 import { AttractionsModule } from './modules/attractions/attractions.module';
+import { BeachesModule } from './modules/beaches/beaches.module';
 import { EventsModule } from './modules/events/events.module';
 import { SourcesModule } from './modules/sources/sources.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -50,6 +51,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     RestaurantsModule,
     ToursModule,
     AttractionsModule,
+    BeachesModule,
     EventsModule,
     SourcesModule,
     ReviewsModule,
