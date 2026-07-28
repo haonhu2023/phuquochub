@@ -1,0 +1,139 @@
+import type { Metadata } from 'next';
+import { listTours } from '@/modules/tours/api/tours.api';
+import { TourCard } from '@/modules/tours/TourCard';
+import { TourFilters } from '@/modules/tours/TourFilters';
+import { Pagination } from '@/components/ui/Pagination';
+import {
+  TOUR_DIFFICULTY_VALUES,
+  TOUR_SORT_VALUES,
+  TOUR_TYPE_VALUES,
+  type TourSort,
+} from '@/modules/tours/types';
+import placesStyles from '@/modules/places/places.module.css';
+
+const TITLE = 'Tour & trải nghiệm Phú Quốc';
+const DESCRIPTION =
+  'Danh sách tour và trải nghiệm ở Phú Quốc — lọc theo loại tour, độ khó, thời lượng, mức giá và khu vực khởi hành.';
+const PAGE_SIZE = 20;
+const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
+// Chặn trên cho `max_duration_minutes` đọc từ URL: 43200 phút = 30 ngày, đủ rộng cho mọi tour có
+// thật nhưng không để một con số vô lý đi thẳng xuống API.
+const MAX_DURATION_MINUTES = 43200;
+
+// Không đặt canonical theo query string (?page/type/difficulty/…): các biến thể lọc/phân trang
+// của cùng một danh sách không nên được index riêng (tránh duplicate content) — canonical luôn
+// trỏ về /tours, cùng quy ước /hotels và /restaurants.
+export const metadata: Metadata = {
+  title: `${TITLE} · PhuQuocHub`,
+  description: DESCRIPTION,
+  alternates: { canonical: '/tours' },
+  openGraph: { title: `${TITLE} · PhuQuocHub`, description: DESCRIPTION, type: 'website' },
+};
+
+interface Props {
+  searchParams: Promise<{
+    page?: string;
+    type?: string;
+    difficulty?: string;
+    price_range?: string;
+    max_duration_minutes?: string;
+    departure_area?: string;
+    sort?: string;
+  }>;
+}
+
+function parsePage(raw: string | undefined): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function parseFromList(raw: string | undefined, allowed: readonly string[]): string | undefined {
+  return raw && allowed.includes(raw) ? raw : undefined;
+}
+
+function parseMaxDuration(raw: string | undefined): number | undefined {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_DURATION_MINUTES ? n : undefined;
+}
+
+function parseDepartureArea(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed.slice(0, 120) : undefined;
+}
+
+function parseSort(raw: string | undefined): TourSort | undefined {
+  return (TOUR_SORT_VALUES as readonly string[]).includes(raw ?? '') ? (raw as TourSort) : undefined;
+}
+
+// Server Component: fetch danh sách tour (published) phía server theo bộ lọc trong URL. Lỗi API/
+// mạng ném lên error.tsx (nút thử lại) — chỉ xử lý "0 kết quả" tại đây, không nuốt lỗi thật thành
+// danh sách rỗng. Giá trị lọc lạ trong URL bị bỏ qua tại đây thay vì gửi xuống API (API sẽ trả
+// 400 vì forbidNonWhitelisted, biến một URL bẩn thành trang lỗi).
+export default async function ToursPage({ searchParams }: Props) {
+  const sp = await searchParams;
+  const page = parsePage(sp.page);
+  const type = parseFromList(sp.type, TOUR_TYPE_VALUES);
+  const difficulty = parseFromList(sp.difficulty, TOUR_DIFFICULTY_VALUES);
+  const priceRange = parseFromList(sp.price_range, PRICE_RANGE_VALUES);
+  const maxDuration = parseMaxDuration(sp.max_duration_minutes);
+  const departureArea = parseDepartureArea(sp.departure_area);
+  const sort = parseSort(sp.sort);
+
+  const { data: tours, meta } = await listTours({
+    page,
+    limit: PAGE_SIZE,
+    type,
+    difficulty,
+    price_range: priceRange,
+    max_duration_minutes: maxDuration,
+    departure_area: departureArea,
+    sort,
+  });
+
+  const baseQuery = new URLSearchParams();
+  if (type) baseQuery.set('type', type);
+  if (difficulty) baseQuery.set('difficulty', difficulty);
+  if (priceRange) baseQuery.set('price_range', priceRange);
+  if (maxDuration) baseQuery.set('max_duration_minutes', String(maxDuration));
+  if (departureArea) baseQuery.set('departure_area', departureArea);
+  if (sort) baseQuery.set('sort', sort);
+  const hasFilter = Boolean(type || difficulty || priceRange || maxDuration || departureArea);
+
+  return (
+    <section>
+      <header className={placesStyles.pageHeader}>
+        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
+        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+      </header>
+
+      <TourFilters total={meta.total} />
+
+      {tours.length === 0 ? (
+        <div className={placesStyles.state}>
+          <p className={placesStyles.stateTitle}>
+            {hasFilter ? 'Không có tour phù hợp' : 'Chưa có tour nào'}
+          </p>
+          <p>
+            {hasFilter
+              ? 'Không tìm thấy tour khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.'
+              : 'Dữ liệu tour đang được cập nhật. Vui lòng quay lại sau.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className={placesStyles.grid}>
+            {tours.map((t) => (
+              <TourCard key={t.id} tour={t} />
+            ))}
+          </div>
+          <Pagination
+            page={meta.page}
+            totalPages={meta.totalPages}
+            basePath="/tours"
+            baseQuery={baseQuery.toString()}
+          />
+        </>
+      )}
+    </section>
+  );
+}

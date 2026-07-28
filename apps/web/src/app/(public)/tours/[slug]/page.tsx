@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
   getItinerary,
@@ -51,6 +52,17 @@ export default async function TourDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildTourJsonLd(t)) }}
       />
+      <nav aria-label="Breadcrumb" style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
+        <Link href="/" style={{ color: '#6b7280' }}>
+          Trang chủ
+        </Link>
+        {' / '}
+        <Link href="/tours" style={{ color: '#6b7280' }}>
+          Tour
+        </Link>
+        {' / '}
+        <span aria-current="page">{t.name}</span>
+      </nav>
       <h1>{t.name}</h1>
       {t.description && <p>{t.description}</p>}
 
