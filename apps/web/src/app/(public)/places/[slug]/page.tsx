@@ -17,6 +17,19 @@ interface Params {
 
 const SITE = 'PhuQuocHub';
 
+/**
+ * Trang duyệt tương ứng với `category_slug`, dùng cho một mắt breadcrumb bổ sung.
+ *
+ * CHỈ khai những danh mục thực sự có trang duyệt riêng mà Place này là nội dung của nó. Hotel/
+ * Restaurant/Tour KHÔNG nằm ở đây: chúng có trang chi tiết riêng (/hotels/[slug]…) nên một
+ * Place thuộc các nhóm đó hiếm khi được xem qua /places/[slug]; thêm vào sẽ gợi ý sai rằng
+ * trang đang xem thuộc luồng chi tiết của nhóm ấy. Danh mục không có trong bảng này giữ nguyên
+ * breadcrumb cũ (Trang chủ / Địa điểm / …).
+ */
+const BROWSE_LISTING_BY_CATEGORY: Record<string, { href: string; label: string }> = {
+  attraction: { href: '/attractions', label: 'Điểm tham quan' },
+};
+
 function metaDescription(place: PlaceDetail): string | undefined {
   if (place.short_description) return place.short_description;
   if (place.description) return place.description.slice(0, 157).trimEnd() + '…';
@@ -78,6 +91,9 @@ export default async function PlaceDetailPage({ params }: Params) {
     reviews = [];
   }
 
+  const browseListing = place.category_slug
+    ? BROWSE_LISTING_BY_CATEGORY[place.category_slug]
+    : undefined;
   const openingHours = openingHoursEntries(place.opening_hours);
   const priceLabel = formatPriceRange(place.price_range);
   const hasInfo =
@@ -94,6 +110,12 @@ export default async function PlaceDetailPage({ params }: Params) {
         <Link href="/">Trang chủ</Link>
         <span className={styles.sep}>/</span>
         <Link href="/places">Địa điểm</Link>
+        {browseListing && (
+          <>
+            <span className={styles.sep}>/</span>
+            <Link href={browseListing.href}>{browseListing.label}</Link>
+          </>
+        )}
         <span className={styles.sep}>/</span>
         <span aria-current="page">{place.name}</span>
       </nav>
