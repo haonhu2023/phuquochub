@@ -21,6 +21,7 @@
 | [ADR-014](ADR-014-revision-model.md) | Mô hình phiên bản (`wiki_revisions`, retire `place_revisions`) | **Accepted** (2026-07-12) | ✓ |
 | [ADR-015](ADR-015-business-ownership-model.md) | Mô hình sở hữu cơ sở (Business Place-centric; `business_claims`+`business_members`; `business_id→places`) | **Accepted** (2026-07-13) | ✓ |
 | [ADR-016](ADR-016-audit-log-model.md) | Mô hình Nhật ký Kiểm toán (`audit_logs` append-only, đa hình, không cascade) — Trust Layer GAP-1 | **Accepted** (2026-07-13) | ✓ |
+| [ADR-017](ADR-017-transport-domain-foundation.md) | Nền tảng miền Transport (satellite ADR-002 biến thể — `transport_type` là từ điển FK, không ENUM) | **Accepted** (2026-07-28) | ✗ |
 
 *Mẫu chuẩn: [ADR-template.md](ADR-template.md).*
 
