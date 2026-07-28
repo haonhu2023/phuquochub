@@ -35,6 +35,7 @@ tags:
   - name: Hotels
   - name: Restaurants
   - name: Tours
+  - name: Attractions
   - name: Events
   - name: Reviews
   - name: Community
@@ -1034,6 +1035,52 @@ paths:
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
 
+  # ========================== ATTRACTIONS ==========================
+  /attractions:
+    get:
+      tags: [Attractions]
+      summary: Danh sách điểm tham quan
+      operationId: listAttractions
+      security: []
+      description: >-
+        Điểm tham quan là Place có `categories.slug = 'attraction'` — KHÔNG có bảng vệ tinh
+        riêng (khác Hotel/Restaurant/Tour theo ADR-002), nên endpoint này là một khung nhìn
+        theo danh mục trên chính `places`. Chỉ có đường ĐỌC danh sách: chi tiết vẫn là
+        `GET /places/{slug}` (một URL chi tiết duy nhất cho mỗi Place), tạo/sửa vẫn là
+        `POST|PATCH /places`.
+
+
+        Sắp xếp CỐ ĐỊNH phía server theo `sort` dưới đây, luôn có khoá phụ `id ASC` ⇒ phân
+        trang xác định. Client KHÔNG truyền được tên cột/hướng sắp xếp.
+        Tham số ngoài danh sách này bị TỪ CHỐI **400** (`whitelist` + `forbidNonWhitelisted`).
+
+
+        KHÔNG triển khai, có chủ ý: `category` (điểm tham quan ĐÃ LÀ một category; bảng
+        `categories` phẳng — duyệt danh mục khác thì dùng `GET /places?category=`),
+        `district` (schema chỉ có `ward`), `free_entry` (trùng nghĩa `price_range=free`),
+        `family_friendly`/`indoor`/`outdoor` (không có cột nào tương ứng — cần migration +
+        nguồn dữ liệu), và `open_now` (common/opening-hours.ts mới chỉ validate CẤU TRÚC
+        opening_hours, chưa đánh giá thời điểm theo timezone/khung qua đêm/ngoại lệ ngày lễ —
+        cùng lý do đã ghi ở `GET /restaurants`).
+      parameters:
+        - name: ward
+          in: query
+          description: Lọc theo tên phường/xã (`places.ward`). So khớp chính xác; giá trị lạ → 0 kết quả, không phải 400.
+          schema: { type: string, maxLength: 120 }
+        - { name: price_range, in: query, schema: { $ref: '#/components/schemas/PriceRange' } }
+        - name: sort
+          in: query
+          description: >-
+            `rating_desc` → `rating_avg DESC NULLS LAST, created_at DESC, id ASC`;
+            `name_asc` → `name ASC, id ASC`; `newest` → `created_at DESC, id ASC`.
+          schema: { type: string, enum: [rating_desc, name_asc, newest], default: rating_desc }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - name: limit
+          in: query
+          description: Bỏ trống → 20. Giá trị `> 100` KHÔNG bị từ chối mà bị CẮT xuống 100 (`clampLimit`), giống `GET /places`.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+
   # ============================ EVENTS ============================
   /events:
     get:
@@ -1887,6 +1934,10 @@ components:
         - $ref: '#/components/schemas/PlaceCard'
         - type: object
           properties:
+            # Slug danh mục — CHỈ có ở chi tiết, không có ở PlaceCard. `category_id` một mình là
+            # UUID mà client không dùng được nếu không gọi thêm GET /categories; slug cho phép
+            # trang chi tiết điều hướng về đúng trang duyệt (vd 'attraction' → /attractions).
+            category_slug: { type: [string, 'null'] }
             address: { type: [string, 'null'] }
             ward: { type: [string, 'null'] }
             description: { type: [string, 'null'] }

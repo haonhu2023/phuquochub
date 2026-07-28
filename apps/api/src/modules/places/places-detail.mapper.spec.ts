@@ -8,6 +8,7 @@ describe('toPlaceDetail', () => {
     name: 'Bãi Sao',
     slug: 'bai-sao',
     category_id: 'c1',
+    category_slug: 'beach',
     short_description: 'Bãi biển',
     price_range: null,
     cover_image_url: null,
@@ -33,6 +34,20 @@ describe('toPlaceDetail', () => {
     expect(d.address).toBe('An Thới');
     expect(d.osm_id).toBe(123456789);
     expect(d.opening_hours).toBeNull();
+  });
+
+  it('category_slug được đưa ra hợp đồng chi tiết (điều hướng về đúng trang duyệt)', () => {
+    expect(toPlaceDetail(baseRow).category_slug).toBe('beach');
+  });
+
+  it('category_slug vắng mặt/undefined → null, không rơi khỏi payload', () => {
+    // Row từ driver có thể không mang khoá này (query cũ/mock) — mapper phải phát `null`
+    // thay vì `undefined` (JSON.stringify nuốt undefined, làm khoá biến mất khỏi hợp đồng).
+    const withoutCategorySlug: Record<string, unknown> = { ...baseRow };
+    delete withoutCategorySlug.category_slug;
+    const mapped = toPlaceDetail(withoutCategorySlug as unknown as PlaceDetailRow);
+    expect(mapped.category_slug).toBeNull();
+    expect('category_slug' in mapped).toBe(true);
   });
 
   it('osm_id null giữ null', () => {

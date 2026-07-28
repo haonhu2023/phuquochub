@@ -15,6 +15,7 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     name: 'Bãi Sao',
     slug: 'bai-sao',
     category_id: 'c1',
+    category_slug: 'beach',
     short_description: 'Bãi biển',
     price_range: null,
     cover_image_url: null,
@@ -93,6 +94,16 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
 
       expect(row).not.toBeNull();
       expect(row?.slug).toBe('bai-sao');
+    });
+
+    it('kèm category_slug qua subquery — chi tiết biết mình thuộc danh mục nào, không cần gọi thêm /categories', async () => {
+      repo.query.mockResolvedValue([detailRow()]);
+
+      await sut.getDetailBySlug('bai-sao');
+
+      expect(sql(repo.query.mock.calls[0][0])).toContain(
+        '(SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug',
+      );
     });
 
     it('truyền slug qua tham số (không nội suy chuỗi vào SQL)', async () => {

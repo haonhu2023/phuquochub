@@ -37,6 +37,9 @@ export function toPlaceCard(row: PlaceCardRow): PlaceCard {
 export function toPlaceDetail(row: PlaceDetailRow) {
   return {
     ...toPlaceCard(row),
+    // `?? null`: cột đến từ subquery nên có thể vắng mặt ở row cũ/mock — không để `undefined`
+    // lọt ra hợp đồng (JSON.stringify sẽ nuốt mất khoá thay vì phát `null`).
+    category_slug: row.category_slug ?? null,
     address: row.address,
     ward: row.ward,
     description: row.description,

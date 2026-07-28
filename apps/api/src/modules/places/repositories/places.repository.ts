@@ -38,6 +38,13 @@ export interface PlaceCardRow {
 
 // Row chi tiết = card + trường mở rộng (khớp openapi Place).
 export interface PlaceDetailRow extends PlaceCardRow {
+  /**
+   * Slug danh mục (`categories.slug`) — chỉ có ở đường CHI TIẾT, không có ở card.
+   * `category_id` một mình là UUID mà client không làm gì được nếu không gọi thêm
+   * `GET /categories`; slug cho phép trang chi tiết biết mình thuộc nhóm nào (vd trỏ
+   * breadcrumb về đúng trang duyệt `/attractions`) mà không cần round-trip thứ hai.
+   */
+  category_slug: string | null;
   address: string | null;
   ward: string | null;
   description: string | null;
@@ -174,6 +181,7 @@ export class PlacesRepository {
   async getDetailBySlug(slug: string): Promise<PlaceDetailRow | null> {
     const rows: PlaceDetailRow[] = await this.repo.query(
       `SELECT ${CARD_COLS},
+              (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
               p.address, p.ward, p.description, p.opening_hours, p.osm_id,
               p.created_at, p.updated_at
        FROM places p

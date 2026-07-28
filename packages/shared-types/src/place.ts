@@ -142,6 +142,13 @@ export interface OpeningHours {
  * bộ của mapper KHÁC kiểu trên dây — chủ ý, không phải trùng lặp. Xem finding F-17.
  */
 export interface PlaceDetail extends PlaceCard {
+  /**
+   * Slug danh mục (`categories.slug`, vd 'attraction'/'beach'/'hotel'). CHỈ có ở chi tiết,
+   * không có ở `PlaceCard`: `category_id` là UUID mà client không dùng được nếu không gọi
+   * thêm `GET /categories`, trong khi trang chi tiết cần biết mình thuộc nhóm nào để điều
+   * hướng về đúng trang duyệt. `null` nếu danh mục đã bị xoá khỏi bảng `categories`.
+   */
+  category_slug: string | null;
   address: string | null;
   ward: string | null;
   description: string | null;
