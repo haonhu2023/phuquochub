@@ -37,6 +37,7 @@ tags:
   - name: Tours
   - name: Attractions
   - name: Beaches
+  - name: Transports
   - name: Events
   - name: Reviews
   - name: Community
@@ -1132,6 +1133,95 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
 
+  # =========================== TRANSPORTS ===========================
+  # ADR-017 (Accepted 2026-07-28) — nhiệm vụ NỀN TẢNG: chỉ đọc (list/detail/type lookup).
+  # Bộ lọc nội dung (transport_type/ward/pricing_model/booking_required/airport_transfer) đã
+  # THIẾT KẾ ở docs/data/modules/transport.md §8 nhưng CHƯA triển khai — thuộc nhiệm vụ Transport
+  # Browse kế tiếp. Gửi bất kỳ tham số nào ngoài sort/page/limit bị từ chối 400
+  # (`forbidNonWhitelisted`), không âm thầm bỏ qua.
+  /transports:
+    get:
+      tags: [Transports]
+      summary: Danh sách dịch vụ vận chuyển (tối giản — nền tảng)
+      operationId: listTransports
+      security: []
+      description: >-
+        Transport là Place có `categories.slug = 'transport'` **CÓ** bảng vệ tinh 1:1
+        (`place_transport_details`, khác Attractions/Beaches) nhưng trục phân loại chính
+        (`transport_type`) là một BẢNG TỪ ĐIỂN (`transport_types`, xem `GET /transport-types`),
+        không phải ENUM đóng như `hotel_type`/`tour_type` — cho phép thêm loại hình mới chỉ bằng
+        INSERT, không cần migration (ADR-017).
+
+
+        Endpoint này CHỈ hỗ trợ `sort`/`page`/`limit` — bộ lọc theo loại hình/khu vực/mô hình
+        giá/cờ boolean có chủ đích CHƯA triển khai ở nhiệm vụ nền tảng này, xem
+        docs/data/modules/transport.md §8.
+      parameters:
+        - name: sort
+          in: query
+          description: >-
+            `rating_desc` → `rating_avg DESC NULLS LAST, created_at DESC, id ASC`;
+            `name_asc` → `name ASC, id ASC`; `newest` → `created_at DESC, id ASC`.
+          schema: { type: string, enum: [rating_desc, name_asc, newest], default: rating_desc }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - name: limit
+          in: query
+          description: Bỏ trống → 20. Giá trị `> 100` KHÔNG bị từ chối mà bị CẮT xuống 100 (`clampLimit`).
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application\json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/TransportSummary' } }
+  /transports/{slug}:
+    get:
+      tags: [Transports]
+      summary: Chi tiết dịch vụ vận chuyển
+      operationId: getTransport
+      security: []
+      description: >-
+        Endpoint chi tiết RIÊNG (không dùng chung `/places/{slug}` như Attraction/Beach) — Transport
+        có con 1:N thật sự cần ghép (`service_options`/`routes`/`service_areas`), cùng lý do
+        Hotel/Tour có endpoint chi tiết riêng.
+      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application\json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/TransportDetail' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /transport-types:
+    get:
+      tags: [Transports]
+      summary: Từ điển loại hình vận chuyển
+      operationId: listTransportTypes
+      security: []
+      description: >-
+        Route phẳng, top-level (không lồng dưới `/transports`) — cùng vị trí kiến trúc với
+        `/categories`. Chỉ trả loại hình còn `is_active=true`, sắp theo `sort_order`. Đây là
+        vertical ĐẦU TIÊN có từ điển tra cứu được thật qua API (Hotel `amenities`/Restaurant
+        `cuisines`/`ward` mọi vertical khác đều KHÔNG có endpoint tương đương — frontend các
+        vertical đó hardcode danh sách).
+      responses:
+        '200':
+          description: OK
+          content:
+            application\json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/TransportType' } }
+
   # ============================ EVENTS ============================
   /events:
     get:
@@ -1892,6 +1982,9 @@ components:
     ScopeType: { type: string, enum: [global, managed, own] }
     RolePermEffect: { type: string, enum: [allow, deny] }
     AuditResult: { type: string, enum: [success, failure, allow, deny] }
+    # PricingModel (ADR-017): nhỏ, ổn định, đóng theo chủ ý — KHÁC `transport_type` (từ điển FK
+    # mở rộng được). Xem docs/data/modules/transport.md §3.2.
+    PricingModel: { type: string, enum: [fixed, starting_from, per_km, per_hour, per_person, per_vehicle, contact] }
 
     # ---- Common ----
     GeoPoint:
@@ -2014,6 +2107,98 @@ components:
         short_description: { type: string, maxLength: 300 }
         opening_hours: { type: object, additionalProperties: true }
         price_range: { $ref: '#/components/schemas/PriceRange' }
+
+    # ---- Transport (ADR-017, Accepted 2026-07-28) ----
+    # Place có category='transport' + satellite `place_transport_details` (1:1). Trục phân loại
+    # chính là từ điển `transport_types` (GET /transport-types), không phải ENUM. Nhiệm vụ nền
+    # tảng: các schema dưới đây phản ánh ĐÚNG những gì `GET /transports`/`{slug}` thực sự trả về
+    # — không tài liệu hoá endpoint hay trường nào chưa triển khai.
+    TransportType:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, description: 'Mã ổn định, vd taxi/ferry/motorbike_rental — dữ liệu tham chiếu MỞ, không đóng cứng ở client.' }
+        label_vi: { type: string }
+        label_en: { type: [string, 'null'] }
+        icon: { type: [string, 'null'] }
+        parent_id: { type: [string, 'null'], format: uuid, description: 'Nhóm hiển thị tuỳ chọn (vd "Đường thuỷ"); hiện chưa loại nào dùng.' }
+        sort_order: { type: integer }
+    TransportPricing:
+      type: object
+      description: >-
+        `model=null` nghĩa là CHƯA XÁC ĐỊNH — khác `contact` (đã khai báo tường minh "chỉ báo giá
+        khi liên hệ"). `price_ref` là giá cache hiển thị nhanh; nguồn giá xác minh/lịch sử là
+        `price_history` (entity_type=transport, ADR-006), không lộ qua schema này.
+      properties:
+        model: { oneOf: [{ $ref: '#/components/schemas/PricingModel' }, { type: 'null' }] }
+        price_ref: { type: [number, 'null'], minimum: 0 }
+        currency: { type: string, minLength: 3, maxLength: 3, example: VND }
+        unit: { type: [string, 'null'], description: 'Chỉ có nghĩa khi model thuộc per_* (vd "km", "giờ", "khách").' }
+    TransportSummary:
+      type: object
+      description: Hình dạng một phần tử trong `GET /transports` (card).
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        short_description: { type: [string, 'null'] }
+        cover_image_url: { type: [string, 'null'], format: uri }
+        ward: { type: [string, 'null'] }
+        rating_avg: { type: [number, 'null'] }
+        rating_count: { type: integer }
+        verification_status: { $ref: '#/components/schemas/VerificationStatus' }
+        transport_type: { $ref: '#/components/schemas/TransportType' }
+        pricing: { $ref: '#/components/schemas/TransportPricing' }
+        capacity_passengers: { type: [integer, 'null'], description: 'NULL = không áp dụng hoặc chưa xác nhận (KHÔNG suy ra 0).' }
+        booking_required: { type: [boolean, 'null'], description: 'Tri-state có chủ đích — NULL = chưa xác nhận, KHÔNG mặc định false.' }
+        airport_transfer: { type: [boolean, 'null'], description: 'Tri-state, cùng lý do booking_required.' }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+    TransportServiceOption:
+      type: object
+      description: Gói dịch vụ/mức giá (0..N), vd "Xe 4 chỗ" vs "Xe 7 chỗ" — cùng vai trò hotel_room_types.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        capacity_passengers: { type: [integer, 'null'] }
+        price_ref: { type: [number, 'null'], minimum: 0 }
+        price_currency: { type: string }
+        price_unit: { type: [string, 'null'] }
+        valid_from: { type: [string, 'null'], format: date-time }
+        valid_to: { type: [string, 'null'], format: date-time }
+        sort_order: { type: integer }
+    TransportRoute:
+      type: object
+      description: Tuyến cố định tuỳ chọn (0..N) — ferry/cano thường có, taxi/private car thường không.
+      properties:
+        id: { type: string, format: uuid }
+        origin_label: { type: string }
+        origin_location: { oneOf: [{ $ref: '#/components/schemas/GeoPoint' }, { type: 'null' }] }
+        destination_label: { type: string }
+        destination_location: { oneOf: [{ $ref: '#/components/schemas/GeoPoint' }, { type: 'null' }] }
+        note: { type: [string, 'null'] }
+        sort_order: { type: integer }
+    TransportDetail:
+      description: >-
+        `GET /transports/{slug}` — Place đầy đủ (allOf Place) + phần mở rộng Transport. KHÔNG có
+        lịch trình/tình trạng chỗ trống thời gian thực (nằm ngoài phạm vi nền tảng này).
+      allOf:
+        - $ref: '#/components/schemas/Place'
+        - type: object
+          properties:
+            transport_details:
+              type: object
+              properties:
+                transport_type: { $ref: '#/components/schemas/TransportType' }
+                provider_business_id: { type: [string, 'null'], format: uuid, description: 'Nhà cung cấp = một Place khác đã claim; NULL cho tới khi Business ownership (ADR-015) được thi hành.' }
+                pricing: { $ref: '#/components/schemas/TransportPricing' }
+                capacity_passengers: { type: [integer, 'null'] }
+                booking_required: { type: [boolean, 'null'] }
+                airport_transfer: { type: [boolean, 'null'] }
+                booking_note: { type: [string, 'null'], description: 'Mô tả tự do, KHÔNG phải chính sách đặt chỗ có cấu trúc.' }
+            service_options: { type: array, items: { $ref: '#/components/schemas/TransportServiceOption' } }
+            routes: { type: array, items: { $ref: '#/components/schemas/TransportRoute' } }
+            service_areas: { type: array, items: { type: string }, description: 'Danh sách places.ward mà dịch vụ phục vụ.' }
+
     Contact:
       type: object
       properties:
