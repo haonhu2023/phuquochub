@@ -70,6 +70,9 @@ export class Booking {
   @Column({ type: 'int', default: 1 })
   partySize!: number;
 
+  // TRUST BOUNDARY: tính từ unit_price client gửi trong request (booking-items dto), CHƯA qua
+  // pricing engine xác nhận của nhà cung cấp — là số tiền YÊU CẦU/BÁO GIÁ, không phải giá cuối
+  // cùng. Không có endpoint nào trong slice này quảng bá các cột dưới đây là "final price".
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   subtotal!: string;
 

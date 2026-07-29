@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { BookingsRepository } from './repositories/bookings.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { CreateBookingRequestDto } from './dto/bookings.dto';
-import { generateBookingCode } from './booking-code';
+import { generateBookingCode, isValidBookingCodeFormat } from './booking-code';
 import { toBooking, BookingResponse } from './bookings.mapper';
 
 const MAX_CODE_ATTEMPTS = 5;
@@ -43,6 +43,12 @@ export class BookingsService {
 
   /** Tra cứu theo booking_code công khai — CHỈ trả về cho đúng chủ booking (không lộ tồn tại). */
   async getByCodeForUser(bookingCode: string, userId: string): Promise<BookingResponse> {
+    // Chặn sớm input sai định dạng (quá dài/ký tự lạ) trước khi chạm DB — không phải kiểm tra
+    // tồn tại, chỉ validate hình thức.
+    if (!isValidBookingCodeFormat(bookingCode)) {
+      throw new BadRequestException('booking_code không đúng định dạng');
+    }
+
     const booking = await this.bookingsRepo.findByCode(bookingCode);
     if (!booking || booking.customerUserId !== userId) {
       throw new NotFoundException('Không tìm thấy booking');

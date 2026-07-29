@@ -62,6 +62,12 @@ export class InitBooking1720002400000 implements MigrationInterface {
       `CREATE INDEX "idx_bookings_customer" ON "bookings" ("customer_user_id","created_at")`,
     );
     await queryRunner.query(`CREATE INDEX "idx_bookings_place" ON "bookings" ("place_id")`);
+    // Truy vấn quản trị/tương lai lọc theo trạng thái ("mọi booking đang pending") và theo mốc
+    // dịch vụ sắp tới ("booking trong 7 ngày tới") — cả hai đều rẻ, thêm ngay từ đầu thay vì vá sau.
+    await queryRunner.query(`CREATE INDEX "idx_bookings_status" ON "bookings" ("booking_status")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_bookings_service_start" ON "bookings" ("service_start_at") WHERE "service_start_at" IS NOT NULL`,
+    );
 
     // ---- booking_items (line item trong MOT booking - vd "2x ve nguoi lon", "3 dem Deluxe") ----
     await queryRunner.query(`

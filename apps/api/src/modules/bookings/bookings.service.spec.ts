@@ -1,9 +1,12 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 
 jest.mock('./bookings.mapper', () => ({
   toBooking: (b: { id?: string }, items: unknown[]) => ({ id: b?.id, itemCount: items.length, mapped: true }),
 }));
-jest.mock('./booking-code', () => ({ generateBookingCode: jest.fn() }));
+jest.mock('./booking-code', () => ({
+  ...jest.requireActual('./booking-code'),
+  generateBookingCode: jest.fn(),
+}));
 
 import { BookingsService } from './bookings.service';
 import { BookingsRepository } from './repositories/bookings.repository';
@@ -35,7 +38,7 @@ describe('BookingsService', () => {
     });
     placesRepo = createMock<PlacesRepository>({ existsByIdAndCategorySlug: jest.fn() });
     service = new BookingsService(bookingsRepo, placesRepo);
-    generateBookingCodeMock.mockReturnValue('CODE0001');
+    generateBookingCodeMock.mockReturnValue('ABC23456');
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -57,7 +60,7 @@ describe('BookingsService', () => {
       expect(placesRepo.existsByIdAndCategorySlug).toHaveBeenCalledWith('p1', 'tour');
       expect(bookingsRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          bookingCode: 'CODE0001',
+          bookingCode: 'ABC23456',
           entityType: 'tour',
           entityId: 'e1',
           placeId: 'p1',
@@ -86,17 +89,34 @@ describe('BookingsService', () => {
       await expect(service.create(dto, 'u1')).rejects.toBeInstanceOf(UnprocessableEntityException);
       expect(bookingsRepo.create).not.toHaveBeenCalled();
     });
+
+    it('repository.create thất bại (vd lỗi transaction) → lỗi lan ra ngoài nguyên vẹn, không bị nuốt', async () => {
+      placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+      bookingsRepo.existsByCode.mockResolvedValue(false);
+      const dbError = new Error('transaction rollback: insert booking_items violates constraint');
+      bookingsRepo.create.mockRejectedValue(dbError);
+
+      await expect(service.create(dto, 'u1')).rejects.toBe(dbError);
+    });
   });
 
   describe('getByCodeForUser', () => {
+    it.each(['', 'abc', '1234567890123', 'CODE0001', "'; DROP TABLE bookings;--"])(
+      'booking_code sai định dạng (%p) → BadRequest, không truy vấn DB',
+      async (bad) => {
+        await expect(service.getByCodeForUser(bad, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+        expect(bookingsRepo.findByCode).not.toHaveBeenCalled();
+      },
+    );
+
     it('không tìm thấy booking → NotFound', async () => {
       bookingsRepo.findByCode.mockResolvedValue(null);
-      await expect(service.getByCodeForUser('CODE0001', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.getByCodeForUser('ABC23456', 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('booking thuộc người khác → NotFound (không lộ tồn tại)', async () => {
       bookingsRepo.findByCode.mockResolvedValue({ id: 'b1', customerUserId: 'u2' });
-      await expect(service.getByCodeForUser('CODE0001', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.getByCodeForUser('ABC23456', 'u1')).rejects.toBeInstanceOf(NotFoundException);
       expect(bookingsRepo.findItemsByBookingId).not.toHaveBeenCalled();
     });
 
@@ -104,7 +124,7 @@ describe('BookingsService', () => {
       bookingsRepo.findByCode.mockResolvedValue({ id: 'b1', customerUserId: 'u1' });
       bookingsRepo.findItemsByBookingId.mockResolvedValue([{ id: 'i1' }]);
 
-      const res = await service.getByCodeForUser('CODE0001', 'u1');
+      const res = await service.getByCodeForUser('ABC23456', 'u1');
 
       expect(bookingsRepo.findItemsByBookingId).toHaveBeenCalledWith('b1');
       expect(res).toEqual({ id: 'b1', itemCount: 1, mapped: true });

@@ -103,5 +103,65 @@ describe('BookingsRepository', () => {
       expect(items).toHaveLength(1);
       expect(items[0]).toMatchObject({ label: 'Vé người lớn', quantity: 2, subtotal: '1000000.00' });
     });
+
+    it('booking.id được gán đúng cho MỌI item (đúng quan hệ Booking–BookingItems, không lẫn booking khác)', async () => {
+      setupTransaction();
+
+      const { booking, items } = await sut.create({
+        bookingCode: 'CODE0001',
+        bookingType: null,
+        entityType: 'tour',
+        entityId: 'e1',
+        placeId: 'p1',
+        customerUserId: 'u1',
+        serviceStartAt: null,
+        serviceEndAt: null,
+        partySize: 2,
+        guestNote: null,
+        items: [
+          { label: 'Vé người lớn', quantity: 2, unitPrice: 500000 },
+          { label: 'Vé trẻ em', quantity: 1, unitPrice: 250000 },
+        ],
+      });
+
+      for (const item of items) {
+        expect(item.bookingId).toBe(booking.id);
+      }
+    });
+
+    it('lưu item thất bại (vd vi phạm CHECK quantity>0 ở DB thật) → toàn bộ operation reject, không trả về booking đã "thành công" một phần', async () => {
+      const bookingRepo = createMock<Repository<Booking>>({
+        create: jest.fn((v) => v),
+        save: jest.fn((v) => Promise.resolve({ ...v, id: 'b1' })),
+      });
+      const dbError = new Error('violates check constraint "chk_booking_items_quantity"');
+      const itemRepo = createMock<Repository<BookingItem>>({
+        create: jest.fn((v) => v),
+        save: jest.fn().mockRejectedValue(dbError),
+      });
+      const manager = {
+        getRepository: jest.fn((entity: unknown) => (entity === Booking ? bookingRepo : itemRepo)),
+      };
+      // ds.transaction thật của TypeORM tự ROLLBACK và rethrow khi callback reject — mock tái hiện
+      // đúng hành vi "rethrow", KHÔNG tự bắt lỗi ở đây, để chứng minh BookingsRepository.create
+      // không nuốt lỗi transaction.
+      ds.transaction.mockImplementation((cb: (m: unknown) => unknown) => cb(manager));
+
+      await expect(
+        sut.create({
+          bookingCode: 'CODE0001',
+          bookingType: null,
+          entityType: 'tour',
+          entityId: 'e1',
+          placeId: 'p1',
+          customerUserId: 'u1',
+          serviceStartAt: null,
+          serviceEndAt: null,
+          partySize: 2,
+          guestNote: null,
+          items: [{ label: 'Vé lỗi', quantity: 1, unitPrice: 1000 }],
+        }),
+      ).rejects.toBe(dbError);
+    });
   });
 });

@@ -40,6 +40,7 @@ tags:
   - name: Transports
   - name: Events
   - name: Reviews
+  - name: Bookings
   - name: Community
   - name: Business
   - name: Media
@@ -1361,6 +1362,78 @@ paths:
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
+  # ============================ BOOKINGS ============================
+  # Booking Request Foundation — chỉ tạo + đọc theo booking_code. KHÔNG payment/inventory
+  # realtime/refund/invoice/commission/settlement (xem docs/data/modules/booking.md).
+  /bookings:
+    post:
+      tags: [Bookings]
+      summary: Tạo booking request (Booking.Create)
+      operationId: createBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_type, entity_id, place_id, party_size, items]
+              properties:
+                entity_type: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+                entity_id: { type: string, format: uuid }
+                place_id: { type: string, format: uuid }
+                booking_type: { type: string }
+                service_start_at: { type: string, format: date-time }
+                service_end_at: { type: string, format: date-time, description: Phải sau service_start_at nếu cả hai cùng có mặt. }
+                party_size: { type: integer, minimum: 1, maximum: 200 }
+                guest_note: { type: string }
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [label, quantity, unit_price]
+                    properties:
+                      label: { type: string, maxLength: 200 }
+                      quantity: { type: integer, minimum: 1, maximum: 50 }
+                      unit_price:
+                        type: number
+                        minimum: 0
+                        description: >-
+                          TRUST BOUNDARY: giá client gửi (chưa có pricing engine xác nhận từ nhà
+                          cung cấp) — là số tiền YÊU CẦU/BÁO GIÁ, không phải giá cuối cùng.
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Booking' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /bookings/{bookingCode}:
+    get:
+      tags: [Bookings]
+      summary: Tra cứu booking theo mã công khai (Booking.View, chỉ đúng chủ booking)
+      operationId: getBookingByCode
+      parameters:
+        - name: bookingCode
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Booking' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ============================ COMMUNITY ============================
   /community/posts:
     get:
@@ -2381,6 +2454,41 @@ components:
         content: { type: [string, 'null'] }
         status: { type: string, enum: [pending, published, hidden] }
         created_at: { type: string, format: date-time }
+    BookingItem:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        quantity: { type: integer }
+        unit_price: { type: number }
+        subtotal: { type: number }
+    Booking:
+      type: object
+      description: >-
+        Booking Request Foundation (migration InitBooking) — không có DB primary key trong
+        response, `booking_code` là định danh công khai duy nhất. subtotal/discount/fees/
+        grand_total là giá trị YÊU CẦU tại thời điểm đặt (client-submitted unit_price), CHƯA qua
+        pricing engine xác nhận từ nhà cung cấp — không diễn giải là giá cuối cùng.
+      properties:
+        booking_code: { type: string }
+        booking_type: { type: [string, 'null'] }
+        entity_type: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        entity_id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid }
+        currency_code: { type: string }
+        booking_status: { type: string, enum: [pending, confirmed, cancelled, expired] }
+        payment_status: { type: string, enum: [unpaid, paid, refunded] }
+        fulfillment_status: { type: string, enum: [pending, fulfilled, no_show, cancelled] }
+        service_start_at: { type: [string, 'null'], format: date-time }
+        service_end_at: { type: [string, 'null'], format: date-time }
+        party_size: { type: integer }
+        subtotal: { type: number }
+        discount: { type: number }
+        fees: { type: number }
+        grand_total: { type: number }
+        guest_note: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        items: { type: array, items: { $ref: '#/components/schemas/BookingItem' } }
     AuditLog:
       type: object
       description: >-

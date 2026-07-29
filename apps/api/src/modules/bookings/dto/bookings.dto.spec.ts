@@ -70,4 +70,54 @@ describe('CreateBookingRequestDto', () => {
     const errors = await validateCreate({ ...VALID, discount: 1000 });
     expect(errors.some((e) => e.property === 'discount')).toBe(true);
   });
+
+  it.each(['booking_status', 'payment_status', 'fulfillment_status'])(
+    'từ chối client tự đặt %s (trạng thái nội bộ, không có trên DTO này)',
+    async (field) => {
+      const errors = await validateCreate({ ...VALID, [field]: 'confirmed' });
+      expect(errors.some((e) => e.property === field)).toBe(true);
+    },
+  );
+
+  it('chấp nhận service_end_at sau service_start_at', async () => {
+    const errors = await validateCreate({
+      ...VALID,
+      service_start_at: '2026-08-01T00:00:00Z',
+      service_end_at: '2026-08-02T00:00:00Z',
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('từ chối service_end_at trước service_start_at', async () => {
+    const errors = await validateCreate({
+      ...VALID,
+      service_start_at: '2026-08-02T00:00:00Z',
+      service_end_at: '2026-08-01T00:00:00Z',
+    });
+    expect(errors.some((e) => e.property === 'service_end_at')).toBe(true);
+  });
+
+  it('từ chối service_end_at bằng service_start_at (phải SAU, không được bằng)', async () => {
+    const errors = await validateCreate({
+      ...VALID,
+      service_start_at: '2026-08-01T00:00:00Z',
+      service_end_at: '2026-08-01T00:00:00Z',
+    });
+    expect(errors.some((e) => e.property === 'service_end_at')).toBe(true);
+  });
+
+  it('chấp nhận service_end_at khi không có service_start_at (kiểm tra cross-field bỏ qua khi thiếu vế kia)', async () => {
+    const errors = await validateCreate({ ...VALID, service_end_at: '2026-08-02T00:00:00Z' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('trim khoảng trắng đầu/cuối guest_note và item.label', async () => {
+    const instance = plainToInstance(CreateBookingRequestDto, {
+      ...VALID,
+      guest_note: '  đến trễ 15 phút  ',
+      items: [{ label: '  Vé người lớn  ', quantity: 1, unit_price: 1000 }],
+    });
+    expect(instance.guest_note).toBe('đến trễ 15 phút');
+    expect(instance.items[0].label).toBe('Vé người lớn');
+  });
 });

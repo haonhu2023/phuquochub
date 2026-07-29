@@ -129,7 +129,77 @@ work:
   Booking specifically, not a correction of a prior inconsistency).
 - Re-ran full validation after the rename/removal (§5) — all green, no regression.
 
+## 5b. Second refinement pass — full domain-review checklist
+
+A subsequent instruction ran a detailed point-by-point domain review (identity, items, initial
+state, time, currency/trust-boundary, privacy, public lookup, migration structure, required test
+list, Node version). Gaps found and fixed, each verified against the running code (not assumed):
+
+- **Migration:** added two missing indexes to `InitBooking` (never executed against a live DB, so
+  amending in place rather than adding a third migration — see the disclosed limitation in §6):
+  `idx_bookings_status` (`booking_status`) and a partial `idx_bookings_service_start`
+  (`service_start_at WHERE ... IS NOT NULL`). Migration structure test updated to assert both.
+- **Cross-field date validation (real gap, now fixed):** `service_end_at` had no check against
+  `service_start_at` — added a small custom `class-validator` decorator (`IsAfter`, first of its
+  kind in this repo; no prior date-range validator existed to copy) requiring `service_end_at`
+  strictly after `service_start_at` when both are present; no-op when either is missing (handled by
+  `@IsOptional`/`@IsISO8601` already). 4 new DTO tests (after/before/equal/one-missing).
+  Rejected-equal case is deliberate: "after" means strictly after, an instant booking can't span
+  zero duration.
+- **`bookingCode` format validation (real gap, now fixed):** `GET /bookings/:bookingCode` accepted
+  any string and queried the DB directly. Added `isValidBookingCodeFormat` (exported from
+  `booking-code.ts`, checks length + alphabet) and a `BadRequestException` in
+  `BookingsService.getByCodeForUser` before any DB call. 5 new rejection cases tested (empty, wrong
+  length, wrong alphabet including old-style `CODE0001`, a SQL-metacharacter string — the last one
+  to document that this is a format gate, not the injection defense; TypeORM's parameterized query
+  already prevented injection regardless).
+- **Rate limiting on the read endpoint (real gap, now fixed):** only `POST /bookings` was
+  throttled. Since `GET /bookings/:bookingCode` relies on a ~40-bit code plus ownership rather than
+  a full separate secret, added `@Throttle` (30/min) so a valid-but-malicious account can't
+  brute-force codes belonging to other users unboundedly. Verified via a new
+  `bookings.controller.spec.ts` (metadata-based, same convention as `PlacesController`'s spec) that
+  asserts both routes require permissions (`Booking.Create`/`Booking.View`), neither is `@Public()`,
+  and both carry the expected throttle metadata.
+- **Input trimming (real gap, now fixed):** `guest_note` and item `label` are free-text
+  customer-facing fields; neither was trimmed. Added a shared `@Transform` trim helper (no prior
+  trim convention existed anywhere in this repo to copy — first instance). Tested directly against
+  the transformed instance, not just validation pass/fail.
+- **Client-supplied status rejected (verified, not a gap):** confirmed (with an explicit new test,
+  not just an assumption) that `booking_status`/`payment_status`/`fulfillment_status` sent in a
+  create request are rejected by the existing global `forbidNonWhitelisted:true` pipe — these
+  fields simply don't exist on `CreateBookingRequestDto`.
+- **Pricing trust boundary (real gap in *documentation*, now fixed — no pricing engine built):**
+  `unit_price` is client-submitted with no provider-side confirmation in this slice. Added explicit
+  "TRUST BOUNDARY" comments at the DTO field, the `Booking` entity's money columns, the mapper's
+  response interface, and the new `docs/data/modules/booking.md` — stating plainly that
+  `subtotal`/`grand_total` are a requested/quoted amount, not a provider-confirmed final price, and
+  that `booking_status='pending'` on every new booking already reflects that nothing has been
+  confirmed. No new column/enum invented for this (would be premature without a real pricing
+  engine) — documentation was judged sufficient per the review instruction's own fallback
+  ("nếu convention cho phép" — no existing convention to extend, so this is the appropriate
+  minimum).
+- **Repository/transaction tests strengthened:** added a test asserting every `BookingItem` gets
+  the correct `booking.id` (not just "the right count"), and a test that an item-save failure
+  inside the transaction propagates as a rejection rather than being silently swallowed (mirrors
+  real `DataSource.transaction()` rollback-and-rethrow semantics; a live-DB rollback proof still
+  requires Postgres — see §6).
+- **API documentation:** added the `Bookings` tag, `POST /bookings`/`GET /bookings/{bookingCode}`
+  paths, and `Booking`/`BookingItem` schemas to `docs/api/openapi.yaml` (previously undocumented —
+  same convention `MVP-REVIEWS-FEATURE-2026-07-26.md` used for `Review`). YAML re-validated with
+  `js-yaml` after editing.
+- **Domain documentation:** new `docs/data/modules/booking.md` (ERD, full column tables for both
+  tables, API summary, and an explicit "not yet built" list — availability confirmation, pricing
+  engine, payment processing, refunds/invoices/commissions/settlements, notifications, extended
+  customer accounts, frontend checkout, admin/staff cross-user view).
+- **Node version certification:** this environment's default `node` was v24.18.0, but `.nvmrc`
+  pins `20`. A matching portable Node v20.20.2 install already existed on this machine
+  (`%LOCALAPPDATA%\node-portable\node-v20.20.2-win-x64`, the same one prior sessions' `state.yaml`
+  history recorded using for certification) — switched to it and **re-ran the full validation suite
+  a second time** under the repo-pinned version (see §5), not just the default runtime.
+
 ## 5. Validation
+
+First pass, Node v24.18.0 (this environment's default `node` on PATH):
 
 | Check | Result |
 |---|---|
@@ -142,6 +212,24 @@ work:
 | root: `npm run lint` (turbo, all 5 packages) | 6/6 tasks passed |
 | root: `npm run build` (turbo, all 4 buildable packages) | 4/4 tasks succeeded — `apps/web` still
   builds clean (17/17 routes), zero backend-only change leaked into frontend |
+
+Second pass (§5b domain-review fixes), re-certified under **Node v20.20.2 / npm 10.8.2** — the
+exact version pinned by `.nvmrc` (a matching portable install already existed on this machine,
+switched to it via `PATH`, confirmed with `node --version`/`npm --version`/`which node`/`which npm`
+before running anything):
+
+| Check | Result |
+|---|---|
+| `apps/api`: `npx tsc -p tsconfig.json --noEmit` | exit 0 |
+| `apps/api`: `npx eslint "src/**/*.ts" --max-warnings=0` | exit 0 |
+| `apps/api`: `npx jest --silent` | **63 suites / 581 tests passed** (+1 suite —
+  `bookings.controller.spec.ts`; +23 tests from §5b's new cases) |
+| root: `npm run build` (turbo, all 4 buildable packages) | 4/4 tasks succeeded |
+
+`git diff --check` run before commit: only line-ending (LF→CRLF) advisories, no real whitespace
+error or conflict marker. `git status`/`git diff --stat` reviewed: only the expected 11 modified
+Booking-domain files + 1 new (`bookings.controller.spec.ts`) + the doc/openapi additions — no
+lockfile change, no unrelated file touched.
 
 ## 6. Known limitation — disclosed, not worked around
 

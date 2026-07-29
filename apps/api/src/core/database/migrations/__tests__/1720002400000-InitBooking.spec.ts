@@ -65,6 +65,15 @@ describe('InitBooking migration (Booking Request Foundation)', () => {
     expect(sql).toContain('"booking_id" uuid NOT NULL REFERENCES "bookings"("id") ON DELETE CASCADE');
   });
 
+  it('up: có index cho booking_status và service_start_at (truy vấn quản trị/lịch sắp tới)', async () => {
+    const { qr, calls } = recordingRunner();
+    await new InitBooking1720002400000().up(qr);
+
+    const all = sqlOf(calls);
+    expect(all).toContain('CREATE INDEX "idx_bookings_status" ON "bookings" ("booking_status")');
+    expect(all).toContain('CREATE INDEX "idx_bookings_service_start" ON "bookings" ("service_start_at")');
+  });
+
   it('down: xoá 2 bảng + 3 enum type (thứ tự an toàn, chỉ cộng thêm/không mất dữ liệu module khác)', async () => {
     const { qr, calls } = recordingRunner();
     await new InitBooking1720002400000().down(qr);

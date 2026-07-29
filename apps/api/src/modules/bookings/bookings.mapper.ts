@@ -13,6 +13,11 @@ export interface BookingItemResponse {
 
 // KHÔNG có "id" (uuid nội bộ) — booking_code LÀ định danh công khai duy nhất (dự án đã có public
 // id cho Booking, nên không lộ thêm DB id song song, khác Place/Review vốn không có lựa chọn này).
+//
+// TRUST BOUNDARY: subtotal/discount/fees/grand_total phản ánh giá trị YÊU CẦU/BÁO GIÁ tại thời
+// điểm đặt (tính từ unit_price client gửi trong request), CHƯA qua pricing engine xác nhận từ
+// nhà cung cấp (không xây trong slice này). Không nơi nào diễn giải grand_total là giá cuối cùng
+// đã xác nhận — booking_status khởi tạo luôn 'pending' đã phản ánh đúng trạng thái này.
 export interface BookingResponse {
   booking_code: string;
   booking_type: string | null;

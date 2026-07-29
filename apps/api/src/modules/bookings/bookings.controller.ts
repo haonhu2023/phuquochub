@@ -23,6 +23,9 @@ export class BookingsController {
 
   @Get(':bookingCode')
   @RequirePermissions('Booking.View')
+  // booking_code có entropy thấp hơn JWT/mật khẩu (~40 bit, xem booking-code.ts) — auth+ownership
+  // check là hàng rào chính, throttle là lớp phòng thủ thứ hai chống dò mã từ một tài khoản hợp lệ.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   getByCode(@Param('bookingCode') bookingCode: string, @CurrentUser() user: AuthPrincipal) {
     return this.bookingsService.getByCodeForUser(bookingCode, user.sub);
   }

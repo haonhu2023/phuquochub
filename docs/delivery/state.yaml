@@ -59,6 +59,26 @@ current:
                                   # constraint as PLACE-039/MVP-REVIEWS-FEATURE-2026-07-26. No e2e
                                   # test added (needs live DB). See
                                   # docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md.
+                                  # Same-day refinement pass (report Sec 5b): full domain-review
+                                  # checklist run against the implementation; fixed 6 real gaps --
+                                  # missing booking_status/service_start_at indexes (amended
+                                  # InitBooking directly, never executed against a live DB so safe
+                                  # to amend pre-first-run), no cross-field service_end_at-after-
+                                  # service_start_at validation (added, first custom class-validator
+                                  # decorator in this repo), no bookingCode format validation on the
+                                  # read endpoint (added, BadRequest before any DB call), no
+                                  # rate-limit on GET /bookings/:bookingCode (added, 30/min -- only
+                                  # POST had one before), no input trim on guest_note/item.label
+                                  # (added, first trim convention in this repo), and an undocumented
+                                  # pricing trust boundary (unit_price is client-submitted/
+                                  # unconfirmed -- documented at DTO/entity/mapper/domain-doc level,
+                                  # no new pricing engine built). Added docs/data/modules/booking.md
+                                  # and Bookings paths/schemas in docs/api/openapi.yaml (previously
+                                  # undocumented). Re-certified full validation under Node v20.20.2
+                                  # (repo .nvmrc pin, not just the environment's default v24.18.0) --
+                                  # 63 suites/581 tests, typecheck/lint/build all green both times.
+                                  # Docker still unreachable -- migration-vs-live-DB and e2e remain
+                                  # not run, same disclosed limitation.
                                   # ---- prior state (2026-07-26 Reviews feature) ----
                                   # (2026-07-26, ad-hoc, NOT PLACE-numbered per explicit Owner
                                   # instruction -- "stop creating new governance tasks, priority
