@@ -25,6 +25,7 @@ import { TransportsModule } from './modules/transports/transports.module';
 import { EventsModule } from './modules/events/events.module';
 import { SourcesModule } from './modules/sources/sources.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { BookingsModule } from './modules/bookings/bookings.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -57,6 +58,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     EventsModule,
     SourcesModule,
     ReviewsModule,
+    BookingsModule,
   ],
 })
 export class AppModule {}

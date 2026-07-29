@@ -54,6 +54,22 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
     });
   });
 
+  describe('existsByIdAndCategorySlug', () => {
+    it('có dòng khớp → true, lọc deleted_at IS NULL', async () => {
+      repo.query.mockResolvedValue([{ '?column?': 1 }]);
+
+      await expect(sut.existsByIdAndCategorySlug('p1', 'tour')).resolves.toBe(true);
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('c.slug = $2 AND p.deleted_at IS NULL');
+      expect(params).toEqual(['p1', 'tour']);
+    });
+
+    it('không có dòng khớp (category sai hoặc đã xoá mềm) → false', async () => {
+      repo.query.mockResolvedValue([]);
+      await expect(sut.existsByIdAndCategorySlug('p1', 'hotel')).resolves.toBe(false);
+    });
+  });
+
   describe('recalculateRating', () => {
     it('tính lại rating_avg/rating_count từ reviews published của đúng place', async () => {
       repo.query.mockResolvedValue(undefined);

@@ -30,7 +30,37 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-07-26, ad-hoc, NOT PLACE-numbered per explicit Owner
+  task: none                      # (2026-07-29, ad-hoc, NOT PLACE-numbered -- Owner instruction
+                                  # on record since 2026-07-26 to prioritize product completion
+                                  # over new governance tasks) Audit-before-implement session for
+                                  # the Booking domain (Owner supplied a Bookings.xlsx data-design
+                                  # reference in 02_Business_Data, external to this repo). Phase 1
+                                  # read-only assessment found ZERO pre-existing booking/
+                                  # reservation/payment/refund/invoice/voucher/inventory-hold/
+                                  # commission/settlement code anywhere, and no Owner decision
+                                  # blocking a minimal slice -- every non-trivial design choice
+                                  # (polymorphic entity_type/entity_id, place_id as the real FK
+                                  # anchor, no dependency on unmigrated business_claims/members)
+                                  # directly copies an existing Accepted pattern (ADR-003's
+                                  # price_history precedent; ADR-017's treatment of Business
+                                  # ownership as non-blocking). Implemented "Booking Request
+                                  # Foundation": Booking + BookingItem entities, 3 separate status
+                                  # enums (booking/payment/fulfillment), InitBooking migration,
+                                  # SeedBookingPermissions, POST /bookings (auth + throttled) and
+                                  # GET /bookings/:code (auth + ownership-checked, not public --
+                                  # deliberate judgment call, no direct precedent existed). No
+                                  # payment/inventory/discount/commission/refund/invoice/
+                                  # settlement engine built, per the mission's own exclusion list.
+                                  # Full validation: apps/api tsc/eslint/jest all exit 0 (62 suites/
+                                  # 558 tests, zero regression); root turbo typecheck/lint/build all
+                                  # green (web still 17/17 routes, untouched). Migration written and
+                                  # structurally tested (mocked QueryRunner) but NOT run against a
+                                  # live database -- Docker daemon unreachable this session, same
+                                  # constraint as PLACE-039/MVP-REVIEWS-FEATURE-2026-07-26. No e2e
+                                  # test added (needs live DB). See
+                                  # docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md.
+                                  # ---- prior state (2026-07-26 Reviews feature) ----
+                                  # (2026-07-26, ad-hoc, NOT PLACE-numbered per explicit Owner
                                   # instruction -- "stop creating new governance tasks, priority
                                   # is PRODUCT COMPLETION, do not create PLACE-044") Re-verified
                                   # the 2026-07-25 gap analysis fresh against the filesystem (still

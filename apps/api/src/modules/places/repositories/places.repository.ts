@@ -122,6 +122,19 @@ export class PlacesRepository {
     return this.repo.exists({ where: { id } });
   }
 
+  /**
+   * Xác nhận Place tồn tại (chưa xoá mềm) VÀ thuộc đúng category slug — dùng để BookingsService
+   * đối chiếu `entity_type` khai báo khớp category thật của `place_id`, không tin dữ liệu client.
+   */
+  async existsByIdAndCategorySlug(id: string, categorySlug: string): Promise<boolean> {
+    const rows = await this.repo.query(
+      `SELECT 1 FROM places p JOIN categories c ON c.id = p.category_id
+       WHERE p.id = $1 AND c.slug = $2 AND p.deleted_at IS NULL LIMIT 1`,
+      [id, categorySlug],
+    );
+    return rows.length > 0;
+  }
+
   async createPlace(input: CreatePlaceRow): Promise<string> {
     const rows: Array<{ id: string }> = await this.repo.query(
       `INSERT INTO places
