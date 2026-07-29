@@ -231,24 +231,102 @@ error or conflict marker. `git status`/`git diff --stat` reviewed: only the expe
 Booking-domain files + 1 new (`bookings.controller.spec.ts`) + the doc/openapi additions — no
 lockfile change, no unrelated file touched.
 
-## 6. Known limitation — disclosed, not worked around
+## 6. Live verification (2026-07-29, later same day — supersedes §6 below)
 
-**The new migrations were never run against a live database** — Docker unreachable this session
-(no daemon, same as the environment constraint recorded in `MVP-REVIEWS-FEATURE-2026-07-26.md` and
-several `PLACE-03x` reports). The migration SQL was structurally tested (mocked `QueryRunner`,
-asserting exact `CREATE TABLE`/FK/constraint text — the same technique already used for
-`InitTransport`/`InitAuditLogs`), but **has not been executed**. Whoever next has a local Postgres
-(or restores Docker) should run `npm run migration:run --workspace=apps/api` and watch specifically
-for constraint-name collisions — the one class of bug static review and mocked-runner tests cannot
-catch.
+Docker Desktop was confirmed running this session (`docker info` returned a live `Server:` block,
+`docker compose version` → v5.3.1). The pre-existing local dev stack
+(`phuquoc-postgres`/`phuquoc-redis`/`phuquoc-minio`, all `healthy`, up since a prior session via
+`restart: unless-stopped`) was reused as the test database — same convention as `PLACE-042`'s
+migration rehearsal (local-only, not production, not shared).
 
-**No e2e test was added** — the existing e2e suite requires a live Postgres/Redis, which this
-session does not have. This is a real gap, not a decision to skip testing; a `bookings.e2e-spec.ts`
-covering create→read-by-code should be added once the migration has actually been run once.
+**Migration baseline (`migration:show`):** 23 prior migrations `[X]` applied through
+`InitTransport1720002300000`; `InitBooking1720002400000`/`SeedBookingPermissions1720002500000`
+both `[ ]` pending. No divergence.
 
-**No live HTTP exercise of the new endpoints** — same root cause (no runnable API+DB). `nest build`
-and the full turbo build prove the code compiles and doesn't break anything else; they do not prove
-`POST /bookings` actually persists correctly end-to-end against Postgres.
+**Migration apply (`migration:run`):** both executed successfully in one transaction each (full
+SQL logged — every `CREATE TYPE`/`CREATE TABLE`/`CREATE INDEX` statement ran as written).
+
+**Schema verification (`\d bookings`, `\d booking_items` on the live database):** confirmed
+exactly as designed — `bookings` PK `id`, `booking_code` `UNIQUE`, all 3 status enums with correct
+defaults, `service_start_at`/`service_end_at` as `timestamp with time zone`, all money columns
+`numeric(12,2)`, `created_at`/`updated_at`, all 5 indexes (`idx_bookings_entity`,
+`idx_bookings_customer`, `idx_bookings_place`, `idx_bookings_status`,
+`idx_bookings_service_start`), FK to `places`/`users` (`ON DELETE NO ACTION`, matching the design).
+`booking_items`: PK `id`, FK to `bookings` (`ON DELETE CASCADE`, confirmed in
+`Referenced by:`/`Foreign-key constraints:`), `chk_booking_items_quantity` `CHECK (quantity > 0)`.
+**Note:** `booking_items` deliberately has no `entity_type`/`entity_id`/`module_code` columns —
+those live on the parent `bookings` row by design (§2 above; a booking = one satellite, items are
+line-priced quantities within it, not a multi-entity basket). This is a documented design choice,
+not a defect against a generic checklist assumption.
+
+**Permissions:** `SELECT` confirmed `Booking.View`/`Booking.Create` in `permissions`, both granted
+to role `member` with `effect='allow'` in `role_permissions`. Seed SQL uses
+`ON CONFLICT ... DO NOTHING` on both inserts — idempotent by construction (also empirically proven
+by the reapply below, which re-ran the identical `INSERT` statements without error).
+
+**Rollback/reapply drill (disposable local dev DB, `bookings`/`booking_items` confirmed empty
+before starting):**
+1. `migration:revert` → `SeedBookingPermissions` reverted; verified both permission rows and both
+   `role_permissions` rows gone (`SELECT count(*) = 0` both).
+2. `migration:revert` again → `InitBooking` reverted; verified `\dT booking*` (0 rows) and
+   `\dt booking*` ("Did not find any relation") — no orphaned tables or enum types.
+   `places` (49 rows) and `users` (98 rows) confirmed unchanged — unrelated data untouched.
+3. `migration:run` → both reapplied cleanly; `migration:show` confirmed `[X]` on both, nothing
+   pending; schema re-verified identical to the first apply.
+
+**E2E (`npm run test:e2e`, i.e. `jest --config ./test/jest-e2e.json`):** no Booking e2e spec
+existed before this session — added `apps/api/test/bookings.e2e-spec.ts` (14 tests: create with
+1/multiple items, empty items/quantity-0/negative-price/bad-date-range/client-set-status all
+rejected with the correct status, `entity_type`≠place-category → 422, auth required on both
+routes, 404 for unknown code and for another user's booking, response excludes `id`/
+`internal_note`/`customer_user_id`). Uses a real seeded published `hotel` place found via a
+live query — one design/environment issue was found and fixed along the way:
+
+- **Real bug found in the new test, not the endpoint:** `beforeAll` (module compile + DB query +
+  2 real registrations) exceeded Jest's default 5000ms hook timeout — fixed by adding an explicit
+  30s timeout to `beforeAll` (Jest's own documented remedy for genuinely slower setup, not a
+  config hack; no other e2e file registers users inside `beforeAll`, which is why this hadn't
+  been hit before). Confirmed by running the pre-existing `auth.e2e-spec.ts` unmodified in the
+  same environment — it passed, proving this was specific to the new file's heavier setup, not an
+  environment problem.
+- **Real bug found in the test, not the endpoint (2nd):** the "booking belongs to another user"
+  test created an 11th `POST /bookings` call within the suite's runtime, tripping the endpoint's
+  own 10/min throttle (`bookings.controller.ts`) — correct security behavior, wrong test
+  assumption. Fixed by reusing one shared booking across both `GET` ownership tests instead of
+  creating a fresh one per test.
+
+Final result: `Test Suites: 1 passed, 1 total / Tests: 14 passed, 14 total`. Full suite
+(`npm run test:e2e`, all files): **11 suites / 77 tests passed**, zero regression in the 10
+pre-existing e2e files.
+
+**Regression validation (Node v20.20.2, `.nvmrc`-pinned):**
+
+| Check | Result |
+|---|---|
+| `apps/api`: `npx tsc -p tsconfig.json --noEmit` | exit 0 |
+| `apps/api`: `npm run lint` (official script, `src/**/*.ts`) | exit 0 |
+| `apps/api`: Booking unit tests (`--testPathPattern=bookings`) | 6 suites / 48 tests passed |
+| `apps/api`: full unit suite (`npx jest --silent`) | **63 suites / 581 tests passed** |
+| `apps/api`: full e2e suite (`npm run test:e2e`) | **11 suites / 77 tests passed** |
+| root: `npm run build` (turbo, all 4 packages) | 4/4 succeeded |
+
+No application/migration code defect was found during live verification — both fixes above were in
+the *new test file*, not in `bookings.controller.ts`/`.service.ts`/the migration. No production
+code changed in this pass; only `apps/api/test/bookings.e2e-spec.ts` was added and
+this report/`state.yaml` updated.
+
+## 6 (superseded, kept for history). Prior known limitation
+
+**The new migrations were never run against a live database** — Docker unreachable in the prior
+session (no daemon, same as the environment constraint recorded in `MVP-REVIEWS-FEATURE-2026-07-26.md`
+and several `PLACE-03x` reports). **Resolved above** (§6, current) — Docker Desktop was confirmed
+running and both migrations were applied, reverted, and reapplied successfully against a live
+Postgres.
+
+**No e2e test was added.** **Resolved above** — `bookings.e2e-spec.ts` now exists and passes.
+
+**No live HTTP exercise of the new endpoints.** **Resolved above** — both endpoints exercised via
+`supertest` against the live app + database.
 
 ## 7. Not claimed
 
@@ -257,7 +335,11 @@ and the full turbo build prove the code compiles and doesn't break anything else
   refund, invoice, commission, settlement, guest checkout, and any staff/admin booking view are all
   future work, each requiring its own design pass (most need Hotel/Tour/Event sub-item tables —
   e.g. room types, ticket types — that don't exist yet either).
-- Does not claim the migration has been run against a real database (§6).
-- Does not claim e2e coverage exists for this feature (§6).
+- Does not claim the e2e suite exercises every acceptance-criteria item ever conceivable for
+  Booking — transaction-rollback-on-item-insert-failure is proven at the unit level (mocked
+  transaction propagation, `bookings.repository.spec.ts`) and indirectly by the rollback/reapply
+  drill's DDL-level correctness, but not by a live e2e test that deliberately corrupts one item
+  mid-request — no safe way to trigger that through valid HTTP input exists (all invalid inputs are
+  already caught by DTO validation before reaching the transaction).
 - Does not create a new `PLACE-0xx` task file, per the recorded Owner instruction to prioritize
   product completion over new governance overhead.

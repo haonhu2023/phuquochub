@@ -59,6 +59,24 @@ current:
                                   # constraint as PLACE-039/MVP-REVIEWS-FEATURE-2026-07-26. No e2e
                                   # test added (needs live DB). See
                                   # docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md.
+                                  # LIVE VERIFICATION (2026-07-29, later same day, Docker Desktop
+                                  # restarted by Owner): both migrations applied to the live local
+                                  # dev Postgres, schema verified column-by-column, permissions
+                                  # confirmed granted to `member`, full revert->verify->reapply
+                                  # drill completed (booking_items/bookings/3 enum types cleanly
+                                  # removed then restored, places=49/users=98 unaffected). New
+                                  # apps/api/test/bookings.e2e-spec.ts (14 tests) -- found and fixed
+                                  # 2 real bugs in the NEW TEST (not the endpoint): beforeAll needed
+                                  # a longer Jest hook timeout (heavier real setup than other e2e
+                                  # files), and one test tripped the endpoint's own 10/min throttle
+                                  # by making an 11th POST in-suite (fixed by reusing one shared
+                                  # booking instead of creating a fresh one). Full e2e suite: 11
+                                  # suites/77 tests green (zero regression in the 10 pre-existing
+                                  # files). Regression under Node v20.20.2: unit 63 suites/581
+                                  # tests, typecheck/lint/build all green. Both previously-open
+                                  # verification gaps (migration-vs-live-DB, e2e) are now closed.
+                                  # See report Sec 6 (current).
+                                  # ---- prior state (same-day refinement pass) ----
                                   # Same-day refinement pass (report Sec 5b): full domain-review
                                   # checklist run against the implementation; fixed 6 real gaps --
                                   # missing booking_status/service_start_at indexes (amended
