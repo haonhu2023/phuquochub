@@ -41,6 +41,7 @@ tags:
   - name: Events
   - name: Reviews
   - name: Bookings
+  - name: Availability
   - name: Community
   - name: Business
   - name: Media
@@ -1447,6 +1448,20 @@ paths:
                 service_end_at: { type: string, format: date-time, description: Phải sau service_start_at nếu cả hai cùng có mặt. }
                 party_size: { type: integer, minimum: 1, maximum: 200 }
                 guest_note: { type: string }
+                availability_slot_id:
+                  type: string
+                  format: uuid
+                  description: >-
+                    OPTIONAL (Availability & Inventory Integration, 2026-07-30). Nếu có, booking sẽ
+                    cố giữ chỗ (quantity = party_size) trên slot này trong CÙNG transaction tạo
+                    booking; slot phải khớp entity_type/entity_id/place_id của booking (422 nếu
+                    không) và còn đủ dung lượng (422 nếu hết chỗ). Nếu không gửi, hành vi y hệt
+                    trước Integration này (không hold nào được tạo). Xem docs/data/modules/booking.md §9.
+                hold_ttl_minutes:
+                  type: integer
+                  minimum: 1
+                  maximum: 1440
+                  description: Chỉ có tác dụng khi có availability_slot_id. Mặc định 30 phút nếu không gửi.
                 items:
                   type: array
                   minItems: 1
@@ -1532,6 +1547,86 @@ paths:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  # ============================ AVAILABILITY ============================
+  # Availability & Inventory Foundation (2026-07-30) — abstraction generic đa hình (entity_type/
+  # entity_id, ADR-003), KHÔNG business logic riêng cho hotel/tour/restaurant/event/transport.
+  # Hold (giữ chỗ) CHỈ được tạo qua POST /bookings (xem availability_slot_id ở trên) — KHÔNG có
+  # endpoint tạo/list hold độc lập. Xem docs/data/modules/availability.md.
+  /availability-slots:
+    get:
+      tags: [Availability]
+      summary: Danh sách availability slot (Availability.View)
+      operationId: listAvailabilitySlots
+      parameters:
+        - name: entity_type
+          in: query
+          schema: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        - name: entity_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: place_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: date_from
+          in: query
+          description: Lọc slot_start >= date_from (ISO 8601).
+          schema: { type: string, format: date-time }
+        - name: date_to
+          in: query
+          description: Lọc slot_start <= date_to (ISO 8601).
+          schema: { type: string, format: date-time }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: sort_by
+          in: query
+          schema: { type: string, enum: [slot_start, created_at], default: slot_start }
+        - name: sort_dir
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/AvailabilitySlot' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    post:
+      tags: [Availability]
+      summary: Tạo availability slot (Availability.Manage)
+      operationId: createAvailabilitySlot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_type, entity_id, place_id, slot_start, total_capacity]
+              properties:
+                entity_type: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+                entity_id: { type: string, format: uuid }
+                place_id: { type: string, format: uuid }
+                slot_start: { type: string, format: date-time }
+                slot_end: { type: string, format: date-time, description: Phải sau slot_start nếu cả hai cùng có mặt. Optional — điểm thời gian đơn không bắt buộc có khung. }
+                total_capacity: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/AvailabilitySlot' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
 
   # ============================ COMMUNITY ============================
   /community/posts:
@@ -2612,6 +2707,25 @@ components:
         service_end_at: { type: [string, 'null'], format: date-time }
         party_size: { type: integer }
         grand_total: { type: number }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AvailabilitySlot:
+      type: object
+      description: >-
+        Availability & Inventory Foundation (2026-07-30, migration InitAvailability) — abstraction
+        generic đa hình (entity_type/entity_id, ADR-003), dùng chung cho mọi loại hình đặt chỗ.
+        held_quantity/remaining_capacity tính động từ SUM(quantity) các inventory_holds đang
+        active|confirmed trên slot này — không phải cột lưu sẵn.
+      properties:
+        id: { type: string, format: uuid }
+        entity_type: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        entity_id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid }
+        slot_start: { type: string, format: date-time }
+        slot_end: { type: [string, 'null'], format: date-time }
+        total_capacity: { type: integer }
+        held_quantity: { type: integer, description: SUM(quantity) các hold active|confirmed trên slot này. }
+        remaining_capacity: { type: integer, description: total_capacity - held_quantity. }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     AuditLog:

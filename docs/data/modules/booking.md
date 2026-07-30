@@ -1,12 +1,15 @@
-# PhuQuocHub — Thiết kế Database Module Booking (Booking Request Foundation + Application Layer)
+# PhuQuocHub — Thiết kế Database Module Booking (Booking Request Foundation + Application Layer + Availability/Inventory Integration)
 
-> **Đã triển khai** (2026-07-29 Foundation, 2026-07-30 Application Layer/Phase 2) — migration
-> `InitBooking`/`SeedBookingPermissions`/`AddBookingManagePermissions`, module
-> `apps/api/src/modules/bookings/`. Tài liệu này mô tả ĐÚNG những gì đã tồn tại trong repo tại
+> **Đã triển khai** (2026-07-29 Foundation, 2026-07-30 Application Layer/Phase 2,
+> 2026-07-30 Availability & Inventory Integration) — migration
+> `InitBooking`/`SeedBookingPermissions`/`AddBookingManagePermissions`/`InitAvailability`/
+> `SeedAvailabilityPermissions`, module `apps/api/src/modules/bookings/` +
+> `apps/api/src/modules/availability/`. Tài liệu này mô tả ĐÚNG những gì đã tồn tại trong repo tại
 > thời điểm viết, không phải một đề xuất. Xem
-> [docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md](../delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md)
-> và
+> [docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md](../delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md),
 > [docs/delivery/reports/MVP-BOOKING-APPLICATION-LAYER-2026-07-30.md](../delivery/reports/MVP-BOOKING-APPLICATION-LAYER-2026-07-30.md)
+> và
+> [docs/delivery/reports/AVAILABILITY-AND-INVENTORY-FOUNDATION-2026-07-30.md](../delivery/reports/AVAILABILITY-AND-INVENTORY-FOUNDATION-2026-07-30.md)
 > để biết lịch sử quyết định đầy đủ.
 >
 > **Phase 2 không thay đổi bảng `bookings`/`booking_items` hay bất kỳ migration đã phát hành nào**
@@ -14,10 +17,14 @@
 > (`AddBookingManagePermissions`, chỉ INSERT permission mới) và tầng application (query/update
 > trạng thái/validation/event abstraction/audit) phía trên schema đã có.
 >
-> Migration đã được viết và test cấu trúc (mocked QueryRunner) nhưng **chưa từng chạy trên
-> database sống** trong bất kỳ phiên nào (Docker không khả dụng trong môi trường phát triển này).
-> Trước khi tin bất kỳ câu nào ở đây là "đang chạy thật", kiểm tra `\dt` trên database thật hoặc
-> `npm run migration:show --workspace=apps/api`.
+> **Availability & Inventory Integration cũng không thay đổi bảng `bookings`/`booking_items` đã
+> phát hành** — chỉ thêm 2 cột optional mới vào `CreateBookingRequestDto` (`availability_slot_id`,
+> `hold_ttl_minutes`, đều nullable/optional, backward-compatible 100% với client cũ không gửi
+> chúng) và 2 bảng hoàn toàn mới (`availability_slots`/`inventory_holds`), xem §9.
+>
+> Tất cả migration ở trên đã chạy thành công trên database dev sống (xác nhận qua
+> `npm run migration:show --workspace=apps/api` — toàn bộ hiện `[X]`) và bộ e2e `bookings.e2e-spec`
+> (14/14) pass sau khi áp dụng.
 
 ## 1. Phạm vi — Booking Request Foundation
 
@@ -116,7 +123,9 @@ chứa: `id` nội bộ, `internal_note`, `customer_user_id` — **không đổi
 
 ## 7. Việc CHƯA làm (deferred, không phải quên)
 
-- **Availability confirmation** — không kiểm tra tồn kho/lịch trống thật trước khi tạo booking.
+- **Availability confirmation** — `availability_slot_id` là OPTIONAL (§9); một booking vẫn có thể
+  tạo KHÔNG gắn slot nào (đúng hành vi cũ, không đổi). Chỉ khi client chủ động gửi
+  `availability_slot_id` thì mới có kiểm tra tồn kho + giữ chỗ (hold) thật.
 - **Pricing engine** — `unit_price` là client-submitted, chưa đối chiếu giá thật từ Hotel/Tour/…
 - **Payment processing** — không có payment provider nào tích hợp (`payment_status` chỉ là cột trạng thái thủ công).
 - **Refunds, invoices, commissions, settlements** — không có bảng/logic nào cho các domain group D/C.
@@ -199,8 +208,74 @@ ghi cho `list`/`create`/`getByCodeForUser` (đọc, hoặc đã ghi vết đủ 
 (kế thừa tự động lên `administrator`/`super_administrator` qua role DAG, `SeedRbac`'s `link()`).
 KHÔNG gán `business_manager`/`business_owner` — xem §7.
 
+## 9. Availability & Inventory Integration (2026-07-30)
+
+Chi tiết schema/API của domain Availability (mới, độc lập, generic — không business logic riêng
+cho hotel/tour/...) nằm ở tài liệu riêng:
+[docs/data/modules/availability.md](availability.md). Phần này CHỈ mô tả điểm nối vào Booking.
+
+### 9.1 DTO — 2 trường optional mới trên `CreateBookingRequestDto`
+
+| Trường | Kiểu | Ghi chú |
+|---|---|---|
+| `availability_slot_id` | uuid v4, optional | Nếu có → booking sẽ cố gắng giữ chỗ (`quantity = party_size`) trên slot này trong CÙNG transaction tạo booking. Nếu không có → hành vi y hệt trước Integration (không hold nào được tạo). |
+| `hold_ttl_minutes` | int 1–1440, optional | Thời gian sống của hold trước khi hết hạn. Mặc định `DEFAULT_HOLD_TTL_MINUTES = 30` (hằng số trong `bookings.service.ts`) nếu không gửi. |
+
+### 9.2 Validate trước khi tạo (trong `BookingsService.create`, TRƯỚC khi gọi repository)
+
+Nếu `availability_slot_id` có mặt:
+1. Slot phải tồn tại (`AvailabilitySlotsRepository.findById`) — không thì `422`.
+2. `slot.entityType`/`slot.entityId`/`slot.placeId` phải khớp CHÍNH XÁC với
+   `entity_type`/`entity_id`/`place_id` của booking đang tạo — không thì `422` (chặn giữ chỗ nhầm
+   slot của loại hình khác/place khác).
+3. Nếu qua cả 2 bước trên, dựng `hold = { availabilitySlotId, quantity: party_size, expiresAt }`
+   truyền xuống `BookingsRepository.create()`.
+
+### 9.3 Tính nguyên tử (atomicity) — transaction dùng chung
+
+`BookingsRepository.create()` đã có 1 transaction bọc insert `bookings` + `booking_items`.
+`InventoryHoldsRepository.placeHold(manager, ...)` nhận THẲNG `EntityManager` của transaction đó
+(không tự mở transaction riêng) → nếu giữ chỗ thất bại (hết chỗ, `ConflictException`), TOÀN BỘ
+booking + items cũng rollback theo — không có trạng thái nửa vời (booking tồn tại nhưng không có
+hold, hoặc ngược lại).
+
+Ngăn over-allocation dưới concurrency bằng `SELECT ... FOR UPDATE`
+(`setLock('pessimistic_write')`) trên đúng dòng `availability_slots` cộng với `SUM(quantity)` các
+hold đang chiếm chỗ (`active`+`confirmed`) — tất cả trong cùng transaction, xem
+[availability.md §4](availability.md).
+
+### 9.4 Vòng đời hold theo trạng thái booking — best-effort, KHÔNG chặn transition
+
+Khác với bước tạo (atomic, §9.3), các bước sau là best-effort — nếu hold-side thất bại thì booking
+transition vẫn refuse to proceed CHỈ ở nhánh `confirm` (xem dưới), còn `cancel` luôn thành công ở
+phía booking dù hold-release thất bại:
+
+- **`confirm`**: `AvailabilityService.confirmHoldForBooking(bookingId)` được gọi **TRƯỚC**
+  `BookingsRepository.updateStatus`. Nếu hold không `active` (đã `confirmed`/`released`) hoặc đã
+  hết hạn (`expiresAt <= now`, lazy expiration — xem availability.md §5) →
+  `UnprocessableEntityException`, và **booking KHÔNG được confirm** (transition dừng lại hoàn
+  toàn, không audit, không publish event). Nếu booking này không có hold nào (`findByBookingId`
+  trả `null`) → no-op, confirm tiếp tục bình thường (booking không gắn slot vẫn confirm được như
+  cũ).
+- **`cancel`**: `AvailabilityService.releaseHoldForBooking(bookingId)` được gọi **SAU**
+  `BookingsRepository.updateStatus` — best-effort, không chặn việc cancel booking dù hold-release
+  gặp vấn đề (chủ ý: người dùng huỷ booking không nên bị kẹt vì lỗi ở tầng inventory).
+- **`markExpired`**: KHÔNG gọi hàm hold nào — một booking `pending` tự hết hạn không tự động giải
+  phóng hold (chưa yêu cầu trong scope milestone này; hold có TTL riêng, tự lazy-expire độc lập).
+
+### 9.5 Việc CHƯA làm ở Integration này
+
+- Không có endpoint tạo/list hold độc lập — hold CHỈ được tạo qua `POST /bookings` (đúng yêu cầu
+  "creation may request a hold").
+- Không có background sweep tự động chuyển `active`→`expired` — lazy expiration tại thời điểm
+  `confirm` (xem availability.md §5).
+- Không tự động release hold khi booking bị `markExpired` (xem §9.4).
+- Không có UI/frontend nào cho luồng chọn slot khi đặt chỗ.
+
 ## Related
 
 - [ADR-001](../../99-decisions/ADR-001-place-is-core.md), [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md), [ADR-006](../../99-decisions/ADR-006-price-history.md), [ADR-017](../../99-decisions/ADR-017-transport-domain-foundation.md)
+- [docs/data/modules/availability.md](availability.md)
 - [docs/delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md](../delivery/reports/MVP-BOOKING-FOUNDATION-2026-07-29.md)
-- [docs/api/openapi.yaml](../api/openapi.yaml) (tag `Bookings`)
+- [docs/delivery/reports/AVAILABILITY-AND-INVENTORY-FOUNDATION-2026-07-30.md](../delivery/reports/AVAILABILITY-AND-INVENTORY-FOUNDATION-2026-07-30.md)
+- [docs/api/openapi.yaml](../api/openapi.yaml) (tag `Bookings`, `Availability`)
