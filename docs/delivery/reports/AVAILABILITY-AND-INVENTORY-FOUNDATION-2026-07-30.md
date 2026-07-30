@@ -128,10 +128,13 @@ a booking has an associated hold.
 
 ## 8. Commit hash
 
-See commits below (created immediately after this report in the same session):
-- Availability module (code + tests)
-- Migrations (schema + permissions, with structural tests)
-- Booking integration (additive DTO/repository/service changes + tests)
-- Documentation (`booking.md` §9, new `availability.md`, `openapi.yaml`)
+Four scoped commits, on top of prior HEAD `a72d774` (Booking Application Layer docs):
 
-Final commit hash recorded in the session's git log after these commits land.
+| Commit | Scope |
+|---|---|
+| `3e45cf5` | `feat(availability)`: new Availability module (code + tests) |
+| `aacf920` | `feat(db)`: `InitAvailability` + `SeedAvailabilityPermissions` migrations (+ structural tests) |
+| `83e45db` | `feat(bookings)`: additive Booking integration (DTO/repository/service + tests) |
+| `2e9edcf` | `docs(availability)`: `availability.md`, `booking.md` §9, `openapi.yaml`, this report |
+
+`git status --short` is clean after these commits.
