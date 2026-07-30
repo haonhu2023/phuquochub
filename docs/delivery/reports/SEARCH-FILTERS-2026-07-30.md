@@ -69,7 +69,7 @@ Frontend:
 - Frontend typecheck (`tsc --noEmit`): clean.
 - Full monorepo build (`npm run build`, turbo, 4/4 tasks): succeeded. `/search` correctly classified `ƒ` (dynamic — reads `searchParams`, calls `listCategories()`/`searchPlaces()` server-side).
 
-**Incidental finding, fixed:** while verifying the build, discovered that `nest-cli.json`'s `deleteOutDir: true` combined with `tsc`'s incremental cache (`tsconfig.build.tsbuildinfo`) can produce a **silently no-op "successful" build** — if `dist/` is deleted externally (as happened here when a `nest start --watch` process crashed under this environment's non-pinned Node v24) while the tsbuildinfo survives, tsc's incremental logic decides nothing changed and skips emitting entirely, even though the physical output is gone. Fixed by deleting the stale `tsconfig.build.tsbuildinfo`; re-verified a genuine rebuild (211 source files → 211 compiled JS files, no warning). This is a pre-existing build-tooling fragility, not caused by this task's feature code — flagging it here since it could otherwise mask a broken deploy artifact behind a green build log.
+**Incidental finding, initially worked around here, properly fixed in the post-implementation review (`41b2136`):** while verifying the build, discovered that `nest-cli.json`'s `deleteOutDir: true` combined with `tsc`'s incremental cache (`tsconfig.build.tsbuildinfo`) can produce a **silently no-op "successful" build**. At the time this was worked around by deleting the stale `tsconfig.build.tsbuildinfo` file. The review pass later proved this is not a one-off fluke but a **deterministic bug that reproduces on every second consecutive `nest build`** with no source changes — see the review report for the root-cause analysis and the actual fix (`tsconfig.build.json`: `incremental: false`).
 
 ## 6. Commit hashes
 
@@ -78,8 +78,10 @@ Frontend:
 | `874fdaf` | `feat(search)`: backend filter plumbing (DTO/service/repository + tests) |
 | `4bbeaef` | `feat(search)`: frontend filter UI (page rewrite, SearchFilters/SearchBox, categories API module) |
 | `1529c14` | `docs(search)`: OpenAPI + architecture documentation |
+| `fa8ee4c` | `docs(search)`: this report |
+| `41b2136` | `fix(search)`: post-implementation review fixes (see [SEARCH-FILTERS-POST-IMPLEMENTATION-REVIEW-2026-07-30.md](SEARCH-FILTERS-POST-IMPLEMENTATION-REVIEW-2026-07-30.md)) |
 
-`git status --short` is clean after these commits.
+`git status --short` is clean after these commits. A dedicated post-implementation review found and fixed 3 real defects (1 wasted API call, 1 OpenAPI schema-ref inconsistency, 1 weak e2e assertion) plus a genuine, deterministic, pre-existing build defect (`deleteOutDir`/incremental-cache conflict, reproduced 3x, now fixed at the `tsconfig.build.json` level rather than worked around per-build) — see the review report for full detail.
 
 ## 7. Scope discipline confirmation
 
