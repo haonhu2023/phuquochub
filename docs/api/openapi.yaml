@@ -1363,9 +1363,70 @@ paths:
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
   # ============================ BOOKINGS ============================
-  # Booking Request Foundation — chỉ tạo + đọc theo booking_code. KHÔNG payment/inventory
-  # realtime/refund/invoice/commission/settlement (xem docs/data/modules/booking.md).
+  # Booking Request Foundation — chỉ tạo + đọc theo booking_code. Phase 2 (Application Layer,
+  # 2026-07-30) thêm GET /bookings (query admin/staff) + 3 endpoint chuyển trạng thái
+  # (confirm/cancel/expire). KHÔNG payment/inventory realtime/refund/invoice/commission/
+  # settlement/notification thật (xem docs/data/modules/booking.md).
   /bookings:
+    get:
+      tags: [Bookings]
+      summary: Danh sách booking — admin/staff (Booking.List, Phase 2)
+      operationId: listBookings
+      description: >-
+        Kênh đặc quyền — trả về MỌI booking, KHÔNG lọc theo chủ sở hữu (khác
+        GET /bookings/{bookingCode}, vốn chỉ trả về booking của chính người gọi).
+        Hợp đồng phân trang OFFSET (`page`/`limit`), cùng convention `/places` list.
+        `date_from`/`date_to` lọc theo `service_start_at` (ngày DỊCH VỤ), KHÔNG phải ngày tạo
+        booking — xem docs/data/modules/booking.md §8.1.
+      parameters:
+        - name: booking_status
+          in: query
+          schema: { type: string, enum: [pending, confirmed, cancelled, expired] }
+        - name: payment_status
+          in: query
+          schema: { type: string, enum: [unpaid, paid, refunded] }
+        - name: fulfillment_status
+          in: query
+          schema: { type: string, enum: [pending, fulfilled, no_show, cancelled] }
+        - name: module_code
+          in: query
+          description: Bí danh của `entity_type` — cùng một cột DB. Nếu cả hai được truyền và khác nhau, 400.
+          schema: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        - name: entity_type
+          in: query
+          schema: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        - name: date_from
+          in: query
+          description: Lọc `service_start_at >= date_from` (ISO 8601).
+          schema: { type: string, format: date-time }
+        - name: date_to
+          in: query
+          description: Lọc `service_start_at <= date_to` (ISO 8601). Phải sau `date_from` nếu cả hai cùng có mặt.
+          schema: { type: string, format: date-time }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: sort_by
+          in: query
+          description: Giới hạn 3 cột đã có index — không cho sort cột tuỳ ý.
+          schema: { type: string, enum: [created_at, service_start_at, grand_total], default: created_at }
+        - name: sort_dir
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/BookingAdminCard' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
     post:
       tags: [Bookings]
       summary: Tạo booking request (Booking.Create)
@@ -1433,6 +1494,44 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/Booking' } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /bookings/{id}/confirm:
+    post:
+      tags: [Bookings]
+      summary: Confirm booking — admin/staff (Booking.Confirm, Phase 2)
+      operationId: confirmBooking
+      description: >-
+        `pending` → `confirmed`. `{id}` là uuid nội bộ (kênh đặc quyền), KHÁC `bookingCode` công
+        khai ở trên. `422` nếu booking không ở trạng thái `pending`.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel booking — admin/staff (Booking.Cancel, Phase 2)
+      operationId: cancelBooking
+      description: >-
+        `pending`\|`confirmed` → `cancelled`. `422` nếu booking đã `cancelled`/`expired`.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /bookings/{id}/expire:
+    post:
+      tags: [Bookings]
+      summary: Đánh dấu booking đã expired — admin/staff (Booking.MarkExpired, Phase 2)
+      operationId: markBookingExpired
+      description: >-
+        `pending` → `expired` CHỈ — một booking đã `confirmed` cần `cancel`, không "expire".
+        `422` nếu booking không ở trạng thái `pending`.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   # ============================ COMMUNITY ============================
   /community/posts:
@@ -2489,6 +2588,32 @@ components:
         guest_note: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }
         items: { type: array, items: { $ref: '#/components/schemas/BookingItem' } }
+    BookingAdminCard:
+      type: object
+      description: >-
+        Phase 2 (Application Layer, 2026-07-30) — response GET /bookings, kênh đặc quyền
+        (Booking.List). Khác `Booking` ở trên: CÓ `id` (cần để gọi
+        POST /bookings/{id}/{confirm,cancel,expire}) và `customer_user_id` (staff cần biết ai
+        đặt) — nhưng vẫn KHÔNG BAO GIỜ có `internal_note`, và KHÔNG có `items`/`discount`/`fees`
+        (dùng GET /bookings/{bookingCode} nếu cần chi tiết đầy đủ của một booking cụ thể).
+      properties:
+        id: { type: string, format: uuid }
+        booking_code: { type: string }
+        booking_type: { type: [string, 'null'] }
+        entity_type: { type: string, enum: [hotel, restaurant, tour, event, transport] }
+        entity_id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid }
+        customer_user_id: { type: [string, 'null'], format: uuid }
+        currency_code: { type: string }
+        booking_status: { type: string, enum: [pending, confirmed, cancelled, expired] }
+        payment_status: { type: string, enum: [unpaid, paid, refunded] }
+        fulfillment_status: { type: string, enum: [pending, fulfilled, no_show, cancelled] }
+        service_start_at: { type: [string, 'null'], format: date-time }
+        service_end_at: { type: [string, 'null'], format: date-time }
+        party_size: { type: integer }
+        grand_total: { type: number }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     AuditLog:
       type: object
       description: >-
