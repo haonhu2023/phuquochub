@@ -64,8 +64,6 @@ export default async function SearchPage({ searchParams }: Props) {
   const ward = parseWard(sp.ward);
   const priceRange = parsePriceRange(sp.price_range);
 
-  const categories = await listCategories();
-
   if (!q) {
     return (
       <section>
@@ -82,14 +80,13 @@ export default async function SearchPage({ searchParams }: Props) {
     );
   }
 
-  const { data: results, meta } = await searchPlaces({
-    q,
-    page,
-    limit: PAGE_SIZE,
-    category,
-    ward,
-    price_range: priceRange,
-  });
+  // listCategories() chỉ cần khi thực sự render SearchFilters (nhánh này) — gọi song song với
+  // searchPlaces() bằng Promise.all thay vì tuần tự, tránh round-trip thừa khi q rỗng (nhánh
+  // trên) VÀ tránh waterfall không cần thiết khi có q.
+  const [{ data: results, meta }, categories] = await Promise.all([
+    searchPlaces({ q, page, limit: PAGE_SIZE, category, ward, price_range: priceRange }),
+    listCategories(),
+  ]);
 
   const baseQuery = new URLSearchParams();
   baseQuery.set('q', q);

@@ -1921,7 +1921,7 @@ paths:
         - { name: type, in: query, schema: { type: string }, description: "Khai báo ở DTO nhưng CHƯA được service sử dụng để lọc (search.service.ts) — giữ nguyên vì client hiện có thể đang gửi, không xoá khỏi contract." }
         - { name: category, in: query, schema: { type: string }, description: "category_id (uuid) — cùng cột places.category_id đã lọc ở /hotels /restaurants /tours /attractions /beaches." }
         - { name: ward, in: query, schema: { type: string } }
-        - { name: price_range, in: query, schema: { type: string, enum: [free, low, mid, high] } }
+        - { name: price_range, in: query, schema: { $ref: '#/components/schemas/PriceRange' } }
         - { $ref: '#/components/parameters/PageParam' }
         - { $ref: '#/components/parameters/LimitParam' }
       responses:

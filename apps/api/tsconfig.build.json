@@ -1,7 +1,16 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // nest-cli.json's compilerOptions.deleteOutDir=true wipes dist/ unconditionally on every
+    // `nest build`. tsc's incremental cache (tsconfig.build.tsbuildinfo) is incompatible with
+    // that: on any second consecutive build with no source changes, tsc sees the tsbuildinfo
+    // still says "up to date" and skips re-emitting entirely, even though deleteOutDir already
+    // removed the actual output — leaving dist/ empty while the build still exits 0. Disabling
+    // incremental for the build-only tsconfig makes every `nest build` a genuine full compile,
+    // matching deleteOutDir's own "always start fresh" intent. tsconfig.json (dev/typecheck)
+    // keeps incremental=true — it doesn't delete any output, so the conflict doesn't apply there.
+    "incremental": false
   },
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts", "**/*.e2e-spec.ts"]
 }

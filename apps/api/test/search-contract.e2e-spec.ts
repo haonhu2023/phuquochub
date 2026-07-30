@@ -155,14 +155,18 @@ describe('Public search contract — no internal rank leaked (e2e, F-35)', () =>
   // subset of the already-proven unfiltered baseline, never a superset, and must never leak the
   // ts_rank/score key either (same guarantee as every other case in this file).
   describe('Search Filters (category/ward/price_range)', () => {
-    it('ward filter narrows results: every filtered id is in the unfiltered baseline, count <= baseline', async () => {
+    it('ward filter strictly narrows results: every filtered id is in the unfiltered baseline, count < baseline', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/search')
         .query({ q: 'bien', limit: 20, ward: 'Dương Đông' });
       expect(res.status).toBe(200);
       assertNoRankKeyDeep(res.body);
       const ids = res.body.data.map((r: { id: string }) => r.id);
-      expect(ids.length).toBeLessThanOrEqual(BASELINE_BIEN_IDS.length);
+      // Strict `<`, not `<=`: proves the filter actually narrows (against known live seed data —
+      // 'Dương Đông' is a real ward with fewer matches than the unfiltered 'bien' baseline). A
+      // `<=` bound alone would still pass if the filter silently became a no-op.
+      expect(ids.length).toBeLessThan(BASELINE_BIEN_IDS.length);
+      expect(ids.length).toBeGreaterThan(0);
       expect(ids.every((id: string) => BASELINE_BIEN_IDS.includes(id))).toBe(true);
     });
 
