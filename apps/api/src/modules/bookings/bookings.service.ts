@@ -2,10 +2,12 @@ import { BadRequestException, Inject, Injectable, NotFoundException, Unprocessab
 import { BookingsRepository } from './repositories/bookings.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuditService } from '../../core/audit/audit.service';
+import { AvailabilitySlotsRepository } from '../availability/repositories/availability-slots.repository';
+import { AvailabilityService } from '../availability/availability.service';
 import { CreateBookingRequestDto, ListBookingsQueryDto } from './dto/bookings.dto';
 import { generateBookingCode, isValidBookingCodeFormat } from './booking-code';
-import { toBooking, toBookingAdminCard, BookingResponse, BookingAdminCardResponse } from './bookings.mapper';
-import { BOOKABLE_ENTITY_TYPES, BookingStatus } from './booking.enums';
+import { toBooking, toBookingAdminCard, BookingResponse } from './bookings.mapper';
+import { BOOKABLE_ENTITY_TYPES } from './booking.enums';
 import { assertValidTransition, BookingTransitionAction } from './booking-status.transition';
 import {
   BOOKING_EVENT_PUBLISHER,
@@ -17,6 +19,11 @@ import {
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 
 const MAX_CODE_ATTEMPTS = 5;
+
+// Availability & Inventory Foundation — mặc định TTL hold khi client không gửi hold_ttl_minutes
+// (mục B: "Configurable expiration time" — cấu hình được PER-REQUEST qua DTO, mặc định này chỉ
+// áp dụng khi bỏ trống).
+const DEFAULT_HOLD_TTL_MINUTES = 30;
 
 // Nhãn hành động dùng cho audit `event`/`permission` — khớp quy ước place.status_changed /
 // Place.Approve đã có (ADR-016), KHÔNG phát minh format audit mới.
@@ -33,6 +40,8 @@ export class BookingsService {
     private readonly placesRepo: PlacesRepository,
     private readonly audit: AuditService,
     @Inject(BOOKING_EVENT_PUBLISHER) private readonly events: BookingEventPublisher,
+    private readonly availabilitySlotsRepo: AvailabilitySlotsRepository,
+    private readonly availabilityService: AvailabilityService,
   ) {}
 
   async create(dto: CreateBookingRequestDto, customerUserId: string): Promise<BookingResponse> {
@@ -41,6 +50,29 @@ export class BookingsService {
       throw new UnprocessableEntityException(
         'place_id không tồn tại hoặc không thuộc đúng entity_type khai báo',
       );
+    }
+
+    // Availability & Inventory Foundation — HOÀN TOÀN optional (mục C: "Booking creation MAY
+    // request an inventory hold"). Validate slot khớp đúng entity_type/entity_id/place_id của
+    // chính booking này TRƯỚC KHI vào transaction — cùng nguyên tắc place_id/entity_type ở trên,
+    // tránh một booking "tour X" claim dung lượng của slot "hotel Y".
+    let hold: { availabilitySlotId: string; quantity: number; expiresAt: Date } | undefined;
+    if (dto.availability_slot_id) {
+      const slot = await this.availabilitySlotsRepo.findById(dto.availability_slot_id);
+      if (!slot) {
+        throw new UnprocessableEntityException('availability_slot_id không tồn tại');
+      }
+      if (slot.entityType !== dto.entity_type || slot.entityId !== dto.entity_id || slot.placeId !== dto.place_id) {
+        throw new UnprocessableEntityException(
+          'availability_slot_id không khớp entity_type/entity_id/place_id của booking này',
+        );
+      }
+      const ttlMinutes = dto.hold_ttl_minutes ?? DEFAULT_HOLD_TTL_MINUTES;
+      hold = {
+        availabilitySlotId: dto.availability_slot_id,
+        quantity: dto.party_size, // party_size đã có sẵn — không thêm trường "quantity" trùng lặp
+        expiresAt: new Date(Date.now() + ttlMinutes * 60_000),
+      };
     }
 
     const bookingCode = await this.generateUniqueCode();
@@ -57,6 +89,7 @@ export class BookingsService {
       partySize: dto.party_size,
       guestNote: dto.guest_note ?? null,
       items: dto.items.map((it) => ({ label: it.label, quantity: it.quantity, unitPrice: it.unit_price })),
+      hold,
     });
 
     // Phase 2 — abstraction domain event (KHÔNG notification/Kafka/RabbitMQ thật đứng sau, xem
@@ -147,6 +180,15 @@ export class BookingsService {
     const fromStatus = booking.bookingStatus;
     const toStatus = assertValidTransition(fromStatus, action); // ném UnprocessableEntityException nếu không hợp lệ
 
+    // Availability & Inventory Foundation — mục C: "confirm converts an active hold to
+    // confirmed" + mục E: "Prevent confirming expired holds". Đặt TRƯỚC updateStatus có chủ đích
+    // (khác cancel bên dưới): nếu hold đã expired, TOÀN BỘ confirm phải thất bại — không hợp lý
+    // để booking chuyển 'confirmed' trong khi dung lượng nó giữ đã mất. No-op nếu booking chưa
+    // từng yêu cầu hold (đa số trường hợp — hold là optional).
+    if (action === 'confirm') {
+      await this.availabilityService.confirmHoldForBooking(id);
+    }
+
     await this.bookingsRepo.updateStatus(id, toStatus);
 
     const meta = TRANSITION_META[action];
@@ -166,6 +208,11 @@ export class BookingsService {
     if (action === 'confirm') {
       await this.events.publish(new BookingConfirmedEvent(booking.id, booking.bookingCode));
     } else if (action === 'cancel') {
+      // Mục C: "cancellation releases the hold". Đặt SAU updateStatus (khác confirm ở trên) —
+      // đây là dọn dẹp best-effort, không phải điều kiện chặn: booking ĐÃ được quyết định huỷ,
+      // việc giải phóng hold không nên (và không cần) chặn ngược lại quyết định đó. No-op nếu
+      // booking chưa từng yêu cầu hold.
+      await this.availabilityService.releaseHoldForBooking(id);
       await this.events.publish(new BookingCancelledEvent(booking.id, booking.bookingCode));
     }
   }

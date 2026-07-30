@@ -3,11 +3,13 @@ import { BookingsRepository } from './bookings.repository';
 import { Booking } from '../entities/booking.entity';
 import { BookingItem } from '../entities/booking-item.entity';
 import { BookingStatus } from '../booking.enums';
+import { InventoryHoldsRepository } from '../../availability/repositories/inventory-holds.repository';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 
 describe('BookingsRepository', () => {
   let bookings: LooseMock<Repository<Booking>>;
   let ds: LooseMock<DataSource>;
+  let holdsRepo: LooseMock<InventoryHoldsRepository>;
   let sut: BookingsRepository;
 
   beforeEach(() => {
@@ -18,7 +20,8 @@ describe('BookingsRepository', () => {
       update: jest.fn(),
     });
     ds = createMock<DataSource>({ transaction: jest.fn(), getRepository: jest.fn() });
-    sut = new BookingsRepository(bookings, ds);
+    holdsRepo = createMock<InventoryHoldsRepository>({ placeHold: jest.fn() });
+    sut = new BookingsRepository(bookings, ds, holdsRepo);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -256,6 +259,92 @@ describe('BookingsRepository', () => {
           items: [{ label: 'Vé lỗi', quantity: 1, unitPrice: 1000 }],
         }),
       ).rejects.toBe(dbError);
+    });
+
+    describe('hold (Availability & Inventory Foundation, mục E: transactional consistency)', () => {
+      it('data.hold vắng mặt → KHÔNG gọi holdsRepo.placeHold, return.hold là undefined', async () => {
+        setupTransaction();
+
+        const { hold } = await sut.create({
+          bookingCode: 'CODE0001',
+          bookingType: null,
+          entityType: 'tour',
+          entityId: 'e1',
+          placeId: 'p1',
+          customerUserId: 'u1',
+          serviceStartAt: null,
+          serviceEndAt: null,
+          partySize: 2,
+          guestNote: null,
+          items: [{ label: 'Vé', quantity: 1, unitPrice: 1000 }],
+        });
+
+        expect(holdsRepo.placeHold).not.toHaveBeenCalled();
+        expect(hold).toBeUndefined();
+      });
+
+      it('data.hold có mặt → gọi holdsRepo.placeHold VỚI CHÍNH manager của transaction booking+items (không mở transaction riêng)', async () => {
+        const { bookingRepo } = setupTransaction();
+        let capturedManager: unknown;
+        ds.transaction.mockImplementation((cb: (m: unknown) => unknown) => {
+          const manager = {
+            getRepository: jest.fn((entity: unknown) => (entity === Booking ? bookingRepo : createMock<Repository<BookingItem>>({
+              create: jest.fn((v) => v),
+              save: jest.fn((v) => Promise.resolve(v.map((it: object, i: number) => ({ ...it, id: `i${i}` })))),
+            }))),
+          };
+          capturedManager = manager;
+          return cb(manager);
+        });
+        const expiresAt = new Date('2026-08-01T09:00:00Z');
+        holdsRepo.placeHold.mockResolvedValue({ id: 'h1', status: 'active' } as never);
+
+        const { hold } = await sut.create({
+          bookingCode: 'CODE0001',
+          bookingType: null,
+          entityType: 'tour',
+          entityId: 'e1',
+          placeId: 'p1',
+          customerUserId: 'u1',
+          serviceStartAt: null,
+          serviceEndAt: null,
+          partySize: 2,
+          guestNote: null,
+          items: [{ label: 'Vé', quantity: 1, unitPrice: 1000 }],
+          hold: { availabilitySlotId: 's1', quantity: 2, expiresAt },
+        });
+
+        expect(holdsRepo.placeHold).toHaveBeenCalledWith(capturedManager, {
+          availabilitySlotId: 's1',
+          bookingId: 'b1', // = savedBooking.id, gán bởi setupTransaction's save() mock
+          quantity: 2,
+          expiresAt,
+        });
+        expect(hold).toEqual({ id: 'h1', status: 'active' });
+      });
+
+      it('holdsRepo.placeHold ném lỗi (over-allocation) → lỗi lan ra ngoài NGUYÊN VẸN (booking+items KHÔNG được coi là đã tạo — transaction thật sẽ rollback cả hai)', async () => {
+        setupTransaction();
+        const conflictError = new Error('Không đủ dung lượng');
+        holdsRepo.placeHold.mockRejectedValue(conflictError);
+
+        await expect(
+          sut.create({
+            bookingCode: 'CODE0001',
+            bookingType: null,
+            entityType: 'tour',
+            entityId: 'e1',
+            placeId: 'p1',
+            customerUserId: 'u1',
+            serviceStartAt: null,
+            serviceEndAt: null,
+            partySize: 2,
+            guestNote: null,
+            items: [{ label: 'Vé', quantity: 1, unitPrice: 1000 }],
+            hold: { availabilitySlotId: 's1', quantity: 2, expiresAt: new Date() },
+          }),
+        ).rejects.toBe(conflictError);
+      });
     });
   });
 });

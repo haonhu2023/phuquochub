@@ -14,6 +14,8 @@ import { BookingsRepository } from './repositories/bookings.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuditService } from '../../core/audit/audit.service';
 import { BookingEventPublisher } from './events/booking-events';
+import { AvailabilitySlotsRepository } from '../availability/repositories/availability-slots.repository';
+import { AvailabilityService } from '../availability/availability.service';
 import { generateBookingCode } from './booking-code';
 import { BookingStatus } from './booking.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
@@ -25,6 +27,8 @@ describe('BookingsService', () => {
   let placesRepo: LooseMock<PlacesRepository>;
   let audit: LooseMock<AuditService>;
   let events: LooseMock<BookingEventPublisher>;
+  let availabilitySlotsRepo: LooseMock<AvailabilitySlotsRepository>;
+  let availabilityService: LooseMock<AvailabilityService>;
   let service: BookingsService;
 
   const dto = {
@@ -48,7 +52,12 @@ describe('BookingsService', () => {
     placesRepo = createMock<PlacesRepository>({ existsByIdAndCategorySlug: jest.fn() });
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<BookingEventPublisher>({ publish: jest.fn() });
-    service = new BookingsService(bookingsRepo, placesRepo, audit, events);
+    availabilitySlotsRepo = createMock<AvailabilitySlotsRepository>({ findById: jest.fn() });
+    availabilityService = createMock<AvailabilityService>({
+      confirmHoldForBooking: jest.fn(),
+      releaseHoldForBooking: jest.fn(),
+    });
+    service = new BookingsService(bookingsRepo, placesRepo, audit, events, availabilitySlotsRepo, availabilityService);
     generateBookingCodeMock.mockReturnValue('ABC23456');
   });
 
@@ -81,6 +90,77 @@ describe('BookingsService', () => {
         }),
       );
       expect(res).toEqual({ id: 'b1', itemCount: 1, mapped: true });
+    });
+
+    describe('availability_slot_id (Availability & Inventory Foundation — optional, mục C)', () => {
+      it('vắng mặt → KHÔNG gọi availabilitySlotsRepo.findById, bookingsRepo.create nhận hold=undefined (hành vi y hệt trước khi có tính năng này)', async () => {
+        placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+        bookingsRepo.existsByCode.mockResolvedValue(false);
+        bookingsRepo.create.mockResolvedValue({ booking: { id: 'b1' }, items: [] });
+
+        await service.create(dto, 'u1');
+
+        expect(availabilitySlotsRepo.findById).not.toHaveBeenCalled();
+        expect(bookingsRepo.create).toHaveBeenCalledWith(expect.objectContaining({ hold: undefined }));
+      });
+
+      it('slot không tồn tại → UnprocessableEntity, KHÔNG tạo booking', async () => {
+        placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+        availabilitySlotsRepo.findById.mockResolvedValue(null);
+
+        await expect(
+          service.create({ ...dto, availability_slot_id: 's1' } as never, 'u1'),
+        ).rejects.toBeInstanceOf(UnprocessableEntityException);
+        expect(bookingsRepo.create).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['entityType', { entityType: 'hotel', entityId: 'e1', placeId: 'p1' }],
+        ['entityId', { entityType: 'tour', entityId: 'OTHER', placeId: 'p1' }],
+        ['placeId', { entityType: 'tour', entityId: 'e1', placeId: 'OTHER' }],
+      ])('slot lệch %s so với booking → UnprocessableEntity, KHÔNG tạo booking', async (_field, slot) => {
+        placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+        availabilitySlotsRepo.findById.mockResolvedValue(slot as never);
+
+        await expect(
+          service.create({ ...dto, availability_slot_id: 's1' } as never, 'u1'),
+        ).rejects.toBeInstanceOf(UnprocessableEntityException);
+        expect(bookingsRepo.create).not.toHaveBeenCalled();
+      });
+
+      it('slot khớp đúng → truyền hold {availabilitySlotId, quantity: party_size, expiresAt} cho bookingsRepo.create', async () => {
+        placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+        bookingsRepo.existsByCode.mockResolvedValue(false);
+        availabilitySlotsRepo.findById.mockResolvedValue({ entityType: 'tour', entityId: 'e1', placeId: 'p1' } as never);
+        bookingsRepo.create.mockResolvedValue({ booking: { id: 'b1' }, items: [] });
+
+        const before = Date.now();
+        await service.create({ ...dto, availability_slot_id: 's1' } as never, 'u1');
+
+        expect(bookingsRepo.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            hold: expect.objectContaining({ availabilitySlotId: 's1', quantity: 2 }),
+          }),
+        );
+        const call = bookingsRepo.create.mock.calls[0][0] as { hold: { expiresAt: Date } };
+        // mặc định 30 phút (DEFAULT_HOLD_TTL_MINUTES) khi hold_ttl_minutes không được gửi
+        expect(call.hold.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 29 * 60_000);
+        expect(call.hold.expiresAt.getTime()).toBeLessThanOrEqual(before + 31 * 60_000);
+      });
+
+      it('hold_ttl_minutes được gửi → dùng giá trị đó thay vì mặc định ("Configurable expiration time", mục B)', async () => {
+        placesRepo.existsByIdAndCategorySlug.mockResolvedValue(true);
+        bookingsRepo.existsByCode.mockResolvedValue(false);
+        availabilitySlotsRepo.findById.mockResolvedValue({ entityType: 'tour', entityId: 'e1', placeId: 'p1' } as never);
+        bookingsRepo.create.mockResolvedValue({ booking: { id: 'b1' }, items: [] });
+
+        const before = Date.now();
+        await service.create({ ...dto, availability_slot_id: 's1', hold_ttl_minutes: 5 } as never, 'u1');
+
+        const call = bookingsRepo.create.mock.calls[0][0] as { hold: { expiresAt: Date } };
+        expect(call.hold.expiresAt.getTime()).toBeGreaterThanOrEqual(before + 4 * 60_000);
+        expect(call.hold.expiresAt.getTime()).toBeLessThanOrEqual(before + 6 * 60_000);
+      });
     });
 
     it('booking_code trùng → thử lại tới khi trống', async () => {
@@ -231,6 +311,58 @@ describe('BookingsService', () => {
         expect.objectContaining({ type: 'BookingConfirmed', bookingId: 'b1', bookingCode: 'ABC23456' }),
       );
       expect(res).toBeNull();
+    });
+
+    describe('Availability & Inventory Foundation — confirm/cancel hold integration (mục C/E)', () => {
+      it('confirm: gọi availabilityService.confirmHoldForBooking TRƯỚC bookingsRepo.updateStatus (nếu hold expired, KHÔNG được confirm booking)', async () => {
+        bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingCode: 'ABC23456', bookingStatus: BookingStatus.PENDING });
+        const callOrder: string[] = [];
+        availabilityService.confirmHoldForBooking.mockImplementation(async () => {
+          callOrder.push('confirmHold');
+        });
+        bookingsRepo.updateStatus.mockImplementation(async () => {
+          callOrder.push('updateStatus');
+        });
+
+        await service.confirm('b1', 'staff1');
+
+        expect(availabilityService.confirmHoldForBooking).toHaveBeenCalledWith('b1');
+        expect(callOrder).toEqual(['confirmHold', 'updateStatus']);
+      });
+
+      it('confirm: availabilityService.confirmHoldForBooking ném lỗi (hold expired) → booking KHÔNG được updateStatus/audit/publish (toàn bộ confirm thất bại)', async () => {
+        bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingCode: 'ABC23456', bookingStatus: BookingStatus.PENDING });
+        const holdExpiredError = new UnprocessableEntityException('Không thể confirm: hold đã expired');
+        availabilityService.confirmHoldForBooking.mockRejectedValue(holdExpiredError);
+
+        await expect(service.confirm('b1', 'staff1')).rejects.toBe(holdExpiredError);
+        expect(bookingsRepo.updateStatus).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+        expect(events.publish).not.toHaveBeenCalled();
+      });
+
+      it('cancel: gọi availabilityService.releaseHoldForBooking SAU bookingsRepo.updateStatus (best-effort, không chặn quyết định huỷ)', async () => {
+        bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingCode: 'ABC23456', bookingStatus: BookingStatus.PENDING });
+        const callOrder: string[] = [];
+        bookingsRepo.updateStatus.mockImplementation(async () => {
+          callOrder.push('updateStatus');
+        });
+        availabilityService.releaseHoldForBooking.mockImplementation(async () => {
+          callOrder.push('releaseHold');
+        });
+
+        await service.cancel('b1', 'staff1');
+
+        expect(availabilityService.releaseHoldForBooking).toHaveBeenCalledWith('b1');
+        expect(callOrder).toEqual(['updateStatus', 'releaseHold']);
+      });
+
+      it('markExpired: KHÔNG gọi availabilityService.confirmHoldForBooking/releaseHoldForBooking (chỉ confirm/cancel tương tác với hold)', async () => {
+        bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingCode: 'ABC23456', bookingStatus: BookingStatus.PENDING });
+        await service.markExpired('b1', 'staff1');
+        expect(availabilityService.confirmHoldForBooking).not.toHaveBeenCalled();
+        expect(availabilityService.releaseHoldForBooking).not.toHaveBeenCalled();
+      });
     });
 
     it('confirm: booking đã confirmed → UnprocessableEntity, KHÔNG update/audit/publish (validation trước side-effect)', async () => {

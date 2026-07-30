@@ -109,6 +109,17 @@ export class CreateBookingRequestDto {
   @IsOptional() @IsString() @MaxLength(2000)
   @Transform(trim)
   guest_note?: string;
+
+  // Availability & Inventory Foundation — HOÀN TOÀN optional, backward-compatible: bỏ trống thì
+  // hành vi giống hệt trước (không có hold nào được tạo, y hệt Booking Request Foundation gốc).
+  // "party_size" (đã có sẵn, không thêm trường quantity mới) là số lượng giữ chỗ trên slot.
+  @IsOptional() @IsUUID('4')
+  availability_slot_id?: string;
+
+  // "Configurable expiration time" (yêu cầu mục B) — bỏ trống dùng mặc định hệ thống
+  // (BookingsService.DEFAULT_HOLD_TTL_MINUTES). Chỉ có ý nghĩa khi availability_slot_id được gửi.
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440)
+  hold_ttl_minutes?: number;
 }
 
 // Phase 2 — Booking Application Layer: admin/staff query, KHÔNG public (Booking.List). Chỉ 2

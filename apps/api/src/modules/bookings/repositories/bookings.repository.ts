@@ -5,11 +5,21 @@ import { Booking } from '../entities/booking.entity';
 import { BookingItem } from '../entities/booking-item.entity';
 import { BookingFulfillmentStatus, BookingPaymentStatus, BookingStatus } from '../booking.enums';
 import { BookingSortField } from '../dto/bookings.dto';
+import { InventoryHoldsRepository } from '../../availability/repositories/inventory-holds.repository';
+import { InventoryHold } from '../../availability/entities/inventory-hold.entity';
 
 export interface NewBookingItem {
   label: string;
   quantity: number;
   unitPrice: number;
+}
+
+// Availability & Inventory Foundation — HOÀN TOÀN optional; khi vắng mặt, create() hành xử y hệt
+// Booking Request Foundation gốc (không transaction thêm nào, không bảng inventory_holds nào bị đụng).
+export interface NewBookingHold {
+  availabilitySlotId: string;
+  quantity: number;
+  expiresAt: Date;
 }
 
 export interface NewBooking {
@@ -24,6 +34,7 @@ export interface NewBooking {
   partySize: number;
   guestNote: string | null;
   items: NewBookingItem[];
+  hold?: NewBookingHold;
 }
 
 @Injectable()
@@ -31,6 +42,7 @@ export class BookingsRepository {
   constructor(
     @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
     @InjectDataSource() private readonly ds: DataSource,
+    private readonly holdsRepo: InventoryHoldsRepository,
   ) {}
 
   existsByCode(bookingCode: string): Promise<boolean> {
@@ -111,7 +123,7 @@ export class BookingsRepository {
   }
 
   /** Tạo booking + items trong MỘT transaction — không có booking mồ côi 0 item. */
-  async create(data: NewBooking): Promise<{ booking: Booking; items: BookingItem[] }> {
+  async create(data: NewBooking): Promise<{ booking: Booking; items: BookingItem[]; hold?: InventoryHold }> {
     return this.ds.transaction(async (manager) => {
       const subtotal = data.items.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0);
 
@@ -144,7 +156,22 @@ export class BookingsRepository {
       );
       const savedItems = await manager.getRepository(BookingItem).save(itemEntities);
 
-      return { booking: savedBooking, items: savedItems };
+      // Availability & Inventory Foundation — placeHold CHẠY TRONG CHÍNH transaction này (dùng
+      // `manager` vừa lưu booking/items ở trên), KHÔNG mở transaction riêng. Nếu placeHold ném
+      // lỗi (over-allocation, ConflictException), toàn bộ transaction ROLLBACK — booking+items
+      // vừa insert ở trên cũng biến mất, KHÔNG có booking "mồ côi" claim một slot không thật sự
+      // giữ được (yêu cầu mục E: transactional consistency).
+      let hold: InventoryHold | undefined;
+      if (data.hold) {
+        hold = await this.holdsRepo.placeHold(manager, {
+          availabilitySlotId: data.hold.availabilitySlotId,
+          bookingId: savedBooking.id,
+          quantity: data.hold.quantity,
+          expiresAt: data.hold.expiresAt,
+        });
+      }
+
+      return { booking: savedBooking, items: savedItems, hold };
     });
   }
 }
