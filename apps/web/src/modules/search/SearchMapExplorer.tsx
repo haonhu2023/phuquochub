@@ -26,7 +26,7 @@ export function SearchMapExplorer() {
     setLoading(true);
     setError(null);
     try {
-      setResults(await searchPlaces(query));
+      setResults((await searchPlaces({ q: query })).data);
       setSearched(true);
     } catch (err) {
       setError((err as Error).message);
