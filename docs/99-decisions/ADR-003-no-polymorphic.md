@@ -20,6 +20,7 @@ Chốt **khi nào** dùng exclusive arc (FK thật) và **khi nào** cho phép �
 
 2. **Đa hình (`entity_type/entity_id`, không FK cứng)** — **ngoại lệ** khi **nhiều loại chủ + tái dùng đa module + bản chất audit/ghi chú lỏng, không cascade:**
    - `source_attributions`, `wiki_revisions`, `contacts` (`owner_type/owner_id`), `price_history`, `audit_logs`.
+   - `bookings`, `availability_slots` (thêm 2026-07-30, Booking/Availability & Inventory Foundation — cùng nguyên tắc, `entity_type` giới hạn `hotel|restaurant|tour|event|transport` qua `BOOKABLE_ENTITY_TYPES` ở tầng app, không ENUM DB; xem [docs/data/modules/booking.md](../data/modules/booking.md), [docs/data/modules/availability.md](../data/modules/availability.md)).
    - Toàn vẹn `entity_id` cưỡng chế ở **tầng ứng dụng**.
 
 3. **Không polymorphic khi có thể exclusive arc.** Thêm loại chủ cho arc = thêm 1 FK nullable + sửa `CHECK` (migration nhỏ) — chấp nhận đánh đổi này để giữ FK thật.

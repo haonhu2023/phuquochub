@@ -30,7 +30,60 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-07-29, ad-hoc, NOT PLACE-numbered -- Owner instruction
+  task: none                      # (2026-07-30, GOVERNANCE RECONCILIATION -- this comment block
+                                  # and next_action.objective below had fallen behind 4 completed
+                                  # ad-hoc milestones; this entry catches both up. All ad-hoc, NOT
+                                  # PLACE-numbered, per the same standing 2026-07-26 Owner
+                                  # instruction cited throughout this history.)
+                                  # 1. Booking Application Layer (Phase 2), 2026-07-30: query
+                                  # (GET /bookings admin/staff), status transitions (confirm/
+                                  # cancel/markExpired via a pure booking-status.transition.ts FSM),
+                                  # domain-event abstraction (BOOKING_EVENT_PUBLISHER DI token +
+                                  # logging-only default impl), audit (AuditService, ADR-016), new
+                                  # Booking.{List,Confirm,Cancel,MarkExpired} permissions
+                                  # (AddBookingManagePermissions migration). Zero change to the
+                                  # Booking Foundation schema/entities. See
+                                  # docs/delivery/reports/MVP-BOOKING-APPLICATION-LAYER-2026-07-30.md.
+                                  # 2. Availability & Inventory Foundation, 2026-07-30: new
+                                  # apps/api/src/modules/availability/ (polymorphic
+                                  # availability_slots + inventory_holds, ADR-003 pattern, reused
+                                  # -- see ADR-003 update below), InitAvailability +
+                                  # SeedAvailabilityPermissions migrations, GET/POST
+                                  # /availability-slots. Additive-only Booking integration
+                                  # (optional availability_slot_id/hold_ttl_minutes on
+                                  # CreateBookingRequestDto; hold placed atomically inside the
+                                  # existing booking-creation transaction). Over-allocation
+                                  # prevented via SELECT...FOR UPDATE + SUM(quantity); expired
+                                  # holds rejected lazily at confirm time (no scheduler exists in
+                                  # this repo). All migrations verified applied live
+                                  # (migration:show, all [X]). See
+                                  # docs/delivery/reports/AVAILABILITY-AND-INVENTORY-FOUNDATION-2026-07-30.md.
+                                  # 3. Search Filters, 2026-07-30: GET /search gained optional
+                                  # category/ward/price_range (same columns/parameterized pattern
+                                  # as ListPlacesQueryDto), /search rewritten to a URL-driven
+                                  # Server Component matching hotels/restaurants/tours/attractions/
+                                  # beaches, new categories.api.ts frontend module (GET /categories
+                                  # had zero frontend consumers before this). No schema change. A
+                                  # dedicated post-implementation review then found and fixed 3
+                                  # real defects (a wasted API call, an OpenAPI schema-ref
+                                  # inconsistency, an under-strict e2e assertion) plus a genuine,
+                                  # deterministic, pre-existing build defect (nest-cli.json's
+                                  # deleteOutDir conflicting with tsc's incremental cache, causing
+                                  # any SECOND consecutive `nest build` to silently produce an
+                                  # empty dist/ -- fixed via tsconfig.build.json's
+                                  # incremental:false, reproduced and re-verified 3x). See
+                                  # docs/delivery/reports/SEARCH-FILTERS-2026-07-30.md and
+                                  # docs/delivery/reports/SEARCH-FILTERS-POST-IMPLEMENTATION-REVIEW-2026-07-30.md.
+                                  # 4. Release Readiness Audit, 2026-07-30: full re-validation
+                                  # (lint/typecheck/unit/e2e/build, both workspaces) plus targeted
+                                  # re-verification that the build-determinism fix holds (3
+                                  # consecutive nest builds, forced + cache-hit turbo runs). Zero
+                                  # release blockers found; zero source touched. Flagged this
+                                  # state.yaml file and the 2026-07-25 roadmap report as stale --
+                                  # resolved by this same governance-reconciliation entry. See
+                                  # docs/delivery/reports/RELEASE-READINESS-AUDIT-2026-07-30.md.
+                                  # ---- prior state (2026-07-29 Booking Foundation) ----
+                                  # (2026-07-29, ad-hoc, NOT PLACE-numbered -- Owner instruction
                                   # on record since 2026-07-26 to prioritize product completion
                                   # over new governance tasks) Audit-before-implement session for
                                   # the Booking domain (Owner supplied a Bookings.xlsx data-design
@@ -595,6 +648,22 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
+    (2026-07-30, GOVERNANCE RECONCILIATION) This field had fallen behind the ad-hoc product-
+    completion stream by several milestones -- it still ended at the 2026-07-25 SEO task even
+    though Reviews (07-26), Booking Foundation (07-29), Booking Application Layer/Phase 2 (07-30),
+    Availability & Inventory Foundation (07-30), and Search Filters (07-30, + a post-implementation
+    review) had all shipped since. Rather than re-transcribing all of that narrative a second time
+    in this field, the authoritative detailed record is current.task's comment block above (the
+    same convention this field and that one have always mirrored) -- see it for full detail on
+    each milestone, and see docs/delivery/reports/MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md
+    (updated same day) for the roadmap's own now-corrected status: item #2 (Reviews) and item #5
+    (Search filters) are DONE; item #3 (hotel/restaurant/tour list pages) was found already-built,
+    undocumented, during an earlier audit this same day, and is now also marked DONE. Remaining
+    genuinely-open roadmap items, in priority order: Critical #1 (general write capability beyond
+    reviews -- still the single biggest gap), High #4 (image upload UI), High #6 (frontend
+    component test coverage). No PLACE-044 created; this reconciliation is itself ad-hoc,
+    documentation-only, per the same standing 2026-07-26 Owner instruction.
+    ---- prior state (2026-07-25 SEO task) ----
     (2026-07-25, ad-hoc, not PLACE-numbered per explicit Owner instruction) MVP gap analysis and
     roadmap completed -- see docs/delivery/reports/MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md.
     Biggest finding: the web frontend has ZERO write capability beyond auth; reviews/community/

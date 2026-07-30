@@ -4,6 +4,8 @@
 
 **Accepted** — 2026-07-28 (đề xuất), chấp thuận triển khai nền tảng (schema + đọc tối thiểu, KHÔNG gồm trang Browse công khai) cùng ngày qua chỉ đạo tường minh "Implement the approved Transport Domain Foundation." Mở rộng [ADR-002](ADR-002-place-extension.md) cho một trường hợp mới: một satellite mà trục phân loại chính (`transport_type`) phải **mở rộng được không cần migration**, khác Hotel/Restaurant/Tour vốn dùng ENUM đóng cho trục tương đương (`hotel_type`/`tour_type`).
 
+**Implementation:** hoàn tất (governance reconciliation, 2026-07-30) — migration `InitTransport1720002300000` đã áp dụng trên database sống (`migration:show` → `[X]`), tạo đúng 5 bảng ở §Migration bên dưới; module `apps/api/src/modules/transports/` (`GET /transports`, `GET /transports/{slug}`) đang chạy công khai; tài liệu hoá đầy đủ ở `docs/api/openapi.yaml`. §Migration/§Related Documents bên dưới trước đây còn ghi "chưa thực hiện" — đã cập nhật để khớp thực tế; §Context/§Decision/§Alternatives giữ nguyên vì vẫn mô tả đúng lý do quyết định.
+
 **Quyết định đặt tên (chốt tại bước triển khai, theo đúng mẫu 5 vertical hiện có — xem [transport.md §Naming](../data/modules/transport.md)):** category slug `transport` (số ít, khớp `hotel/restaurant/tour/attraction/beach`); module/class/route số nhiều `Transports*`/`modules/transports`/`GET /transports`, `GET /transports/{slug}` (khớp `Hotels*`/`/hotels`…); từ điển loại hình lộ ra ở route phẳng top-level `GET /transport-types` (không có tiền lệ mâu thuẫn, đúng gợi ý của yêu cầu triển khai).
 
 ## Context
@@ -60,12 +62,12 @@ Chi tiết cột/bảng/index/migration/API đầy đủ ở [transport.md](../d
 
 ## Migration
 
-**Chưa thực hiện — đây là ADR Proposed.** Kế hoạch (không thực thi cùng ADR này): một migration `InitTransport` duy nhất (đúng tiền lệ `InitHotel`/`InitRestaurant`/`InitTour` — mỗi vertical mới gộp toàn bộ bảng/enum/seed category của nó trong một file, reversible qua một `down()`), tạo `transport_types`/`pricing_model` enum/`place_transport_details`/`transport_service_options`/`transport_routes`/`transport_service_areas`, seed 12 mã `transport_types` (dữ liệu tham chiếu, không phải doanh nghiệp thật) + 1 dòng `categories` mới. Không ALTER `price_history` (cột đã tự do). Chi tiết ở [transport.md §6](../data/modules/transport.md).
+**Đã thực hiện** — `1720002300000-InitTransport.ts` (đúng tiền lệ `InitHotel`/`InitRestaurant`/`InitTour` — gộp toàn bộ bảng/enum/seed category trong một file, reversible qua `down()`), tạo `pricing_model` enum + `transport_types`/`place_transport_details`/`transport_service_options`/`transport_routes`/`transport_service_areas` (khớp đúng kế hoạch ban đầu, không lệch), seed 12 mã `transport_types` + 1 dòng `categories` mới. Không ALTER `price_history` (cột đã tự do). Chi tiết ở [transport.md §6](../data/modules/transport.md).
 
 ## Related Documents
-- [transport.md](../data/modules/transport.md) (tài liệu đồng hành — schema/ERD/migration/seed/API đầy đủ, PROPOSED)
-- [places.md §13](../data/modules/places.md) (sẽ nhận thêm §13.5 sau khi Accepted)
-- [erd.md](../data/erd.md), [data-dictionary.md](../data/data-dictionary.md), openapi.yaml (chưa cập nhật — chờ Accepted)
+- [transport.md](../data/modules/transport.md) (tài liệu đồng hành — schema/ERD/migration/seed/API đầy đủ; §0/§9 giữ nguyên là ghi chép lịch sử/roadmap tại thời điểm viết, banner trạng thái ở đầu file đã cập nhật khớp thực tế)
+- [places.md §13](../data/modules/places.md) (chưa nhận §13.5 — gộp `transport.md` vào đây vẫn là việc tương lai, không phải phần của việc reconciliation này)
+- [erd.md](../data/erd.md), [data-dictionary.md](../data/data-dictionary.md), `docs/api/openapi.yaml` (đã có `GET /transports`, `GET /transports/{slug}`)
 
 ## Related ADR
 - [ADR-002](ADR-002-place-extension.md) (mẫu satellite gốc — ADR này là một biến thể có chủ đích, không thay thế)

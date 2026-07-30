@@ -85,17 +85,35 @@ modules (`apps/api/src/modules/*`); frontend has 10 modules and 15 route segment
 
 ## 3. Prioritized Roadmap
 
+> **Status update (governance reconciliation, 2026-07-30):** items #2, #3, and #5 below are now
+> **DONE**. This section is left otherwise unedited (original wording preserved as the historical
+> record of what was open on 2026-07-25) — see the ✅ annotations for what closed each item and
+> when.
+
 **Critical** (blocks a real public launch even at MVP scope):
 1. **Write capability for at least the core content loop** — some way for real users/business
    owners/moderators to create and edit content, not just read it. Currently zero.
+   **Still open** — Reviews (#2 below) closed one narrow write path; general create/edit-place,
+   business-claim, and image-upload forms remain entirely absent from the frontend.
 2. **Reviews (the "Reddit" pillar)** — currently does not exist end-to-end.
+   **✅ DONE — 2026-07-26.** See docs/delivery/reports/MVP-REVIEWS-FEATURE-2026-07-26.md.
 
 **High** (materially weakens the MVP but doesn't block a first, read-only launch):
 3. List/browse pages for hotels, restaurants, tours (currently detail-only).
+   **✅ DONE** — found already-implemented (`apps/web/src/app/(public)/{hotels,restaurants,tours}/page.tsx`,
+   full filter/pagination/SEO-canonical pages) during the governance audit preceding this
+   reconciliation. No report documents when this shipped; it was delivered without a corresponding
+   delivery report, which is itself the gap this reconciliation is recording.
 4. Image upload UI (media entity exists, nothing calls it from the frontend).
+   **Still open.**
 5. Search filters (category/price/ward) surfaced in the `/search` UI.
+   **✅ DONE — 2026-07-30.** See docs/delivery/reports/SEARCH-FILTERS-2026-07-30.md and
+   docs/delivery/reports/SEARCH-FILTERS-POST-IMPLEMENTATION-REVIEW-2026-07-30.md.
 6. Frontend test coverage — zero component tests exist; a regression in any page currently has no
    automated safety net beyond `tsc`/`eslint`/a production build.
+   **Still open** (partially improved — unit test count for frontend api-client/lib modules grew
+   from 3 to 13 suites across intervening sessions, but zero component/page **rendering** tests
+   exist anywhere in this repo, confirmed as of this reconciliation).
 
 **Medium:**
 7. Business-claim / owner-editing workflow.
@@ -177,8 +195,9 @@ full review system are each multi-session feature builds, not a single bounded t
 
 ## 6. Not Claimed
 
-- Does not claim the MVP is feature-complete, or that write/CRUD/reviews/upload gaps are closed —
-  they remain fully open (§3, Critical/High).
+- Does not claim the MVP is feature-complete. Reviews and search filters (§3 #2, #5) closed since
+  this report was authored (see the §3 status update, 2026-07-30); general write capability and
+  image upload (§3 #1, #4) remain fully open.
 - Does not claim any live search-engine indexing occurred — no real deployment exists yet
   (PLACE-043: VPS not purchased).
 - Does not create PLACE-044 or any successor task, per the Owner's explicit instruction.

@@ -1,8 +1,8 @@
 # PhuQuocHub — Thiết kế Database Module Transport (Vận chuyển)
 
-> **⚠️ PROPOSED — chưa migrate, chưa có bảng/entity/endpoint nào tồn tại trong repo.** Tài liệu này chỉ **thiết kế**, đồng hành cùng [ADR-017](../../99-decisions/ADR-017-transport-domain-foundation.md) (Status: Proposed). Nếu ADR-017 được Accepted, nội dung §2–§5 sẽ được gấp vào [places.md §13](./places.md) như §13.5 (đúng thứ tự ADR-002 → places.md §13 đã dùng cho Hotel/Restaurant/Tour) — **không** giữ file này làm nguồn sự thật song song vĩnh viễn.
+> **✅ ĐÃ TRIỂN KHAI** (governance reconciliation, 2026-07-30) — [ADR-017](../../99-decisions/ADR-017-transport-domain-foundation.md) đã **Accepted và migrate**: migration `1720002300000-InitTransport.ts` áp dụng trên database sống (`migration:show` → `[X]`), module `apps/api/src/modules/transports/` đang chạy (`GET /transports`, `GET /transports/{slug}`), tài liệu hoá ở `docs/api/openapi.yaml`. §0 và §9 bên dưới vẫn là ghi chép **lịch sử** (trạng thái repo TRƯỚC khi module này được viết, và ghi chú roadmap tại thời điểm thiết kế) — không phải mô tả sai, chỉ là mốc thời gian khác; đọc theo ngữ cảnh từng mục. Nội dung §2–§5 (schema) khớp đúng migration đã chạy, chưa gấp vào [places.md §13](./places.md) — việc đó vẫn là tương lai.
 >
-> Không đọc tài liệu này như schema đang chạy. Kiểm tra `\dt` trên database thật hoặc `apps/api/src/core/database/migrations/` trước khi tin bất kỳ câu nào ở đây mô tả trạng thái hiện tại.
+> Luôn kiểm tra `\dt` trên database thật hoặc `apps/api/src/core/database/migrations/` để xác nhận trạng thái hiện tại thay vì chỉ tin tài liệu này.
 
 ---
 
@@ -55,7 +55,7 @@ erDiagram
 
 **Đọc ERD này thế nào:** mọi cạnh ở khối "hạ tầng tái dùng" đã tồn tại trong schema hôm nay và áp dụng cho MỌI Place — Transport không cần bảng mới cho bất kỳ cạnh nào trong khối đó. Chỉ 5 bảng ở khối trên là mới, và tất cả đều tuân thủ ADR-003 (FK thật, không polymorphic).
 
-## 3. Bảng mới (5 bảng, tất cả đều PROPOSED)
+## 3. Bảng mới (5 bảng, ĐÃ TRIỂN KHAI — `1720002300000-InitTransport.ts`)
 
 ### 3.1 `transport_types` — từ điển loại hình (thay ENUM)
 
@@ -198,11 +198,13 @@ Mission cho phép "demonstrational seed data where repository policy allows." Đ
 
 **Kết luận:** repository policy hiện tại **không cho phép** seed demonstrational business data. Khuyến nghị: hoãn mọi dòng `place_transport_details`/`places(category=transport)` tới khi có nguồn dữ liệu thật kiểm chứng được (qua pipeline provenance ở [source.md](./source.md)), hoặc tới khi có quyết định sản phẩm tường minh khác đi (khác ADR này).
 
-## 8. Đề xuất API (chưa triển khai controller/service/DTO nào)
+## 8. API — nền tảng đã triển khai, bộ lọc mở rộng vẫn PROPOSED
+
+**Cập nhật (governance reconciliation, 2026-07-30):** `GET /transports`, `GET /transports/{slug}`, `GET /transport-types` đã triển khai (`transports.controller.ts`/`transport-types.controller.ts`), cùng `sort` (khớp đúng §8.1 dưới đây, không lệch). **Bộ lọc mở rộng bên dưới (`transport_type`/`ward`/`pricing_model`/`booking_required`/`airport_transfer`) vẫn CHỈ LÀ THIẾT KẾ** — `ListTransportsQueryDto` hiện tại (`apps/api/src/modules/transports/dto/transports.dto.ts`) cố ý chỉ có `sort`/`page`/`limit`; triển khai các bộ lọc này là phạm vi một nhiệm vụ Transport Browse kế tiếp (additive, không phá vỡ tương thích). Đường dẫn endpoint bên dưới đã sửa lại khớp thực tế (trước đây ghi số ít `/transport/...`, thực tế là số nhiều `/transports/...` + `/transport-types` phẳng — xem [ADR-017 Status](../../99-decisions/ADR-017-transport-domain-foundation.md)).
 
 Theo đúng conventions đã dùng cho Attraction/Beach/Tour: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`, envelope `{success, data, meta}`, phân trang OFFSET (`page`/`limit`, default 20/max 100 qua `clampLimit`/`clampPage`), sort whitelist cố định phía server với khoá phụ `id ASC`.
 
-### `GET /transport` — danh sách (Public)
+### `GET /transports` — danh sách (Public)
 
 | Tham số | Giá trị | Ánh xạ | Ghi chú |
 |---|---|---|---|
@@ -228,25 +230,25 @@ Theo đúng conventions đã dùng cho Attraction/Beach/Tour: `ValidationPipe({ 
 
 `capacity_desc`/`most_reviewed` **hoãn** — chưa có dữ liệu thật (0 listing) để chứng minh mode có ý nghĩa; thêm sau khi có seed thật, cùng cách Tour/Attraction/Beach chỉ thêm sort mode có dữ liệu hậu thuẫn.
 
-### `GET /transport/{slug}` — chi tiết (Public)
+### `GET /transports/{slug}` — chi tiết (Public)
 
 Endpoint RIÊNG (không dùng chung `/places/{slug}` như Attraction/Beach) — lý do đầy đủ ở [ADR-017 §Decision-9](../../99-decisions/ADR-017-transport-domain-foundation.md). Response = `Place` (đã có `category_slug='transport'` từ thay đổi session trước) + `transport_details` + `service_options[]` + `routes[]` + `service_areas[]`. Cùng mẫu ghép `PlacesService.getBySlug()` rồi bổ sung của Hotel/Tour.
 
-### `GET /transport/types` — từ điển (Public, không phân trang)
+### `GET /transport-types` — từ điển (Public, không phân trang, route phẳng top-level)
 
-**Endpoint MỚI, đóng một khoảng trống đã tồn tại từ trước:** không vertical nào hiện có (`amenities`, `cuisines`, ward) có endpoint tra cứu — frontend hardcode. Transport đề xuất là vertical ĐẦU TIÊN có từ điển thật sự truy vấn được: `{id, code, label_vi, label_en, icon, parent_id}[]`, sắp theo `sort_order`.
+**Endpoint MỚI, đóng một khoảng trống đã tồn tại từ trước:** không vertical nào hiện có (`amenities`, `cuisines`, ward) có endpoint tra cứu — frontend hardcode. Transport là vertical ĐẦU TIÊN có từ điển thật sự truy vấn được: `{id, code, label_vi, label_en, icon, parent_id}[]`, sắp theo `sort_order`.
 
 ### KHÔNG đề xuất — hoãn có chủ đích
 
-- **`GET /transport/operators`** — không có mô hình dữ liệu đứng sau ngoài `provider_business_id` (một Place khác); Business ownership chưa migrate. Xem [ADR-017 §Alternatives](../../99-decisions/ADR-017-transport-domain-foundation.md).
-- **`GET /transport/service-areas`** — không có từ điển `service_areas` riêng (§3.5 dùng `ward` tự do) nên không có gì để liệt kê ngoài `GET /transport?ward=X` như một filter, đúng khoảng trống đã tồn tại (không tệ hơn) ở Tour/Attraction/Beach.
+- **`GET /transport-operators`** (hoặc tương đương) — không có mô hình dữ liệu đứng sau ngoài `provider_business_id` (một Place khác); Business ownership chưa migrate. Xem [ADR-017 §Alternatives](../../99-decisions/ADR-017-transport-domain-foundation.md).
+- **`GET /transport-service-areas`** (hoặc tương đương) — không có từ điển `service_areas` riêng (§3.5 dùng `ward` tự do) nên không có gì để liệt kê ngoài `GET /transports?ward=X` như một filter (chưa triển khai, xem ghi chú đầu §8), đúng khoảng trống đã tồn tại (không tệ hơn) ở Tour/Attraction/Beach.
 
 ## 9. Lộ trình tương lai — vì sao nền tảng này không cần thiết kế lại
 
 | Tính năng tương lai | Vì sao nền tảng hiện tại đủ chỗ |
 |---|---|
-| **Browse** | §8 `GET /transport` — sẵn sàng triển khai ngay khi ADR-017 Accepted. |
-| **Detail** | §8 `GET /transport/{slug}` — đã tính đến service_options/routes. |
+| **Browse** | §8 `GET /transports` — đã triển khai (Public, đọc danh sách). |
+| **Detail** | §8 `GET /transports/{slug}` — đã tính đến service_options/routes. |
 | **Search** | `places.idx_places_fts` đã phủ mọi Place kể cả Transport; không cần index riêng. |
 | **Booking/Payment** | Nằm ngoài phạm vi (Phase 22) — nhưng `transport_service_options` đã là đơn vị "mặt hàng có giá" hợp lý để một booking tương lai tham chiếu tới (`option_id`), không cần thiết kế lại bảng giá. |
 | **Operator dashboard** | Khi ADR-015 thi hành, `provider_business_id`→`places` là đúng cầu nối; dashboard Business hiện có (docs/product/modules/business.md) áp dụng nguyên vẹn. |
