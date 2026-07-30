@@ -86,6 +86,8 @@ Cung cấp một **mặt tìm kiếm hợp nhất** trên mọi thực thể c�
 - **Mục tiêu:** tìm theo từ khóa văn bản trên tên/mô tả/tag của mọi thực thể index được (Place + chuyên biệt, Event, Community).
 - **Cơ chế/Engine:** Postgres **FTS** (`tsvector` GIN, cấu hình `unaccent` + tiếng Việt) giai đoạn 1 → **Meilisearch/Elasticsearch** khi lớn (typo-tolerance, facet nhanh).
 - **Input & Filter:** `q` (≥1–2 ký tự, chuẩn hóa không dấu); lọc `type`, `category`, `ward`, `price_range`, `rating`, `open_now`.
+  - **Đã triển khai** (Search Filters, 2026-07-30): `category`/`ward`/`price_range` — lọc trực tiếp trên `places.category_id`/`places.ward`/`places.price_range`, cùng cột/tham số hoá `ListPlacesQueryDto` đã dùng ở `/hotels /restaurants /tours /attractions /beaches`. Xem `apps/api/src/modules/search/dto/search.dto.ts`, `docs/api/openapi.yaml` (`GET /search`).
+  - **Chưa triển khai:** `type` (khai báo ở DTO nhưng chưa được service dùng để lọc theo loại thực thể), `rating`, `open_now` — vẫn là tầm nhìn thiết kế, không phải hành vi hiện tại.
 - **Ranking đặc thù:** khớp cụm/tiền tố > khớp rời; trọng số trường `name > tag > description`; cộng tín hiệu chất lượng (mục 5).
 - **Cache:** kết quả theo khóa `(q_normalized, filters, sort, cursor)` TTL ngắn.
 - **Ghi chú:** hỗ trợ **không dấu** hai chiều; "bai sao" = "Bãi Sao"; typo-tolerance nhẹ (trigram similarity ở FTS, native ở Meilisearch).

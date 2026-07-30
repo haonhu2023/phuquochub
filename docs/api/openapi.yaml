@@ -1907,19 +1907,23 @@ paths:
       responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
 
   # ============================ SEARCH ============================
+  # PLACE-024 (OD-B4): pagination là offset (page/limit), KHÔNG cursor — cursor/lat/lng ở đây
+  # trước Search Filters là tham số CHƯA TỪNG tồn tại trong SearchQueryDto thật (search.dto.ts),
+  # dọn lại cho khớp runtime khi thêm category/ward/price_range (Search Filters, 2026-07-30).
   /search:
     get:
       tags: [Search]
-      summary: Tìm kiếm trộn nhiều loại
+      summary: Tìm kiếm toàn văn (FTS) trên Place, có lọc category/ward/price_range
       operationId: search
       security: []
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
-        - { name: type, in: query, schema: { type: string, enum: [place, hotel, restaurant, tour, event, community] } }
-        - { name: lat, in: query, schema: { type: number } }
-        - { name: lng, in: query, schema: { type: number } }
+        - { name: type, in: query, schema: { type: string }, description: "Khai báo ở DTO nhưng CHƯA được service sử dụng để lọc (search.service.ts) — giữ nguyên vì client hiện có thể đang gửi, không xoá khỏi contract." }
+        - { name: category, in: query, schema: { type: string }, description: "category_id (uuid) — cùng cột places.category_id đã lọc ở /hotels /restaurants /tours /attractions /beaches." }
+        - { name: ward, in: query, schema: { type: string } }
+        - { name: price_range, in: query, schema: { type: string, enum: [free, low, mid, high] } }
         - { $ref: '#/components/parameters/PageParam' }
-        - { $ref: '#/components/parameters/CursorParam' }
+        - { $ref: '#/components/parameters/LimitParam' }
       responses:
         '200':
           description: OK
