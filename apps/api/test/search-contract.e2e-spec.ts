@@ -146,4 +146,47 @@ describe('Public search contract — no internal rank leaked (e2e, F-35)', () =>
     expect(res.status).toBe(200);
     assertNoRankKeyDeep(res.body);
   });
+
+  // Search Filters (category/ward/price_range) — added on top of the existing FTS contract.
+  // Assertions deliberately do NOT hard-code new baseline id lists (unlike the tests above,
+  // which were captured against a known pre-change build): this task doesn't know the live
+  // seed's exact category_id/ward/price_range distribution ahead of running against the real
+  // DB, so correctness is proven structurally instead — a filtered result set must always be a
+  // subset of the already-proven unfiltered baseline, never a superset, and must never leak the
+  // ts_rank/score key either (same guarantee as every other case in this file).
+  describe('Search Filters (category/ward/price_range)', () => {
+    it('ward filter narrows results: every filtered id is in the unfiltered baseline, count <= baseline', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/search')
+        .query({ q: 'bien', limit: 20, ward: 'Dương Đông' });
+      expect(res.status).toBe(200);
+      assertNoRankKeyDeep(res.body);
+      const ids = res.body.data.map((r: { id: string }) => r.id);
+      expect(ids.length).toBeLessThanOrEqual(BASELINE_BIEN_IDS.length);
+      expect(ids.every((id: string) => BASELINE_BIEN_IDS.includes(id))).toBe(true);
+    });
+
+    it('invalid price_range value is rejected (400) — same validation boundary as ListPlacesQueryDto', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/search')
+        .query({ q: 'bien', price_range: 'ultra-luxury' });
+      expect(res.status).toBe(400);
+    });
+
+    it('a filter combination matching nothing real returns the existing empty-response shape', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/search')
+        .query({ q: 'bien', ward: 'Ward-Does-Not-Exist-XYZ' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.meta).toMatchObject({ total: 0, totalPages: 0 });
+      assertNoRankKeyDeep(res.body);
+    });
+
+    it('omitting all filters still reproduces the exact pre-existing baseline (backward-compat)', async () => {
+      const res = await request(app.getHttpServer()).get('/api/search').query({ q: 'bien', limit: 20 });
+      expect(res.body.data.map((r: { id: string }) => r.id)).toEqual(BASELINE_BIEN_IDS);
+    });
+  });
 });

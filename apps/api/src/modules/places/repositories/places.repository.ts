@@ -397,13 +397,41 @@ export class PlacesRepository {
     );
   }
 
-  async searchCount(q: string): Promise<number> {
+  // Cùng shape với list()'s params — tái dùng nguyên xi cho searchFullText/searchCount
+  // (Search Filters, category/ward/price_range trên kết quả FTS).
+  private searchFilterConds(
+    params: { category?: string; ward?: string; priceRange?: PriceRange },
+    args: unknown[],
+  ): string {
+    let extra = '';
+    if (params.category) {
+      args.push(params.category);
+      extra += ` AND p.category_id = $${args.length}`;
+    }
+    if (params.ward) {
+      args.push(params.ward);
+      extra += ` AND p.ward = $${args.length}`;
+    }
+    if (params.priceRange) {
+      args.push(params.priceRange);
+      extra += ` AND p.price_range = $${args.length}`;
+    }
+    return extra;
+  }
+
+  async searchCount(
+    q: string,
+    filters: { category?: string; ward?: string; priceRange?: PriceRange } = {},
+  ): Promise<number> {
+    const args: unknown[] = [q];
+    const filterConds = this.searchFilterConds(filters, args);
     const rows: Array<{ count: string }> = await this.repo.query(
       `SELECT count(*)::int AS count FROM places p
        WHERE p.deleted_at IS NULL AND p.status = 'published'
          AND to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,'')))
-             @@ plainto_tsquery('simple', immutable_unaccent($1))`,
-      [q],
+             @@ plainto_tsquery('simple', immutable_unaccent($1))
+         ${filterConds}`,
+      args,
     );
     return Number(rows[0]?.count ?? 0);
   }
@@ -418,8 +446,21 @@ export class PlacesRepository {
    * trang 1 và trang 2, planner có thể xếp các hàng hoà nhau khác đi ⇒ người dùng thấy một
    * Place hai lần hoặc không bao giờ thấy. `p.id ASC` là khoá cuối DUY NHẤT (PK, NOT NULL),
    * chỉ phân xử các hàng ĐÃ hoà `score` nên không đụng tới thứ tự liên quan.
+   *
+   * `filters` (category/ward/price_range) — Search Filters — dùng đúng cột/điều kiện `list()`
+   * đã dùng (p.category_id/p.ward/p.price_range), tham số hoá giống hệt, chỉ khác WHERE gốc
+   * là điều kiện FTS thay vì không-filter.
    */
-  async searchFullText(q: string, limit: number, offset: number): Promise<PlaceCardRow[]> {
+  async searchFullText(
+    q: string,
+    limit: number,
+    offset: number,
+    filters: { category?: string; ward?: string; priceRange?: PriceRange } = {},
+  ): Promise<PlaceCardRow[]> {
+    const args: unknown[] = [q];
+    const filterConds = this.searchFilterConds(filters, args);
+    const limitIdx = args.length + 1;
+    const offsetIdx = args.length + 2;
     return this.repo.query(
       `SELECT ${CARD_COLS},
               ts_rank(
@@ -430,9 +471,10 @@ export class PlacesRepository {
        WHERE p.deleted_at IS NULL AND p.status = 'published'
          AND to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,'')))
              @@ plainto_tsquery('simple', immutable_unaccent($1))
+         ${filterConds}
        ORDER BY score DESC, p.id ASC
-       LIMIT $2 OFFSET $3`,
-      [q, limit, offset],
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...args, limit, offset],
     );
   }
 }

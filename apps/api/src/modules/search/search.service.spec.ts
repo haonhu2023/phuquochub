@@ -1,4 +1,5 @@
 import { SearchService } from './search.service';
+import { PriceRange } from '../places/place.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('SearchService', () => {
@@ -32,7 +33,47 @@ describe('SearchService', () => {
 
   it('tìm không dấu: chuyển query xuống repo nguyên trạng (unaccent ở SQL)', async () => {
     await service.search({ q: 'bai sao' });
-    expect(placesRepo.searchFullText).toHaveBeenCalledWith('bai sao', 20, 0);
+    expect(placesRepo.searchFullText).toHaveBeenCalledWith('bai sao', 20, 0, {
+      category: undefined,
+      ward: undefined,
+      priceRange: undefined,
+    });
+  });
+
+  // Search Filters (category/ward/price_range) — backward-compat: không truyền filter nào
+  // vẫn tạo object filters rỗng (mọi field undefined), y hệt hành vi trước khi tính năng này
+  // tồn tại (repo.searchFilterConds coi undefined là "không lọc").
+  it('không truyền filter nào → filters object toàn undefined (backward-compat)', async () => {
+    await service.search({ q: 'phu quoc', page: 2, limit: 10 });
+    expect(placesRepo.searchFullText).toHaveBeenCalledWith('phu quoc', 10, 10, {
+      category: undefined,
+      ward: undefined,
+      priceRange: undefined,
+    });
+    expect(placesRepo.searchCount).toHaveBeenCalledWith('phu quoc', {
+      category: undefined,
+      ward: undefined,
+      priceRange: undefined,
+    });
+  });
+
+  it('truyền category/ward/price_range → chuyển thẳng xuống repo dạng filters', async () => {
+    await service.search({
+      q: 'resort',
+      category: 'cat-1',
+      ward: 'An Thới',
+      price_range: PriceRange.HIGH,
+    });
+    expect(placesRepo.searchFullText).toHaveBeenCalledWith('resort', 20, 0, {
+      category: 'cat-1',
+      ward: 'An Thới',
+      priceRange: PriceRange.HIGH,
+    });
+    expect(placesRepo.searchCount).toHaveBeenCalledWith('resort', {
+      category: 'cat-1',
+      ward: 'An Thới',
+      priceRange: PriceRange.HIGH,
+    });
   });
 
   it('reindex Postgres FTS là no-op ok', () => {

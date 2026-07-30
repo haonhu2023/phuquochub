@@ -1,7 +1,7 @@
 import { Repository } from 'typeorm';
 import { PlacesRepository, PlaceDetailRow } from './places.repository';
 import { Place } from '../entities/place.entity';
-import { PlaceStatus } from '../place.enums';
+import { PlaceStatus, PriceRange } from '../place.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 
 // Chuẩn hoá khoảng trắng để assert nội dung SQL không phụ thuộc cách xuống dòng/thụt lề.
@@ -353,6 +353,63 @@ describe('PlacesRepository.list — thứ tự phân trang xác định (GAP-12)
     await sut.searchCount('bai sao');
 
     expect(sql(repo.query.mock.calls[0][0])).not.toContain('ORDER BY');
+  });
+
+  // Search Filters (category/ward/price_range) — cùng cột/thứ tự tham số như list(), chỉ khác
+  // WHERE gốc là điều kiện FTS. Không truyền filters (hoặc {}) phải giữ nguyên hành vi cũ
+  // (backward-compat) — đã phủ ở 2 test "F-32" phía trên (gọi searchFullText/searchCount không
+  // có filters, dùng giá trị mặc định {}).
+  describe('searchFullText/searchCount — Search Filters', () => {
+    it('không truyền filter → không thêm điều kiện p.category_id/p.ward/p.price_range nào', async () => {
+      repo.query.mockResolvedValue([]);
+      await sut.searchFullText('bai sao', 20, 0);
+
+      const [query, params] = repo.query.mock.calls[0];
+      // p.category_id luôn có trong SELECT (CARD_COLS) — chỉ kiểm tra KHÔNG có điều kiện lọc
+      // "= $n" trên nó, không phải kiểm tra cột đó vắng mặt khỏi SELECT.
+      expect(sql(query)).not.toContain('p.category_id =');
+      expect(sql(query)).not.toContain('p.ward =');
+      expect(sql(query)).not.toContain('p.price_range =');
+      expect(params).toEqual(['bai sao', 20, 0]);
+    });
+
+    it('lọc category/ward/price_range đi qua tham số hoá, đúng thứ tự placeholder', async () => {
+      repo.query.mockResolvedValue([]);
+      await sut.searchFullText('resort', 20, 0, {
+        category: 'c1',
+        ward: 'An Thới',
+        priceRange: PriceRange.HIGH,
+      });
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('p.category_id = $2');
+      expect(sql(query)).toContain('p.ward = $3');
+      expect(sql(query)).toContain('p.price_range = $4');
+      expect(sql(query)).toContain('LIMIT $5 OFFSET $6');
+      expect(params).toEqual(['resort', 'c1', 'An Thới', PriceRange.HIGH, 20, 0]);
+    });
+
+    it('chỉ ward (không category/price_range) → chỉ 1 điều kiện lọc thêm, placeholder $2', async () => {
+      repo.query.mockResolvedValue([]);
+      await sut.searchFullText('bai', 10, 0, { ward: 'Dương Đông' });
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).not.toContain('p.category_id =');
+      expect(sql(query)).toContain('p.ward = $2');
+      expect(sql(query)).not.toContain('p.price_range =');
+      expect(params).toEqual(['bai', 'Dương Đông', 10, 0]);
+    });
+
+    it('searchCount áp dụng cùng filters như searchFullText (đếm khớp kết quả thật)', async () => {
+      repo.query.mockResolvedValue([{ count: 3 }]);
+      await sut.searchCount('resort', { category: 'c1', priceRange: PriceRange.MID });
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('p.category_id = $2');
+      expect(sql(query)).toContain('p.price_range = $3');
+      expect(sql(query)).not.toContain('ORDER BY');
+      expect(params).toEqual(['resort', 'c1', PriceRange.MID]);
+    });
   });
 });
 

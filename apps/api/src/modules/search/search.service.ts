@@ -12,9 +12,12 @@ export class SearchService {
   async search(dto: SearchQueryDto) {
     const page = clampPage(dto.page);
     const limit = clampLimit(dto.limit);
+    // Search Filters (category/ward/price_range) — cùng cột places đã lọc ở ListPlacesQueryDto,
+    // truyền xuống repo dạng object rời để không phá signature (q, limit, offset) hiện có.
+    const filters = { category: dto.category, ward: dto.ward, priceRange: dto.price_range };
     const [rows, total] = await Promise.all([
-      this.placesRepo.searchFullText(dto.q, limit, (page - 1) * limit),
-      this.placesRepo.searchCount(dto.q),
+      this.placesRepo.searchFullText(dto.q, limit, (page - 1) * limit, filters),
+      this.placesRepo.searchCount(dto.q, filters),
     ]);
     // F-35 / OD-B4 (PLACE-024, 2026-07-24): `r.score` (ts_rank nội bộ) KHÔNG được ánh xạ ra
     // SearchResult công khai nữa. Nó vẫn quyết định THỨ TỰ hoàn toàn — searchFullText() đã
