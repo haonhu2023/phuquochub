@@ -1,4 +1,4 @@
-import { toBooking, toBookingItem } from './bookings.mapper';
+import { toBooking, toBookingAdminCard, toBookingItem } from './bookings.mapper';
 import { Booking } from './entities/booking.entity';
 import { BookingItem } from './entities/booking-item.entity';
 import { BookingStatus, BookingPaymentStatus, BookingFulfillmentStatus } from './booking.enums';
@@ -75,5 +75,25 @@ describe('toBooking', () => {
     expect(res).not.toHaveProperty('internal_note');
     expect(res).not.toHaveProperty('customer_user_id');
     expect(res.items).toHaveLength(1);
+  });
+});
+
+describe('toBookingAdminCard (Phase 2 — Booking.List)', () => {
+  it('có id + customer_user_id (cần cho staff), KHÔNG BAO GIỜ có internal_note', () => {
+    const res = toBookingAdminCard(makeBooking());
+    expect(res).toMatchObject({
+      id: 'b1',
+      booking_code: 'ABC12345',
+      customer_user_id: 'u1',
+      entity_type: 'tour',
+      place_id: 'p1',
+      booking_status: 'pending',
+      payment_status: 'unpaid',
+      fulfillment_status: 'pending',
+      grand_total: 1000000,
+      party_size: 2,
+    });
+    expect(res).not.toHaveProperty('internal_note');
+    expect(res).not.toHaveProperty('items');
   });
 });

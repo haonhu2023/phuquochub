@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsIn,
   IsISO8601,
   IsInt,
@@ -17,7 +18,13 @@ import {
   ValidationOptions,
   registerDecorator,
 } from 'class-validator';
-import { BOOKABLE_ENTITY_TYPES, BookableEntityType } from '../booking.enums';
+import {
+  BOOKABLE_ENTITY_TYPES,
+  BookableEntityType,
+  BookingFulfillmentStatus,
+  BookingPaymentStatus,
+  BookingStatus,
+} from '../booking.enums';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -102,4 +109,57 @@ export class CreateBookingRequestDto {
   @IsOptional() @IsString() @MaxLength(2000)
   @Transform(trim)
   guest_note?: string;
+}
+
+// Phase 2 — Booking Application Layer: admin/staff query, KHÔNG public (Booking.List). Chỉ 2
+// trường sort được phép — cả hai đã có index sẵn (idx_bookings_service_start,
+// InitBooking1720002400000) hoặc là PK-order-adjacent (created_at, đã index qua idx_bookings_
+// customer) — không cho sort theo cột tuỳ ý để tránh full-scan không kiểm soát.
+export const BOOKING_SORT_FIELDS = ['created_at', 'service_start_at', 'grand_total'] as const;
+export type BookingSortField = (typeof BOOKING_SORT_FIELDS)[number];
+
+// "date range" (yêu cầu Phase 2, mục A) lọc theo service_start_at — KHÔNG phải created_at.
+// Bằng chứng: InitBooking1720002400000 đã tạo sẵn idx_bookings_service_start với chú thích
+// "Truy vấn quản trị/tương lai lọc theo trạng thái... và theo mốc dịch vụ sắp tới ('booking
+// trong 7 ngày tới')" — nghĩa là "date range" ở đây được thiết kế cho ngày DỊCH VỤ (khi nào diễn
+// ra), không phải ngày TẠO booking. Lọc theo created_at có thể bổ sung sau nếu có nhu cầu thật,
+// không phát minh trước ở đây.
+export class ListBookingsQueryDto {
+  @IsOptional() @IsEnum(BookingStatus)
+  booking_status?: BookingStatus;
+
+  @IsOptional() @IsEnum(BookingPaymentStatus)
+  payment_status?: BookingPaymentStatus;
+
+  @IsOptional() @IsEnum(BookingFulfillmentStatus)
+  fulfillment_status?: BookingFulfillmentStatus;
+
+  // module_code là bí danh của entity_type (yêu cầu liệt kê cả hai tên field riêng biệt, nhưng
+  // schema hiện tại chỉ có MỘT cột `entity_type` — không thêm cột mới ở Phase 2 vì "Không phá
+  // migration đã phát hành" chỉ cho phép migration MỚI, không bắt buộc phải thêm cột cho tính
+  // năng query). Nếu cả hai được truyền và KHÁC nhau, coi là lỗi input (BookingsService.list).
+  @IsOptional() @IsIn(BOOKABLE_ENTITY_TYPES)
+  module_code?: BookableEntityType;
+
+  @IsOptional() @IsIn(BOOKABLE_ENTITY_TYPES)
+  entity_type?: BookableEntityType;
+
+  @IsOptional() @IsISO8601()
+  date_from?: string;
+
+  @IsOptional() @IsISO8601()
+  @IsAfter('date_from')
+  date_to?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  limit?: number;
+
+  @IsOptional() @IsIn(BOOKING_SORT_FIELDS)
+  sort_by?: BookingSortField;
+
+  @IsOptional() @IsIn(['asc', 'desc'])
+  sort_dir?: 'asc' | 'desc';
 }

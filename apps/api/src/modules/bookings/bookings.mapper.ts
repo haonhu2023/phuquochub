@@ -50,6 +50,53 @@ export function toBookingItem(item: BookingItem): BookingItemResponse {
   };
 }
 
+// Phase 2 — Booking Application Layer: response cho GET /bookings (admin/staff query,
+// Booking.List), KHÔNG phải response công khai (BookingResponse ở trên vẫn giữ nguyên, không
+// đổi). Khác biệt duy nhất: có `id` (cần để gọi POST /bookings/:id/{confirm,cancel,expire}) và
+// `customer_user_id` (staff cần biết ai đặt) — vẫn KHÔNG bao giờ có `internal_note`, giữ đúng bất
+// biến đã ghi ở booking.md §2.6 dù đây là kênh đặc quyền.
+export interface BookingAdminCardResponse {
+  id: string;
+  booking_code: string;
+  booking_type: string | null;
+  entity_type: string;
+  entity_id: string;
+  place_id: string;
+  customer_user_id: string | null;
+  currency_code: string;
+  booking_status: string;
+  payment_status: string;
+  fulfillment_status: string;
+  service_start_at: Date | null;
+  service_end_at: Date | null;
+  party_size: number;
+  grand_total: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export function toBookingAdminCard(booking: Booking): BookingAdminCardResponse {
+  return {
+    id: booking.id,
+    booking_code: booking.bookingCode,
+    booking_type: booking.bookingType,
+    entity_type: booking.entityType,
+    entity_id: booking.entityId,
+    place_id: booking.placeId,
+    customer_user_id: booking.customerUserId,
+    currency_code: booking.currencyCode,
+    booking_status: booking.bookingStatus,
+    payment_status: booking.paymentStatus,
+    fulfillment_status: booking.fulfillmentStatus,
+    service_start_at: booking.serviceStartAt,
+    service_end_at: booking.serviceEndAt,
+    party_size: booking.partySize,
+    grand_total: Number(booking.grandTotal),
+    created_at: booking.createdAt,
+    updated_at: booking.updatedAt,
+  };
+}
+
 export function toBooking(booking: Booking, items: BookingItem[]): BookingResponse {
   return {
     booking_code: booking.bookingCode,

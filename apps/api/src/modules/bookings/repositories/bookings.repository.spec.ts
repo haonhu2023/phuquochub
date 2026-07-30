@@ -1,7 +1,8 @@
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { BookingsRepository } from './bookings.repository';
 import { Booking } from '../entities/booking.entity';
 import { BookingItem } from '../entities/booking-item.entity';
+import { BookingStatus } from '../booking.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 
 describe('BookingsRepository', () => {
@@ -10,12 +11,105 @@ describe('BookingsRepository', () => {
   let sut: BookingsRepository;
 
   beforeEach(() => {
-    bookings = createMock<Repository<Booking>>({ exists: jest.fn(), findOne: jest.fn() });
+    bookings = createMock<Repository<Booking>>({
+      exists: jest.fn(),
+      findOne: jest.fn(),
+      createQueryBuilder: jest.fn(),
+      update: jest.fn(),
+    });
     ds = createMock<DataSource>({ transaction: jest.fn(), getRepository: jest.fn() });
     sut = new BookingsRepository(bookings, ds);
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  it('findById: uỷ quyền repo.findOne theo id nội bộ', async () => {
+    bookings.findOne.mockResolvedValue({ id: 'b1' });
+    const res = await sut.findById('b1');
+    expect(bookings.findOne).toHaveBeenCalledWith({ where: { id: 'b1' } });
+    expect(res).toEqual({ id: 'b1' });
+  });
+
+  it('updateStatus: chỉ update cột bookingStatus, không đụng trường nào khác', async () => {
+    await sut.updateStatus('b1', BookingStatus.CONFIRMED);
+    expect(bookings.update).toHaveBeenCalledWith({ id: 'b1' }, { bookingStatus: BookingStatus.CONFIRMED });
+  });
+
+  describe('list (Phase 2 — Booking.List)', () => {
+    function makeQb(): LooseMock<SelectQueryBuilder<Booking>> {
+      const qb = createMock<SelectQueryBuilder<Booking>>({
+        andWhere: jest.fn(),
+        orderBy: jest.fn(),
+        addOrderBy: jest.fn(),
+        skip: jest.fn(),
+        take: jest.fn(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+      });
+      // chuỗi gọi (builder pattern) — mỗi method trả về chính qb để .andWhere().andWhere()... hoạt động
+      qb.andWhere.mockReturnValue(qb);
+      qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
+      qb.skip.mockReturnValue(qb);
+      qb.take.mockReturnValue(qb);
+      return qb;
+    }
+
+    it('không truyền filter nào → không gọi andWhere, vẫn phân trang + sắp xếp đúng', async () => {
+      const qb = makeQb();
+      bookings.createQueryBuilder.mockReturnValue(qb);
+
+      await sut.list({ sortBy: 'created_at', sortDir: 'DESC', limit: 20, offset: 0 });
+
+      expect(qb.andWhere).not.toHaveBeenCalled();
+      expect(qb.orderBy).toHaveBeenCalledWith('b.createdAt', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('b.id', 'DESC'); // tie-breaker ổn định
+      expect(qb.skip).toHaveBeenCalledWith(0);
+      expect(qb.take).toHaveBeenCalledWith(20);
+    });
+
+    it('truyền đủ filter → mỗi filter tạo đúng MỘT andWhere tương ứng', async () => {
+      const qb = makeQb();
+      bookings.createQueryBuilder.mockReturnValue(qb);
+      const dateFrom = new Date('2026-08-01T00:00:00Z');
+      const dateTo = new Date('2026-08-31T00:00:00Z');
+
+      await sut.list({
+        bookingStatus: BookingStatus.PENDING,
+        paymentStatus: 'unpaid' as never,
+        fulfillmentStatus: 'pending' as never,
+        entityType: 'hotel',
+        dateFrom,
+        dateTo,
+        sortBy: 'grand_total',
+        sortDir: 'ASC',
+        limit: 10,
+        offset: 20,
+      });
+
+      expect(qb.andWhere).toHaveBeenCalledWith('b.bookingStatus = :bookingStatus', { bookingStatus: 'pending' });
+      expect(qb.andWhere).toHaveBeenCalledWith('b.paymentStatus = :paymentStatus', { paymentStatus: 'unpaid' });
+      expect(qb.andWhere).toHaveBeenCalledWith('b.fulfillmentStatus = :fulfillmentStatus', {
+        fulfillmentStatus: 'pending',
+      });
+      expect(qb.andWhere).toHaveBeenCalledWith('b.entityType = :entityType', { entityType: 'hotel' });
+      expect(qb.andWhere).toHaveBeenCalledWith('b.serviceStartAt >= :dateFrom', { dateFrom });
+      expect(qb.andWhere).toHaveBeenCalledWith('b.serviceStartAt <= :dateTo', { dateTo });
+      expect(qb.orderBy).toHaveBeenCalledWith('b.grandTotal', 'ASC');
+    });
+
+    it('trả về items + total từ getMany()/getCount() (không lẫn lộn thứ tự gọi)', async () => {
+      const qb = makeQb();
+      qb.getCount.mockResolvedValue(42);
+      qb.getMany.mockResolvedValue([{ id: 'b1' }, { id: 'b2' }] as Booking[]);
+      bookings.createQueryBuilder.mockReturnValue(qb);
+
+      const res = await sut.list({ sortBy: 'created_at', sortDir: 'DESC', limit: 20, offset: 0 });
+
+      expect(res.total).toBe(42);
+      expect(res.items).toHaveLength(2);
+    });
+  });
 
   it('existsByCode: uỷ quyền repo.exists theo bookingCode', async () => {
     bookings.exists.mockResolvedValue(true);

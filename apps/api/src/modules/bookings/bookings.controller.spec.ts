@@ -12,9 +12,12 @@ function handlerOf(name: Handler): object {
 }
 
 describe('BookingsController — ranh giới công khai / đặc quyền / rate-limit', () => {
-  it.each<Handler>(['create', 'getByCode'])('route `%s` KHÔNG @Public() — cả hai đều yêu cầu đăng nhập', (name) => {
-    expect(Reflect.getMetadata(IS_PUBLIC_KEY, handlerOf(name))).not.toBe(true);
-  });
+  it.each<Handler>(['create', 'getByCode', 'list', 'confirm', 'cancel', 'markExpired'])(
+    'route `%s` KHÔNG @Public() — tất cả đều yêu cầu đăng nhập',
+    (name) => {
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, handlerOf(name))).not.toBe(true);
+    },
+  );
 
   it('create yêu cầu Booking.Create', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('create'))).toEqual(['Booking.Create']);
@@ -22,6 +25,22 @@ describe('BookingsController — ranh giới công khai / đặc quyền / rate-
 
   it('getByCode yêu cầu Booking.View', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('getByCode'))).toEqual(['Booking.View']);
+  });
+
+  it('list (Phase 2) yêu cầu Booking.List — khác Booking.View (kênh admin/staff, không phải kênh tự-xem-booking-của-mình)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('list'))).toEqual(['Booking.List']);
+  });
+
+  it('confirm yêu cầu Booking.Confirm', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('confirm'))).toEqual(['Booking.Confirm']);
+  });
+
+  it('cancel yêu cầu Booking.Cancel', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('cancel'))).toEqual(['Booking.Cancel']);
+  });
+
+  it('markExpired yêu cầu Booking.MarkExpired', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('markExpired'))).toEqual(['Booking.MarkExpired']);
   });
 
   it('create bị throttle (chống spam tạo booking)', () => {

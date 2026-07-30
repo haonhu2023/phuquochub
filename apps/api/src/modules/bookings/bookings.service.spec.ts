@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException, UnprocessableEntityException } 
 
 jest.mock('./bookings.mapper', () => ({
   toBooking: (b: { id?: string }, items: unknown[]) => ({ id: b?.id, itemCount: items.length, mapped: true }),
+  toBookingAdminCard: (b: { id?: string }) => ({ id: b?.id, mapped: 'admin-card' }),
 }));
 jest.mock('./booking-code', () => ({
   ...jest.requireActual('./booking-code'),
@@ -11,7 +12,10 @@ jest.mock('./booking-code', () => ({
 import { BookingsService } from './bookings.service';
 import { BookingsRepository } from './repositories/bookings.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
+import { AuditService } from '../../core/audit/audit.service';
+import { BookingEventPublisher } from './events/booking-events';
 import { generateBookingCode } from './booking-code';
+import { BookingStatus } from './booking.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 const generateBookingCodeMock = generateBookingCode as jest.Mock;
@@ -19,6 +23,8 @@ const generateBookingCodeMock = generateBookingCode as jest.Mock;
 describe('BookingsService', () => {
   let bookingsRepo: LooseMock<BookingsRepository>;
   let placesRepo: LooseMock<PlacesRepository>;
+  let audit: LooseMock<AuditService>;
+  let events: LooseMock<BookingEventPublisher>;
   let service: BookingsService;
 
   const dto = {
@@ -33,11 +39,16 @@ describe('BookingsService', () => {
     bookingsRepo = createMock<BookingsRepository>({
       existsByCode: jest.fn(),
       findByCode: jest.fn(),
+      findById: jest.fn(),
       findItemsByBookingId: jest.fn(),
       create: jest.fn(),
+      list: jest.fn(),
+      updateStatus: jest.fn(),
     });
     placesRepo = createMock<PlacesRepository>({ existsByIdAndCategorySlug: jest.fn() });
-    service = new BookingsService(bookingsRepo, placesRepo);
+    audit = createMock<AuditService>({ record: jest.fn() });
+    events = createMock<BookingEventPublisher>({ publish: jest.fn() });
+    service = new BookingsService(bookingsRepo, placesRepo, audit, events);
     generateBookingCodeMock.mockReturnValue('ABC23456');
   });
 
@@ -128,6 +139,156 @@ describe('BookingsService', () => {
 
       expect(bookingsRepo.findItemsByBookingId).toHaveBeenCalledWith('b1');
       expect(res).toEqual({ id: 'b1', itemCount: 1, mapped: true });
+    });
+  });
+
+  describe('list (Phase 2 — Booking.List)', () => {
+    it('module_code và entity_type mâu thuẫn nhau → BadRequest, không truy vấn DB', async () => {
+      await expect(
+        service.list({ module_code: 'hotel', entity_type: 'tour' } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(bookingsRepo.list).not.toHaveBeenCalled();
+    });
+
+    it('module_code và entity_type giống nhau → hợp lệ, dùng giá trị đó làm entityType filter', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+      await service.list({ module_code: 'hotel', entity_type: 'hotel' } as never);
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'hotel' }));
+    });
+
+    it('chỉ module_code (không có entity_type) → dùng module_code làm entityType filter', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+      await service.list({ module_code: 'tour' } as never);
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ entityType: 'tour' }));
+    });
+
+    it('không truyền sort_by/sort_dir → mặc định created_at DESC', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+      await service.list({} as never);
+      expect(bookingsRepo.list).toHaveBeenCalledWith(
+        expect.objectContaining({ sortBy: 'created_at', sortDir: 'DESC' }),
+      );
+    });
+
+    it('sort_dir=asc → truyền ASC xuống repository', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+      await service.list({ sort_dir: 'asc' } as never);
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ sortDir: 'ASC' }));
+    });
+
+    it('map items qua toBookingAdminCard, trả về theo pagination convention hiện tại (paginate())', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [{ id: 'b1' }, { id: 'b2' }], total: 2 });
+      const res = await service.list({ page: 1, limit: 20 } as never);
+      expect(res).toMatchObject({
+        success: true,
+        data: [
+          { id: 'b1', mapped: 'admin-card' },
+          { id: 'b2', mapped: 'admin-card' },
+        ],
+        meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+      });
+    });
+
+    it('date_from/date_to lọc theo service_start_at (Date), KHÔNG phải created_at', async () => {
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+      await service.list({ date_from: '2026-08-01T00:00:00Z', date_to: '2026-08-31T23:59:59Z' } as never);
+      expect(bookingsRepo.list).toHaveBeenCalledWith(
+        expect.objectContaining({ dateFrom: new Date('2026-08-01T00:00:00Z'), dateTo: new Date('2026-08-31T23:59:59Z') }),
+      );
+    });
+  });
+
+  describe('confirm/cancel/markExpired (Phase 2 — mọi thay đổi trạng thái đi qua BookingService)', () => {
+    it('confirm: không tìm thấy booking → NotFound, không update/audit/publish', async () => {
+      bookingsRepo.findById.mockResolvedValue(null);
+      await expect(service.confirm('b1', 'staff1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(bookingsRepo.updateStatus).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('confirm: pending -> confirmed hợp lệ → update DB, ghi audit, publish BookingConfirmedEvent', async () => {
+      bookingsRepo.findById.mockResolvedValue({
+        id: 'b1',
+        bookingCode: 'ABC23456',
+        bookingStatus: BookingStatus.PENDING,
+      });
+
+      const res = await service.confirm('b1', 'staff1');
+
+      expect(bookingsRepo.updateStatus).toHaveBeenCalledWith('b1', BookingStatus.CONFIRMED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'booking.status_changed',
+          entityType: 'booking',
+          entityId: 'b1',
+          actorId: 'staff1',
+          permission: 'Booking.Confirm',
+          context: { from: BookingStatus.PENDING, to: BookingStatus.CONFIRMED },
+        }),
+      );
+      expect(events.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'BookingConfirmed', bookingId: 'b1', bookingCode: 'ABC23456' }),
+      );
+      expect(res).toBeNull();
+    });
+
+    it('confirm: booking đã confirmed → UnprocessableEntity, KHÔNG update/audit/publish (validation trước side-effect)', async () => {
+      bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingStatus: BookingStatus.CONFIRMED });
+      await expect(service.confirm('b1', 'staff1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(bookingsRepo.updateStatus).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('cancel: pending -> cancelled hợp lệ → publish BookingCancelledEvent', async () => {
+      bookingsRepo.findById.mockResolvedValue({
+        id: 'b1',
+        bookingCode: 'ABC23456',
+        bookingStatus: BookingStatus.PENDING,
+      });
+      await service.cancel('b1', 'staff1');
+      expect(bookingsRepo.updateStatus).toHaveBeenCalledWith('b1', BookingStatus.CANCELLED);
+      expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'BookingCancelled' }));
+    });
+
+    it('cancel: confirmed -> cancelled cũng hợp lệ', async () => {
+      bookingsRepo.findById.mockResolvedValue({
+        id: 'b1',
+        bookingCode: 'ABC23456',
+        bookingStatus: BookingStatus.CONFIRMED,
+      });
+      await service.cancel('b1', 'staff1');
+      expect(bookingsRepo.updateStatus).toHaveBeenCalledWith('b1', BookingStatus.CANCELLED);
+    });
+
+    it('cancel: booking đã cancelled → UnprocessableEntity', async () => {
+      bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingStatus: BookingStatus.CANCELLED });
+      await expect(service.cancel('b1', 'staff1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('markExpired: pending -> expired hợp lệ → update DB, ghi audit, KHÔNG publish event (chỉ Created/Confirmed/Cancelled có trong Phase 2)', async () => {
+      bookingsRepo.findById.mockResolvedValue({
+        id: 'b1',
+        bookingCode: 'ABC23456',
+        bookingStatus: BookingStatus.PENDING,
+      });
+      await service.markExpired('b1', 'staff1');
+      expect(bookingsRepo.updateStatus).toHaveBeenCalledWith('b1', BookingStatus.EXPIRED);
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ permission: 'Booking.MarkExpired' }));
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('markExpired: booking đã confirmed → UnprocessableEntity (confirmed không "expire", phải cancel)', async () => {
+      bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingStatus: BookingStatus.CONFIRMED });
+      await expect(service.markExpired('b1', 'staff1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('booking đã expired → cả 3 hành động đều UnprocessableEntity', async () => {
+      bookingsRepo.findById.mockResolvedValue({ id: 'b1', bookingStatus: BookingStatus.EXPIRED });
+      await expect(service.confirm('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(service.cancel('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(service.markExpired('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
 });

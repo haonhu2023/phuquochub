@@ -3,6 +3,8 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Booking } from '../entities/booking.entity';
 import { BookingItem } from '../entities/booking-item.entity';
+import { BookingFulfillmentStatus, BookingPaymentStatus, BookingStatus } from '../booking.enums';
+import { BookingSortField } from '../dto/bookings.dto';
 
 export interface NewBookingItem {
   label: string;
@@ -37,6 +39,71 @@ export class BookingsRepository {
 
   findByCode(bookingCode: string): Promise<Booking | null> {
     return this.bookings.findOne({ where: { bookingCode } });
+  }
+
+  /** Phase 2 — dùng cho POST /bookings/:id/{confirm,cancel,expire} (đích danh id nội bộ, kênh
+   * đặc quyền — KHÔNG phải booking_code công khai). */
+  findById(id: string): Promise<Booking | null> {
+    return this.bookings.findOne({ where: { id } });
+  }
+
+  /** Phase 2 — GET /bookings (Booking.List). QueryBuilder (không raw SQL — Booking không có cột
+   * geography cần ST_* như PlacesRepository, nên QueryBuilder là công cụ phù hợp hơn, cùng tiền
+   * lệ đã có ở SourceAttributionsRepository). */
+  async list(params: {
+    bookingStatus?: BookingStatus;
+    paymentStatus?: BookingPaymentStatus;
+    fulfillmentStatus?: BookingFulfillmentStatus;
+    entityType?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    sortBy: BookingSortField;
+    sortDir: 'ASC' | 'DESC';
+    limit: number;
+    offset: number;
+  }): Promise<{ items: Booking[]; total: number }> {
+    const qb = this.bookings.createQueryBuilder('b');
+
+    if (params.bookingStatus) {
+      qb.andWhere('b.bookingStatus = :bookingStatus', { bookingStatus: params.bookingStatus });
+    }
+    if (params.paymentStatus) {
+      qb.andWhere('b.paymentStatus = :paymentStatus', { paymentStatus: params.paymentStatus });
+    }
+    if (params.fulfillmentStatus) {
+      qb.andWhere('b.fulfillmentStatus = :fulfillmentStatus', { fulfillmentStatus: params.fulfillmentStatus });
+    }
+    if (params.entityType) {
+      qb.andWhere('b.entityType = :entityType', { entityType: params.entityType });
+    }
+    // Lọc theo service_start_at (xem chú thích ListBookingsQueryDto.date_from/date_to) — booking
+    // không có service_start_at (nullable) sẽ KHÔNG khớp khi filter date được truyền, đúng ngữ
+    // nghĩa "trong khoảng ngày dịch vụ X-Y" (một booking không có ngày dịch vụ thì không thuộc
+    // bất kỳ khoảng nào).
+    if (params.dateFrom) {
+      qb.andWhere('b.serviceStartAt >= :dateFrom', { dateFrom: params.dateFrom });
+    }
+    if (params.dateTo) {
+      qb.andWhere('b.serviceStartAt <= :dateTo', { dateTo: params.dateTo });
+    }
+
+    const total = await qb.getCount();
+    const items = await qb
+      .orderBy(`b.${toSortProperty(params.sortBy)}`, params.sortDir)
+      .addOrderBy('b.id', params.sortDir) // tie-breaker ổn định — cùng nguyên tắc GAP-12 (PlacesRepository.list)
+      .skip(params.offset)
+      .take(params.limit)
+      .getMany();
+
+    return { items, total };
+  }
+
+  /** Phase 2 — update TRẠNG THÁI DUY NHẤT (không update tuỳ ý entity). Gọi bởi
+   * BookingsService.{confirm,cancel,markExpired} SAU khi assertValidTransition đã xác nhận hợp
+   * lệ — repository không tự kiểm tra FSM (tách rõ trách nhiệm: validation ở booking-status.
+   * transition.ts, cưỡng chế permission ở controller, persistence thuần ở đây). */
+  async updateStatus(id: string, status: BookingStatus): Promise<void> {
+    await this.bookings.update({ id }, { bookingStatus: status });
   }
 
   findItemsByBookingId(bookingId: string): Promise<BookingItem[]> {
@@ -79,5 +146,17 @@ export class BookingsRepository {
 
       return { booking: savedBooking, items: savedItems };
     });
+  }
+}
+
+/** snake_case (DTO/API) -> tên property entity (camelCase, dùng bởi QueryBuilder). */
+function toSortProperty(field: BookingSortField): 'createdAt' | 'serviceStartAt' | 'grandTotal' {
+  switch (field) {
+    case 'created_at':
+      return 'createdAt';
+    case 'service_start_at':
+      return 'serviceStartAt';
+    case 'grand_total':
+      return 'grandTotal';
   }
 }

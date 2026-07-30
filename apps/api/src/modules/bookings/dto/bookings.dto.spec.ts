@@ -1,11 +1,15 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreateBookingRequestDto } from './bookings.dto';
+import { CreateBookingRequestDto, ListBookingsQueryDto } from './bookings.dto';
 
 const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
 
 function validateCreate(raw: Record<string, unknown>) {
   return validate(plainToInstance(CreateBookingRequestDto, raw), PIPE_OPTIONS);
+}
+
+function validateList(raw: Record<string, unknown>) {
+  return validate(plainToInstance(ListBookingsQueryDto, raw), PIPE_OPTIONS);
 }
 
 const VALID: Record<string, unknown> = {
@@ -119,5 +123,72 @@ describe('CreateBookingRequestDto', () => {
     });
     expect(instance.guest_note).toBe('đến trễ 15 phút');
     expect(instance.items[0].label).toBe('Vé người lớn');
+  });
+});
+
+describe('ListBookingsQueryDto (Phase 2 — GET /bookings, Booking.List)', () => {
+  it('chấp nhận query rỗng (mọi trường đều optional)', async () => {
+    expect(await validateList({})).toHaveLength(0);
+  });
+
+  it('chấp nhận đầy đủ filter hợp lệ', async () => {
+    const errors = await validateList({
+      booking_status: 'pending',
+      payment_status: 'unpaid',
+      fulfillment_status: 'pending',
+      module_code: 'hotel',
+      entity_type: 'hotel',
+      date_from: '2026-08-01T00:00:00Z',
+      date_to: '2026-08-31T00:00:00Z',
+      page: 1,
+      limit: 20,
+      sort_by: 'service_start_at',
+      sort_dir: 'asc',
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each(['booking_status', 'payment_status', 'fulfillment_status'])(
+    'từ chối %s không thuộc enum hợp lệ',
+    async (field) => {
+      const errors = await validateList({ [field]: 'not-a-real-status' });
+      expect(errors.some((e) => e.property === field)).toBe(true);
+    },
+  );
+
+  it.each(['module_code', 'entity_type'])('từ chối %s không thuộc BOOKABLE_ENTITY_TYPES', async (field) => {
+    const errors = await validateList({ [field]: 'business' });
+    expect(errors.some((e) => e.property === field)).toBe(true);
+  });
+
+  it('từ chối sort_by không thuộc BOOKING_SORT_FIELDS (chặn sort theo cột tuỳ ý)', async () => {
+    const errors = await validateList({ sort_by: 'internal_note' });
+    expect(errors.some((e) => e.property === 'sort_by')).toBe(true);
+  });
+
+  it('từ chối sort_dir khác asc/desc', async () => {
+    const errors = await validateList({ sort_dir: 'sideways' });
+    expect(errors.some((e) => e.property === 'sort_dir')).toBe(true);
+  });
+
+  it('chấp nhận date_to sau date_from', async () => {
+    const errors = await validateList({ date_from: '2026-08-01T00:00:00Z', date_to: '2026-08-02T00:00:00Z' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('từ chối date_to trước date_from (cùng cross-field IsAfter dùng cho service_end_at)', async () => {
+    const errors = await validateList({ date_from: '2026-08-02T00:00:00Z', date_to: '2026-08-01T00:00:00Z' });
+    expect(errors.some((e) => e.property === 'date_to')).toBe(true);
+  });
+
+  it('từ chối trường lạ (whitelist — không thể tự thêm filter ngoài danh sách cho phép)', async () => {
+    const errors = await validateList({ customer_user_id: '11111111-1111-4111-8111-111111111111' });
+    expect(errors.some((e) => e.property === 'customer_user_id')).toBe(true);
+  });
+
+  it('page/limit <= 0 bị từ chối', async () => {
+    const errors = await validateList({ page: 0, limit: -1 });
+    expect(errors.some((e) => e.property === 'page')).toBe(true);
+    expect(errors.some((e) => e.property === 'limit')).toBe(true);
   });
 });
