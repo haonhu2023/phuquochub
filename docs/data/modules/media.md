@@ -175,13 +175,46 @@ không phải ở permission guard.
 
 ## 10. Việc CHƯA làm (deferred, không phải quên)
 
-- Frontend upload UI, thumbnail/resize/WebP/AVIF, EXIF, OCR, AI tagging, kiểm duyệt, quét virus,
-  CDN optimization, bulk upload — tất cả ngoài phạm vi milestone, theo đúng chỉ đạo.
+- Thumbnail/resize/WebP/AVIF, EXIF, OCR, AI tagging, kiểm duyệt, quét virus, CDN optimization,
+  bulk upload — tất cả ngoài phạm vi mọi milestone tới nay, theo đúng chỉ đạo. (Frontend upload UI
+  ĐÃ có một lát cắt hẹp — xem §11 — không còn "ngoài phạm vi" hoàn toàn như trước 2026-08-01.)
 - Cấu hình production R2 thật (`S3_BUCKET`/credentials thật) — milestone này chỉ có MinIO dev/test.
 - Background cleanup cho object/media mồ côi (§6) — không có job tự động nào.
 - Sinh signed GET URL động cho media `published` — chưa cần vì chưa có luồng công bố nào tạo ra
   media `published` từ upload path này; điểm cắm sẵn ở `toMedia()`/`MediaRepository
   .listPublishedByPlace()` khi cần.
+
+## 11. Frontend integration — Image Upload UI (2026-08-01, bounded scope)
+
+Owner-approved bounded scope: single-file upload only, no drag-and-drop, no crop, no gallery
+management, no progress bar beyond a simple loading state, no delete, no reorder, no bulk upload,
+no image editing. Integrated into exactly ONE existing page/flow — the review submission form
+(`ReviewsSection.tsx`, rendered on all Place detail pages) — reusing the orphan-media +
+`attachToReview()` path that was already designed and implemented as part of the Reviews milestone
+(`CreateReviewDto.media_ids`, `MediaRepository.attachToReview()`), not the `place_id`-owned path.
+
+**New frontend files:**
+- `apps/web/src/lib/sha256.ts` — client-side SHA-256 (Web Crypto `subtle.digest`) required by
+  `PresignMediaDto.checksum_sha256`.
+- `apps/web/src/modules/media/types.ts` — local `UploadedMedia` response type + a mirrored copy of
+  the backend's allowed-MIME/max-size constants for client-side pre-validation (server remains the
+  sole authority — this is UX-only, never trusted).
+- `apps/web/src/modules/media/api/media.api.ts` — `presignMedia`/`putToPresignedUrl`/`registerMedia`,
+  mirroring `reviews.api.ts`'s existing `apiPost` convention. `putToPresignedUrl` deliberately does
+  NOT go through `apiPost`/`fetchEnvelope` — it PUTs directly to object storage, which has no
+  `{success,data}` envelope.
+- `apps/web/src/modules/media/useSingleImageUpload.ts` — one hook encapsulating
+  select → client-side validate → hash → presign → PUT → register, used by `ReviewsSection.tsx`.
+
+**Browser CORS verified live** (not assumed): a real browser (not Node `fetch`) origin
+`http://localhost:3000` successfully completed presign → PUT (`http://localhost:9000`, MinIO) →
+register, including a genuine CORS preflight (`OPTIONS` → `204`) on the MinIO PUT. No MinIO bucket
+CORS policy change was needed — the current dev MinIO configuration already permits this.
+
+**Explicitly still out of scope:** everything in §10, plus displaying the attached photo anywhere
+(it stays `pending`/`url: null` until a future moderation flow publishes it — nothing to display
+yet regardless), editing/replacing an already-submitted review's photo, and any `place_id`-owned
+upload flow (still unbuilt on the frontend).
 
 ## Related
 

@@ -30,7 +30,45 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-01, Frontend Component Test Coverage Foundation --
+  task: none                      # (2026-08-01, Image Upload UI -- ad-hoc, NOT PLACE-numbered,
+                                  # per the same standing 2026-07-26 Owner instruction) Previously
+                                  # blocked (repeatedly, across 2 prior governance assessments) on
+                                  # unmade Owner UX decisions. Re-evaluated after the Owner fixed
+                                  # 11 scope decisions (single-file only; no drag-drop/crop/
+                                  # gallery/progress-bar/delete/reorder/bulk/editing; exactly ONE
+                                  # existing page with a clear backend owner; reuse existing UI
+                                  # components). Investigation found the backend already had a
+                                  # ready-made "clear backend owner" path never used by any
+                                  # frontend: CreateReviewDto.media_ids + MediaRepository
+                                  # .attachToReview() (Reviews milestone, 2026-07-26), accepting
+                                  # orphan media the calling user uploaded. Integrated a single-
+                                  # image upload into ReviewsSection.tsx (the ONLY existing
+                                  # authenticated write-UI in the frontend) using this exact path
+                                  # -- not the place_id-owned presign path. New: lib/sha256.ts
+                                  # (client-side checksum, Web Crypto), modules/media/{types,
+                                  # api/media.api,useSingleImageUpload}.ts. Mandatory Phase 0
+                                  # before any UI code: live browser CORS verification (real
+                                  # browser via the Browser pane's javascript_tool, not Node
+                                  # fetch) of presign->PUT(MinIO)->register -- passed with zero
+                                  # CORS block (OPTIONS preflight 204, PUT 200, register's server-
+                                  # side checksum re-verification confirmed the object genuinely
+                                  # persisted) -- no MinIO bucket CORS config was needed. Full live
+                                  # verification via the actual rendered UI (not just the Phase 0
+                                  # script): submitted a real review with an attached photo against
+                                  # a live place, then confirmed via a direct DB query that
+                                  # reviews.id JOINs media.review_id -- proof attachToReview() ran
+                                  # for real, not just that the API returned 201. 14 new tests
+                                  # (7 hook + 7 component, first test file for the reviews module),
+                                  # zero regression: frontend 19 suites/117 tests (up from 17/103),
+                                  # run twice consecutively with identical results and no hidden
+                                  # console/act warnings; backend 80 suites/824 tests and e2e 12
+                                  # suites/95 tests both unchanged (no backend file touched); full
+                                  # monorepo build clean. Scope discipline confirmed: no drag-drop/
+                                  # gallery/delete/reorder/real-progress-bar/crop/multi-file/
+                                  # moderation/image-display-outside-reviews was added. See
+                                  # docs/delivery/reports/IMAGE-UPLOAD-UI-2026-08-01.md and
+                                  # docs/data/modules/media.md §11.
+                                  # ---- prior state (2026-08-01 Frontend Component Test Coverage Foundation) ----
                                   # ad-hoc, NOT PLACE-numbered, per the same standing 2026-07-26
                                   # Owner instruction) Selected via a read-only governance
                                   # assessment following the Transport doc reconciliation --
@@ -762,17 +800,17 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    (2026-08-01, Frontend Component Test Coverage Foundation) Established the first jsdom/React
-    Testing Library component-test pattern in apps/web -- 4 new test files/26 new tests covering
-    the representative card (AttractionCard), the shared Pagination component, and 2 browse
-    filter components (SearchFilters, AttractionFilters), with zero regression across the 13
-    pre-existing suites. Full detail in current.task's comment block above; report at
-    docs/delivery/reports/FRONTEND-COMPONENT-TEST-COVERAGE-2026-08-01.md. No product behavior/
-    backend/schema change; Image Upload UI still explicitly not started, per instruction.
-    Remaining genuinely-open roadmap items, unchanged by this milestone: Critical #1 (general
-    write capability), High #4 (image upload UI -- backend ready since Media Upload Foundation,
-    still needs a frontend and real UX decisions nobody has made yet; High #6 (frontend component
-    test coverage) is no longer a bare gap -- a first reusable pattern now exists, though coverage
+    (2026-08-01, Image Upload UI) High #4 on the roadmap is no longer a bare gap -- a strictly
+    bounded single-image upload now exists, integrated into the review submission form via the
+    pre-existing orphan-media + attachToReview() path. Live-verified end-to-end including a real
+    browser CORS check (no config change needed) and a direct DB join proving the attachment
+    genuinely occurred. Full detail in current.task's comment block above; report at
+    docs/delivery/reports/IMAGE-UPLOAD-UI-2026-08-01.md. No backend/schema change. Deliberately NOT
+    done (per the fixed Owner scope): drag-drop, crop, gallery, delete, reorder, bulk upload, image
+    editing, a real progress bar, moderation, or any place_id-owned upload flow -- these remain
+    open if a future milestone wants them. Remaining genuinely-open roadmap items: Critical #1
+    (general write capability beyond reviews), High #6 (frontend component test coverage --
+    a first reusable pattern now exists, though coverage
     is still far from comprehensive across all browse pages/cards).
     ---- prior state (2026-08-01 Transport Browse Filters) ----
     GET /transports gained the 5 filters
