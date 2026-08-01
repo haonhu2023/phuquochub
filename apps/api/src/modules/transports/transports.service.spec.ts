@@ -82,12 +82,19 @@ describe('TransportsService', () => {
     it('truyền sort xuống repository; mặc định rating_desc khi không truyền', async () => {
       repo.listTransports.mockResolvedValue([]);
       repo.countTransports.mockResolvedValue(0);
+      const emptyFilters = {
+        transportType: undefined,
+        ward: undefined,
+        pricingModel: undefined,
+        bookingRequired: undefined,
+        airportTransfer: undefined,
+      };
 
       await service.list();
-      expect(repo.listTransports).toHaveBeenCalledWith(20, 0, 'rating_desc');
+      expect(repo.listTransports).toHaveBeenCalledWith(20, 0, 'rating_desc', emptyFilters);
 
       await service.list({ sort: 'name_asc', page: 2, limit: 10 } as Parameters<typeof service.list>[0]);
-      expect(repo.listTransports).toHaveBeenCalledWith(10, 10, 'name_asc');
+      expect(repo.listTransports).toHaveBeenCalledWith(10, 10, 'name_asc', emptyFilters);
     });
 
     it('limit > 100 bị cắt xuống 100 (clampLimit), meta.pageSize phản ánh giá trị đã cắt', async () => {
@@ -96,8 +103,43 @@ describe('TransportsService', () => {
 
       const res = await service.list({ limit: 500 } as Parameters<typeof service.list>[0]);
 
-      expect(repo.listTransports).toHaveBeenCalledWith(100, 0, 'rating_desc');
+      expect(repo.listTransports).toHaveBeenCalledWith(100, 0, 'rating_desc', expect.anything());
       expect(res.meta.pageSize).toBe(100);
+    });
+
+    // Transport Browse Filters (2026-07-30)
+    it('truyền transport_type/ward/pricing_model/booking_required/airport_transfer xuống repo dạng filters object', async () => {
+      repo.listTransports.mockResolvedValue([]);
+      repo.countTransports.mockResolvedValue(0);
+
+      const query = {
+        transport_type: 'taxi',
+        ward: 'Dương Đông',
+        pricing_model: 'per_km',
+        booking_required: false,
+        airport_transfer: true,
+      } as Parameters<typeof service.list>[0];
+      await service.list(query);
+
+      const expectedFilters = {
+        transportType: 'taxi',
+        ward: 'Dương Đông',
+        pricingModel: 'per_km',
+        bookingRequired: false,
+        airportTransfer: true,
+      };
+      expect(repo.listTransports).toHaveBeenCalledWith(20, 0, 'rating_desc', expectedFilters);
+      expect(repo.countTransports).toHaveBeenCalledWith(expectedFilters);
+    });
+
+    it('booking_required=false được truyền nguyên vẹn xuống repo (không bị coi là "không có filter")', async () => {
+      repo.listTransports.mockResolvedValue([]);
+      repo.countTransports.mockResolvedValue(0);
+
+      await service.list({ booking_required: false } as Parameters<typeof service.list>[0]);
+
+      const [, , , filters] = repo.listTransports.mock.calls[0];
+      expect(filters).toMatchObject({ bookingRequired: false });
     });
   });
 

@@ -45,8 +45,34 @@ describe('Wave 2 — Hotel/Restaurant/Tour/Event (e2e smoke)', () => {
     expect(res.body.success).toBe(false);
   });
 
-  it('GET /api/transports?transport_type=taxi → 400 (bộ lọc Browse hoãn sang nhiệm vụ kế tiếp)', async () => {
+  // Transport Browse Filters (2026-07-30) — transport_type/ward/pricing_model/booking_required/
+  // airport_transfer nay ĐÃ hỗ trợ (trước đây từ chối 400, xem báo cáo TRANSPORT-BROWSE-FILTERS).
+  it('GET /api/transports?transport_type=taxi → 200 (đã hỗ trợ, không còn hoãn)', async () => {
     const res = await request(app.getHttpServer()).get('/api/transports?transport_type=taxi');
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('GET /api/transports?ward=Dương Đông&booking_required=false&airport_transfer=true → 200, kết hợp nhiều filter', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/transports')
+      .query({ ward: 'Dương Đông', booking_required: 'false', airport_transfer: 'true' });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('GET /api/transports?pricing_model=per_minute → 400 (ngoài enum pricing_model)', async () => {
+    const res = await request(app.getHttpServer()).get('/api/transports?pricing_model=per_minute');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/transports?booking_required=yes → 400 (không phải "true"/"false", không âm thầm coerce)', async () => {
+    const res = await request(app.getHttpServer()).get('/api/transports?booking_required=yes');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/transports?category=hotel → 400 (vẫn hoãn/không hỗ trợ — đã là chính endpoint này)', async () => {
+    const res = await request(app.getHttpServer()).get('/api/transports?category=hotel');
     expect(res.status).toBe(400);
   });
 

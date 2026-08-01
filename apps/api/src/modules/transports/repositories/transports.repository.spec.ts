@@ -95,6 +95,73 @@ describe('TransportsRepository — đọc nền tảng (ADR-017)', () => {
 
       expect(sql(ds.query.mock.calls[0][0])).not.toContain('DISTINCT');
     });
+
+    // Transport Browse Filters (2026-07-30)
+    describe('filters', () => {
+      it('không truyền filter → không thêm điều kiện tt.code/ptd.pricing_model/booking_required/airport_transfer/EXISTS ward nào', async () => {
+        ds.query.mockResolvedValue([]);
+        await sut.listTransports(20, 0);
+
+        const [query, params] = ds.query.mock.calls[0];
+        expect(sql(query)).not.toContain('tt.code =');
+        expect(sql(query)).not.toContain('EXISTS');
+        expect(sql(query)).not.toContain('ptd.pricing_model =');
+        expect(sql(query)).not.toContain('ptd.booking_required =');
+        expect(sql(query)).not.toContain('ptd.airport_transfer =');
+        expect(params).toEqual([20, 0]); // hành vi y hệt trước khi có Transport Browse Filters
+      });
+
+      it('lọc cả 5 filter cùng lúc, đúng thứ tự placeholder, LIMIT/OFFSET dịch đúng theo số filter', async () => {
+        ds.query.mockResolvedValue([]);
+        await sut.listTransports(20, 0, 'rating_desc', {
+          transportType: 'taxi',
+          ward: 'An Thới',
+          pricingModel: 'per_km',
+          bookingRequired: true,
+          airportTransfer: false,
+        });
+
+        const [query, params] = ds.query.mock.calls[0];
+        const q = sql(query);
+        expect(q).toContain('tt.code = $1');
+        expect(q).toContain(
+          'EXISTS (SELECT 1 FROM transport_service_areas tsa WHERE tsa.place_id = p.id AND tsa.ward = $2)',
+        );
+        expect(q).toContain('ptd.pricing_model = $3');
+        expect(q).toContain('ptd.booking_required = $4');
+        expect(q).toContain('ptd.airport_transfer = $5');
+        expect(q).toContain('LIMIT $6 OFFSET $7');
+        expect(params).toEqual(['taxi', 'An Thới', 'per_km', true, false, 20, 0]);
+      });
+
+      it('chỉ transport_type → chỉ 1 điều kiện lọc thêm, placeholder $1', async () => {
+        ds.query.mockResolvedValue([]);
+        await sut.listTransports(10, 0, 'rating_desc', { transportType: 'ferry' });
+
+        const [query, params] = ds.query.mock.calls[0];
+        expect(sql(query)).toContain('tt.code = $1');
+        expect(sql(query)).not.toContain('EXISTS');
+        expect(params).toEqual(['ferry', 10, 0]);
+      });
+
+      it('booking_required=false được lọc (khác "không truyền") — SQL "= false" tự nhiên KHÔNG khớp NULL', async () => {
+        ds.query.mockResolvedValue([]);
+        await sut.listTransports(20, 0, 'rating_desc', { bookingRequired: false });
+
+        const [query, params] = ds.query.mock.calls[0];
+        expect(sql(query)).toContain('ptd.booking_required = $1');
+        expect(params).toEqual([false, 20, 0]);
+      });
+
+      it('ward dùng EXISTS trên transport_service_areas, tham số hoá (không nội suy chuỗi)', async () => {
+        ds.query.mockResolvedValue([]);
+        await sut.listTransports(20, 0, 'rating_desc', { ward: "An Thới' OR '1'='1" });
+
+        const [query, params] = ds.query.mock.calls[0];
+        expect(query).not.toContain("OR '1'='1");
+        expect(params[0]).toBe("An Thới' OR '1'='1");
+      });
+    });
   });
 
   describe('countTransports', () => {
@@ -111,6 +178,18 @@ describe('TransportsRepository — đọc nền tảng (ADR-017)', () => {
     it('không có dòng nào → 0 (không NaN/undefined)', async () => {
       ds.query.mockResolvedValue([]);
       await expect(sut.countTransports()).resolves.toBe(0);
+    });
+
+    it('áp dụng cùng filters như listTransports (đếm khớp kết quả thật đã lọc)', async () => {
+      ds.query.mockResolvedValue([{ c: 2 }]);
+      await expect(sut.countTransports({ transportType: 'taxi', pricingModel: 'per_km' })).resolves.toBe(2);
+
+      const [query, params] = ds.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain('tt.code = $1');
+      expect(q).toContain('ptd.pricing_model = $2');
+      expect(q).not.toContain('LIMIT');
+      expect(params).toEqual(['taxi', 'per_km']);
     });
   });
 

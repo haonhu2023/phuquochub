@@ -67,9 +67,18 @@ export class TransportsService {
     const p = clampPage(query.page);
     const l = clampLimit(query.limit);
     const sort = query.sort ?? 'rating_desc';
+    // Transport Browse Filters (2026-07-30) — cùng cách Search Filters truyền filters dạng
+    // object rời để không phá signature (limit, offset, sort) hiện có.
+    const filters = {
+      transportType: query.transport_type,
+      ward: query.ward,
+      pricingModel: query.pricing_model,
+      bookingRequired: query.booking_required,
+      airportTransfer: query.airport_transfer,
+    };
     const [rows, total] = await Promise.all([
-      this.repo.listTransports(l, (p - 1) * l, sort),
-      this.repo.countTransports(),
+      this.repo.listTransports(l, (p - 1) * l, sort, filters),
+      this.repo.countTransports(filters),
     ]);
     const items = rows.map((r: Record<string, unknown>) => ({
       id: r.id,

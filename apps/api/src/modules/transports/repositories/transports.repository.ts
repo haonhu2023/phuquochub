@@ -1,7 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { TransportSort } from '../dto/transports.dto';
+import { PricingModel, TransportSort } from '../dto/transports.dto';
+
+export interface TransportListFilters {
+  transportType?: string;
+  ward?: string;
+  pricingModel?: PricingModel;
+  bookingRequired?: boolean;
+  airportTransfer?: boolean;
+}
 
 /**
  * Repository của miền Transport (ADR-017 — Accepted 2026-07-28).
@@ -36,8 +44,48 @@ export class TransportsRepository {
     JOIN transport_types tt ON tt.id = ptd.transport_type_id
   `;
 
-  listTransports(limit: number, offset: number, sort: TransportSort = 'rating_desc') {
+  // Transport Browse Filters (2026-07-30) — cùng mẫu tham số hoá PlacesRepository.list()/
+  // searchFullText() đã dùng (conds/args tích luỹ, filter tuỳ chọn). `ward` khớp qua EXISTS trên
+  // transport_service_areas (1:N junction — KHÁC cột places.ward đơn của Hotel/Restaurant/Tour),
+  // không JOIN thêm vào FROM chính để không nhân dòng (đã có INNER JOIN place_transport_details/
+  // transport_types ở đó, không cần DISTINCT). booking_required/airport_transfer là tri-state:
+  // `= $n` trong SQL tự nhiên KHÔNG khớp NULL khi $n là false — không cần CASE/COALESCE riêng.
+  private static filterConds(filters: TransportListFilters, args: unknown[]): string {
+    let extra = '';
+    if (filters.transportType) {
+      args.push(filters.transportType);
+      extra += ` AND tt.code = $${args.length}`;
+    }
+    if (filters.ward) {
+      args.push(filters.ward);
+      extra += ` AND EXISTS (SELECT 1 FROM transport_service_areas tsa WHERE tsa.place_id = p.id AND tsa.ward = $${args.length})`;
+    }
+    if (filters.pricingModel) {
+      args.push(filters.pricingModel);
+      extra += ` AND ptd.pricing_model = $${args.length}`;
+    }
+    if (filters.bookingRequired !== undefined) {
+      args.push(filters.bookingRequired);
+      extra += ` AND ptd.booking_required = $${args.length}`;
+    }
+    if (filters.airportTransfer !== undefined) {
+      args.push(filters.airportTransfer);
+      extra += ` AND ptd.airport_transfer = $${args.length}`;
+    }
+    return extra;
+  }
+
+  listTransports(
+    limit: number,
+    offset: number,
+    sort: TransportSort = 'rating_desc',
+    filters: TransportListFilters = {},
+  ) {
     const orderBy = TransportsRepository.ORDER_BY[sort];
+    const args: unknown[] = [];
+    const filterConds = TransportsRepository.filterConds(filters, args);
+    const limitIdx = args.length + 1;
+    const offsetIdx = args.length + 2;
     // Một correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng
     // hàng ở tầng application; tất cả nằm trong một round-trip SQL).
     return this.ds.query(
@@ -50,17 +98,22 @@ export class TransportsRepository {
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM ${TransportsRepository.FROM}
        WHERE p.deleted_at IS NULL AND p.status = 'published'
+         ${filterConds}
        ORDER BY ${orderBy}
-       LIMIT $1 OFFSET $2`,
-      [limit, offset],
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...args, limit, offset],
     );
   }
 
-  countTransports(): Promise<number> {
+  countTransports(filters: TransportListFilters = {}): Promise<number> {
+    const args: unknown[] = [];
+    const filterConds = TransportsRepository.filterConds(filters, args);
     return this.ds
       .query(
         `SELECT count(*)::int AS c FROM ${TransportsRepository.FROM}
-         WHERE p.deleted_at IS NULL AND p.status = 'published'`,
+         WHERE p.deleted_at IS NULL AND p.status = 'published'
+           ${filterConds}`,
+        args,
       )
       .then((r) => Number(r[0]?.c ?? 0));
   }
