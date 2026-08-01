@@ -30,9 +30,59 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-01, Transport Browse Filters -- ad-hoc, NOT
-                                  # PLACE-numbered, per the same standing 2026-07-26 Owner
-                                  # instruction) Selected via a read-only governance assessment
+  task: none                      # (2026-08-01, Frontend Component Test Coverage Foundation --
+                                  # ad-hoc, NOT PLACE-numbered, per the same standing 2026-07-26
+                                  # Owner instruction) Selected via a read-only governance
+                                  # assessment following the Transport doc reconciliation --
+                                  # compared against Image Upload UI again and picked this because
+                                  # it needed zero product/design decision (no Owner UX call to
+                                  # make) while Image Upload UI still does. Established the FIRST
+                                  # jsdom/React Testing Library component-test pattern in
+                                  # apps/web: added @testing-library/react, @testing-library/
+                                  # jest-dom, jest-environment-jsdom as devDependencies (no
+                                  # @testing-library/user-event -- every target component only
+                                  # uses plain <select onChange>, so RTL's own fireEvent.change is
+                                  # a fully faithful simulation; adding it would be unused
+                                  # tooling). apps/web/jest.config.js: testMatch extended to also
+                                  # match *.spec.tsx; existing 13 *.spec.ts suites deliberately
+                                  # left running under the global testEnvironment: 'node'
+                                  # unchanged -- new component tests opt into jsdom per-file via
+                                  # Jest's own `/** @jest-environment jsdom */` docblock pragma,
+                                  # so nothing about the 13 pre-existing suites changed; ts-jest's
+                                  # globals.tsconfig gained jsx: 'react-jsx' (base tsconfig.json
+                                  # has jsx: 'preserve', which does not work for ts-jest, which
+                                  # needs an actual transform); new jest.cssModuleMock.js (a bare
+                                  # Proxy returning the accessed property name) wired via
+                                  # moduleNameMapper for '*.module.css' imports -- avoids adding
+                                  # the identity-obj-proxy package for a one-line need; new
+                                  # jest.setup.ts imports '@testing-library/jest-dom' via
+                                  # setupFilesAfterEnv. Confirmed empirically (not assumed) that
+                                  # next/link's <Link> renders under jsdom+RTL with no router
+                                  # context and needs no mock; next/navigation's useRouter/
+                                  # useSearchParams mocked per-test-file via jest.mock (no shared
+                                  # reusable mock module needed for only 2 consumers so far).
+                                  # 4 new test files, 26 new tests: AttractionCard.spec.tsx (9,
+                                  # the representative presentational card -- plain <img>, next/
+                                  # link, conditional metadata rendering), components/ui/
+                                  # Pagination.spec.tsx (7, the shared cross-module pagination
+                                  # component), modules/search/SearchFilters.spec.tsx (5) and
+                                  # modules/attractions/AttractionFilters.spec.tsx (5, the
+                                  # representative browse filter component -- chosen over
+                                  # HotelFilters because it has 3 filter fields/ward+price_range
+                                  # vs HotelFilters' 2, confirmed by reading both source files).
+                                  # Full validation: apps/web 17 suites/103 tests (up from 13/77),
+                                  # zero regression in the 13 pre-existing suites; full monorepo
+                                  # typecheck/lint/build clean across all 5 packages; backend 80
+                                  # suites/824 tests unaffected (no backend file touched). 4
+                                  # pre-existing high-severity npm audit findings (brace-expansion,
+                                  # postcss, sharp -- all transitive via next/eslint/jest, not via
+                                  # the 3 new packages) noted, not fixed -- out of scope, and the
+                                  # only available fix downgrades next to a breaking major version.
+                                  # See docs/delivery/reports/FRONTEND-COMPONENT-TEST-COVERAGE-
+                                  # 2026-08-01.md. No product behavior/backend/schema change; no
+                                  # Image Upload UI started, per instruction.
+                                  # ---- prior state (2026-08-01 Transport Browse Filters) ----
+                                  # Selected via a read-only governance assessment
                                   # that deliberately did NOT default to the frontend Media Upload
                                   # UI -- compared it against Transport Browse Filters and frontend
                                   # component tests, and picked this one because every design
@@ -712,7 +762,20 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    (2026-08-01, Transport Browse Filters) GET /transports gained the 5 filters
+    (2026-08-01, Frontend Component Test Coverage Foundation) Established the first jsdom/React
+    Testing Library component-test pattern in apps/web -- 4 new test files/26 new tests covering
+    the representative card (AttractionCard), the shared Pagination component, and 2 browse
+    filter components (SearchFilters, AttractionFilters), with zero regression across the 13
+    pre-existing suites. Full detail in current.task's comment block above; report at
+    docs/delivery/reports/FRONTEND-COMPONENT-TEST-COVERAGE-2026-08-01.md. No product behavior/
+    backend/schema change; Image Upload UI still explicitly not started, per instruction.
+    Remaining genuinely-open roadmap items, unchanged by this milestone: Critical #1 (general
+    write capability), High #4 (image upload UI -- backend ready since Media Upload Foundation,
+    still needs a frontend and real UX decisions nobody has made yet; High #6 (frontend component
+    test coverage) is no longer a bare gap -- a first reusable pattern now exists, though coverage
+    is still far from comprehensive across all browse pages/cards).
+    ---- prior state (2026-08-01 Transport Browse Filters) ----
+    GET /transports gained the 5 filters
     docs/data/modules/transport.md had already fully designed -- zero new Owner decision, zero
     migration. Full detail in current.task's comment block above; report at
     docs/delivery/reports/TRANSPORT-BROWSE-FILTERS-2026-08-01.md. No frontend Transport browse
