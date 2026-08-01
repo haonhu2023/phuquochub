@@ -13,8 +13,11 @@ import { MediaProvider, MediaStatus, MediaType } from '../media.enums';
 import { Place } from '../../places/entities/place.entity';
 
 // Bảng `media` — exclusive arc 5 nhánh (place/review/post/business/event), thay `place_media`
-// (ADR-009, +event_id theo ADR-003/ADR-002 — database.md §3.5). CHECK đúng-một chủ sở hữu áp ở
-// migration. review_id/post_id/event_id chưa FK (bảng đích thuộc Wave sau).
+// (ADR-009, +event_id theo ADR-003/ADR-002 — database.md §3.5). CHECK TỐI ĐA một chủ sở hữu áp ở
+// migration (nới lỏng từ đúng-một, Media Upload Foundation 2026-07-30 — cho phép media mồ côi,
+// pending, chưa gắn owner nào, cùng cách attachToReview() đã giả định từ trước). review_id/
+// event_id đã có FK thật (thêm sau khi reviews/events tồn tại); chỉ post_id còn chưa FK (bảng
+// đích thuộc Wave sau).
 @Entity('media')
 @Index(['placeId'])
 @Index(['status'])
@@ -40,8 +43,12 @@ export class Media {
   @Column({ type: 'enum', enum: MediaType, enumName: 'media_type' })
   type!: MediaType;
 
-  @Column({ type: 'varchar', length: 500 })
-  url!: string;
+  // Media Upload Foundation (design review, 2026-07-30): nullable — new upload rows never
+  // persist an absolute/signed URL (see object_key/bucket/contentType/sizeBytes/checksumSha256
+  // below). Only legacy/externally-embedded rows (provider=youtube|vimeo, or any pre-existing
+  // upload row) still carry a real stored value here.
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  url!: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   thumbnailUrl!: string | null;
@@ -81,6 +88,23 @@ export class Media {
 
   @Column({ type: 'uuid', nullable: true })
   uploadedBy!: string | null;
+
+  // --- Media Upload Foundation (design review, 2026-07-30) — object storage metadata ONLY.
+  // Never an absolute or signed URL (that is generated dynamically at read time, never persisted).
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  objectKey!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  bucket!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  contentType!: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  sizeBytes!: number | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  checksumSha256!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
