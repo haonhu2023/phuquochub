@@ -256,4 +256,12 @@ Clean after commits (verified via `git status --short` immediately before and af
 
 ## 25. Commit hashes
 
-Recorded immediately after committing, in the same message as this report's final delivery.
+| Commit | Scope |
+|---|---|
+| `9dfc40b` | `feat(storage)`: S3-compatible object storage |
+| `57f4a30` | `feat(db)`: media upload foundation schema (migrations) |
+| `3d11cd1` | `feat(media)`: secure upload foundation (presign/register) |
+| `3b77f2f` | `test(media)`: live MinIO round-trip e2e |
+| `03df84f` | `docs(media)`: documentation + this report |
+
+`git status --short` is clean after these commits.
