@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/modules/auth/AuthProvider';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
+import { useSingleImageUpload } from '@/modules/media/useSingleImageUpload';
 import { createReview } from './api/reviews.api';
 import { formatReviewDate, ratingStars } from './format';
 import type { Review } from './types';
@@ -25,6 +26,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const image = useSingleImageUpload();
 
   const hasReviewed = !!user && reviews.some((r) => r.user_id === user.id);
 
@@ -41,7 +43,11 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
     setSubmitting(true);
     try {
       const trimmed = content.trim();
-      await createReview(placeId, { rating, content: trimmed || undefined }, session.accessToken);
+      await createReview(
+        placeId,
+        { rating, content: trimmed || undefined, media_ids: image.mediaId ? [image.mediaId] : undefined },
+        session.accessToken,
+      );
       setReviews((prev) => [
         {
           id: `local-${Date.now()}`,
@@ -57,6 +63,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
       ]);
       setContent('');
       setRating(5);
+      image.reset();
     } catch (err) {
       if (err instanceof ApiError && err.isConflict) {
         setError('Bạn đã đánh giá địa điểm này rồi.');
@@ -137,13 +144,39 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
             disabled={submitting}
           />
 
+          <label className={styles.formLabel} htmlFor="review-image">
+            Thêm ảnh (không bắt buộc)
+          </label>
+          <input
+            id="review-image"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className={styles.formFileInput}
+            onChange={image.onFileSelected}
+            disabled={submitting || image.uploading}
+          />
+          {image.preview && (
+            // eslint-disable-next-line @next/next/no-img-element -- xem trước ảnh cục bộ (object URL), không phải ảnh từ host bên ngoài.
+            <img src={image.preview} alt="Ảnh xem trước" className={styles.imagePreview} />
+          )}
+          {image.uploading && (
+            <p className={styles.hint} aria-live="polite">
+              Đang tải ảnh lên…
+            </p>
+          )}
+          {image.error && (
+            <p className={styles.formError} role="alert">
+              {image.error}
+            </p>
+          )}
+
           {error && (
             <p className={styles.formError} role="alert">
               {error}
             </p>
           )}
 
-          <button type="submit" className={styles.btn} disabled={submitting}>
+          <button type="submit" className={styles.btn} disabled={submitting || image.uploading}>
             {submitting ? 'Đang gửi…' : 'Gửi đánh giá'}
           </button>
         </form>

@@ -85,6 +85,16 @@
   margin: 0;
   font-size: 0.85rem;
 }
+.formFileInput {
+  font: inherit;
+  color: var(--fg);
+}
+.imagePreview {
+  width: 100%;
+  max-width: 200px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
 .btn {
   align-self: flex-start;
   padding: 0.55rem 1.1rem;
