@@ -1144,7 +1144,7 @@ paths:
   /transports:
     get:
       tags: [Transports]
-      summary: Danh sách dịch vụ vận chuyển (tối giản — nền tảng)
+      summary: Danh sách dịch vụ vận chuyển, có bộ lọc (loại hình/khu vực/mô hình giá/cờ tri-state)
       operationId: listTransports
       security: []
       description: >-
@@ -1155,10 +1155,32 @@ paths:
         INSERT, không cần migration (ADR-017).
 
 
-        Endpoint này CHỈ hỗ trợ `sort`/`page`/`limit` — bộ lọc theo loại hình/khu vực/mô hình
-        giá/cờ boolean có chủ đích CHƯA triển khai ở nhiệm vụ nền tảng này, xem
-        docs/data/modules/transport.md §8.
+        Transport Browse Filters (2026-07-30): `transport_type`/`ward`/`pricing_model`/
+        `booking_required`/`airport_transfer` nay đã hỗ trợ, khớp đúng thiết kế
+        docs/data/modules/transport.md §8. `category`/`district`/`capacity_min`/`capacity_max`/
+        `provider` vẫn bị từ chối `400` (`forbidNonWhitelisted`) — hoãn/không hỗ trợ, không âm
+        thầm bỏ qua.
       parameters:
+        - name: transport_type
+          in: query
+          description: Mã trong `transport_types.code` (vd `taxi`, `ferry`) — so khớp chính xác.
+          schema: { type: string }
+        - name: ward
+          in: query
+          description: Text tự do, khớp qua `EXISTS` trên `transport_service_areas` (1:N — khác cột `places.ward` đơn của Hotel/Restaurant/Tour). Giá trị lạ → 0 kết quả, không phải 400.
+          schema: { type: string, maxLength: 120 }
+        - { name: pricing_model, in: query, schema: { $ref: '#/components/schemas/PricingModel' } }
+        - name: booking_required
+          in: query
+          description: >-
+            Tri-state — CHỈ khớp giá trị TƯỜNG MINH (`booking_required=false` KHÔNG khớp `NULL`
+            — chưa xác nhận ≠ đã xác nhận là không cần đặt trước). Chỉ chấp nhận đúng chuỗi
+            `true`/`false`; giá trị khác → 400.
+          schema: { type: boolean }
+        - name: airport_transfer
+          in: query
+          description: Cùng quy tắc tri-state như `booking_required`.
+          schema: { type: boolean }
         - name: sort
           in: query
           description: >-

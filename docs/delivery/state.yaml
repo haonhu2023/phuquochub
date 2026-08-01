@@ -30,9 +30,34 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-07-30, Media Upload Foundation -- ad-hoc, NOT
+  task: none                      # (2026-08-01, Transport Browse Filters -- ad-hoc, NOT
                                   # PLACE-numbered, per the same standing 2026-07-26 Owner
-                                  # instruction) Design-review-approved backend milestone: new
+                                  # instruction) Selected via a read-only governance assessment
+                                  # that deliberately did NOT default to the frontend Media Upload
+                                  # UI -- compared it against Transport Browse Filters and frontend
+                                  # component tests, and picked this one because every design
+                                  # decision was already written down in
+                                  # docs/data/modules/transport.md Section 8 (authored when
+                                  # Transport shipped, self-flagged in ListTransportsQueryDto's own
+                                  # code comment as "the next Transport Browse task"), needed zero
+                                  # migration (every backing column/index already existed from
+                                  # InitTransport), and stayed inside ADR-017's own Accepted scope
+                                  # (schema + minimal read -- explicitly NOT the public browse
+                                  # page, which remains a separate, larger, not-yet-authorized
+                                  # decision). Backend only: GET /transports gained 5 optional
+                                  # filters (transport_type/ward/pricing_model/booking_required/
+                                  # airport_transfer), mirroring the Search Filters milestone's
+                                  # exact parameterized-WHERE pattern. No schema/migration/new
+                                  # endpoint. Two pre-existing tests had encoded the OLD "these 5
+                                  # fields are rejected" behavior (transports.dto.spec.ts,
+                                  # wave2.e2e-spec.ts) and were updated to match the new, intended
+                                  # behavior -- not silently left failing. Full validation: 80
+                                  # suites/824 unit tests (up from 800), 12 e2e suites/95 tests (up
+                                  # from 91, all live against real Postgres/PostGIS/Redis),
+                                  # monorepo build clean. See
+                                  # docs/delivery/reports/TRANSPORT-BROWSE-FILTERS-2026-08-01.md.
+                                  # ---- prior state (2026-07-30 Media Upload Foundation) ----
+                                  # Design-review-approved backend milestone: new
                                   # apps/api/src/core/storage/ (S3-compatible StorageService --
                                   # MinIO dev/AWS S3/Cloudflare R2, all one client) +
                                   # apps/api/src/modules/media/ write path (POST /media/presign,
@@ -687,7 +712,16 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    (2026-07-30, Media Upload Foundation) Design-review-approved backend milestone shipped -- new
+    (2026-08-01, Transport Browse Filters) GET /transports gained the 5 filters
+    docs/data/modules/transport.md had already fully designed -- zero new Owner decision, zero
+    migration. Full detail in current.task's comment block above; report at
+    docs/delivery/reports/TRANSPORT-BROWSE-FILTERS-2026-08-01.md. No frontend Transport browse
+    page started (that remains outside ADR-017's current Accepted scope). Remaining genuinely-open
+    roadmap items, unchanged by this milestone: Critical #1 (general write capability), High #4
+    (image upload UI -- backend ready since Media Upload Foundation, still needs a frontend and
+    real UX decisions nobody has made yet), High #6 (frontend component test coverage).
+    ---- prior state (2026-07-30 Media Upload Foundation) ----
+    Design-review-approved backend milestone shipped -- new
     S3-compatible StorageService (core/storage/) + media presign/register write path
     (modules/media/), with the 3 approved design changes (metadata-only persistence, dev/test
     bucket isolation, HEAD-first/GET-stream-fallback checksum verification) plus a presign-session
