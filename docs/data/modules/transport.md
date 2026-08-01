@@ -198,9 +198,17 @@ Mission cho phép "demonstrational seed data where repository policy allows." Đ
 
 **Kết luận:** repository policy hiện tại **không cho phép** seed demonstrational business data. Khuyến nghị: hoãn mọi dòng `place_transport_details`/`places(category=transport)` tới khi có nguồn dữ liệu thật kiểm chứng được (qua pipeline provenance ở [source.md](./source.md)), hoặc tới khi có quyết định sản phẩm tường minh khác đi (khác ADR này).
 
-## 8. API — nền tảng đã triển khai, bộ lọc mở rộng vẫn PROPOSED
+## 8. API — nền tảng và bộ lọc mở rộng ĐỀU đã triển khai; trang Browse công khai (frontend) thì CHƯA
 
-**Cập nhật (governance reconciliation, 2026-07-30):** `GET /transports`, `GET /transports/{slug}`, `GET /transport-types` đã triển khai (`transports.controller.ts`/`transport-types.controller.ts`), cùng `sort` (khớp đúng §8.1 dưới đây, không lệch). **Bộ lọc mở rộng bên dưới (`transport_type`/`ward`/`pricing_model`/`booking_required`/`airport_transfer`) vẫn CHỈ LÀ THIẾT KẾ** — `ListTransportsQueryDto` hiện tại (`apps/api/src/modules/transports/dto/transports.dto.ts`) cố ý chỉ có `sort`/`page`/`limit`; triển khai các bộ lọc này là phạm vi một nhiệm vụ Transport Browse kế tiếp (additive, không phá vỡ tương thích). Đường dẫn endpoint bên dưới đã sửa lại khớp thực tế (trước đây ghi số ít `/transport/...`, thực tế là số nhiều `/transports/...` + `/transport-types` phẳng — xem [ADR-017 Status](../../99-decisions/ADR-017-transport-domain-foundation.md)).
+**Cập nhật (Transport Browse Filters, 2026-08-01):** `GET /transports`, `GET /transports/{slug}`, `GET /transport-types` đã triển khai từ trước (`transports.controller.ts`/`transport-types.controller.ts`), cùng `sort` (khớp đúng §8.1 dưới đây, không lệch). **Bộ lọc mở rộng bên dưới (`transport_type`/`ward`/`pricing_model`/`booking_required`/`airport_transfer`) NAY CŨNG ĐÃ TRIỂN KHAI** — `ListTransportsQueryDto` (`apps/api/src/modules/transports/dto/transports.dto.ts`) nay có đủ 5 trường này cộng `sort`/`page`/`limit`, khớp chính xác bảng tham số bên dưới; không cần migration/schema mới (mọi cột/index hậu thuẫn đã có sẵn từ `InitTransport`). Xem
+[docs/delivery/reports/TRANSPORT-BROWSE-FILTERS-2026-08-01.md](../../delivery/reports/TRANSPORT-BROWSE-FILTERS-2026-08-01.md).
+
+> **Phân biệt rõ 3 trạng thái, không được nhầm lẫn:**
+> 1. **Backend — ĐÃ triển khai:** cả 5 bộ lọc trong bảng bên dưới (`transport_type`/`ward`/`pricing_model`/`booking_required`/`airport_transfer`), cộng `sort`/`page`/`limit`.
+> 2. **Backend — CÒN hoãn có chủ đích** (§ ngay dưới bảng): `capacity_min`/`capacity_max` (chưa có dữ liệu thật để lọc có ý nghĩa), `district` (không có cột), `provider` (Business ownership chưa migrate). Đều vẫn bị từ chối `400`, không silent-ignore.
+> 3. **Frontend — trang Browse công khai `/transports` (Next.js): CHƯA triển khai.** Transport là vertical DUY NHẤT trong 6 vertical (Hotel/Restaurant/Tour/Attraction/Beach/Transport) chưa có trang duyệt danh sách nào ở `apps/web` — không có route `apps/web/src/app/(public)/transports/`. Xây trang này nằm NGOÀI phạm vi ADR-017's Accepted scope hiện tại ("schema + đọc tối thiểu, KHÔNG gồm trang Browse công khai") và ngoài phạm vi milestone Transport Browse Filters (backend-only, tường minh "Do not begin a frontend Transport browse page"). Không tài liệu nào ở đây được suy diễn thành "trang Browse đã có" — không có UI nào gọi các bộ lọc mới này cả.
+
+Đường dẫn endpoint bên dưới đã sửa lại khớp thực tế (trước đây ghi số ít `/transport/...`, thực tế là số nhiều `/transports/...` + `/transport-types` phẳng — xem [ADR-017 Status](../../99-decisions/ADR-017-transport-domain-foundation.md)).
 
 Theo đúng conventions đã dùng cho Attraction/Beach/Tour: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`, envelope `{success, data, meta}`, phân trang OFFSET (`page`/`limit`, default 20/max 100 qua `clampLimit`/`clampPage`), sort whitelist cố định phía server với khoá phụ `id ASC`.
 
@@ -209,7 +217,7 @@ Theo đúng conventions đã dùng cho Attraction/Beach/Tour: `ValidationPipe({ 
 | Tham số | Giá trị | Ánh xạ | Ghi chú |
 |---|---|---|---|
 | `transport_type` | mã trong `transport_types.code` | `place_transport_details.transport_type_id` (qua join code→id) | so khớp chính xác |
-| `ward` | text tự do | `transport_service_areas.ward` (EXISTS) | cùng quy ước ward mọi vertical khác |
+| `ward` | text tự do | `transport_service_areas.ward` (EXISTS) | cùng quy ước ward tự do như mọi vertical khác, NHƯNG DTO này không có `@MaxLength(120)` (khác Attraction/Beach/Tour) — chưa cần vì `EXISTS` trên bảng riêng, không phải so sánh trực tiếp cột `places.ward` |
 | `pricing_model` | `fixed\|starting_from\|per_km\|per_hour\|per_person\|per_vehicle\|contact` | `place_transport_details.pricing_model` | |
 | `booking_required` | `true\|false` | `place_transport_details.booking_required = $n` | **CHỈ khớp giá trị TƯỜNG MINH** — `booking_required=false` KHÔNG khớp NULL (tri-state), phải nêu rõ trong response docs để không ai đọc "0 kết quả" là lỗi |
 | `airport_transfer` | `true\|false` | tương tự | cùng quy tắc tri-state |
@@ -241,7 +249,7 @@ Endpoint RIÊNG (không dùng chung `/places/{slug}` như Attraction/Beach) — 
 ### KHÔNG đề xuất — hoãn có chủ đích
 
 - **`GET /transport-operators`** (hoặc tương đương) — không có mô hình dữ liệu đứng sau ngoài `provider_business_id` (một Place khác); Business ownership chưa migrate. Xem [ADR-017 §Alternatives](../../99-decisions/ADR-017-transport-domain-foundation.md).
-- **`GET /transport-service-areas`** (hoặc tương đương) — không có từ điển `service_areas` riêng (§3.5 dùng `ward` tự do) nên không có gì để liệt kê ngoài `GET /transports?ward=X` như một filter (chưa triển khai, xem ghi chú đầu §8), đúng khoảng trống đã tồn tại (không tệ hơn) ở Tour/Attraction/Beach.
+- **`GET /transport-service-areas`** (hoặc tương đương) — không có từ điển `service_areas` riêng (§3.5 dùng `ward` tự do) nên không có gì để liệt kê ngoài `GET /transports?ward=X` như một filter (đã triển khai, xem §8), đúng khoảng trống đã tồn tại (không tệ hơn) ở Tour/Attraction/Beach.
 
 ## 9. Lộ trình tương lai — vì sao nền tảng này không cần thiết kế lại
 

@@ -1155,7 +1155,7 @@ paths:
         INSERT, không cần migration (ADR-017).
 
 
-        Transport Browse Filters (2026-07-30): `transport_type`/`ward`/`pricing_model`/
+        Transport Browse Filters (2026-08-01): `transport_type`/`ward`/`pricing_model`/
         `booking_required`/`airport_transfer` nay đã hỗ trợ, khớp đúng thiết kế
         docs/data/modules/transport.md §8. `category`/`district`/`capacity_min`/`capacity_max`/
         `provider` vẫn bị từ chối `400` (`forbidNonWhitelisted`) — hoãn/không hỗ trợ, không âm
@@ -1167,8 +1167,8 @@ paths:
           schema: { type: string }
         - name: ward
           in: query
-          description: Text tự do, khớp qua `EXISTS` trên `transport_service_areas` (1:N — khác cột `places.ward` đơn của Hotel/Restaurant/Tour). Giá trị lạ → 0 kết quả, không phải 400.
-          schema: { type: string, maxLength: 120 }
+          description: Text tự do, khớp qua `EXISTS` trên `transport_service_areas` (1:N — khác cột `places.ward` đơn của Hotel/Restaurant/Tour). Giá trị lạ → 0 kết quả, không phải 400. KHÔNG có giới hạn độ dài phía DTO (khác `ward` của Attraction/Beach/Tour, vốn có `@MaxLength(120)`) — ghi đúng hành vi thật, không suy đoán từ quy ước vertical khác.
+          schema: { type: string }
         - { name: pricing_model, in: query, schema: { $ref: '#/components/schemas/PricingModel' } }
         - name: booking_required
           in: query
