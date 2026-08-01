@@ -1781,33 +1781,73 @@ paths:
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
   # ============================ MEDIA ============================
+  # Media Upload Foundation (design review, 2026-07-30). Backend only — see
+  # docs/data/modules/media.md. No thumbnail/resize/EXIF/AI/moderation/CDN/bulk-upload in this
+  # milestone; /media/{id} (delete) and /media/{id}/moderate below remain PROPOSED (unimplemented,
+  # no controller handler exists), left as-is, not part of this milestone.
   /media/presign:
     post:
       tags: [Media]
-      summary: Xin presigned URL upload
+      summary: Xin presigned PUT URL upload trực tiếp lên object storage (MinIO dev / S3-compatible)
       operationId: presignMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Chỉ hỗ trợ TỐI ĐA một owner ở bước presign: `place_id`, hoặc không owner nào (mồ côi —
+        gắn sau qua luồng review hiện có, `attachToReview`). `business_id`/`post_id`/`event_id`/
+        `review_id` KHÔNG được chấp nhận ở đây — whitelist + forbidNonWhitelisted (main.ts) từ
+        chối 400 nếu gửi, không âm thầm bỏ qua. `key` do SERVER sinh (`media/{uuid-v4}.{ext}`),
+        client không tự đặt được. `upload_url` hết hạn sau 600 giây, chỉ dùng được cho `PUT` với
+        đúng `Content-Type` đã khai. Đăng ký kết quả qua `POST /media` bên dưới trong vòng phiên
+        presign-session (Redis, TTL 900s) — xem docs/data/modules/media.md §Presign-session.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [content_type, size]
+              required: [content_type, size, checksum_sha256]
               properties:
-                content_type: { type: string }
-                size: { type: integer }
+                content_type: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                size: { type: integer, minimum: 1, maximum: 10485760, description: 'Byte, tối đa 10 MiB.' }
+                checksum_sha256:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                  description: SHA-256 của nội dung file, hex viết thường (64 ký tự) — client tự tính trước khi presign.
                 place_id: { type: [string, 'null'], format: uuid }
-                review_id: { type: [string, 'null'], format: uuid }
-                post_id: { type: [string, 'null'], format: uuid }
-                business_id: { type: [string, 'null'], format: uuid }
-                event_id: { type: [string, 'null'], format: uuid }
-      responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
-      description: 'Đúng MỘT owner (exclusive arc 5 nhánh): place_id | review_id | post_id | business_id | event_id — ADR-009.'
+      responses:
+        '201':
+          description: Đã tạo presigned URL
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          key: { type: string, example: 'media/2f6a1e2e-2b8e-4e9a-9c8b-5b6a7c8d9e0f.jpg' }
+                          upload_url: { type: string, format: uri, description: Presigned PUT URL — hết hạn sau expires_in giây, KHÔNG lưu lại/log. }
+                          expires_in: { type: integer, example: 600 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /media:
     post:
       tags: [Media]
-      summary: Xác nhận media sau upload
+      summary: Đăng ký media sau khi đã PUT thành công lên object storage
       operationId: createMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu phiên presign-session còn hiệu lực cho đúng `key` này VÀ thuộc đúng người gọi
+        (chống việc đăng ký hộ/chiếm dụng key của người khác) — 422 nếu không có phiên (chưa
+        presign/đã đăng ký/hết hạn), 403 nếu phiên thuộc người khác. Server tự xác thực object
+        thật trên storage (HeadObject, rồi so khớp checksum — GET+stream nếu HEAD không có
+        checksum đáng tin cậy) bằng chính giá trị content_type/size/checksum ĐÃ LƯU từ bước
+        presign, không tin lại giá trị từ client ở bước này. Trùng checksum theo cùng người
+        upload → 409 (object thừa bị xoá khỏi storage). Media luôn tạo ở trạng thái `pending`
+        (ảnh cộng đồng đóng góp, chưa kiểm duyệt) — `url` LUÔN `null` cho tới khi một luồng kiểm
+        duyệt (ngoài phạm vi milestone này) công bố nó.
       requestBody:
         required: true
         content:
@@ -1815,8 +1855,24 @@ paths:
             schema:
               type: object
               required: [key]
-              properties: { key: { type: string }, caption: { type: string }, alt: { type: string } }
-      responses: { '201': { $ref: '#/components/responses/ObjectResponse' } }
+              properties:
+                key: { type: string, example: 'media/2f6a1e2e-2b8e-4e9a-9c8b-5b6a7c8d9e0f.jpg' }
+                caption: { type: string, maxLength: 300 }
+                alt: { type: string, maxLength: 200 }
+      responses:
+        '201':
+          description: Đã đăng ký
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Media' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /media/{id}:
     delete:
       tags: [Media]
@@ -2516,10 +2572,16 @@ components:
         display_order: { type: integer }
     Media:
       type: object
+      description: >-
+        `url` là `null` cho media `pending` (mọi upload mới qua Media Upload Foundation, 2026-07-30
+        — không có object_key/bucket/... nào được lộ, chỉ metadata storage tối thiểu được LƯU,
+        không bao giờ là URL tuyệt đối/signed — xem docs/data/modules/media.md §Persistence). Chỉ
+        media `published` hợp pháp (embed YouTube/Vimeo, hoặc một luồng kiểm duyệt tương lai) mới
+        có `url` thật.
       properties:
         id: { type: string, format: uuid }
         type: { type: string, enum: [image, video] }
-        url: { type: string, format: uri }
+        url: { type: [string, 'null'], format: uri }
         thumbnail_url: { type: [string, 'null'], format: uri }
         caption: { type: [string, 'null'] }
         alt_text: { type: [string, 'null'] }

@@ -30,7 +30,46 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-07-30, GOVERNANCE RECONCILIATION -- this comment block
+  task: none                      # (2026-07-30, Media Upload Foundation -- ad-hoc, NOT
+                                  # PLACE-numbered, per the same standing 2026-07-26 Owner
+                                  # instruction) Design-review-approved backend milestone: new
+                                  # apps/api/src/core/storage/ (S3-compatible StorageService --
+                                  # MinIO dev/AWS S3/Cloudflare R2, all one client) +
+                                  # apps/api/src/modules/media/ write path (POST /media/presign,
+                                  # POST /media). Three approved design changes: (1) persist ONLY
+                                  # object metadata (object_key/bucket/content_type/size_bytes/
+                                  # checksum_sha256) -- media.url made nullable, NEVER a stored
+                                  # absolute/signed URL, generated dynamically at read time (not
+                                  # yet needed in practice since every new upload stays `pending`
+                                  # and the existing published-only gallery read path never
+                                  # touches these rows); (2) bucket isolation --
+                                  # phuquochub-dev/phuquochub-test defaults, S3_BUCKET the only
+                                  # production override, Jest's own default NODE_ENV=test already
+                                  # isolates e2e for free; (3) verifyUploadedObject()
+                                  # HEAD-first/GET-stream-fallback SHA-256 verification, provider-
+                                  # agnostic, never buffers the full object, deletes the object on
+                                  # any mismatch. Presign-session integrity via Redis (existing
+                                  # infra, TokenService's refresh-token-record pattern reused, no
+                                  # new DB table) closes the gap the original plan had flagged
+                                  # unresolved (server could not previously prove the confirming
+                                  # user was the same one who requested the presign). Migration
+                                  # AddMediaUploadFoundation relaxed media's exclusive-owner CHECK
+                                  # from exactly-one to at-most-one -- MediaRepository
+                                  # .attachToReview() had ALREADY assumed a fully-orphaned (0-owner)
+                                  # row was reachable, but the original CHECK made that impossible
+                                  # to ever INSERT; fixed at the root, not worked around. down()
+                                  # refuses (throws, does not destroy data) if any object_key/
+                                  # null-url/orphan row exists that would make reverting unsafe --
+                                  # verified via a real revert->reapply drill on the live dev DB
+                                  # while the table was empty. Full validation: 80 suites/800 unit
+                                  # tests (up from 74/724), 12 e2e suites/91 tests (up from 11/81,
+                                  # includes a new 10-test live-MinIO-round-trip spec proving real
+                                  # presign->PUT->register->verify->duplicate-detect), full
+                                  # monorepo build clean (build-determinism fix from the Search
+                                  # Filters review re-confirmed still holding). See
+                                  # docs/delivery/reports/MEDIA-UPLOAD-FOUNDATION-2026-07-30.md.
+                                  # ---- prior state (2026-07-30 governance reconciliation) ----
+                                  # (2026-07-30, GOVERNANCE RECONCILIATION -- this comment block
                                   # and next_action.objective below had fallen behind 4 completed
                                   # ad-hoc milestones; this entry catches both up. All ad-hoc, NOT
                                   # PLACE-numbered, per the same standing 2026-07-26 Owner
@@ -648,7 +687,19 @@ next_action:
   task_id: none
   status: awaiting_task_authorization
   objective: >-
-    (2026-07-30, GOVERNANCE RECONCILIATION) This field had fallen behind the ad-hoc product-
+    (2026-07-30, Media Upload Foundation) Design-review-approved backend milestone shipped -- new
+    S3-compatible StorageService (core/storage/) + media presign/register write path
+    (modules/media/), with the 3 approved design changes (metadata-only persistence, dev/test
+    bucket isolation, HEAD-first/GET-stream-fallback checksum verification) plus a presign-session
+    integrity mechanism (Redis) that closes a gap the original plan had left unresolved. Full
+    detail in current.task's comment block above; report at
+    docs/delivery/reports/MEDIA-UPLOAD-FOUNDATION-2026-07-30.md. Frontend upload UI explicitly not
+    started, per instruction. Remaining genuinely-open roadmap items unchanged by this
+    infrastructure-layer milestone: Critical #1 (general write capability), High #4 (image upload
+    UI -- now unblocked at the backend, still needs a frontend), High #6 (frontend component test
+    coverage).
+    ---- prior state (2026-07-30 governance reconciliation) ----
+    This field had fallen behind the ad-hoc product-
     completion stream by several milestones -- it still ended at the 2026-07-25 SEO task even
     though Reviews (07-26), Booking Foundation (07-29), Booking Application Layer/Phase 2 (07-30),
     Availability & Inventory Foundation (07-30), and Search Filters (07-30, + a post-implementation
