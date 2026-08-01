@@ -212,8 +212,8 @@ Two scoped commits, per the plan:
 
 | Commit | Scope |
 |---|---|
-| _pending_ | `test(web)`: component testing foundation |
-| _pending_ | `docs(web)`: governance + this report |
+| `1968309` | `test(web)`: component testing foundation |
+| `06db3aa` | `docs(web)`: governance + this report |
 
 (Filled in via a small follow-up commit once known, per repository convention.)
 
