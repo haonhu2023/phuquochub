@@ -32,6 +32,21 @@ export interface AppConfig {
     credentials: boolean;
   };
   trustProxyHops: number;
+  s3: {
+    endpoint: string;
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    bucket: string;
+    forcePathStyle: boolean;
+  };
+}
+
+// Media Upload Foundation — bucket isolation (design review, 2026-07-30): S3_BUCKET is the ONLY
+// production override (server config, never client input). Left unset, dev/test each get a safe,
+// distinct default so e2e tests can never silently write into the dev bucket.
+function defaultS3Bucket(nodeEnv: string): string {
+  return nodeEnv === 'test' ? 'phuquochub-test' : 'phuquochub-dev';
 }
 
 export default (): AppConfig => ({
@@ -75,4 +90,12 @@ export default (): AppConfig => ({
     credentials: (process.env.CORS_CREDENTIALS ?? 'false') === 'true',
   },
   trustProxyHops: parseInt(process.env.TRUST_PROXY_HOPS ?? '0', 10),
+  s3: {
+    endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9000',
+    region: process.env.S3_REGION ?? 'us-east-1',
+    accessKeyId: process.env.S3_ACCESS_KEY ?? 'minioadmin',
+    secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
+    bucket: process.env.S3_BUCKET?.trim() || defaultS3Bucket(process.env.NODE_ENV ?? 'development'),
+    forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
+  },
 });

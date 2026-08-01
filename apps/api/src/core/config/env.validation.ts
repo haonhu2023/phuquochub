@@ -69,4 +69,17 @@ export const envValidationSchema = Joi.object({
   // PLACE-028: number of reverse-proxy hops to trust for client-IP resolution (rate limiting).
   // Default 0 — no reverse proxy is deployed yet; forwarded headers are untrusted until one exists.
   TRUST_PROXY_HOPS: Joi.number().min(0).default(0),
+
+  // Media Upload Foundation (design review, 2026-07-30): S3-compatible object storage. No
+  // production-required rule here by design — wiring real production R2 credentials is
+  // explicitly out of scope for this milestone (dev/test MinIO only); a future task adds that
+  // fail-fast rule once production storage is actually configured.
+  S3_ENDPOINT: Joi.string().default('http://localhost:9000'),
+  S3_ACCESS_KEY: Joi.string().default('minioadmin'),
+  S3_SECRET_KEY: Joi.string().default('minioadmin'),
+  // Intentionally no .default() — code-level default is environment-aware (dev vs test), which
+  // Joi's static default cannot express; see configuration.ts's defaultS3Bucket().
+  S3_BUCKET: Joi.string().allow('').optional(),
+  S3_REGION: Joi.string().default('us-east-1'),
+  S3_FORCE_PATH_STYLE: Joi.boolean().truthy('true').falsy('false').default(true),
 }).unknown(true);
