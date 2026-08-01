@@ -1,0 +1,130 @@
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CreateMediaDto, MAX_UPLOAD_SIZE_BYTES, PresignMediaDto } from './media.dto';
+
+const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
+const VALID_CHECKSUM = 'a'.repeat(64);
+const VALID_KEY = 'media/11111111-1111-4111-8111-111111111111.jpg';
+
+function validatePresign(raw: Record<string, unknown>) {
+  return validate(plainToInstance(PresignMediaDto, raw), PIPE_OPTIONS);
+}
+
+function validateCreate(raw: Record<string, unknown>) {
+  return validate(plainToInstance(CreateMediaDto, raw), PIPE_OPTIONS);
+}
+
+describe('PresignMediaDto', () => {
+  it('chấp nhận payload hợp lệ tối thiểu (không place_id)', async () => {
+    const errors = await validatePresign({ content_type: 'image/jpeg', size: 1000, checksum_sha256: VALID_CHECKSUM });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('chấp nhận kèm place_id hợp lệ', async () => {
+    const errors = await validatePresign({
+      content_type: 'image/png',
+      size: 1000,
+      checksum_sha256: VALID_CHECKSUM,
+      place_id: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each(['image/gif', 'application/pdf', 'video/mp4', ''])(
+    'từ chối content_type ngoài whitelist: %s',
+    async (contentType) => {
+      const errors = await validatePresign({ content_type: contentType, size: 1000, checksum_sha256: VALID_CHECKSUM });
+      expect(errors.some((e) => e.property === 'content_type')).toBe(true);
+    },
+  );
+
+  it('từ chối size = 0', async () => {
+    const errors = await validatePresign({ content_type: 'image/jpeg', size: 0, checksum_sha256: VALID_CHECKSUM });
+    expect(errors.some((e) => e.property === 'size')).toBe(true);
+  });
+
+  it('từ chối size vượt 10 MiB (10,485,760 bytes)', async () => {
+    const errors = await validatePresign({
+      content_type: 'image/jpeg',
+      size: MAX_UPLOAD_SIZE_BYTES + 1,
+      checksum_sha256: VALID_CHECKSUM,
+    });
+    expect(errors.some((e) => e.property === 'size')).toBe(true);
+  });
+
+  it('chấp nhận size = đúng 10,485,760 bytes (biên trên hợp lệ)', async () => {
+    const errors = await validatePresign({
+      content_type: 'image/jpeg',
+      size: MAX_UPLOAD_SIZE_BYTES,
+      checksum_sha256: VALID_CHECKSUM,
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each([
+    'A'.repeat(64), // uppercase hex — phải viết thường
+    'g'.repeat(64), // ký tự ngoài hex
+    'a'.repeat(63), // ngắn hơn 64
+    'a'.repeat(65), // dài hơn 64
+    '',
+  ])('từ chối checksum_sha256 sai định dạng: %s', async (checksum) => {
+    const errors = await validatePresign({ content_type: 'image/jpeg', size: 1000, checksum_sha256: checksum });
+    expect(errors.some((e) => e.property === 'checksum_sha256')).toBe(true);
+  });
+
+  it('từ chối place_id không phải UUID v4', async () => {
+    const errors = await validatePresign({
+      content_type: 'image/jpeg',
+      size: 1000,
+      checksum_sha256: VALID_CHECKSUM,
+      place_id: 'not-a-uuid',
+    });
+    expect(errors.some((e) => e.property === 'place_id')).toBe(true);
+  });
+
+  it.each(['business_id', 'post_id', 'event_id', 'review_id'])(
+    'từ chối 400 field %s (whitelist+forbidNonWhitelisted — không lộ endpoint chấp nhận owner khác place_id)',
+    async (field) => {
+      const errors = await validatePresign({
+        content_type: 'image/jpeg',
+        size: 1000,
+        checksum_sha256: VALID_CHECKSUM,
+        [field]: '11111111-1111-4111-8111-111111111111',
+      });
+      expect(errors.length).toBeGreaterThan(0);
+    },
+  );
+});
+
+describe('CreateMediaDto', () => {
+  it('chấp nhận key hợp lệ, không caption/alt', async () => {
+    const errors = await validateCreate({ key: VALID_KEY });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('chấp nhận kèm caption/alt trong giới hạn độ dài', async () => {
+    const errors = await validateCreate({ key: VALID_KEY, caption: 'a'.repeat(300), alt: 'b'.repeat(200) });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('từ chối caption vượt 300 ký tự', async () => {
+    const errors = await validateCreate({ key: VALID_KEY, caption: 'a'.repeat(301) });
+    expect(errors.some((e) => e.property === 'caption')).toBe(true);
+  });
+
+  it('từ chối alt vượt 200 ký tự', async () => {
+    const errors = await validateCreate({ key: VALID_KEY, alt: 'a'.repeat(201) });
+    expect(errors.some((e) => e.property === 'alt')).toBe(true);
+  });
+
+  it.each([
+    'not-a-key',
+    'media/not-a-uuid.jpg',
+    'media/11111111-1111-4111-8111-111111111111.gif', // extension ngoài whitelist
+    '../../etc/passwd',
+    'media/11111111-1111-4111-8111-111111111111', // thiếu extension
+  ])('từ chối key sai định dạng: %s', async (key) => {
+    const errors = await validateCreate({ key });
+    expect(errors.some((e) => e.property === 'key')).toBe(true);
+  });
+});

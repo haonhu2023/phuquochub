@@ -2,12 +2,16 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Media } from './entities/media.entity';
 import { MediaRepository } from './repositories/media.repository';
+import { MediaService } from './media.service';
+import { MediaController } from './media.controller';
 
-// Sprint 5 sẽ thêm upload/presign/resize. Sprint 2: MediaRepository đọc gallery Place cho
-// trang chi tiết. Vẫn đăng ký entity cho quan hệ Place.cover + bảng media (exclusive arc).
+// Media Upload Foundation (2026-07-30): presign/register wired up. Resize/thumbnails/EXIF/AI
+// remain out of scope. StorageService/RedisService are @Global (core/storage, core/redis) — no
+// explicit import needed here.
 @Module({
   imports: [TypeOrmModule.forFeature([Media])],
-  providers: [MediaRepository],
+  controllers: [MediaController],
+  providers: [MediaRepository, MediaService],
   exports: [TypeOrmModule, MediaRepository],
 })
 export class MediaModule {}
