@@ -118,4 +118,9 @@ Clean after commit (confirmed via `git status --short`).
 
 ## 9. Commit hash
 
-Recorded after committing, in the same message as this report's final delivery.
+| Commit | Scope |
+|---|---|
+| `27cede3` | `feat(transports)`: browse filters (DTO/repository/service + tests) |
+| `c7d0b40` | `docs(transports)`: OpenAPI + governance + this report |
+
+`git status --short` is clean after these commits.
