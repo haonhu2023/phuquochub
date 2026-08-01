@@ -141,5 +141,5 @@ Clean after commit (see §10).
 
 | Commit | Scope |
 |---|---|
-| _pending_ | `feat(web)`: single-image upload on review submission |
-| _pending_ | `docs(web)`: media.md + governance for Image Upload UI |
+| `99e553a` | `feat(web)`: single-image upload on review submission |
+| `37662a8` | `docs(web)`: media.md + governance for Image Upload UI |
