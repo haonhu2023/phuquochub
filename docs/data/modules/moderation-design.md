@@ -4,6 +4,11 @@
 >
 > Toàn bộ 7 quyết định Owner (O1–O7) đã chốt; **không còn quyết định nào chưa giải quyết**. M1 và M2 bắt đầu được ngay.
 >
+> **M1 — Moderation Schema Foundation: ĐÃ TRIỂN KHAI (2026-08-02).** Schema, enum, entity, hai FSM
+> thuần, repository nền tảng, seed permission — sống trên database dev thật, đã diễn tập
+> revert→verify→reapply. Xem [MODERATION-M1-SCHEMA-FOUNDATION-2026-08-02.md](../../delivery/reports/MODERATION-M1-SCHEMA-FOUNDATION-2026-08-02.md).
+> M2–M7 vẫn CHƯA triển khai (đúng phạm vi M1: không endpoint, không service, không UI).
+>
 > **Chỉ kiến trúc.** Chưa có code, entity, migration, file React, hay test nào cho bất cứ nội dung nào ở đây. SQL bên dưới là **đặc tả thiết kế**, không phải migration.
 >
 > Giữ nguyên tiếng Anh: tên bảng/cột, giá trị enum, mã quyền, route API, mã sự kiện, tên class/file.
@@ -764,7 +769,7 @@ Thứ tự theo đúng chỉ đạo Owner (yêu cầu sửa đổi #6). Mỗi mi
 
 | # | Milestone | Phạm vi | Phụ thuộc | Cỡ |
 |---|---|---|---|---|
-| **M1** | **Moderation Schema Foundation** | Migration `InitModeration` + `SeedModerationPermissions`; entity; enum; **hai module FSM thuần** (media + review) kèm unit test đầy đủ cho mọi transition hợp lệ/không hợp lệ. **Không endpoint.** | — | S |
+| **M1** | **Moderation Schema Foundation** ✅ **ĐÃ XONG — 2026-08-02** | Migration `InitModeration` + `SeedModerationPermissions`; entity; enum; **hai module FSM thuần** (media + review) kèm unit test đầy đủ cho mọi transition hợp lệ/không hợp lệ. **Không endpoint.** | — | S |
 | **M2** | **Moderation Queue Read API** | `GET /moderation/cases`, `GET /moderation/cases/{id}`; repository + phân trang + lọc; đấu nối quyền. **Chỉ đọc — không đổi được nội dung.** | M1 | S |
 | **M3** | **Media Decision Workflow + auto-publish khi gắn review** | `claim`/`release`/`decide`/`reopen` cho target media; `POST /media/{id}/moderate`; **transaction T1** (D4 + auto-publish O2); **`BackfillModerationCases` theo T4/D14** (đếm-rồi-báo-cáo trước khi chạy); audit + event. **Đây là milestone làm ảnh hiển thị được.** | M2 | M |
 | **M4** | **Review Decision Workflow + tính lại rating trong transaction** | Các action tương tự cho target review, **cộng ràng buộc INV-4 và test hồi quy cho nó**. | M3 | M |

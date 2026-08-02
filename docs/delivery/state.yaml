@@ -30,8 +30,62 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Frontend Accessibility Baseline -- ad-hoc, NOT
-                                  # PLACE-numbered) Owner-approved, per this same milestone's own
+  task: none                      # (2026-08-02, Moderation Foundation M1 -- Schema Foundation)
+                                  # Owner-approved implementation of ADR-018 (Accepted same day,
+                                  # after O1-O7 all settled -- see decision-register.md), M1 of the
+                                  # 7-milestone roadmap in moderation-design.md. Scope was explicit
+                                  # and narrow: schema/enums/entities/migrations/FSM modules/
+                                  # permission seed/foundational repositories/unit tests/docs ONLY
+                                  # -- NO queue API, NO decision endpoints, NO report endpoints, NO
+                                  # UI, NO AI, NO notifications, NO background jobs (all explicitly
+                                  # excluded by the Owner's task and confirmed absent from the diff:
+                                  # zero controller/service files, zero React files). Two new tables
+                                  # (moderation_cases, reports, apps/api/src/modules/moderation/),
+                                  # 7 new enums, 6 new permissions (Report.Create->member;
+                                  # Moderation.Queue.View/Media.Moderate/Review.Moderate/
+                                  # Report.Resolve->moderator; AI.ModerateMedia->ai_agent, NEVER
+                                  # Media.Moderate -- "AI cannot self-approve" enforced by the
+                                  # permission model itself, not a service-layer check). Two pure
+                                  # FSM modules (media-moderation.transition.ts,
+                                  # review-moderation.transition.ts) mirroring
+                                  # booking-status.transition.ts exactly -- unit-tested against the
+                                  # FULL status x action matrix for both (7/16 valid+invalid for
+                                  # media, 3/9 for review), including the three ADR-018 INV-13 cases
+                                  # (published->rejected/hidden->rejected/pending->hidden) and both
+                                  # restore-without-target_status and restore-with-invalid-target
+                                  # error paths (INV-10, "never guess the restore destination").
+                                  # Migration InitModeration1720003200000's down() self-refuses
+                                  # (throws, does not destroy) if any case is already 'resolved' --
+                                  # same AddMediaUploadFoundation precedent as MR-5 requires -- LIVE
+                                  # VERIFIED twice: inserted a resolved case, confirmed revert was
+                                  # refused with the transaction rolled back and the DB untouched;
+                                  # deleted the row, confirmed revert then succeeded cleanly. Full
+                                  # revert->verify->reapply drill (PLACE-042 precedent) on the real
+                                  # local dev Postgres: reverted, confirmed via \dt/pg_type that
+                                  # both tables and all 7 enum types were fully gone and all 6
+                                  # permissions were fully gone, reapplied, confirmed migration:show
+                                  # [X] on both and \d/permission-grant output identical to the
+                                  # pre-revert state. INV-3 (max one open/claimed case per target)
+                                  # LIVE VERIFIED via a real duplicate-key rejection from the partial
+                                  # unique index, not just asserted in a unit test. Docker Desktop
+                                  # was not running at session start (found at a non-default install
+                                  # path under %LOCALAPPDATA%, not C:\Program Files) -- launched
+                                  # directly, same safe/reversible approach as PLACE-042; existing
+                                  # dev stack auto-restarted healthy. docs/data/database.md SS11
+                                  # updated: moderation_cases/reports added as Accepted, `reports`
+                                  # struck from the Wave-1 "referenced but unapproved" list it had
+                                  # carried since GAP-1. Full validation: backend 88 suites/911 tests
+                                  # (up from 82/855), zero regression, 56 new tests across 6 new
+                                  # suites; typecheck/lint/build all clean; full monorepo
+                                  # build/typecheck/lint 4/4, 6/6, 6/6 green; git diff --check clean;
+                                  # secret scan clean. ADR-018 itself was NOT modified (already
+                                  # fully specifies M1; instruction was to implement exactly, not
+                                  # redesign or annotate it). See
+                                  # docs/delivery/reports/MODERATION-M1-SCHEMA-FOUNDATION-
+                                  # 2026-08-02.md. M2 (Moderation Queue Read API) is the next
+                                  # milestone -- explicitly NOT started per instruction.
+                                  # ---- prior state (2026-08-02 Frontend Accessibility Baseline) ----
+                                  # Owner-approved, per this same milestone's own
                                   # instruction citing roadmap item #8 ("Accessibility pass beyond
                                   # the current 8-file baseline"). Audit + trivial-remediation only,
                                   # explicitly not a redesign/new-flow milestone. Added

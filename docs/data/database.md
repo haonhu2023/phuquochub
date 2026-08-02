@@ -580,8 +580,10 @@ Nhóm phân tích (`PageView`, `PlaceView`, `SearchAnalytics`, `PopularPlace`, `
 | `events` | database.md §3.22 | ✅ | **Wave 2** — thực thể **peer** (Hybrid), tham chiếu Place (`place_id` nullable); **ADR-002** |
 | `event_occurrences` | database.md §3.23 | ✅ | **Wave 2** — 1:N events (sự kiện định kỳ) |
 | `saved_searches` | database.md §12 | ✅ | **planned** — user-owned; bổ sung cho Search Architecture (sơ đồ ERD cập nhật sau) |
+| `moderation_cases` | [moderation-design.md §6.2](./modules/moderation-design.md) | ✅ | **Moderation Foundation M1** — đơn vị công việc kiểm duyệt, đa hình (`target_type`/`target_id`, không FK cứng); **không** lưu trạng thái hiển thị nội dung (**ADR-018**) |
+| `reports` | [moderation-design.md §6.3](./modules/moderation-design.md) | ✅ | **Moderation Foundation M1** — khẳng định vi phạm của người dùng; `case_id` FK thật CASCADE tới `moderation_cases` (**ADR-018**) |
 
-**Thực thể được API/Workflow tham chiếu nhưng CHƯA phê duyệt** (kế hoạch B8, thiết kế theo Wave — xem [báo cáo B8]): ~~`business_claims`/binding owner~~ ✅ **Accepted (Wave 1/ADR-015)**; ~~`events`, `hotel_rooms`, `restaurant_menu`, `tour_itinerary`~~ ✅ **Accepted (Wave 2/ADR-002)** — nay là `events`/`event_occurrences` + 12 bảng mở rộng ([places.md §13](./modules/places.md)); `reports`, `notifications` (+ `devices`, `preferences`), `api_keys`/`partner_clients`, token email/reset, **`entity_tags`/Tag taxonomy** (Tag Search — [search.md](../architecture/search.md) §4.6; **chưa có taxonomy Tag thống nhất**, chỉ có `categories` — chờ quyết định, xem §13).
+**Thực thể được API/Workflow tham chiếu nhưng CHƯA phê duyệt** (kế hoạch B8, thiết kế theo Wave — xem [báo cáo B8]): ~~`business_claims`/binding owner~~ ✅ **Accepted (Wave 1/ADR-015)**; ~~`events`, `hotel_rooms`, `restaurant_menu`, `tour_itinerary`~~ ✅ **Accepted (Wave 2/ADR-002)** — nay là `events`/`event_occurrences` + 12 bảng mở rộng ([places.md §13](./modules/places.md)); ~~`reports`~~ ✅ **Accepted (ADR-018, Moderation Foundation M1, 2026-08-02)** — nay là `reports`/`moderation_cases` ở trên; `notifications` (+ `devices`, `preferences`), `api_keys`/`partner_clients`, token email/reset, **`entity_tags`/Tag taxonomy** (Tag Search — [search.md](../architecture/search.md) §4.6; **chưa có taxonomy Tag thống nhất**, chỉ có `categories` — chờ quyết định, xem §13).
 
 ---
 
