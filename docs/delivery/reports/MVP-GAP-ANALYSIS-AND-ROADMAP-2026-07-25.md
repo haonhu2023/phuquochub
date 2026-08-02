@@ -105,15 +105,20 @@ modules (`apps/api/src/modules/*`); frontend has 10 modules and 15 route segment
    reconciliation. No report documents when this shipped; it was delivered without a corresponding
    delivery report, which is itself the gap this reconciliation is recording.
 4. Image upload UI (media entity exists, nothing calls it from the frontend).
-   **Still open.**
+   **✅ DONE — 2026-08-01.** See docs/delivery/reports/IMAGE-UPLOAD-UI-2026-08-01.md. (Correction
+   made here 2026-08-02 while reconciling item #6 in this same section — this entry had been left
+   stale since it shipped.)
 5. Search filters (category/price/ward) surfaced in the `/search` UI.
    **✅ DONE — 2026-07-30.** See docs/delivery/reports/SEARCH-FILTERS-2026-07-30.md and
    docs/delivery/reports/SEARCH-FILTERS-POST-IMPLEMENTATION-REVIEW-2026-07-30.md.
 6. Frontend test coverage — zero component tests exist; a regression in any page currently has no
    automated safety net beyond `tsc`/`eslint`/a production build.
-   **Still open** (partially improved — unit test count for frontend api-client/lib modules grew
-   from 3 to 13 suites across intervening sessions, but zero component/page **rendering** tests
-   exist anywhere in this repo, confirmed as of this reconciliation).
+   **✅ DONE — 2026-08-01 (foundation) + 2026-08-02 (extension).** Foundation established the
+   first component-rendering test pattern (`AttractionCard`/`AttractionFilters`/`SearchFilters`/
+   `Pagination`) — see docs/delivery/reports/FRONTEND-COMPONENT-TEST-COVERAGE-2026-08-01.md.
+   Extended to the 9 remaining browse-page card/filter components — see
+   docs/delivery/reports/FRONTEND-COMPONENT-COVERAGE-EXTENSION-2026-08-02.md. Page-level Server
+   Component integration tests remain out of scope (deliberate, per both reports' own reasoning).
 
 **Medium:**
 7. Business-claim / owner-editing workflow.

@@ -30,8 +30,48 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Error/Loading Boundary Completion -- ad-hoc, NOT
-                                  # PLACE-numbered) Owner-approved, selected via the governance
+  task: none                      # (2026-08-02, Frontend Component Coverage Extension -- ad-hoc,
+                                  # NOT PLACE-numbered) Owner-approved, selected via the governance
+                                  # assessment appended to the Error/Loading Boundary Completion
+                                  # milestone (ranked #1 -- zero Owner decisions, zero risk, proven
+                                  # pattern/tooling already installed). Extends the Frontend
+                                  # Component Test Coverage Foundation (2026-08-01) to the 9
+                                  # remaining browse-page card/filter components that milestone's
+                                  # own report explicitly deferred: HotelCard/HotelFilters,
+                                  # RestaurantCard/RestaurantFilters, TourCard/TourFilters,
+                                  # BeachCard/BeachFilters, PlaceCard. Read every target component
+                                  # in full before writing its test -- did not assume identical
+                                  # props/behavior across cards (found real differences: HotelCard's
+                                  # hotel_type label-map has a raw-string fallback for unknown
+                                  # values, same pattern independently verified on TourCard's
+                                  # tour_type via a different formatter function; BeachCard links to
+                                  # /places/{slug} not /beaches/{slug} since beaches have no
+                                  # satellite detail route; PlaceCard's distance_m is optional and
+                                  # only present on /geo/nearby results; TourFilters has 6 filter
+                                  # fields vs. 2-3 on the others). Confirmed by reading all 4 filter
+                                  # components' source that their updateParam contract really is
+                                  # byte-for-byte identical (preserves unrelated params, clears via
+                                  # "Tất cả", always drops page on any change) before testing that
+                                  # behavior per-component rather than assuming it. Shared
+                                  # next/navigation mock deliberately NOT extracted into a helper
+                                  # despite 4 files using the identical shape (met the "≥3 files"
+                                  # threshold) -- Jest's jest.mock() hoisting only allows
+                                  # same-file module-level bindings in the factory, so a real shared
+                                  # helper would need a __mocks__/next/navigation.ts +
+                                  # moduleNameMapper wiring, which is MORE indirection for 4 call
+                                  # sites, not less; kept inline. 65 new tests. Full validation:
+                                  # frontend 30 suites/189 tests (up from 21/124), run twice
+                                  # consecutively with identical results, zero regression, zero
+                                  # console/act warnings; typecheck/lint/build all clean; full
+                                  # monorepo build/typecheck/lint 4/4, 6/6, 6/6 green. Roadmap items
+                                  # #4 (Image Upload UI) and #6 (frontend test coverage) in
+                                  # MVP-GAP-ANALYSIS-AND-ROADMAP-2026-07-25.md reconciled from stale
+                                  # "Still open" to DONE (both had shipped, in intervening
+                                  # sessions/this one, without ever being annotated). See
+                                  # docs/delivery/reports/FRONTEND-COMPONENT-COVERAGE-EXTENSION-
+                                  # 2026-08-02.md.
+                                  # ---- prior state (2026-08-02 Error/Loading Boundary Completion) ----
+                                  # Owner-approved, selected via the governance
                                   # assessment appended to the Media Orphan Cleanup post-
                                   # implementation review (ranked #1 -- zero Owner decisions, zero
                                   # risk, direct PLACE-041 precedent to copy). Added error.tsx +
