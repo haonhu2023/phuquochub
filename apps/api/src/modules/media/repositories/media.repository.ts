@@ -242,9 +242,21 @@ export class MediaRepository {
    * đủ điều kiện vì vừa được gắn owner), UPDATE khớp 0 dòng — coi là no-op, KHÔNG phải lỗi. Trả về
    * true chỉ khi CHÍNH lần gọi này thực sự chuyển trạng thái (dùng để quyết định có ghi audit hay
    * không — chỉ ghi khi có thay đổi thật).
+   *
+   * QUAN TRỌNG (Moderation M3 post-implementation fix, 2026-08-02): với UPDATE/DELETE (khác
+   * INSERT), driver Postgres của TypeORM trả về TUPLE `[rows, rowCount]` từ `repo.query()` khi câu
+   * lệnh có RETURNING — KHÔNG phải mảng rows trực tiếp như INSERT (xem
+   * PostgresQueryRunner.query(): switch theo raw.command, case UPDATE/DELETE gán
+   * `result.raw = [raw.rows, raw.rowCount]`, default gán thẳng `raw.rows`). Bản gốc của hàm này
+   * đọc kết quả CHƯA destructure (`const rows: Array<{id}> = await this.repo.query(...)`) nên
+   * `rows` thực chất LÀ tuple 2 phần tử — `rows.length > 0` do đó LUÔN true bất kể UPDATE có khớp
+   * dòng nào hay không, khiến hàm không bao giờ báo cáo đúng "đã bị dọn bởi lần chạy khác". Phát
+   * hiện qua kiểm chứng TRỰC TIẾP với Postgres thật (không phải mock): một dòng đã có `deleted_at`
+   * (KHÔNG còn đủ điều kiện, UPDATE khớp 0 dòng) vẫn khiến hàm trả về `true`. PHẢI destructure
+   * `[rows]`, cùng cách khắc phục đã áp dụng cho `MediaRepository.attachAndPublish()`.
    */
   async softDeleteOrphanCandidate(id: string): Promise<boolean> {
-    const rows: Array<{ id: string }> = await this.repo.query(
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE media SET deleted_at = now()
        WHERE id = $1 AND ${ORPHAN_ELIGIBILITY_WHERE}
        RETURNING id`,

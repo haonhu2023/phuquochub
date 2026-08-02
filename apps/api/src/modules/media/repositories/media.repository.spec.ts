@@ -269,7 +269,7 @@ describe('MediaRepository — Media Orphan Cleanup', () => {
 
   describe('softDeleteOrphanCandidate', () => {
     it('UPDATE lặp lại toàn bộ vị từ đủ điều kiện (không chỉ id) + RETURNING id', async () => {
-      repo.query.mockResolvedValue([{ id: 'm1' }]);
+      repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
       await sut.softDeleteOrphanCandidate('m1');
 
       const [query, params] = repo.query.mock.calls[0];
@@ -288,14 +288,30 @@ describe('MediaRepository — Media Orphan Cleanup', () => {
       expect(params).toEqual(['m1']);
     });
 
-    it('UPDATE khớp 1 dòng (còn đủ điều kiện) → true', async () => {
-      repo.query.mockResolvedValue([{ id: 'm1' }]);
+    // Postgres driver của TypeORM trả UPDATE...RETURNING dưới dạng TUPLE [rows, rowCount] từ
+    // repo.query() — KHÁC INSERT/SELECT (trả rows trực tiếp). Xác nhận trực tiếp với Postgres thật
+    // (không phải giả định): xem docs/delivery/reports/MEDIA-ORPHAN-CLEANUP-POST-IMPLEMENTATION-
+    // REVIEW-2026-08-02.md phần "RETURNING result fix". Mock PHẢI phản ánh đúng hình dạng tuple
+    // này — mock cũ dùng mảng phẳng (`[{id:'m1'}]` / `[]`) che giấu bug gốc (rows.length trên một
+    // tuple 2 phần tử luôn là 2, luôn > 0, bất kể UPDATE có khớp dòng nào hay không).
+    it('UPDATE khớp 1 dòng (còn đủ điều kiện) → true (tuple [rows, rowCount]=[[{id}],1])', async () => {
+      repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
       await expect(sut.softDeleteOrphanCandidate('m1')).resolves.toBe(true);
     });
 
-    it('UPDATE khớp 0 dòng (đã bị dọn bởi lần chạy khác, hoặc vừa được gắn owner) → false, không phải lỗi', async () => {
-      repo.query.mockResolvedValue([]);
+    it('UPDATE khớp 0 dòng (đã bị dọn bởi lần chạy khác, hoặc vừa được gắn owner) → false, không phải lỗi (tuple [[],0])', async () => {
+      repo.query.mockResolvedValue([[], 0]);
       await expect(sut.softDeleteOrphanCandidate('m1')).resolves.toBe(false);
+    });
+
+    // Bug cụ thể đã sửa: nếu code đọc kết quả CHƯA destructure tuple, `rows` thực chất là chính
+    // cái tuple 2 phần tử `[[], 0]` — `rows.length` sẽ LÀ 2 (luôn > 0) dù mảng rows con BÊN TRONG
+    // rỗng. Test này thất bại trên code CHƯA sửa (`rows.length > 0` với rows=tuple luôn true) và
+    // chỉ pass sau khi destructure đúng `const [rows] = await this.repo.query(...)`.
+    it('KHÔNG có false positive từ độ dài tuple — rowCount=0 kèm mảng rows con rỗng vẫn phải false', async () => {
+      repo.query.mockResolvedValue([[], 0]);
+      const result = await sut.softDeleteOrphanCandidate('m1');
+      expect(result).toBe(false);
     });
   });
 });

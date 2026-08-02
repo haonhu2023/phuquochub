@@ -9,6 +9,7 @@ import { TransformInterceptor } from '../src/common/interceptors/transform.inter
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 import { MediaCleanupService } from '../src/modules/media/media-cleanup.service';
 import { StorageService } from '../src/core/storage/storage.service';
+import { MediaRepository } from '../src/modules/media/repositories/media.repository';
 
 // CẦN Postgres + Redis + MinIO thật (docker compose up -d postgres redis minio) + migration đã
 // chạy (đến AddMediaOrphanCleanupIndex). Cùng cấu trúc/tiền đề với media.e2e-spec.ts — bucket
@@ -18,6 +19,7 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
   let ds: DataSource;
   let cleanup: MediaCleanupService;
   let storage: StorageService;
+  let mediaRepo: MediaRepository;
   let accessToken: string;
   const email = `e2e_orphan_cleanup_${Date.now()}@phuquochub.test`;
   const password = 'password123';
@@ -35,6 +37,7 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
     ds = app.get<DataSource>(getDataSourceToken());
     cleanup = app.get(MediaCleanupService);
     storage = app.get(StorageService);
+    mediaRepo = app.get(MediaRepository);
 
     const reg = await request(app.getHttpServer())
       .post('/api/auth/register')
@@ -283,6 +286,35 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
       const dryRunAfter = await cleanup.run({ dryRun: true });
 
       expect(dryRunAfter.sampleCandidates.some((c) => c.id === seeded.id)).toBe(false);
+    });
+  });
+
+  // Post-implementation review fix (2026-08-02): MediaRepository.softDeleteOrphanCandidate()
+  // đọc kết quả UPDATE...RETURNING của TypeORM/Postgres SAI hình dạng (tuple [rows, rowCount]
+  // chưa destructure) nên LUÔN trả về true, kể cả khi UPDATE khớp 0 dòng — không bao giờ báo cáo
+  // đúng "đã bị dọn bởi tiến trình khác". Test dưới đây mô phỏng ĐÚNG race window mà bug này che
+  // giấu: một dòng TRỞ NÊN không đủ điều kiện (deleted_at đã được set bởi "tiến trình khác") NGAY
+  // TRƯỚC KHI UPDATE điều kiện chạy — gọi thẳng softDeleteOrphanCandidate() (bỏ qua bước SELECT
+  // của findOrphanCleanupCandidates, vốn đã tự loại dòng này khỏi danh sách ứng viên) để buộc đúng
+  // nhánh UPDATE-khớp-0-dòng chạy trên Postgres THẬT, không phải mock.
+  describe('softDeleteOrphanCandidate — dòng trở nên không đủ điều kiện NGAY TRƯỚC UPDATE (race window)', () => {
+    it('deleted_at đã được set bởi tiến trình khác trước UPDATE → trả về false, KHÔNG ghi audit (Postgres thật, không mock)', async () => {
+      const seeded = await seedRealOrphanMedia('race-ineligible-before-update');
+      await backdateCreatedAt(seeded.id, 25);
+
+      // Mô phỏng "tiến trình khác đã dọn xong dòng này" NGAY TRƯỚC khi gọi UPDATE điều kiện.
+      await ds.query(`UPDATE media SET deleted_at = now() WHERE id = $1`, [seeded.id]);
+
+      const auditsBefore = await fetchAuditRows(seeded.id);
+      const result = await mediaRepo.softDeleteOrphanCandidate(seeded.id);
+      const auditsAfter = await fetchAuditRows(seeded.id);
+
+      expect(result).toBe(false);
+      expect(auditsAfter).toHaveLength(auditsBefore.length); // không audit mới nào được ghi thêm
+
+      // Dọn dẹp: object thật vẫn còn trên MinIO (chưa qua MediaCleanupService.processCandidate,
+      // chỉ gọi thẳng repository) — xoá để không rò rỉ.
+      await storage.deleteObjectForCleanup(seeded.objectKey);
     });
   });
 });
