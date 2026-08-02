@@ -188,4 +188,4 @@ Clean after commit (verified via `git status --short` immediately before and aft
 | Commit | Scope |
 |---|---|
 | `20a12bb` | `test(web)`: extend component coverage |
-| `<filled in below>` | `docs(web)`: record component coverage extension |
+| `62161c4` | `docs(web)`: record component coverage extension |
