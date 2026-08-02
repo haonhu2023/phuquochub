@@ -1912,10 +1912,11 @@ paths:
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
   # ============================ MODERATION ============================
-  # Moderation Foundation (ADR-018, Accepted). M2 (Moderation Queue Read API) — CHỈ ĐỌC. Không
-  # action nào đổi trạng thái ở đây (claim/decide/reopen thuộc M3/M4, chưa triển khai). Cả hai
-  # route đòi Moderation.Queue.View, scope Any (O6). Hợp đồng phân trang OFFSET (page/limit), cùng
-  # convention /bookings /places — xem docs/data/modules/moderation-design.md §9.
+  # Moderation Foundation (ADR-018, Accepted). GET /moderation/cases + GET /moderation/cases/{id}
+  # (M2) — CHỈ ĐỌC, đòi Moderation.Queue.View. POST /moderation/cases/{id}/decide (M3) — target
+  # media DUY NHẤT ở M3 (review thuộc M4), đòi Media.Moderate, đi qua transaction T2 rồi audit +
+  # event SAU commit — xem docs/data/modules/moderation-design.md §7/§9.1. Không claim/release/
+  # reopen (chưa cần: decide() tự chấp nhận case ở cả open lẫn claimed).
   /moderation/cases:
     get:
       tags: [Moderation]
@@ -1985,6 +1986,47 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /moderation/cases/{id}/decide:
+    post:
+      tags: [Moderation]
+      summary: Quyết định kiểm duyệt (Media.Moderate, M3 — chỉ target media)
+      operationId: decideModerationCase
+      description: >-
+        Trong MỘT transaction (T2, moderation-design.md §7): khoá + đọc case và media, xác thực
+        transition qua FSM thuần (`assertValidMediaTransition`, KHÔNG logic transition nào lặp lại
+        ở tầng API), cập nhật `media.status` + case, commit. Audit (`moderation.decided`) và domain
+        event chỉ phát SAU commit, không bao giờ trước (ADR-018 INV-9); lỗi ghi audit/event sau
+        commit không hoàn tác quyết định — chỉ log. `target_type=review` chưa được hỗ trợ (M4).
+        `reason` bắt buộc khi `decision` là `reject`/`hide` (INV-11); `target_status` bắt buộc khi
+        `decision=restore`, không có giá trị mặc định (INV-10); không cho tự kiểm duyệt nội dung
+        chính mình (INV-12).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, reject, hide, restore, dismiss]
+                target_status:
+                  type: string
+                  enum: [pending, published]
+                  description: Bắt buộc khi decision=restore (INV-10) — không có đích mặc định.
+                reason:
+                  type: string
+                  maxLength: 2000
+                  description: Bắt buộc khi decision=reject|hide (INV-11).
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
   # ============================ WEATHER ============================
   /weather/current:

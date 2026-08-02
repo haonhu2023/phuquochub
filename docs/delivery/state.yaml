@@ -30,7 +30,88 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Moderation Foundation M2 -- Queue Read API)
+  task: none                      # (2026-08-02, Moderation Foundation M3 -- Media Decision
+                                  # Workflow + auto-publish-on-review-attach) Owner-approved
+                                  # implementation of ADR-018 M3, immediately following M2 the same
+                                  # day. Scope was explicit and narrow: media moderation decisions
+                                  # (POST /moderation/cases/{id}/decide, target_type=media only --
+                                  # review decisions are M4), auto-publish-on-review-attach,
+                                  # transactional review creation, legacy pending-review-media
+                                  # backfill, audit, domain events, tests, docs -- NO review
+                                  # moderation, NO report create/resolve, NO moderator frontend, NO
+                                  # notifications, NO AI, NO sanctions, NO scheduler, NO new Owner
+                                  # policy (all confirmed absent from the diff). Two new
+                                  # transactions, both matching moderation-design.md SS7 exactly: T1
+                                  # (ReviewsRepository.createWithMedia -- review insert +
+                                  # MediaRepository.attachAndPublish + PlacesRepository.
+                                  # recalculateRating, one dataSource.transaction, all-or-nothing --
+                                  # if published-media count != requested media_ids count, throws
+                                  # and the whole review is rolled back, INV-14) and T2
+                                  # (ModerationService.decide -- pessimistic-lock read of case +
+                                  # media, FSM validation via the EXISTING pure
+                                  # assertValidMediaTransition (no duplicate transition logic in the
+                                  # service), status + case update, commit; audit/event emitted ONLY
+                                  # after commit in a separate try/catch that logs but never reverts
+                                  # on failure, per ADR-018 INV-9). Auto-publish eligibility
+                                  # (object_key IS NOT NULL, uploaded_by = caller, status=pending,
+                                  # deleted_at IS NULL, orphan -- no place/post/business/event/
+                                  # review_id set, D3's 6 conditions) is enforced in the UPDATE's SQL
+                                  # WHERE clause itself, not just in TypeScript, so the affected-row
+                                  # count is a true reflection of what the database actually allowed.
+                                  # CRITICAL BUG found and fixed during Phase 8 live validation
+                                  # (not caught by unit tests, whose mocks assumed the wrong shape):
+                                  # TypeORM's Postgres driver returns manager.query()'s raw result as
+                                  # a [rows, rowCount] TUPLE for UPDATE/DELETE statements with
+                                  # RETURNING (confirmed by reading
+                                  # node_modules/typeorm/driver/postgres/PostgresQueryRunner.js),
+                                  # unlike INSERT/SELECT which return rows directly -- MediaRepository
+                                  # .attachAndPublish() read the tuple as if it were the rows array,
+                                  # so publishedMediaIds.length was always 2 regardless of actual
+                                  # match count, inverting the all-or-nothing check (201/422 swapped
+                                  # in e2e). Fixed by destructuring `const [rows] = await manager.
+                                  # query(...)`; found live only because Phase 8 ran a REAL upload +
+                                  # review round trip against real Postgres instead of trusting mocks.
+                                  # A second, PRE-EXISTING instance of the same bug class was found in
+                                  # MediaRepository.softDeleteOrphanCandidate() (a different,
+                                  # already-shipped milestone) -- explicitly OUT OF SCOPE for M3,
+                                  # flagged via a spawned follow-up task rather than fixed inline.
+                                  # BackfillModerationCases migration (T4/D14/O7): counts eligible
+                                  # legacy rows (status=pending AND review_id IS NOT NULL AND
+                                  # deleted_at IS NULL) BEFORE writing, logs the count, INSERTs via
+                                  # ON CONFLICT DO NOTHING (idempotent against the M1 partial unique
+                                  # index), never touches media.status (O7 -- no bulk publish), and
+                                  # writes one summary moderation.backfilled audit row per
+                                  # invocation. LIVE-VERIFIED against real dev-DB legacy data (11
+                                  # genuine pending+review_id media rows already present from
+                                  # pre-M3 activity, not synthetic fixtures): first migration:run
+                                  # created exactly 11 open cases (candidate_count=11,
+                                  # created_count=11); a second direct invocation of the same up()
+                                  # against the same live data produced candidate_count=11,
+                                  # created_count=0 -- proving DB-level idempotency via the unique
+                                  # index, not just a mocked assertion. down() refuses to revert if
+                                  # any backfilled case has since been resolved/dismissed (MR-5),
+                                  # verified both ways. Full apply/revert/reapply drill run for real
+                                  # (not simulated) as part of Phase 9. Decision live-validated with
+                                  # a real moderator token against real data: approve/reject
+                                  # (reason required, INV-11)/hide/restore (target_status required,
+                                  # no default, INV-10)/dismiss, invalid-transition 422 (INV-13),
+                                  # self-moderation 403 (INV-12), already-resolved 409. Full
+                                  # validation: backend 95 suites/1018 tests (up from 91/951 at end
+                                  # of M2), e2e 16 suites/142 tests (up from 14/124), zero regression
+                                  # in either; full monorepo build/typecheck/lint all green; git diff
+                                  # --check clean (benign CRLF notices only); secret scan clean. Docs
+                                  # updated: docs/api/openapi.yaml (new POST /moderation/cases/{id}/
+                                  # decide path + request schema), docs/data/modules/
+                                  # moderation-design.md (M3 marked done in banner + roadmap table
+                                  # only, noting claim/release/reopen and POST /media/{id}/moderate
+                                  # were NOT built -- decide() alone covers the M3 contract). ADR-018
+                                  # was NOT modified -- implementation revealed no contradiction with
+                                  # it. See docs/delivery/reports/
+                                  # MODERATION-M3-MEDIA-WORKFLOW-2026-08-02.md. M4 (Review Decision
+                                  # Workflow + rating recalculation in transaction) is the next
+                                  # milestone -- explicitly NOT started per instruction.
+                                  # ---- prior state (2026-08-02 Moderation Foundation M2 -- Queue
+                                  # Read API) ----
                                   # Owner-approved implementation of ADR-018 M2, immediately
                                   # following M1 in the same day. Scope was explicit and narrow:
                                   # GET /moderation/cases + GET /moderation/cases/{id}, READ-ONLY --
