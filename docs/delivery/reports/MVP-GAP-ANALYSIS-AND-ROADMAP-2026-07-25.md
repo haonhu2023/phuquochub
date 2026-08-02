@@ -123,6 +123,13 @@ modules (`apps/api/src/modules/*`); frontend has 10 modules and 15 route segment
 **Medium:**
 7. Business-claim / owner-editing workflow.
 8. Accessibility pass beyond the current 8-file baseline.
+   **⚠️ PARTIALLY ADDRESSED — 2026-08-02.** Automated `jsx-a11y` ESLint baseline established (0
+   findings against the current codebase, verified not a silent no-op). Named high-risk areas
+   manually reviewed; 3 trivial gaps found and fixed with regression tests. 2 real gaps found and
+   explicitly deferred (custom map marker keyboard access; app-wide async submit-button label
+   announcements) — both need a design decision this audit-only milestone did not make. Not a WCAG
+   conformance audit; no color-contrast, keyboard-only, or screen-reader testing was performed. See
+   docs/delivery/reports/ACCESSIBILITY-BASELINE-2026-08-02.md.
 9. A moderation queue UI (the backend already models pending/draft/published status).
 10. Remaining error/loading boundaries for `/explore`, `/map`, `/search`, `/dashboard`
     (PLACE-041, still open).

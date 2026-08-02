@@ -30,7 +30,62 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Frontend Bundle Size Baseline & Regression
+  task: none                      # (2026-08-02, Frontend Accessibility Baseline -- ad-hoc, NOT
+                                  # PLACE-numbered) Owner-approved, per this same milestone's own
+                                  # instruction citing roadmap item #8 ("Accessibility pass beyond
+                                  # the current 8-file baseline"). Audit + trivial-remediation only,
+                                  # explicitly not a redesign/new-flow milestone. Added
+                                  # eslint-plugin-jsx-a11y@6.10.2 as an explicit apps/web
+                                  # devDependency (was already an undeclared transitive dependency,
+                                  # hoisted via eslint-config-next's own dependency on it -- confirmed
+                                  # via package-lock.json/require.resolve; adding it explicitly
+                                  # changed zero installed versions, 1-line lockfile diff). Extended
+                                  # apps/web/eslint.config.mjs with the 28 jsx-a11y `recommended`
+                                  # rules Next's own core-web-vitals preset does not already
+                                  # configure (Next tunes 6 of the 34 rules itself, e.g. alt-text
+                                  # scoped to img/Image only -- those were left untouched rather than
+                                  # overwritten, to honor "preserve existing rules / do not weaken");
+                                  # confirmed via eslint --print-config that all 34 resolve with no
+                                  # plugin-redefinition conflict. Automated result: 0 findings across
+                                  # 146 linted files -- verified genuine (not a silent misconfig) via
+                                  # a throwaway file with 3 known violations that correctly triggered
+                                  # click-events-have-key-events/no-static-element-interactions/
+                                  # alt-text/anchor-is-valid, then deleted before commit. Manually
+                                  # read every high-risk area the milestone named (nav/header,
+                                  # login/register, all 4 browse filter components, review form +
+                                  # image upload, pagination, map/explore, all 8 error/global-error
+                                  # boundaries, dashboard, all 6 card components) -- found 3 trivial,
+                                  # pattern-matched gaps (SearchMapExplorer's error text missing
+                                  # role="alert", unlike every other error surface in the app;
+                                  # RouteGuard's and login's Suspense-fallback loading states missing
+                                  # aria-busy, unlike every route's own loading.tsx convention), fixed
+                                  # all 3 with 4 new regression tests (2 new spec files,
+                                  # SearchMapExplorer.spec.tsx + RouteGuard.spec.tsx). Found and
+                                  # explicitly DEFERRED (not fixed, per this milestone's own
+                                  # exclusion list) one real, confirmed gap: MapView's custom HTML
+                                  # place markers (raw DOM div + onclick, not JSX -- jsx-a11y cannot
+                                  # see it) have no keyboard access; verified via the installed
+                                  # maplibre-gl bundle's own setAttribute calls that the library DOES
+                                  # give its canvas built-in role="region"/aria-label="Map"/
+                                  # tabindex="0"/arrow-key pan by default -- the gap is specific to
+                                  # consumer-supplied custom marker elements, a known library
+                                  # limitation, not a bug this codebase introduced. A second pattern
+                                  # (async submit-button label changes with no live-region
+                                  # announcement, recurring across login/register/dashboard/reviews)
+                                  # was also deferred as a broader, judgment-laden change beyond a
+                                  # trivial-fix bar. Explicitly NOT claimed as a WCAG conformance
+                                  # audit -- no axe-core/Lighthouse/Pa11y, no color-contrast check, no
+                                  # keyboard-only or screen-reader walkthrough was performed (all
+                                  # recorded as future work, not done). Full validation: frontend 32
+                                  # suites/193 tests (up from 30/189), run twice consecutively
+                                  # identical, zero regression; typecheck/lint/build all clean; full
+                                  # monorepo build/typecheck/lint 4/4, 6/6, 6/6 green; git diff
+                                  # --check clean; secret scan clean. Roadmap item #8 updated from
+                                  # open gap to "PARTIALLY ADDRESSED" (explicitly not marked DONE --
+                                  # 2 real gaps remain open by design). See
+                                  # docs/delivery/reports/ACCESSIBILITY-BASELINE-2026-08-02.md.
+                                  # ---- prior state (2026-08-02 Frontend Bundle Size Baseline & Regression Reference) ----
+                                  # (2026-08-02, Frontend Bundle Size Baseline & Regression
                                   # Reference -- ad-hoc, NOT PLACE-numbered) Owner-approved,
                                   # selected via the governance assessment appended to the Frontend
                                   # Component Coverage Extension milestone (ranked #1 -- the only
