@@ -190,3 +190,132 @@ Clean after this review's commit (verified via `git status --short` immediately 
 |---|---|
 | `b060b42` | `fix(media)`: keyset-pagination defect in orphan cleanup (dry-run/error-stuck-row starvation) + timestamp-precision cursor bug, both found via post-implementation review |
 | `4bab7fb` | `docs(media)`: media.md keyset-cursor addendum + governance entry + this report |
+
+## 12. Addendum (2026-08-02) — `RETURNING` result-shape defect found during Moderation M3
+
+A second, unrelated defect in this same milestone's code was found and fixed after this review was
+originally written — flagged for follow-up while implementing [Moderation Foundation M3](MODERATION-M3-MEDIA-WORKFLOW-2026-08-02.md), fixed here as its own scoped corrective task.
+
+### Defect confirmation evidence
+
+M3's live validation found and fixed the same defect class in `MediaRepository.attachAndPublish()`
+(TypeORM's Postgres driver returns `UPDATE ... RETURNING` results as a `[rows, rowCount]` **tuple**
+from `manager.query()`/`repo.query()`, not a plain rows array — confirmed by reading
+`node_modules/typeorm/driver/postgres/PostgresQueryRunner.js`). That fix noted `softDeleteOrphanCandidate()`
+in this same file used the identical unsafe pattern and was suspected of the same bug, but fixing it
+was explicitly out of M3's scope and was flagged as a separate follow-up rather than assumed.
+
+This task re-opened that question with a read-first confirmation, per instruction, before touching
+any code. `Repository.query()` was traced through TypeORM's own source
+(`Repository.query()` → `EntityManager.query()` → `DataSource.query()` → `QueryRunner.query()`) and
+confirmed to hit the exact same `PostgresQueryRunner.query()` code path as `attachAndPublish()` — so
+the suspicion was structural, not yet proven.
+
+**Live reproduction against real Postgres** (not a mock) confirmed the defect directly: a temporary
+script called the real `softDeleteOrphanCandidate()` method against two real rows —
+
+- **Case A** (genuinely eligible — fresh row, no `deleted_at`): method returned `true`. Correct.
+- **Case B** (row with `deleted_at` already set — i.e. *not* eligible; the `UPDATE`'s `WHERE` clause
+  matches **zero** rows): method still returned `true`. **Wrong** — this is the false positive.
+
+### Root cause
+
+`softDeleteOrphanCandidate()` read the raw result as `const rows: Array<{id}> = await this.repo.query(...)`
+without destructuring. Since `repo.query()` for an `UPDATE ... RETURNING` actually resolves to the
+tuple `[actualRows, rowCount]`, `rows` was really that 2-element tuple — so `rows.length` was **always
+`2`**, and `rows.length > 0` was therefore **always `true`**, regardless of whether the conditional
+`UPDATE` matched any row at all. The method could never correctly report "this row was already
+cleaned up by a concurrent run, or just became ineligible" — its one designed no-op signal was dead
+code in practice.
+
+**Blast radius, scoped precisely:** the eligibility predicate itself (repeated in full inside the
+`UPDATE`'s `WHERE` clause) was never bypassed — a row that was never eligible could never be
+soft-deleted by this bug, and `deleted_at` was never set incorrectly. The defect was purely in the
+**return value**, which feeds exactly two things in `MediaCleanupService.processCandidate()`: (1)
+whether `summary.alreadyHandled` is incremented (cosmetic — a reporting-accuracy issue only), and
+(2) whether an `audit.record()` call for `media.orphan_cleaned` is made. **(2) is the real-world
+impact:** in the narrow race window where a row is fetched as eligible by
+`findOrphanCleanupCandidates()` but becomes ineligible before the subsequent conditional `UPDATE`
+runs (a concurrent cleanup process beats this one to it, or an owner gets attached in that instant),
+the buggy code would still write a `media.orphan_cleaned` audit row claiming a state transition that
+this particular call never actually performed — a phantom/duplicate audit entry. This is a narrow
+window, not a routine occurrence, which is why it was never caught by the original test suite (whose
+mocks assumed the wrong result shape and never modeled the real driver behavior, and whose e2e tests
+never manufactured the race condition).
+
+### Fix
+
+Destructured the tuple, identical in shape to the `attachAndPublish()` fix:
+
+```ts
+async softDeleteOrphanCandidate(id: string): Promise<boolean> {
+  const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
+    `UPDATE media SET deleted_at = now()
+     WHERE id = $1 AND ${ORPHAN_ELIGIBILITY_WHERE}
+     RETURNING id`,
+    [id],
+  );
+  return rows.length > 0;
+}
+```
+
+No other line changed. The eligibility predicate, the storage-before-database ordering in
+`MediaCleanupService`, and dry-run behavior are all byte-for-byte unchanged — this was a strictly
+scoped one-method fix, per instruction.
+
+### Regression tests
+
+- **Unit** (`media.repository.spec.ts`): the two pre-existing `softDeleteOrphanCandidate` tests used
+  the wrong mock shape (`[{id}]` / `[]`, a plain array) and were corrected to the real tuple shape
+  (`[[{id}], 1]` / `[[], 0]`). A new explicit test asserts no false positive from tuple length: a
+  `[[], 0]` result (empty inner rows array, matching the real "0 rows updated" case) must resolve to
+  `false`. **Verified meaningful**, not just passing: with the fix temporarily reverted (`git
+  stash`), this test and the corrected 0-row test both failed with `Received: true` — exactly the
+  bug's signature — then passed again once the fix was restored.
+- **Live e2e** (`media-orphan-cleanup.e2e-spec.ts`, new `describe` block): seeds a real orphan media
+  row, then directly sets `deleted_at` via SQL to simulate "a concurrent process already cleaned this
+  row" — the exact race window the bug hid — then calls `mediaRepo.softDeleteOrphanCandidate()`
+  **directly** (bypassing `findOrphanCleanupCandidates()`, which would otherwise correctly exclude
+  the now-ineligible row from the candidate list before the race can be observed). Asserts the method
+  returns `false` and that no new audit row is written. **Verified meaningful the same way**: run
+  against the pre-fix code, this test failed live against real Postgres (`Received: true`); passed
+  after restoring the fix.
+- All pre-existing regression coverage from §7/§8 (pagination cursor, dry-run, storage-error
+  handling, real cleanup, idempotency) re-run and confirmed still passing — this fix touched no
+  shared logic.
+
+### Live verification
+
+Full `media-orphan-cleanup.e2e-spec.ts` suite re-run against real Postgres + MinIO: **10/10 passing**
+(9 pre-existing + 1 new), including the pre-existing "real cleanup" test (object deleted from MinIO,
+`deleted_at` set, exactly 1 audit row) and "idempotency" test (second consecutive run: 0 new audit
+rows, 0 errors) — both already exercised the happy path correctly before this fix (the bug only
+affected the *ineligible* branch), and both still pass unchanged.
+
+### Final test counts
+
+| Check | Result |
+|---|---|
+| `media.repository.spec.ts` | 19 tests (was 18 — 1 new tuple-shape test), pass |
+| `media-cleanup.service.spec.ts` | unchanged, pass (this fix is invisible at the service level — the service already mocks the repository interface directly) |
+| `media-orphan-cleanup.e2e-spec.ts` (live Postgres + MinIO) | **10 tests** (9 original + 1 new race-window regression test), pass |
+| Full backend unit suite | **95 suites / 1019 tests** (up from 1018), zero regression |
+| Full backend e2e suite | **16 suites / 143 tests** (up from 142), zero regression |
+| `apps/api` typecheck / lint / build | clean |
+| Full monorepo (`turbo`) build / typecheck / lint | 12/12 tasks green |
+| `git diff --check` | clean (benign CRLF notices only) |
+| Secret scan | no matches |
+| `git status --short` | matches exactly the 3 files touched by this fix |
+
+### Related, still-unfixed
+
+None. This addendum closes the one follow-up item M3 flagged. No other instance of this result-shape
+pattern was found during this task's read-first review of `MediaRepository` and
+`MediaCleanupService`.
+
+### Commit
+
+| Commit | Scope |
+|---|---|
+| _(pending)_ | `fix(media)`: handle postgres returning tuple in orphan cleanup |
+| _(pending)_ | `docs(media)`: record the RETURNING result-shape fix in this report |

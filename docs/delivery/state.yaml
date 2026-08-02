@@ -30,8 +30,58 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Moderation Foundation M3 -- Media Decision
-                                  # Workflow + auto-publish-on-review-attach) Owner-approved
+  task: none                      # (2026-08-02, Media Orphan Cleanup -- RETURNING result-shape
+                                  # corrective fix) Owner-directed focused corrective task,
+                                  # immediately following Moderation Foundation M3 the same day.
+                                  # M3's live validation found and fixed a defect in MediaRepository
+                                  # .attachAndPublish() -- TypeORM's Postgres driver returns
+                                  # UPDATE/DELETE ... RETURNING results from manager.query()/
+                                  # repo.query() as a [rows, rowCount] TUPLE, not a plain rows array
+                                  # (confirmed by reading PostgresQueryRunner.js) -- and flagged
+                                  # MediaRepository.softDeleteOrphanCandidate() (a DIFFERENT,
+                                  # already-shipped milestone) as suspected of the identical pattern,
+                                  # explicitly out of M3's scope. This task re-opened that question
+                                  # read-first, confirmed the suspicion live against REAL Postgres
+                                  # (not a mock) before touching any code: a row with deleted_at
+                                  # already set (UPDATE's WHERE matches 0 rows, genuinely ineligible)
+                                  # still made the method return true. Root cause identical to
+                                  # attachAndPublish's -- rows.length on an unde-structured 2-element
+                                  # tuple is always 2, always >0, regardless of actual match count.
+                                  # Blast radius scoped precisely: the eligibility predicate itself
+                                  # was never bypassed (a row that was never eligible could never
+                                  # actually be soft-deleted by this bug), and deleted_at was never
+                                  # set incorrectly -- the defect was purely in the return value,
+                                  # whose only real-world consequence is a phantom media.
+                                  # orphan_cleaned audit row in the narrow race window where a row
+                                  # becomes ineligible between findOrphanCleanupCandidates()'s SELECT
+                                  # and softDeleteOrphanCandidate()'s conditional UPDATE (a
+                                  # concurrent cleanup process winning the race, or an owner being
+                                  # attached in that instant) -- narrow enough that neither the
+                                  # original unit tests (wrong mock shape) nor e2e tests (never
+                                  # manufactured the race) ever caught it. Fixed with the identical
+                                  # destructuring pattern as attachAndPublish's fix
+                                  # (`const [rows] = await this.repo.query(...)`), strictly scoped:
+                                  # no change to the eligibility predicate, storage-before-DB
+                                  # ordering, or dry-run behavior. Two corrected unit test mocks
+                                  # (previously asserting the wrong plain-array shape) plus one new
+                                  # unit test and one new live e2e test (simulating the exact race
+                                  # window by setting deleted_at directly then calling
+                                  # softDeleteOrphanCandidate() directly, bypassing the SELECT that
+                                  # would otherwise mask the race) -- both new tests verified
+                                  # MEANINGFUL by temporarily reverting the fix via git stash and
+                                  # confirming they fail with the bug's exact signature (Received:
+                                  # true) before passing again with the fix restored. Full
+                                  # re-validation: backend unit 95 suites/1019 tests (up from 1018),
+                                  # e2e 16 suites/143 tests (up from 142), zero regression, full
+                                  # monorepo build/typecheck/lint green, git diff --check clean,
+                                  # secret scan clean. Documented as an addendum (SS12) to the
+                                  # existing MEDIA-ORPHAN-CLEANUP-POST-IMPLEMENTATION-REVIEW-
+                                  # 2026-08-02.md report rather than a new report file, since it is a
+                                  # follow-up to that same milestone's own review, not a new
+                                  # milestone. ADR-018 not touched; M4 not started.
+                                  # ---- prior state (2026-08-02, Moderation Foundation M3 -- Media
+                                  # Decision Workflow + auto-publish-on-review-attach) ----
+                                  # Owner-approved
                                   # implementation of ADR-018 M3, immediately following M2 the same
                                   # day. Scope was explicit and narrow: media moderation decisions
                                   # (POST /moderation/cases/{id}/decide, target_type=media only --
