@@ -30,7 +30,78 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Moderation Foundation M1 -- Schema Foundation)
+  task: none                      # (2026-08-02, Moderation Foundation M2 -- Queue Read API)
+                                  # Owner-approved implementation of ADR-018 M2, immediately
+                                  # following M1 in the same day. Scope was explicit and narrow:
+                                  # GET /moderation/cases + GET /moderation/cases/{id}, READ-ONLY --
+                                  # NO decision endpoints, NO report create/resolve, NO
+                                  # auto-publish-on-review-attach, NO M3 backfill, NO moderator
+                                  # frontend, NO AI, NO notifications, NO new database schema (all
+                                  # explicitly excluded by the Owner's task and confirmed absent
+                                  # from the diff -- zero migration file, zero status-mutating
+                                  # method call anywhere in the new code). Extended the EXISTING M1
+                                  # repositories (ModerationCasesRepository.list()/
+                                  # findTargetPreview(), ReportsRepository.findByCaseId()) rather
+                                  # than creating a third persistence path -- list()/getCount() run
+                                  # off the SAME QueryBuilder instance so filters can never drift
+                                  # between the two (list/count parity, live-verified). Sort order
+                                  # is FIXED (priority DESC, report_count DESC, created_at ASC, id
+                                  # ASC tie-break) -- deliberately no sort_by/sort_dir query param,
+                                  # since ADR-018/moderation-design.md document exactly one queue
+                                  # order and no configurable one; adding one would have been
+                                  # inventing a filter the ADR doesn't specify. Same reasoning ruled
+                                  # out a created-date-range filter -- checked moderation-design.md
+                                  # SS9's API table twice, confirmed only 5 filters
+                                  # (status/target_type/source/severity/assigned_to) are actually
+                                  # documented, not the date-range some earlier phrasing implied.
+                                  # Target preview (GET .../{id} only, never on the list route --
+                                  # avoids N+1) is a real but conservative decision: media preview
+                                  # exposes type/status/uploaded_by/created_at and DELIBERATELY
+                                  # OMITS object_key/bucket/checksum/url (storage internals, not
+                                  # needed for a moderation decision, and no viewable image URL --
+                                  # that needs StorageService signed-URL integration ADR-018 never
+                                  # specified, disclosed as an honest limitation, not silently
+                                  # skipped); review preview INCLUDES full content, since reading it
+                                  # is literally the point of the endpoint, unlike media metadata.
+                                  # report_id/reason/description/status ARE exposed on the detail
+                                  # response (reporter_id too) -- confirmed correct against the
+                                  # design's own SS12 ("hàng chờ chỉ hiện danh tính người báo cáo
+                                  # cho người có Moderation.Queue.View", which this endpoint is
+                                  # gated behind) -- but no join to `users` for reporter name/email,
+                                  # since that field was never specified and would be excess
+                                  # exposure beyond the documented report summary. ai_score/
+                                  # ai_labels (existing ADR-009 columns) deliberately excluded from
+                                  # BOTH responses -- M2 is explicitly out of AI scope, even though
+                                  # the columns aren't literally an AI feature, to avoid opening API
+                                  # surface for an M6/M7 capability that doesn't exist yet. No new
+                                  # permission -- reused Moderation.Queue.View from M1's seed
+                                  # exactly, scope Any, no role name special-cased anywhere in
+                                  # service/controller code (PermissionsGuard/JwtAuthGuard already
+                                  # global via APP_GUARD in AuthModule, confirmed by reading it
+                                  # rather than assuming). LIVE VERIFIED end-to-end against the real
+                                  # dev stack, not just unit tests: registered a real member and a
+                                  # real moderator (role granted via a direct user_roles insert --
+                                  # first e2e in this repo to do so, no prior precedent existed),
+                                  # inserted 4 disposable moderation_cases rows (mixed statuses/
+                                  # target_types/severities/sources/assigned) + 1 report row,
+                                  # exercised anonymous 401, member 403 on both routes, moderator
+                                  # 200 on both, unknown-id 404, invalid-UUID 400, invalid-enum 400,
+                                  # single filter/combined filter/assigned_to filter, fixed sort
+                                  # order, pagination envelope shape, reporter-privacy (no email/
+                                  # name leak), ai_score/ai_labels absence, and a direct before/
+                                  # after DB read proving zero mutation from any GET call -- then
+                                  # deleted every fixture row (reports/moderation_cases/user_roles),
+                                  # confirmed 0 residue via direct queries after the suite ran. Full
+                                  # validation: backend 91 suites/951 tests (up from 88/911, +40 new
+                                  # M2 unit tests across 4 new/2 extended suites), e2e 14 suites/124
+                                  # tests (up from 13/104, +20 new), zero regression in either; full
+                                  # monorepo build/typecheck/lint 4/4, 6/6, 6/6 green; git diff
+                                  # --check clean; secret scan clean. ADR-018 was NOT modified --
+                                  # implementation revealed no contradiction with it. See
+                                  # docs/delivery/reports/MODERATION-M2-QUEUE-READ-API-2026-08-02.md.
+                                  # M3 (Media Decision Workflow + auto-publish-on-review-attach) is
+                                  # the next milestone -- explicitly NOT started per instruction.
+                                  # ---- prior state (2026-08-02 Moderation Foundation M1 -- Schema Foundation) ----
                                   # Owner-approved implementation of ADR-018 (Accepted same day,
                                   # after O1-O7 all settled -- see decision-register.md), M1 of the
                                   # 7-milestone roadmap in moderation-design.md. Scope was explicit

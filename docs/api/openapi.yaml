@@ -45,6 +45,7 @@ tags:
   - name: Community
   - name: Business
   - name: Media
+  - name: Moderation
   - name: Weather
   - name: AI
   - name: Search
@@ -1910,6 +1911,81 @@ paths:
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
+  # ============================ MODERATION ============================
+  # Moderation Foundation (ADR-018, Accepted). M2 (Moderation Queue Read API) — CHỈ ĐỌC. Không
+  # action nào đổi trạng thái ở đây (claim/decide/reopen thuộc M3/M4, chưa triển khai). Cả hai
+  # route đòi Moderation.Queue.View, scope Any (O6). Hợp đồng phân trang OFFSET (page/limit), cùng
+  # convention /bookings /places — xem docs/data/modules/moderation-design.md §9.
+  /moderation/cases:
+    get:
+      tags: [Moderation]
+      summary: Hàng chờ kiểm duyệt (Moderation.Queue.View, M2)
+      operationId: listModerationCases
+      description: >-
+        Không truyền `status` → mặc định chỉ `open`/`claimed` (đúng định nghĩa "hàng chờ",
+        moderation-design.md §4). Truyền `status` tường minh → lọc đúng MỘT giá trị đó (kể cả
+        `resolved`/`dismissed`, phục vụ xem lịch sử một target). Sắp xếp CỐ ĐỊNH theo
+        `priority DESC, report_count DESC, created_at ASC` — không có tham số sort tuỳ chỉnh
+        (chưa được ADR-018 đặc tả).
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, claimed, resolved, dismissed] }
+        - name: target_type
+          in: query
+          schema: { type: string, enum: [review, media, place] }
+        - name: source
+          in: query
+          schema: { type: string, enum: [new_content, report, ai_flag, manual] }
+        - name: severity
+          in: query
+          schema: { type: string, enum: [low, normal, high, critical] }
+        - name: assigned_to
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/ModerationCaseSummary' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /moderation/cases/{id}:
+    get:
+      tags: [Moderation]
+      summary: Chi tiết case kiểm duyệt (Moderation.Queue.View, M2)
+      operationId: getModerationCase
+      description: >-
+        Case + toàn bộ report gắn với nó + ảnh chụp target tối thiểu (media/review — `place` luôn
+        `found:false`, chưa đăng ký FSM). Target đã bị xoá hoặc không tồn tại → `target_preview.
+        found=false`, KHÔNG lỗi (case vẫn hợp lệ dù target đã mất — target_id không FK cứng,
+        ADR-018 D9).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/ModerationCaseDetail' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ============================ WEATHER ============================
   /weather/current:
     get:
@@ -2721,6 +2797,70 @@ components:
         start_at: { type: string, format: date-time }
         end_at: { type: string, format: date-time }
         status_override: { type: [string, 'null'], enum: [cancelled, postponed, null] }
+    ModerationCaseSummary:
+      type: object
+      description: >-
+        Moderation Foundation M2 (ADR-018). CỐ Ý KHÔNG có `ai_score`/`ai_labels` — cột đã tồn tại
+        trên entity (ADR-009) nhưng ngoài phạm vi AI của M2, sẽ thêm khi M6/M7 thực sự ghi vào đó.
+      properties:
+        id: { type: string, format: uuid }
+        target_type: { type: string, enum: [review, media, place] }
+        target_id: { type: string, format: uuid }
+        status: { type: string, enum: [open, claimed, resolved, dismissed] }
+        source: { type: string, enum: [new_content, report, ai_flag, manual] }
+        severity: { type: string, enum: [low, normal, high, critical] }
+        priority: { type: integer }
+        report_count: { type: integer }
+        assigned_to: { type: [string, 'null'], format: uuid }
+        claimed_at: { type: [string, 'null'], format: date-time }
+        decision: { type: [string, 'null'], enum: [approve, reject, hide, restore, dismiss, null] }
+        reason: { type: [string, 'null'] }
+        resolved_by: { type: [string, 'null'], format: uuid }
+        resolved_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ModerationReportSummary:
+      type: object
+      description: >-
+        `reporter_id` CÓ mặt — endpoint bị chặn đúng `Moderation.Queue.View`, khớp thiết kế §12
+        ("hàng chờ CHỈ hiện danh tính người báo cáo cho người có quyền đó"). KHÔNG join `users`
+        lấy tên/email người báo cáo — UUID là đủ cho M2.
+      properties:
+        id: { type: string, format: uuid }
+        reporter_id: { type: string, format: uuid }
+        reason:
+          type: string
+          enum: [spam, misinformation, offensive, irrelevant, copyright, personal_info, other]
+        description: { type: [string, 'null'] }
+        status: { type: string, enum: [open, upheld, dismissed] }
+        created_at: { type: string, format: date-time }
+    ModerationTargetPreview:
+      type: object
+      description: >-
+        Ảnh chụp target tối thiểu. `found:false` khi target đã bị xoá/không tồn tại (KHÔNG lỗi —
+        target_id không FK cứng, ADR-018 D9), hoặc luôn `false` cho `target_type=place` (chưa đăng
+        ký FSM). Trường CỐ Ý loại trừ (media): `object_key`/`bucket`/`content_type`/`size_bytes`/
+        `checksum_sha256`/`url` — nội bộ storage, không cần cho quyết định kiểm duyệt; xem giới hạn
+        đã công bố ở docs/delivery/reports/MODERATION-M2-QUEUE-READ-API-2026-08-02.md.
+      properties:
+        found: { type: boolean }
+        target_type: { type: string, enum: [review, media, place] }
+        target_id: { type: string, format: uuid }
+        media_type: { type: string, enum: [image, video] }
+        status: { type: string, description: 'media_status hoặc review_status tuỳ target_type' }
+        uploaded_by: { type: [string, 'null'], format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        content: { type: [string, 'null'] }
+        place_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+    ModerationCaseDetail:
+      allOf:
+        - $ref: '#/components/schemas/ModerationCaseSummary'
+        - type: object
+          properties:
+            reports: { type: array, items: { $ref: '#/components/schemas/ModerationReportSummary' } }
+            target_preview: { $ref: '#/components/schemas/ModerationTargetPreview' }
     Review:
       type: object
       description: >-
