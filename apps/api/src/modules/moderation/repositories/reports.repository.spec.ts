@@ -9,8 +9,15 @@ describe('ReportsRepository', () => {
   let sut: ReportsRepository;
 
   beforeEach(() => {
-    repo = createMock<Repository<Report>>({ exists: jest.fn() });
+    repo = createMock<Repository<Report>>({ exists: jest.fn(), find: jest.fn() });
     sut = new ReportsRepository(repo);
+  });
+
+  describe('findByCaseId', () => {
+    it('tra theo case_id, cũ nhất trước', async () => {
+      await sut.findByCaseId('c1');
+      expect(repo.find).toHaveBeenCalledWith({ where: { caseId: 'c1' }, order: { createdAt: 'ASC' } });
+    });
   });
 
   describe('existsByReporterAndTarget', () => {
