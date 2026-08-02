@@ -30,8 +30,49 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Media Orphan Cleanup POST-IMPLEMENTATION REVIEW --
-                                  # ad-hoc, NOT PLACE-numbered) Owner-requested focused review of
+  task: none                      # (2026-08-02, Error/Loading Boundary Completion -- ad-hoc, NOT
+                                  # PLACE-numbered) Owner-approved, selected via the governance
+                                  # assessment appended to the Media Orphan Cleanup post-
+                                  # implementation review (ranked #1 -- zero Owner decisions, zero
+                                  # risk, direct PLACE-041 precedent to copy). Added error.tsx +
+                                  # loading.tsx to the 4 routes PLACE-041's own audit had left open
+                                  # (/explore, /map, /search, /dashboard) -- same
+                                  # placesStyles.state/.stateTitle/.btn pattern already shipped on
+                                  # hotels/restaurants/tours/events, with route-specific adaptations
+                                  # where the target page's real shape differed (explore/map
+                                  # loading.tsx mirrors MapView's real height:70vh container to
+                                  # minimize layout shift; search/loading.tsx mirrors its actual
+                                  # resultList/resultItem shape, not a card grid; dashboard's
+                                  # boundaries reflect its heading+greeting+button shape, no list).
+                                  # No backend/schema/route-behavior change. Live-verified in a real
+                                  # browser against the real dev stack: normal success path
+                                  # unchanged on all 4 routes; error boundary confirmed on all 4 via
+                                  # dev-only induced failure (stopped the live api server for
+                                  # /search's real fetch-failure path; temporarily forced a render
+                                  # throw in explore/map/dashboard's page.tsx, since those 3 have no
+                                  # page-level network call to fail against -- every temporary throw
+                                  # reverted immediately after, confirmed via a clean git diff
+                                  # before staging); retry (reset()) confirmed both by a unit test
+                                  # and by a live post-recovery reload; zero console errors from the
+                                  # boundaries themselves on a fresh tab. One incidental environment
+                                  # note disclosed: no nvm/fnm available this session, so validation
+                                  # ran on the system Node v24.18.0/npm 11.16.0 rather than the
+                                  # .nvmrc-pinned 20 (still satisfies package.json's >=20.0.0
+                                  # engines range). Testing: thoroughly unit-tested ONE representative
+                                  # pair (search/error.tsx + search/loading.tsx, 7 new tests -- /search
+                                  # is the only one of the 4 with a real server-side data fetch, so
+                                  # the widest real trigger surface); the other 3 pairs are
+                                  # structurally byte-for-byte the same pattern, verified instead via
+                                  # typecheck (Next's {error,reset} contract)/build/live verification,
+                                  # not re-tested to avoid repetitive zero-value duplication. Full
+                                  # validation: frontend 21 suites/124 tests (up from 19/117, zero
+                                  # regression), typecheck/lint/build all clean, full monorepo build
+                                  # 4/4 green. Roadmap item #10 (MVP-GAP-ANALYSIS-AND-ROADMAP-
+                                  # 2026-07-25.md) marked DONE -- this was the last remaining item in
+                                  # that list's original error/loading-boundary gap. See
+                                  # docs/delivery/reports/ERROR-LOADING-BOUNDARIES-2026-08-02.md.
+                                  # ---- prior state (2026-08-02 Media Orphan Cleanup post-implementation review) ----
+                                  # Owner-requested focused review of
                                   # every file changed by the just-completed Media Orphan Cleanup
                                   # milestone, plus a fresh governance assessment -- no new feature.
                                   # Found and fixed ONE genuine defect: MediaRepository

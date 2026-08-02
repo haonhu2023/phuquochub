@@ -121,6 +121,7 @@ modules (`apps/api/src/modules/*`); frontend has 10 modules and 15 route segment
 9. A moderation queue UI (the backend already models pending/draft/published status).
 10. Remaining error/loading boundaries for `/explore`, `/map`, `/search`, `/dashboard`
     (PLACE-041, still open).
+    **✅ DONE — 2026-08-02.** See docs/delivery/reports/ERROR-LOADING-BOUNDARIES-2026-08-02.md.
 
 **Low:**
 11. Live Swagger/OpenAPI UI (manually-maintained spec file already kept in sync).
