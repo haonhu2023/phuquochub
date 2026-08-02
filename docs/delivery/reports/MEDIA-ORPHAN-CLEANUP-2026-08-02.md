@@ -152,4 +152,4 @@ Clean after commits (verified via `git status --short` immediately before and af
 | Commit | Scope |
 |---|---|
 | `40aa4db` | `feat(media)`: orphan cleanup job (dry-run + manual runner) — service, repository queries, storage method, migration, standalone runner, all tests |
-| _pending_ | `docs(media)`: media.md §12 + state.yaml governance entry + this report |
+| `f593bb1` | `docs(media)`: media.md §12 + state.yaml governance entry + this report |
