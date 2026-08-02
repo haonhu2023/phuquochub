@@ -30,8 +30,50 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Media Orphan Cleanup -- ad-hoc, NOT PLACE-numbered,
-                                  # per the same standing 2026-07-26 Owner instruction) Owner
+  task: none                      # (2026-08-02, Media Orphan Cleanup POST-IMPLEMENTATION REVIEW --
+                                  # ad-hoc, NOT PLACE-numbered) Owner-requested focused review of
+                                  # every file changed by the just-completed Media Orphan Cleanup
+                                  # milestone, plus a fresh governance assessment -- no new feature.
+                                  # Found and fixed ONE genuine defect: MediaRepository
+                                  # .findOrphanCleanupCandidates() paginated with no cursor, so
+                                  # progress depended entirely on rows being mutated between
+                                  # batches -- broken for dry-run (nothing mutates, so every batch
+                                  # re-fetched the same page) and for a real run hitting a non-fatal
+                                  # storage error on one row (by design left untouched, but then
+                                  # re-fetched every subsequent batch of the SAME run, potentially
+                                  # starving every other candidate for the whole invocation). Fixed
+                                  # with keyset pagination, cursor advanced after every batch
+                                  # regardless of mutation. A SECOND bug surfaced while building
+                                  # that fix, confirmed live against real Postgres: a naive
+                                  # Date-based cursor silently truncates timestamptz's microsecond
+                                  # precision to JS Date's millisecond precision, letting a row
+                                  # satisfy created_at>cursor against its own real stored value and
+                                  # get re-fetched as a duplicate instead of skipped -- reproduced
+                                  # directly (two rows 100 microseconds apart, second one never
+                                  # surfaced) before fixing by carrying Postgres's own exact
+                                  # created_at::text rendering for the cursor, bound back as
+                                  # ::timestamptz, never round-tripped through a Date. Also found
+                                  # and fixed an incidental e2e test-hygiene leak (the original
+                                  # dry-run test deleted a real MinIO object directly to verify it,
+                                  # but never cleaned up the DB row -- leaking one orphan row per
+                                  # e2e run); cleared the several rows this had accumulated in the
+                                  # shared dev DB via a real npm run media:cleanup invocation
+                                  # (confirmed 0 eligible rows remain). Every other reviewed
+                                  # property (storage-before-DB ordering, non-not-found errors
+                                  # leaving the row untouched, dry-run's structural inability to
+                                  # write, audit context containing no secrets/signed URLs, Date
+                                  # serialization, migration reversibility, the two pre-existing
+                                  # BodyInit type-only casts) was confirmed already correct, no
+                                  # change needed. New regression tests at both unit and live-e2e
+                                  # level reproduce the original failures and pass after the fix.
+                                  # Full re-validation: backend unit 82 suites/855 tests (up from
+                                  # 850), e2e 13 suites/104 tests (up from 102), full monorepo
+                                  # typecheck/lint/build all green, fresh dry-run against the live
+                                  # local stack confirms 0 eligible rows remain. See
+                                  # docs/delivery/reports/MEDIA-ORPHAN-CLEANUP-POST-IMPLEMENTATION-
+                                  # REVIEW-2026-08-02.md.
+                                  # ---- prior state (2026-08-02 Media Orphan Cleanup, initial implementation) ----
+                                  # Owner
                                   # explicitly selected this candidate from a read-only governance
                                   # assessment (ranked against gallery/business-claim/moderation/
                                   # Transport-browse-page) and approved a full execution plan +

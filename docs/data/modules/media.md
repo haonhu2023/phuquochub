@@ -234,6 +234,25 @@ Hằng số này (`ORPHAN_ELIGIBILITY_WHERE`, `media.repository.ts`) được d�
 truy vấn quét theo lô (`findOrphanCleanupCandidates`) lẫn UPDATE có điều kiện
 (`softDeleteOrphanCandidate`) — không tách hằng số riêng cho từng cột, tránh hai câu SQL lệch nhau.
 
+### 12.1a Phân trang keyset qua nhiều lô (post-implementation review fix, 2026-08-02)
+
+`findOrphanCleanupCandidates(limit, after?)` nhận thêm con trỏ `{createdAt, id}` tuỳ chọn, thêm
+điều kiện `AND (created_at, id) > ($2::timestamptz, $3)`, `ORDER BY created_at ASC, id ASC`.
+`MediaCleanupService.run()` tiến con trỏ sau MỖI lô (dòng cuối của lô vừa fetch), **bất kể** dòng
+có thực sự bị ghi hay không — đây là điểm mấu chốt: phân trang phải độc lập với việc mutate dữ
+liệu, vì dry-run không mutate gì cả, và một dòng lỗi storage (không phải not-found) cũng CỐ Ý
+không bị ghi.
+
+**Bẫy đã gặp và sửa:** con trỏ ban đầu dùng thẳng `candidate.createdAt` (một `Date` JS, độ chính
+xác milli-giây) — nhưng `timestamptz` của Postgres giữ micro-giây. Khi gửi lại `Date` đã bị làm
+tròn/cắt xén làm tham số cho lô kế tiếp, chính dòng vừa fetch vẫn có thể thoả `created_at >
+cursor` so với giá trị THẬT (chưa cắt xén) của chính nó trong DB — bị fetch lại vô thời hạn (giới
+hạn bởi `maxBatches`, không phải vòng lặp vô hạn thật sự, nhưng không hề tiến lên được), "đói"
+mọi dòng khác phía sau. Xác nhận trực tiếp qua e2e thật (hai dòng chỉ cách nhau ~100 micro-giây):
+dòng thứ hai không bao giờ được liệt kê. **Sửa:** cột `cursorCreatedAt` mang nguyên văn bản thô
+Postgres tự in ra (`created_at::text`), không bao giờ đi qua `Date` — gửi lại kèm ép kiểu
+`::timestamptz` để Postgres tự phân tích lại đúng y giá trị gốc, không mất độ chính xác.
+
 ### 12.2 Trình tự xử lý mỗi dòng (bắt buộc đúng thứ tự)
 
 1. `StorageService.deleteObjectForCleanup(objectKey)` — method MỚI, KHÔNG phải `deleteObject()`
