@@ -4,14 +4,17 @@ import { ModerationCase } from './entities/moderation-case.entity';
 import { Report } from './entities/report.entity';
 import { ModerationCasesRepository } from './repositories/moderation-cases.repository';
 import { ReportsRepository } from './repositories/reports.repository';
+import { ModerationService } from './moderation.service';
+import { ModerationController } from './moderation.controller';
 
-// Moderation Foundation, M1 (ADR-018) — CHỈ entities + repositories, KHÔNG controller/service.
-// Hàng chờ đọc (M2), quyết định media/review (M3/M4), report (M5) đều thêm vào module này ở các
-// milestone sau — không tạo module riêng cho từng milestone (case/report là hai bảng của MỘT
-// miền, đúng cách BookingsModule gộp Booking+BookingItem).
+// Moderation Foundation. M1 (ADR-018): entities + repositories. M2 (Queue Read API) adds the
+// service + controller below — read-only, no decision/report endpoints (those are M3-M5). Case
+// và report là hai bảng của MỘT miền — một module cho cả hai, đúng cách BookingsModule gộp
+// Booking+BookingItem, không tạo module riêng cho từng milestone.
 @Module({
   imports: [TypeOrmModule.forFeature([ModerationCase, Report])],
-  providers: [ModerationCasesRepository, ReportsRepository],
+  controllers: [ModerationController],
+  providers: [ModerationCasesRepository, ReportsRepository, ModerationService],
   exports: [ModerationCasesRepository, ReportsRepository],
 })
 export class ModerationModule {}

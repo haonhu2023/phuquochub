@@ -8,6 +8,9 @@ import {
   ModerationCaseStatus,
   ModerationTargetType,
 } from '../moderation.enums';
+import type { ModerationTargetPreview } from '../moderation-target-preview';
+import { MediaStatus, MediaType } from '../../media/media.enums';
+import { ReviewStatus } from '../../reviews/review.enums';
 
 export interface NewModerationCase {
   targetType: ModerationTargetType;
@@ -15,6 +18,19 @@ export interface NewModerationCase {
   source: ModerationCaseSource;
   severity: ModerationCaseSeverity;
   priority: number;
+}
+
+// M2 (GET /moderation/cases) — status LÀ MẢNG: bỏ trống filter -> service truyền [open,claimed]
+// (mặc định "hàng chờ", thiết kế §4); truyền tường minh -> service truyền đúng 1 phần tử. Repository
+// không tự quyết định mặc định đó (thuộc service, cùng nguyên tắc repository không suy luận nghiệp vụ).
+export interface ListModerationCasesParams {
+  statuses: ModerationCaseStatus[];
+  targetType?: ModerationTargetType;
+  source?: ModerationCaseSource;
+  severity?: ModerationCaseSeverity;
+  assignedTo?: string;
+  limit: number;
+  offset: number;
 }
 
 interface ModerationCaseRow {
@@ -83,6 +99,111 @@ export class ModerationCasesRepository {
       [data.targetType, data.targetId, data.source, data.severity, data.priority],
     );
     return rows.length > 0 ? this.mapRow(rows[0]) : null;
+  }
+
+  /**
+   * GET /moderation/cases (M2). QueryBuilder — cùng khuôn `BookingsRepository.list()`: MỘT qb
+   * dùng chung cho `getCount()` rồi `getMany()` (giữ filter list/count đồng nhất tuyệt đối, không
+   * thể lệch nhau qua thời gian vì cùng một chuỗi `andWhere`). Sắp xếp CỐ ĐỊNH theo thiết kế §4
+   * (priority DESC, report_count DESC, created_at ASC) + tie-break `id ASC` cho xác định hoàn
+   * toàn — không có tham số sort tuỳ chỉnh (không đặc tả trong ADR-018/moderation-design.md §9).
+   */
+  async list(params: ListModerationCasesParams): Promise<{ items: ModerationCase[]; total: number }> {
+    const qb = this.repo.createQueryBuilder('c').where('c.status IN (:...statuses)', { statuses: params.statuses });
+
+    if (params.targetType) {
+      qb.andWhere('c.targetType = :targetType', { targetType: params.targetType });
+    }
+    if (params.source) {
+      qb.andWhere('c.source = :source', { source: params.source });
+    }
+    if (params.severity) {
+      qb.andWhere('c.severity = :severity', { severity: params.severity });
+    }
+    if (params.assignedTo) {
+      qb.andWhere('c.assignedTo = :assignedTo', { assignedTo: params.assignedTo });
+    }
+
+    const total = await qb.getCount();
+    const items = await qb
+      .orderBy('c.priority', 'DESC')
+      .addOrderBy('c.reportCount', 'DESC')
+      .addOrderBy('c.createdAt', 'ASC')
+      .addOrderBy('c.id', 'ASC') // tie-break ổn định — cùng nguyên tắc GAP-12 (PlacesRepository.list)
+      .skip(params.offset)
+      .take(params.limit)
+      .getMany();
+
+    return { items, total };
+  }
+
+  /**
+   * Ảnh chụp target cho GET /moderation/cases/{id} (M2). Raw SQL tối thiểu, KHÔNG kéo cột nội bộ
+   * storage (object_key/bucket/checksum/content_type/size_bytes) — chỉ những trường một moderator
+   * thực sự cần để ra quyết định. `place` luôn `found:false` (chưa đăng ký FSM, MR-4). Target đã
+   * bị xoá mềm hoặc không tồn tại -> `found:false`, KHÔNG throw (case vẫn hợp lệ dù target đã mất
+   * — đúng lý do target_id không có FK cứng, ADR-018 D9).
+   *
+   * Dùng `this.repo.query()` (cross-table raw SQL từ repository ModerationCase) — cùng tiền lệ
+   * `MediaRepository.placeExists()` truy vấn thẳng bảng `places` để tránh circular module
+   * dependency (ModerationModule không import MediaModule/ReviewsModule chỉ để đọc preview).
+   */
+  async findTargetPreview(
+    targetType: ModerationTargetType,
+    targetId: string,
+  ): Promise<ModerationTargetPreview> {
+    if (targetType === ModerationTargetType.MEDIA) {
+      const rows: Array<{
+        type: string;
+        status: string;
+        uploaded_by: string | null;
+        created_at: Date;
+      }> = await this.repo.query(
+        `SELECT type, status, uploaded_by, created_at FROM media WHERE id = $1 AND deleted_at IS NULL`,
+        [targetId],
+      );
+      if (rows.length === 0) return { found: false, targetType, targetId };
+      const r = rows[0];
+      return {
+        found: true,
+        targetType: ModerationTargetType.MEDIA,
+        targetId,
+        mediaType: r.type as MediaType,
+        status: r.status as MediaStatus,
+        uploadedBy: r.uploaded_by,
+        createdAt: r.created_at,
+      };
+    }
+
+    if (targetType === ModerationTargetType.REVIEW) {
+      const rows: Array<{
+        status: string;
+        rating: number;
+        content: string | null;
+        place_id: string;
+        user_id: string;
+        created_at: Date;
+      }> = await this.repo.query(
+        `SELECT status, rating, content, place_id, user_id, created_at FROM reviews WHERE id = $1`,
+        [targetId],
+      );
+      if (rows.length === 0) return { found: false, targetType, targetId };
+      const r = rows[0];
+      return {
+        found: true,
+        targetType: ModerationTargetType.REVIEW,
+        targetId,
+        status: r.status as ReviewStatus,
+        rating: r.rating,
+        content: r.content,
+        placeId: r.place_id,
+        userId: r.user_id,
+        createdAt: r.created_at,
+      };
+    }
+
+    // target_type = 'place' — chưa đăng ký FSM, ngoài phạm vi M1–M7 (ADR-018 §Ngoài phạm vi).
+    return { found: false, targetType, targetId };
   }
 
   private mapRow(row: ModerationCaseRow): ModerationCase {

@@ -33,6 +33,12 @@ export class ReportsRepository {
     return this.repo.exists({ where: { targetType, targetId, reporterId } });
   }
 
+  /** GET /moderation/cases/{id} (M2) — mọi report gắn với một case, cũ nhất trước (khớp thứ tự
+   * "ai báo cáo trước" mà một moderator cần đọc khi xem lại lịch sử case). */
+  findByCaseId(caseId: string): Promise<Report[]> {
+    return this.repo.find({ where: { caseId }, order: { createdAt: 'ASC' } });
+  }
+
   /** Tạo một report gắn với case đã tồn tại. Nhận `manager` trực tiếp để caller kiểm soát
    * transaction (T3, M5) — cùng quy ước `MediaRepository.createUploaded()`. */
   create(manager: EntityManager, data: NewReport): Promise<Report> {
