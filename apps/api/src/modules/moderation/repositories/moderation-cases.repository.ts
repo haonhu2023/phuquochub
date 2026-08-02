@@ -6,6 +6,7 @@ import {
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
+  ModerationDecision,
   ModerationTargetType,
 } from '../moderation.enums';
 import type { ModerationTargetPreview } from '../moderation-target-preview';
@@ -18,6 +19,17 @@ export interface NewModerationCase {
   source: ModerationCaseSource;
   severity: ModerationCaseSeverity;
   priority: number;
+}
+
+// T2 (Moderation Foundation M3) — kết luận ghi vào case khi resolve. `status` chỉ 2 giá trị hợp
+// lệ ở bước này: RESOLVED (quyết định approve/reject/hide/restore) hoặc DISMISSED (report vô căn
+// cứ, decision='dismiss', KHÔNG đổi trạng thái nội dung — moderation-design.md §5.1).
+export interface ResolveModerationCase {
+  status: ModerationCaseStatus.RESOLVED | ModerationCaseStatus.DISMISSED;
+  decision: ModerationDecision;
+  reason: string | null;
+  resolvedBy: string;
+  resolvedAt: Date;
 }
 
 // M2 (GET /moderation/cases) — status LÀ MẢNG: bỏ trống filter -> service truyền [open,claimed]
@@ -76,6 +88,38 @@ export class ModerationCasesRepository {
     return this.repo.findOne({
       where: { targetType, targetId, status: In([ModerationCaseStatus.OPEN, ModerationCaseStatus.CLAIMED]) },
     });
+  }
+
+  /**
+   * T2 (Moderation Foundation M3) — khoá đúng MỘT dòng case (`SELECT ... FOR UPDATE`) trước khi
+   * quyết định. Đây là chốt chặn concurrency DUY NHẤT của T2 (moderation-design.md §7): khoá case
+   * cha là đủ để chặn hai quyết định chạy song song trên CÙNG target, vì INV-3 đảm bảo tối đa một
+   * case mở cho mỗi target — không cần khoá riêng trên `media`/`reviews`. Cùng cơ chế
+   * `InventoryHoldsRepository.placeHold()` khoá `availability_slots` bằng `setLock('pessimistic_write')`.
+   */
+  findByIdForUpdate(manager: EntityManager, id: string): Promise<ModerationCase | null> {
+    return manager
+      .getRepository(ModerationCase)
+      .createQueryBuilder('c')
+      .setLock('pessimistic_write')
+      .where('c.id = :id', { id })
+      .getOne();
+  }
+
+  /** T2 — ghi kết luận ĐÃ ĐƯỢC XÁC NHẬN hợp lệ bởi service (case ∈ {open,claimed}, FSM hợp lệ,
+   * không tự kiểm duyệt — INV-12). Repository KHÔNG tự kiểm tra các điều kiện đó, cùng nguyên tắc
+   * `BookingsRepository.updateStatus()`. */
+  async resolve(manager: EntityManager, id: string, data: ResolveModerationCase): Promise<void> {
+    await manager.getRepository(ModerationCase).update(
+      { id },
+      {
+        status: data.status,
+        decision: data.decision,
+        reason: data.reason,
+        resolvedBy: data.resolvedBy,
+        resolvedAt: data.resolvedAt,
+      },
+    );
   }
 
   /**

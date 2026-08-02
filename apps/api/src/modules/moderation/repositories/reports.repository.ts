@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { Report } from '../entities/report.entity';
-import { ModerationTargetType, ReportReason } from '../moderation.enums';
+import { ModerationTargetType, ReportReason, ReportStatus } from '../moderation.enums';
 
 export interface NewReport {
   caseId: string;
@@ -37,6 +37,19 @@ export class ReportsRepository {
    * "ai báo cáo trước" mà một moderator cần đọc khi xem lại lịch sử case). */
   findByCaseId(caseId: string): Promise<Report[]> {
     return this.repo.find({ where: { caseId }, order: { createdAt: 'ASC' } });
+  }
+
+  /**
+   * T2 (Moderation Foundation M3) — khi một case đóng, mọi report gắn với nó được đặt kết luận
+   * (upheld: nội dung bị gỡ đúng theo report; dismissed: report vô căn cứ hoặc case bị dismiss).
+   * Đây là hệ quả CƠ HỌC của việc resolve case đúng, KHÔNG PHẢI tính năng "report resolution" của
+   * M5 (không có endpoint report-riêng, không hành vi hướng người báo cáo, không dismiss/reopen
+   * report độc lập nào được thêm ở đây). Trong M3, mọi case đều tạo từ backfill (source=
+   * new_content, 0 report) nên hàm này là no-op cho mọi kịch bản thật hiện có — vẫn triển khai
+   * đúng vì T2 tự nó yêu cầu (bước 9), để không lỗi khi M5 bắt đầu tạo report thật.
+   */
+  async resolveByCaseId(manager: EntityManager, caseId: string, status: ReportStatus): Promise<void> {
+    await manager.getRepository(Report).update({ caseId }, { status });
   }
 
   /** Tạo một report gắn với case đã tồn tại. Nhận `manager` trực tiếp để caller kiểm soát

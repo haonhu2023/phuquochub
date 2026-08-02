@@ -6,8 +6,8 @@ import { ReviewStatus } from '../reviews/review.enums';
 //
 // KHÔNG thêm `rejected` vào review_status (D5) — không tới được khi review vẫn auto-publish (O1),
 // và một giá trị enum không bao giờ dùng tới sẽ vĩnh viễn là giá trị chết. `approve` (pending ->
-// published) hiện KHÔNG tới được qua API (ReviewsRepository.create() ghi thẳng published) nhưng
-// vẫn định nghĩa để bảo toàn tính đầy đủ dữ liệu cho dòng cũ/chèn tay.
+// published) hiện KHÔNG tới được qua API (ReviewsRepository.createWithMedia() ghi thẳng published,
+// M3) nhưng vẫn định nghĩa để bảo toàn tính đầy đủ dữ liệu cho dòng cũ/chèn tay.
 //
 // Khác media: review chỉ có MỘT đích restore hợp lệ (published) — không có gì để đoán, nên
 // targetStatus là TUỲ CHỌN; nếu caller gửi giá trị khác published thì 422 (đưa review về pending
