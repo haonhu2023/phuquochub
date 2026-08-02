@@ -62,7 +62,11 @@ export function SearchMapExplorer() {
           </button>
         </form>
 
-        {error && <p style={{ color: '#dc2626' }}>{error}</p>}
+        {error && (
+          <p role="alert" style={{ color: '#dc2626' }}>
+            {error}
+          </p>
+        )}
         {searched && !loading && results.length === 0 && <p>Không có kết quả cho “{q}”.</p>}
 
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8, maxHeight: '62vh', overflowY: 'auto' }}>

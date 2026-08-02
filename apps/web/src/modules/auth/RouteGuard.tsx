@@ -24,7 +24,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   // Chưa xác định phiên hoặc chưa đăng nhập → không render nội dung bảo vệ.
   if (initializing || !isAuthenticated) {
     return (
-      <main>
+      <main aria-busy="true">
         <p style={{ color: 'var(--muted)' }}>Đang kiểm tra phiên đăng nhập…</p>
       </main>
     );

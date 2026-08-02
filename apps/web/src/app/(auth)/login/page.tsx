@@ -85,7 +85,7 @@ function LoginForm() {
 export default function LoginPage() {
   // useSearchParams cần Suspense boundary trong App Router.
   return (
-    <Suspense fallback={<div style={authStyles.card}>Đang tải…</div>}>
+    <Suspense fallback={<div style={authStyles.card} aria-busy="true">Đang tải…</div>}>
       <LoginForm />
     </Suspense>
   );
