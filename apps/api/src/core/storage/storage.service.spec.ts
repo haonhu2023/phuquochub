@@ -227,4 +227,50 @@ describe('StorageService', () => {
       await expect(sut.deleteObject('media/abc.jpg')).resolves.toBeUndefined();
     });
   });
+
+  describe('deleteObjectForCleanup', () => {
+    // HEAD-first, rồi mới DELETE — DeleteObjectCommand tự thân idempotent, KHÔNG bao giờ báo lỗi
+    // cho key không tồn tại (khác HeadObject/GetObject) — phát hiện qua e2e thật với MinIO. Chỉ
+    // HEAD mới cho tín hiệu "not_found" đáng tin cậy.
+    it('object tồn tại → HEAD rồi DELETE, { outcome: "deleted" }', async () => {
+      mockSend.mockResolvedValueOnce({}); // HeadObject ok
+      mockSend.mockResolvedValueOnce({}); // DeleteObject ok
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).resolves.toEqual({ outcome: 'deleted' });
+      expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('object không tồn tại (HEAD NotFound) → { outcome: "not_found" }, KHÔNG gọi DeleteObject', async () => {
+      mockSend.mockRejectedValueOnce({ name: 'NotFound' });
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).resolves.toEqual({ outcome: 'not_found' });
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('object không tồn tại (HEAD NoSuchKey) → { outcome: "not_found" }', async () => {
+      mockSend.mockRejectedValueOnce({ name: 'NoSuchKey' });
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).resolves.toEqual({ outcome: 'not_found' });
+    });
+
+    it('object không tồn tại (HEAD 404 qua $metadata) → { outcome: "not_found" }', async () => {
+      mockSend.mockRejectedValueOnce({ $metadata: { httpStatusCode: 404 } });
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).resolves.toEqual({ outcome: 'not_found' });
+    });
+
+    it('lỗi HEAD KHÁC (không phải not-found) → ném lại, KHÔNG gọi DeleteObject, KHÔNG nuốt lỗi', async () => {
+      mockSend.mockRejectedValueOnce(new Error('network down'));
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).rejects.toThrow('network down');
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('HEAD ok nhưng DELETE lỗi → ném lại, KHÔNG nuốt lỗi', async () => {
+      mockSend.mockResolvedValueOnce({}); // HeadObject ok
+      mockSend.mockRejectedValueOnce(new Error('delete failed')); // DeleteObject lỗi
+      const sut = new StorageService(makeConfig());
+      await expect(sut.deleteObjectForCleanup('media/abc.jpg')).rejects.toThrow('delete failed');
+    });
+  });
 });

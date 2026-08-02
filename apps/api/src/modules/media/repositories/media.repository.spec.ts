@@ -124,3 +124,87 @@ describe('MediaRepository — Media Upload Foundation', () => {
     });
   });
 });
+
+// Media Orphan Cleanup (2026-08-02).
+describe('MediaRepository — Media Orphan Cleanup', () => {
+  let repo: LooseMock<Repository<Media>>;
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Media>>({ query: jest.fn() });
+    sut = new MediaRepository(repo);
+  });
+
+  describe('findOrphanCleanupCandidates', () => {
+    it('truy vấn đủ 7 điều kiện đủ điều kiện dọn dẹp + LIMIT + ORDER BY created_at ASC', async () => {
+      repo.query.mockResolvedValue([]);
+      await sut.findOrphanCleanupCandidates(100);
+
+      const [query, params] = repo.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain("status = 'pending'");
+      expect(q).toContain('place_id IS NULL');
+      expect(q).toContain('review_id IS NULL');
+      expect(q).toContain('post_id IS NULL');
+      expect(q).toContain('business_id IS NULL');
+      expect(q).toContain('event_id IS NULL');
+      expect(q).toContain('deleted_at IS NULL');
+      expect(q).toContain("created_at < now() - interval '24 hours'");
+      expect(q).toContain('ORDER BY created_at ASC');
+      expect(q).toContain('LIMIT $1');
+      expect(params).toEqual([100]);
+    });
+
+    it('ánh xạ snake_case → camelCase cho mỗi dòng trả về', async () => {
+      const createdAt = new Date('2026-07-30T00:00:00.000Z');
+      repo.query.mockResolvedValue([
+        { id: 'm1', object_key: 'media/a.jpg', bucket: 'phuquochub-dev', uploaded_by: 'u1', created_at: createdAt },
+        { id: 'm2', object_key: null, bucket: null, uploaded_by: null, created_at: createdAt },
+      ]);
+
+      const res = await sut.findOrphanCleanupCandidates(100);
+
+      expect(res).toEqual([
+        { id: 'm1', objectKey: 'media/a.jpg', bucket: 'phuquochub-dev', uploadedBy: 'u1', createdAt },
+        { id: 'm2', objectKey: null, bucket: null, uploadedBy: null, createdAt },
+      ]);
+    });
+
+    it('không có dòng khớp → mảng rỗng', async () => {
+      repo.query.mockResolvedValue([]);
+      await expect(sut.findOrphanCleanupCandidates(100)).resolves.toEqual([]);
+    });
+  });
+
+  describe('softDeleteOrphanCandidate', () => {
+    it('UPDATE lặp lại toàn bộ vị từ đủ điều kiện (không chỉ id) + RETURNING id', async () => {
+      repo.query.mockResolvedValue([{ id: 'm1' }]);
+      await sut.softDeleteOrphanCandidate('m1');
+
+      const [query, params] = repo.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain('UPDATE media SET deleted_at = now()');
+      expect(q).toContain('WHERE id = $1');
+      expect(q).toContain("status = 'pending'");
+      expect(q).toContain('place_id IS NULL');
+      expect(q).toContain('review_id IS NULL');
+      expect(q).toContain('post_id IS NULL');
+      expect(q).toContain('business_id IS NULL');
+      expect(q).toContain('event_id IS NULL');
+      expect(q).toContain('deleted_at IS NULL');
+      expect(q).toContain("created_at < now() - interval '24 hours'");
+      expect(q).toContain('RETURNING id');
+      expect(params).toEqual(['m1']);
+    });
+
+    it('UPDATE khớp 1 dòng (còn đủ điều kiện) → true', async () => {
+      repo.query.mockResolvedValue([{ id: 'm1' }]);
+      await expect(sut.softDeleteOrphanCandidate('m1')).resolves.toBe(true);
+    });
+
+    it('UPDATE khớp 0 dòng (đã bị dọn bởi lần chạy khác, hoặc vừa được gắn owner) → false, không phải lỗi', async () => {
+      repo.query.mockResolvedValue([]);
+      await expect(sut.softDeleteOrphanCandidate('m1')).resolves.toBe(false);
+    });
+  });
+});

@@ -47,6 +47,8 @@ export type VerifyUploadedObjectResult =
   | { ok: true }
   | { ok: false; reason: ObjectVerificationFailureReason };
 
+export type DeleteForCleanupResult = { outcome: 'deleted' | 'not_found' };
+
 // Internal signal only — never leaves computeChecksumByStreaming's caller (verifyUploadedObject
 // maps it to a normal { ok: false, reason: 'too_large' } result, never an unhandled throw).
 class StreamSizeExceededError extends Error {}
@@ -174,6 +176,35 @@ export class StorageService implements OnModuleInit {
       // docs/data/modules/media.md "Orphan handling"), never worth failing the caller's request.
       this.logger.warn(`Failed to delete object "${key}": ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * Media Orphan Cleanup (2026-08-02): unlike deleteObject() above (best-effort, swallows all
+   * errors), this caller needs the three outcomes distinguished — the cleanup job must only
+   * soft-delete the DB row after a CONFIRMED 'deleted' or 'not_found' outcome, and must leave the
+   * row untouched on any other error (network/permission/etc.), per the approved execution plan.
+   *
+   * HEAD-first, THEN delete — discovered necessary via live e2e testing against real MinIO:
+   * S3's DeleteObject API is itself idempotent and does NOT error on a missing key (it returns a
+   * plain success regardless, by design — unlike HeadObject/GetObject, which do throw NotFound).
+   * A naive "try DeleteObject, catch NotFound" therefore can never actually observe a 'not_found'
+   * outcome. HeadObject is the only reliable existence check (same technique already used by
+   * verifyUploadedObject() above) — only call DeleteObjectCommand once HEAD confirms the object is
+   * really there. A 'not_found' result is treated as an already-clean object (idempotent reruns,
+   * concurrent cleanup runs racing on the same key) — not an error. (A narrow HEAD-then-DELETE
+   * race is possible — another process could delete the object in between — but S3 DELETE being
+   * idempotent means that race just reports 'deleted' instead of 'not_found' for that one call;
+   * no data loss, no incorrect DB write either way.)
+   */
+  async deleteObjectForCleanup(key: string): Promise<DeleteForCleanupResult> {
+    try {
+      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+    } catch (err) {
+      if (this.isNotFound(err)) return { outcome: 'not_found' };
+      throw err;
+    }
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+    return { outcome: 'deleted' };
   }
 
   // Streams the object body and hashes it WITHOUT ever buffering the whole payload — the running

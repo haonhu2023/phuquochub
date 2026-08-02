@@ -4,6 +4,29 @@ import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Media } from '../entities/media.entity';
 import { MediaProvider, MediaStatus, MediaType } from '../media.enums';
 
+export interface OrphanCleanupCandidate {
+  id: string;
+  objectKey: string | null;
+  bucket: string | null;
+  uploadedBy: string | null;
+  createdAt: Date;
+}
+
+// Media Orphan Cleanup (2026-08-02, Owner-approved execution plan): điều kiện đủ điều kiện dọn dẹp
+// — media mồ côi (không owner nào), còn `pending` (chưa từng qua moderation), quá hạn lưu giữ 24h.
+// Dùng LẠI đúng chuỗi WHERE này ở CẢ hai truy vấn dưới (SELECT batch + UPDATE điều kiện) — cố tình
+// KHÔNG tách hằng số riêng cho từng cột để hai câu SQL không thể lệch nhau qua thời gian.
+const ORPHAN_ELIGIBILITY_WHERE = `
+  status = 'pending'
+  AND place_id IS NULL
+  AND review_id IS NULL
+  AND post_id IS NULL
+  AND business_id IS NULL
+  AND event_id IS NULL
+  AND deleted_at IS NULL
+  AND created_at < now() - interval '24 hours'
+`;
+
 export interface NewUploadedMedia {
   objectKey: string;
   bucket: string;
@@ -90,5 +113,53 @@ export class MediaRepository {
          AND business_id IS NULL AND event_id IS NULL`,
       [reviewId, mediaIds, userId],
     );
+  }
+
+  /**
+   * Media Orphan Cleanup (2026-08-02): quét theo lô, chỉ đọc (không khoá) — batch cũ nhất trước
+   * (`ORDER BY created_at ASC`), giới hạn `limit` dòng. An toàn concurrency đến từ
+   * `softDeleteOrphanCandidate()` bên dưới (điều kiện đầy đủ lặp lại trong UPDATE), không phải từ
+   * khoá ở bước đọc này — xem execution plan §7.
+   */
+  async findOrphanCleanupCandidates(limit: number): Promise<OrphanCleanupCandidate[]> {
+    const rows: Array<{
+      id: string;
+      object_key: string | null;
+      bucket: string | null;
+      uploaded_by: string | null;
+      created_at: Date;
+    }> = await this.repo.query(
+      `SELECT id, object_key, bucket, uploaded_by, created_at
+       FROM media
+       WHERE ${ORPHAN_ELIGIBILITY_WHERE}
+       ORDER BY created_at ASC
+       LIMIT $1`,
+      [limit],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      objectKey: r.object_key,
+      bucket: r.bucket,
+      uploadedBy: r.uploaded_by,
+      createdAt: r.created_at,
+    }));
+  }
+
+  /**
+   * Media Orphan Cleanup (2026-08-02): soft-delete có ĐIỀU KIỆN — lặp lại TOÀN BỘ vị từ đủ điều
+   * kiện (không chỉ `id`) trong WHERE của chính UPDATE này. Đây là cơ chế idempotency/concurrency
+   * duy nhất của job (execution plan §7/§8): nếu dòng đã bị dọn bởi lần chạy khác (hoặc không còn
+   * đủ điều kiện vì vừa được gắn owner), UPDATE khớp 0 dòng — coi là no-op, KHÔNG phải lỗi. Trả về
+   * true chỉ khi CHÍNH lần gọi này thực sự chuyển trạng thái (dùng để quyết định có ghi audit hay
+   * không — chỉ ghi khi có thay đổi thật).
+   */
+  async softDeleteOrphanCandidate(id: string): Promise<boolean> {
+    const rows: Array<{ id: string }> = await this.repo.query(
+      `UPDATE media SET deleted_at = now()
+       WHERE id = $1 AND ${ORPHAN_ELIGIBILITY_WHERE}
+       RETURNING id`,
+      [id],
+    );
+    return rows.length > 0;
   }
 }

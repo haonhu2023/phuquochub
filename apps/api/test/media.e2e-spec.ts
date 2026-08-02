@@ -75,8 +75,11 @@ describe('Media Upload Foundation (e2e, live MinIO round-trip)', () => {
   }
 
   // Real PUT against the live MinIO instance — the request never touches our own API.
+  // `as BodyInit`: a pre-existing @types/node/undici-types gap — Buffer works fine as a fetch
+  // body at runtime (it IS a Uint8Array), but the current resolved @types/node version's BodyInit
+  // union no longer structurally includes it. Type-only cast, zero runtime behavior change.
   function putToPresignedUrl(uploadUrl: string, content: Buffer, contentType: string): Promise<Response> {
-    return fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: content });
+    return fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: content as BodyInit });
   }
 
   describe('POST /api/media/presign', () => {
