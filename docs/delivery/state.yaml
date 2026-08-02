@@ -30,8 +30,61 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-01, Image Upload UI -- ad-hoc, NOT PLACE-numbered,
-                                  # per the same standing 2026-07-26 Owner instruction) Previously
+  task: none                      # (2026-08-02, Media Orphan Cleanup -- ad-hoc, NOT PLACE-numbered,
+                                  # per the same standing 2026-07-26 Owner instruction) Owner
+                                  # explicitly selected this candidate from a read-only governance
+                                  # assessment (ranked against gallery/business-claim/moderation/
+                                  # Transport-browse-page) and approved a full execution plan +
+                                  # retention policy BEFORE any implementation. Backend-only job:
+                                  # deletes orphaned `media` rows (status=pending, all 5 owner
+                                  # columns NULL, created_at < now()-24h) -- storage object deleted
+                                  # FIRST (new StorageService.deleteObjectForCleanup(), HEAD-then-
+                                  # DELETE), THEN a conditional soft-delete UPDATE (full eligibility
+                                  # predicate repeated in WHERE -- this IS the idempotency/
+                                  # concurrency mechanism, no locking), THEN an audit_logs row
+                                  # (isServiceAccount=true). No scheduler/queue added (repo has none
+                                  # -- same "add later" precedent as InventoryHoldsRepository
+                                  # .expireOverdueHolds()); manual runner only:
+                                  # `npm run media:cleanup [-- --dry-run]`
+                                  # (apps/api/src/scripts/clean-orphan-media.ts, first
+                                  # NestFactory.createApplicationContext() use in this repo). Dry-
+                                  # run reuses the exact same MediaCleanupService.run() loop, just
+                                  # skips the storage/DB/audit writes. Bounded by batchSize=100/
+                                  # maxBatches=50/maxExecutionMs=300000 (5 min) -- on time-budget
+                                  # exceeded, finishes the row already in flight, never leaves one
+                                  # half-processed. Optional partial index
+                                  # (AddMediaOrphanCleanupIndex1720003100000, applied live).
+                                  # TWO REAL DEFECTS found and fixed during required live
+                                  # verification (not assumed correct from the plan alone): (1)
+                                  # S3/MinIO's DeleteObject is itself idempotent and never errors on
+                                  # a missing key (unlike HeadObject/GetObject) -- a naive "try
+                                  # delete, catch NotFound" could never actually observe
+                                  # `not_found`; fixed by making deleteObjectForCleanup() HEAD-first
+                                  # THEN delete, confirmed live against real MinIO. (2)
+                                  # AuditService.redact() walks Object.entries() on any object
+                                  # value -- a raw JS Date has no own enumerable properties, so
+                                  # passing candidate.createdAt straight into audit `context`
+                                  # silently persisted as "{}"; caught by inspecting a real
+                                  # audit_logs row after a live cleanup run, fixed via
+                                  # `.toISOString()`, re-verified live. Also fixed one PRE-EXISTING,
+                                  # unrelated defect blocking ALL e2e tests: apps/api's currently-
+                                  # resolved @types/node no longer accepts a raw Buffer as fetch's
+                                  # BodyInit (a real environment-drift regression, not caused by
+                                  # this milestone) -- `media.e2e-spec.ts` was failing to even
+                                  # compile before this session; fixed with a type-only `as BodyInit`
+                                  # cast (zero runtime change) in both media.e2e-spec.ts and the new
+                                  # media-orphan-cleanup.e2e-spec.ts. Full live verification against
+                                  # real Postgres/MinIO via the actual `npm run media:cleanup`
+                                  # command (not just e2e mocks): dry-run made zero DB/storage/audit
+                                  # changes; real run deleted the live MinIO object, soft-deleted the
+                                  # row, wrote exactly one correct audit row; a second consecutive
+                                  # run was a clean no-op (0 scanned, audit count still 1); dry-run
+                                  # after cleanup reported 0 eligible. Full regression: backend unit
+                                  # 82 suites/850 tests (up from 80/824), e2e 13 suites/102 tests (up
+                                  # from 12/95), full monorepo typecheck/lint/build all 6/6 green.
+                                  # See docs/delivery/reports/MEDIA-ORPHAN-CLEANUP-2026-08-02.md.
+                                  # ---- prior state (2026-08-01 Image Upload UI) ----
+                                  # Previously
                                   # blocked (repeatedly, across 2 prior governance assessments) on
                                   # unmade Owner UX decisions. Re-evaluated after the Owner fixed
                                   # 11 scope decisions (single-file only; no drag-drop/crop/

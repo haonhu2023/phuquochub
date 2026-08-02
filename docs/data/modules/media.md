@@ -179,7 +179,8 @@ không phải ở permission guard.
   bulk upload — tất cả ngoài phạm vi mọi milestone tới nay, theo đúng chỉ đạo. (Frontend upload UI
   ĐÃ có một lát cắt hẹp — xem §11 — không còn "ngoài phạm vi" hoàn toàn như trước 2026-08-01.)
 - Cấu hình production R2 thật (`S3_BUCKET`/credentials thật) — milestone này chỉ có MinIO dev/test.
-- Background cleanup cho object/media mồ côi (§6) — không có job tự động nào.
+- ~~Background cleanup cho object/media mồ côi (§6) — không có job tự động nào.~~ **Đã có** — xem
+  §12 (2026-08-02). Vẫn CHƯA có scheduler tự động gọi job này định kỳ (§12.4) — chỉ chạy thủ công.
 - Sinh signed GET URL động cho media `published` — chưa cần vì chưa có luồng công bố nào tạo ra
   media `published` từ upload path này; điểm cắm sẵn ở `toMedia()`/`MediaRepository
   .listPublishedByPlace()` khi cần.
@@ -215,6 +216,73 @@ CORS policy change was needed — the current dev MinIO configuration already pe
 (it stays `pending`/`url: null` until a future moderation flow publishes it — nothing to display
 yet regardless), editing/replacing an already-submitted review's photo, and any `place_id`-owned
 upload flow (still unbuilt on the frontend).
+
+## 12. Media Orphan Cleanup (2026-08-02, Owner-approved execution plan)
+
+Backend-only job — không endpoint, không frontend, không thay đổi hành vi upload hiện có. Dọn dẹp
+media **mồ côi** (§6) đã quá hạn lưu giữ.
+
+### 12.1 Điều kiện đủ điều kiện dọn dẹp (khớp CHÍNH XÁC bản phê duyệt của Owner)
+
+```sql
+status = 'pending' AND place_id IS NULL AND review_id IS NULL AND post_id IS NULL
+  AND business_id IS NULL AND event_id IS NULL AND deleted_at IS NULL
+  AND created_at < now() - interval '24 hours'
+```
+
+Hằng số này (`ORPHAN_ELIGIBILITY_WHERE`, `media.repository.ts`) được dùng LẠI nguyên vẹn ở cả
+truy vấn quét theo lô (`findOrphanCleanupCandidates`) lẫn UPDATE có điều kiện
+(`softDeleteOrphanCandidate`) — không tách hằng số riêng cho từng cột, tránh hai câu SQL lệch nhau.
+
+### 12.2 Trình tự xử lý mỗi dòng (bắt buộc đúng thứ tự)
+
+1. `StorageService.deleteObjectForCleanup(objectKey)` — method MỚI, KHÔNG phải `deleteObject()`
+   hiện có (method đó nuốt mọi lỗi, best-effort — không phù hợp ở đây vì job cần phân biệt 3 kết
+   quả). **HEAD trước, DELETE sau** — phát hiện qua e2e thật với MinIO rằng `DeleteObjectCommand`
+   tự thân idempotent và KHÔNG BAO GIỜ báo lỗi cho key không tồn tại (khác `HeadObject`/
+   `GetObject`, vốn đã được `verifyUploadedObject()` dùng đúng cách) — một cài đặt "thử DELETE,
+   bắt lỗi NotFound" sẽ không bao giờ thực sự quan sát được `not_found`. Trả `{outcome:'deleted'}`
+   hoặc `{outcome:'not_found'}` (từ HEAD); ném lại lỗi KHÁC.
+2. Chỉ khi bước 1 trả `deleted`/`not_found` (hoặc `object_key` vốn đã NULL — phòng vệ, không nên
+   xảy ra thực tế vì `createUploaded()` luôn set nó) → `softDeleteOrphanCandidate(id)`: `UPDATE
+   media SET deleted_at = now()` với ĐẦY ĐỦ vị từ đủ điều kiện lặp lại trong WHERE (không chỉ
+   `id`) — đây là cơ chế idempotency/concurrency (§12.3), không phải chỉ để an toàn thừa.
+3. Chỉ khi UPDATE ở bước 2 thực sự khớp 1 dòng (đổi trạng thái THẬT) → ghi `audit_logs`
+   (`event: 'media.orphan_cleaned'`, `isServiceAccount: true`, `context.storageOutcome` phân biệt
+   `deleted`/`not_found`/`skipped_no_object_key`).
+4. Lỗi storage KHÁC (không phải not-found) → dòng bị bỏ qua HOÀN TOÀN (không UPDATE, không audit),
+   ghi cảnh báo log; sẽ tự động được thử lại ở lần chạy sau (job idempotent, không cần retry/backoff
+   trong tiến trình).
+
+### 12.3 Idempotency & concurrency
+
+Không khoá pessimistic (`FOR UPDATE`). An toàn đến từ việc UPDATE (bước 2) lặp lại TOÀN BỘ vị từ
+đủ điều kiện — nếu một dòng đã bị dọn bởi lần chạy khác (hoặc không còn mồ côi), UPDATE khớp 0
+dòng, coi là no-op (không audit, không lỗi). `DeleteObjectCommand` của MinIO/S3 vốn idempotent
+(xoá lại key đã mất trả `not_found`, không lỗi) — cùng nguyên tắc `InventoryHoldsRepository
+.expireOverdueHolds()` đã dùng (UPDATE điều kiện, không khoá).
+
+### 12.4 Không có scheduler
+
+`@nestjs/schedule`/cron/queue KHÔNG được thêm — repo chưa có hạ tầng lập lịch nào (cùng tiền lệ
+`expireOverdueHolds()`'s doc comment). Chỉ có runner thủ công: `npm run media:cleanup` (real run)
+hoặc `npm run media:cleanup -- --dry-run` (chỉ đọc, KHÔNG ghi storage/DB/audit — dùng LẠI đúng
+`MediaCleanupService.run()`, chỉ khác ở việc bỏ qua nhánh ghi). `apps/api/src/scripts
+/clean-orphan-media.ts` dùng `NestFactory.createApplicationContext(AppModule)` — không khởi động
+HTTP server.
+
+### 12.5 Giới hạn an toàn
+
+`batchSize` mặc định 100 (khớp trần `clampLimit` hiện có), `maxBatches` mặc định 50 (≤5.000 dòng/
+lần chạy), `maxExecutionMs` mặc định 5 phút — vượt ngân sách thời gian → hoàn tất dòng ĐANG xử lý
+(không bao giờ để dở dang giữa storage-delete và DB-update), rồi dừng sạch, in tổng kết, thoát
+bình thường (exit 0, không ném lỗi).
+
+### 12.6 Index hiệu năng (tuỳ chọn, không đổi tính đúng đắn)
+
+Migration `AddMediaOrphanCleanupIndex1720003100000` — partial index trên `created_at` khớp đúng 7
+điều kiện §12.1, cùng khuôn `idx_media_uploaded_by`/`idx_media_uploader_checksum`. Không cột mới,
+không backfill, `down()` chỉ DROP index.
 
 ## Related
 
