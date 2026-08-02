@@ -10,6 +10,25 @@ export interface OrphanCleanupCandidate {
   bucket: string | null;
   uploadedBy: string | null;
   createdAt: Date;
+  /**
+   * Post-implementation review fix (2026-08-02): Postgres's own exact TEXT rendering of
+   * `created_at` (microsecond precision), captured ONLY to build the next page's keyset cursor —
+   * never for display (use `createdAt` for that). A plain JS `Date` is NOT safe here: `Date` only
+   * has millisecond resolution, but `timestamptz` keeps microseconds — round-tripping a `Date`
+   * back into a query parameter silently truncates it, and two rows that differ only in their
+   * sub-millisecond component collapse to the SAME truncated cursor value. Confirmed live: a row
+   * built from its own truncated `createdAt` still satisfies `created_at > cursor` against ITS
+   * OWN real (untruncated) stored value, so it gets re-fetched on the next page instead of the
+   * genuinely next row — starving every row behind it for the rest of the run (bounded only by
+   * `maxBatches`, so not literally infinite, but no forward progress). Passing Postgres's own text
+   * form back as `$N::timestamptz` avoids any JS-side (de)serialization of the timestamp.
+   */
+  cursorCreatedAt: string;
+}
+
+export interface OrphanCleanupCursor {
+  createdAt: string;
+  id: string;
 }
 
 // Media Orphan Cleanup (2026-08-02, Owner-approved execution plan): điều kiện đủ điều kiện dọn dẹp
@@ -116,25 +135,46 @@ export class MediaRepository {
   }
 
   /**
-   * Media Orphan Cleanup (2026-08-02): quét theo lô, chỉ đọc (không khoá) — batch cũ nhất trước
-   * (`ORDER BY created_at ASC`), giới hạn `limit` dòng. An toàn concurrency đến từ
-   * `softDeleteOrphanCandidate()` bên dưới (điều kiện đầy đủ lặp lại trong UPDATE), không phải từ
-   * khoá ở bước đọc này — xem execution plan §7.
+   * Media Orphan Cleanup (2026-08-02, post-implementation review fix): quét theo lô, chỉ đọc
+   * (không khoá) — batch cũ nhất trước (`ORDER BY created_at ASC, id ASC`), giới hạn `limit` dòng.
+   * An toàn concurrency đến từ `softDeleteOrphanCandidate()` bên dưới (điều kiện đầy đủ lặp lại
+   * trong UPDATE), không phải từ khoá ở bước đọc này — xem execution plan §7.
+   *
+   * `after` (con trỏ keyset, tuỳ chọn): BẮT BUỘC để đảm bảo lô SAU luôn khác lô TRƯỚC, độc lập với
+   * việc dòng có thực sự bị ghi hay không. Không có nó, hai tình huống làm vòng lặp KHÔNG tiến lên
+   * được: (1) dry-run — không dòng nào bị đổi trạng thái, nên `LIMIT $1` không con trỏ sẽ trả lại
+   * CHÍNH lô cũ đó mỗi lần, phóng đại scanned/eligible thay vì liệt kê hết tập ứng viên thật; (2)
+   * real run gặp lỗi storage KHÔNG PHẢI not-found trên một dòng — dòng đó CỐ Ý bị bỏ qua (không
+   * UPDATE), nên nếu nó vẫn nằm trong top `limit` dòng cũ nhất, nó sẽ bị fetch lại NGAY lô kế tiếp
+   * CỦA CÙNG LẦN CHẠY, có thể chiếm hết toàn bộ maxBatches/maxExecutionMs chỉ để thử lại đúng một
+   * dòng lỗi thay vì xử lý hàng nghìn ứng viên khác đang chờ — mâu thuẫn với thiết kế "không retry
+   * trong tiến trình, để lần chạy SAU tự nhiên thử lại" (execution plan §10). Phát hiện qua rà soát
+   * hậu triển khai (post-implementation review), không phải giả định đúng từ đầu.
    */
-  async findOrphanCleanupCandidates(limit: number): Promise<OrphanCleanupCandidate[]> {
+  async findOrphanCleanupCandidates(
+    limit: number,
+    after?: OrphanCleanupCursor,
+  ): Promise<OrphanCleanupCandidate[]> {
+    // `after.createdAt` is Postgres's own exact TEXT rendering (see OrphanCleanupCandidate
+    // .cursorCreatedAt's doc comment) — bound with an explicit ::timestamptz cast so Postgres
+    // parses it back to the identical microsecond-precision value it originally produced, never
+    // round-tripped through a precision-lossy JS Date.
+    const params: unknown[] = after ? [limit, after.createdAt, after.id] : [limit];
     const rows: Array<{
       id: string;
       object_key: string | null;
       bucket: string | null;
       uploaded_by: string | null;
       created_at: Date;
+      created_at_text: string;
     }> = await this.repo.query(
-      `SELECT id, object_key, bucket, uploaded_by, created_at
+      `SELECT id, object_key, bucket, uploaded_by, created_at, created_at::text AS created_at_text
        FROM media
        WHERE ${ORPHAN_ELIGIBILITY_WHERE}
-       ORDER BY created_at ASC
+       ${after ? 'AND (created_at, id) > ($2::timestamptz, $3)' : ''}
+       ORDER BY created_at ASC, id ASC
        LIMIT $1`,
-      [limit],
+      params,
     );
     return rows.map((r) => ({
       id: r.id,
@@ -142,6 +182,7 @@ export class MediaRepository {
       bucket: r.bucket,
       uploadedBy: r.uploaded_by,
       createdAt: r.created_at,
+      cursorCreatedAt: r.created_at_text,
     }));
   }
 

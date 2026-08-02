@@ -80,6 +80,27 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
     return { id: registerRes.body.data.id, objectKey: key };
   }
 
+  /**
+   * Media mồ côi TỔNG HỢP — chèn thẳng qua SQL, KHÔNG qua `POST /media/presign` (endpoint đó bị
+   * giới hạn 10/phút; các test chứng minh phân trang nhiều lô cần nhiều dòng hơn ngân sách đó cho
+   * PHÉP trong cùng file). Không có object thật trên MinIO đứng sau — hợp lệ và đã được hỗ trợ
+   * đầy đủ (storageOutcome sẽ là 'not_found', vẫn soft-delete + audit đúng, xem describe
+   * "object đã KHÔNG còn trên storage" ở trên). Chỉ dùng để kiểm tra hành vi PHÂN TRANG — vòng
+   * round-trip MinIO thật đã được `seedRealOrphanMedia` chứng minh đầy đủ ở các describe khác.
+   */
+  async function seedSyntheticOrphanMedia(seed: string, hoursAgo: number): Promise<{ id: string; objectKey: string }> {
+    const objectKey = `media/synthetic-${seed}-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+    const rows: Array<{ id: string }> = await ds.query(
+      `INSERT INTO media (type, url, provider, status, object_key, bucket, content_type, size_bytes,
+                           checksum_sha256, uploaded_by, created_at)
+       VALUES ('image', NULL, 'upload', 'pending', $1, 'phuquochub-test', 'image/jpeg', 38,
+               $2, (SELECT id FROM users LIMIT 1), now() - ($3 || ' hours')::interval)
+       RETURNING id`,
+      [objectKey, sha256(Buffer.from(objectKey)), hoursAgo],
+    );
+    return { id: rows[0].id, objectKey };
+  }
+
   /** Đẩy created_at lùi về quá khứ trực tiếp bằng SQL — API không có cách nào tạo dữ liệu "cũ". */
   async function backdateCreatedAt(id: string, hoursAgo: number): Promise<void> {
     await ds.query(`UPDATE media SET created_at = now() - ($2 || ' hours')::interval WHERE id = $1`, [id, hoursAgo]);
@@ -114,6 +135,13 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
       // object vẫn còn thật trên MinIO — xoá thử lại lần nữa phải là "deleted", KHÔNG "not_found"
       const delRes = await storage.deleteObjectForCleanup(seeded.objectKey);
       expect(delRes.outcome).toBe('deleted');
+
+      // Dọn dẹp: dòng NÀY vẫn còn đủ điều kiện (dry-run không đụng DB) — nhưng object đã bị xoá
+      // thật ở assertion trên, nên KHÔNG dùng cleanup.run() thường (sẽ chỉ trả not_found, vẫn ổn,
+      // nhưng soft-delete trực tiếp ở đây rõ ràng hơn về ý định "dọn rác của chính test này", tránh
+      // để lại dòng mồ côi vĩnh viễn trong DB dev dùng chung — bug vệ sinh test thật đã phát hiện
+      // qua rà soát hậu triển khai: bản gốc của test này để lại đúng rò rỉ này mỗi lần chạy).
+      await ds.query(`UPDATE media SET deleted_at = now() WHERE id = $1`, [seeded.id]);
     });
   });
 
@@ -188,6 +216,44 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
       const audits = await fetchAuditRows(seeded.id);
       expect(audits).toHaveLength(1);
       expect((audits[0].context as { storageOutcome: string }).storageOutcome).toBe('not_found');
+    });
+  });
+
+  describe('phân trang keyset qua nhiều lô (post-implementation review fix, xác nhận với DB thật)', () => {
+    it('batchSize NHỎ HƠN số ứng viên thật → real run dọn HẾT trong 1 lần gọi run(), không dòng nào bị bỏ sót', async () => {
+      const seeded = await Promise.all([
+        seedSyntheticOrphanMedia('keyset-a', 25),
+        seedSyntheticOrphanMedia('keyset-b', 25),
+        seedSyntheticOrphanMedia('keyset-c', 25),
+      ]);
+
+      const summary = await cleanup.run({ batchSize: 1 }); // 1 dòng/lô, 3 dòng đủ điều kiện → cần ≥3 lô
+
+      expect(summary.batchesRun).toBeGreaterThanOrEqual(3);
+      for (const s of seeded) {
+        const row = await fetchMediaRow(s.id);
+        expect(row?.deleted_at).not.toBeNull();
+        const audits = await fetchAuditRows(s.id);
+        expect(audits).toHaveLength(1); // đúng 1 mỗi dòng — không dòng nào bị đếm/ghi trùng
+      }
+    });
+
+    it('DRY-RUN batchSize NHỎ HƠN số ứng viên thật → liệt kê đủ, không lặp lại cùng dòng qua các lô', async () => {
+      const seeded = await Promise.all([
+        seedSyntheticOrphanMedia('keyset-dryrun-a', 25),
+        seedSyntheticOrphanMedia('keyset-dryrun-b', 25),
+      ]);
+
+      const summary = await cleanup.run({ dryRun: true, batchSize: 1 });
+
+      const seenIds = new Set(summary.sampleCandidates.map((c) => c.id));
+      for (const s of seeded) expect(seenIds.has(s.id)).toBe(true);
+      // Không dòng nào bị đụng — vẫn phải dọn thật sau đó để không để lại rác cho các test khác.
+      for (const s of seeded) {
+        const row = await fetchMediaRow(s.id);
+        expect(row?.deleted_at).toBeNull();
+      }
+      await cleanup.run({});
     });
   });
 

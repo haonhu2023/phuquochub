@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import { StorageService } from '../../core/storage/storage.service';
-import { MediaRepository, OrphanCleanupCandidate } from './repositories/media.repository';
+import { MediaRepository, OrphanCleanupCandidate, OrphanCleanupCursor } from './repositories/media.repository';
 
 export interface MediaCleanupOptions {
   dryRun?: boolean;
@@ -76,15 +76,22 @@ export class MediaCleanupService {
       durationMs: 0,
     };
 
+    // Keyset cursor (post-implementation review fix) — see findOrphanCleanupCandidates()'s doc
+    // comment. Advanced after EVERY batch, regardless of dry-run or per-row outcome, so pagination
+    // progress never depends on whether a row was actually mutated.
+    let cursor: OrphanCleanupCursor | undefined;
+
     for (let batch = 0; batch < maxBatches; batch++) {
       if (Date.now() - startedAt >= maxExecutionMs) {
         summary.timeBudgetExceeded = true;
         break;
       }
 
-      const candidates = await this.mediaRepo.findOrphanCleanupCandidates(batchSize);
+      const candidates = await this.mediaRepo.findOrphanCleanupCandidates(batchSize, cursor);
       if (candidates.length === 0) break;
       summary.batchesRun += 1;
+      const last = candidates[candidates.length - 1];
+      cursor = { createdAt: last.cursorCreatedAt, id: last.id };
 
       for (const candidate of candidates) {
         this.trackCandidateStats(summary, candidate);

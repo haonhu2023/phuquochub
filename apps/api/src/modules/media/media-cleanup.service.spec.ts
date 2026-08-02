@@ -5,12 +5,14 @@ import { AuditService } from '../../core/audit/audit.service';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 function candidate(overrides: Partial<OrphanCleanupCandidate> = {}): OrphanCleanupCandidate {
+  const createdAt = overrides.createdAt ?? new Date('2026-07-30T00:00:00.000Z');
   return {
     id: 'm1',
     objectKey: 'media/m1.jpg',
     bucket: 'phuquochub-test',
     uploadedBy: 'u1',
-    createdAt: new Date('2026-07-30T00:00:00.000Z'),
+    createdAt,
+    cursorCreatedAt: createdAt.toISOString(),
     ...overrides,
   };
 }
@@ -194,6 +196,64 @@ describe('MediaCleanupService', () => {
     });
   });
 
+  describe('phân trang keyset (post-implementation review fix — bảo đảm tiến độ độc lập với việc dòng có bị ghi hay không)', () => {
+    it('lô SAU nhận đúng con trỏ = dòng CUỐI của lô TRƯỚC (createdAt + id)', async () => {
+      const c1 = candidate({ id: 'm1', createdAt: new Date('2026-07-28T00:00:00Z') });
+      const c2 = candidate({ id: 'm2', createdAt: new Date('2026-07-29T00:00:00Z') });
+      mediaRepo.findOrphanCleanupCandidates
+        .mockImplementationOnce(async () => [c1, c2])
+        .mockImplementationOnce(async () => []);
+      storage.deleteObjectForCleanup.mockResolvedValue({ outcome: 'deleted' });
+      mediaRepo.softDeleteOrphanCandidate.mockResolvedValue(true);
+
+      await sut.run({ batchSize: 2 });
+
+      expect(mediaRepo.findOrphanCleanupCandidates).toHaveBeenNthCalledWith(1, 2, undefined);
+      expect(mediaRepo.findOrphanCleanupCandidates).toHaveBeenNthCalledWith(2, 2, {
+        createdAt: c2.cursorCreatedAt,
+        id: 'm2',
+      });
+    });
+
+    it('DRY-RUN với nhiều lô KHÔNG lặp lại cùng ứng viên (trước fix: không dòng nào đổi trạng thái → lô sau fetch lại chính lô trước)', async () => {
+      const c1 = candidate({ id: 'm1', createdAt: new Date('2026-07-28T00:00:00Z') });
+      const c2 = candidate({ id: 'm2', createdAt: new Date('2026-07-29T00:00:00Z') });
+      mediaRepo.findOrphanCleanupCandidates
+        .mockImplementationOnce(async () => [c1])
+        .mockImplementationOnce(async () => [c2])
+        .mockImplementationOnce(async () => []);
+
+      const summary = await sut.run({ dryRun: true, batchSize: 1 });
+
+      // 2 ứng viên THẬT SỰ khác nhau, không phải cùng 1 dòng đếm 2 lần.
+      expect(summary.scanned).toBe(2);
+      expect(summary.sampleCandidates.map((c) => c.id)).toEqual(['m1', 'm2']);
+      expect(mediaRepo.findOrphanCleanupCandidates).toHaveBeenCalledTimes(3);
+    });
+
+    it('real run: một dòng lỗi storage liên tục KHÔNG chặn các dòng khác trong CÙNG lần chạy (con trỏ vẫn tiến lên dù dòng đó không bị ghi)', async () => {
+      const failing = candidate({ id: 'bad', createdAt: new Date('2026-07-28T00:00:00Z') });
+      const healthy = candidate({ id: 'good', createdAt: new Date('2026-07-29T00:00:00Z') });
+      mediaRepo.findOrphanCleanupCandidates
+        .mockImplementationOnce(async () => [failing])
+        .mockImplementationOnce(async () => [healthy])
+        .mockImplementationOnce(async () => []);
+      storage.deleteObjectForCleanup
+        .mockRejectedValueOnce(new Error('persistent network error'))
+        .mockResolvedValueOnce({ outcome: 'deleted' });
+      mediaRepo.softDeleteOrphanCandidate.mockResolvedValue(true);
+
+      const summary = await sut.run({ batchSize: 1 });
+
+      // "bad" bị bỏ qua (không soft-delete), nhưng "good" VẪN được xử lý trong cùng lần chạy này
+      // — không bị "bad" chặn hết ngân sách batch/thời gian.
+      expect(summary.errors).toBe(1);
+      expect(summary.deleted).toBe(1);
+      expect(mediaRepo.softDeleteOrphanCandidate).toHaveBeenCalledTimes(1);
+      expect(mediaRepo.softDeleteOrphanCandidate).toHaveBeenCalledWith('good');
+    });
+  });
+
   describe('dry-run', () => {
     it('không gọi storage/DB-write/audit; vẫn chạy đúng truy vấn ứng viên và tổng hợp thống kê', async () => {
       const older = candidate({ id: 'm1', objectKey: 'media/m1.jpg', createdAt: new Date('2026-07-28T00:00:00Z') });
@@ -229,7 +289,7 @@ describe('MediaCleanupService', () => {
     it('reuse cùng một truy vấn ứng viên như real run (không phân nhánh logic riêng)', async () => {
       mediaRepo.findOrphanCleanupCandidates.mockResolvedValueOnce([]);
       await sut.run({ dryRun: true, batchSize: 25 });
-      expect(mediaRepo.findOrphanCleanupCandidates).toHaveBeenCalledWith(25);
+      expect(mediaRepo.findOrphanCleanupCandidates).toHaveBeenCalledWith(25, undefined);
     });
   });
 });

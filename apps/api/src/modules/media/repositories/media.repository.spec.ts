@@ -136,7 +136,7 @@ describe('MediaRepository — Media Orphan Cleanup', () => {
   });
 
   describe('findOrphanCleanupCandidates', () => {
-    it('truy vấn đủ 7 điều kiện đủ điều kiện dọn dẹp + LIMIT + ORDER BY created_at ASC', async () => {
+    it('truy vấn đủ 7 điều kiện đủ điều kiện dọn dẹp + LIMIT + ORDER BY created_at ASC, id ASC', async () => {
       repo.query.mockResolvedValue([]);
       await sut.findOrphanCleanupCandidates(100);
 
@@ -150,23 +150,72 @@ describe('MediaRepository — Media Orphan Cleanup', () => {
       expect(q).toContain('event_id IS NULL');
       expect(q).toContain('deleted_at IS NULL');
       expect(q).toContain("created_at < now() - interval '24 hours'");
-      expect(q).toContain('ORDER BY created_at ASC');
+      expect(q).toContain('ORDER BY created_at ASC, id ASC');
       expect(q).toContain('LIMIT $1');
+      expect(q).toContain('created_at::text AS created_at_text');
       expect(params).toEqual([100]);
     });
 
-    it('ánh xạ snake_case → camelCase cho mỗi dòng trả về', async () => {
+    it('không có con trỏ → KHÔNG thêm điều kiện keyset', async () => {
+      repo.query.mockResolvedValue([]);
+      await sut.findOrphanCleanupCandidates(100);
+      const [query] = repo.query.mock.calls[0];
+      expect(sql(query)).not.toContain('created_at, id) >');
+    });
+
+    it('có con trỏ → thêm điều kiện keyset (created_at, id) > ($2::timestamptz, $3), đúng params theo thứ tự', async () => {
+      repo.query.mockResolvedValue([]);
+      // Chuỗi text — KHÔNG phải Date — cố tình để khớp cursorCreatedAt thật (xem doc comment
+      // OrphanCleanupCandidate.cursorCreatedAt: Date sẽ mất độ chính xác dưới mili giây).
+      const cursorCreatedAt = '2026-07-30 00:00:00.123456+00';
+      await sut.findOrphanCleanupCandidates(50, { createdAt: cursorCreatedAt, id: 'm1' });
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('AND (created_at, id) > ($2::timestamptz, $3)');
+      expect(params).toEqual([50, cursorCreatedAt, 'm1']);
+    });
+
+    it('ánh xạ snake_case → camelCase cho mỗi dòng trả về, kèm cursorCreatedAt (text thô cho keyset)', async () => {
       const createdAt = new Date('2026-07-30T00:00:00.000Z');
+      const createdAtText = '2026-07-30 00:00:00.123456+00';
       repo.query.mockResolvedValue([
-        { id: 'm1', object_key: 'media/a.jpg', bucket: 'phuquochub-dev', uploaded_by: 'u1', created_at: createdAt },
-        { id: 'm2', object_key: null, bucket: null, uploaded_by: null, created_at: createdAt },
+        {
+          id: 'm1',
+          object_key: 'media/a.jpg',
+          bucket: 'phuquochub-dev',
+          uploaded_by: 'u1',
+          created_at: createdAt,
+          created_at_text: createdAtText,
+        },
+        {
+          id: 'm2',
+          object_key: null,
+          bucket: null,
+          uploaded_by: null,
+          created_at: createdAt,
+          created_at_text: createdAtText,
+        },
       ]);
 
       const res = await sut.findOrphanCleanupCandidates(100);
 
       expect(res).toEqual([
-        { id: 'm1', objectKey: 'media/a.jpg', bucket: 'phuquochub-dev', uploadedBy: 'u1', createdAt },
-        { id: 'm2', objectKey: null, bucket: null, uploadedBy: null, createdAt },
+        {
+          id: 'm1',
+          objectKey: 'media/a.jpg',
+          bucket: 'phuquochub-dev',
+          uploadedBy: 'u1',
+          createdAt,
+          cursorCreatedAt: createdAtText,
+        },
+        {
+          id: 'm2',
+          objectKey: null,
+          bucket: null,
+          uploadedBy: null,
+          createdAt,
+          cursorCreatedAt: createdAtText,
+        },
       ]);
     });
 
