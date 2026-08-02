@@ -1,11 +1,15 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { ListModerationCasesQueryDto } from './moderation.dto';
+import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './moderation.dto';
 
 const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
 
 function validateQuery(raw: Record<string, unknown>) {
   return validate(plainToInstance(ListModerationCasesQueryDto, raw), PIPE_OPTIONS);
+}
+
+function validateDecide(raw: Record<string, unknown>) {
+  return validate(plainToInstance(DecideModerationCaseDto, raw), PIPE_OPTIONS);
 }
 
 describe('ListModerationCasesQueryDto', () => {
@@ -62,6 +66,53 @@ describe('ListModerationCasesQueryDto', () => {
 
   it('từ chối trường không thuộc hợp đồng (không phát minh filter, vd date_from/sort_by)', async () => {
     const errors = await validateQuery({ date_from: '2026-08-01', sort_by: 'priority' });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('DecideModerationCaseDto', () => {
+  it('chấp nhận decision đơn lẻ (approve), không kèm target_status/reason', async () => {
+    const errors = await validateDecide({ decision: 'approve' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('chấp nhận đủ 3 trường (restore + target_status + reason)', async () => {
+    const errors = await validateDecide({ decision: 'restore', target_status: 'published', reason: 'oan sai' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('chấp nhận decision=dismiss (case-level, không đổi trạng thái nội dung)', async () => {
+    const errors = await validateDecide({ decision: 'dismiss' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('thiếu decision -> lỗi (bắt buộc)', async () => {
+    const errors = await validateDecide({});
+    expect(errors.some((e) => e.property === 'decision')).toBe(true);
+  });
+
+  it('từ chối decision không thuộc moderation_decision', async () => {
+    const errors = await validateDecide({ decision: 'delete' });
+    expect(errors.some((e) => e.property === 'decision')).toBe(true);
+  });
+
+  it('từ chối target_status không thuộc media_status (DTO chỉ xác nhận LÀ một media_status thật — FSM tự thu hẹp còn published/pending)', async () => {
+    const errors = await validateDecide({ decision: 'restore', target_status: 'archived' });
+    expect(errors.some((e) => e.property === 'target_status')).toBe(true);
+  });
+
+  it('chấp nhận target_status=hidden/rejected Ở TẦNG DTO (FSM mới là nơi từ chối, tránh trùng logic transition)', async () => {
+    const errors = await validateDecide({ decision: 'restore', target_status: 'hidden' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('reason được trim khoảng trắng', async () => {
+    const dto = plainToInstance(DecideModerationCaseDto, { decision: 'hide', reason: '  spam quảng cáo  ' });
+    expect(dto.reason).toBe('spam quảng cáo');
+  });
+
+  it('từ chối trường không thuộc hợp đồng', async () => {
+    const errors = await validateDecide({ decision: 'approve', status: 'resolved' });
     expect(errors.length).toBeGreaterThan(0);
   });
 });

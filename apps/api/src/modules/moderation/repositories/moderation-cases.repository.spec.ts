@@ -5,6 +5,7 @@ import {
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
+  ModerationDecision,
   ModerationTargetType,
 } from '../moderation.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
@@ -289,6 +290,71 @@ describe('ModerationCasesRepository', () => {
       const result = await sut.findTargetPreview(ModerationTargetType.PLACE, 'pl1');
       expect(result).toEqual({ found: false, targetType: ModerationTargetType.PLACE, targetId: 'pl1' });
       expect(repo.query).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findByIdForUpdate (T2, M3)', () => {
+    it('khoá case bằng pessimistic_write qua manager.getRepository(ModerationCase)', async () => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.setLock = jest.fn().mockReturnValue(qb);
+      qb.where = jest.fn().mockReturnValue(qb);
+      qb.getOne = jest.fn().mockResolvedValue({ id: 'c1' });
+      const inner = createMock<Repository<ModerationCase>>({
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      const result = await sut.findByIdForUpdate(manager, 'c1');
+
+      expect(manager.getRepository).toHaveBeenCalledWith(ModerationCase);
+      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+      expect(qb.where).toHaveBeenCalledWith('c.id = :id', { id: 'c1' });
+      expect(result).toEqual({ id: 'c1' });
+    });
+  });
+
+  describe('resolve (T2, M3)', () => {
+    it('ghi status/decision/reason/resolved_by/resolved_at qua manager, KHÔNG tự kiểm tra tính hợp lệ', async () => {
+      const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+      const resolvedAt = new Date('2026-08-02T00:00:00Z');
+
+      await sut.resolve(manager, 'c1', {
+        status: ModerationCaseStatus.RESOLVED,
+        decision: ModerationDecision.APPROVE,
+        reason: null,
+        resolvedBy: 'mod-1',
+        resolvedAt,
+      });
+
+      expect(inner.update).toHaveBeenCalledWith(
+        { id: 'c1' },
+        {
+          status: ModerationCaseStatus.RESOLVED,
+          decision: ModerationDecision.APPROVE,
+          reason: null,
+          resolvedBy: 'mod-1',
+          resolvedAt,
+        },
+      );
+    });
+
+    it('hỗ trợ status=dismissed (decision=dismiss, không đổi trạng thái nội dung)', async () => {
+      const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      await sut.resolve(manager, 'c1', {
+        status: ModerationCaseStatus.DISMISSED,
+        decision: ModerationDecision.DISMISS,
+        reason: 'report vô căn cứ',
+        resolvedBy: 'mod-1',
+        resolvedAt: new Date(),
+      });
+
+      expect(inner.update).toHaveBeenCalledWith(
+        { id: 'c1' },
+        expect.objectContaining({ status: ModerationCaseStatus.DISMISSED, decision: ModerationDecision.DISMISS }),
+      );
     });
   });
 });

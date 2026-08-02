@@ -1,7 +1,7 @@
 import { EntityManager, Repository } from 'typeorm';
 import { ReportsRepository } from './reports.repository';
 import { Report } from '../entities/report.entity';
-import { ModerationTargetType, ReportReason } from '../moderation.enums';
+import { ModerationTargetType, ReportReason, ReportStatus } from '../moderation.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 
 describe('ReportsRepository', () => {
@@ -62,6 +62,18 @@ describe('ReportsRepository', () => {
       });
       expect(inner.save).toHaveBeenCalledWith({ id: 'rep1' });
       expect(result).toBe(saved);
+    });
+  });
+
+  describe('resolveByCaseId (T2, M3)', () => {
+    it('ghi status cho MỌI report của một case, qua manager (hệ quả cơ học của resolve case, không phải endpoint report riêng)', async () => {
+      const inner = createMock<Repository<Report>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      await sut.resolveByCaseId(manager, 'c1', ReportStatus.UPHELD);
+
+      expect(manager.getRepository).toHaveBeenCalledWith(Report);
+      expect(inner.update).toHaveBeenCalledWith({ caseId: 'c1' }, { status: ReportStatus.UPHELD });
     });
   });
 });

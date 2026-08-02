@@ -8,34 +8,76 @@ function sql(query: string): string {
   return query.replace(/\s+/g, ' ').trim();
 }
 
-describe('MediaRepository.attachToReview', () => {
-  let repo: LooseMock<Repository<Media>>;
+describe('MediaRepository.attachAndPublish', () => {
   let sut: MediaRepository;
 
   beforeEach(() => {
-    repo = createMock<Repository<Media>>({ query: jest.fn() });
+    const repo = createMock<Repository<Media>>({ query: jest.fn() });
     sut = new MediaRepository(repo);
   });
 
-  it('mediaIds rỗng → không gọi DB', async () => {
-    await sut.attachToReview([], 'r1', 'u1');
-    expect(repo.query).not.toHaveBeenCalled();
+  it('mediaIds rỗng → không gọi DB, trả về mảng rỗng', async () => {
+    const manager = createMock<EntityManager>({ query: jest.fn() });
+    const result = await sut.attachAndPublish(manager, [], 'r1', 'u1');
+    expect(manager.query).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
   });
 
-  it('chỉ gắn media MỒ CÔI của đúng người upload (chặn chiếm dụng media người khác)', async () => {
-    repo.query.mockResolvedValue(undefined);
+  it('UPDATE đủ 6 điều kiện D3 (object_key/uploaded_by/status/deleted_at/mồ côi), publish TRONG cùng câu SQL', async () => {
+    // manager.query() cho UPDATE...RETURNING trả về TUPLE [rows, rowCount] (driver Postgres của
+    // TypeORM, KHÁC INSERT trả rows trực tiếp) — xác nhận trực tiếp với Postgres thật (Phase 8),
+    // không phải giả định. Mock phải phản ánh đúng hình dạng thật này.
+    const manager = createMock<EntityManager>({
+      query: jest.fn().mockResolvedValue([[{ id: 'm1' }, { id: 'm2' }], 2]),
+    });
 
-    await sut.attachToReview(['m1', 'm2'], 'r1', 'u1');
+    const result = await sut.attachAndPublish(manager, ['m1', 'm2'], 'r1', 'u1');
 
-    const [query, params] = repo.query.mock.calls[0];
+    const [query, params] = manager.query.mock.calls[0];
     const q = sql(query);
+    expect(q).toContain("SET review_id = $1, status = 'published'");
     expect(q).toContain('uploaded_by = $3');
-    expect(q).toContain('place_id IS NULL');
+    expect(q).toContain('object_key IS NOT NULL');
+    expect(q).toContain("status = 'pending'");
+    expect(q).toContain('deleted_at IS NULL');
     expect(q).toContain('review_id IS NULL');
+    expect(q).toContain('place_id IS NULL');
     expect(q).toContain('post_id IS NULL');
     expect(q).toContain('business_id IS NULL');
     expect(q).toContain('event_id IS NULL');
+    expect(q).toContain('RETURNING id');
     expect(params).toEqual(['r1', ['m1', 'm2'], 'u1']);
+    expect(result).toEqual(['m1', 'm2']);
+  });
+
+  it('một phần media không đủ điều kiện → trả về DANH SÁCH ngắn hơn (caller tự so length, INV-14)', async () => {
+    const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue([[{ id: 'm1' }], 1]) });
+    const result = await sut.attachAndPublish(manager, ['m1', 'm2'], 'r1', 'u1');
+    expect(result).toEqual(['m1']); // chỉ 1/2 — caller (ReviewsRepository) phát hiện và rollback
+  });
+});
+
+describe('MediaRepository.findByIdForUpdate / updateStatus', () => {
+  it('findByIdForUpdate: đọc qua manager.getRepository(Media)', async () => {
+    const inner = createMock<Repository<Media>>({ findOne: jest.fn().mockResolvedValue({ id: 'm1' }) });
+    const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+    const sut = new MediaRepository(createMock<Repository<Media>>());
+
+    const result = await sut.findByIdForUpdate(manager, 'm1');
+
+    expect(manager.getRepository).toHaveBeenCalledWith(Media);
+    expect(inner.findOne).toHaveBeenCalledWith({ where: { id: 'm1' } });
+    expect(result).toEqual({ id: 'm1' });
+  });
+
+  it('updateStatus: ghi status qua manager, KHÔNG tự kiểm tra FSM', async () => {
+    const inner = createMock<Repository<Media>>({ update: jest.fn() });
+    const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+    const sut = new MediaRepository(createMock<Repository<Media>>());
+
+    await sut.updateStatus(manager, 'm1', MediaStatus.PUBLISHED);
+
+    expect(inner.update).toHaveBeenCalledWith({ id: 'm1' }, { status: MediaStatus.PUBLISHED });
   });
 });
 

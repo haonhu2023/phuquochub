@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { PlacesRepository, PlaceDetailRow } from './places.repository';
 import { Place } from '../entities/place.entity';
 import { PlaceStatus, PriceRange } from '../place.enums';
@@ -81,6 +81,13 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(sql(query)).toContain('rating_avg');
       expect(sql(query)).toContain('rating_count');
       expect(params).toEqual(['p1']);
+    });
+
+    it('nhận manager tuỳ chọn → chạy TRONG transaction đó (T1/T2, INV-4), không dùng this.repo', async () => {
+      const manager = createMock<EntityManager>({ query: jest.fn() });
+      await sut.recalculateRating('p1', manager);
+      expect(manager.query).toHaveBeenCalledTimes(1);
+      expect(repo.query).not.toHaveBeenCalled();
     });
   });
 
