@@ -30,8 +30,57 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Frontend Component Coverage Extension -- ad-hoc,
-                                  # NOT PLACE-numbered) Owner-approved, selected via the governance
+  task: none                      # (2026-08-02, Frontend Bundle Size Baseline & Regression
+                                  # Reference -- ad-hoc, NOT PLACE-numbered) Owner-approved,
+                                  # selected via the governance assessment appended to the Frontend
+                                  # Component Coverage Extension milestone (ranked #1 -- the only
+                                  # remaining candidate not entangled with the still-unresolved
+                                  # Moderation Foundation / Owner-decision blockers). Measurement
+                                  # and documentation ONLY, per explicit instruction -- no
+                                  # production code changed, no dependency added/removed, no CI
+                                  # gate, no enforced budget. Clean `next build` (rm -rf .next first)
+                                  # measured directly via a new dependency-free Node script
+                                  # (apps/web/scripts/measure-bundle-size.mjs, fs/path/zlib built-
+                                  # ins only) reading the actual .next/static/chunks output --
+                                  # Turbopack's Next 16 build no longer prints the old webpack-era
+                                  # per-route "First Load JS" table, so route-level estimates are
+                                  # instead derived from each route's own
+                                  # page_client-reference-manifest.js (Next's own RSC module->chunk
+                                  # map). Baseline: total client JS 1468.1 KB raw / 420.7 KB gzip /
+                                  # 356.7 KB Brotli across 39 chunks; largest single chunk 768.8 KB
+                                  # raw / 203.7 KB gzip, confirmed as MapLibre GL JS via THREE
+                                  # independent checks (content strings incl. a real WebGL shader
+                                  # attribute name and the RTL text plugin marker; cross-referenced
+                                  # against every route's client-reference-manifest -- present only
+                                  # on /map and /explore, the only 2 routes that render MapView;
+                                  # and dependency inspection, exactly one client mapping library in
+                                  # package.json, imported by exactly one component) -- not claimed
+                                  # from filename/size alone. /map and /explore's route estimate
+                                  # (~223-224 KB gzip) is ~12x every other sampled route (~16-20 KB
+                                  # gzip each), entirely attributable to that one chunk. Total
+                                  # matches PLACE-041's earlier informal "~1.5M" finding --
+                                  # essentially unchanged since that audit. Zero client-shipped
+                                  # source maps (192 found total, 169 unique + 23 standalone-output
+                                  # duplicates, all server-side only). Two mid-size chunks (138.4 KB,
+                                  # 110.0 KB raw) explicitly disclosed as unattributed rather than
+                                  # guessed -- most likely Next.js/RSC runtime internals (present in
+                                  # every route's rootMainFiles) but not confirmed via a content
+                                  # marker. Recorded 4 ADVISORY-ONLY regression thresholds (not a
+                                  # CI gate, not enforced, explicitly subject to Owner approval
+                                  # before any enforcement is ever added) chosen from the measured
+                                  # baseline: total JS gzip +10%, any route's JS gzip +15%, largest
+                                  # chunk +10%, investigate any new chunk >=50 KB raw. Script wired
+                                  # as `npm run measure-bundle` (plus `-- --json`) for
+                                  # reproducibility -- deterministic, zero new dependency, passes
+                                  # the same eslint/tsc scope as the rest of apps/web. Confirmed
+                                  # zero dependency change (package-lock.json has no diff at all)
+                                  # and next-env.d.ts unaffected (only `next build` was run, never
+                                  # `next dev`). Full validation: monorepo build/typecheck/lint all
+                                  # 4/4, 6/6, 6/6 green. Roadmap item #12 marked DONE
+                                  # (measurement-only, explicitly not budget-enforced). See
+                                  # docs/delivery/reports/FRONTEND-BUNDLE-SIZE-BASELINE-2026-08-02.md.
+                                  # ---- prior state (2026-08-02 Frontend Component Coverage Extension) ----
+                                  # Owner-approved, selected via the governance
                                   # assessment appended to the Error/Loading Boundary Completion
                                   # milestone (ranked #1 -- zero Owner decisions, zero risk, proven
                                   # pattern/tooling already installed). Extends the Frontend

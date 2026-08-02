@@ -9,7 +9,8 @@
     "start": "next start -p 3000",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "measure-bundle": "node scripts/measure-bundle-size.mjs"
   },
   "dependencies": {
     "@phuquochub/shared-types": "*",

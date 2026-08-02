@@ -131,6 +131,9 @@ modules (`apps/api/src/modules/*`); frontend has 10 modules and 15 route segment
 **Low:**
 11. Live Swagger/OpenAPI UI (manually-maintained spec file already kept in sync).
 12. Bundle-size measurement against an explicit budget.
+    **✅ DONE (measurement only) — 2026-08-02.** Baseline recorded, no budget enforced (deliberately
+    out of scope — that requires an Owner-approved threshold and a CI-gate decision, neither made
+    here). See docs/delivery/reports/FRONTEND-BUNDLE-SIZE-BASELINE-2026-08-02.md.
 13. 8 open high-severity dependency findings (next/postcss/sharp) — blocked entirely on an
     upstream fix, no action possible from this repository (unchanged since PLACE-036).
 
