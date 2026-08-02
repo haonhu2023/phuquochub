@@ -190,4 +190,4 @@ Clean after commit (verified via `git status --short` immediately before and aft
 | Commit | Scope |
 |---|---|
 | `7330f9d` | `feat(web)`: add error and loading boundaries |
-| `<filled in below>` | `docs(web)`: record boundary completion milestone |
+| `9ae0ca9` | `docs(web)`: record boundary completion milestone |
