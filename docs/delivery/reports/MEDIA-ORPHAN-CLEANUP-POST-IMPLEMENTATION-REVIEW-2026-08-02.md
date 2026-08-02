@@ -189,4 +189,4 @@ Clean after this review's commit (verified via `git status --short` immediately 
 | Commit | Scope |
 |---|---|
 | `b060b42` | `fix(media)`: keyset-pagination defect in orphan cleanup (dry-run/error-stuck-row starvation) + timestamp-precision cursor bug, both found via post-implementation review |
-| `<filled in below>` | `docs(media)`: media.md keyset-cursor addendum + governance entry + this report |
+| `4bab7fb` | `docs(media)`: media.md keyset-cursor addendum + governance entry + this report |
