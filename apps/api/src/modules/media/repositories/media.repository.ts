@@ -120,18 +120,67 @@ export class MediaRepository {
   }
 
   /**
-   * Gắn media MỒ CÔI (chưa thuộc arc nào) vào một review — chỉ media do chính `userId` upload,
-   * tránh việc chiếm dụng media của người khác qua media_ids (ReviewsService.create).
+   * ADR-018 D3/T1 (Moderation Foundation M3) — gắn media MỒ CÔI vào một review VỪA ĐƯỢC TẠO **và**
+   * auto-publish nó trong CÙNG một câu UPDATE, đúng 6 điều kiện D3 (đk 6 — transaction commit —
+   * do caller đảm bảo, xem `ReviewsRepository.createWithMedia`). Toàn bộ điều kiện nằm trong
+   * WHERE của SQL, KHÔNG phải vòng lặp TypeScript — một câu UPDATE set-based, không N+1.
+   *
+   * Trả về DANH SÁCH id đã thực sự published (không phải chỉ đếm) — caller so `length` với số
+   * `mediaIds` yêu cầu (INV-14 "toàn bộ hoặc không có gì": khác nhau → caller tự rollback bằng
+   * cách ném lỗi trong transaction, repository không tự quyết định rollback) **và** dùng chính
+   * danh sách này để ghi một dòng audit `media.auto_published` cho MỖI media sau khi commit
+   * (INV-9 — không bao giờ trong transaction).
+   *
+   * Đây là bản THAY THẾ HOÀN TOÀN cho `attachToReview()` cũ (chỉ gắn `review_id`, không publish —
+   * chính là lỗ hổng "ảnh không bao giờ hiển thị" mà ADR-018 §Context ghi nhận). Nhận `manager`
+   * trực tiếp để chạy trong transaction của caller, cùng quy ước `createUploaded()`.
    */
-  async attachToReview(mediaIds: string[], reviewId: string, userId: string): Promise<void> {
-    if (mediaIds.length === 0) return;
-    await this.repo.query(
-      `UPDATE media SET review_id = $1
-       WHERE id = ANY($2) AND uploaded_by = $3 AND deleted_at IS NULL
-         AND place_id IS NULL AND review_id IS NULL AND post_id IS NULL
-         AND business_id IS NULL AND event_id IS NULL`,
+  async attachAndPublish(
+    manager: EntityManager,
+    mediaIds: string[],
+    reviewId: string,
+    userId: string,
+  ): Promise<string[]> {
+    if (mediaIds.length === 0) return [];
+    // QUAN TRỌNG: với UPDATE/DELETE (khác INSERT), driver Postgres của TypeORM trả về TUPLE
+    // `[rows, rowCount]` từ `manager.query()`/`repo.query()` khi câu lệnh có RETURNING — KHÔNG
+    // phải mảng rows trực tiếp như INSERT (xem PostgresQueryRunner.query(): switch theo
+    // raw.command, case UPDATE/DELETE gán `result.raw = [raw.rows, raw.rowCount]`, default —
+    // gồm cả INSERT/SELECT — gán thẳng `raw.rows`). Phát hiện qua kiểm chứng TRỰC TIẾP với
+    // Postgres thật (Phase 8, không chỉ unit test có mock) — mock cũ từng giả định sai hình dạng
+    // này. PHẢI destructure `[rows]`, nếu không `rows.map()` chạy nhầm trên chính cặp tuple.
+    const [rows]: [Array<{ id: string }>, number] = await manager.query(
+      `UPDATE media
+          SET review_id = $1, status = 'published'
+        WHERE id = ANY($2)
+          AND uploaded_by  = $3
+          AND object_key  IS NOT NULL
+          AND status       = 'pending'
+          AND deleted_at  IS NULL
+          AND review_id   IS NULL
+          AND place_id    IS NULL
+          AND post_id     IS NULL
+          AND business_id IS NULL
+          AND event_id    IS NULL
+        RETURNING id`,
       [reviewId, mediaIds, userId],
     );
+    return rows.map((r) => r.id);
+  }
+
+  /** T2 (Moderation Foundation M3) — nạp media target của một case. Nhận `manager` trực tiếp để
+   * đọc trong CÙNG transaction với quyết định (không có FOR UPDATE riêng trên media — khoá case
+   * cha, đã có ở `ModerationCasesRepository.findByIdForUpdate`, là đủ: INV-3 đảm bảo tối đa một
+   * case mở cho mỗi target nên không có quyết định thứ hai nào có thể chạy song song trên CÙNG
+   * media này). */
+  findByIdForUpdate(manager: EntityManager, id: string): Promise<Media | null> {
+    return manager.getRepository(Media).findOne({ where: { id } });
+  }
+
+  /** T2 — ghi status ĐÃ ĐƯỢC XÁC NHẬN hợp lệ bởi FSM (`assertValidMediaTransition`). Repository
+   * KHÔNG tự kiểm tra transition — cùng nguyên tắc `BookingsRepository.updateStatus()`. */
+  async updateStatus(manager: EntityManager, id: string, status: MediaStatus): Promise<void> {
+    await manager.getRepository(Media).update({ id }, { status });
   }
 
   /**

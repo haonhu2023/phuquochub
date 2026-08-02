@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import type { VerificationStatusValue } from '@phuquochub/shared-types';
 import { Place } from '../entities/place.entity';
 import { PlaceStatus, PriceRange } from '../place.enums';
@@ -244,14 +244,18 @@ export class PlacesRepository {
   }
 
   /**
-   * Tính lại rating_avg/rating_count từ reviews `published` — gọi ĐỒNG BỘ sau mỗi lần tạo
-   * review (ReviewsService.create). MVP chưa có moderation queue (mọi review tạo ra đã
-   * `published` ngay) nên tính trực tiếp ở đây là chính xác; nếu sau này có luồng ẩn/duyệt
-   * review, lời gọi này vẫn đúng vì luôn đọc lại từ trạng thái `published` hiện tại, không
-   * cộng dồn tăng/giảm thủ công (tránh lệch số khi review bị ẩn/xoá).
+   * Tính lại rating_avg/rating_count từ reviews `published` — luôn đọc lại từ trạng thái
+   * `published` hiện tại (không cộng dồn tăng/giảm thủ công), nên đúng bất kể lý do thay đổi:
+   * tạo review mới (ReviewsRepository.createWithMedia — ADR-018 T1), hoặc một review bị
+   * hide/restore bởi kiểm duyệt (T2, M4 — INV-4 "mọi thay đổi reviews.status làm đổi tập
+   * published phải gọi hàm này trong CÙNG transaction").
+   *
+   * `manager` TUỲ CHỌN — truyền vào khi caller cần hàm này chạy trong transaction của họ (T1/T2);
+   * bỏ trống dùng `this.repo` như trước (không phá vỡ lời gọi cũ nào ngoài transaction).
    */
-  async recalculateRating(placeId: string): Promise<void> {
-    await this.repo.query(
+  async recalculateRating(placeId: string, manager?: EntityManager): Promise<void> {
+    const runner = manager ?? this.repo;
+    await runner.query(
       `UPDATE places SET
          rating_avg = (SELECT round(avg(rating)::numeric, 1) FROM reviews WHERE place_id = $1 AND status = 'published'),
          rating_count = (SELECT count(*)::int FROM reviews WHERE place_id = $1 AND status = 'published')

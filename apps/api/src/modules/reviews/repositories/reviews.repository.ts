@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Review } from '../entities/review.entity';
 import { ReviewStatus } from '../review.enums';
+import { MediaRepository } from '../../media/repositories/media.repository';
+import { PlacesRepository } from '../../places/repositories/places.repository';
 
 export interface ReviewRow {
   id: string;
@@ -15,23 +17,34 @@ export interface ReviewRow {
   author_avatar_url: string | null;
 }
 
+export interface NewReviewWithMedia {
+  placeId: string;
+  userId: string;
+  rating: number;
+  content: string | null;
+  mediaIds: string[];
+}
+
+export interface CreatedReviewWithMedia {
+  review: Review;
+  /** id media đã THỰC SỰ được gắn + published trong transaction này (có thể ngắn hơn mediaIds
+   * yêu cầu CHỈ khi transaction sắp bị rollback ngay sau — xem createWithMedia). */
+  publishedMediaIds: string[];
+}
+
 @Injectable()
 export class ReviewsRepository {
   constructor(
     @InjectRepository(Review)
     private readonly repo: Repository<Review>,
+    @InjectDataSource()
+    private readonly ds: DataSource,
+    private readonly mediaRepo: MediaRepository,
+    private readonly placesRepo: PlacesRepository,
   ) {}
 
   existsByUser(placeId: string, userId: string): Promise<boolean> {
     return this.repo.exists({ where: { placeId, userId } });
-  }
-
-  create(data: { placeId: string; userId: string; rating: number; content: string | null }): Review {
-    return this.repo.create({ ...data, status: ReviewStatus.PUBLISHED });
-  }
-
-  save(review: Review): Promise<Review> {
-    return this.repo.save(review);
   }
 
   /** Đánh giá đã published của một Place, mới nhất trước — kèm tên/avatar người viết. */
@@ -45,5 +58,47 @@ export class ReviewsRepository {
        ORDER BY r.created_at DESC, r.id ASC`,
       [placeId, ReviewStatus.PUBLISHED],
     );
+  }
+
+  /**
+   * ADR-018 T1 (Moderation Foundation M3) — tạo review + gắn/publish media trong MỘT transaction
+   * nguyên tử (D4: "tạo review trở thành giao dịch nguyên tử", sửa lỗ hổng có sẵn —
+   * `ReviewsService.create()` trước đây KHÔNG có transaction, mỗi bước tự commit riêng).
+   *
+   * Toàn bộ-hoặc-không-có-gì (INV-14): nếu `attachAndPublish()` không gắn đủ số `mediaIds` yêu
+   * cầu, ném lỗi NGAY BÊN TRONG callback → TypeORM tự rollback toàn bộ (review vừa INSERT cũng
+   * biến mất) — cùng cơ chế `InventoryHoldsRepository.placeHold()` ném `ConflictException` bên
+   * trong `BookingsRepository.create()`'s transaction để rollback over-allocation.
+   *
+   * `recalculateRating` chạy trong CÙNG transaction (INV-4) — không tách bước riêng, không có
+   * khoảng hở nào giữa "review/media đã đổi" và "rating chưa cập nhật".
+   */
+  async createWithMedia(data: NewReviewWithMedia): Promise<CreatedReviewWithMedia> {
+    return this.ds.transaction(async (manager) => {
+      const reviewRepo = manager.getRepository(Review);
+      const review = reviewRepo.create({
+        placeId: data.placeId,
+        userId: data.userId,
+        rating: data.rating,
+        content: data.content,
+        status: ReviewStatus.PUBLISHED, // O1 — giữ nguyên auto-publish, không đổi hành vi
+      });
+      const saved = await reviewRepo.save(review);
+
+      let publishedMediaIds: string[] = [];
+      if (data.mediaIds.length > 0) {
+        publishedMediaIds = await this.mediaRepo.attachAndPublish(manager, data.mediaIds, saved.id, data.userId);
+        if (publishedMediaIds.length !== data.mediaIds.length) {
+          throw new UnprocessableEntityException(
+            'Một hoặc nhiều media_ids không hợp lệ để gắn vào đánh giá này (không mồ côi, không ' +
+              'phải của bạn, hoặc chưa xác minh upload) — không tạo đánh giá.',
+          );
+        }
+      }
+
+      await this.placesRepo.recalculateRating(data.placeId, manager);
+
+      return { review: saved, publishedMediaIds };
+    });
   }
 }
