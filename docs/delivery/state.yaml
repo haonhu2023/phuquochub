@@ -30,8 +30,96 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-03, Moderation Foundation M4 -- Review Decision
-                                  # Workflow + transactional rating recalculation) Owner-approved
+  task: none                      # (2026-08-03, Moderation Foundation M5 -- User Reporting,
+                                  # transaction T3) Owner-approved implementation of ADR-018 M5,
+                                  # immediately following M4 the same day. Scope was explicit and
+                                  # narrow: user report creation, transaction T3, report
+                                  # aggregation, severity escalation, moderation case creation/
+                                  # reuse, audit, domain events, tests, docs -- NO auto-hide, NO
+                                  # automatic moderation, NO moderator frontend, NO AI decisions,
+                                  # NO notifications, NO appeals, NO sanctions, NO new moderation
+                                  # status values, NO scheduler (all confirmed absent from the
+                                  # diff). POST /reviews/{id}/report and POST /media/{id}/report
+                                  # (the two pre-existing stubs) implement T2 step 1 ("target
+                                  # exists and is in a reportable state") locally in each domain's
+                                  # own service via a new existsPublished() repository method --
+                                  # not-found and not-yet/no-longer-published both return the SAME
+                                  # 404, so the endpoint never leaks internal moderation state to a
+                                  # reporter. T3 itself (case reuse/creation, duplicate prevention,
+                                  # report_count/severity/priority recompute) lives in a NEW
+                                  # ModerationReportsService, called by both domains' services.
+                                  # MAJOR ARCHITECTURAL FIX required to wire this: ModerationModule
+                                  # already imports MediaModule (M3, decide()'s MediaRepository
+                                  # dependency) -- MediaModule needing ModerationCasesRepository/
+                                  # ReportsRepository/the event-publisher token for its own new
+                                  # report() method would have created a genuine two-hop cycle
+                                  # (MediaModule -> ModerationModule -> MediaModule), unlike M2/M4's
+                                  # analogous problem with ReviewsModule (solved there by raw
+                                  # cross-table SQL, since only ONE direction was real). Resolved by
+                                  # extracting ModerationCasesRepository/ReportsRepository/the event
+                                  # token (+ the new ModerationReportsService) into a brand new leaf
+                                  # module, ModerationCoreModule, with zero imports of Media/
+                                  # Reviews/Places/Rbac -- ModerationModule, MediaModule, and
+                                  # ReviewsModule (switched from importing the full ModerationModule
+                                  # to this lighter one, since it only ever needed the token) all
+                                  # import ModerationCoreModule directly, never each other. No
+                                  # forwardRef used -- not a pattern this codebase uses anywhere;
+                                  # verified the DI graph actually resolves (not just tsc/nest build,
+                                  # which don't instantiate the container) by booting the full
+                                  # AppModule via a real e2e test before writing any T3 logic.
+                                  # Pure severity/priority computation (moderation-design.md SS4.1
+                                  # formula: priority = base(severity) + min(5*max(report_count-1,
+                                  # 0), 25); severity floors by source, report_count>=3 forces a
+                                  # minimum of 'high') lives in a new moderation-severity.ts, a
+                                  # RAISE-TO-AT-LEAST function (never lowers an existing higher
+                                  # severity -- this is what lets the D14/O7 backfill exception,
+                                  # source=new_content but severity already 'normal' at creation,
+                                  # survive a report automatically without the function knowing
+                                  # anything about backfill). Case reuse race safety: the SAME
+                                  # pessimistic-lock pattern as T2's case decision (SELECT ... FOR
+                                  # UPDATE on the existing open case) serializes concurrent reports
+                                  # on one target -- including two duplicate attempts from the same
+                                  # reporter -- so the duplicate check never reads stale data; a
+                                  # second, vanishingly rare race (the case gets resolved between
+                                  # the INSERT-ON-CONFLICT miss and the locked SELECT) is handled by
+                                  # retrying case creation rather than assumed impossible. Live-
+                                  # verified against real Postgres: first report on a target creates
+                                  # a new case (source=report, severity=normal, priority=10,
+                                  # report_count=1); second report from a different reporter reuses
+                                  # the SAME case (still exactly one case row, report_count=2,
+                                  # severity unchanged); third report crosses the O3 threshold
+                                  # (report_count=3, severity=high, priority=40); a fourth attempt
+                                  # from the FIRST reporter on the same target is rejected 409 with
+                                  # zero additional mutation (report_count still 3, still exactly 3
+                                  # report rows). A real e2e-authoring mistake was caught and fixed
+                                  # during this session: the first draft registered a fresh user
+                                  # account per report action, exceeding both the global auth
+                                  # register throttle (10/min) and then the report endpoint's OWN
+                                  # 5/min throttle (moderation-design.md SS8.2) once fixed to reuse
+                                  # accounts -- consolidated into two tests using a small fixed
+                                  # reporter pool (created once) and exactly 5 calls to each
+                                  # throttled route across the whole file, matching the existing
+                                  # convention already documented in media.e2e-spec.ts for
+                                  # presign()'s 10/min limit ("keep the call count in this suite
+                                  # under the throttle threshold" -- not bypass it). Full validation:
+                                  # backend unit 98 suites/1115 tests (up from 1049), e2e 18
+                                  # suites/162 tests (up from 160), zero regression; full monorepo
+                                  # build/typecheck/lint 12/12 green; git diff --check clean; secret
+                                  # scan clean. Docs updated: docs/api/openapi.yaml (the pre-existing
+                                  # /reviews/{id}/report stub upgraded to the real M5 contract --
+                                  # 201/401/403/404/409, reason enum, description maxLength; new
+                                  # /media/{id}/report path added), docs/data/modules/
+                                  # moderation-design.md (M5 marked done in banner + roadmap table
+                                  # only -- the SS9 API table already listed both report paths/
+                                  # Report.Create/M5 from the original design, unchanged). ADR-018
+                                  # was NOT modified -- implementation revealed no contradiction with
+                                  # it. See docs/delivery/reports/MODERATION-M5-REPORTING-
+                                  # 2026-08-03.md. M6 (Moderator UI) is the next milestone --
+                                  # explicitly NOT started per instruction.
+                                  # ---- prior state (2026-08-03, Moderation Foundation M4 --
+                                  # Review Decision Workflow + transactional rating
+                                  # recalculation) ----
+                                  # Owner-approved
                                   # implementation of ADR-018 M4, following the Media Orphan Cleanup
                                   # RETURNING-result corrective fix. Scope was explicit and narrow:
                                   # review moderation decisions, transactional review visibility

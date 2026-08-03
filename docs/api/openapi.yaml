@@ -1357,8 +1357,17 @@ paths:
   /reviews/{id}/report:
     post:
       tags: [Reviews]
-      summary: Báo cáo đánh giá
+      summary: Báo cáo đánh giá (Report.Create, M5 — WF-12/T3)
       operationId: reportReview
+      description: >-
+        T3 (moderation-design.md §7): review phải `published` (tồn tại nhưng chưa/không còn
+        published trả CÙNG 404 với "không tồn tại" — không rò rỉ trạng thái kiểm duyệt nội bộ cho
+        reporter). Tạo case `open` mới (source=report) hoặc gắn vào case mở sẵn có cho review này
+        (INV-3, KHÔNG bao giờ tạo case trùng); `report_count`/`severity`/`priority` tính lại ngay
+        trong CÙNG transaction (≥3 report ⇒ severity tối thiểu `high`, moderation-design.md §4.1).
+        **KHÔNG bao giờ đổi `reviews.status`** (O3/INV-6 — report không tự động ẩn nội dung).
+        Một reporter chỉ báo cáo được MỘT lần trên MỘT target (`uq_reports_one_per_reporter`) —
+        lần thứ hai trả `409`. Throttle 5/phút.
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -1367,8 +1376,19 @@ paths:
             schema:
               type: object
               required: [reason]
-              properties: { reason: { type: string }, description: { type: string } }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+              properties:
+                reason:
+                  type: string
+                  enum: [spam, misinformation, offensive, irrelevant, copyright, personal_info, other]
+                description:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /reviews/{id}/reply:
     post:
       tags: [Reviews]
@@ -1910,6 +1930,37 @@ paths:
       operationId: moderateMedia
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+  /media/{id}/report:
+    post:
+      tags: [Media]
+      summary: Báo cáo media (Report.Create, M5 — WF-12/T3)
+      operationId: reportMedia
+      description: >-
+        Cùng T3/hành vi với `POST /reviews/{id}/report` (moderation-design.md §7/§9.2) — media
+        phải `published`; case reuse/creation qua INV-3; report_count/severity/priority tính lại
+        trong cùng transaction; KHÔNG bao giờ đổi `media.status` (O3/INV-6); chống report trùng
+        (`uq_reports_one_per_reporter`, `409`). Throttle 5/phút.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  enum: [spam, misinformation, offensive, irrelevant, copyright, personal_info, other]
+                description:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   # ============================ MODERATION ============================
   # Moderation Foundation (ADR-018, Accepted). GET /moderation/cases + GET /moderation/cases/{id}

@@ -32,8 +32,23 @@
 > cả `reviews.status` lẫn `places.rating_avg/rating_count` hoàn nguyên chính xác). Xem
 > [MODERATION-M4-REVIEW-WORKFLOW-2026-08-03.md](../../delivery/reports/MODERATION-M4-REVIEW-WORKFLOW-2026-08-03.md).
 >
-> M5–M7 vẫn CHƯA triển khai (đúng phạm vi M4: không report, không moderator UI, không AI, không
-> notification, không sanction, không scheduler, không giá trị review_status mới).
+> **M5 — User Reporting (transaction T3): ĐÃ TRIỂN KHAI (2026-08-03).** `POST /reviews/{id}/report`,
+> `POST /media/{id}/report` — target phải `published` (404 CHUNG cho "không tồn tại" lẫn "chưa/
+> không còn published", không rò rỉ trạng thái kiểm duyệt nội bộ); T3 tạo case `open` mới
+> (source=report) hoặc gắn vào case mở sẵn có cho target đó (INV-3, không tạo trùng — khoá case
+> bằng `SELECT ... FOR UPDATE` trước khi đọc/ghi report_count, chốt chặn concurrency duy nhất của
+> bước tăng report_count); `report_count`/`severity`/`priority` tính lại trong CÙNG transaction
+> (≥3 report ⇒ severity tối thiểu `high`, §4.1 — xác nhận sống: report thứ 3 nâng severity
+> normal→high, priority 10→40); chống report trùng qua `uq_reports_one_per_reporter` (409, không
+> mutation). **KHÔNG BAO GIỜ đổi `reviews.status`/`media.status`** (O3/INV-6 — report chỉ nâng độ
+> ưu tiên hàng chờ, không tự ẩn nội dung). `ModerationCasesRepository`/`ReportsRepository`/domain
+> event token được TÁCH sang `ModerationCoreModule` (module lá, không phụ thuộc chéo) để
+> `MediaModule` gọi được `ModerationReportsService` mà không tạo circular dependency với
+> `ModerationModule` (vốn đã import `MediaModule` từ M3). Xem
+> [MODERATION-M5-REPORTING-2026-08-03.md](../../delivery/reports/MODERATION-M5-REPORTING-2026-08-03.md).
+>
+> M6–M7 vẫn CHƯA triển khai (đúng phạm vi M5: không auto-hide, không moderator UI, không AI, không
+> notification, không sanction, không scheduler, không giá trị moderation status mới).
 >
 > **Chỉ kiến trúc.** Chưa có code, entity, migration, file React, hay test nào cho bất cứ nội dung nào ở đây. SQL bên dưới là **đặc tả thiết kế**, không phải migration.
 >
@@ -799,7 +814,7 @@ Thứ tự theo đúng chỉ đạo Owner (yêu cầu sửa đổi #6). Mỗi mi
 | **M2** | **Moderation Queue Read API** ✅ **ĐÃ XONG — 2026-08-02** | `GET /moderation/cases`, `GET /moderation/cases/{id}`; repository + phân trang + lọc; đấu nối quyền. **Chỉ đọc — không đổi được nội dung.** | M1 | S |
 | **M3** | **Media Decision Workflow + auto-publish khi gắn review** ✅ **ĐÃ XONG — 2026-08-02** | `decide` cho target media (`POST /moderation/cases/{id}/decide`, không `claim`/`release`/`reopen`, không `POST /media/{id}/moderate`); **transaction T1** (D4 + auto-publish O2); **transaction T2** (quyết định kiểm duyệt); **`BackfillModerationCases` theo T4/D14** (đếm-rồi-báo-cáo trước khi chạy, diễn tập apply/revert/reapply trên dữ liệu thật); audit + event. **Đây là milestone làm ảnh hiển thị được.** | M2 | M |
 | **M4** | **Review Decision Workflow + tính lại rating trong transaction** ✅ **ĐÃ XONG — 2026-08-03** | `decide` cho target review (hide/restore/approve qua `assertValidReviewTransition`, không thêm `rejected`); quyền `Review.Moderate` chọn theo target_type, không dùng lẫn với `Media.Moderate`; **cộng ràng buộc INV-4** (recalculateRating trong cùng transaction, rollback sống đã diễn tập) **và test hồi quy cho nó**. | M3 | M |
-| **M5** | **User Reporting** | `POST /reviews/{id}/report`, `POST /media/{id}/report`; gộp case; chống trùng; nâng `severity`/`priority`. **Không** đổi hiển thị (O3). | M4 | M |
+| **M5** | **User Reporting** ✅ **ĐÃ XONG — 2026-08-03** | `POST /reviews/{id}/report`, `POST /media/{id}/report`; gộp case; chống trùng; nâng `severity`/`priority`. **Không** đổi hiển thị (O3). | M4 | M |
 | **M6** | **Moderator UI** | Frontend hàng chờ tại `/dashboard/moderation`; danh sách, chi tiết, quyết định. Tái dùng mẫu card/filter/pagination sẵn có và baseline accessibility (2026-08-02). | M3 | M |
 | **M7** | **AI Shadow Mode** | `AiModerationPort`; `npm run media:moderate` kèm `--dry-run`; **chỉ shadow** — chấm điểm, ghi `ai_moderation_score`/`ai_labels`, **không** đổi status, **không** mở case. | M4, và **đủ lượng quyết định của con người để so sánh** | M |
 
