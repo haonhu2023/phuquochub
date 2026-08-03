@@ -1913,10 +1913,12 @@ paths:
 
   # ============================ MODERATION ============================
   # Moderation Foundation (ADR-018, Accepted). GET /moderation/cases + GET /moderation/cases/{id}
-  # (M2) — CHỈ ĐỌC, đòi Moderation.Queue.View. POST /moderation/cases/{id}/decide (M3) — target
-  # media DUY NHẤT ở M3 (review thuộc M4), đòi Media.Moderate, đi qua transaction T2 rồi audit +
-  # event SAU commit — xem docs/data/modules/moderation-design.md §7/§9.1. Không claim/release/
-  # reopen (chưa cần: decide() tự chấp nhận case ở cả open lẫn claimed).
+  # (M2) — CHỈ ĐỌC, đòi Moderation.Queue.View. POST /moderation/cases/{id}/decide (M3: media, M4:
+  # review) — quyền CHỌN theo target_type CỦA CHÍNH CASE (Media.Moderate hoặc Review.Moderate,
+  # không dùng lẫn), đi qua transaction T2 rồi audit + event SAU commit — xem
+  # docs/data/modules/moderation-design.md §7/§9.1. Review target còn tính lại rating của place sở
+  # hữu TRONG cùng transaction (INV-4). Không claim/release/reopen (chưa cần: decide() tự chấp
+  # nhận case ở cả open lẫn claimed).
   /moderation/cases:
     get:
       tags: [Moderation]
@@ -1989,17 +1991,25 @@ paths:
   /moderation/cases/{id}/decide:
     post:
       tags: [Moderation]
-      summary: Quyết định kiểm duyệt (Media.Moderate, M3 — chỉ target media)
+      summary: Quyết định kiểm duyệt (target media hoặc review, M3/M4)
       operationId: decideModerationCase
       description: >-
-        Trong MỘT transaction (T2, moderation-design.md §7): khoá + đọc case và media, xác thực
-        transition qua FSM thuần (`assertValidMediaTransition`, KHÔNG logic transition nào lặp lại
-        ở tầng API), cập nhật `media.status` + case, commit. Audit (`moderation.decided`) và domain
-        event chỉ phát SAU commit, không bao giờ trước (ADR-018 INV-9); lỗi ghi audit/event sau
-        commit không hoàn tác quyết định — chỉ log. `target_type=review` chưa được hỗ trợ (M4).
-        `reason` bắt buộc khi `decision` là `reject`/`hide` (INV-11); `target_status` bắt buộc khi
-        `decision=restore`, không có giá trị mặc định (INV-10); không cho tự kiểm duyệt nội dung
-        chính mình (INV-12).
+        Trong MỘT transaction (T2, moderation-design.md §7): khoá + đọc case, CHỌN quyền theo
+        target_type của chính case đó (`Media.Moderate` cho media, `Review.Moderate` cho review —
+        không bao giờ dùng lẫn, ADR-018 D10), khoá + đọc target, xác thực transition qua FSM thuần
+        tương ứng (`assertValidMediaTransition`/`assertValidReviewTransition`, KHÔNG logic
+        transition nào lặp lại ở tầng API), cập nhật `media.status`/`reviews.status` + case, commit.
+        Với target_type=review, transaction còn gọi `recalculateRating()` của place sở hữu TRONG
+        CÙNG transaction (INV-4) — mọi transition review hợp lệ (hide/restore/approve) đều đổi tập
+        review `published` đóng góp vào `rating_avg`/`rating_count`. Audit (`moderation.decided`) và
+        domain event chỉ phát SAU commit, không bao giờ trước (ADR-018 INV-9); lỗi ghi audit/event
+        sau commit không hoàn tác quyết định — chỉ log. `target_type=place` chưa được hỗ trợ (chưa
+        đăng ký FSM, MR-4) → `422`. `reason` bắt buộc khi `decision=hide` (cả media và review) hoặc
+        `decision=reject` (media only — review không có trạng thái rejected, ADR-018 D5); `reject`
+        trên review target → `422`. `target_status` bắt buộc khi `decision=restore` trên media
+        (INV-10, hai đích khả dĩ: `published`/`pending`); tuỳ chọn trên review (chỉ MỘT đích hợp lệ,
+        `published` — gửi giá trị khác sẽ `422`). Không cho tự kiểm duyệt nội dung chính mình
+        (INV-12).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -2012,14 +2022,18 @@ paths:
                 decision:
                   type: string
                   enum: [approve, reject, hide, restore, dismiss]
+                  description: reject chỉ áp dụng cho target media — 422 nếu gửi cho target review.
                 target_status:
                   type: string
                   enum: [pending, published]
-                  description: Bắt buộc khi decision=restore (INV-10) — không có đích mặc định.
+                  description: >-
+                    Bắt buộc khi decision=restore trên media (INV-10, không có đích mặc định).
+                    Tuỳ chọn khi decision=restore trên review (chỉ published hợp lệ — giá trị khác
+                    422).
                 reason:
                   type: string
                   maxLength: 2000
-                  description: Bắt buộc khi decision=reject|hide (INV-11).
+                  description: Bắt buộc khi decision=reject|hide trên media, hoặc decision=hide trên review (INV-11).
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '401': { $ref: '#/components/responses/Unauthorized' }

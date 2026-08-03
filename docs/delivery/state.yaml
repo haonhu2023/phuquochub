@@ -30,8 +30,96 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-02, Media Orphan Cleanup -- RETURNING result-shape
-                                  # corrective fix) Owner-directed focused corrective task,
+  task: none                      # (2026-08-03, Moderation Foundation M4 -- Review Decision
+                                  # Workflow + transactional rating recalculation) Owner-approved
+                                  # implementation of ADR-018 M4, following the Media Orphan Cleanup
+                                  # RETURNING-result corrective fix. Scope was explicit and narrow:
+                                  # review moderation decisions, transactional review visibility
+                                  # changes, transactional place-rating recalculation, moderation
+                                  # case resolution, audit, domain events, tests, docs -- NO report
+                                  # create/resolve, NO auto-hide by report count, NO moderator
+                                  # frontend, NO notifications, NO AI, NO sanctions, NO scheduler,
+                                  # NO new Owner policy, NO new review_status enum value (all
+                                  # confirmed absent from the diff). Extended the EXISTING
+                                  # POST /moderation/cases/{id}/decide endpoint (no duplicate route)
+                                  # to accept target_type=review using the EXISTING pure FSM
+                                  # (assertValidReviewTransition, written and unit-tested since M1,
+                                  # unused by any caller until now) -- hide (published->hidden,
+                                  # reason required), restore (hidden->published, target_status
+                                  # optional since only one valid destination exists), approve
+                                  # (pending->published, a legacy/hand-inserted-row path since the
+                                  # API always auto-publishes reviews per O1). decision=reject on a
+                                  # review target is explicitly rejected (422) rather than silently
+                                  # mis-cast into the FSM (which only defines hide/restore/approve
+                                  # and would otherwise return undefined). Permission is now SELECTED
+                                  # AT RUNTIME by the case's own target_type (Media.Moderate for
+                                  # media, Review.Moderate for review) inside ModerationService
+                                  # .decide(), via AuthorizationService injected directly -- the
+                                  # controller's @RequirePermissions decorator was REMOVED from
+                                  # decide() because the correct permission depends on data only
+                                  # known after reading the case (a runtime value), not a route-time
+                                  # constant; JwtAuthGuard still gates authentication (401), and the
+                                  # service throws 403 for the wrong or missing permission. Live-
+                                  # verified this exact non-interchangeability: a temporary role
+                                  # granting ONLY Media.Moderate (no precedent in this repo for a
+                                  # custom role fixture -- created via direct roles/role_permissions
+                                  # SQL, cleaned up after) got 403 deciding a review case, while
+                                  # still deciding media cases normally (M3 unaffected). T2 extended
+                                  # inside the same one transaction: lock+read case, lock+read review
+                                  # (raw SQL on ModerationCasesRepository, NOT ReviewsRepository --
+                                  # ReviewsModule already imports ModerationModule for the event-
+                                  # publisher token, so importing ReviewsModule back would be a
+                                  # circular module dependency; same precedent as the pre-existing
+                                  # findTargetPreview() cross-table raw SQL), INV-12 self-moderation
+                                  # check, FSM validation, reviews.status update, then
+                                  # PlacesRepository.recalculateRating() (already manager-aware from
+                                  # M3, ModerationModule now imports PlacesModule -- verified no
+                                  # cycle: Places' own imports never reach Moderation or Reviews) in
+                                  # the SAME transaction (INV-4 -- every valid review transition
+                                  # crosses the published-set boundary, so recalculation is
+                                  # unconditional on the content-changed branch, never optional),
+                                  # case resolution, commit; audit+event strictly after commit,
+                                  # failure there logged and never reverts (INV-9, same pattern as
+                                  # M3). LIVE-VERIFIED the rating math exactly: hiding one of two
+                                  # published reviews (ratings 5+3, avg 4.0) recalculated to
+                                  # count=1/avg=3.0; restoring it recalculated back to count=2/
+                                  # avg=4.0; hiding a place's only published review produced the
+                                  # correct empty aggregate (count=0, avg=NULL); a legacy pending
+                                  # review approved via decide() was correctly added to the
+                                  # aggregate. Each exact-math test uses its OWN disposable place
+                                  # (not the shared e2e fixture place) after discovering that a
+                                  # shared place accumulates published reviews across tests, making
+                                  # a hand-set "before" baseline diverge from what
+                                  # recalculateRating() actually recomputes from ALL published rows
+                                  # for that place -- caught via three genuinely failing assertions
+                                  # before the fix, not assumed. ROLLBACK PROOF (Phase 8, live, not
+                                  # simulated): a standalone script ran the exact two SQL statements
+                                  # decide() executes (UPDATE reviews SET status; UPDATE places SET
+                                  # rating_avg/rating_count) inside a real transaction, confirmed
+                                  # both applied mid-transaction on the same connection, then forced
+                                  # a deliberate failure and rolled back -- a fresh read afterward
+                                  # confirmed BOTH reviews.status and places.rating_avg/rating_count
+                                  # reverted exactly to their pre-transaction values. Full
+                                  # validation: backend 95 suites/1049 tests (up from 1019), e2e 17
+                                  # suites/160 tests (up from 143, +1 new suite), zero regression (one
+                                  # transient failure in media-orphan-cleanup.e2e-spec.ts during a
+                                  # full-suite parallel run was confirmed NOT a regression -- passed
+                                  # cleanly both in isolation and on a second full-suite re-run,
+                                  # consistent with cross-file interference on the shared dev DB, not
+                                  # anything M4 touched); full monorepo build/typecheck/lint 12/12
+                                  # green; git diff --check clean; secret scan clean. Docs updated:
+                                  # docs/api/openapi.yaml (decide path description + schema extended
+                                  # for review target and its narrower reason/target_status rules),
+                                  # docs/data/modules/moderation-design.md (M4 marked done in banner
+                                  # + roadmap table only -- the §9 API table already listed
+                                  # Media.Moderate/Review.Moderate and M3/M4 from the original design,
+                                  # unchanged). ADR-018 was NOT modified -- implementation revealed no
+                                  # contradiction with it. See docs/delivery/reports/
+                                  # MODERATION-M4-REVIEW-WORKFLOW-2026-08-02.md. M5 (User Reporting)
+                                  # is the next milestone -- explicitly NOT started per instruction.
+                                  # ---- prior state (2026-08-02, Media Orphan Cleanup -- RETURNING
+                                  # result-shape corrective fix) ----
+                                  # Owner-directed focused corrective task,
                                   # immediately following Moderation Foundation M3 the same day.
                                   # M3's live validation found and fixed a defect in MediaRepository
                                   # .attachAndPublish() -- TypeORM's Postgres driver returns

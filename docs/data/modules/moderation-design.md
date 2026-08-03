@@ -22,8 +22,18 @@
 > xây qua `/moderation/cases/{id}/decide`, đúng như M2 đã định tuyến). Xem
 > [MODERATION-M3-MEDIA-WORKFLOW-2026-08-02.md](../../delivery/reports/MODERATION-M3-MEDIA-WORKFLOW-2026-08-02.md).
 >
-> M4–M7 vẫn CHƯA triển khai (đúng phạm vi M3: không review-moderation, không report, không
-> moderator UI, không AI, không notification, không sanction, không scheduler).
+> **M4 — Review Decision Workflow + tính lại rating trong transaction: ĐÃ TRIỂN KHAI (2026-08-03).**
+> `POST /moderation/cases/{id}/decide` mở rộng cho target review (hide/restore/approve qua FSM
+> thuần `assertValidReviewTransition`, không thêm `rejected` vào `review_status`); quyền CHỌN theo
+> target_type CỦA CHÍNH CASE (`Review.Moderate` cho review, `Media.Moderate` cho media, không dùng
+> lẫn — xác nhận sống bằng một role tuỳ biến chỉ có `Media.Moderate` bị từ chối 403 khi quyết định
+> review); transaction T2 mở rộng gọi `recalculateRating()` của place sở hữu TRONG CÙNG transaction
+> (INV-4, diễn tập rollback sống: buộc transaction thất bại sau khi cả hai UPDATE đã chạy, xác nhận
+> cả `reviews.status` lẫn `places.rating_avg/rating_count` hoàn nguyên chính xác). Xem
+> [MODERATION-M4-REVIEW-WORKFLOW-2026-08-03.md](../../delivery/reports/MODERATION-M4-REVIEW-WORKFLOW-2026-08-03.md).
+>
+> M5–M7 vẫn CHƯA triển khai (đúng phạm vi M4: không report, không moderator UI, không AI, không
+> notification, không sanction, không scheduler, không giá trị review_status mới).
 >
 > **Chỉ kiến trúc.** Chưa có code, entity, migration, file React, hay test nào cho bất cứ nội dung nào ở đây. SQL bên dưới là **đặc tả thiết kế**, không phải migration.
 >
@@ -788,7 +798,7 @@ Thứ tự theo đúng chỉ đạo Owner (yêu cầu sửa đổi #6). Mỗi mi
 | **M1** | **Moderation Schema Foundation** ✅ **ĐÃ XONG — 2026-08-02** | Migration `InitModeration` + `SeedModerationPermissions`; entity; enum; **hai module FSM thuần** (media + review) kèm unit test đầy đủ cho mọi transition hợp lệ/không hợp lệ. **Không endpoint.** | — | S |
 | **M2** | **Moderation Queue Read API** ✅ **ĐÃ XONG — 2026-08-02** | `GET /moderation/cases`, `GET /moderation/cases/{id}`; repository + phân trang + lọc; đấu nối quyền. **Chỉ đọc — không đổi được nội dung.** | M1 | S |
 | **M3** | **Media Decision Workflow + auto-publish khi gắn review** ✅ **ĐÃ XONG — 2026-08-02** | `decide` cho target media (`POST /moderation/cases/{id}/decide`, không `claim`/`release`/`reopen`, không `POST /media/{id}/moderate`); **transaction T1** (D4 + auto-publish O2); **transaction T2** (quyết định kiểm duyệt); **`BackfillModerationCases` theo T4/D14** (đếm-rồi-báo-cáo trước khi chạy, diễn tập apply/revert/reapply trên dữ liệu thật); audit + event. **Đây là milestone làm ảnh hiển thị được.** | M2 | M |
-| **M4** | **Review Decision Workflow + tính lại rating trong transaction** | Các action tương tự cho target review, **cộng ràng buộc INV-4 và test hồi quy cho nó**. | M3 | M |
+| **M4** | **Review Decision Workflow + tính lại rating trong transaction** ✅ **ĐÃ XONG — 2026-08-03** | `decide` cho target review (hide/restore/approve qua `assertValidReviewTransition`, không thêm `rejected`); quyền `Review.Moderate` chọn theo target_type, không dùng lẫn với `Media.Moderate`; **cộng ràng buộc INV-4** (recalculateRating trong cùng transaction, rollback sống đã diễn tập) **và test hồi quy cho nó**. | M3 | M |
 | **M5** | **User Reporting** | `POST /reviews/{id}/report`, `POST /media/{id}/report`; gộp case; chống trùng; nâng `severity`/`priority`. **Không** đổi hiển thị (O3). | M4 | M |
 | **M6** | **Moderator UI** | Frontend hàng chờ tại `/dashboard/moderation`; danh sách, chi tiết, quyết định. Tái dùng mẫu card/filter/pagination sẵn có và baseline accessibility (2026-08-02). | M3 | M |
 | **M7** | **AI Shadow Mode** | `AiModerationPort`; `npm run media:moderate` kèm `--dry-run`; **chỉ shadow** — chấm điểm, ghi `ai_moderation_score`/`ai_labels`, **không** đổi status, **không** mở case. | M4, và **đủ lượng quyết định của con người để so sánh** | M |
