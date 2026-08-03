@@ -8,11 +8,13 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { ModerationCasesRepository } from './repositories/moderation-cases.repository';
 import { ReportsRepository } from './repositories/reports.repository';
 import { MediaRepository } from '../media/repositories/media.repository';
+import { PlacesRepository } from '../places/repositories/places.repository';
+import { AuthorizationService } from '../authz/authorization.service';
 import { AuditService } from '../../core/audit/audit.service';
 import {
   CaseResolvedEvent,
@@ -24,18 +26,44 @@ import {
 import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './dto/moderation.dto';
 import { ModerationCaseStatus, ModerationDecision, ModerationTargetType, ReportStatus } from './moderation.enums';
 import { MediaStatus } from '../media/media.enums';
+import { ReviewStatus } from '../reviews/review.enums';
 import { assertValidMediaTransition, MediaTransitionAction } from './media-moderation.transition';
+import { assertValidReviewTransition, ReviewTransitionAction } from './review-moderation.transition';
 import { toModerationCaseDetail, toModerationCaseSummary } from './moderation.mapper';
 
-interface DecisionOutcome {
+// Quyền quyết định phụ thuộc target_type CỦA CHÍNH CASE — một giá trị runtime, không biết được ở
+// thời điểm khai báo route. Vì vậy KHÔNG dùng @RequirePermissions tĩnh trên controller cho decide()
+// — permission được chọn ở ĐÂY, sau khi đã khoá+đọc case (thấy targetType), và không bao giờ được
+// dùng lẫn (Media.Moderate không được xác thực một quyết định review, và ngược lại).
+const PERMISSION_BY_TARGET_TYPE: Partial<Record<ModerationTargetType, string>> = {
+  [ModerationTargetType.MEDIA]: 'Media.Moderate',
+  [ModerationTargetType.REVIEW]: 'Review.Moderate',
+};
+
+interface MediaDecisionOutcome {
+  targetType: ModerationTargetType.MEDIA;
   actorId: string;
   caseId: string;
-  mediaId: string;
+  targetId: string;
   decision: ModerationDecision;
   previousStatus: MediaStatus;
   newStatus: MediaStatus;
   contentChanged: boolean;
 }
+
+interface ReviewDecisionOutcome {
+  targetType: ModerationTargetType.REVIEW;
+  actorId: string;
+  caseId: string;
+  targetId: string;
+  placeId: string;
+  decision: ModerationDecision;
+  previousStatus: ReviewStatus;
+  newStatus: ReviewStatus;
+  contentChanged: boolean;
+}
+
+type DecisionOutcome = MediaDecisionOutcome | ReviewDecisionOutcome;
 
 @Injectable()
 export class ModerationService {
@@ -45,6 +73,8 @@ export class ModerationService {
     private readonly casesRepo: ModerationCasesRepository,
     private readonly reportsRepo: ReportsRepository,
     private readonly mediaRepo: MediaRepository,
+    private readonly placesRepo: PlacesRepository,
+    private readonly authz: AuthorizationService,
     private readonly audit: AuditService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -87,10 +117,10 @@ export class ModerationService {
   }
 
   /**
-   * POST /moderation/cases/{id}/decide (M3, ADR-018 T2). CHỈ hỗ trợ target_type=media — kiểm
-   * duyệt review là M4, ngoài phạm vi milestone này (§Do not implement, chỉ đạo M3). Toàn bộ
-   * transition đi qua `assertValidMediaTransition` (FSM thuần, M1) — service KHÔNG tự cài lại
-   * logic chuyển trạng thái ở đây.
+   * POST /moderation/cases/{id}/decide (M3: media; M4: review — ADR-018 T2). `place` case tồn tại
+   * được (enum đã dự trù) nhưng KHÔNG có FSM đăng ký (MR-4, ngoài phạm vi M1–M7) — từ chối tường
+   * minh (422). Toàn bộ transition đi qua FSM thuần tương ứng (`assertValidMediaTransition` /
+   * `assertValidReviewTransition`) — service KHÔNG tự cài lại logic chuyển trạng thái.
    */
   async decide(caseId: string, dto: DecideModerationCaseDto, actorId: string): Promise<void> {
     const outcome = await this.dataSource.transaction(async (manager) => {
@@ -104,94 +134,218 @@ export class ModerationService {
       if (found.status !== ModerationCaseStatus.OPEN && found.status !== ModerationCaseStatus.CLAIMED) {
         throw new ConflictException('Case đã được xử lý bởi moderator khác');
       }
-      // M3 — chỉ media. Review-type case tồn tại được (vd từ M5 report sau này) nhưng quyết định
-      // trên nó chưa được triển khai; từ chối tường minh thay vì áp sai FSM.
-      if (found.targetType !== ModerationTargetType.MEDIA) {
+
+      // `place` chưa đăng ký FSM (MR-4) — không có gì để quyết định, và không có tên quyền nào
+      // tương ứng để kiểm tra. Từ chối trước khi chạm tới bước phân quyền.
+      const requiredPermission = PERMISSION_BY_TARGET_TYPE[found.targetType];
+      if (!requiredPermission) {
         throw new UnprocessableEntityException(
-          'Chỉ hỗ trợ kiểm duyệt media ở milestone hiện tại (M3) — kiểm duyệt review thuộc M4.',
+          `Kiểm duyệt target_type="${found.targetType}" chưa được hỗ trợ (chưa đăng ký FSM).`,
         );
       }
 
-      // Bước 3: nạp target; assert tồn tại (422 nếu đã xoá — target_id không FK cứng, ADR-018 D9).
-      const media = await this.mediaRepo.findByIdForUpdate(manager, found.targetId);
-      if (!media) {
-        throw new UnprocessableEntityException('Media của case này không còn tồn tại.');
+      // Bước 2.5 — CHỌN quyền theo target_type CỦA CHÍNH CASE này (Media.Moderate cho media,
+      // Review.Moderate cho review) — không bao giờ dùng lẫn. Đây là lý do decide() không có
+      // @RequirePermissions tĩnh: quyền cần kiểm tra chỉ biết được SAU khi đã đọc `found` ở trên.
+      if (!(await this.authz.can(actorId, requiredPermission))) {
+        throw new ForbiddenException(`Thiếu quyền: ${requiredPermission}`);
       }
 
-      // Bước 4 (INV-12): không tự kiểm duyệt nội dung của chính mình. Áp dụng cho MỌI decision kể
-      // cả dismiss (dismiss vẫn là một phán quyết về nội dung của chính bạn).
-      if (media.uploadedBy !== null && media.uploadedBy === actorId) {
-        throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
+      if (found.targetType === ModerationTargetType.MEDIA) {
+        return this.decideMedia(manager, found.id, found.targetId, dto, actorId);
       }
-
-      const resolvedAt = new Date();
-
-      // decision=dismiss: hành động Ở CẤP CASE, KHÔNG đổi trạng thái nội dung (moderation-design.md
-      // §5.1) — report vô căn cứ hoặc case mở nhầm.
-      if (dto.decision === ModerationDecision.DISMISS) {
-        await this.casesRepo.resolve(manager, found.id, {
-          status: ModerationCaseStatus.DISMISSED,
-          decision: ModerationDecision.DISMISS,
-          reason: dto.reason ?? null,
-          resolvedBy: actorId,
-          resolvedAt,
-        });
-        await this.reportsRepo.resolveByCaseId(manager, found.id, ReportStatus.DISMISSED);
-        return {
-          actorId,
-          caseId: found.id,
-          mediaId: media.id,
-          decision: dto.decision,
-          previousStatus: media.status,
-          newStatus: media.status,
-          contentChanged: false,
-        } satisfies DecisionOutcome;
-      }
-
-      // INV-11: reject/hide bắt buộc có reason khác rỗng.
-      if (
-        (dto.decision === ModerationDecision.REJECT || dto.decision === ModerationDecision.HIDE) &&
-        !dto.reason?.trim()
-      ) {
-        throw new UnprocessableEntityException(`Quyết định "${dto.decision}" bắt buộc có lý do.`);
-      }
-
-      // dismiss đã loại ở nhánh trên — 4 giá trị còn lại của ModerationDecision khớp 1:1 giá trị
-      // chuỗi của MediaTransitionAction ('approve'|'reject'|'hide'|'restore').
-      const action = dto.decision as unknown as MediaTransitionAction;
-      const previousStatus = media.status;
-      const newStatus = assertValidMediaTransition(previousStatus, action, dto.target_status);
-
-      await this.mediaRepo.updateStatus(manager, media.id, newStatus);
-      await this.casesRepo.resolve(manager, found.id, {
-        status: ModerationCaseStatus.RESOLVED,
-        decision: dto.decision,
-        reason: dto.reason ?? null,
-        resolvedBy: actorId,
-        resolvedAt,
-      });
-      // reject/hide gỡ nội dung -> report(s) đúng (upheld); approve/restore giữ/khôi phục nội
-      // dung -> report(s) vô căn cứ (dismissed). Hệ quả cơ học của resolve, không phải tính năng
-      // "report resolution" riêng (M5) — xem ReportsRepository.resolveByCaseId.
-      const reportOutcome =
-        dto.decision === ModerationDecision.REJECT || dto.decision === ModerationDecision.HIDE
-          ? ReportStatus.UPHELD
-          : ReportStatus.DISMISSED;
-      await this.reportsRepo.resolveByCaseId(manager, found.id, reportOutcome);
-
-      return {
-        actorId,
-        caseId: found.id,
-        mediaId: media.id,
-        decision: dto.decision,
-        previousStatus,
-        newStatus,
-        contentChanged: true,
-      } satisfies DecisionOutcome;
+      return this.decideReview(manager, found.id, found.targetId, dto, actorId);
     });
 
     // Đến đây transaction đã COMMIT. INV-9: audit/event CHỈ sau commit.
     await this.emitPostCommit(outcome);
+  }
+
+  private async decideMedia(
+    manager: EntityManager,
+    caseId: string,
+    mediaId: string,
+    dto: DecideModerationCaseDto,
+    actorId: string,
+  ): Promise<MediaDecisionOutcome> {
+    // Bước 3: nạp target; assert tồn tại (422 nếu đã xoá — target_id không FK cứng, ADR-018 D9).
+    const media = await this.mediaRepo.findByIdForUpdate(manager, mediaId);
+    if (!media) {
+      throw new UnprocessableEntityException('Media của case này không còn tồn tại.');
+    }
+
+    // Bước 4 (INV-12): không tự kiểm duyệt nội dung của chính mình. Áp dụng cho MỌI decision kể
+    // cả dismiss (dismiss vẫn là một phán quyết về nội dung của chính bạn).
+    if (media.uploadedBy !== null && media.uploadedBy === actorId) {
+      throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
+    }
+
+    const resolvedAt = new Date();
+
+    // decision=dismiss: hành động Ở CẤP CASE, KHÔNG đổi trạng thái nội dung (moderation-design.md
+    // §5.1) — report vô căn cứ hoặc case mở nhầm.
+    if (dto.decision === ModerationDecision.DISMISS) {
+      await this.casesRepo.resolve(manager, caseId, {
+        status: ModerationCaseStatus.DISMISSED,
+        decision: ModerationDecision.DISMISS,
+        reason: dto.reason ?? null,
+        resolvedBy: actorId,
+        resolvedAt,
+      });
+      await this.reportsRepo.resolveByCaseId(manager, caseId, ReportStatus.DISMISSED);
+      return {
+        targetType: ModerationTargetType.MEDIA,
+        actorId,
+        caseId,
+        targetId: media.id,
+        decision: dto.decision,
+        previousStatus: media.status,
+        newStatus: media.status,
+        contentChanged: false,
+      };
+    }
+
+    // INV-11: reject/hide bắt buộc có reason khác rỗng.
+    if (
+      (dto.decision === ModerationDecision.REJECT || dto.decision === ModerationDecision.HIDE) &&
+      !dto.reason?.trim()
+    ) {
+      throw new UnprocessableEntityException(`Quyết định "${dto.decision}" bắt buộc có lý do.`);
+    }
+
+    // dismiss đã loại ở nhánh trên — 4 giá trị còn lại của ModerationDecision khớp 1:1 giá trị
+    // chuỗi của MediaTransitionAction ('approve'|'reject'|'hide'|'restore').
+    const action = dto.decision as unknown as MediaTransitionAction;
+    const previousStatus = media.status;
+    const newStatus = assertValidMediaTransition(previousStatus, action, dto.target_status);
+
+    await this.mediaRepo.updateStatus(manager, media.id, newStatus);
+    await this.casesRepo.resolve(manager, caseId, {
+      status: ModerationCaseStatus.RESOLVED,
+      decision: dto.decision,
+      reason: dto.reason ?? null,
+      resolvedBy: actorId,
+      resolvedAt,
+    });
+    // reject/hide gỡ nội dung -> report(s) đúng (upheld); approve/restore giữ/khôi phục nội
+    // dung -> report(s) vô căn cứ (dismissed). Hệ quả cơ học của resolve, không phải tính năng
+    // "report resolution" riêng (M5) — xem ReportsRepository.resolveByCaseId.
+    const reportOutcome =
+      dto.decision === ModerationDecision.REJECT || dto.decision === ModerationDecision.HIDE
+        ? ReportStatus.UPHELD
+        : ReportStatus.DISMISSED;
+    await this.reportsRepo.resolveByCaseId(manager, caseId, reportOutcome);
+
+    return {
+      targetType: ModerationTargetType.MEDIA,
+      actorId,
+      caseId,
+      targetId: media.id,
+      decision: dto.decision,
+      previousStatus,
+      newStatus,
+      contentChanged: true,
+    };
+  }
+
+  private async decideReview(
+    manager: EntityManager,
+    caseId: string,
+    reviewId: string,
+    dto: DecideModerationCaseDto,
+    actorId: string,
+  ): Promise<ReviewDecisionOutcome> {
+    // Bước 3: nạp target; assert tồn tại (422 nếu đã xoá — target_id không FK cứng, ADR-018 D9).
+    // `reviews` không có deleted_at (bất biến sau khi tạo ở MVP hiện tại) — "không còn tồn tại"
+    // hiện chỉ có thể là dòng đã bị xoá vật lý, chưa xảy ra qua API nào, nhưng vẫn xử lý phòng thủ
+    // giống media thay vì giả định không bao giờ null.
+    const review = await this.casesRepo.findReviewForUpdate(manager, reviewId);
+    if (!review) {
+      throw new UnprocessableEntityException('Review của case này không còn tồn tại.');
+    }
+
+    // INV-12: không tự kiểm duyệt nội dung của chính mình — áp dụng cho MỌI decision kể cả dismiss,
+    // cùng nguyên tắc nhánh media.
+    if (review.userId === actorId) {
+      throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
+    }
+
+    const resolvedAt = new Date();
+
+    // decision=dismiss: hành động Ở CẤP CASE, KHÔNG đổi trạng thái nội dung — review.status
+    // KHÔNG đổi nên KHÔNG cần recalculateRating (tập published không đổi).
+    if (dto.decision === ModerationDecision.DISMISS) {
+      await this.casesRepo.resolve(manager, caseId, {
+        status: ModerationCaseStatus.DISMISSED,
+        decision: ModerationDecision.DISMISS,
+        reason: dto.reason ?? null,
+        resolvedBy: actorId,
+        resolvedAt,
+      });
+      await this.reportsRepo.resolveByCaseId(manager, caseId, ReportStatus.DISMISSED);
+      return {
+        targetType: ModerationTargetType.REVIEW,
+        actorId,
+        caseId,
+        targetId: review.id,
+        placeId: review.placeId,
+        decision: dto.decision,
+        previousStatus: review.status,
+        newStatus: review.status,
+        contentChanged: false,
+      };
+    }
+
+    // Review không có trạng thái "rejected" (ADR-018 D5 — KHÔNG thêm giá trị vào review_status).
+    // `reject` chỉ có nghĩa với media; ném 422 tường minh ở đây thay vì để giá trị lọt vào FSM review
+    // (vốn chỉ định nghĩa 'hide'|'restore'|'approve' và sẽ trả về undefined một cách âm thầm nếu bị
+    // ép kiểu — xem review-moderation.transition.ts).
+    if (dto.decision === ModerationDecision.REJECT) {
+      throw new UnprocessableEntityException('"reject" không áp dụng cho review — chỉ hỗ trợ hide/restore/approve.');
+    }
+
+    // INV-11: hide bắt buộc có reason khác rỗng (review không có reject, nên chỉ hide cần kiểm).
+    if (dto.decision === ModerationDecision.HIDE && !dto.reason?.trim()) {
+      throw new UnprocessableEntityException(`Quyết định "${dto.decision}" bắt buộc có lý do.`);
+    }
+
+    // dismiss/reject đã loại ở trên — 3 giá trị còn lại ('hide'|'restore'|'approve') khớp 1:1
+    // ReviewTransitionAction.
+    const action = dto.decision as unknown as ReviewTransitionAction;
+    const previousStatus = review.status;
+    const targetStatus = dto.target_status as unknown as ReviewStatus | undefined;
+    const newStatus = assertValidReviewTransition(previousStatus, action, targetStatus);
+
+    await this.casesRepo.updateReviewStatus(manager, review.id, newStatus);
+    // INV-4 — MỌI thay đổi reviews.status làm đổi tập published PHẢI recalculateRating() trong
+    // CÙNG transaction. Cả 3 transition hợp lệ (hide/restore/approve) đều băng qua ranh giới
+    // published (không có transition review nào KHÔNG đổi tư cách published) nên luôn recalc ở
+    // nhánh "nội dung thực sự đổi" này — không có nhánh content-changed nào được phép bỏ qua nó.
+    await this.placesRepo.recalculateRating(review.placeId, manager);
+
+    await this.casesRepo.resolve(manager, caseId, {
+      status: ModerationCaseStatus.RESOLVED,
+      decision: dto.decision,
+      reason: dto.reason ?? null,
+      resolvedBy: actorId,
+      resolvedAt,
+    });
+    // hide gỡ nội dung -> report(s) đúng (upheld); approve/restore giữ/khôi phục nội dung ->
+    // report(s) vô căn cứ (dismissed) — cùng logic nhánh media.
+    const reportOutcome = dto.decision === ModerationDecision.HIDE ? ReportStatus.UPHELD : ReportStatus.DISMISSED;
+    await this.reportsRepo.resolveByCaseId(manager, caseId, reportOutcome);
+
+    return {
+      targetType: ModerationTargetType.REVIEW,
+      actorId,
+      caseId,
+      targetId: review.id,
+      placeId: review.placeId,
+      decision: dto.decision,
+      previousStatus,
+      newStatus,
+      contentChanged: true,
+    };
   }
 
   /**
@@ -202,12 +356,15 @@ export class ModerationService {
     try {
       await this.audit.record({
         event: 'moderation.decided',
-        entityType: 'media',
-        entityId: outcome.mediaId,
+        entityType: outcome.targetType,
+        entityId: outcome.targetId,
         actorId: outcome.actorId,
         before: { status: outcome.previousStatus },
         after: { status: outcome.newStatus, decision: outcome.decision },
-        context: { caseId: outcome.caseId },
+        context:
+          outcome.targetType === ModerationTargetType.REVIEW
+            ? { caseId: outcome.caseId, placeId: outcome.placeId }
+            : { caseId: outcome.caseId },
       });
     } catch (err) {
       this.logger.error(`Ghi audit moderation.decided cho case ${outcome.caseId} thất bại: ${(err as Error).message}`);
@@ -215,18 +372,18 @@ export class ModerationService {
 
     try {
       if (outcome.contentChanged) {
-        if (outcome.newStatus === MediaStatus.PUBLISHED) {
+        if (outcome.newStatus === MediaStatus.PUBLISHED || outcome.newStatus === ReviewStatus.PUBLISHED) {
           await this.events.publish(
-            new ContentApprovedEvent(ModerationTargetType.MEDIA, outcome.mediaId, outcome.caseId),
+            new ContentApprovedEvent(outcome.targetType, outcome.targetId, outcome.caseId),
           );
-        } else if (outcome.newStatus === MediaStatus.HIDDEN) {
+        } else if (outcome.newStatus === MediaStatus.HIDDEN || outcome.newStatus === ReviewStatus.HIDDEN) {
           await this.events.publish(
-            new ContentHiddenEvent(ModerationTargetType.MEDIA, outcome.mediaId, outcome.caseId),
+            new ContentHiddenEvent(outcome.targetType, outcome.targetId, outcome.caseId),
           );
         }
-        // reject / restore-về-pending: không có event hiển thị riêng — content không "approved"
-        // hay "hidden" theo đúng ngữ nghĩa hai event đó (xem moderation-events.ts). CaseResolved
-        // bên dưới vẫn LUÔN phát bất kể nhánh nào.
+        // reject (media only) / restore-về-pending (media only): không có event hiển thị riêng —
+        // content không "approved" hay "hidden" theo đúng ngữ nghĩa hai event đó (xem
+        // moderation-events.ts). CaseResolved bên dưới vẫn LUÔN phát bất kể nhánh nào.
       }
       await this.events.publish(new CaseResolvedEvent(outcome.caseId, outcome.decision));
     } catch (err) {

@@ -32,6 +32,14 @@ export interface ResolveModerationCase {
   resolvedAt: Date;
 }
 
+// T2 (Moderation Foundation M4) — review target trong CÙNG transaction quyết định.
+export interface ReviewForDecision {
+  id: string;
+  placeId: string;
+  userId: string;
+  status: ReviewStatus;
+}
+
 // M2 (GET /moderation/cases) — status LÀ MẢNG: bỏ trống filter -> service truyền [open,claimed]
 // (mặc định "hàng chờ", thiết kế §4); truyền tường minh -> service truyền đúng 1 phần tử. Repository
 // không tự quyết định mặc định đó (thuộc service, cùng nguyên tắc repository không suy luận nghiệp vụ).
@@ -104,6 +112,35 @@ export class ModerationCasesRepository {
       .setLock('pessimistic_write')
       .where('c.id = :id', { id })
       .getOne();
+  }
+
+  /**
+   * T2 (Moderation Foundation M4) — khoá + đọc review target trong CÙNG transaction quyết định.
+   * Raw SQL trực tiếp trên `reviews` (KHÔNG tiêm `ReviewsRepository`): `ReviewsModule` đã import
+   * `ModerationModule` (cho `MODERATION_EVENT_PUBLISHER`, ADR-018 D12) — tiêm ngược lại sẽ tạo
+   * circular module dependency. Cùng tiền lệ `findTargetPreview()` đọc thẳng bảng `reviews`/`media`
+   * từ repository này để tránh đúng vấn đề đó.
+   *
+   * `SELECT ... FOR UPDATE` — lệnh SELECT, driver Postgres của TypeORM trả `rows` trực tiếp (KHÔNG
+   * phải tuple `[rows, rowCount]` — tuple chỉ xảy ra với UPDATE/DELETE, xem
+   * `MediaRepository.attachAndPublish()`/`softDeleteOrphanCandidate()`), nên không cần destructure.
+   */
+  async findReviewForUpdate(manager: EntityManager, id: string): Promise<ReviewForDecision | null> {
+    const rows: Array<{ id: string; place_id: string; user_id: string; status: ReviewStatus }> =
+      await manager.query(`SELECT id, place_id, user_id, status FROM reviews WHERE id = $1 FOR UPDATE`, [id]);
+    const r = rows[0];
+    return r ? { id: r.id, placeId: r.place_id, userId: r.user_id, status: r.status } : null;
+  }
+
+  /**
+   * T2 (M4) — ghi status ĐÃ ĐƯỢC XÁC NHẬN hợp lệ bởi FSM (`assertValidReviewTransition`).
+   * Repository KHÔNG tự kiểm tra transition, cùng nguyên tắc `MediaRepository.updateStatus()`.
+   * UPDATE không có `RETURNING` — không rơi vào bug hình dạng tuple (đã sửa ở
+   * `attachAndPublish()`/`softDeleteOrphanCandidate()`), và kết quả không được dùng nên vô hại dù
+   * driver có luôn trả tuple cho lệnh UPDATE (xem PostgresQueryRunner.query()).
+   */
+  async updateReviewStatus(manager: EntityManager, id: string, status: ReviewStatus): Promise<void> {
+    await manager.query(`UPDATE reviews SET status = $1 WHERE id = $2`, [status, id]);
   }
 
   /** T2 — ghi kết luận ĐÃ ĐƯỢC XÁC NHẬN hợp lệ bởi service (case ∈ {open,claimed}, FSM hợp lệ,

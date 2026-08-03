@@ -5,13 +5,16 @@ import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.dec
 import { ModerationService } from './moderation.service';
 import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './dto/moderation.dto';
 
-// M2 (Queue Read API) + M3 (Media Decision, ADR-018/moderation-design.md §9). `list`/`getById`
-// CHỈ ĐỌC (Moderation.Queue.View). `decide` là hành động đặc quyền duy nhất ở đây — gated bởi
-// `Media.Moderate` (M3 chỉ hỗ trợ target_type=media; `Review.Moderate` tồn tại từ M1 nhưng KHÔNG
-// route nào dùng tới nó ở milestone này — kiểm duyệt review là M4). claim/release/reopen VÀ
-// `/media/{id}/moderate` (stub riêng) đều CHƯA triển khai — phạm vi M3 phiên này chỉ có `decide`.
-// JwtAuthGuard + PermissionsGuard đã global (AuthModule, APP_GUARD) — không cần khai báo guard
-// riêng, cùng quy ước BookingsController.
+// M2 (Queue Read API) + M3 (Media Decision) + M4 (Review Decision, ADR-018/moderation-design.md
+// §9). `list`/`getById` CHỈ ĐỌC (Moderation.Queue.View). `decide` là hành động đặc quyền duy nhất
+// ở đây, hỗ trợ CẢ target_type=media (Media.Moderate) LẪN target_type=review (Review.Moderate) —
+// nhưng KHÔNG có `@RequirePermissions` tĩnh ở route này: quyền cần kiểm tra phụ thuộc target_type
+// CỦA CHÍNH CASE, một giá trị chỉ biết được sau khi đọc case (runtime), nên
+// `ModerationService.decide()` tự chọn và kiểm tra permission đúng bằng `AuthorizationService`
+// sau khi khoá+đọc case — xem comment ở đó. JwtAuthGuard vẫn global (401 cho request chưa đăng
+// nhập); PermissionsGuard KHÔNG chặn gì thêm ở route này vì không có metadata permission nào khai
+// báo (đã xác thực là đủ để vào tới service — service tự deny nếu thiếu quyền cụ thể, 403).
+// claim/release/reopen VÀ `/media/{id}/moderate` (stub riêng) đều CHƯA triển khai.
 @Controller('moderation/cases')
 export class ModerationController {
   constructor(private readonly service: ModerationService) {}
@@ -32,7 +35,6 @@ export class ModerationController {
 
   @Post(':id/decide')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('Media.Moderate')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   async decide(
     @Param('id', ParseUUIDPipe) id: string,
