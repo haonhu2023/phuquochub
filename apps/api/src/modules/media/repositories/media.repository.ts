@@ -95,6 +95,21 @@ export class MediaRepository {
   }
 
   /**
+   * WF-12 (Moderation Foundation M5) — "target tồn tại và ở trạng thái báo cáo được" (T3 bước 1)
+   * cho `POST /media/{id}/report`. Chỉ media `published` là nội dung công khai một người dùng
+   * thường có thể GẶP để báo cáo — `pending`/`hidden`/`rejected` không hiển thị, nên trả về false
+   * y hệt "không tồn tại" (`existsById` sẽ không phân biệt được hai trường hợp và endpoint trả về
+   * CÙNG một 404 cho cả hai — không rò rỉ trạng thái kiểm duyệt nội bộ cho reporter).
+   */
+  async existsPublished(id: string): Promise<boolean> {
+    const rows: unknown[] = await this.repo.query(
+      `SELECT 1 FROM media WHERE id = $1 AND status = 'published' AND deleted_at IS NULL LIMIT 1`,
+      [id],
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Tạo media row mới cho một upload đã xác thực. Luôn `status=pending`, `provider=upload`,
    * `url=null` (Design review §A — không bao giờ lưu URL tuyệt đối/signed; sinh động lúc đọc).
    * Nhận `manager` trực tiếp (không dùng `this.repo`) để caller kiểm soát transaction.

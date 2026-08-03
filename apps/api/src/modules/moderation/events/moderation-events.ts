@@ -1,4 +1,4 @@
-import { ModerationDecision, ModerationTargetType } from '../moderation.enums';
+import { ModerationCaseSource, ModerationDecision, ModerationTargetType } from '../moderation.enums';
 
 // ADR-018 D12 — CHỈ trừu tượng hoá sự kiện, KHÔNG broker/scheduler/notification thật. Sao chép
 // nguyên hình dạng `BOOKING_EVENT_PUBLISHER`/`BookingDomainEvent` — khi một adapter thật (Kafka/
@@ -65,12 +65,42 @@ export class CaseResolvedEvent {
   ) {}
 }
 
+// T3 (Moderation Foundation M5) — phát cho MỌI report tạo thành công, bất kể case mới hay tái sử
+// dụng (ngược lại CaseOpenedEvent bên dưới, CHỈ phát khi case THẬT SỰ mới được tạo).
+export class ReportCreatedEvent {
+  readonly type = 'ReportCreated' as const;
+  constructor(
+    public readonly reportId: string,
+    public readonly targetType: ModerationTargetType,
+    public readonly targetId: string,
+    public readonly caseId: string,
+    public readonly occurredAt: Date = new Date(),
+  ) {}
+}
+
+// T3 — CHỈ phát khi report ĐẦU TIÊN trên một target tạo ra một case mới (INSERT thắng, không
+// phải ON CONFLICT DO NOTHING đụng case đã mở sẵn) — nguồn để theo dõi tốc độ case mới phát sinh
+// từ report, tách biệt khỏi report thứ 2/3/... trên cùng case (chỉ có ReportCreated, không có
+// CaseOpened thứ hai).
+export class CaseOpenedEvent {
+  readonly type = 'CaseOpened' as const;
+  constructor(
+    public readonly caseId: string,
+    public readonly targetType: ModerationTargetType,
+    public readonly targetId: string,
+    public readonly source: ModerationCaseSource,
+    public readonly occurredAt: Date = new Date(),
+  ) {}
+}
+
 export type ModerationDomainEvent =
   | ReviewCreatedEvent
   | MediaAutoPublishedEvent
   | ContentApprovedEvent
   | ContentHiddenEvent
-  | CaseResolvedEvent;
+  | CaseResolvedEvent
+  | ReportCreatedEvent
+  | CaseOpenedEvent;
 
 export const MODERATION_EVENT_PUBLISHER = Symbol('MODERATION_EVENT_PUBLISHER');
 

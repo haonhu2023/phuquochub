@@ -115,6 +115,46 @@ export class ModerationCasesRepository {
   }
 
   /**
+   * T3 (Moderation Foundation M5) — khoá đúng MỘT case đang mở (open/claimed) của một target,
+   * TRONG cùng transaction tạo report. Chốt chặn concurrency: khi `createOpenCase()` gặp
+   * `ON CONFLICT DO NOTHING` (case đã tồn tại), lệnh INSERT đó không khoá được gì — hàm này khoá
+   * dòng đã tồn tại đó (`SELECT ... FOR UPDATE`) trước khi service đọc `report_count`/`severity`
+   * hiện tại để tính giá trị mới, đúng cùng nguyên tắc `findByIdForUpdate()` (T2). Không có hàm
+   * này, hai report đồng thời trên CÙNG target sẽ đọc-rồi-ghi report_count/severity KHÔNG khoá —
+   * lost update kinh điển (báo cáo thứ hai ghi đè giá trị của báo cáo thứ nhất thay vì cộng dồn).
+   */
+  findOpenCaseForTargetForUpdate(
+    manager: EntityManager,
+    targetType: ModerationTargetType,
+    targetId: string,
+  ): Promise<ModerationCase | null> {
+    return manager
+      .getRepository(ModerationCase)
+      .createQueryBuilder('c')
+      .setLock('pessimistic_write')
+      .where('c.targetType = :targetType', { targetType })
+      .andWhere('c.targetId = :targetId', { targetId })
+      .andWhere('c.status IN (:...statuses)', { statuses: [ModerationCaseStatus.OPEN, ModerationCaseStatus.CLAIMED] })
+      .getOne();
+  }
+
+  /**
+   * T3 (M5) — bước 4: `report_count`/`severity`/`priority` ĐÃ ĐƯỢC TÍNH bởi service
+   * (`computeSeverity()`/`computePriority()`, moderation-severity.ts — module thuần, không tự suy
+   * luận ở đây, cùng nguyên tắc `resolve()`). UPDATE không `RETURNING` — an toàn dù driver luôn
+   * trả tuple cho UPDATE (không dùng kết quả).
+   */
+  async updateReportAggregation(
+    manager: EntityManager,
+    id: string,
+    data: { reportCount: number; severity: ModerationCaseSeverity; priority: number },
+  ): Promise<void> {
+    await manager
+      .getRepository(ModerationCase)
+      .update({ id }, { reportCount: data.reportCount, severity: data.severity, priority: data.priority });
+  }
+
+  /**
    * T2 (Moderation Foundation M4) — khoá + đọc review target trong CÙNG transaction quyết định.
    * Raw SQL trực tiếp trên `reviews` (KHÔNG tiêm `ReviewsRepository`): `ReviewsModule` đã import
    * `ModerationModule` (cho `MODERATION_EVENT_PUBLISHER`, ADR-018 D12) — tiêm ngược lại sẽ tạo

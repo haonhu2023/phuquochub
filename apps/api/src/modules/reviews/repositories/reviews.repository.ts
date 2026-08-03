@@ -47,6 +47,17 @@ export class ReviewsRepository {
     return this.repo.exists({ where: { placeId, userId } });
   }
 
+  /**
+   * WF-12 (Moderation Foundation M5) — "target tồn tại và ở trạng thái báo cáo được" (T3 bước 1)
+   * cho `POST /reviews/{id}/report`. Chỉ review `published` là nội dung công khai một người dùng
+   * thường có thể GẶP để báo cáo — `pending`/`hidden` không hiển thị, nên trả về false y hệt
+   * "không tồn tại" (endpoint trả về CÙNG một 404 cho cả hai — không rò rỉ trạng thái kiểm duyệt
+   * nội bộ cho reporter).
+   */
+  existsPublished(id: string): Promise<boolean> {
+    return this.repo.exists({ where: { id, status: ReviewStatus.PUBLISHED } });
+  }
+
   /** Đánh giá đã published của một Place, mới nhất trước — kèm tên/avatar người viết. */
   listPublishedByPlace(placeId: string): Promise<ReviewRow[]> {
     return this.repo.query(

@@ -6,6 +6,7 @@ import {
   ModerationCaseStatus,
   ModerationDecision,
   ModerationTargetType,
+  ReportReason,
 } from '../moderation.enums';
 import { MediaStatus } from '../../media/media.enums';
 
@@ -63,4 +64,16 @@ export class DecideModerationCaseDto {
   @IsOptional() @IsString() @MaxLength(2000)
   @Transform(trim)
   reason?: string;
+}
+
+// POST /reviews/{id}/report · POST /media/{id}/report (M5, ADR-018/moderation-design.md §9.2) —
+// request body ĐÚNG 2 trường đã đặc tả. Phản hồi thành công KHÔNG BAO GIỜ tiết lộ nội dung có bị
+// ẩn hay không (O3) — DTO này chỉ nhận input, không phản ánh gì về trạng thái hàng chờ.
+export class CreateReportDto {
+  @IsEnum(ReportReason)
+  reason!: ReportReason;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  @Transform(trim)
+  description?: string;
 }

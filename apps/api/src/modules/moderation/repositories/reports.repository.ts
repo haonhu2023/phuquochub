@@ -23,14 +23,23 @@ export class ReportsRepository {
     private readonly repo: Repository<Report>,
   ) {}
 
-  /** WF-12 "chống report trùng" — hậu thuẫn `uq_reports_one_per_reporter` ở tầng ứng dụng trước
-   * khi ghi (chính unique index mới là chốt chặn thật). */
+  /**
+   * WF-12 "chống report trùng" — hậu thuẫn `uq_reports_one_per_reporter` ở tầng ứng dụng trước
+   * khi ghi (chính unique index mới là chốt chặn thật). `manager` TUỲ CHỌN — T3 (M5) BẮT BUỘC
+   * truyền vào để kiểm tra này chạy SAU khi đã khoá case của target (INV-3's
+   * `findOpenCaseForTargetForUpdate()`), nên hai lần gọi trùng từ CHÍNH một reporter (double-click)
+   * bị serialize qua khoá case đó thay vì đua nhau đọc "chưa có report" cùng lúc — bỏ trống dùng
+   * `this.repo` như trước (không phá vỡ lời gọi cũ nào ngoài transaction), cùng quy ước
+   * `PlacesRepository.recalculateRating()`.
+   */
   existsByReporterAndTarget(
     targetType: ModerationTargetType,
     targetId: string,
     reporterId: string,
+    manager?: EntityManager,
   ): Promise<boolean> {
-    return this.repo.exists({ where: { targetType, targetId, reporterId } });
+    const repo = manager ? manager.getRepository(Report) : this.repo;
+    return repo.exists({ where: { targetType, targetId, reporterId } });
   }
 
   /** GET /moderation/cases/{id} (M2) — mọi report gắn với một case, cũ nhất trước (khớp thứ tự

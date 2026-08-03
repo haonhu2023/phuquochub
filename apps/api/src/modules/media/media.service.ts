@@ -1,10 +1,19 @@
-import { ConflictException, ForbiddenException, Injectable, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { StorageService } from '../../core/storage/storage.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { MediaRepository } from './repositories/media.repository';
+import { ModerationReportsService } from '../moderation/moderation-reports.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
+import { CreateReportDto } from '../moderation/dto/moderation.dto';
 import { AllowedMediaMimeType, CreateMediaDto, PresignMediaDto } from './dto/media.dto';
 import { toMedia } from './media.mapper';
 
@@ -38,6 +47,7 @@ export class MediaService {
     private readonly redis: RedisService,
     private readonly mediaRepo: MediaRepository,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly moderationReports: ModerationReportsService,
   ) {}
 
   async presign(dto: PresignMediaDto, userId: string) {
@@ -127,6 +137,26 @@ export class MediaService {
     // reads url straight from the row, which createUploaded always inserts as NULL for these rows,
     // so no public URL is ever exposed for pending, unmoderated media (design review §A/§8).
     return toMedia(media);
+  }
+
+  /**
+   * WF-12/T3 (Moderation Foundation M5, ADR-018/moderation-design.md §9.2). T3 bước 1 ("target
+   * tồn tại và ở trạng thái báo cáo được") sống Ở ĐÂY — chỉ MediaRepository biết `media`.
+   * `existsPublished()` trả về false CHO CẢ "không tồn tại" LẪN "chưa/không còn published" — cùng
+   * một 404, không rò rỉ trạng thái kiểm duyệt nội bộ cho reporter. Phần còn lại của T3 uỷ quyền
+   * hoàn toàn cho `ModerationReportsService`.
+   */
+  async report(mediaId: string, dto: CreateReportDto, reporterId: string): Promise<void> {
+    if (!(await this.mediaRepo.existsPublished(mediaId))) {
+      throw new NotFoundException('Không tìm thấy media');
+    }
+    await this.moderationReports.report({
+      targetType: ModerationTargetType.MEDIA,
+      targetId: mediaId,
+      reporterId,
+      reason: dto.reason,
+      description: dto.description || null,
+    });
   }
 
   private sessionKey(key: string): string {

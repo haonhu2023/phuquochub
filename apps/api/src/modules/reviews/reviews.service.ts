@@ -8,6 +8,9 @@ import {
   ModerationEventPublisher,
   ReviewCreatedEvent,
 } from '../moderation/events/moderation-events';
+import { ModerationReportsService } from '../moderation/moderation-reports.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
+import { CreateReportDto } from '../moderation/dto/moderation.dto';
 import { CreateReviewDto } from './dto/reviews.dto';
 import { toReview } from './reviews.mapper';
 
@@ -21,11 +24,33 @@ export class ReviewsService {
     private readonly audit: AuditService,
     @Inject(MODERATION_EVENT_PUBLISHER)
     private readonly events: ModerationEventPublisher,
+    private readonly moderationReports: ModerationReportsService,
   ) {}
 
   async listByPlace(placeId: string) {
     const rows = await this.reviewsRepo.listPublishedByPlace(placeId);
     return rows.map(toReview);
+  }
+
+  /**
+   * WF-12/T3 (Moderation Foundation M5, ADR-018/moderation-design.md §9.2). T3 bước 1 ("target
+   * tồn tại và ở trạng thái báo cáo được") sống Ở ĐÂY — chỉ ReviewsRepository biết `reviews`.
+   * `existsPublished()` trả về false CHO CẢ "không tồn tại" LẪN "tồn tại nhưng chưa/không còn
+   * published" — cùng một 404, không rò rỉ trạng thái kiểm duyệt nội bộ cho reporter. Phần còn
+   * lại của T3 (case reuse/creation, report, report_count/severity/priority) uỷ quyền hoàn toàn
+   * cho `ModerationReportsService` — KHÔNG cài lại logic đó ở đây.
+   */
+  async report(reviewId: string, dto: CreateReportDto, reporterId: string): Promise<void> {
+    if (!(await this.reviewsRepo.existsPublished(reviewId))) {
+      throw new NotFoundException('Không tìm thấy đánh giá');
+    }
+    await this.moderationReports.report({
+      targetType: ModerationTargetType.REVIEW,
+      targetId: reviewId,
+      reporterId,
+      reason: dto.reason,
+      description: dto.description || null,
+    });
   }
 
   // ADR-018 T1 (Moderation Foundation M3) — tạo review + gắn/auto-publish media_ids trong MỘT
