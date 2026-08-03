@@ -21,7 +21,7 @@ describe('ReportsRepository', () => {
   });
 
   describe('existsByReporterAndTarget', () => {
-    it('tra đúng target_type/target_id/reporter_id (hậu thuẫn uq_reports_one_per_reporter)', async () => {
+    it('tra đúng target_type/target_id/reporter_id (hậu thuẫn uq_reports_one_per_reporter), không truyền manager -> dùng this.repo', async () => {
       repo.exists.mockResolvedValue(true);
 
       await expect(
@@ -30,6 +30,20 @@ describe('ReportsRepository', () => {
       expect(repo.exists).toHaveBeenCalledWith({
         where: { targetType: ModerationTargetType.REVIEW, targetId: 'r1', reporterId: 'u1' },
       });
+    });
+
+    it('truyền manager (T3, M5) -> chạy TRONG transaction đó, không dùng this.repo', async () => {
+      const inner = createMock<Repository<Report>>({ exists: jest.fn().mockResolvedValue(false) });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      const result = await sut.existsByReporterAndTarget(ModerationTargetType.MEDIA, 'm1', 'u1', manager);
+
+      expect(manager.getRepository).toHaveBeenCalledWith(Report);
+      expect(inner.exists).toHaveBeenCalledWith({
+        where: { targetType: ModerationTargetType.MEDIA, targetId: 'm1', reporterId: 'u1' },
+      });
+      expect(repo.exists).not.toHaveBeenCalled();
+      expect(result).toBe(false);
     });
   });
 

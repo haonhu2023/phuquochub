@@ -1,6 +1,8 @@
-import { ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { MediaService } from './media.service';
 import { MediaStatus } from './media.enums';
+import type { ModerationReportsService } from '../moderation/moderation-reports.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('MediaService', () => {
@@ -8,6 +10,7 @@ describe('MediaService', () => {
   let redis: LooseMock<import('../../core/redis/redis.service').RedisService>;
   let mediaRepo: LooseMock<import('./repositories/media.repository').MediaRepository>;
   let ds: LooseMock<import('typeorm').DataSource>;
+  let moderationReports: LooseMock<ModerationReportsService>;
   let redisClient: { set: jest.Mock; get: jest.Mock; del: jest.Mock };
   let service: MediaService;
 
@@ -29,9 +32,11 @@ describe('MediaService', () => {
       placeExists: jest.fn(),
       findByUploaderAndChecksum: jest.fn(),
       createUploaded: jest.fn(),
+      existsPublished: jest.fn(),
     });
     ds = createMock<import('typeorm').DataSource>({ transaction: jest.fn() });
-    service = new MediaService(storage, redis, mediaRepo, ds);
+    moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
+    service = new MediaService(storage, redis, mediaRepo, ds, moderationReports);
   });
 
   describe('presign', () => {
@@ -196,6 +201,37 @@ describe('MediaService', () => {
         alt_text: null,
         status: MediaStatus.PENDING,
       });
+    });
+  });
+
+  describe('report (WF-12/T3, M5)', () => {
+    it('media không published (hoặc không tồn tại) -> 404, KHÔNG gọi ModerationReportsService', async () => {
+      mediaRepo.existsPublished.mockResolvedValue(false);
+
+      await expect(service.report('m1', { reason: 'spam' } as never, 'u1')).rejects.toThrow(NotFoundException);
+      expect(moderationReports.report).not.toHaveBeenCalled();
+    });
+
+    it('media published -> uỷ quyền cho ModerationReportsService với targetType=media đúng targetId/reporterId/reason/description', async () => {
+      mediaRepo.existsPublished.mockResolvedValue(true);
+
+      await service.report('m1', { reason: 'offensive', description: 'xúc phạm' } as never, 'u1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith({
+        targetType: ModerationTargetType.MEDIA,
+        targetId: 'm1',
+        reporterId: 'u1',
+        reason: 'offensive',
+        description: 'xúc phạm',
+      });
+    });
+
+    it('description bỏ trống -> truyền null (không phải undefined)', async () => {
+      mediaRepo.existsPublished.mockResolvedValue(true);
+
+      await service.report('m1', { reason: 'spam' } as never, 'u1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
     });
   });
 });

@@ -7,6 +7,8 @@ import { ReviewsRepository } from './repositories/reviews.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuditService } from '../../core/audit/audit.service';
 import type { ModerationEventPublisher } from '../moderation/events/moderation-events';
+import type { ModerationReportsService } from '../moderation/moderation-reports.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('ReviewsService', () => {
@@ -14,6 +16,7 @@ describe('ReviewsService', () => {
   let placesRepo: LooseMock<PlacesRepository>;
   let audit: LooseMock<AuditService>;
   let events: LooseMock<ModerationEventPublisher>;
+  let moderationReports: LooseMock<ModerationReportsService>;
   let service: ReviewsService;
 
   beforeEach(() => {
@@ -21,11 +24,13 @@ describe('ReviewsService', () => {
       listPublishedByPlace: jest.fn(),
       existsByUser: jest.fn(),
       createWithMedia: jest.fn(),
+      existsPublished: jest.fn(),
     });
     placesRepo = createMock<PlacesRepository>({ existsById: jest.fn() });
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
-    service = new ReviewsService(reviewsRepo, placesRepo, audit, events);
+    moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
+    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -135,5 +140,36 @@ describe('ReviewsService', () => {
     events.publish.mockRejectedValue(new Error('broker không phản hồi'));
 
     await expect(service.create('p1', { rating: 5 }, 'u1')).resolves.toBeUndefined();
+  });
+
+  describe('report (WF-12/T3, M5)', () => {
+    it('review không published (hoặc không tồn tại) -> 404, KHÔNG gọi ModerationReportsService', async () => {
+      reviewsRepo.existsPublished.mockResolvedValue(false);
+
+      await expect(service.report('r1', { reason: 'spam' } as never, 'u1')).rejects.toThrow(NotFoundException);
+      expect(moderationReports.report).not.toHaveBeenCalled();
+    });
+
+    it('review published -> uỷ quyền cho ModerationReportsService với targetType=review đúng targetId/reporterId/reason/description', async () => {
+      reviewsRepo.existsPublished.mockResolvedValue(true);
+
+      await service.report('r1', { reason: 'spam', description: 'nội dung spam' } as never, 'u1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith({
+        targetType: ModerationTargetType.REVIEW,
+        targetId: 'r1',
+        reporterId: 'u1',
+        reason: 'spam',
+        description: 'nội dung spam',
+      });
+    });
+
+    it('description bỏ trống -> truyền null (không phải undefined)', async () => {
+      reviewsRepo.existsPublished.mockResolvedValue(true);
+
+      await service.report('r1', { reason: 'spam' } as never, 'u1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
+    });
   });
 });

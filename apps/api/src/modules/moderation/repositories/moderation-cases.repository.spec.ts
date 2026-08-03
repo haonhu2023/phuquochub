@@ -313,6 +313,65 @@ describe('ModerationCasesRepository', () => {
     });
   });
 
+  describe('findOpenCaseForTargetForUpdate (T3, M5)', () => {
+    it('khoá case bằng pessimistic_write, lọc đúng target_type/target_id/status open|claimed', async () => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.setLock = jest.fn().mockReturnValue(qb);
+      qb.where = jest.fn().mockReturnValue(qb);
+      qb.andWhere = jest.fn().mockReturnValue(qb);
+      qb.getOne = jest.fn().mockResolvedValue({ id: 'c1' });
+      const inner = createMock<Repository<ModerationCase>>({
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      const result = await sut.findOpenCaseForTargetForUpdate(manager, ModerationTargetType.REVIEW, 'r1');
+
+      expect(manager.getRepository).toHaveBeenCalledWith(ModerationCase);
+      expect(qb.setLock).toHaveBeenCalledWith('pessimistic_write');
+      expect(qb.where).toHaveBeenCalledWith('c.targetType = :targetType', { targetType: ModerationTargetType.REVIEW });
+      expect(qb.andWhere).toHaveBeenCalledWith('c.targetId = :targetId', { targetId: 'r1' });
+      expect(qb.andWhere).toHaveBeenCalledWith('c.status IN (:...statuses)', {
+        statuses: [ModerationCaseStatus.OPEN, ModerationCaseStatus.CLAIMED],
+      });
+      expect(result).toEqual({ id: 'c1' });
+    });
+
+    it('không có case mở nào -> null (KHÔNG throw — caller tự quyết định tạo case mới)', async () => {
+      const qb: Record<string, jest.Mock> = {};
+      qb.setLock = jest.fn().mockReturnValue(qb);
+      qb.where = jest.fn().mockReturnValue(qb);
+      qb.andWhere = jest.fn().mockReturnValue(qb);
+      qb.getOne = jest.fn().mockResolvedValue(null);
+      const inner = createMock<Repository<ModerationCase>>({
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      const result = await sut.findOpenCaseForTargetForUpdate(manager, ModerationTargetType.MEDIA, 'm1');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('updateReportAggregation (T3, M5)', () => {
+    it('ghi report_count/severity/priority ĐÃ ĐƯỢC TÍNH bởi service, qua manager', async () => {
+      const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      await sut.updateReportAggregation(manager, 'c1', {
+        reportCount: 3,
+        severity: ModerationCaseSeverity.HIGH,
+        priority: 40,
+      });
+
+      expect(manager.getRepository).toHaveBeenCalledWith(ModerationCase);
+      expect(inner.update).toHaveBeenCalledWith(
+        { id: 'c1' },
+        { reportCount: 3, severity: ModerationCaseSeverity.HIGH, priority: 40 },
+      );
+    });
+  });
+
   describe('findReviewForUpdate (T2, M4)', () => {
     it('SELECT ... FOR UPDATE trên reviews, tham số hoá, ánh xạ snake_case -> camelCase', async () => {
       const manager = createMock<EntityManager>({

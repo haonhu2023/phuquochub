@@ -24,4 +24,14 @@ describe('MediaController — ranh giới đặc quyền', () => {
   it('register yêu cầu Media.Upload.Own', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('register'))).toEqual(['Media.Upload.Own']);
   });
+
+  it('report yêu cầu Report.Create (M5, WF-12 — khác Media.Upload.Own)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('report'))).toEqual(['Report.Create']);
+  });
+
+  it('report giới hạn 5 request/phút (moderation-design.md §8.2)', () => {
+    const target = handlerOf('report');
+    expect(Reflect.getMetadata(THROTTLER_LIMIT + 'default', target)).toBe(5);
+    expect(Reflect.getMetadata(THROTTLER_TTL + 'default', target)).toBe(60_000);
+  });
 });

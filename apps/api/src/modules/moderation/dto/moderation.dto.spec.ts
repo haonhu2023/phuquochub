@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './moderation.dto';
+import { CreateReportDto, DecideModerationCaseDto, ListModerationCasesQueryDto } from './moderation.dto';
 
 const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
 
@@ -10,6 +10,10 @@ function validateQuery(raw: Record<string, unknown>) {
 
 function validateDecide(raw: Record<string, unknown>) {
   return validate(plainToInstance(DecideModerationCaseDto, raw), PIPE_OPTIONS);
+}
+
+function validateReport(raw: Record<string, unknown>) {
+  return validate(plainToInstance(CreateReportDto, raw), PIPE_OPTIONS);
 }
 
 describe('ListModerationCasesQueryDto', () => {
@@ -113,6 +117,57 @@ describe('DecideModerationCaseDto', () => {
 
   it('từ chối trường không thuộc hợp đồng', async () => {
     const errors = await validateDecide({ decision: 'approve', status: 'resolved' });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+// M5 (WF-12, ADR-018/moderation-design.md §9.2) — request body ĐÚNG 2 trường đã đặc tả.
+describe('CreateReportDto', () => {
+  it('chấp nhận chỉ reason (description tuỳ chọn)', async () => {
+    const errors = await validateReport({ reason: 'spam' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('chấp nhận đủ reason + description', async () => {
+    const errors = await validateReport({ reason: 'offensive', description: 'nội dung xúc phạm' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it.each(['spam', 'misinformation', 'offensive', 'irrelevant', 'copyright', 'personal_info', 'other'])(
+    'chấp nhận reason=%s (đủ 7 giá trị enum)',
+    async (reason) => {
+      const errors = await validateReport({ reason });
+      expect(errors).toHaveLength(0);
+    },
+  );
+
+  it('thiếu reason -> lỗi', async () => {
+    const errors = await validateReport({});
+    expect(errors.some((e) => e.property === 'reason')).toBe(true);
+  });
+
+  it('reason không thuộc enum -> lỗi', async () => {
+    const errors = await validateReport({ reason: 'not_a_real_reason' });
+    expect(errors.some((e) => e.property === 'reason')).toBe(true);
+  });
+
+  it('description vượt 1000 ký tự -> lỗi', async () => {
+    const errors = await validateReport({ reason: 'spam', description: 'x'.repeat(1001) });
+    expect(errors.some((e) => e.property === 'description')).toBe(true);
+  });
+
+  it('description đúng 1000 ký tự -> hợp lệ', async () => {
+    const errors = await validateReport({ reason: 'spam', description: 'x'.repeat(1000) });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('description được trim khoảng trắng', async () => {
+    const dto = plainToInstance(CreateReportDto, { reason: 'spam', description: '  quảng cáo  ' });
+    expect(dto.description).toBe('quảng cáo');
+  });
+
+  it('từ chối trường không thuộc hợp đồng', async () => {
+    const errors = await validateReport({ reason: 'spam', targetId: 'abc' });
     expect(errors.length).toBeGreaterThan(0);
   });
 });

@@ -106,6 +106,21 @@ describe('MediaRepository — Media Upload Foundation', () => {
     });
   });
 
+  describe('existsPublished (WF-12/T3, M5)', () => {
+    it('media published (chưa xoá mềm) → true', async () => {
+      repo.query.mockResolvedValue([{ '?column?': 1 }]);
+      await expect(sut.existsPublished('m1')).resolves.toBe(true);
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain("FROM media WHERE id = $1 AND status = 'published' AND deleted_at IS NULL");
+      expect(params).toEqual(['m1']);
+    });
+
+    it('không tồn tại, chưa/không còn published, hoặc đã xoá mềm → false (CÙNG một 404 ở service, không phân biệt lý do)', async () => {
+      repo.query.mockResolvedValue([]);
+      await expect(sut.existsPublished('m1')).resolves.toBe(false);
+    });
+  });
+
   describe('findByUploaderAndChecksum', () => {
     it('tìm theo đúng uploaded_by + checksum_sha256, loại trừ đã xoá mềm', async () => {
       repo.findOne.mockResolvedValue({ id: 'm1' });

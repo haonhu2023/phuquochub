@@ -38,6 +38,13 @@ describe('ReviewsRepository', () => {
     });
   });
 
+  describe('existsPublished (WF-12/T3, M5)', () => {
+    it('tra đúng id + status=published', async () => {
+      await sut.existsPublished('r1');
+      expect(repo.exists).toHaveBeenCalledWith({ where: { id: 'r1', status: ReviewStatus.PUBLISHED } });
+    });
+  });
+
   describe('createWithMedia', () => {
     it('không media_ids → tạo review published, KHÔNG gọi attachAndPublish, vẫn recalculateRating trong CÙNG transaction', async () => {
       const result = await sut.createWithMedia({
