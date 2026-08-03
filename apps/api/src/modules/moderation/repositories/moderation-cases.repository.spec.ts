@@ -313,6 +313,57 @@ describe('ModerationCasesRepository', () => {
     });
   });
 
+  describe('findReviewForUpdate (T2, M4)', () => {
+    it('SELECT ... FOR UPDATE trên reviews, tham số hoá, ánh xạ snake_case -> camelCase', async () => {
+      const manager = createMock<EntityManager>({
+        query: jest.fn().mockResolvedValue([
+          { id: 'r1', place_id: 'place-1', user_id: 'author-1', status: 'published' },
+        ]),
+      });
+
+      const result = await sut.findReviewForUpdate(manager, 'r1');
+
+      const [query, params] = manager.query.mock.calls[0];
+      expect(sql(query)).toContain('SELECT id, place_id, user_id, status FROM reviews WHERE id = $1 FOR UPDATE');
+      expect(params).toEqual(['r1']);
+      expect(result).toEqual({ id: 'r1', placeId: 'place-1', userId: 'author-1', status: 'published' });
+    });
+
+    it('không có dòng khớp -> null (KHÔNG throw — target_id không FK cứng, ADR-018 D9)', async () => {
+      const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue([]) });
+      const result = await sut.findReviewForUpdate(manager, 'missing');
+      expect(result).toBeNull();
+    });
+
+    // SELECT (khác UPDATE/DELETE) — driver Postgres của TypeORM trả rows trực tiếp, KHÔNG phải
+    // tuple [rows, rowCount] (xem MediaRepository.attachAndPublish()/softDeleteOrphanCandidate()
+    // cho lớp bug tuple đã sửa ở UPDATE/DELETE...RETURNING). Test này xác nhận rõ ràng để không ai
+    // vô tình "sửa" bằng cách destructure một mảng vốn đã đúng.
+    it('KHÔNG destructure tuple — kết quả SELECT là mảng rows trực tiếp', async () => {
+      const rows = [{ id: 'r1', place_id: 'place-1', user_id: 'author-1', status: 'published' }];
+      const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue(rows) });
+      const result = await sut.findReviewForUpdate(manager, 'r1');
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('updateReviewStatus (T2, M4)', () => {
+    it('UPDATE reviews SET status, tham số hoá đúng thứ tự [status, id]', async () => {
+      const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue(undefined) });
+
+      await sut.updateReviewStatus(manager, 'r1', 'hidden' as never);
+
+      const [query, params] = manager.query.mock.calls[0];
+      expect(sql(query)).toBe('UPDATE reviews SET status = $1 WHERE id = $2');
+      expect(params).toEqual(['hidden', 'r1']);
+    });
+
+    it('KHÔNG tự kiểm tra transition hợp lệ — repository chỉ ghi, FSM đã xác nhận ở service (cùng nguyên tắc MediaRepository.updateStatus())', async () => {
+      const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue(undefined) });
+      await expect(sut.updateReviewStatus(manager, 'r1', 'published' as never)).resolves.toBeUndefined();
+    });
+  });
+
   describe('resolve (T2, M3)', () => {
     it('ghi status/decision/reason/resolved_by/resolved_at qua manager, KHÔNG tự kiểm tra tính hợp lệ', async () => {
       const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });

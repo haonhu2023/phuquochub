@@ -26,8 +26,8 @@ describe('ModerationController — ranh giới đặc quyền', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('getById'))).toEqual(['Moderation.Queue.View']);
   });
 
-  it('decide yêu cầu Media.Moderate (KHÔNG phải Moderation.Queue.View — đọc và quyết định là hai quyền khác nhau)', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('decide'))).toEqual(['Media.Moderate']);
+  it('decide KHÔNG có @RequirePermissions tĩnh (M4) — quyền phụ thuộc target_type của case (runtime), ModerationService.decide() tự chọn Media.Moderate/Review.Moderate và kiểm tra bằng AuthorizationService sau khi đọc case, không phải PermissionsGuard tĩnh', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('decide'))).toBeUndefined();
   });
 
   it('decide giới hạn 60 request/phút (đặc quyền hơn đọc hàng chờ, theo khuôn MediaController presign/register)', () => {

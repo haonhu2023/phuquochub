@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { ModerationService } from './moderation.service';
-import { ModerationCasesRepository } from './repositories/moderation-cases.repository';
+import { ModerationCasesRepository, ReviewForDecision } from './repositories/moderation-cases.repository';
 import { ReportsRepository } from './repositories/reports.repository';
 import { MediaRepository } from '../media/repositories/media.repository';
+import { PlacesRepository } from '../places/repositories/places.repository';
+import { AuthorizationService } from '../authz/authorization.service';
 import { AuditService } from '../../core/audit/audit.service';
 import type { ModerationEventPublisher } from './events/moderation-events';
 import { ModerationCase } from './entities/moderation-case.entity';
@@ -22,6 +24,7 @@ import {
   ReportStatus,
 } from './moderation.enums';
 import { MediaProvider, MediaStatus, MediaType } from '../media/media.enums';
+import { ReviewStatus } from '../reviews/review.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 function makeCase(overrides: Partial<ModerationCase> = {}): ModerationCase {
@@ -81,10 +84,22 @@ function makeMedia(overrides: Partial<Media> = {}): Media {
   return Object.assign(m, overrides);
 }
 
+function makeReview(overrides: Partial<ReviewForDecision> = {}): ReviewForDecision {
+  return {
+    id: 'r1',
+    placeId: 'place-1',
+    userId: 'author-1',
+    status: ReviewStatus.PUBLISHED,
+    ...overrides,
+  };
+}
+
 describe('ModerationService', () => {
   let casesRepo: LooseMock<ModerationCasesRepository>;
   let reportsRepo: LooseMock<ReportsRepository>;
   let mediaRepo: LooseMock<MediaRepository>;
+  let placesRepo: LooseMock<PlacesRepository>;
+  let authz: LooseMock<AuthorizationService>;
   let audit: LooseMock<AuditService>;
   let events: LooseMock<ModerationEventPublisher>;
   let dataSource: LooseMock<DataSource>;
@@ -99,16 +114,22 @@ describe('ModerationService', () => {
       findTargetPreview: jest.fn(),
       createOpenCase: jest.fn(),
       findByIdForUpdate: jest.fn(),
+      findReviewForUpdate: jest.fn(),
+      updateReviewStatus: jest.fn(),
       resolve: jest.fn(),
     });
     reportsRepo = createMock<ReportsRepository>({ findByCaseId: jest.fn(), resolveByCaseId: jest.fn() });
     mediaRepo = createMock<MediaRepository>({ findByIdForUpdate: jest.fn(), updateStatus: jest.fn() });
+    placesRepo = createMock<PlacesRepository>({ recalculateRating: jest.fn() });
+    // Mặc định CHO PHÉP mọi permission — các test về phân quyền (M4) tự override `can` khi cần
+    // kiểm tra đúng nhánh 403, giữ mọi test decide() hiện có (M3) không phải sửa gì thêm.
+    authz = createMock<AuthorizationService>({ can: jest.fn().mockResolvedValue(true) });
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
-    service = new ModerationService(casesRepo, reportsRepo, mediaRepo, audit, dataSource, events);
+    service = new ModerationService(casesRepo, reportsRepo, mediaRepo, placesRepo, authz, audit, dataSource, events);
   });
 
   describe('list', () => {
@@ -253,12 +274,71 @@ describe('ModerationService', () => {
       expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
     });
 
-    it('target_type=review -> 422 (kiểm duyệt review là M4, chưa triển khai)', async () => {
-      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ targetType: ModerationTargetType.REVIEW }));
+    it('target_type=place -> 422 (chưa đăng ký FSM, MR-4 — không có quyền nào tương ứng để kiểm tra)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ targetType: ModerationTargetType.PLACE }));
       await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).rejects.toThrow(
         UnprocessableEntityException,
       );
       expect(mediaRepo.findByIdForUpdate).not.toHaveBeenCalled();
+      expect(casesRepo.findReviewForUpdate).not.toHaveBeenCalled();
+      expect(authz.can).not.toHaveBeenCalled();
+    });
+
+    describe('phân quyền theo target_type (M4 — Media.Moderate/Review.Moderate không dùng lẫn)', () => {
+      it('target_type=media -> kiểm tra ĐÚNG Media.Moderate (không phải Review.Moderate)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ targetType: ModerationTargetType.MEDIA }));
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+        expect(authz.can).toHaveBeenCalledWith(ACTOR, 'Media.Moderate');
+        expect(authz.can).not.toHaveBeenCalledWith(ACTOR, 'Review.Moderate');
+      });
+
+      it('target_type=review -> kiểm tra ĐÚNG Review.Moderate (không phải Media.Moderate)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(
+          makeCase({ targetType: ModerationTargetType.REVIEW, targetId: 'r1' }),
+        );
+        casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+        await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm' }, ACTOR);
+
+        expect(authz.can).toHaveBeenCalledWith(ACTOR, 'Review.Moderate');
+        expect(authz.can).not.toHaveBeenCalledWith(ACTOR, 'Media.Moderate');
+      });
+
+      it('có Media.Moderate nhưng case là review -> 403, KHÔNG cho Media.Moderate xác thực quyết định review', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(
+          makeCase({ targetType: ModerationTargetType.REVIEW, targetId: 'r1' }),
+        );
+        authz.can.mockImplementation(async (_userId: string, perm: string) => perm === 'Media.Moderate');
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm' }, ACTOR),
+        ).rejects.toThrow(ForbiddenException);
+        expect(casesRepo.findReviewForUpdate).not.toHaveBeenCalled();
+      });
+
+      it('có Review.Moderate nhưng case là media -> 403, KHÔNG cho Review.Moderate xác thực quyết định media', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ targetType: ModerationTargetType.MEDIA }));
+        authz.can.mockImplementation(async (_userId: string, perm: string) => perm === 'Review.Moderate');
+
+        await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(mediaRepo.findByIdForUpdate).not.toHaveBeenCalled();
+      });
+
+      it('không có quyền nào cả -> 403, KHÔNG chạm tới target/case resolve', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        authz.can.mockResolvedValue(false);
+
+        await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(mediaRepo.findByIdForUpdate).not.toHaveBeenCalled();
+        expect(casesRepo.resolve).not.toHaveBeenCalled();
+      });
     });
 
     it('media không còn tồn tại -> 422, KHÔNG throw 404', async () => {
@@ -470,6 +550,267 @@ describe('ModerationService', () => {
 
       expect(events.publish).toHaveBeenCalledTimes(1);
       expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
+    });
+  });
+
+  describe('decide (M4, T2 — target_type=review)', () => {
+    const ACTOR = 'moderator-1'; // khác review.userId ('author-1') — không tự kiểm duyệt
+    const reviewCase = (overrides: Partial<ModerationCase> = {}) =>
+      makeCase({ targetType: ModerationTargetType.REVIEW, targetId: 'r1', ...overrides });
+
+    it('review không còn tồn tại -> 422, KHÔNG throw 404', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(null);
+
+      await expect(service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    it('INV-12: moderator là chính tác giả review -> 403, cả quyết định nội dung lẫn dismiss', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ userId: 'author-self' }));
+
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, 'author-self'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.DISMISS }, 'author-self'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    it('published + hide KHÔNG kèm reason -> 422, KHÔNG đổi status, KHÔNG tính lại rating', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await expect(service.decide('c1', { decision: ModerationDecision.HIDE }, ACTOR)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+      expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
+    });
+
+    it('published + hide kèm reason -> hidden, resolve case, reports upheld, TÍNH LẠI rating (INV-4)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED, placeId: 'place-9' }));
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm chính sách' }, ACTOR);
+
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.HIDDEN);
+      expect(placesRepo.recalculateRating).toHaveBeenCalledWith('place-9', manager);
+      expect(casesRepo.resolve).toHaveBeenCalledWith(
+        manager,
+        'c1',
+        expect.objectContaining({ status: ModerationCaseStatus.RESOLVED, decision: ModerationDecision.HIDE }),
+      );
+      expect(reportsRepo.resolveByCaseId).toHaveBeenCalledWith(manager, 'c1', ReportStatus.UPHELD);
+    });
+
+    it('recalculateRating được gọi SAU updateReviewStatus, TRONG cùng transaction manager (INV-4)', async () => {
+      const order: string[] = [];
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+      casesRepo.updateReviewStatus.mockImplementation(async () => {
+        order.push('updateReviewStatus');
+      });
+      placesRepo.recalculateRating.mockImplementation(async () => {
+        order.push('recalculateRating');
+      });
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR);
+
+      expect(order).toEqual(['updateReviewStatus', 'recalculateRating']);
+    });
+
+    it('hidden + restore KHÔNG kèm target_status -> published (chỉ MỘT đích hợp lệ, không cần đoán)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.HIDDEN }));
+
+      await service.decide('c1', { decision: ModerationDecision.RESTORE }, ACTOR);
+
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.PUBLISHED);
+      expect(placesRepo.recalculateRating).toHaveBeenCalledWith('place-1', manager);
+    });
+
+    it('hidden + restore kèm target_status=published -> published (tường minh, vẫn hợp lệ)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.HIDDEN }));
+
+      await service.decide(
+        'c1',
+        { decision: ModerationDecision.RESTORE, target_status: MediaStatus.PUBLISHED },
+        ACTOR,
+      );
+
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.PUBLISHED);
+    });
+
+    it('hidden + restore kèm target_status=pending -> 422 (review chỉ có MỘT đích restore hợp lệ, mâu thuẫn O1)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.HIDDEN }));
+
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.RESTORE, target_status: MediaStatus.PENDING }, ACTOR),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    it('pending + approve -> published (đường lịch sử/chèn tay — API hiện tại không tạo review pending), TÍNH LẠI rating', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PENDING }));
+
+      await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.PUBLISHED);
+      expect(placesRepo.recalculateRating).toHaveBeenCalledWith('place-1', manager);
+      expect(reportsRepo.resolveByCaseId).toHaveBeenCalledWith(manager, 'c1', ReportStatus.DISMISSED);
+    });
+
+    it('transition không hợp lệ (vd published + approve) -> 422, uỷ quyền hoàn toàn cho FSM review', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+      expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
+    });
+
+    it('decision=reject trên review -> 422 tường minh (review không có trạng thái rejected, ADR-018 D5)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'x' }, ACTOR),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    it('decision=dismiss -> case dismissed, KHÔNG đổi review.status, KHÔNG tính lại rating, reports dismissed', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await service.decide('c1', { decision: ModerationDecision.DISMISS, reason: 'report vô căn cứ' }, ACTOR);
+
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+      expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
+      expect(casesRepo.resolve).toHaveBeenCalledWith(
+        manager,
+        'c1',
+        expect.objectContaining({ status: ModerationCaseStatus.DISMISSED, decision: ModerationDecision.DISMISS }),
+      );
+      expect(reportsRepo.resolveByCaseId).toHaveBeenCalledWith(manager, 'c1', ReportStatus.DISMISSED);
+    });
+
+    it('KHÔNG audit/event nào được gọi TRƯỚC khi transaction hoàn tất (INV-9)', async () => {
+      const callOrder: string[] = [];
+      dataSource.transaction.mockImplementation(async (cb: (m: EntityManager) => Promise<unknown>) => {
+        callOrder.push('transaction:start');
+        const result = await cb(manager);
+        callOrder.push('transaction:commit');
+        return result;
+      });
+      audit.record.mockImplementation(async () => {
+        callOrder.push('audit:record');
+      });
+      events.publish.mockImplementation(async () => {
+        callOrder.push('event:publish');
+      });
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR);
+
+      const commitIndex = callOrder.indexOf('transaction:commit');
+      const firstAuditOrEvent = callOrder.findIndex((c) => c.startsWith('audit') || c.startsWith('event'));
+      expect(commitIndex).toBeGreaterThanOrEqual(0);
+      expect(firstAuditOrEvent).toBeGreaterThan(commitIndex);
+    });
+
+    it('audit ghi lỗi SAU commit -> KHÔNG hoàn tác, decide() vẫn resolve bình thường', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+      audit.record.mockRejectedValue(new Error('audit DB down'));
+
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR),
+      ).resolves.toBeUndefined();
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.HIDDEN);
+    });
+
+    it('publish event lỗi SAU commit -> KHÔNG hoàn tác, decide() vẫn resolve bình thường', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+      events.publish.mockRejectedValue(new Error('broker down'));
+
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR),
+      ).resolves.toBeUndefined();
+      expect(casesRepo.updateReviewStatus).toHaveBeenCalledWith(manager, 'r1', ReviewStatus.HIDDEN);
+    });
+
+    it('hide -> phát ContentHidden(targetType=review) + CaseResolved', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR);
+
+      expect(events.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'ContentHidden', targetType: ModerationTargetType.REVIEW, targetId: 'r1' }),
+      );
+      expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
+    });
+
+    it('approve -> phát ContentApproved(targetType=review) + CaseResolved', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PENDING }));
+
+      await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+      expect(events.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'ContentApproved', targetType: ModerationTargetType.REVIEW, targetId: 'r1' }),
+      );
+      expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
+    });
+
+    it('restore (hidden->published) -> phát ContentApproved + CaseResolved (cùng nhánh newStatus===published)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.HIDDEN }));
+
+      await service.decide('c1', { decision: ModerationDecision.RESTORE }, ACTOR);
+
+      expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'ContentApproved' }));
+      expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
+    });
+
+    it('audit ghi entityType="review" và context kèm placeId (khác media — không có placeId)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED, placeId: 'place-7' }));
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'x' }, ACTOR);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'moderation.decided',
+          entityType: 'review',
+          entityId: 'r1',
+          context: { caseId: 'c1', placeId: 'place-7' },
+        }),
+      );
+    });
+
+    it('media unchanged: quyết định media vẫn hoạt động bình thường sau khi thêm nhánh review (không hồi quy M3)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ targetType: ModerationTargetType.MEDIA }));
+      mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+      await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(casesRepo.findReviewForUpdate).not.toHaveBeenCalled();
+      expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
     });
   });
 });
