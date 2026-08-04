@@ -47,8 +47,25 @@
 > `ModerationModule` (vốn đã import `MediaModule` từ M3). Xem
 > [MODERATION-M5-REPORTING-2026-08-03.md](../../delivery/reports/MODERATION-M5-REPORTING-2026-08-03.md).
 >
-> M6–M7 vẫn CHƯA triển khai (đúng phạm vi M5: không auto-hide, không moderator UI, không AI, không
-> notification, không sanction, không scheduler, không giá trị moderation status mới).
+> **M6 — Moderator UI: ĐÃ TRIỂN KHAI FRONTEND (2026-08-04) — CHỜ KIỂM THỬ TRỰC TIẾP.** Giao diện
+> moderator tại `/dashboard/moderation` (hàng chờ + lọc theo URL status/target_type/source/severity/
+> assigned_to + phân trang dùng chung) và `/dashboard/moderation/{id}` (chi tiết case + reports + ảnh
+> chụp target + form quyết định). CHỈ tiêu thụ hợp đồng M2/M3/M4 đã có (`GET /moderation/cases`,
+> `GET /moderation/cases/{id}`, `POST /moderation/cases/{id}/decide`) — KHÔNG endpoint mới, KHÔNG đổi
+> schema/contract/BE. Quyết định suy từ `target_type` + trạng thái nội dung hiện tại (KHÔNG render
+> hành động không hợp lệ); `reason` bắt buộc cho reject|hide; `target_status` tường minh cho restore
+> media; `409` = case đã bị người khác xử lý (thông báo an toàn), KHÔNG mutation lạc quan. Media chờ
+> duyệt KHÔNG có URL xem trước (hoãn signed-URL) → hiển thị "Không có ảnh xem trước" trung thực.
+> **Điều hướng:** FE session CHƯA lộ permission (và không có field permission ở `/users/me`) nên link
+> kiểm duyệt bị ẩn khỏi nav dashboard — route vẫn tới được qua URL trực tiếp; chốt chặn quyền là
+> `403` của BE (`Moderation.Queue.View`) → forbidden state rõ ràng. Kiểm thử: 37 test component
+> moderation + toàn bộ suite FE 234×2 PASS, typecheck 6/6, lint sạch, build 4/4, BE unit 1115 PASS.
+> **CHỜ (Docker chưa sẵn sàng):** kiểm thử trình duyệt trực tiếp + backend e2e. Trạng thái: PARTIALLY
+> COMPLETE. Xem
+> [MODERATION-M6-MODERATOR-UI-2026-08-04.md](../../delivery/reports/MODERATION-M6-MODERATOR-UI-2026-08-04.md).
+>
+> M7 (AI Shadow Mode) vẫn CHƯA triển khai (đúng phạm vi M6: không AI, không sanction, không appeal,
+> không notification, không analytics/SLA, không bulk decision, không realtime/websocket).
 >
 > **Chỉ kiến trúc.** Chưa có code, entity, migration, file React, hay test nào cho bất cứ nội dung nào ở đây. SQL bên dưới là **đặc tả thiết kế**, không phải migration.
 >

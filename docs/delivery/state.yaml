@@ -30,7 +30,33 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-03, Moderation Foundation M5 -- User Reporting,
+  task: none                      # (2026-08-04, Moderation M6 -- Moderator UI) Owner-approved FRONTEND for
+                                  # ADR-018 M6: routes /dashboard/moderation (queue -- URL filters
+                                  # status/target_type/source/severity/assigned_to, shared Pagination,
+                                  # loading/empty/error/forbidden states) and /dashboard/moderation/
+                                  # {id} (case + reports + target preview + decision form). Consumes
+                                  # ONLY existing M2/M3/M4 endpoints (GET /moderation/cases, GET
+                                  # /moderation/cases/{id}, POST /moderation/cases/{id}/decide) -- NO
+                                  # new endpoint, NO schema/contract/BE change. Decisions derived from
+                                  # target_type + current content status (no invalid action rendered);
+                                  # reason required for reject|hide; explicit target_status for media
+                                  # restore; 409 stale-conflict shown safely; NO optimistic mutation;
+                                  # media pending has no preview URL (signed-URL deferred) -> truthful
+                                  # no-preview state. NAV: FE session exposes no permission data (no
+                                  # /users/me permission field) -> moderation link OMITTED from
+                                  # dashboard nav; route reachable by direct URL; authoritative gate
+                                  # is BE 403 (Moderation.Queue.View) -> forbidden state. Pre-existing
+                                  # http.ts/http.spec.ts (apiGetAuth/apiGetPaginatedAuth, valid
+                                  # in-progress M6 work) retained + tested. VALIDATED (Docker-
+                                  # independent): 37 moderation component tests + full FE suite 234 x2
+                                  # + monorepo typecheck 6/6 + lint clean + build 4/4 + BE unit 1115,
+                                  # all PASS. PENDING (Docker unavailable): live browser validation
+                                  # (member 403, moderator queue/filters/pagination/detail, media +
+                                  # review decisions, rating recalculation, stale conflict, fixture
+                                  # cleanup) + backend e2e regression. STATUS: PARTIALLY COMPLETE --
+                                  # DOCKER VERIFICATION REQUIRED. See docs/delivery/reports/
+                                  # MODERATION-M6-MODERATOR-UI-2026-08-04.md.
+                                  # ---- prior state (2026-08-03, Moderation Foundation M5 -- User Reporting,
                                   # transaction T3) Owner-approved implementation of ADR-018 M5,
                                   # immediately following M4 the same day. Scope was explicit and
                                   # narrow: user report creation, transaction T3, report
