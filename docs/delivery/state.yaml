@@ -30,16 +30,17 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-04, Moderation M6 -- Moderator UI) Owner-approved FRONTEND for
-                                  # ADR-018 M6: routes /dashboard/moderation (queue -- URL filters
-                                  # status/target_type/source/severity/assigned_to, shared Pagination,
-                                  # loading/empty/error/forbidden states) and /dashboard/moderation/
-                                  # {id} (case + reports + target preview + decision form). Consumes
-                                  # ONLY existing M2/M3/M4 endpoints (GET /moderation/cases, GET
-                                  # /moderation/cases/{id}, POST /moderation/cases/{id}/decide) -- NO
-                                  # new endpoint, NO schema/contract/BE change. Decisions derived from
-                                  # target_type + current content status (no invalid action rendered);
-                                  # reason required for reject|hide; explicit target_status for media
+  task: none                      # (2026-08-04, Moderation M6 -- Moderator UI) Owner-approved
+                                  # implementation + LIVE VERIFICATION for ADR-018 M6: routes
+                                  # /dashboard/moderation (queue -- URL filters status/target_type/
+                                  # source/severity/assigned_to, shared Pagination, loading/empty/
+                                  # error/forbidden states) and /dashboard/moderation/{id} (case +
+                                  # reports + target preview + decision form). Consumes ONLY existing
+                                  # M2/M3/M4 endpoints (GET /moderation/cases, GET /moderation/cases/
+                                  # {id}, POST /moderation/cases/{id}/decide) -- NO new endpoint, NO
+                                  # schema/contract/BE change. Decisions derived from target_type +
+                                  # current content status (no invalid action rendered); reason
+                                  # required for reject|hide; explicit target_status for media
                                   # restore; 409 stale-conflict shown safely; NO optimistic mutation;
                                   # media pending has no preview URL (signed-URL deferred) -> truthful
                                   # no-preview state. NAV: FE session exposes no permission data (no
@@ -47,14 +48,41 @@ current:
                                   # dashboard nav; route reachable by direct URL; authoritative gate
                                   # is BE 403 (Moderation.Queue.View) -> forbidden state. Pre-existing
                                   # http.ts/http.spec.ts (apiGetAuth/apiGetPaginatedAuth, valid
-                                  # in-progress M6 work) retained + tested. VALIDATED (Docker-
-                                  # independent): 37 moderation component tests + full FE suite 234 x2
-                                  # + monorepo typecheck 6/6 + lint clean + build 4/4 + BE unit 1115,
-                                  # all PASS. PENDING (Docker unavailable): live browser validation
-                                  # (member 403, moderator queue/filters/pagination/detail, media +
-                                  # review decisions, rating recalculation, stale conflict, fixture
-                                  # cleanup) + backend e2e regression. STATUS: PARTIALLY COMPLETE --
-                                  # DOCKER VERIFICATION REQUIRED. See docs/delivery/reports/
+                                  # in-progress M6 work) retained + tested.
+                                  #
+                                  # LIVE VALIDATION (2026-08-04, real Docker stack -- Postgres/Redis/
+                                  # MinIO, real API+Web dev servers, real browser): authorization
+                                  # matrix confirmed live (anonymous 401, member 403, moderator 200,
+                                  # administrator/super_administrator 200 via role_parents DAG
+                                  # inheritance, no explicit permission seeding needed); queue
+                                  # pagination (38 cases/2 pages, order verified to exactly match raw
+                                  # API order), every filter + combined filters (exact-match verified
+                                  # against API), empty state, error+retry (real API process killed/
+                                  # restarted), forbidden state (real member session, real BE 403);
+                                  # case detail (metadata, reports without reporter identity leak,
+                                  # truthful media no-preview state, review preview); ALL 4 media
+                                  # transitions (approve, reject, hide, restore -- both published and
+                                  # pending restore targets) + ALL 3 review transitions (hide,
+                                  # restore, legacy approve) driven through the real browser UI, with
+                                  # place rating recalculation verified exactly at every step (4.0/1
+                                  # -> NULL/0 -> 5.0/1 -> 4.0/2); invalid transition -> 422 confirmed;
+                                  # restore missing target_status -> 422 (INV-10) confirmed; reason
+                                  # required -> 422 (INV-11) + UI-blocked confirmed; genuine 409
+                                  # stale-conflict staged (case resolved out-of-band while UI form
+                                  # was open) -> safe message, no double mutation; transaction
+                                  # rollback proven via Nest-DI spy injecting a failure AFTER the
+                                  # status mutation but BEFORE commit (no production code changed) --
+                                  # added as a permanent regression spec, apps/api/test/
+                                  # moderation-decide-rollback.e2e-spec.ts; all disposable fixtures
+                                  # (4 users, 1 place, 5 media, 3 reviews, 35 moderation_cases, 1
+                                  # report) removed, zero residue confirmed.
+                                  #
+                                  # FULL REGRESSION (2026-08-04): BE unit 1115/1115, BE e2e 19/19
+                                  # suites / 163/163 tests (real Postgres/Redis, includes the new
+                                  # rollback spec), FE 234/234, monorepo typecheck 6/6, lint clean,
+                                  # build 4/4 (routes /dashboard/moderation + [id] confirmed in build
+                                  # output), git diff --check clean, secret scan clean. STATUS:
+                                  # COMPLETE. See docs/delivery/reports/
                                   # MODERATION-M6-MODERATOR-UI-2026-08-04.md.
                                   # ---- prior state (2026-08-03, Moderation Foundation M5 -- User Reporting,
                                   # transaction T3) Owner-approved implementation of ADR-018 M5,

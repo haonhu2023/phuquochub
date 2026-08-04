@@ -47,7 +47,7 @@
 > `ModerationModule` (vốn đã import `MediaModule` từ M3). Xem
 > [MODERATION-M5-REPORTING-2026-08-03.md](../../delivery/reports/MODERATION-M5-REPORTING-2026-08-03.md).
 >
-> **M6 — Moderator UI: ĐÃ TRIỂN KHAI FRONTEND (2026-08-04) — CHỜ KIỂM THỬ TRỰC TIẾP.** Giao diện
+> **M6 — Moderator UI: ĐÃ TRIỂN KHAI VÀ XÁC MINH TRỰC TIẾP (2026-08-04). HOÀN THÀNH.** Giao diện
 > moderator tại `/dashboard/moderation` (hàng chờ + lọc theo URL status/target_type/source/severity/
 > assigned_to + phân trang dùng chung) và `/dashboard/moderation/{id}` (chi tiết case + reports + ảnh
 > chụp target + form quyết định). CHỈ tiêu thụ hợp đồng M2/M3/M4 đã có (`GET /moderation/cases`,
@@ -58,10 +58,27 @@
 > duyệt KHÔNG có URL xem trước (hoãn signed-URL) → hiển thị "Không có ảnh xem trước" trung thực.
 > **Điều hướng:** FE session CHƯA lộ permission (và không có field permission ở `/users/me`) nên link
 > kiểm duyệt bị ẩn khỏi nav dashboard — route vẫn tới được qua URL trực tiếp; chốt chặn quyền là
-> `403` của BE (`Moderation.Queue.View`) → forbidden state rõ ràng. Kiểm thử: 37 test component
-> moderation + toàn bộ suite FE 234×2 PASS, typecheck 6/6, lint sạch, build 4/4, BE unit 1115 PASS.
-> **CHỜ (Docker chưa sẵn sàng):** kiểm thử trình duyệt trực tiếp + backend e2e. Trạng thái: PARTIALLY
-> COMPLETE. Xem
+> `403` của BE (`Moderation.Queue.View`) → forbidden state rõ ràng.
+>
+> **Kiểm thử trực tiếp trên stack thật (2026-08-04, Docker + Postgres/Redis/MinIO thật):** ma trận
+> phân quyền xác nhận sống — anonymous 401, member 403, moderator 200, **administrator/
+> super_administrator kế thừa qua DAG role_parents (200, không seed quyền tường minh)**; hàng chờ
+> (phân trang 2 trang/38 case, mọi filter + kết hợp filter đúng khớp API, empty state, error+retry
+> state qua việc dừng/khởi động lại API thật, forbidden state qua session member thật); chi tiết
+> case (metadata, reports không lộ danh tính người báo cáo, media preview "Không có ảnh xem trước"
+> trung thực, review preview đủ rating/nội dung); **cả 4 transition media** (approve, reject, hide,
+> restore — cả hai đích `published`/`pending` đều test tường minh); **cả 3 transition review** (hide,
+> restore, legacy approve) với **rating tính lại xác nhận đúng số học qua từng bước** (4.0/1 → ẩn →
+> NULL/0 → khôi phục → 5.0/1 → duyệt thêm review 3★ → 4.0/2); transition không hợp lệ → 422 đúng
+> thông điệp; restore thiếu target_status → 422 (INV-10); reason thiếu cho reject/hide → 422
+> (INV-11) và bị chặn phía UI trước khi gửi; **409 stale-conflict dàn dựng thật** (case bị một
+> "moderator khác" xử lý ngoài band trong lúc form đang mở) → thông điệp an toàn, không mutation
+> kép; **rollback giao dịch** xác minh qua injection lỗi (Nest DI spy, không sửa code sản phẩm) SAU
+> khi mutate status NHƯNG TRƯỚC commit → toàn bộ rollback (media/case giữ nguyên), thêm vào bộ hồi
+> quy vĩnh viễn tại `apps/api/test/moderation-decide-rollback.e2e-spec.ts`; dọn sạch mọi fixture
+> disposable (xác nhận zero residue). Hồi quy đầy đủ: BE unit 1115/1115, BE e2e **19/19 suite —
+> 163/163 test** (thật, chạy trên Postgres/Redis thật), FE 234/234, typecheck 6/6, lint sạch, build
+> 4/4 (routes `/dashboard/moderation` + `[id]` xác nhận trong output build). Xem
 > [MODERATION-M6-MODERATOR-UI-2026-08-04.md](../../delivery/reports/MODERATION-M6-MODERATOR-UI-2026-08-04.md).
 >
 > M7 (AI Shadow Mode) vẫn CHƯA triển khai (đúng phạm vi M6: không AI, không sanction, không appeal,

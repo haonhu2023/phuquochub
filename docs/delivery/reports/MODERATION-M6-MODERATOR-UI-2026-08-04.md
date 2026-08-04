@@ -2,13 +2,13 @@
 
 **Date:** 2026-08-04
 **Authority:** [ADR-018](../../99-decisions/ADR-018-moderation-foundation.md) (Accepted), [moderation-design.md](../../data/modules/moderation-design.md) §9
-**Status:** **PARTIALLY COMPLETE — DOCKER VERIFICATION REQUIRED**
+**Status:** **COMPLETE**
 **Repository:** `D:\Projects\PhuQuocHub` (branch `master`)
 
 M6 delivers a minimal moderator operations frontend consuming the existing M2/M3/M4 backend
-contracts. All Docker-independent work is complete and validated. Live browser validation and
-backend e2e regression are **not yet run** because the Docker daemon was unavailable during
-implementation.
+contracts. All work is complete and validated, including live validation against the real Docker
+stack (Postgres/Redis/MinIO), a real running API + Web server, and a real browser session — see
+[Live browser validation](#live-browser-validation-2026-08-04--complete) below.
 
 ---
 
@@ -96,25 +96,119 @@ secondary cue). No WCAG certification is claimed.
 | `ModerationQueueView.spec.tsx` | renders cases, empty, 403 forbidden, error+retry, no reporter data |
 | `http.spec.ts` (pre-existing) | `apiGetAuth` / `apiGetPaginatedAuth` Bearer + envelope/error |
 
-Results: **37 moderation component tests PASS**; full frontend suite **234 tests × 2 consecutive
-runs PASS**; monorepo **typecheck 6/6**, **lint clean**, **build 4/4** (routes `/dashboard/moderation`
-+ `[id]`); backend **unit 1115 PASS** (no backend change). `git diff --check` clean; secret scan
-clean.
+Results: **37 moderation component tests PASS**; full frontend suite **234/234 PASS**.
 
-## Live browser evidence
+## Live browser validation (2026-08-04 — COMPLETE)
 
-**PENDING — Docker daemon unavailable at implementation time.** The following remain to be executed
-against the real local Docker stack and must be completed before M6 is declared done:
+Docker Desktop was started, containers confirmed healthy (`phuquoc-postgres`, `phuquoc-redis`,
+`phuquoc-minio`), `npm run migration:run` confirmed **no pending migrations** (moderation migrations
+already applied), working tree confirmed clean. Real API (`npm run dev`, port 4000) and Web
+(`npm run dev`, port 3000) servers were started; validation ran against a real browser session.
 
-- seed disposable cases (pending/published media, published/hidden review, varied severity/report count)
-- member login → verify backend + UI **403** denied
-- moderator login → queue loads, filters + pagination work, case detail opens
-- perform media approve / media hide / media restore (explicit target) / review hide / review restore
-- verify UI refreshes to committed server state; place `rating_avg`/`rating_count` change on review
-  visibility changes; no console errors
-- verify stale/invalid transition → safe **409/422** conflict message
-- clean up all disposable fixtures
-- full backend **e2e** regression
+**Fixtures:** 4 real users registered via `/api/auth/register` (member, moderator, administrator,
+super_administrator), roles granted via direct SQL (`INSERT INTO user_roles ...`, matching the
+repo's own e2e fixture convention) — administrator/super_administrator received **no explicit
+moderation permission grants**, relying entirely on `role_parents` DAG inheritance. One disposable
+place, 5 media rows, 3 review rows, 1 report, and 27 moderation cases (5 pointing at real fixtures +
+22 with varied status/target_type/source/severity/assigned_to for genuine filter/pagination
+coverage) were created directly in Postgres.
+
+### A. Authorization matrix (live HTTP against `GET /api/moderation/cases`)
+
+| Caller | Result |
+|---|---|
+| anonymous | **401** |
+| member | **403** |
+| moderator | **200** |
+| administrator (inherited via `role_parents` DAG, no explicit grant) | **200** |
+| super_administrator (inherited via `role_parents` DAG, no explicit grant) | **200** |
+
+### B. Queue
+
+- **Pagination:** 38 total cases (27 fixture + 11 pre-existing unrelated), 2 pages; item order on
+  both pages verified to **exactly match** the raw API response order (priority DESC → report_count
+  DESC → created_at ASC → id ASC tie-break), confirming the UI does not re-sort client-side.
+- **Every filter individually** and **combined filters** (`target_type=media&severity=critical` → 6
+  results, all correctly "Hình ảnh / Mức Nghiêm trọng") verified against exact expected counts.
+- **Empty state:** `target_type=place` → "Hàng chờ trống" rendered correctly.
+- **Retry state:** API process killed mid-session → real `ERR_CONNECTION_REFUSED` → safe error UI
+  shown (no raw error leaked, no console crash) → API restarted → clicking **Thử lại** recovered the
+  full 38-case queue.
+- **Forbidden state:** logged in as the real member account, direct navigation to
+  `/dashboard/moderation` → confirmed **no nav link** exists anywhere on the dashboard for this user
+  → direct URL access → network tab confirmed real backend **403** → UI rendered the forbidden state
+  naming `Moderation.Queue.View`.
+
+### C. Detail
+
+Verified for both media and review targets: full metadata block, reports list (no reporter identity
+ever rendered), target preview. Media preview showed the **truthful "Không có ảnh xem trước"** state
+exactly as designed (no signed URL, no reconstructed storage URL). Review preview showed rating,
+status, and the review's text content correctly.
+
+### D. Media decisions — all 4 transitions verified live
+
+| Transition | Method | Result |
+|---|---|---|
+| `pending → published` (approve) | UI | confirmed via UI + direct DB query |
+| `pending → rejected` (reject) | API | reason-required 422 confirmed, then success confirmed |
+| `published → hidden` (hide) | UI | reason required (submit blocked with empty reason, confirmed live), attached report auto-transitioned to **"Chấp nhận" (upheld)** |
+| `hidden → published` (restore, explicit target) | API | 422 without `target_status` (INV-10) confirmed first, then success |
+| `hidden → pending` (restore, explicit **non-default** target) | UI | explicitly selected "Đưa lại hàng chờ duyệt" (not the default) — confirmed it genuinely took effect, not just always defaulting to published |
+| invalid transition (e.g., approve on hidden media) | API | **422** `"Không thể duyệt media: media đã bị ẩn."` |
+
+### E. Review decisions — all 3 transitions verified live, with exact rating math
+
+| Step | Action | rating_avg / rating_count |
+|---|---|---|
+| baseline | 1 published review (4★) | 4.0 / 1 |
+| hide (UI) | published → hidden | **NULL / 0** |
+| restore (UI) | hidden → published (5★ review) | **5.0 / 1** |
+| legacy approve (UI) | pending → published (3★ review) | **4.0 / 2** |
+
+Every value matched the expected arithmetic exactly, confirmed via direct `SELECT rating_avg,
+rating_count FROM places` after each UI action.
+
+### F. Conflict (409) — genuine race, not simulated
+
+A case was loaded in the browser (form rendered, "Duyệt" selected), then resolved **out-of-band via
+a separate API call** (simulating a second moderator) while the form was still open. Submitting the
+now-stale UI form produced: *"Case đã được người khác xử lý trong lúc bạn thao tác. Vui lòng tải lại
+để xem trạng thái mới nhất."* DB confirmed **no double mutation** — the case and media reflected only
+the first (out-of-band) decision.
+
+### G. Rollback — transaction atomicity proven against the real Postgres transaction manager
+
+A new permanent regression spec,
+[`apps/api/test/moderation-decide-rollback.e2e-spec.ts`](../../../apps/api/test/moderation-decide-rollback.e2e-spec.ts),
+uses a Nest DI spy (no production code modified) to make `ReportsRepository.resolveByCaseId` throw
+**after** `media.status` and `moderation_cases.status` are updated inside the transaction but
+**before** commit. Result: the whole transaction rolled back — `media.status` remained `pending`,
+`moderation_cases.status` remained `open` with `decision`/`resolved_at` still `NULL`. A follow-up
+call with the spy removed succeeded normally, confirming the case wasn't left "stuck." Test passes
+in the full e2e run.
+
+### H. Cleanup — zero residue confirmed
+
+All disposable fixtures removed in FK-safe order (reports → moderation_cases → media → reviews →
+user_roles → users → place). Post-cleanup checks confirmed: moderation queue count returned to the
+pre-existing baseline of 11 (unrelated, out-of-scope historical cases, untouched), zero rows matching
+any `m6-live`/`rollback` tag remained in `media`, `reviews`, `places`, or `users`.
+
+## Full regression (2026-08-04)
+
+| Check | Result |
+|---|---|
+| Backend unit | **98 suites / 1115 tests PASS** |
+| Backend e2e (all 19 suites, real Postgres/Redis) | **19 suites / 163 tests PASS** (includes the new rollback spec) |
+| Frontend tests | **38 suites / 234 tests PASS** |
+| Frontend build | PASS — routes `/dashboard/moderation` (○) and `/dashboard/moderation/[id]` (ƒ) confirmed in output |
+| Backend build | PASS (exit 0) |
+| Monorepo build | **4/4 PASS** |
+| Monorepo lint | **6/6 PASS**, clean |
+| Monorepo typecheck | **6/6 PASS** |
+| `git diff --check` | clean |
+| Secret scan | clean (only the repo's conventional literal test password `'password123'`, matching every sibling e2e spec, disposable accounts only) |
 
 ## Pre-existing uncommitted-file handling
 
