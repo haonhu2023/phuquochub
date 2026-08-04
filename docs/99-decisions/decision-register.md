@@ -23,6 +23,7 @@
 | [ADR-016](ADR-016-audit-log-model.md) | Mô hình Nhật ký Kiểm toán (`audit_logs` append-only, đa hình, không cascade) — Trust Layer GAP-1 | **Accepted** (2026-07-13) | ✓ |
 | [ADR-017](ADR-017-transport-domain-foundation.md) | Nền tảng miền Transport (satellite ADR-002 biến thể — `transport_type` là từ điển FK, không ENUM) | **Accepted** (2026-07-28) | ✗ |
 | [ADR-018](ADR-018-moderation-foundation.md) | Nền tảng Kiểm duyệt (`reports` + `moderation_cases`; case ≠ hiển thị; ngoại lệ đa hình theo ADR-016) | **Accepted** (2026-08-02) | ✗ |
+| [ADR-019](ADR-019-resource-scoped-authorization.md) | Phân quyền theo tài nguyên (`Managed`/`Own` so `user_roles.business_id` với tài nguyên đích; `AuthorizationContext` + resolver; fail closed) — bổ sung [ADR-007](ADR-007-rbac-model.md), **chặn** [ADR-015](ADR-015-business-ownership-model.md) M3 | **Accepted** (2026-08-04) | ✗ |
 
 *Mẫu chuẩn: [ADR-template.md](ADR-template.md).*
 
