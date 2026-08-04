@@ -1,4 +1,4 @@
-import { ApiError, apiGetPaginated, apiPost } from './http';
+import { ApiError, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPost } from './http';
 
 const realFetch = global.fetch;
 
@@ -64,5 +64,44 @@ describe('apiGetPaginated', () => {
     mockFetchOnce(400, { success: false, error: { code: 'VALIDATION_ERROR', message: 'Sai tham số' } });
 
     await expect(apiGetPaginated('/hotels?stars=9')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('apiGetAuth', () => {
+  it('gửi Bearer, bóc data từ envelope thành công', async () => {
+    mockFetchOnce(200, { success: true, data: { id: 'c1' }, meta: {} });
+
+    const result = await apiGetAuth<{ id: string }>('/moderation/cases/c1', 'tok123');
+
+    expect(result).toEqual({ id: 'c1' });
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.headers.Authorization).toBe('Bearer tok123');
+    expect(init.method).toBeUndefined(); // GET mặc định, không set method
+  });
+
+  it('envelope lỗi 403 → ApiError với status đúng', async () => {
+    mockFetchOnce(403, { success: false, error: { code: 'FORBIDDEN', message: 'Thiếu quyền' } });
+
+    await expect(apiGetAuth('/moderation/cases', 'tok')).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('apiGetPaginatedAuth', () => {
+  it('gửi Bearer, trả cả data và meta', async () => {
+    const meta = { timestamp: 't', page: 1, pageSize: 20, total: 2, totalPages: 1 };
+    mockFetchOnce(200, { success: true, data: [{ id: 'c1' }, { id: 'c2' }], meta });
+
+    const res = await apiGetPaginatedAuth<{ id: string }>('/moderation/cases', 'tok123');
+
+    expect(res.data).toEqual([{ id: 'c1' }, { id: 'c2' }]);
+    expect(res.meta).toEqual(meta);
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.headers.Authorization).toBe('Bearer tok123');
+  });
+
+  it('envelope lỗi 401 → ApiError', async () => {
+    mockFetchOnce(401, { success: false, error: { code: 'UNAUTHORIZED', message: 'Chưa đăng nhập' } });
+
+    await expect(apiGetPaginatedAuth('/moderation/cases', 'tok')).rejects.toMatchObject({ status: 401 });
   });
 });

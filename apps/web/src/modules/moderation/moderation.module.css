@@ -1,0 +1,298 @@
+/* Styles cho Moderator UI (M6). Dùng token globals.css; tái dùng ui.module.css (toolbar/select)
+   và places.module.css (state/section/infoGrid) ở nơi phù hợp. Badge LUÔN kèm chữ — màu chỉ là
+   tín hiệu phụ (không truyền trạng thái chỉ bằng màu). */
+
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ---- Hàng case ---- */
+.row {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.9rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.row:hover,
+.row:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  outline: none;
+}
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.rowTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+.rowBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.rowTitle {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.metaItem {
+  white-space: nowrap;
+}
+.metaStrong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* ---- Badge (chữ + màu phụ) ---- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.sevLow {
+  color: var(--muted);
+}
+.sevNormal {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.sevHigh {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+}
+.sevCritical {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 45%, transparent);
+}
+.stOpen {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.stClaimed {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+}
+.stResolved {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+.stDismissed {
+  color: var(--muted);
+}
+
+/* ---- Chi tiết ---- */
+.detailBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 1rem;
+}
+.previewBox {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 1rem;
+}
+.previewEmpty {
+  color: var(--muted);
+  font-style: italic;
+}
+.reviewQuote {
+  margin: 0.5rem 0 0;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--border);
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+.reports {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.report {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+}
+.reportTop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: center;
+}
+.reportReason {
+  font-weight: 600;
+}
+.reportDesc {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.reportTime {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ---- Form quyết định ---- */
+.decision {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 1rem;
+}
+.decisionOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.decisionLegend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+.decisionOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.decisionOption:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.optApprove {
+  color: var(--ok);
+}
+.optRemove {
+  color: var(--err);
+}
+.fieldBlock {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.reason {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+.actions {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.submitBtn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Banner trạng thái ---- */
+.alert {
+  border: 1px solid color-mix(in srgb, var(--err) 50%, transparent);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin: 0.75rem 0;
+}
+.success {
+  border: 1px solid color-mix(in srgb, var(--ok) 50%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin: 0.75rem 0;
+}
+
+/* ---- Skeleton ---- */
+.skelRow {
+  height: 4.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 37%, var(--surface) 63%);
+  background-size: 400% 100%;
+  animation: modShimmer 1.4s ease infinite;
+}
+@keyframes modShimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skelRow {
+    animation: none;
+  }
+  .row {
+    transition: none;
+  }
+}

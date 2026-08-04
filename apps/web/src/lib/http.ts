@@ -88,3 +88,29 @@ export async function apiPost<T>(path: string, accessToken: string, payload?: un
   });
   return body.data;
 }
+
+// GET có xác thực (Bearer) — CHƯA có tiền lệ nào trong FE trước Moderation M6: mọi apiGet hiện có
+// đều là route công khai (places/hotels/tours…), chỉ apiPost mới cần token. Hàng chờ kiểm duyệt
+// (GET /moderation/cases, GET /moderation/cases/{id}) đòi `Moderation.Queue.View` nên KHÔNG thể
+// dùng apiGet — thêm cặp hàm này thay vì biến apiGet thành nhận token tuỳ chọn, giữ chữ ký apiGet
+// hiện có không đổi cho MỌI call site public đang dùng nó.
+export async function apiGetAuth<T>(path: string, accessToken: string, init?: RequestInit): Promise<T> {
+  const body = await fetchEnvelope<T>(path, {
+    ...init,
+    headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}`, ...(init?.headers ?? {}) },
+  });
+  return body.data;
+}
+
+// GET có xác thực + phân trang — cùng lý do trên, tương ứng apiGetPaginated cho route công khai.
+export async function apiGetPaginatedAuth<T>(
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+): Promise<{ data: T[]; meta: PaginationMeta }> {
+  const body = await fetchEnvelope<T[]>(path, {
+    ...init,
+    headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}`, ...(init?.headers ?? {}) },
+  });
+  return { data: body.data, meta: body.meta as PaginationMeta };
+}
