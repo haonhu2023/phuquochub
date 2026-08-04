@@ -442,3 +442,46 @@ Cả ba đều cộng thêm (additive) và đảo ngược được; `down()` ch
 - Phát hiện "media không hiển thị được" ở §Context được kiểm chứng **trực tiếp trong mã nguồn** trong phiên này, không suy ra từ tài liệu.
 - **Không còn quyết định Owner nào chưa giải quyết.** Các hạng mục đã hoãn (mục 2) và ngoài phạm vi (mục 4) là lựa chọn có chủ đích kèm điều kiện mở lại, không phải câu hỏi treo.
 - Điều kiện để ADR này cần được xem lại: (1) `notifications` được phê duyệt → mở lại O5 và §D12; (2) `business_claims`/`business_members` được migrate → mở lại O6; (3) có nhân sự moderator ổn định → mở lại O1/O3; (4) dữ liệu shadow mode M7 đủ để đặt ngưỡng AI → mở giai đoạn Assist.
+
+## Addendum — M7 (AI Shadow Mode), 2026-08-04
+
+**Không supersede, không mở lại quyết định nào ở trên.** Ghi lại MỘT tinh chỉnh triển khai phát
+sinh khi M7 thực sự được xây (D1/§13 gốc chỉ là phác thảo kiến trúc chưa triển khai — §Notes dòng
+1 xác nhận ADR gốc "không một artifact triển khai nào được tạo").
+
+**Tinh chỉnh:** thay vì Shadow ghi điểm/label thẳng vào `media.ai_moderation_score`/`ai_labels`
+(phác thảo gốc, moderation-design.md §13 bản đầu), M7 triển khai thêm **một bảng mới**,
+`ai_recommendations`, migration `AddAiRecommendations` (1720003500000).
+
+**Vì sao đây là một điều chỉnh cần ghi nhận, không phải một lựa chọn triển khai tự do:** D1 phát
+biểu "Hai bảng mới: `reports` và `moderation_cases`. **Không gì khác.**" — một khẳng định mạnh về
+phạm vi schema. `ai_recommendations` là bảng THỨ BA, nên addendum này tồn tại để khẳng định tường
+minh: ranh giới đó áp cho phạm vi M1–M6 (nền tảng report/case), và không được đọc là cấm vĩnh viễn
+mọi bảng mới ở M7 — bảng thứ ba này giải quyết một nhu cầu mà cột đơn `media.ai_moderation_score`
+không thể đáp ứng, không phải một lựa chọn thay thế ngang hàng bị bỏ qua.
+
+**Lý do cụ thể (tại sao cột đơn trên `media` không đủ):**
+
+1. **Một cột chỉ giữ được MỘT giá trị.** M7 spec yêu cầu so sánh gợi ý AI với quyết định moderator
+   VÀ giữ lại `matched`/`moderator_decision`/`evaluated_at` cho từng lần chạy — `media` chỉ có
+   đúng 1 slot `ai_moderation_score`/`ai_labels`, lần chạy AI thứ hai (re-run, đổi model/provider)
+   sẽ ghi đè lần đầu, xoá mất dữ liệu cần để đo "AI đoán đúng bao nhiêu %" (chính mục tiêu §13 nêu
+   ra: *"đo độ chính xác so với các quyết định con người đã có"*).
+2. **`media` không có khái niệm "case".** Recommendation phải gắn với MỘT `moderation_case` cụ thể
+   (so sánh 1-1 với quyết định của case đó) — không có cột nào trên `media` biểu diễn quan hệ đó,
+   và review/place không có cột `ai_*` nào cả (chỉ media có, theo ADR-009), nên cách tiếp cận gốc
+   không mở rộng được sang target_type khác dù `AiModerationProvider` (kế thừa `AiModerationPort`)
+   vẫn provider-agnostic cho MỌI target_type.
+3. **Thống kê tổng hợp** (agreement rate, false positive/negative, breakdown theo decision/
+   target_type — yêu cầu #6 của M7) cần quét MỘT bảng đồng nhất; qua các cột rải trên `media` sẽ
+   phải suy luận lại `moderator_decision` từ `moderation_cases.decision` mỗi lần truy vấn, không
+   lưu được `matched`/`evaluated_at` ở đâu cả.
+
+**Điều KHÔNG đổi (bất biến Shadow mode giữ nguyên tuyệt đối):** INV-1/INV-2 không vi phạm — bảng
+mới không phải trạng thái hiển thị, không đường đọc công khai nào join nó. Service KHÔNG BAO GIỜ
+UPDATE `moderation_cases`/`media`/`reviews`, KHÔNG BAO GIỜ gọi FSM (cùng ràng buộc INV-7 nguyên
+văn — chỉ khác nơi lưu trữ, không khác ai được phép quyết định). `AI.ModerateMedia` vẫn là quyền
+DUY NHẤT cho `ai_agent`, KHÔNG quyền mới nào được thêm (D10 giữ nguyên).
+
+Xem chi tiết đầy đủ: [moderation-design.md](../data/modules/moderation-design.md) §13 và
+[MODERATION-M7-AI-SHADOW-MODE-2026-08-04.md](../delivery/reports/MODERATION-M7-AI-SHADOW-MODE-2026-08-04.md).

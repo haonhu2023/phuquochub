@@ -2092,6 +2092,55 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /moderation/cases/{id}/ai-recommendation:
+    # Moderation M7 — AI Shadow Mode. Bảng MỚI DUY NHẤT `ai_recommendations` (KHÔNG đụng
+    # moderation_cases/reports/media/reviews) — xem docs/data/modules/moderation-design.md §13 và
+    # ADR-018 Addendum M7. Service KHÔNG BAO GIỜ đổi media.status/reviews.status/
+    # moderation_cases.status, KHÔNG BAO GIỜ gọi FSM — endpoint dưới đây CHỈ tạo/đọc một gợi ý.
+    post:
+      tags: [Moderation]
+      summary: Tạo gợi ý AI cho một case (shadow mode, M7)
+      operationId: generateAiRecommendation
+      description: >-
+        Gọi `AiModerationProvider` (mặc định `LoggingAiModerationProvider` — gợi ý GIẢ, XÁC ĐỊNH,
+        KHÔNG OpenAI/Anthropic/HTTP ngoài nào), persist MỘT dòng `ai_recommendations` gắn với case
+        này, trả về dòng đó. KHÔNG transaction, KHÔNG đổi `media.status`/`reviews.status`/
+        `moderation_cases.status`, KHÔNG mở/đóng case nào. Quyền TÁI DÙNG `AI.ModerateMedia` (D10 —
+        đã seed cho `ai_agent`, KHÔNG quyền mới). Nhiều lần gọi trên cùng case là hợp lệ — mỗi lần
+        tạo MỘT dòng mới; chỉ dòng MỚI NHẤT được so sánh với quyết định moderator (xem `decide`).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/AiRecommendation' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [Moderation]
+      summary: Gợi ý AI mới nhất của một case (shadow mode, M7)
+      operationId: getLatestAiRecommendation
+      description: >-
+        Quyền `Moderation.Queue.View` (cùng quyền đọc hàng chờ đã có, KHÔNG quyền mới). `404` khi
+        case không tồn tại HOẶC case tồn tại nhưng chưa có gợi ý AI nào.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/AiRecommendation' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ============================ WEATHER ============================
   /weather/current:
@@ -2968,6 +3017,36 @@ components:
           properties:
             reports: { type: array, items: { $ref: '#/components/schemas/ModerationReportSummary' } }
             target_preview: { $ref: '#/components/schemas/ModerationTargetPreview' }
+    AiRecommendation:
+      type: object
+      description: >-
+        Moderation M7 — AI Shadow Mode. MỘT gợi ý của AI cho MỘT case — KHÔNG BAO GIỜ là quyết
+        định (chưa từng đổi media.status/reviews.status/moderation_cases.status). `evaluated_at`/
+        `moderator_decision`/`matched` đều `null` cho tới khi moderator hoàn tất `decide()` trên
+        ĐÚNG case này — xem docs/data/modules/moderation-design.md §13.
+      properties:
+        id: { type: string, format: uuid }
+        case_id: { type: string, format: uuid }
+        provider: { type: string, description: 'vd "logging" (mặc định — gợi ý giả, xác định)' }
+        model: { type: string }
+        decision: { type: string, enum: [approve, reject, hide, restore, dismiss] }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        labels: { type: [array, 'null'], items: { type: string } }
+        reasoning: { type: [string, 'null'] }
+        prompt_version: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        evaluated_at:
+          type: [string, 'null']
+          format: date-time
+          description: Đặt khi moderator hoàn tất decide() cho case này (null nếu chưa).
+        moderator_decision:
+          type: [string, 'null']
+          enum: [approve, reject, hide, restore, dismiss, null]
+        matched:
+          type: [boolean, 'null']
+          description: 'true nếu moderator_decision === decision; null nếu chưa evaluate.'
+        latency_ms: { type: [integer, 'null'] }
+        metadata: { type: [object, 'null'] }
     Review:
       type: object
       description: >-

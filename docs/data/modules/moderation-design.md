@@ -81,8 +81,48 @@
 > 4/4 (routes `/dashboard/moderation` + `[id]` xác nhận trong output build). Xem
 > [MODERATION-M6-MODERATOR-UI-2026-08-04.md](../../delivery/reports/MODERATION-M6-MODERATOR-UI-2026-08-04.md).
 >
-> M7 (AI Shadow Mode) vẫn CHƯA triển khai (đúng phạm vi M6: không AI, không sanction, không appeal,
-> không notification, không analytics/SLA, không bulk decision, không realtime/websocket).
+> **M7 — AI Shadow Mode: ĐÃ TRIỂN KHAI VÀ XÁC MINH TRỰC TIẾP (2026-08-04). HOÀN THÀNH.** Bảng MỚI
+> DUY NHẤT `ai_recommendations` (migration `AddAiRecommendations`, KHÔNG đụng `moderation_cases`/
+> `reports`/`media`/`reviews`) — mỗi dòng là MỘT gợi ý của AI cho MỘT case, KHÔNG BAO GIỜ là quyết
+> định. Đây là một tinh chỉnh có chủ đích so với phác thảo §13 gốc (ghi thẳng vào
+> `media.ai_moderation_score`/`ai_labels`) — xem phụ lục ADR-018 bên dưới để biết lý do và phạm vi
+> tinh chỉnh này.
+>
+> `AiRecommendationsService.generateRecommendation(case)` gọi `AiModerationProvider` (DI token
+> `AI_MODERATION_PROVIDER`, implementation mặc định `LoggingAiModerationProvider` — gợi ý GIẢ, XÁC
+> ĐỊNH suy từ `targetId`, KHÔNG OpenAI/Anthropic/HTTP ngoài nào), persist MỘT dòng, KHÔNG BAO GIỜ
+> UPDATE `moderation_cases`/`media`/`reviews`, KHÔNG BAO GIỜ gọi FSM. Route MỚI:
+> `POST /moderation/cases/{id}/ai-recommendation` (quyền **tái dùng** `AI.ModerateMedia` — KHÔNG
+> quyền mới) và `GET /moderation/cases/{id}/ai-recommendation` (quyền `Moderation.Queue.View`).
+>
+> Khi moderator hoàn tất `decide()` (T2), `ModerationService.emitPostCommit()` gọi
+> `AiRecommendationsService.evaluateModeratorDecision(caseId, decision)` — try/catch RIÊNG, hoàn
+> toàn độc lập với audit/event, SAU KHI transaction đã commit (cùng INV-9): so sánh recommendation
+> mới nhất của case với quyết định thật, ghi `matched`/`moderator_decision`/`evaluated_at`. Lỗi ở
+> đây KHÔNG BAO GIỜ ảnh hưởng quyết định thật — xác nhận sống bằng Nest DI spy (giống tiền lệ M6
+> `moderation-decide-rollback.e2e-spec.ts`, nhưng NGƯỢC hướng: ở đây decide() vẫn `200`, media/case
+> vẫn resolve đúng, chỉ phía AI bị bỏ dở và ghi log).
+>
+> `AiRecommendationsRepository.getStatistics()` — agreement rate, confidence trung bình, false
+> positive/negative (positive = `reject`/`hide`; negative = `approve`/`restore`/`dismiss`),
+> breakdown theo decision và theo `target_type` (JOIN CHỈ-ĐỌC sang `moderation_cases`). **Repository +
+> service ONLY — không endpoint, không dashboard** (đúng phạm vi M7).
+>
+> Sự kiện MỚI (tái dùng `MODERATION_EVENT_PUBLISHER` đã có, KHÔNG token thứ hai):
+> `ai.recommendation.created`, `ai.recommendation.evaluated`.
+>
+> **Kiểm thử trực tiếp trên stack thật (2026-08-04, Docker + Postgres/Redis/MinIO thật):** migration
+> diễn tập apply→revert→verify(bảng biến mất)→reapply; ma trận quyền xác nhận sống qua HTTP thật
+> (anonymous 401, moderator không có `AI.ModerateMedia` 403, `ai_agent` 201); recommendation tạo
+> xong → `media.status`/`moderation_cases.status` xác nhận KHÔNG đổi (query DB trực tiếp); moderator
+> `decide()` xong → `evaluated_at`/`moderator_decision`/`matched` ghi đúng cho CẢ hai nhánh (khớp:
+> AI đề nghị `reject`, moderator `reject` → `matched=true`; lệch: AI đề nghị `hide` — không hợp lệ
+> trên `pending` — moderator `reject` → `matched=false`); thống kê xác nhận đúng số học tuyệt đối
+> qua SQL trực tiếp (2 recommendation, 2 evaluated, 1 matched, avg confidence 0.855); dọn sạch mọi
+> fixture disposable (xác nhận zero residue, hàng chờ về đúng baseline 11 case đã biết từ M6). Hồi
+> quy đầy đủ: BE unit **103 suite/1155 test PASS**, BE e2e **20 suite/172 test PASS** (bao gồm suite
+> mới `moderation-ai-shadow.e2e-spec.ts`, 9 test), build/lint/typecheck sạch. Xem
+> [MODERATION-M7-AI-SHADOW-MODE-2026-08-04.md](../../delivery/reports/MODERATION-M7-AI-SHADOW-MODE-2026-08-04.md).
 >
 > **Chỉ kiến trúc.** Chưa có code, entity, migration, file React, hay test nào cho bất cứ nội dung nào ở đây. SQL bên dưới là **đặc tả thiết kế**, không phải migration.
 >
@@ -726,21 +766,46 @@ Tất cả đều fire-and-forget và phát **sau** commit — **không bao gi�
 
 ---
 
-## 13. Tích hợp AI trong tương lai
+## 13. Tích hợp AI — M7 ĐÃ TRIỂN KHAI (Shadow), Assist/Auto-hide vẫn chưa xây
 
-Có thiết kế sẵn, **chưa xây**. `media.ai_moderation_score`/`ai_labels` đã tồn tại (ADR-009) và lần đầu có người ghi ở đây.
+**M7 (Shadow) ĐÃ XONG — 2026-08-04.** Bản phác thảo gốc bên dưới (giữ nguyên cho lịch sử) hình dung
+Shadow ghi thẳng vào `media.ai_moderation_score`/`ai_labels` (ADR-009). Khi xây thật, thiết kế đó
+được tinh chỉnh sang MỘT bảng riêng `ai_recommendations` — xem phụ lục ADR-018 (Addendum M7) để biết
+lý do đầy đủ; tóm tắt: hai cột trên `media` chỉ giữ được MỘT điểm số mỗi media (ghi đè lần chạy sau),
+không có chỗ cho `moderator_decision`/`matched`/`evaluated_at` mà so sánh Shadow-vs-người-thật (mục
+tiêu chính của M7) cần, và không tách được recommendation theo `case_id`/nhiều lần chạy/nhiều
+provider. Bảng riêng giữ nguyên MỌI bất biến Shadow (không đổi status, không mở case, không gọi FSM)
+— chỉ đổi NƠI lưu, không đổi Ý NGHĨA "chỉ quan sát, không bao giờ quyết định".
 
-**Port.** Một interface `AiModerationPort` duy nhất (`classify(objectKey) → { score, labels }`) kèm DI token — theo đúng hình dạng provider-agnostic của `StorageService`, để AWS Rekognition, Google Vision, hay model tự host thay thế được mà không đụng logic kiểm duyệt.
+**Port đã xây** (`AiModerationProvider`, `apps/api/src/modules/moderation/ai/ai-moderation-provider.ts`) —
+`recommend(input) → { provider, model, decision, confidence, labels, reasoning, promptVersion,
+latencyMs, metadata }`, DI token `AI_MODERATION_PROVIDER`, implementation MẶC ĐỊNH DUY NHẤT
+`LoggingAiModerationProvider` — gợi ý GIẢ, XÁC ĐỊNH (suy từ hash `targetType:targetId`), KHÔNG
+OpenAI/Anthropic/HTTP ngoài nào (cùng khuôn provider-agnostic của `StorageService` mà bản phác thảo
+gốc đã hình dung, chỉ khác object trả về giàu hơn `{ score, labels }` ban đầu).
+
+`AiRecommendationsService.generateRecommendation(case)` — nhận MỘT `ModerationCase` đã tồn tại, gọi
+provider, persist MỘT dòng `ai_recommendations`, KHÔNG BAO GIỜ đổi `moderation_cases`/`media`/
+`reviews`, KHÔNG BAO GIỜ gọi `assertValidMediaTransition`/`assertValidReviewTransition`. Route
+`POST /moderation/cases/{id}/ai-recommendation` (`AI.ModerateMedia` — quyền TÁI DÙNG, không quyền
+mới, đúng D10) là nơi duy nhất kích hoạt nó (không scheduler, không auto-trigger khi case mở — thủ
+công, cùng triết lý runner `npm run media:cleanup`/WF-18 gốc).
+
+`AiRecommendationsService.evaluateModeratorDecision(caseId, decision)` — gọi từ
+`ModerationService.emitPostCommit()` SAU KHI T2 commit (INV-9), try/catch RIÊNG độc lập với
+audit/event: so sánh recommendation MỚI NHẤT của case với quyết định thật, ghi `matched`/
+`moderator_decision`/`evaluated_at`. Đo độ chính xác so với quyết định con người đã có trong
+`moderation_cases` — đúng mục tiêu Shadow ban đầu, chỉ khác cơ chế lưu.
 
 **Lộ trình từng giai đoạn, mỗi giai đoạn đảo ngược được độc lập:**
 
-1. **Shadow (M7)** — chỉ chấm điểm và ghi lại; **không** đổi status, **không** mở case. Đo độ chính xác so với các quyết định con người đã có trong `moderation_cases`. Giai đoạn này chính là thứ làm cho ngưỡng dựa trên bằng chứng thay vì phỏng đoán.
+1. **Shadow (M7) ✅ ĐÃ XONG** — chỉ ghi gợi ý + so sánh; **không** đổi status, **không** mở case. Đo độ chính xác so với các quyết định con người đã có trong `moderation_cases`. Giai đoạn này chính là thứ làm cho ngưỡng dựa trên bằng chứng thay vì phỏng đoán.
 2. **Assist** *(chưa phê duyệt)* — vi phạm rõ ràng mở case ưu tiên cao; con người vẫn quyết định mọi thứ.
 3. **Auto-hide** *(chưa phê duyệt)* — chỉ trên ngưỡng được biện minh bằng dữ liệu giai đoạn 1, và chỉ cho nhóm nhãn có tỉ lệ dương tính giả gần bằng 0. Luôn đảo ngược được.
 
 **Không bao giờ tự động hoá:** xoá vĩnh viễn, chế tài người dùng, và mọi quyết định trên nội dung đang bị khiếu nại.
 
-M7 đặt **sau cùng** theo đúng chỉ đạo Owner: shadow mode chỉ có ý nghĩa khi đã tích luỹ đủ quyết định của con người để so sánh.
+M7 đặt **sau cùng** theo đúng chỉ đạo Owner: shadow mode chỉ có ý nghĩa khi đã tích luỹ đủ quyết định của con người để so sánh — M6 (Moderator UI) ship trước chính vì lý do này.
 
 *(Lựa chọn model và ngân sách thuộc [ai-architecture.md](../../ai/ai-architecture.md); [ADR-012](../../99-decisions/ADR-012-ai-architecture.md) đã Superseded.)*
 
@@ -849,8 +914,8 @@ Thứ tự theo đúng chỉ đạo Owner (yêu cầu sửa đổi #6). Mỗi mi
 | **M3** | **Media Decision Workflow + auto-publish khi gắn review** ✅ **ĐÃ XONG — 2026-08-02** | `decide` cho target media (`POST /moderation/cases/{id}/decide`, không `claim`/`release`/`reopen`, không `POST /media/{id}/moderate`); **transaction T1** (D4 + auto-publish O2); **transaction T2** (quyết định kiểm duyệt); **`BackfillModerationCases` theo T4/D14** (đếm-rồi-báo-cáo trước khi chạy, diễn tập apply/revert/reapply trên dữ liệu thật); audit + event. **Đây là milestone làm ảnh hiển thị được.** | M2 | M |
 | **M4** | **Review Decision Workflow + tính lại rating trong transaction** ✅ **ĐÃ XONG — 2026-08-03** | `decide` cho target review (hide/restore/approve qua `assertValidReviewTransition`, không thêm `rejected`); quyền `Review.Moderate` chọn theo target_type, không dùng lẫn với `Media.Moderate`; **cộng ràng buộc INV-4** (recalculateRating trong cùng transaction, rollback sống đã diễn tập) **và test hồi quy cho nó**. | M3 | M |
 | **M5** | **User Reporting** ✅ **ĐÃ XONG — 2026-08-03** | `POST /reviews/{id}/report`, `POST /media/{id}/report`; gộp case; chống trùng; nâng `severity`/`priority`. **Không** đổi hiển thị (O3). | M4 | M |
-| **M6** | **Moderator UI** | Frontend hàng chờ tại `/dashboard/moderation`; danh sách, chi tiết, quyết định. Tái dùng mẫu card/filter/pagination sẵn có và baseline accessibility (2026-08-02). | M3 | M |
-| **M7** | **AI Shadow Mode** | `AiModerationPort`; `npm run media:moderate` kèm `--dry-run`; **chỉ shadow** — chấm điểm, ghi `ai_moderation_score`/`ai_labels`, **không** đổi status, **không** mở case. | M4, và **đủ lượng quyết định của con người để so sánh** | M |
+| **M6** | **Moderator UI** ✅ **ĐÃ XONG — 2026-08-04** | Frontend hàng chờ tại `/dashboard/moderation`; danh sách, chi tiết, quyết định. Tái dùng mẫu card/filter/pagination sẵn có và baseline accessibility. | M3 | M |
+| **M7** | **AI Shadow Mode** ✅ **ĐÃ XONG — 2026-08-04** | Bảng mới `ai_recommendations` (tinh chỉnh so với phác thảo §13 gốc — xem ADR-018 Addendum M7); `AiModerationProvider`/`AI_MODERATION_PROVIDER`/`LoggingAiModerationProvider`; `POST`/`GET /moderation/cases/{id}/ai-recommendation` (tái dùng `AI.ModerateMedia`/`Moderation.Queue.View`, không quyền mới); `evaluateModeratorDecision()` sau commit T2; thống kê agreement/confidence/false-positive/negative (repository + service only). **Chỉ shadow** — **không** đổi status, **không** mở case, **không** gọi FSM. | M4, M6 (đủ lượng quyết định của con người để so sánh) | M |
 
 **Lý do thứ tự.** M3 trước M4 vì media là lỗ hổng **đang chặn** (ảnh vô hình) trong khi review đã hoạt động bình thường. M5 sau cả hai vì báo cáo vô nghĩa khi chưa quyết định được. M6 trước M7 vì UI tạo ra chính khối lượng quyết định-của-con-người mà M7 cần để đo độ chính xác — đảo ngược thứ tự sẽ khiến shadow mode không có gì để so sánh, đúng điều Owner chỉ ra.
 

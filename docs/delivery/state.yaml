@@ -30,7 +30,64 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-04, Moderation M6 -- Moderator UI) Owner-approved
+  task: none                      # (2026-08-04, Moderation M7 -- AI Shadow Mode) Owner-approved
+                                  # implementation + LIVE VALIDATION for ADR-018 M7: one new table
+                                  # `ai_recommendations` (migration AddAiRecommendations,
+                                  # 1720003500000) -- NO change to moderation_cases/reports/media/
+                                  # reviews. AiRecommendationsService.generateRecommendation(case)
+                                  # calls AiModerationProvider (DI token AI_MODERATION_PROVIDER,
+                                  # default LoggingAiModerationProvider -- deterministic fake, NO
+                                  # OpenAI/Anthropic/external HTTP), persists ONE row, NEVER mutates
+                                  # moderation_cases/media/reviews, NEVER calls the media/review FSM.
+                                  # New routes POST/GET /moderation/cases/{id}/ai-recommendation
+                                  # reuse AI.ModerateMedia (POST) and Moderation.Queue.View (GET) --
+                                  # NO new permission. ModerationService.emitPostCommit() gained a
+                                  # THIRD independent try/catch calling
+                                  # AiRecommendationsService.evaluateModeratorDecision(caseId,
+                                  # decision) strictly AFTER the T2 transaction commits (INV-9-style
+                                  # isolation) -- compares the case's latest recommendation against
+                                  # the real decision, writes matched/moderator_decision/
+                                  # evaluated_at. AiRecommendationsRepository.getStatistics() --
+                                  # agreement rate, average confidence, false positive/negative, per
+                                  # decision, per target_type -- repository + service ONLY, NO
+                                  # endpoint, NO dashboard (per spec). Two new events reusing the
+                                  # existing MODERATION_EVENT_PUBLISHER token: ai.recommendation.
+                                  # created, ai.recommendation.evaluated.
+                                  #
+                                  # DESIGN DEVIATION (documented, not silent): the original
+                                  # moderation-design.md SS13 sketch imagined shadow mode writing
+                                  # directly to media.ai_moderation_score/ai_labels. Building it for
+                                  # real showed a single-slot column can't hold per-case
+                                  # matched/moderator_decision/evaluated_at or survive a re-run
+                                  # without overwriting history, so M7 uses one new table instead --
+                                  # a genuine deviation from ADR-018 D1 ("two tables, nothing else"),
+                                  # recorded as an ADDENDUM to ADR-018 (original decision record
+                                  # D1-D14/O1-O7 untouched, not reopened).
+                                  #
+                                  # LIVE VALIDATION (2026-08-04, real Docker stack -- Postgres/Redis/
+                                  # MinIO, real API dev server, real HTTP calls): permission matrix
+                                  # (anonymous 401, moderator without AI.ModerateMedia 403, ai_agent
+                                  # 201); recommendation created -> media.status/moderation_cases.
+                                  # status confirmed UNCHANGED via direct DB query; moderator
+                                  # decides -> both matched=true and matched=false branches verified
+                                  # live; statistics cross-checked against hand-run SQL (exact
+                                  # arithmetic match); rollback probe (Nest DI spy on
+                                  # recordModeratorOutcome) confirmed decide() still returns 200 and
+                                  # media/case still resolve correctly when the AI-side write fails
+                                  # -- the inverse of moderation-decide-rollback.e2e-spec.ts's
+                                  # in-transaction failure, proving the two paths are fully
+                                  # decoupled; migration apply->revert(table confirmed gone)->
+                                  # reapply rehearsed against real Postgres; all disposable fixtures
+                                  # removed, zero residue confirmed (queue count back to the same
+                                  # baseline of 11 recorded in the M6 report).
+                                  #
+                                  # FULL REGRESSION (2026-08-04): BE unit 103 suites/1155 tests
+                                  # PASS, BE e2e 20 suites/172 tests PASS (real Postgres/Redis,
+                                  # includes new moderation-ai-shadow.e2e-spec.ts, 9 tests), build
+                                  # PASS, lint clean (--max-warnings=0), typecheck PASS. STATUS:
+                                  # COMPLETE. See docs/delivery/reports/
+                                  # MODERATION-M7-AI-SHADOW-MODE-2026-08-04.md.
+                                  # ---- prior state (2026-08-04, Moderation M6 -- Moderator UI) Owner-approved
                                   # implementation + LIVE VERIFICATION for ADR-018 M6: routes
                                   # /dashboard/moderation (queue -- URL filters status/target_type/
                                   # source/severity/assigned_to, shared Pagination, loading/empty/
