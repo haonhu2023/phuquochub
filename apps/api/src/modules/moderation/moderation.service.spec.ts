@@ -12,6 +12,7 @@ import { MediaRepository } from '../media/repositories/media.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuthorizationService } from '../authz/authorization.service';
 import { AuditService } from '../../core/audit/audit.service';
+import { AiRecommendationsService } from './ai-recommendations.service';
 import type { ModerationEventPublisher } from './events/moderation-events';
 import { ModerationCase } from './entities/moderation-case.entity';
 import { Media } from '../media/entities/media.entity';
@@ -101,6 +102,7 @@ describe('ModerationService', () => {
   let placesRepo: LooseMock<PlacesRepository>;
   let authz: LooseMock<AuthorizationService>;
   let audit: LooseMock<AuditService>;
+  let aiRecommendations: LooseMock<AiRecommendationsService>;
   let events: LooseMock<ModerationEventPublisher>;
   let dataSource: LooseMock<DataSource>;
   let manager: EntityManager;
@@ -125,11 +127,26 @@ describe('ModerationService', () => {
     // kiểm tra đúng nhánh 403, giữ mọi test decide() hiện có (M3) không phải sửa gì thêm.
     authz = createMock<AuthorizationService>({ can: jest.fn().mockResolvedValue(true) });
     audit = createMock<AuditService>({ record: jest.fn() });
+    // M7 — no-op mặc định: mọi test decide() hiện có (M3/M4) không quan tâm AI shadow mode; các
+    // test dành riêng cho hành vi này override `evaluateModeratorDecision` khi cần.
+    aiRecommendations = createMock<AiRecommendationsService>({
+      evaluateModeratorDecision: jest.fn().mockResolvedValue(undefined),
+    });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
-    service = new ModerationService(casesRepo, reportsRepo, mediaRepo, placesRepo, authz, audit, dataSource, events);
+    service = new ModerationService(
+      casesRepo,
+      reportsRepo,
+      mediaRepo,
+      placesRepo,
+      authz,
+      audit,
+      aiRecommendations,
+      dataSource,
+      events,
+    );
   });
 
   describe('list', () => {
@@ -550,6 +567,55 @@ describe('ModerationService', () => {
 
       expect(events.publish).toHaveBeenCalledTimes(1);
       expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
+    });
+
+    describe('M7 — hook đánh giá gợi ý AI (evaluateModeratorDecision) SAU commit', () => {
+      it('gọi evaluateModeratorDecision(caseId, decision) ĐÚNG với case/quyết định vừa commit', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+        expect(aiRecommendations.evaluateModeratorDecision).toHaveBeenCalledWith('c1', ModerationDecision.APPROVE);
+      });
+
+      it('CHỈ gọi SAU khi transaction commit (cùng thứ tự audit/event — INV-9)', async () => {
+        const callOrder: string[] = [];
+        dataSource.transaction.mockImplementation(async (cb: (m: EntityManager) => Promise<unknown>) => {
+          callOrder.push('transaction:start');
+          const result = await cb(manager);
+          callOrder.push('transaction:commit');
+          return result;
+        });
+        aiRecommendations.evaluateModeratorDecision.mockImplementation(async () => {
+          callOrder.push('ai:evaluate');
+        });
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+        expect(callOrder.indexOf('ai:evaluate')).toBeGreaterThan(callOrder.indexOf('transaction:commit'));
+      });
+
+      it('evaluateModeratorDecision ném lỗi -> KHÔNG hoàn tác quyết định, decide() vẫn resolve bình thường', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+        aiRecommendations.evaluateModeratorDecision.mockRejectedValue(new Error('ai db down'));
+
+        await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).resolves.toBeUndefined();
+        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(casesRepo.resolve).toHaveBeenCalled();
+      });
+
+      it('dismiss cũng gọi evaluateModeratorDecision (mọi quyết định — kể cả dismiss — đều so sánh được)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.DISMISS }, ACTOR);
+
+        expect(aiRecommendations.evaluateModeratorDecision).toHaveBeenCalledWith('c1', ModerationDecision.DISMISS);
+      });
     });
   });
 
