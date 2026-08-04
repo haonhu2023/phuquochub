@@ -23,6 +23,7 @@ import {
   MODERATION_EVENT_PUBLISHER,
   ModerationEventPublisher,
 } from './events/moderation-events';
+import { AiRecommendationsService } from './ai-recommendations.service';
 import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './dto/moderation.dto';
 import { ModerationCaseStatus, ModerationDecision, ModerationTargetType, ReportStatus } from './moderation.enums';
 import { MediaStatus } from '../media/media.enums';
@@ -76,6 +77,7 @@ export class ModerationService {
     private readonly placesRepo: PlacesRepository,
     private readonly authz: AuthorizationService,
     private readonly audit: AuditService,
+    private readonly aiRecommendations: AiRecommendationsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @Inject(MODERATION_EVENT_PUBLISHER)
@@ -388,6 +390,18 @@ export class ModerationService {
       await this.events.publish(new CaseResolvedEvent(outcome.caseId, outcome.decision));
     } catch (err) {
       this.logger.error(`Phát event cho case ${outcome.caseId} thất bại: ${(err as Error).message}`);
+    }
+
+    // M7 (AI Shadow Mode) — so sánh gợi ý AI (nếu có) với quyết định THẬT vừa commit. Try/catch
+    // RIÊNG, độc lập với audit/event ở trên: một lỗi ở đây (ví dụ DB tạm thời không tới bảng
+    // ai_recommendations được) không được phép làm audit/event của quyết định thật bị bỏ dở, và
+    // ngược lại — ba side-effect sau-commit này hoàn toàn độc lập với nhau.
+    try {
+      await this.aiRecommendations.evaluateModeratorDecision(outcome.caseId, outcome.decision);
+    } catch (err) {
+      this.logger.error(
+        `Đánh giá gợi ý AI cho case ${outcome.caseId} thất bại: ${(err as Error).message}`,
+      );
     }
   }
 }

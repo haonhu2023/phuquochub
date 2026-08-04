@@ -93,6 +93,34 @@ export class CaseOpenedEvent {
   ) {}
 }
 
+// M7 (AI Shadow Mode) — phát khi AiRecommendationsService.generateRecommendation() persist xong
+// MỘT recommendation mới (KHÔNG bao giờ đổi status/mở case — service chỉ ghi bảng
+// `ai_recommendations` của chính nó). `type` dùng ĐÚNG mã đã đặc tả cho M7 (dạng dotted, khác quy
+// ước PascalCase của các event khác ở trên) — tái dùng token/publisher hiện có thay vì dựng thêm
+// một kênh event thứ hai.
+export class AiRecommendationCreatedEvent {
+  readonly type = 'ai.recommendation.created' as const;
+  constructor(
+    public readonly recommendationId: string,
+    public readonly caseId: string,
+    public readonly decision: ModerationDecision,
+    public readonly occurredAt: Date = new Date(),
+  ) {}
+}
+
+// M7 — phát khi AiRecommendationsService.evaluateModeratorDecision() ghi xong kết quả so sánh
+// (matched true/false) SAU KHI ModerationService.decide() (T2) đã commit — cùng nguyên tắc INV-9
+// (chỉ sau commit, không bao giờ trong transaction quyết định).
+export class AiRecommendationEvaluatedEvent {
+  readonly type = 'ai.recommendation.evaluated' as const;
+  constructor(
+    public readonly recommendationId: string,
+    public readonly caseId: string,
+    public readonly matched: boolean,
+    public readonly occurredAt: Date = new Date(),
+  ) {}
+}
+
 export type ModerationDomainEvent =
   | ReviewCreatedEvent
   | MediaAutoPublishedEvent
@@ -100,7 +128,9 @@ export type ModerationDomainEvent =
   | ContentHiddenEvent
   | CaseResolvedEvent
   | ReportCreatedEvent
-  | CaseOpenedEvent;
+  | CaseOpenedEvent
+  | AiRecommendationCreatedEvent
+  | AiRecommendationEvaluatedEvent;
 
 export const MODERATION_EVENT_PUBLISHER = Symbol('MODERATION_EVENT_PUBLISHER');
 

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ModerationService } from './moderation.service';
 import { ModerationController } from './moderation.controller';
 import { ModerationCoreModule } from './moderation-core.module';
+import { AiRecommendationsModule } from './ai-recommendations.module';
 import { MediaModule } from '../media/media.module';
 import { PlacesModule } from '../places/places.module';
 import { RbacModule } from '../rbac/rbac.module';
@@ -24,8 +25,14 @@ import { RbacModule } from '../rbac/rbac.module';
 // import `ModerationCoreModule` directly instead of this module — it only ever needed the
 // repositories/token, never `ModerationService`/`ModerationController`. See
 // `moderation-core.module.ts`'s own comment for the full explanation.
+//
+// M7 (AI Shadow Mode): `AiRecommendationsModule` is imported ONE-WAY, purely so
+// `ModerationService.emitPostCommit()` can call `AiRecommendationsService.evaluateModeratorDecision()`
+// AFTER T2 commits (INV-9-style: never inside the decision transaction, never able to affect its
+// outcome). `AiRecommendationsModule` itself only imports `ModerationCoreModule` — it never imports
+// `ModerationModule` back, so this stays a one-way edge, not a cycle.
 @Module({
-  imports: [ModerationCoreModule, MediaModule, PlacesModule, RbacModule],
+  imports: [ModerationCoreModule, AiRecommendationsModule, MediaModule, PlacesModule, RbacModule],
   controllers: [ModerationController],
   providers: [ModerationService],
 })
