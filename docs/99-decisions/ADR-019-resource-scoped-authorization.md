@@ -516,3 +516,31 @@ sang đó không tốn thiết kế mới.
 minh thành **đã hoãn kèm điều kiện mở lại** (CHECK toàn vẹn — D6; deny theo tài nguyên — D5; cache
 xuyên request — Alternative F) hoặc **ngoài phạm vi** (§Tuyên bố phạm vi phủ định ở đầu §Decision).
 Không hạng mục nào chặn M0.1.
+
+## Tình trạng triển khai (Implementation Status)
+
+*(Mục này CHỈ ghi lại tiến độ triển khai — KHÔNG sửa bất kỳ nội dung quyết định nào ở D1–D16/
+Quyết định Owner. Cùng quy ước ADR-018's milestone banner, áp cho một ADR có nhiều milestone.)*
+
+**M0.1 — PDP Foundation: ✅ ĐÃ TRIỂN KHAI (2026-08-04).** Contract `AuthorizationContext`/
+`AuthorizationContextResolver` (D3/D5); truy vấn recursive CTE một-câu `ScopedGrant`
+(`UserRolesRepository.getScopedGrants`, D12) — kiểm chứng SỐNG trên Postgres thật, kể cả trường hợp
+DAG hình thoi dùng chính đồ thị `role_parents` đã seed (`moderator` → `{contributor, local_guide}`
+→ `member`), không cần migration hay role giả; `evaluateScopedAccess`/`grantScopeOf`
+(scoped-authorization.util.ts) — thuật toán hai pha (D2) + bảng quyết định (D6), 27 unit test;
+`AuthorizationService.can(userId, permission, contextProvider?)` mở rộng — **ship TỐI, KHÔNG guard/
+controller nào gọi kèm context** — xác nhận bằng toàn bộ regression (BE unit 106 suite/1203 test,
+BE e2e 21 suite/177 test, real Docker). `RequestScopedGrantCache` (D11) — nền tảng ghi nhớ theo
+request, đã test đầy đủ, CHƯA đấu nối vào guard (đó là việc của M0.2).
+
+**Phát hiện quan trọng lúc triển khai:** bản đầu vô tình cho đường "không context" của `can()`
+fail-closed VÔ ĐIỀU KIỆN cho cả scope `Managed` LẪN `Own` — an toàn với `Managed` (không ai giữ
+grant đó hôm nay) nhưng phá vỡ `Own` ĐANG SỐNG (`Media.Upload.Own`, `User.Edit.Own` — an toàn hôm
+nay CHỈ nhờ quy ước cấu trúc, đúng như D15 M0.3 đã mô tả, KHÔNG nhờ phép kiểm tra nào). Bắt được
+bằng chính bộ e2e thật (20 test thất bại) — sửa bằng cách giữ đường "không context" tương thích
+NGUYÊN VẸN (rank-thuần, `isAllowed`) cho MỌI scope, chỉ kích hoạt đường fail-closed mới khi caller
+CHỦ ĐỘNG truyền `contextProvider`. Xem chi tiết đầy đủ:
+[M0-RESOURCE-SCOPED-AUTHORIZATION-PDP-FOUNDATION-2026-08-04.md](../delivery/reports/M0-RESOURCE-SCOPED-AUTHORIZATION-PDP-FOUNDATION-2026-08-04.md).
+
+**M0.2 — PEP + Resolvers + Rollout:** CHƯA bắt đầu.
+**M0.3 — Own-Scope Hardening:** CHƯA bắt đầu.

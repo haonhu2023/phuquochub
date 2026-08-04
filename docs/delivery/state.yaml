@@ -30,7 +30,51 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-04, Moderation M7 -- AI Shadow Mode) Owner-approved
+  task: none                      # (2026-08-04, ADR-019 M0.1 -- Resource-Scoped Authorization PDP
+                                  # Foundation) Owner-approved dark-ship implementation. New:
+                                  # AuthorizationContext/AuthorizationContextResolver contracts
+                                  # (authz/authorization-context.ts, types only -- no decorator, no
+                                  # resolver implementation, both M0.2); ScopedGrant (authz/
+                                  # scoped-grant.ts); UserRolesRepository.getScopedGrants() -- ONE
+                                  # recursive CTE replacing the old 3-query chain, carrying each
+                                  # user_roles row's scope_type/business_id through role_parents DAG
+                                  # expansion via UNION (diamond-safe, proven live against the real
+                                  # seeded moderator->{contributor,local_guide}->member graph, no
+                                  # migration, no fake roles); evaluateScopedAccess/grantScopeOf
+                                  # (authz/scoped-authorization.util.ts) -- the two-phase D2
+                                  # algorithm + D6 decision matrix, 27 unit tests;
+                                  # AuthorizationService.can(userId, permission, contextProvider?)
+                                  # extended; RequestScopedGrantCache (D11 memoization foundation,
+                                  # not wired into any guard yet).
+                                  #
+                                  # REGRESSION CAUGHT AND FIXED DURING IMPLEMENTATION: first pass
+                                  # made can()'s no-context path fail-closed unconditionally for
+                                  # BOTH Managed and Own scope -- safe for Managed (nobody holds such
+                                  # a grant today) but broke Own, which IS live today
+                                  # (Media.Upload.Own gates POST /media/presign + POST /media;
+                                  # User.Edit.Own gates PATCH /users/me) via pure rank matching, no
+                                  # resource check ever needed by structural convention. Caught by
+                                  # the full e2e suite: 20 real failures across media.e2e-spec.ts,
+                                  # review-media-auto-publish.e2e-spec.ts, media-orphan-cleanup.
+                                  # e2e-spec.ts. Fixed: can() without a contextProvider now
+                                  # reproduces the exact pre-ADR-019 rank-only decision (isAllowed,
+                                  # authorization.util.ts untouched) for EVERY scope including Own --
+                                  # the new fail-closed evaluation activates ONLY when a caller
+                                  # explicitly supplies a contextProvider, which no real caller does
+                                  # in M0.1. Re-ran full e2e after the fix: 21/21 suites, 177/177
+                                  # tests, all green.
+                                  #
+                                  # FULL REGRESSION (2026-08-04): BE unit 106 suites/1203 tests
+                                  # PASS, BE e2e 21 suites/177 tests PASS (real Postgres, includes
+                                  # new authz-scoped-grants.e2e-spec.ts proving diamond-DAG dedup
+                                  # live), monorepo build 4/4, typecheck 6/6, lint 6/6, git diff
+                                  # --check clean, secret scan clean. Zero guard/controller/service
+                                  # call sites changed -- dark ship confirmed, not just claimed.
+                                  # STATUS: COMPLETE (M0.1 only). M0.2 (PEP + resolvers + rollout)
+                                  # and M0.3 (Own-scope hardening) NOT started. See docs/delivery/
+                                  # reports/M0-RESOURCE-SCOPED-AUTHORIZATION-PDP-FOUNDATION-
+                                  # 2026-08-04.md and ADR-019's own Implementation Status section.
+                                  # ---- prior state (2026-08-04, Moderation M7 -- AI Shadow Mode) Owner-approved
                                   # implementation + LIVE VALIDATION for ADR-018 M7: one new table
                                   # `ai_recommendations` (migration AddAiRecommendations,
                                   # 1720003500000) -- NO change to moderation_cases/reports/media/
