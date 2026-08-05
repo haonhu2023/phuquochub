@@ -334,4 +334,6 @@ community-voting design ADR-008 actually specifies, should that ever be prioriti
 
 ## Commit hashes
 
-Recorded after commits are created (see final report message for this session).
+- `5ab0a8f` — `feat(business): add claim foundation and decision workflow`
+- `dc1cf5d` — `test(business): verify claim ownership and scoped access`
+- `4a36bfc` — `docs(business): record ADR-015 implementation`
