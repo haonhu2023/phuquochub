@@ -30,10 +30,84 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-05, ADR-015 Business Claim Foundation -- Claim Decision
-                                  # Workflow) Owner-approved implementation. First real ADR-015
-                                  # implementation in this repository -- no M1/M2 ever existed (
-                                  # business_claims/business_members were never migrated; confirmed
+  task: none                      # (2026-08-05, ADR-015 Business Manager Assignment/Revocation --
+                                  # UC-B6) Owner-approved implementation. Second ADR-015 milestone in
+                                  # this repository, immediately after Claim Foundation. Reuses the
+                                  # existing business_members schema as-is -- no new table, no new
+                                  # enum (MemberRole.MANAGER already existed, unused until now).
+                                  #
+                                  # Owner Decision 1 (permission naming): seeded
+                                  # Business.Manager.Assign.Managed/Revoke.Managed -- WITH the
+                                  # .Managed suffix, deviating from rbac.md's literal documented
+                                  # string (Business.Manager.Assign, no suffix) because ADR-019 D6
+                                  # determines scope class FROM the suffix on the permission code
+                                  # itself. This was flagged as a real architectural risk in the
+                                  # preceding read-only assessment (a scope-less permission here
+                                  # would have let any business_owner assign managers to ANY
+                                  # business, not just their own) and the Owner confirmed the
+                                  # .Managed-suffixed naming before any code was written.
+                                  #
+                                  # Owner Decision 5 (authorization): BusinessManagersController's
+                                  # two handlers carry @AuthorizationContext(resourceType:'place',
+                                  # param:'id') + IDENTITY_PLACE_RESOLVER (0-query, same mechanism as
+                                  # Place.Edit.Managed) -- the PDP matches the actor's Managed grant's
+                                  # business_id against the route's :id BEFORE the controller method
+                                  # runs. BusinessManagersService contains zero manual "is actor the
+                                  # owner" check -- unlike M3's decide() self-verification (needed
+                                  # there only because Business.Verify has no scope suffix).
+                                  #
+                                  # UserRolesRepository.revoke() extended with an optional businessId
+                                  # parameter (beyond the transaction-manager parameter Owner Decision
+                                  # 3 asked for) -- necessary for correctness: a user can manage
+                                  # multiple businesses, and revoking at business A must not touch
+                                  # their grant at business B. The existing admin call site
+                                  # (UsersService.revokeRole()) is unaffected -- it doesn't pass
+                                  # businessId, preserving its "revoke this role everywhere" behavior.
+                                  #
+                                  # New: BusinessManagersService (assign/revoke, single transaction,
+                                  # audit after commit), BusinessManagersController (POST /business/
+                                  # :id/managers, DELETE /business/:id/managers/:userId),
+                                  # BusinessMembersRepository.findActiveMembershipForUpdate() (locks
+                                  # ANY active role at a place -- used both to block duplicate
+                                  # assignment per uq_member_active and to confirm the exact row to
+                                  # revoke). New migration SeedBusinessManagerPermissions (2 new
+                                  # permissions, granted to business_owner only per BR-B6).
+                                  #
+                                  # Live Postgres validation (2026-08-05): owner assigns manager ->
+                                  # business_members(manager) + user_roles(business_manager, managed,
+                                  # business_id) both confirmed via SQL; same owner assigning a
+                                  # manager to a DIFFERENT business -> 403 (zero new authorization
+                                  # code, same ADR-019 machinery); the newly-assigned manager
+                                  # attempting to assign another manager themselves -> 403 (correct
+                                  # permission chain -- only business_owner holds
+                                  # Business.Manager.Assign.Managed); revoke -> both rows revoked and
+                                  # the manager's Managed access stops working immediately (PATCH
+                                  # /places/:id -> 403 right after revoke, previously 200); a user
+                                  # who manages two businesses had their grant at business A revoked
+                                  # without touching their still-active grant at business B (the
+                                  # specific correctness case the businessId parameter addition
+                                  # exists for). Migration apply -> revert -> verified zero residue ->
+                                  # reapply. Full regression: BE unit 119 suites/1341 tests (up from
+                                  # 117/1330), BE e2e 25 suites/216 tests (up from 24/206, includes new
+                                  # business-managers.e2e-spec.ts, 10 tests), monorepo build/typecheck/
+                                  # lint 12/12, git diff --check clean, secret scan clean (11 files).
+                                  # No separate live forced-failure rollback drill was run for this
+                                  # milestone -- the transaction mechanism (dataSource.transaction())
+                                  # is identical to Claim Foundation's, already live-proven there;
+                                  # code review confirmed both writes in each of assign()/revoke()
+                                  # correctly receive the shared manager. See docs/delivery/reports/
+                                  # ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md and ADR-015's own
+                                  # Implementation Status section.
+                                  #
+                                  # Explicitly NOT started (Owner exclusion list, unchanged from Claim
+                                  # Foundation plus this milestone itself now done): ownership transfer
+                                  # (UC-B7), business dashboard (UC-B3/B5), review replies (UC-B4),
+                                  # notifications, analytics, Business.Edit.Managed, any later Business
+                                  # milestone.
+                                  # ---- prior state (2026-08-05, ADR-015 Business Claim Foundation --
+                                  # Claim Decision Workflow) Owner-approved implementation. First real
+                                  # ADR-015 implementation in this repository -- no M1/M2 ever existed
+                                  # (business_claims/business_members were never migrated; confirmed
                                   # across the 2026-07-29 -> 2026-08-04 history below: "no dependency
                                   # on unmigrated business_claims/members"). ADR-019's blocking
                                   # prerequisite (M0.1-M0.3, scoped business_owner grants actually

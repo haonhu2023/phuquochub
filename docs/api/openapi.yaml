@@ -1891,11 +1891,19 @@ paths:
       operationId: getBusinessDashboard
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses: { '200': { $ref: '#/components/responses/ObjectResponse' } }
+  # Business Manager Assignment/Revocation — ĐÃ TRIỂN KHAI (2026-08-05). `Business.Manager.
+  # Assign.Managed`/`Revoke.Managed` (Owner Decision 1 — CÓ hậu tố scope, khác Business.Claim/
+  # Business.Verify) + `@AuthorizationContext(resourceType:'place', param:'id')` — actor phải giữ
+  # grant Managed mà business_id khớp ĐÚNG `id` route (tức là owner hiệu lực của ĐÚNG cơ sở đó).
+  # KHÔNG có kiểm tra ownership thủ công nào khác — toàn bộ đi qua đường Managed sẵn có (ADR-019).
   /business/{id}/managers:
     post:
       tags: [Business]
-      summary: Gán manager
+      summary: Gán manager (Business.Manager.Assign.Managed, owner của ĐÚNG cơ sở này)
       operationId: addBusinessManager
+      description: >-
+        `role` LUÔN là `manager` — không nhận từ body (tránh mở đường gán role khác qua endpoint
+        này). Target đã có vai trò hiệu lực (owner HOẶC manager) tại cơ sở này → 409.
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -1904,17 +1912,37 @@ paths:
             schema:
               type: object
               required: [user_id]
-              properties: { user_id: { type: string, format: uuid }, role: { type: string, enum: [manager] } }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+              properties: { user_id: { type: string, format: uuid } }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessManager' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Manager.Assign.Managed, hoặc không phải owner hiệu lực của cơ sở này }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Target đã có vai trò hiệu lực (owner hoặc manager) tại cơ sở này }
   /business/{id}/managers/{userId}:
     delete:
       tags: [Business]
-      summary: Thu hồi manager
+      summary: Thu hồi manager (Business.Manager.Revoke.Managed, owner của ĐÚNG cơ sở này)
       operationId: revokeBusinessManager
+      description: >-
+        CHỈ thu hồi được manager — nhắm vào owner trả 404 (chuyển nhượng owner ngoài phạm vi, xem
+        `/business/{id}/transfer`). Thu hồi chỉ ảnh hưởng cơ sở `{id}` — user vẫn giữ nguyên grant
+        manager ở cơ sở khác (nếu có).
       parameters:
         - { $ref: '#/components/parameters/IdPath' }
         - { name: userId, in: path, required: true, schema: { type: string, format: uuid } }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Manager.Revoke.Managed, hoặc không phải owner hiệu lực của cơ sở này }
+        '404': { description: Không tìm thấy manager hiệu lực tại cơ sở này (bao gồm cả khi target là owner) }
   /business/{id}/transfer:
     post:
       tags: [Business]
@@ -2700,6 +2728,17 @@ components:
         - type: object
           properties:
             evidence: { type: array, items: { $ref: '#/components/schemas/BusinessClaimEvidenceItem' } }
+    BusinessManager:
+      type: object
+      description: Business Manager Assignment/Revocation milestone — dòng `business_members`.
+      properties:
+        id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        role: { type: string, enum: [owner, manager] }
+        granted_by: { type: [string, 'null'], format: uuid }
+        granted_at: { type: string, format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
     ScopeType: { type: string, enum: [global, managed, own] }
     RolePermEffect: { type: string, enum: [allow, deny] }
     AuditResult: { type: string, enum: [success, failure, allow, deny] }

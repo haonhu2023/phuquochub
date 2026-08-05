@@ -9,10 +9,20 @@
 > verification_status`/`verified_at` (ADR-008 §Decision mục 3), KHÔNG phải bảng `verifications` đầy
 > đủ — ADR-008's state machine riêng (`verifications`/`verification_events`/`verification_votes`)
 > **vẫn hoãn**. §5 mục RBAC hiện thực bằng permission MỚI `Business.Verify` (tách biệt
-> `Verification.Verify`). §7 mục "Còn mở" (transfer, chuỗi/thương hiệu) và §3 "Quản lý nhân sự"
-> (Manager assign/revoke), §3 tính năng Dashboard/phản hồi review/analytics **vẫn chưa triển khai**.
+> `Verification.Verify`).
+>
+> **Business Manager Assignment/Revocation (UC-B6): ĐÃ TRIỂN KHAI (2026-08-05).** §3 "Quản lý nhân
+> sự" — Owner tự gán/thu hồi Manager (`POST`/`DELETE /business/{id}/managers[/{userId}]`), tái dùng
+> nguyên schema `business_members` (không migration bảng/enum mới). Permission
+> `Business.Manager.Assign.Managed`/`Revoke.Managed` (CÓ hậu tố scope — khác `Business.Claim`/
+> `Business.Verify`), enforcement HOÀN TOÀN qua đường Managed sẵn có của ADR-019, không kiểm tra
+> ownership thủ công nào khác.
+>
+> §7 mục "Còn mở" (transfer, chuỗi/thương hiệu) và §3 tính năng Dashboard/phản hồi review/analytics,
+> `Business.Edit.Managed` (dành cho một Business Profile surface tương lai) **vẫn chưa triển khai**.
 > Chi tiết: [ADR-015 §Tình trạng triển khai](../../99-decisions/ADR-015-business-ownership-model.md)
-> · [ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md).
+> · [ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md)
+> · [ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md).
 
 ## 1. Nguyên tắc & phạm vi
 

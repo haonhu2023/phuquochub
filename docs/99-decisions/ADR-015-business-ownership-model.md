@@ -105,7 +105,60 @@ test, BE e2e 24 suite/206 test (bao gồm `business-claims.e2e-spec.ts` mới, 8
 typecheck/lint 6/6, `git diff --check` sạch, secret scan sạch (21 file kiểm tra). Chi tiết đầy đủ:
 [ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md](../delivery/reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md).
 
-**Ngoài phạm vi milestone này (business.md §7 "còn mở" + Owner exclusion list, KHÔNG bắt đầu):**
-quản lý Manager (gán/thu hồi, UC-B6), chuyển nhượng (transfer, UC-B7), dashboard chủ cơ sở (UC-B3/
-B5), phản hồi review (UC-B4), thông báo, chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh,
-ADR-008 đầy đủ (bảng `verifications`/`verification_events`/`verification_votes`).
+**Ngoài phạm vi milestone Claim Foundation (business.md §7 "còn mở" + Owner exclusion list, KHÔNG
+bắt đầu ở milestone đó):** quản lý Manager (gán/thu hồi, UC-B6) — **nay ĐÃ TRIỂN KHAI, xem dưới**;
+chuyển nhượng (transfer, UC-B7), dashboard chủ cơ sở (UC-B3/B5), phản hồi review (UC-B4), thông
+báo, chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh, ADR-008 đầy đủ (bảng
+`verifications`/`verification_events`/`verification_votes`) — vẫn ngoài phạm vi.
+
+---
+
+**Business Manager Assignment/Revocation (UC-B6): ✅ ĐÃ TRIỂN KHAI (2026-08-05).** Milestone thứ
+hai của ADR-015 trong repo này, ngay sau Claim Foundation. Tái sử dụng nguyên vẹn schema
+`business_members` (không migration bảng/enum mới — chỉ seed permission). Owner-quyết định phạm
+vi (2026-08-05):
+
+1. **Permission CÓ hậu tố `.Managed`, không như M3.** `Business.Manager.Assign.Managed`/
+   `Revoke.Managed` — khác `Business.Claim`/`Business.Verify` (M3, KHÔNG hậu tố). Đây chính là điểm
+   rbac.md's chuỗi tên gốc (`Business.Manager.Assign` không hậu tố) mâu thuẫn với cơ chế ADR-019 D6
+   (hậu tố quyết định scope class) — phát hiện ở bước đánh giá trước khi viết code, Owner xác nhận
+   seed với hậu tố `.Managed` để đi đúng đường ADR-019, không theo nguyên văn chuỗi rbac.md.
+2. **`Business.Edit.Managed` KHÔNG đụng tới** — vẫn để dành cho một Business Profile surface tương
+   lai (nếu có), không endpoint nào ở milestone này cần nó.
+3. **KHÔNG có kiểm tra ownership thủ công.** Actor authorization đi HOÀN TOÀN qua
+   `@AuthorizationContext(resourceType:'place', resource:{from:'param',name:'id'})` +
+   `IDENTITY_PLACE_RESOLVER` (0 truy vấn, cùng cơ chế `Place.Edit.Managed`) — PDP so khớp
+   `business_id` của grant Managed với `id` route TRƯỚC KHI controller method chạy. Không một dòng
+   "verify actor is owner" nào trong service — khác hẳn M3's self-verification (cần thủ công vì
+   `Business.Verify` không hậu tố scope).
+4. **`UserRolesRepository.revoke()` mở rộng thêm `businessId` (ngoài `manager` — Owner Decision 3
+   chỉ định rõ manager tham số, `businessId` là bổ sung cần thiết để đúng nghĩa):** một user có thể
+   là manager của NHIỀU cơ sở; thu hồi ở cơ sở A không được đụng grant ở cơ sở B. Tham số cũ (không
+   truyền `businessId`) giữ hành vi CŨ cho `UsersService.revokeRole()` (thu hồi toàn bộ, dùng cho
+   hành động admin gỡ hẳn một role) — không phá vỡ call site hiện có.
+
+**Triển khai:** `BusinessManagersService` (assign/revoke, transaction MỘT-KHỐI, audit sau commit) +
+`BusinessManagersController` (`POST /business/{id}/managers`, `DELETE /business/{id}/managers/
+{userId}`) + `BusinessMembersRepository` mở rộng (`findActiveMembershipForUpdate` — khoá bất kỳ vai
+trò hiệu lực nào của (place,user), dùng để chặn gán trùng VÀ xác nhận đúng dòng thu hồi;
+`createManager`/`revokeMembership`) + migration `SeedBusinessManagerPermissions` (2 permission mới,
+grant CHỈ `business_owner`).
+
+**Xác nhận sống trên Postgres thật (2026-08-05):** owner gán manager → `business_members(role=
+manager)` + `user_roles(business_manager, managed, business_id)` tạo đúng, audit
+`business.manager_assigned`. Cùng owner gán manager cho cơ sở KHÁC → 403 (ADR-019 cross-business
+isolation, không cần code phân quyền mới). Người vừa được gán manager tự gán manager khác → 403
+(đúng permission chain — chỉ `business_owner` giữ `Business.Manager.Assign.Managed`). Revoke →
+`business_members.revoked_at` + `user_roles` đều thu hồi, và quyền Managed mất hiệu lực NGAY (manager
+vừa bị thu hồi PATCH place → 403 tức thì). User là manager ở HAI cơ sở, revoke ở cơ sở A không đụng
+grant ở cơ sở B (đúng lý do `businessId` được thêm vào `revoke()`). Migration apply → revert → xác
+nhận 0 residue → reapply. Full regression: BE unit 119 suite/1341 test (từ 117/1330), BE e2e 25
+suite/216 test (từ 24/206, gồm `business-managers.e2e-spec.ts` mới, 10 test), monorepo build/
+typecheck/lint 12/12, `git diff --check` sạch, secret scan sạch (11 file). Không chạy drill rollback
+sống riêng cho milestone này — cơ chế transaction giống hệt (`dataSource.transaction()`) đã được
+chứng minh sống ở Claim Foundation; review mã nguồn xác nhận cả hai lệnh ghi trong mỗi method
+(`assign()`/`revoke()`) đều nhận đúng `manager` dùng chung. Chi tiết đầy đủ:
+[ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md](../delivery/reports/ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md).
+
+**Ngoài phạm vi milestone này:** chuyển nhượng (transfer, UC-B7), dashboard, phản hồi review, thông
+báo, số liệu/analytics, chuỗi nhiều chi nhánh, `Business.Edit.Managed`, ADR-008 đầy đủ.
