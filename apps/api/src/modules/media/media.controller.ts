@@ -1,6 +1,8 @@
 import { Body, Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { PRINCIPAL_RESOLVER } from '../authz/resolvers/principal.resolver';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { MediaService } from './media.service';
 import { CreateMediaDto, PresignMediaDto } from './dto/media.dto';
@@ -16,6 +18,11 @@ export class MediaController {
   @Post('presign')
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Media.Upload.Own')
+  @AuthorizationContext({
+    resourceType: 'media',
+    resource: { from: 'principal' },
+    resolver: PRINCIPAL_RESOLVER,
+  })
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   presign(@Body() dto: PresignMediaDto, @CurrentUser() user: AuthPrincipal) {
     return this.mediaService.presign(dto, user.sub);
@@ -24,6 +31,11 @@ export class MediaController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Media.Upload.Own')
+  @AuthorizationContext({
+    resourceType: 'media',
+    resource: { from: 'principal' },
+    resolver: PRINCIPAL_RESOLVER,
+  })
   register(@Body() dto: CreateMediaDto, @CurrentUser() user: AuthPrincipal) {
     return this.mediaService.register(dto, user.sub);
   }

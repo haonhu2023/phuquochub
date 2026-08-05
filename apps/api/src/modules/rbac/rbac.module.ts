@@ -14,14 +14,15 @@ import {
   IDENTITY_PLACE_RESOLVER,
   IdentityPlaceResolver,
 } from '../authz/resolvers/identity-place.resolver';
+import { PRINCIPAL_RESOLVER, PrincipalResolver } from '../authz/resolvers/principal.resolver';
 import { AuthorizationBootstrapValidator } from '../authz/bootstrap/authorization-bootstrap.validator';
 import { RbacController } from './rbac.controller';
 
 // RbacModule đóng vai trò "authz module" chia sẻ (không có NestJS Module riêng tên AuthzModule —
-// AuthorizationService/guard đã sống ở đây từ M0.1). IDENTITY_PLACE_RESOLVER là resolver DÙNG
-// CHUNG (D5: "nằm sẵn trong authz module") — không phụ thuộc DB, không thuộc riêng module tài
-// nguyên nào. AuthorizationBootstrapValidator (D9) cần DiscoveryModule để quét toàn bộ controller
-// lúc bootstrap.
+// AuthorizationService/guard đã sống ở đây từ M0.1). IDENTITY_PLACE_RESOLVER và PRINCIPAL_RESOLVER
+// (M0.3, ADR-019 D15/D16) là resolver DÙNG CHUNG (D5: "nằm sẵn trong authz module") — cả hai
+// không phụ thuộc DB, không thuộc riêng module tài nguyên nào. AuthorizationBootstrapValidator
+// (D9) cần DiscoveryModule để quét toàn bộ controller lúc bootstrap.
 @Module({
   imports: [
     TypeOrmModule.forFeature([Role, Permission, RolePermission, RoleParent, UserRole]),
@@ -34,6 +35,7 @@ import { RbacController } from './rbac.controller';
     UserRolesRepository,
     AuthorizationService,
     { provide: IDENTITY_PLACE_RESOLVER, useClass: IdentityPlaceResolver },
+    { provide: PRINCIPAL_RESOLVER, useClass: PrincipalResolver },
     AuthorizationBootstrapValidator,
   ],
   exports: [
@@ -42,6 +44,7 @@ import { RbacController } from './rbac.controller';
     UserRolesRepository,
     AuthorizationService,
     IDENTITY_PLACE_RESOLVER,
+    PRINCIPAL_RESOLVER,
   ],
 })
 export class RbacModule {}

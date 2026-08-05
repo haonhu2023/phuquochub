@@ -6,23 +6,21 @@ import { AUTHZ_CONTEXT_KEY } from '../authorization-context';
 import type { AuthorizationContextOptions } from '../decorators/authorization-context.decorator';
 import { IDENTITY_PLACE_RESOLVER } from '../resolvers/identity-place.resolver';
 
-// ADR-019 D9 (Resource-Scoped Authorization, M0.2 — PEP + Resolvers + Rollout), Owner D2.
+// ADR-019 D9 (Resource-Scoped Authorization), Owner D2.
 //
-// PHẠM VI M0.2 (quyết định Owner rõ ràng, KHÔNG suy luận ngầm): D9 tự thân nói "Managed HOẶC Own"
-// không có ngoại lệ theo milestone. Nhưng M0.2 CHỦ ĐỘNG không triển khai Own-scope (đó là M0.3,
-// ADR-019 D15) — các route `.Own` đang sống hôm nay (`Media.Upload.Own`, `User.Edit.Own`) an toàn
-// CHỈ nhờ quy ước cấu trúc (không tham số `:id`), KHÔNG có `@AuthorizationContext` nào, và
-// KHÔNG được phép gắn trong M0.2. Áp D9 nguyên văn (Managed lẫn Own) sẽ làm ứng dụng KHÔNG khởi
-// động được ngay khi M0.2 ship — mâu thuẫn trực tiếp với yêu cầu "route Own hiện có không được vỡ
-// ở M0.2". Owner đã xác nhận: validator này CHỈ cưỡng chế D9 cho permission hậu tố `.Managed`
-// trong M0.2; hậu tố `.Own` được loại trừ tường minh khỏi phạm vi quét, để lại cho M0.3. Xem báo
-// cáo hoàn tất M0.2 (docs/delivery/reports/) để biết đầy đủ lý do.
+// PHẠM VI M0.3 (Own-Scope Hardening, ADR-019 D15): D9 tự thân (§D9 ở trên) nói "Managed HOẶC Own"
+// không có ngoại lệ theo milestone. M0.2 CHỦ ĐỘNG loại trừ `.Own` khỏi phạm vi quét (staged
+// exception, quyết định Owner ghi trong báo cáo hoàn tất M0.2) vì các route `.Own` đang sống khi đó
+// (`Media.Upload.Own`, `User.Edit.Own`) chưa mang `@AuthorizationContext` nào. M0.3 gắn
+// `@AuthorizationContext({ resource: { from: 'principal' } }, PRINCIPAL_RESOLVER)` cho cả 3 handler
+// `.Own` đang sống (D16) — ngoại lệ đó KHÔNG còn cần thiết và bị GỠ BỎ hoàn toàn ở đây: validator
+// này nay cưỡng chế D9 cho CẢ hai hậu tố `.Managed` VÀ `.Own`, đúng nguyên văn D9.
 //
 // Chạy ở `onApplicationBootstrap` — SAU khi mọi module đã khởi tạo, TRƯỚC khi `app.listen()` nhận
 // request đầu tiên (main.ts gọi theo đúng thứ tự NestFactory.create → ... → app.listen). Cưỡng chế
 // lúc request (INV-A1, trong PermissionsGuard) vẫn giữ nguyên làm phòng thủ chiều sâu — hai lớp,
 // không phải một thay cho lớp kia.
-const MANAGED_SUFFIX = '.Managed';
+const SCOPED_SUFFIXES = ['.Managed', '.Own'];
 
 interface Violation {
   controller: string;
@@ -54,7 +52,7 @@ export class AuthorizationBootstrapValidator implements OnApplicationBootstrap {
         `${v.controller}.${v.handler}${v.route ? ` [${v.route}]` : ''} — permission "${v.permission}": ${v.reason}`,
     );
     const message = [
-      `ADR-019 D9: bootstrap validation thất bại — ${violations.length} handler Managed thiếu ngữ cảnh phân quyền hợp lệ:`,
+      `ADR-019 D9: bootstrap validation thất bại — ${violations.length} handler Managed/Own thiếu ngữ cảnh phân quyền hợp lệ:`,
       ...lines.map((l) => `  - ${l}`),
     ].join('\n');
 
@@ -87,9 +85,11 @@ export class AuthorizationBootstrapValidator implements OnApplicationBootstrap {
           PERMISSIONS_KEY,
           [handler, metatype],
         );
-        const managedPermissions = (requiredPermissions ?? []).filter((p) => p.endsWith(MANAGED_SUFFIX));
-        if (managedPermissions.length === 0) {
-          return; // scope-less/Any/Own — D9 M0.2 chỉ quét Managed (xem ghi chú đầu file)
+        const scopedPermissions = (requiredPermissions ?? []).filter((p) =>
+          SCOPED_SUFFIXES.some((suffix) => p.endsWith(suffix)),
+        );
+        if (scopedPermissions.length === 0) {
+          return; // scope-less/Any — không cần ngữ cảnh tài nguyên (D9 áp cho Managed VÀ Own)
         }
 
         const route = this.extractRoute(metatype, handler);
@@ -99,7 +99,7 @@ export class AuthorizationBootstrapValidator implements OnApplicationBootstrap {
         );
 
         if (!meta) {
-          for (const permission of managedPermissions) {
+          for (const permission of scopedPermissions) {
             violations.push({
               controller: controllerName,
               handler: methodName,
@@ -113,7 +113,7 @@ export class AuthorizationBootstrapValidator implements OnApplicationBootstrap {
 
         const resolverToken = meta.resolver ?? IDENTITY_PLACE_RESOLVER;
         if (!this.isResolverRegistered(resolverToken)) {
-          for (const permission of managedPermissions) {
+          for (const permission of scopedPermissions) {
             violations.push({
               controller: controllerName,
               handler: methodName,

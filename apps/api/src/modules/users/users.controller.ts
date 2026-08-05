@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { PRINCIPAL_RESOLVER } from '../authz/resolvers/principal.resolver';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { UpdateMeDto, AssignRoleDto } from './dto/users.dto';
@@ -17,6 +19,11 @@ export class UsersController {
 
   @Patch('me')
   @RequirePermissions('User.Edit.Own')
+  @AuthorizationContext({
+    resourceType: 'user',
+    resource: { from: 'principal' },
+    resolver: PRINCIPAL_RESOLVER,
+  })
   updateMe(@CurrentUser() user: AuthPrincipal, @Body() dto: UpdateMeDto) {
     return this.usersService.updateMe(user.sub, dto);
   }

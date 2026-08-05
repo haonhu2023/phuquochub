@@ -19,21 +19,23 @@ export interface EffectivePermissions {
 // đó quyết định. `authorization.util.ts` (`grantSatisfies`/`isAllowed`) giữ NGUYÊN VẸN, không sửa.
 //
 // **`can()` KHÔNG kèm `contextProvider` PHẢI tái tạo ĐÚNG hành vi hạng-scope-thuần TỪ TRƯỚC ADR-019
-// cho MỌI loại permission — kể cả `.Managed` LẪN `.Own`.** Phát hiện trong lúc triển khai M0.1 (xác
-// nhận SỐNG qua e2e thật, không phải suy đoán): khác với `.Managed` (không ai giữ grant nào hôm nay
-// — fail closed không đổi gì quan sát được), scope `.Own` ĐANG được nhiều route thật dựa vào ngay
-// hôm nay — `Media.Upload.Own` (cấp cho `member`, gác `POST /media/presign`+`POST /media`),
-// `User.Edit.Own` (`PATCH /users/me`) — và những route đó, đúng như ADR-019 D15 M0.3 mô tả, an toàn
-// CHỈ nhờ quy ước cấu trúc (không có tham số `:id`, hành động luôn về CHÍNH người gọi), KHÔNG nhờ
-// một phép kiểm tra ngữ cảnh nào. `PermissionsGuard` (M0.2, CHƯA đấu nối ở M0.1) gọi `can()` đúng 2
-// tham số cho MỌI route — nếu nhánh "thiếu provider ⇒ deny" (D2 bước 5) áp dụng vô điều kiện cho cả
-// `.Own`, những route đó sẽ 403 ngay lập tức, một hồi quy sống trên endpoint đang hoạt động, vi
-// phạm thẳng ràng buộc cốt lõi của M0.1 ("no existing permission decision may change"). `.Own`
-// hardening là NHIỆM VỤ TƯỜNG MINH của M0.3 (ADR-019 D15), không phải M0.1 — nên `can()` không kèm
-// context giữ nguyên đường tương thích (rank-thuần, `isAllowed`) cho CẢ hai scope `.Managed` VÀ
-// `.Own`; đường fail-closed hai-pha CHỈ kích hoạt khi caller CHỦ ĐỘNG truyền `contextProvider` — con
-// đường mà KHÔNG caller thật nào trong M0.1 dùng tới (guard/M0.2 và lối thoát tầng service/D14 sẽ
-// là những caller ĐẦU TIÊN, sau này).
+// cho MỌI loại permission — kể cả `.Managed` LẪN `.Own`.** Đây là một bất biến CỦA CHÍNH `can()`,
+// không phải một trạng thái tạm thời: `can()` KHÔNG tự quyết định khi nào cần ngữ cảnh — đó là
+// trách nhiệm của CALLER (D1, `can()`/`canWithGrants()` chỉ là façade PDP dùng chung). Lịch sử: phát
+// hiện trong lúc triển khai M0.1 rằng nếu nhánh "thiếu provider ⇒ deny" (D2 bước 5) bị áp dụng vô
+// điều kiện, hai route `.Own` đang sống hôm nay khi đó (`Media.Upload.Own`, `User.Edit.Own`) — an
+// toàn CHỈ nhờ quy ước cấu trúc (không tham số `:id`), KHÔNG có `@AuthorizationContext` nào — sẽ
+// 403 SAI ngay lập tức. Sửa bằng cách giữ đường tương thích (rank-thuần, `isAllowed`) làm mặc định
+// cho callers không truyền context.
+//
+// **Cập nhật M0.3 (Own-Scope Hardening, ADR-019 D15):** `PermissionsGuard` nay truyền
+// `contextProvider` cho CẢ `.Managed` LẪN `.Own` (không chỉ `.Managed` như M0.2) — cả 3 handler
+// `.Own` đang sống đều mang `@AuthorizationContext({ resource: { from: 'principal' } },
+// PRINCIPAL_RESOLVER)` (D16), nên trên đường request thật, `can()`/`canWithGrants()` cho `.Own` LUÔN
+// nhận context hợp lệ, không còn rơi vào nhánh "thiếu provider" nữa. Đường tương thích không-context
+// ở trên VẪN giữ nguyên (không xoá) — đó là bất biến của `can()` tự thân, phục vụ mọi caller tương
+// lai chưa/không truyền context (vd `ModerationService.decide()`, D14), không phải một ngoại lệ chỉ
+// tồn tại vì `.Own` "chưa được cứng hoá".
 @Injectable()
 export class AuthorizationService {
   constructor(private readonly userRolesRepo: UserRolesRepository) {}

@@ -78,14 +78,14 @@ export class PermissionsGuard implements CanActivate {
     const contextProvider = this.buildContextProvider(context, request, user.sub, contextCache);
 
     for (const permission of required) {
-      // ADR-019 D9 (phạm vi M0.2, quyết định Owner — xem AuthorizationBootstrapValidator): CHỈ
-      // permission hậu tố `.Managed` đi qua đường đánh giá hai pha (context-aware, fail-closed).
-      // `.Own`/`.Any`/scope-less giữ NGUYÊN đường tương thích rank-thuần (KHÔNG contextProvider) —
-      // Own-scope rollout là M0.3 (ADR-019 D15); route `.Own` đang sống hôm nay (`Media.Upload.Own`,
-      // `User.Edit.Own`) an toàn CHỈ nhờ quy ước cấu trúc, KHÔNG có `@AuthorizationContext` nào, và
-      // sẽ 403 SAI nếu bị ép qua đường context-aware ở M0.2 (regression y hệt cái M0.1 đã bắt và
-      // sửa cho `can()` — xem authorization.service.ts — giờ áp lại đúng nguyên tắc đó ở guard).
-      const needsContext = permission.endsWith('.Managed');
+      // ADR-019 D9/D15 (M0.3 — Own-Scope Hardening, mở rộng từ phạm vi Managed-only của M0.2).
+      // Permission hậu tố `.Managed` HOẶC `.Own` đi qua đường đánh giá hai pha (context-aware,
+      // fail-closed) — cả 3 handler `.Own` đang sống (`Media.Upload.Own` × 2, `User.Edit.Own`) nay
+      // đều mang `@AuthorizationContext({ resource: { from: 'principal' } })` (D16), nên đường
+      // context-aware phân giải đúng ownerId === userId thay vì fail-closed sai. `.Any`/scope-less
+      // giữ NGUYÊN đường tương thích rank-thuần (KHÔNG contextProvider) — D2 bước 3 (Any/wildcard
+      // không đổi một byte) không phụ thuộc điều kiện này.
+      const needsContext = permission.endsWith('.Managed') || permission.endsWith('.Own');
       const ok = await this.authz.canWithGrants(
         grants,
         user.sub,
