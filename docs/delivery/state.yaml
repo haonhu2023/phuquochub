@@ -30,7 +30,49 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-05, ADR-019 M0.2 -- Resource-Scoped Authorization PEP +
+  task: none                      # (2026-08-05, ADR-019 M0.3 -- Resource-Scoped Authorization
+                                  # Own-Scope Hardening) Owner-approved implementation. Extends the
+                                  # M0.2 Managed-only PEP/D9 wiring to `.Own` -- the last milestone
+                                  # ADR-019 D15 defines. New: PRINCIPAL_RESOLVER (authz/resolvers/
+                                  # principal.resolver.ts, D5) -- 0-query, resourceId=ownerId=userId,
+                                  # businessId=null, registered in RbacModule alongside
+                                  # IDENTITY_PLACE_RESOLVER. PermissionsGuard: needsContext now
+                                  # `.Managed` OR `.Own` (was Managed-only). All 3 live `.Own`
+                                  # handlers (POST /media/presign, POST /media, PATCH /users/me --
+                                  # grep-confirmed, no others) decorated with
+                                  # `@AuthorizationContext({ resource: { from: 'principal' } },
+                                  # PRINCIPAL_RESOLVER)`. AuthorizationBootstrapValidator (D9): the
+                                  # M0.2 staged Own exclusion is fully removed -- now scans both
+                                  # `.Managed` and `.Own`, exactly per D9's unqualified text.
+                                  #
+                                  # Red-then-green (git stash of 9 tracked files, live Postgres):
+                                  # the 3 real Own routes are principal-only (no :id), so the gap
+                                  # was proven architecturally via two throwaway fixtures scoped to
+                                  # the new e2e file only (never mounted on the real app) --
+                                  # (1) a temp `:id`-shaped Own route (the exact shape D15 warns
+                                  # about) with a resolver reading ownerId from the param: RED --
+                                  # impersonating another user returned 200 (should be 403); GREEN --
+                                  # 403. (2) a temp Own route missing @AuthorizationContext, compiled
+                                  # into the real AppModule via Test.createTestingModule: RED --
+                                  # app.init() did NOT throw (the old M0.2 exception); GREEN -- throws
+                                  # the correct D9 message. 6/8 pass at RED (exactly the cases that
+                                  # don't touch the gap), 8/8 at GREEN. Separate live-Docker check
+                                  # (no Jest): `nest build && node dist/main.js` against the real
+                                  # Docker Postgres with a temp `.Own` controller missing context --
+                                  # crashed with the correct D9 message; temp file deleted
+                                  # immediately after, zero DB/git residue confirmed.
+                                  #
+                                  # FULL REGRESSION (2026-08-05): BE unit 113 suites/1262 tests PASS,
+                                  # BE e2e 23 suites/198 tests PASS (real Postgres+MinIO, includes new
+                                  # authz-own-scope-hardening.e2e-spec.ts, 8 tests), monorepo build
+                                  # 4/4, typecheck 6/6, lint 6/6, git diff --check clean, secret scan
+                                  # clean, zero DB residue after all e2e/live-Docker runs.
+                                  # STATUS: COMPLETE (M0.3). All three ADR-019 D15 milestones
+                                  # (M0.1/M0.2/M0.3) are now implemented -- D9 covers Managed and Own
+                                  # with no milestone-scoped exception remaining. See docs/delivery/
+                                  # reports/M0-RESOURCE-SCOPED-AUTHORIZATION-OWN-HARDENING-
+                                  # 2026-08-05.md and ADR-019's own Implementation Status section.
+                                  # ---- prior state (2026-08-05, ADR-019 M0.2 -- Resource-Scoped Authorization PEP +
                                   # Resolvers + Rollout) Owner-approved implementation. Closes the
                                   # actual privilege-escalation gap M0.1 only built machinery for.
                                   # New: @AuthorizationContext decorator (authz/decorators/

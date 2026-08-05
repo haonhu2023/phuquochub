@@ -583,4 +583,36 @@ xác nhận). Toàn bộ regression: BE unit 112 suite/1250 test, BE e2e 22 suit
 typecheck/lint 6/6 (hoặc 4/4 build). Chi tiết đầy đủ:
 [M0-RESOURCE-SCOPED-AUTHORIZATION-PEP-ROLLOUT-2026-08-05.md](../delivery/reports/M0-RESOURCE-SCOPED-AUTHORIZATION-PEP-ROLLOUT-2026-08-05.md).
 
-**M0.3 — Own-Scope Hardening:** CHƯA bắt đầu.
+**M0.3 — Own-Scope Hardening: ✅ ĐÃ TRIỂN KHAI (2026-08-05).** Mở rộng đúng cơ chế M0.2 sang scope
+`Own` — không sửa `matchesScopedContext`/`evaluateScopedAccess` (đã đúng và đã test từ M0.1, chỉ
+chưa được gọi tới cho `.Own`). `PRINCIPAL_RESOLVER` (D5, `authz/resolvers/principal.resolver.ts`)
+— 0 truy vấn, `resourceId=ownerId=userId`, `businessId=null`, đăng ký ở `RbacModule` cạnh
+`IDENTITY_PLACE_RESOLVER`. `PermissionsGuard`: `needsContext` mở rộng từ chỉ `.Managed` sang
+`.Managed` HOẶC `.Own` (một dòng). Cả 3 handler `.Own` đang sống (D16: `POST /media/presign`,
+`POST /media`, `PATCH /users/me` — grep xác nhận không còn route nào khác) gắn
+`@AuthorizationContext({ resource: { from: 'principal' } }, PRINCIPAL_RESOLVER)`.
+`AuthorizationBootstrapValidator` (D9): ngoại lệ tạm thời M0.2 (chỉ quét `.Managed`) bị GỠ BỎ
+hoàn toàn — nay quét CẢ `.Managed` LẪN `.Own`, đúng nguyên văn D9, không còn ngoại lệ theo
+milestone nào.
+
+Red-then-green (live Postgres, `git stash` 9 file tracked để lộ lại baseline M0.2): vì cả 3 route
+Own thật đều principal-only (không tham số `:id`), không có đường khai thác qua HTTP trên chính
+chúng — gap được chứng minh KIẾN TRÚC qua hai fixture tạm (chỉ tồn tại trong phạm vi file e2e mới,
+KHÔNG BAO GIỜ gắn vào app thật): (1) một route Own hình dạng `:id` tường minh (đúng cảnh báo
+nguyên văn của D15) với resolver giả mạo ownerId từ param — RED: sửa danh tính người khác trả 200
+(phải là 403); GREEN: 403. (2) một route Own thiếu `@AuthorizationContext` compile cùng AppModule
+thật qua `Test.createTestingModule` — RED: `app.init()` KHÔNG throw (đúng ngoại lệ M0.2 cũ); GREEN:
+throw đúng thông điệp D9. 6/8 pass ở RED (đúng các case không chạm gap), 8/8 pass ở GREEN. Live
+Docker riêng biệt (không qua Jest): `npx nest build && node dist/main.js` thật với một controller
+tạm `.Own` thiếu context, trỏ vào Postgres Docker thật — crash đúng thông điệp D9, file tạm xoá
+ngay sau khi xác nhận, 0 residue.
+
+Toàn bộ regression: BE unit 113 suite/1262 test, BE e2e 23 suite/198 test (bao gồm
+`authz-own-scope-hardening.e2e-spec.ts` mới, 8 test, real Postgres + MinIO), monorepo build 4/4,
+typecheck 6/6, lint 6/6, `git diff --check` sạch, secret scan sạch. Chi tiết đầy đủ:
+[M0-RESOURCE-SCOPED-AUTHORIZATION-OWN-HARDENING-2026-08-05.md](../delivery/reports/M0-RESOURCE-SCOPED-AUTHORIZATION-OWN-HARDENING-2026-08-05.md).
+
+**Cả ba milestone M0.1/M0.2/M0.3 do ADR-019 D15 định nghĩa nay đã triển khai đầy đủ.** D9 được
+cưỡng chế cho cả `.Managed` và `.Own`, không còn ngoại lệ theo milestone nào. Không có milestone
+"M0" nào khác được định nghĩa; điều kiện xem lại thiết kế này vẫn đúng như §Notes đã ghi (chiều
+scope mới, deny theo tài nguyên, hoặc nhu cầu cache permission xuyên request đo được).
