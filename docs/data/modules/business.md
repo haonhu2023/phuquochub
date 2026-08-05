@@ -1,6 +1,18 @@
 # PhuQuocHub — Thiết kế Entity `Business` (Sở hữu cơ sở)
 
-> Tài liệu **chỉ thiết kế** (không code). Thiết kế **dữ liệu** cho lớp Business: cho phép chủ cơ sở **claim** một `Place`, được xác minh và **quản lý** trang chính thức. Mô hình **Place-centric** (không có bảng `businesses`) — chốt ở [ADR-015](../../99-decisions/ADR-015-business-ownership-model.md). Lớp sản phẩm: [product/business.md](../../product/modules/business.md).
+> Thiết kế **dữ liệu** cho lớp Business: cho phép chủ cơ sở **claim** một `Place`, được xác minh và **quản lý** trang chính thức. Mô hình **Place-centric** (không có bảng `businesses`) — chốt ở [ADR-015](../../99-decisions/ADR-015-business-ownership-model.md). Lớp sản phẩm: [product/business.md](../../product/modules/business.md).
+>
+> **Business Claim Foundation (Claim Decision Workflow): ĐÃ TRIỂN KHAI (2026-08-05).** §2–§4 (schema
+> `business_claims`/`business_members` + máy trạng thái claim) sống trên Postgres thật — claim
+> submission (UC-B1) + moderator decision (UC-B2) + owner-membership/scoped `business_owner` grant
+> khi approved. §5 mục "Verification liên kết" hiện thực bằng **cache column** `places.
+> verification_status`/`verified_at` (ADR-008 §Decision mục 3), KHÔNG phải bảng `verifications` đầy
+> đủ — ADR-008's state machine riêng (`verifications`/`verification_events`/`verification_votes`)
+> **vẫn hoãn**. §5 mục RBAC hiện thực bằng permission MỚI `Business.Verify` (tách biệt
+> `Verification.Verify`). §7 mục "Còn mở" (transfer, chuỗi/thương hiệu) và §3 "Quản lý nhân sự"
+> (Manager assign/revoke), §3 tính năng Dashboard/phản hồi review/analytics **vẫn chưa triển khai**.
+> Chi tiết: [ADR-015 §Tình trạng triển khai](../../99-decisions/ADR-015-business-ownership-model.md)
+> · [ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md).
 
 ## 1. Nguyên tắc & phạm vi
 

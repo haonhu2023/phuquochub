@@ -1737,16 +1737,50 @@ paths:
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
   # ============================ BUSINESS ============================
-  /business/claims:
+  # ADR-015 Claim Decision Workflow — ĐÃ TRIỂN KHAI (2026-08-05). `/business/claims*` (stub cũ, chưa
+  # bao giờ có code) thay bằng `/business-claims*` khớp ĐÚNG BusinessClaimsController thật. `dashboard`/
+  # `managers`/`transfer` bên dưới VẪN LÀ STUB — ngoài phạm vi milestone này (UC-B3/B5/B6/B7).
+  /business-claims:
     get:
       tags: [Business]
-      summary: Hàng đợi claim
+      summary: Hàng đợi claim (Business.Verify, moderator)
       operationId: listBusinessClaims
-      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+      description: >-
+        Bỏ trống `status` → mặc định `pending` (hàng đợi). `evidence` KHÔNG có mặt ở đây (riêng tư,
+        chỉ lộ ở GET /business-claims/{id}) — business.md §2.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected, disputed, withdrawn] }
+        - name: place_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/BusinessClaimSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Business]
-      summary: Gửi yêu cầu claim
-      operationId: createBusinessClaim
+      summary: Gửi yêu cầu claim (Business.Claim, member)
+      operationId: submitBusinessClaim
+      description: >-
+        `requester_id` LUÔN lấy từ JWT, không nhận từ body. Place phải tồn tại & `published`
+        (WF-05). Claim `pending` trùng place+requester → 409. Response KHÔNG echo `evidence`
+        (riêng tư — business.md §2).
       requestBody:
         required: true
         content:
@@ -1756,13 +1790,53 @@ paths:
               required: [place_id, evidence]
               properties:
                 place_id: { type: string, format: uuid }
-                evidence: { type: array, items: { type: object, additionalProperties: true } }
-      responses: { '201': { $ref: '#/components/responses/EmptySuccess' } }
-  /business/claims/{id}/verify:
+                evidence:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { $ref: '#/components/schemas/BusinessClaimEvidenceItem' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessClaimSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Claim pending trùng place+requester đã tồn tại }
+  /business-claims/{id}:
+    get:
+      tags: [Business]
+      summary: Chi tiết claim (Business.Verify, moderator) — CÓ evidence
+      operationId: getBusinessClaim
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessClaimDetail' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /business-claims/{id}/decide:
     post:
       tags: [Business]
-      summary: Xác minh claim (moderator)
-      operationId: verifyBusinessClaim
+      summary: Duyệt/bác claim (Business.Verify, moderator)
+      operationId: decideBusinessClaim
+      description: >-
+        MỘT transaction: khoá claim, chặn tự xác minh (403), approve tạo `business_members(owner)` +
+        gán `business_owner` (`user_roles`, scope Managed, `business_id=place_id`) + đặt
+        `places.verification_status=official`/`verified_at` — TRỪ KHI cơ sở đã có owner hiệu lực,
+        khi đó tự động chuyển `disputed` thay vì approve (business.md §4). `reject` bắt buộc
+        `reason_code` (422 nếu thiếu).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -1774,8 +1848,42 @@ paths:
               properties:
                 decision: { type: string, enum: [approve, reject] }
                 reason_code: { $ref: '#/components/schemas/ClaimReasonCode' }
-                note: { type: string }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+                decision_note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: >-
+            OK — `data.status` phản ánh kết quả THẬT (có thể là `disputed` dù request gửi `approve`,
+            xem mô tả).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessClaimSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Verify, hoặc actor chính là requester (tự xác minh) }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: reject thiếu reason_code, hoặc claim không ở trạng thái cho phép quyết định }
+  /business-claims/{id}/withdraw:
+    post:
+      tags: [Business]
+      summary: Requester tự rút claim đang pending (Business.Claim)
+      operationId: withdrawBusinessClaim
+      description: Actor PHẢI là chính requester của claim — KHÔNG cần Business.Verify (business.md §4).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessClaimSummary' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Actor không phải requester của claim }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { description: Claim không còn ở trạng thái pending }
   /business/{id}/dashboard:
     get:
       tags: [Business]
@@ -2560,6 +2668,38 @@ components:
     VerificationStatus: { type: string, enum: [pending, verified, official, community_verified, expired, rejected] }
     VerificationReasonCode: { type: string, enum: [duplicate, fabricated, outdated, insufficient_evidence, policy_violation, wrong_target, other] }
     ClaimReasonCode: { type: string, enum: [insufficient_evidence, duplicate, fraud, wrong_target, other] }
+    BusinessClaimEvidenceItem:
+      type: object
+      description: business.md §2 "giấy phép/hóa đơn/ảnh mặt tiền/xác minh SĐT" — riêng tư, chỉ Moderator.
+      required: [type, reference]
+      properties:
+        type:
+          type: string
+          enum: [business_license, invoice, storefront_photo, phone_verification, other]
+        reference: { type: string, maxLength: 500, description: 'Tham chiếu (media id đã upload, hoặc chuỗi tự do cho SĐT/tài liệu) — KHÔNG lưu file nhị phân.' }
+        note: { type: string, maxLength: 300 }
+    BusinessClaimSummary:
+      type: object
+      description: >-
+        ADR-015 Claim Decision Workflow. CỐ Ý KHÔNG có `evidence` — riêng tư, chỉ lộ ở
+        BusinessClaimDetail (đường ĐÃ qua Business.Verify).
+      properties:
+        id: { type: string, format: uuid }
+        place_id: { type: string, format: uuid }
+        requester_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, disputed, withdrawn] }
+        reviewer_id: { type: [string, 'null'], format: uuid }
+        reason_code: { oneOf: [{ $ref: '#/components/schemas/ClaimReasonCode' }, { type: 'null' }] }
+        decision_note: { type: [string, 'null'] }
+        decided_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BusinessClaimDetail:
+      allOf:
+        - $ref: '#/components/schemas/BusinessClaimSummary'
+        - type: object
+          properties:
+            evidence: { type: array, items: { $ref: '#/components/schemas/BusinessClaimEvidenceItem' } }
     ScopeType: { type: string, enum: [global, managed, own] }
     RolePermEffect: { type: string, enum: [allow, deny] }
     AuditResult: { type: string, enum: [success, failure, allow, deny] }

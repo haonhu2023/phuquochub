@@ -30,7 +30,73 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-05, ADR-019 M0.3 -- Resource-Scoped Authorization
+  task: none                      # (2026-08-05, ADR-015 Business Claim Foundation -- Claim Decision
+                                  # Workflow) Owner-approved implementation. First real ADR-015
+                                  # implementation in this repository -- no M1/M2 ever existed (
+                                  # business_claims/business_members were never migrated; confirmed
+                                  # across the 2026-07-29 -> 2026-08-04 history below: "no dependency
+                                  # on unmigrated business_claims/members"). ADR-019's blocking
+                                  # prerequisite (M0.1-M0.3, scoped business_owner grants actually
+                                  # enforced) was already satisfied before this started.
+                                  #
+                                  # New module apps/api/src/modules/business/: BusinessClaim/
+                                  # BusinessMember entities, ClaimStatus/ClaimReasonCode/MemberRole/
+                                  # BusinessClaimDecision enums, a pure FSM (business-claim.
+                                  # transition.ts: submit/approve/reject/dispute/withdraw, 32-test
+                                  # full matrix), BusinessClaimsRepository/BusinessMembersRepository
+                                  # (row locks, ON CONFLICT for uq_claim_pending), BusinessClaimsService
+                                  # (submit/list/getById/decide/withdraw), BusinessClaimsController
+                                  # (POST /business-claims, GET /business-claims[/:id], POST /business-
+                                  # claims/:id/{decide,withdraw}). New migrations InitBusinessClaims
+                                  # (business_claims/business_members tables + all ADR-015 partial
+                                  # unique indexes; self-refusing down() when any claim has decided_at
+                                  # set, same pattern as InitModeration.down()) and
+                                  # SeedBusinessPermissions (new Business.Verify permission, granted
+                                  # to moderator only -- administrator/super_administrator inherit via
+                                  # the existing role_parents DAG, no explicit seed).
+                                  #
+                                  # Owner Decision 1 (verification): places.verificationStatus/
+                                  # verifiedAt (the existing ADR-008 cache columns) are the ONLY
+                                  # verification mechanism used on approval -- ADR-008's full entity
+                                  # (verifications/verification_events/verification_votes) remains
+                                  # deferred, not built. Owner Decision 2 (permission): Business.Verify
+                                  # is a NEW permission, distinct from Verification.Verify -- not
+                                  # reused. Owner Decision 3 (dispute): dispute is an AUTOMATIC redirect
+                                  # when decide(approve) finds a place already has an active owner
+                                  # (business.md Sec4 diagram), not a moderator-chosen decision value --
+                                  # the API's `decision` field only accepts approve/reject. withdraw()
+                                  # is a separate endpoint gated on actor===requester, not Business.Verify
+                                  # (business.md Sec4: withdraw's actor is the requester, not a moderator).
+                                  #
+                                  # ADR-019 integration proof (mandatory, live): decide(approve) calls
+                                  # UserRolesRepository.assign({scopeType: managed, businessId: placeId})
+                                  # -- the exact mechanism ADR-019 M0.1-M0.3 closed the privilege-
+                                  # escalation gap for. business-claims.e2e-spec.ts proves a freshly-
+                                  # approved owner can PATCH their own place (200) via the pre-existing
+                                  # PATCH /places/:id (Place.Edit.Managed, IDENTITY_PLACE_RESOLVER --
+                                  # zero new authz code) and gets 403 on a different place.
+                                  #
+                                  # Live Postgres validation (2026-08-05): migration apply -> revert
+                                  # (self-refusing guard verified both branches: refuses with decided
+                                  # claims present, allows cleanly with none) -> teardown verified 0
+                                  # residue -> reapply. A separate temporary forced-failure drill (a
+                                  # throw inserted AFTER business_members+user_roles+places.verification
+                                  # writes but BEFORE the claim-status commit, removed immediately after
+                                  # confirming) proved real transaction atomicity: all four mutations
+                                  # rolled back to baseline together on a real Postgres 500. Full
+                                  # regression: BE unit 117 suites/1330 tests (up from 113/1262), BE e2e
+                                  # 24 suites/206 tests (up from 23/198, includes new business-claims.
+                                  # e2e-spec.ts, 8 tests), monorepo build/typecheck/lint 6/6 each,
+                                  # `git diff --check` clean, secret scan clean (21 files). Zero residue
+                                  # confirmed via direct SQL after every live run. See docs/delivery/
+                                  # reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md and ADR-015's
+                                  # own Implementation Status section.
+                                  #
+                                  # Explicitly NOT started (Owner exclusion list): manager assignment/
+                                  # revoke (UC-B6), ownership transfer (UC-B7), business dashboard
+                                  # (UC-B3/B5), review replies (UC-B4), notifications, sanctions,
+                                  # analytics, multi-branch chains, ADR-008's full Verification entity.
+                                  # ---- prior state (2026-08-05, ADR-019 M0.3 -- Resource-Scoped Authorization
                                   # Own-Scope Hardening) Owner-approved implementation. Extends the
                                   # M0.2 Managed-only PEP/D9 wiring to `.Own` -- the last milestone
                                   # ADR-019 D15 defines. New: PRINCIPAL_RESOLVER (authz/resolvers/
