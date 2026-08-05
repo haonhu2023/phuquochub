@@ -3,6 +3,7 @@ import { UserRolesRepository } from '../rbac/repositories/user-roles.repository'
 import { isAllowed } from './authorization.util';
 import type { AuthorizationContextProvider } from './authorization-context';
 import { evaluateScopedAccess } from './scoped-authorization.util';
+import type { ScopedGrant } from './scoped-grant';
 
 export interface EffectivePermissions {
   allow: string[];
@@ -70,7 +71,23 @@ export class AuthorizationService {
     contextProvider?: AuthorizationContextProvider,
   ): Promise<boolean> {
     const grants = await this.userRolesRepo.getScopedGrants(userId);
+    return this.canWithGrants(grants, userId, requiredPermission, contextProvider);
+  }
 
+  /**
+   * ADR-019 D11 (M0.2 — PEP + Resolvers + Rollout). Đúng phần quyết định của `can()` ở trên, nhưng
+   * nhận `grants` đã nạp SẴN thay vì tự truy vấn — cho phép `PermissionsGuard` nạp `ScopedGrant[]`
+   * ĐÚNG MỘT LẦN mỗi request (qua `RequestScopedGrantCache`) rồi tái dùng cho MỌI permission trong
+   * `@RequirePermissions('A','B',...)`, xoá khuếch đại 3×N truy vấn hiện có. `AuthorizationService`
+   * vẫn là PDP DUY NHẤT (D1) — đây KHÔNG phải một engine quyết định thứ hai, chỉ tách bước "nạp dữ
+   * liệu" khỏi bước "quyết định" để caller kiểm soát vòng đời nạp.
+   */
+  async canWithGrants(
+    grants: readonly ScopedGrant[],
+    userId: string,
+    requiredPermission: string,
+    contextProvider?: AuthorizationContextProvider,
+  ): Promise<boolean> {
     if (!contextProvider) {
       return isAllowed(
         grants.filter((g) => g.effect === 'allow').map((g) => g.code),

@@ -13,10 +13,13 @@ import {
 } from '@nestjs/common';
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { PRICE_AUTHZ_RESOLVER } from './resolvers/price-authz.resolver';
 import { PricesService } from './prices.service';
 import { CreatePriceDto, UpdatePriceDto } from './dto/prices.dto';
 
-// api.md §11.2. entity suy từ path (entity_type=PLACE). Append-only.
+// api.md §11.2. entity suy từ path (entity_type=PLACE). Append-only. ADR-019 M0.2: scope Managed
+// cưỡng chế ở mức resource qua PermissionsGuard + @AuthorizationContext.
 @Controller()
 export class PricesController {
   constructor(private readonly pricesService: PricesService) {}
@@ -33,12 +36,18 @@ export class PricesController {
   @Post('places/:id/prices')
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Price.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatePriceDto) {
     return this.pricesService.createForPlace(id, dto);
   }
 
   @Patch('prices/:id')
   @RequirePermissions('Price.Edit.Managed')
+  @AuthorizationContext({
+    resourceType: 'price',
+    resource: { from: 'param', name: 'id' },
+    resolver: PRICE_AUTHZ_RESOLVER,
+  })
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePriceDto) {
     return this.pricesService.update(id, dto);
   }

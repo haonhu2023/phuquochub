@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { RestaurantsService } from './restaurants.service';
 import { ListRestaurantsQueryDto, UpdateRestaurantMenuDto } from './dto/restaurants.dto';
 
@@ -23,6 +24,7 @@ export class RestaurantsController {
 
   @Patch(':id/menu')
   @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   updateMenu(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRestaurantMenuDto) {
     return this.restaurantsService.updateMenu(id, dto);
   }

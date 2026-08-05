@@ -14,6 +14,7 @@ import {
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { CreatePlaceDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
@@ -55,6 +56,7 @@ export class PlacesController {
 
   @Patch(':id')
   @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdatePlaceDto,

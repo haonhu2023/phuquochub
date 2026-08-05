@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { HotelsService } from './hotels.service';
 import { ListHotelsQueryDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
 
@@ -24,6 +25,7 @@ export class HotelsController {
 
   @Patch(':id/rooms')
   @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   updateRooms(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateHotelRoomsDto) {
     return this.hotelsService.updateRooms(id, dto);
   }
