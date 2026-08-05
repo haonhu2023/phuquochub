@@ -227,4 +227,6 @@ entity.
 
 ## Commit hashes
 
-Recorded after commits are created (see final report message for this session).
+- `915e170` — `feat(business): add manager assignment and revocation`
+- `15d6b88` — `test(business): verify manager assignment and scoped access`
+- `e80ebd0` — `docs(business): record manager assignment/revocation milestone`
