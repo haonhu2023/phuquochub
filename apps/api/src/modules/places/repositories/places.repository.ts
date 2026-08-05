@@ -216,13 +216,20 @@ export class PlacesRepository {
     );
   }
 
-  /** Cập nhật trường scalar (không đụng location). */
-  async updateScalars(id: string, patch: Record<string, unknown>): Promise<void> {
+  /**
+   * Cập nhật trường scalar (không đụng location). `manager` TUỲ CHỌN — cùng quy ước
+   * `recalculateRating()`: truyền vào khi caller cần chạy trong transaction của họ (vd
+   * BusinessClaimsService.decide() cập nhật verification_status/verified_at CÙNG transaction với
+   * business_claims/business_members/user_roles, ADR-015 Claim Decision Workflow); bỏ trống dùng
+   * `this.repo` như trước (không phá vỡ lời gọi cũ nào ngoài transaction).
+   */
+  async updateScalars(id: string, patch: Record<string, unknown>, manager?: EntityManager): Promise<void> {
     const keys = Object.keys(patch);
     if (keys.length === 0) {
       return;
     }
-    await this.repo.update({ id }, patch);
+    const runner = manager ? manager.getRepository(Place) : this.repo;
+    await runner.update({ id }, patch);
   }
 
   async updateLocation(id: string, lng: number, lat: number): Promise<void> {

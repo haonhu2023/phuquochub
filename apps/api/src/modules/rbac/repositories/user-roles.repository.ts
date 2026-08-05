@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { UserRole } from '../entities/user-role.entity';
 import { ScopeType } from '../rbac.enums';
 import type { ScopedGrant } from '../../authz/scoped-grant';
@@ -43,21 +43,31 @@ export class UserRolesRepository {
     });
   }
 
-  assign(params: {
-    userId: string;
-    roleId: string;
-    scopeType?: ScopeType;
-    businessId?: string | null;
-    grantedBy?: string | null;
-  }): Promise<UserRole> {
-    const userRole = this.repo.create({
+  /**
+   * `manager` TUỲ CHỌN (ADR-015 Claim Decision Workflow) — cùng quy ước `recalculateRating()`/
+   * `PlacesRepository.updateScalars()`: truyền vào khi caller (BusinessClaimsService.decide())
+   * cần gán role CÙNG transaction với business_claims/business_members/places; bỏ trống dùng
+   * `this.repo` như trước (không phá vỡ lời gọi cũ nào ngoài transaction).
+   */
+  assign(
+    params: {
+      userId: string;
+      roleId: string;
+      scopeType?: ScopeType;
+      businessId?: string | null;
+      grantedBy?: string | null;
+    },
+    manager?: EntityManager,
+  ): Promise<UserRole> {
+    const repo = manager ? manager.getRepository(UserRole) : this.repo;
+    const userRole = repo.create({
       userId: params.userId,
       roleId: params.roleId,
       scopeType: params.scopeType ?? ScopeType.GLOBAL,
       businessId: params.businessId ?? null,
       grantedBy: params.grantedBy ?? null,
     });
-    return this.repo.save(userRole);
+    return repo.save(userRole);
   }
 
   /** Thu hồi (soft) mọi bản gán đang hiệu lực của (user, role). */

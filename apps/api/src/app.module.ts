@@ -29,6 +29,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
+import { BusinessModule } from './modules/business/business.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -65,6 +66,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
     AvailabilityModule,
     BookingsModule,
     ModerationModule,
+    BusinessModule,
   ],
 })
 export class AppModule {}
