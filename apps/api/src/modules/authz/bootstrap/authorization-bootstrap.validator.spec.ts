@@ -3,6 +3,7 @@ import { AuthorizationBootstrapValidator } from './authorization-bootstrap.valid
 import { RequirePermissions } from '../decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../decorators/authorization-context.decorator';
 import { IDENTITY_PLACE_RESOLVER } from '../resolvers/identity-place.resolver';
+import { PRINCIPAL_RESOLVER } from '../resolvers/principal.resolver';
 import { Reflector } from '@nestjs/core';
 
 const UNREGISTERED_TOKEN = Symbol('UNREGISTERED_TOKEN');
@@ -48,11 +49,24 @@ class AnyScopeController {
   }
 }
 
-class ExistingOwnController {
-  // Route Own ĐANG SỐNG hôm nay (vd Media.Upload.Own) — KHÔNG có @AuthorizationContext, và M0.2
-  // KHÔNG được phép làm nó fail bootstrap (Own-scope rollout là M0.3, quyết định Owner đã ghi rõ).
+class MissingContextOwnController {
+  // M0.3: D9 nay cưỡng chế CẢ `.Own` — route thiếu @AuthorizationContext PHẢI fail bootstrap,
+  // đúng như route Managed thiếu context. Đây là bằng chứng ngoại lệ M0.2 đã bị gỡ bỏ hoàn toàn.
   @RequirePermissions('Media.Upload.Own')
   upload(): void {
+    /* noop — cố ý thiếu @AuthorizationContext */
+  }
+}
+
+class GoodOwnController {
+  // M0.3: route Own với @AuthorizationContext hợp lệ (principal + PRINCIPAL_RESOLVER) -> boot OK.
+  @RequirePermissions('User.Edit.Own')
+  @AuthorizationContext({
+    resourceType: 'user',
+    resource: { from: 'principal' },
+    resolver: PRINCIPAL_RESOLVER,
+  })
+  updateMe(): void {
     /* noop */
   }
 }
@@ -99,7 +113,7 @@ function makeValidator(controllers: Ctor[], resolverRegistry: Set<symbol>) {
   return validator;
 }
 
-describe('AuthorizationBootstrapValidator (ADR-019 D9, phạm vi M0.2: Managed-only)', () => {
+describe('AuthorizationBootstrapValidator (ADR-019 D9, M0.3: Managed + Own)', () => {
   it('handler Managed CÓ @AuthorizationContext hợp lệ + resolver identity đăng ký -> KHÔNG throw', () => {
     const validator = makeValidator([GoodManagedController], new Set([IDENTITY_PLACE_RESOLVER]));
     expect(() => validator.onApplicationBootstrap()).not.toThrow();
@@ -132,15 +146,22 @@ describe('AuthorizationBootstrapValidator (ADR-019 D9, phạm vi M0.2: Managed-o
     expect(() => validator.onApplicationBootstrap()).not.toThrow();
   });
 
-  it('M0.2 CHỦ ĐỘNG loại trừ scope Own khỏi D9 (Own-scope rollout là M0.3) — route Own hiện có không throw dù thiếu @AuthorizationContext', () => {
-    const validator = makeValidator([ExistingOwnController], new Set());
+  it('handler Own CÓ @AuthorizationContext hợp lệ (principal + PRINCIPAL_RESOLVER đăng ký) -> KHÔNG throw', () => {
+    const validator = makeValidator([GoodOwnController], new Set([PRINCIPAL_RESOLVER]));
     expect(() => validator.onApplicationBootstrap()).not.toThrow();
   });
 
-  it('nhiều controller vi phạm -> tất cả được liệt kê trong MỘT thông điệp lỗi', () => {
+  it('handler Own THIẾU @AuthorizationContext -> throw (M0.3: ngoại lệ M0.2 đã gỡ bỏ, D9 áp nguyên văn)', () => {
+    const validator = makeValidator([MissingContextOwnController], new Set([PRINCIPAL_RESOLVER]));
+    expect(() => validator.onApplicationBootstrap()).toThrow(/MissingContextOwnController/);
+    expect(() => validator.onApplicationBootstrap()).toThrow(/upload/);
+    expect(() => validator.onApplicationBootstrap()).toThrow(/Media\.Upload\.Own/);
+  });
+
+  it('nhiều controller vi phạm (Managed lẫn Own) -> tất cả được liệt kê trong MỘT thông điệp lỗi', () => {
     const validator = makeValidator(
-      [GoodManagedController, MissingContextController, UnregisteredResolverController],
-      new Set([IDENTITY_PLACE_RESOLVER]),
+      [GoodManagedController, MissingContextController, UnregisteredResolverController, MissingContextOwnController],
+      new Set([IDENTITY_PLACE_RESOLVER, PRINCIPAL_RESOLVER]),
     );
     let thrown: Error | undefined;
     try {
@@ -151,6 +172,7 @@ describe('AuthorizationBootstrapValidator (ADR-019 D9, phạm vi M0.2: Managed-o
     expect(thrown).toBeDefined();
     expect(thrown!.message).toMatch(/MissingContextController/);
     expect(thrown!.message).toMatch(/UnregisteredResolverController/);
+    expect(thrown!.message).toMatch(/MissingContextOwnController/);
     expect(thrown!.message).not.toMatch(/GoodManagedController/);
   });
 });

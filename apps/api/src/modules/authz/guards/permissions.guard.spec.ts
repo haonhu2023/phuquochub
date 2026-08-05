@@ -7,6 +7,7 @@ import { UserRolesRepository } from '../../rbac/repositories/user-roles.reposito
 import { RequirePermissions } from '../decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../decorators/authorization-context.decorator';
 import { IDENTITY_PLACE_RESOLVER } from '../resolvers/identity-place.resolver';
+import { PRINCIPAL_RESOLVER } from '../resolvers/principal.resolver';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 import type { ScopedGrant } from '../scoped-grant';
 
@@ -26,12 +27,23 @@ class FixtureController {
     /* noop */
   }
 
-  // Mô phỏng route .Own ĐANG SỐNG hôm nay (vd Media.Upload.Own) — KHÔNG có @AuthorizationContext,
-  // KHÔNG thuộc rollout M0.2 (Own-scope là M0.3). Guard PHẢI dùng đường tương thích rank-thuần cho
-  // permission này (KHÔNG contextProvider) — nếu không, route sẽ 403 SAI (hồi quy M0.1 đã bắt và
-  // sửa cho AuthorizationService.can(), giờ test lại cho guard).
+  // M0.3: route .Own THIẾU @AuthorizationContext — nay PHẢI deny (INV-A1 mở rộng sang Own). Đây là
+  // fixture cố ý mô phỏng một route Own quên gắn decorator (lỗi cấu hình), KHÔNG phải trạng thái
+  // sống hợp lệ nào — cả 3 handler .Own thật (Media.Upload.Own × 2, User.Edit.Own) đều mang
+  // @AuthorizationContext sau M0.3 (xem ownWithPrincipalContext bên dưới).
   @RequirePermissions('Media.Upload.Own')
-  ownScopeLive(): void {
+  ownMissingContext(): void {
+    /* noop — cố ý thiếu @AuthorizationContext, cho test INV-A1 mở rộng sang Own */
+  }
+
+  // M0.3: route .Own THẬT, đúng hình dạng rollout (D16) — principal + PRINCIPAL_RESOLVER.
+  @RequirePermissions('User.Edit.Own')
+  @AuthorizationContext({
+    resourceType: 'user',
+    resource: { from: 'principal' },
+    resolver: PRINCIPAL_RESOLVER,
+  })
+  ownWithPrincipalContext(): void {
     /* noop */
   }
 
@@ -303,14 +315,59 @@ describe('PermissionsGuard (ADR-019 M0.2 — PEP)', () => {
     expect(resolve).toHaveBeenCalledTimes(1);
   });
 
-  it('permission .Own KHÔNG có @AuthorizationContext (route đang sống, ngoài phạm vi M0.2) -> vẫn allow qua đường tương thích rank-thuần, KHÔNG gọi moduleRef.get (chống hồi quy M0.1)', async () => {
+  it('M0.3: permission .Own THIẾU @AuthorizationContext -> deny (INV-A1 mở rộng sang Own, ngoại lệ M0.2 đã gỡ bỏ)', async () => {
     userRolesRepo.getScopedGrants.mockResolvedValue([
-      grant({ code: 'Media.Upload.Own', effect: 'allow', scopeType: 'global', businessId: null }),
+      grant({ code: 'Media.Upload.Own', effect: 'allow', scopeType: 'own', businessId: null }),
     ]);
-    const context = buildContext('ownScopeLive', { params: {}, user: { sub: 'u1' } });
+    const context = buildContext('ownMissingContext', { params: {}, user: { sub: 'u1' } });
+
+    await expect(guard.canActivate(context)).rejects.toThrow('Thiếu quyền: Media.Upload.Own');
+  });
+
+  it('M0.3: permission .Own CÓ @AuthorizationContext (principal) -> contextProvider ĐƯỢC gọi (moduleRef.get invoked) — khác hẳn hành vi M0.2', async () => {
+    userRolesRepo.getScopedGrants.mockResolvedValue([
+      grant({ code: 'User.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null }),
+    ]);
+    moduleRef.get.mockReturnValue({
+      resolve: jest.fn().mockResolvedValue({ resourceType: 'user', resourceId: 'u1', businessId: null, ownerId: 'u1' }),
+    });
+    const context = buildContext('ownWithPrincipalContext', { params: {}, user: { sub: 'u1' } });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(moduleRef.get).not.toHaveBeenCalled();
+    expect(moduleRef.get).toHaveBeenCalledWith(PRINCIPAL_RESOLVER, { strict: false });
+  });
+
+  it('M0.3: ownerId phân giải KHỚP userId gọi (principal luôn tự sở hữu) -> allow', async () => {
+    userRolesRepo.getScopedGrants.mockResolvedValue([
+      grant({ code: 'User.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null }),
+    ]);
+    moduleRef.get.mockReturnValue({
+      resolve: jest.fn().mockResolvedValue({ resourceType: 'user', resourceId: 'u1', businessId: null, ownerId: 'u1' }),
+    });
+    const context = buildContext('ownWithPrincipalContext', { params: {}, user: { sub: 'u1' } });
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
+  it('M0.3: ownerId phân giải KHÁC userId gọi (danh tính owner bị giả mạo/resolver sai) -> deny', async () => {
+    userRolesRepo.getScopedGrants.mockResolvedValue([
+      grant({ code: 'User.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null }),
+    ]);
+    moduleRef.get.mockReturnValue({
+      resolve: jest.fn().mockResolvedValue({ resourceType: 'user', resourceId: 'other-user', businessId: null, ownerId: 'other-user' }),
+    });
+    const context = buildContext('ownWithPrincipalContext', { params: {}, user: { sub: 'u1' } });
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('M0.3: grant .Own KHÔNG BAO GIỜ thỏa permission required .Managed (hạng 1 < 2, không đổi)', async () => {
+    userRolesRepo.getScopedGrants.mockResolvedValue([
+      grant({ code: 'Place.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null }),
+    ]);
+    const context = buildContext('managedIdentity', { params: { id: RESOURCE_ID }, user: { sub: 'u1' } });
+
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('hai lệnh gọi canActivate riêng biệt (mô phỏng hai request) KHÔNG chia sẻ cache — mỗi lần tự nạp grants', async () => {

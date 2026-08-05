@@ -67,7 +67,7 @@ describe('AuthorizationService (PDP)', () => {
     await expect(service.can('u1', 'Place.Edit.Managed')).resolves.toBe(true);
   });
 
-  it('can: grant .Own KHÔNG kèm contextProvider → đường TƯƠNG THÍCH, allow (regression thật đã bắt được lúc triển khai: Media.Upload.Own/User.Edit.Own đang SỐNG, PermissionsGuard/M0.2 chưa đấu nối context)', async () => {
+  it('can: grant .Own KHÔNG kèm contextProvider → đường TƯƠNG THÍCH, allow (bất biến của can() tự thân cho MỌI caller không truyền context — không riêng gì Own; xem canWithGrants bên dưới cho hành vi contextProvider mà PermissionsGuard/M0.3 dùng thật trên route Own)', async () => {
     userRolesRepo.getScopedGrants.mockResolvedValue([
       grant({ code: 'Media.Upload.Own', effect: 'allow', scopeType: 'global', businessId: null }),
     ]);
@@ -163,6 +163,46 @@ describe('AuthorizationService (PDP)', () => {
 
       await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed', matching)).resolves.toBe(true);
       await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed', mismatching)).resolves.toBe(false);
+    });
+
+    it('M0.3: kèm contextProvider, grant .Own và ownerId khớp userId gọi -> true; khác -> false', async () => {
+      const grants = [grant({ code: 'User.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null })];
+      const matching = jest.fn().mockResolvedValue({
+        resourceType: 'user',
+        resourceId: 'u1',
+        businessId: null,
+        ownerId: 'u1',
+      });
+      const mismatching = jest.fn().mockResolvedValue({
+        resourceType: 'user',
+        resourceId: 'u1',
+        businessId: null,
+        ownerId: 'someone-else',
+      });
+
+      await expect(service.canWithGrants(grants, 'u1', 'User.Edit.Own', matching)).resolves.toBe(true);
+      await expect(service.canWithGrants(grants, 'u1', 'User.Edit.Own', mismatching)).resolves.toBe(false);
+    });
+
+    it('M0.3: grant .Own KHÔNG BAO GIỜ thỏa permission required .Managed, kể cả kèm contextProvider (hạng 1 < 2, không đổi)', async () => {
+      const grants = [grant({ code: 'Place.Edit.Own', effect: 'allow', scopeType: 'own', businessId: null })];
+      const provider = jest.fn().mockResolvedValue({
+        resourceType: 'place',
+        resourceId: 'place-A',
+        businessId: 'place-A',
+        ownerId: 'u1',
+      });
+
+      await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed', provider)).resolves.toBe(false);
+      expect(provider).not.toHaveBeenCalled();
+    });
+
+    it('M0.3: grant Any vẫn allow tức thời cho permission required .Own dù có contextProvider — provider KHÔNG bị gọi', async () => {
+      const grants = [grant({ code: 'User.Edit.Any', effect: 'allow', scopeType: 'global', businessId: null })];
+      const provider = jest.fn();
+
+      await expect(service.canWithGrants(grants, 'u1', 'User.Edit.Own', provider)).resolves.toBe(true);
+      expect(provider).not.toHaveBeenCalled();
     });
 
     it('cho cùng grants, can() và canWithGrants(grants,...) cho ra ĐÚNG kết quả giống nhau', async () => {
