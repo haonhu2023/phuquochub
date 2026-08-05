@@ -30,7 +30,62 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-04, ADR-019 M0.1 -- Resource-Scoped Authorization PDP
+  task: none                      # (2026-08-05, ADR-019 M0.2 -- Resource-Scoped Authorization PEP +
+                                  # Resolvers + Rollout) Owner-approved implementation. Closes the
+                                  # actual privilege-escalation gap M0.1 only built machinery for.
+                                  # New: @AuthorizationContext decorator (authz/decorators/
+                                  # authorization-context.decorator.ts, D4); IDENTITY_PLACE_RESOLVER
+                                  # (RbacModule, 0-query), CONTACT_AUTHZ_RESOLVER (ContactsModule),
+                                  # PRICE_AUTHZ_RESOLVER (PricesModule); PermissionsGuard extended --
+                                  # RequestScopedGrantCache instantiated fresh per canActivate call
+                                  # (= per request, no Scope.REQUEST needed), lazy context-provider
+                                  # resolution via ModuleRef, memoized per resolver/resourceType/
+                                  # resourceId within the request; AuthorizationBootstrapValidator
+                                  # (D9) scans every controller at onApplicationBootstrap, scoped to
+                                  # `.Managed` permissions only (see D9/M0.3 staging note below); all
+                                  # 8 verified live Managed handlers (ADR-019 D16) decorated --
+                                  # Places/Hotels/Restaurants PATCH, Contacts POST/PATCH/DELETE,
+                                  # Prices POST/PATCH.
+                                  #
+                                  # D9 vs M0.3 STAGING CONTRADICTION (surfaced to owner BEFORE
+                                  # writing bootstrap-validation code, not resolved silently): D9's
+                                  # own text covers Managed OR Own with no milestone carve-out, but
+                                  # M0.2 explicitly excludes Own-scope rollout and live Own routes
+                                  # (Media.Upload.Own, User.Edit.Own) have no @AuthorizationContext
+                                  # and must not break. Owner-confirmed resolution: D9 enforced
+                                  # Managed-only in M0.2; Own-scope D9 coverage deferred to M0.3.
+                                  # Documented as a scoped interpretation, not presented as the ADR's
+                                  # original unqualified text.
+                                  #
+                                  # REGRESSION CAUGHT AND FIXED (same shape as M0.1's): first guard
+                                  # pass sent a contextProvider unconditionally for EVERY required
+                                  # permission -- forced live Media.Upload.Own (no
+                                  # @AuthorizationContext, outside M0.2 rollout) through the new
+                                  # fail-closed path. Caught by the full e2e suite (20 failures,
+                                  # same 3 suites M0.1's regression hit). Fixed: guard now passes a
+                                  # contextProvider ONLY for `.Managed`-suffixed permissions; `.Own`/
+                                  # `.Any`/scope-less keep the plain rank-only path unchanged.
+                                  #
+                                  # RED-THEN-GREEN PROOF (live Postgres, git stash to expose M0.1
+                                  # baseline then restore): RED -- 9/13 assertions failed exactly as
+                                  # Finding A predicts (cross-business place/contact/price mutation
+                                  # succeeded; unknown resource leaked existence via 404 instead of
+                                  # uniform 403). GREEN (M0.2 restored) -- 13/13 pass across all 8
+                                  # handlers + contributor Any + super_administrator wildcard +
+                                  # unknown-resource non-leak. Live Docker also confirmed the REAL
+                                  # app (full AppModule) fails app.init() when a throwaway Managed
+                                  # route lacks @AuthorizationContext (fixture deleted after).
+                                  #
+                                  # FULL REGRESSION (2026-08-05): BE unit 112 suites/1250 tests PASS,
+                                  # BE e2e 22 suites/190 tests PASS (real Postgres, includes new
+                                  # authz-scoped-pep-rollout.e2e-spec.ts), monorepo build 4/4,
+                                  # typecheck 6/6, lint 6/6, git diff --check clean, secret scan
+                                  # clean, zero DB residue after all e2e runs (verified by query).
+                                  # STATUS: COMPLETE (M0.2 only). M0.3 (Own-scope hardening) NOT
+                                  # started. See docs/delivery/reports/
+                                  # M0-RESOURCE-SCOPED-AUTHORIZATION-PEP-ROLLOUT-2026-08-05.md and
+                                  # ADR-019's own Implementation Status section.
+                                  # ---- prior state (2026-08-04, ADR-019 M0.1 -- Resource-Scoped Authorization PDP
                                   # Foundation) Owner-approved dark-ship implementation. New:
                                   # AuthorizationContext/AuthorizationContextResolver contracts
                                   # (authz/authorization-context.ts, types only -- no decorator, no

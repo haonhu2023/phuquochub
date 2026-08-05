@@ -542,5 +542,45 @@ NGUYÊN VẸN (rank-thuần, `isAllowed`) cho MỌI scope, chỉ kích hoạt đ
 CHỦ ĐỘNG truyền `contextProvider`. Xem chi tiết đầy đủ:
 [M0-RESOURCE-SCOPED-AUTHORIZATION-PDP-FOUNDATION-2026-08-04.md](../delivery/reports/M0-RESOURCE-SCOPED-AUTHORIZATION-PDP-FOUNDATION-2026-08-04.md).
 
-**M0.2 — PEP + Resolvers + Rollout:** CHƯA bắt đầu.
+**M0.2 — PEP + Resolvers + Rollout: ✅ ĐÃ TRIỂN KHAI (2026-08-05).** `@AuthorizationContext`
+decorator (D4, `authz/decorators/authorization-context.decorator.ts`) — method-level, gộp với
+class-level qua `reflector.getAllAndOverride` đúng ngữ nghĩa `PERMISSIONS_KEY`. Ba resolver cụ thể:
+`IDENTITY_PLACE_RESOLVER` (0 truy vấn, dùng chung, đăng ký ở `RbacModule` — module đóng vai trò
+"authz module" chia sẻ vì repo không có `AuthzModule` riêng), `CONTACT_AUTHZ_RESOLVER`
+(`ContactsModule`), `PRICE_AUTHZ_RESOLVER` (`PricesModule`) — cả hai đọc đúng một dòng qua
+repository hiện có, thuần, không side effect. `PermissionsGuard` mở rộng: `RequestScopedGrantCache`
+(D11) được tạo MỚI mỗi lần `canActivate` chạy (= mỗi request, vì Nest gọi đúng một lần/request —
+không cần `Scope.REQUEST` provider); context provider LƯỜI, ghi nhớ theo khoá
+resolver/resourceType/resourceId trong CÙNG request. Cả 8 handler (D16) đã gắn decorator — xác
+nhận lại bằng grep, 0 handler `.Managed` sống nào thiếu metadata.
+
+**D9 (kiểm tra lúc khởi động) — phạm vi M0.2 CHỈ áp cho hậu tố `.Managed`, KHÔNG áp cho `.Own`.**
+Đây là một diễn giải CÓ CHỦ ĐÍCH, ghi nhận tường minh (không phải D9 nguyên văn): D9 tự thân
+(§D9 ở trên) nói "Managed HOẶC Own" không kèm ngoại lệ theo milestone, nhưng M0.2 chủ động KHÔNG
+triển khai Own-scope (đó là M0.3) — các route `.Own` đang sống hôm nay (`Media.Upload.Own`,
+`User.Edit.Own`) không có `@AuthorizationContext` nào và **không được phép** có trong M0.2. Áp D9
+nguyên văn sẽ khiến ứng dụng KHÔNG khởi động được ngay khi M0.2 ship. Owner đã xác nhận diễn giải
+này (xem báo cáo M0.2 §D9/M0.3 staging); `AuthorizationBootstrapValidator` triển khai đúng phạm vi
+đã xác nhận — quét mọi handler, chỉ chặn permission hậu tố `.Managed` thiếu context/resolver hợp lệ.
+Cưỡng chế lúc request (INV-A1, trong `PermissionsGuard`, cũng chỉ áp cho `.Managed` cùng lý do —
+xem "Phát hiện quan trọng" dưới) vẫn giữ làm phòng thủ chiều sâu.
+
+**Phát hiện quan trọng lúc triển khai (cùng hình dạng với hồi quy M0.1):** bản đầu của
+`PermissionsGuard` truyền `contextProvider` VÔ ĐIỀU KIỆN cho MỌI permission trong
+`@RequirePermissions(...)`, không phân biệt hậu tố — đẩy cả `.Own` (`Media.Upload.Own`) vào đường
+đánh giá hai pha fail-closed dù route đó không có `@AuthorizationContext` nào và không thuộc rollout
+M0.2. Bắt được bằng chính bộ e2e thật (20 test thất bại, cùng 3 suite mà M0.1 đã bắt lần trước) —
+sửa bằng cách guard chỉ truyền `contextProvider` cho permission có hậu tố `.Managed`; `.Own`/`.Any`/
+scope-less tiếp tục đường tương thích rank-thuần (không context) y hệt trước M0.2.
+
+Red-then-green e2e thật (`authz-scoped-pep-rollout.e2e-spec.ts`, Postgres thật qua `git stash` lộ
+lại baseline M0.1): RED — 9/13 assertion thất bại đúng như Finding A dự đoán (place B bị sửa/tạo
+thành công, tài nguyên không xác định trả 404 thay vì 403 đồng nhất). GREEN (khôi phục M0.2) —
+13/13 pass, cả 8 handler + contributor `Any` + `super_administrator` wildcard + tài nguyên không
+xác định đều đúng ma trận D6. Live Docker: xác nhận thêm ứng dụng THẬT không khởi động được khi một
+controller tạm thời khai permission `.Managed` không kèm `@AuthorizationContext` (xoá ngay sau khi
+xác nhận). Toàn bộ regression: BE unit 112 suite/1250 test, BE e2e 22 suite/190 test, monorepo build/
+typecheck/lint 6/6 (hoặc 4/4 build). Chi tiết đầy đủ:
+[M0-RESOURCE-SCOPED-AUTHORIZATION-PEP-ROLLOUT-2026-08-05.md](../delivery/reports/M0-RESOURCE-SCOPED-AUTHORIZATION-PEP-ROLLOUT-2026-08-05.md).
+
 **M0.3 — Own-Scope Hardening:** CHƯA bắt đầu.
