@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, IsNull, Repository } from 'typeorm';
 import { UserRole } from '../entities/user-role.entity';
 import { ScopeType } from '../rbac.enums';
 import type { ScopedGrant } from '../../authz/scoped-grant';
@@ -70,9 +70,29 @@ export class UserRolesRepository {
     return repo.save(userRole);
   }
 
-  /** Thu hồi (soft) mọi bản gán đang hiệu lực của (user, role). */
-  async revoke(userId: string, roleId: string): Promise<void> {
-    await this.repo.update({ userId, roleId, revokedAt: IsNull() }, { revokedAt: new Date() });
+  /**
+   * Thu hồi (soft) bản gán đang hiệu lực của (user, role). `businessId` TUỲ CHỌN — bỏ trống (giữ
+   * `undefined`) thu hồi MỌI dòng hiệu lực của (user, role) bất kể scope (hành vi CŨ, dùng cho
+   * `UsersService.revokeRole()` — hành động admin "gỡ hẳn vai trò này khỏi user", không có khái
+   * niệm business cụ thể). Truyền `businessId` tường minh (kể cả `null`) thu hồi ĐÚNG MỘT dòng
+   * scope đó — bắt buộc cho revoke theo cơ sở cụ thể (vd Business.Manager.Revoke.Managed: một user
+   * có thể là manager của NHIỀU cơ sở, thu hồi ở cơ sở A không được đụng tới cơ sở B).
+   *
+   * `manager` TUỲ CHỌN — cùng quy ước `assign()`: truyền vào khi caller cần chạy trong transaction
+   * của họ; bỏ trống dùng `this.repo` như trước.
+   */
+  async revoke(
+    userId: string,
+    roleId: string,
+    businessId?: string | null,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const repo = manager ? manager.getRepository(UserRole) : this.repo;
+    const where: FindOptionsWhere<UserRole> = { userId, roleId, revokedAt: IsNull() };
+    if (businessId !== undefined) {
+      where.businessId = businessId ?? IsNull();
+    }
+    await repo.update(where, { revokedAt: new Date() });
   }
 
   /**

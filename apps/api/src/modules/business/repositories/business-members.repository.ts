@@ -11,9 +11,16 @@ export interface NewOwnerMembership {
   grantedBy: string;
 }
 
-// Repository `business_members` (ADR-015 §3, business.md §3). Phạm vi milestone này CHỈ cần tạo
-// owner-membership khi claim approved + đọc owner hiệu lực để phát hiện xung đột (BR-B2) — gán/thu
-// hồi manager, chuyển nhượng ngoài phạm vi (Owner exclusion list).
+export interface NewManagerMembership {
+  placeId: string;
+  userId: string;
+  grantedBy: string;
+}
+
+// Repository `business_members` (ADR-015 §3, business.md §3). Business Manager Assignment/
+// Revocation milestone bổ sung: đọc/khoá MỘT thành viên hiệu lực (owner HOẶC manager) của
+// (place,user) — dùng để chặn gán trùng (uq_member_active) và để xác nhận đúng dòng cần thu hồi —
+// và tạo/thu hồi dòng manager. Chuyển nhượng (transfer owner) vẫn ngoài phạm vi (Owner exclusion list).
 @Injectable()
 export class BusinessMembersRepository {
   constructor(
@@ -58,5 +65,48 @@ export class BusinessMembersRepository {
       grantedBy: data.grantedBy,
     });
     return repo.save(member);
+  }
+
+  /**
+   * Khoá dòng thành viên hiệu lực (owner HOẶC manager, KHÔNG lọc role) của một (place,user) TRONG
+   * transaction gán/thu hồi manager — cùng cơ chế `findActiveOwnerForUpdate` nhưng không ràng buộc
+   * role: `assign()` cần biết CÓ bất kỳ vai trò hiệu lực nào đã tồn tại chưa (chặn trùng theo
+   * `uq_member_active`, kể cả trường hợp target đã là owner); `revoke()` cần khoá đúng dòng cần
+   * thu hồi trước khi ghi.
+   */
+  findActiveMembershipForUpdate(
+    manager: EntityManager,
+    placeId: string,
+    userId: string,
+  ): Promise<BusinessMember | null> {
+    return manager
+      .getRepository(BusinessMember)
+      .createQueryBuilder('m')
+      .setLock('pessimistic_write')
+      .where('m.placeId = :placeId', { placeId })
+      .andWhere('m.userId = :userId', { userId })
+      .andWhere('m.revokedAt IS NULL')
+      .getOne();
+  }
+
+  /**
+   * Tạo dòng manager-membership. `claim_id` LUÔN `null` — manager không phát sinh từ claim (chỉ
+   * owner mới có nguồn gốc claim, business.md §3). PHẢI chạy trong transaction của caller.
+   */
+  async createManager(manager: EntityManager, data: NewManagerMembership): Promise<BusinessMember> {
+    const repo = manager.getRepository(BusinessMember);
+    const member = repo.create({
+      placeId: data.placeId,
+      userId: data.userId,
+      role: MemberRole.MANAGER,
+      claimId: null,
+      grantedBy: data.grantedBy,
+    });
+    return repo.save(member);
+  }
+
+  /** Thu hồi (soft) một dòng membership theo id — ĐÃ được caller xác nhận đúng dòng/đúng role. */
+  async revokeMembership(manager: EntityManager, id: string): Promise<void> {
+    await manager.getRepository(BusinessMember).update({ id }, { revokedAt: new Date() });
   }
 }
