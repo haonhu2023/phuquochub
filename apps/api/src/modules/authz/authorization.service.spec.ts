@@ -129,4 +129,50 @@ describe('AuthorizationService (PDP)', () => {
     await service.getEffectivePermissions('u1');
     expect(userRolesRepo.getScopedGrants).toHaveBeenCalledTimes(2);
   });
+
+  describe('canWithGrants (ADR-019 D11 — nhận grants đã nạp sẵn, cho PermissionsGuard tái dùng)', () => {
+    it('KHÔNG gọi getScopedGrants — hoàn toàn không chạm repository', async () => {
+      const grants = [grant({ code: 'Category.Manage', effect: 'allow' })];
+      await service.canWithGrants(grants, 'u1', 'Category.Manage');
+      expect(userRolesRepo.getScopedGrants).not.toHaveBeenCalled();
+    });
+
+    it('không kèm contextProvider -> đúng hành vi rank-thuần isAllowed (giống can())', async () => {
+      const grants = [
+        grant({ code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'place-A' }),
+      ];
+      await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed')).resolves.toBe(true);
+    });
+
+    it('kèm contextProvider, businessId khớp -> true; khác -> false (cùng logic evaluateScopedAccess)', async () => {
+      const grants = [
+        grant({ code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'place-A' }),
+      ];
+      const matching = jest.fn().mockResolvedValue({
+        resourceType: 'place',
+        resourceId: 'place-A',
+        businessId: 'place-A',
+        ownerId: null,
+      });
+      const mismatching = jest.fn().mockResolvedValue({
+        resourceType: 'place',
+        resourceId: 'place-B',
+        businessId: 'place-B',
+        ownerId: null,
+      });
+
+      await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed', matching)).resolves.toBe(true);
+      await expect(service.canWithGrants(grants, 'u1', 'Place.Edit.Managed', mismatching)).resolves.toBe(false);
+    });
+
+    it('cho cùng grants, can() và canWithGrants(grants,...) cho ra ĐÚNG kết quả giống nhau', async () => {
+      const grants = [grant({ code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'place-A' })];
+      userRolesRepo.getScopedGrants.mockResolvedValue(grants);
+
+      const viaCan = await service.can('u1', 'Place.Edit.Managed');
+      const viaGrants = await service.canWithGrants(grants, 'u1', 'Place.Edit.Managed');
+
+      expect(viaGrants).toBe(viaCan);
+    });
+  });
 });
