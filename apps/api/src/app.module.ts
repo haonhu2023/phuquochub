@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AppConfigModule } from './core/config/config.module';
 import { LoggerModule } from './core/logger/logger.module';
 import { AuditModule } from './core/audit/audit.module';
+import { AuthRevocationModule } from './core/auth-revocation/auth-revocation.module';
 import { DatabaseModule } from './core/database/database.module';
 import { RedisModule } from './core/redis/redis.module';
 import { StorageModule } from './core/storage/storage.module';
@@ -48,6 +49,9 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
     AppConfigModule,
     LoggerModule,
     AuditModule,
+    // H-1: hạ tầng thu hồi access token (`@Global()`, cùng tiền lệ AuditModule) — phải đăng ký
+    // TRƯỚC AuthModule vì `JwtAuthGuard` inject `AuthRevocationService`.
+    AuthRevocationModule,
     DatabaseModule,
     RedisModule,
     StorageModule,

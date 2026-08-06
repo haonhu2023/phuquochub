@@ -9,8 +9,21 @@ import { RolesRepository } from '../rbac/repositories/roles.repository';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
 import { ScopeType } from '../rbac/rbac.enums';
 import { AuditService } from '../../core/audit/audit.service';
+import { AuthRevocationService } from '../../core/auth-revocation/auth-revocation.service';
 import { UpdateMeDto, AssignRoleDto } from './dto/users.dto';
 
+// H-1 (Owner Decision D3, 2026-08-06): sau khi gán/thu hồi vai trò THÀNH CÔNG, mọi access token cũ
+// của user ĐÍCH bị thu hồi ngay qua `AuthRevocationService` — nếu không, một moderator vừa bị thu
+// hồi vai trò vẫn giữ quyền moderator tới hết `JWT_ACCESS_TTL` (đúng lỗi H-1 mô tả).
+//
+// GHI NHẬN THẲNG về tính nguyên tử giữa HAI HỆ THỐNG (Owner "security-side-effect rule"): mutation
+// `user_roles` nằm ở Postgres, mốc thu hồi nằm ở Redis — KHÔNG có transaction chung. Nếu Redis lỗi,
+// `revokeAllForUser` NÉM lỗi (503) và lỗi đó nổi lên tới client, NHƯNG mutation vai trò trong DB
+// **ĐÃ COMMIT** và audit log **ĐÃ GHI**. Trạng thái sau lỗi: vai trò đã đổi, token cũ CHƯA bị thu
+// hồi (sống tới hết TTL). Ta chọn phơi lỗi thay vì nuốt nó, để người vận hành biết cần gọi lại; một
+// giải pháp mạnh hơn (outbox/retry) cần hạ tầng chưa có trong repo này và KHÔNG thuộc phạm vi H-1.
+// Thứ tự DB -> audit -> revoke là có chủ đích: audit ghi TRƯỚC bước Redis nên hành động đặc quyền
+// luôn có vết, kể cả khi việc thu hồi thất bại.
 @Injectable()
 export class UsersService {
   constructor(
@@ -18,6 +31,7 @@ export class UsersService {
     private readonly rolesRepo: RolesRepository,
     private readonly userRolesRepo: UserRolesRepository,
     private readonly audit: AuditService,
+    private readonly authRevocation: AuthRevocationService,
   ) {}
 
   async getMe(userId: string) {
@@ -95,6 +109,8 @@ export class UsersService {
       permission: 'Role.Assign',
       context: { role_id: dto.role_id, scope_type: scopeType, business_id: dto.business_id ?? null },
     });
+    // H-1: quyền của user đích vừa đổi -> vô hiệu hoá NGAY mọi access token cũ của họ.
+    await this.authRevocation.revokeAllForUser(userId);
     return null;
   }
 
@@ -111,6 +127,8 @@ export class UsersService {
       permission: 'Role.Assign',
       context: { role_id: roleId },
     });
+    // H-1: quyền của user đích vừa bị thu hẹp -> vô hiệu hoá NGAY mọi access token cũ của họ.
+    await this.authRevocation.revokeAllForUser(userId);
     return null;
   }
 }

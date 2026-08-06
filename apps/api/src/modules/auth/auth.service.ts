@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { UsersRepository } from '../users/repositories/users.repository';
 import { RolesRepository } from '../rbac/repositories/roles.repository';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
+import { AuthRevocationService } from '../../core/auth-revocation/auth-revocation.service';
 import { UserProvider } from '../users/user.enums';
 import { User } from '../users/entities/user.entity';
 import { TokenService, IssuedTokens } from './token.service';
@@ -39,6 +40,7 @@ export class AuthService {
     private readonly rolesRepo: RolesRepository,
     private readonly userRolesRepo: UserRolesRepository,
     private readonly tokenService: TokenService,
+    private readonly authRevocation: AuthRevocationService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
@@ -89,6 +91,23 @@ export class AuthService {
 
   logout(refreshToken: string): Promise<void> {
     return this.tokenService.revoke(refreshToken);
+  }
+
+  /**
+   * H-1 — POST /auth/logout-all. Đăng xuất khỏi MỌI thiết bị của chính principal.
+   *
+   * THỨ TỰ CÓ CHỦ ĐÍCH: xoá refresh token TRƯỚC, đặt mốc thu hồi access token SAU.
+   *  - Nếu bước 2 lỗi: refresh đã bị xoá nên user KHÔNG thể tự cấp lại access token mới; các access
+   *    token cũ còn sống tới hết TTL (đúng hành vi trước khi có H-1) và lỗi được NÉM ra cho caller.
+   *  - Nếu làm ngược lại (mốc trước, refresh sau) và bước 2 lỗi: access token bị chặn nhưng refresh
+   *    còn nguyên -> user vẫn đúc được access token MỚI hợp lệ, tức "logout-all" thất bại âm thầm.
+   * Vì vậy thứ tự này là hướng an toàn hơn khi có lỗi giữa chừng.
+   *
+   * KHÔNG nuốt lỗi (Owner "security-side-effect rule") — cả hai bước đều để lỗi Redis nổi lên.
+   */
+  async logoutAll(userId: string): Promise<void> {
+    await this.tokenService.revokeAllRefreshForUser(userId);
+    await this.authRevocation.revokeAllForUser(userId);
   }
 
   private toTokenResult(tokens: IssuedTokens): TokenResult {

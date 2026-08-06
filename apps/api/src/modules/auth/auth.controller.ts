@@ -48,4 +48,16 @@ export class AuthController {
     await this.authService.logout(dto.refresh_token);
     return null;
   }
+
+  /**
+   * H-1 — đăng xuất khỏi MỌI thiết bị. KHÔNG `@Public()`: route đã xác thực, và `userId` LUÔN lấy
+   * từ JWT (`@CurrentUser`), KHÔNG từ body — nên không thể đăng xuất hộ người khác. Không nhận body
+   * nào cả (không cần refresh token: chỉ mục theo user trên Redis đã cho biết mọi jti cần xoá).
+   */
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  async logoutAll(@CurrentUser() user: AuthPrincipal) {
+    await this.authService.logoutAll(user.sub);
+    return null;
+  }
 }
