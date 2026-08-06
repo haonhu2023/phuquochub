@@ -216,3 +216,19 @@ supertest) xác nhận toàn bộ hành vi trên qua HTTP + SQL trực tiếp, d
 
 **Ngoài phạm vi milestone này:** dashboard chủ cơ sở (UC-B3/B5), phản hồi review (UC-B4), thông báo,
 chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh, `Business.Edit.Managed`, ADR-008 đầy đủ.
+
+---
+
+**CẬP NHẬT (2026-08-06) — CLAIM → SOURCE → VERIFICATION INTEGRATION đóng Owner Decision 1 của Claim
+Foundation phía trên.** Owner Decision 1 (dòng 64-70) ghi "Claim approved → ghi thẳng
+`places.verification_status = 'official'` + `places.verified_at = now()`. ADR-008 vẫn hoãn" — ĐÚNG
+tại thời điểm viết (2026-08-05), giữ NGUYÊN VĂN ở trên vì đó là quyết định THẬT đã áp dụng lúc đó,
+KHÔNG sửa lại. Kể từ milestone ADR-008 CLAIM → SOURCE → VERIFICATION INTEGRATION (2026-08-06),
+`BusinessClaimsService.decide()` KHÔNG còn ghi cache đó trực tiếp — approve claim tạo một `sources`
+(`type=business_owner`) rồi gọi `VerificationsService.ensureOfficialFromClaim()`, đi qua ĐÚNG MỘT
+luồng Verification (bảng `verifications`/`verification_events` ĐÃ migrate từ ADR-008 Verification
+Foundation, 2026-08-06) CÙNG transaction với `business_members`/`user_roles`. `Business.Verify`
+(mục 2) và `dispute` tự động (mục 3) KHÔNG đổi — chỉ bước ghi cache cuối cùng của nhánh approve đổi
+đường đi. Chi tiết đầy đủ:
+[CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md](../delivery/reports/CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md)
+· [ADR-008 §Tình trạng triển khai](ADR-008-verification-model.md).

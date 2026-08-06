@@ -30,7 +30,112 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, VERIFICATION SCHEDULER -- Operational Enablement)
+  task: none                      # (2026-08-06, CLAIM -> SOURCE -> VERIFICATION INTEGRATION)
+                                  # Owner-approved standalone milestone, run after the Scheduler.
+                                  # Objective: remove the transitional exception the CORRECTION
+                                  # milestone left open -- every trusted verification state must now
+                                  # originate from the Verification system; BusinessClaimsService is
+                                  # no longer a writer of places.verification_status/verified_at.
+                                  # Explicitly NOT started: dashboard, metrics, reconciliation
+                                  # tooling, notifications, review replies, analytics, transfer
+                                  # improvements, queue filters, auto-reject, dispute heuristics,
+                                  # scheduler changes, business ownership changes, ADR-019 changes.
+                                  #
+                                  # Phase 1 (read + inventory writers) found exactly one writer to
+                                  # replace: BusinessClaimsService.decide()'s approve branch (the C1
+                                  # guard block from CORRECTION). SourcesService.verifyAttribution()'s
+                                  # SourceAttribution.verifiedAt is a confirmed-unrelated concept
+                                  # (source_attributions, not the exclusive-arc verifications system)
+                                  # -- left untouched.
+                                  #
+                                  # Phase 4 (migration impact) concluded NO migration is needed,
+                                  # proven live against Postgres before writing any code:
+                                  # VerificationMethod already had 'owner_claim' (seeded at
+                                  # Foundation, unused until now), SourceType already had
+                                  # 'business_owner' (reliability 85) and SourceKind 'platform_user',
+                                  # and the sources table already had every column required
+                                  # (author_user_id, metadata jsonb, etc). Zero schema files added
+                                  # this milestone -- git status confirms it.
+                                  #
+                                  # Implementation, by extraction (VerificationsService): transition()
+                                  # split into a transaction-opening wrapper plus a manager-taking
+                                  # transitionCore() (CAS + event append + cache sync, no txn, no
+                                  # audit); official()'s inline build callback extracted into
+                                  # buildOfficialTransition(current, dto, actorId, method, manager)
+                                  # parameterized by VerificationMethod so the moderator HTTP path and
+                                  # the claim path share one code path, differing only in method
+                                  # (moderator vs owner_claim); submit()'s create/resubmit branches
+                                  # extracted into createPendingVerification()/resubmitVerification().
+                                  # A new public ensureOfficialFromClaim(placeId, {sourceId, actorId,
+                                  # note}, manager) composes these with a four-way branch on the
+                                  # place's existing verifications row: none -> create pending then
+                                  # transition; expired/rejected -> resubmit then transition;
+                                  # pending/verified/community_verified -> transition straight to
+                                  # official (the row is REUSED, not duplicated); already official ->
+                                  # no-op, returns as-is. Takes an externally-supplied EntityManager
+                                  # and does not open its own transaction or audit -- the caller
+                                  # (BusinessClaimsService.decide()) supplies both, so the whole
+                                  # decision (business_members + user_roles + business_claims status +
+                                  # sources + verifications + verification_events + cache) is one
+                                  # atomic transaction, same guarantee as before this milestone.
+                                  #
+                                  # BusinessClaimsService.decide()'s approve branch now creates one
+                                  # sources row (type=business_owner, kind=platform_user,
+                                  # author_user_id=requester, metadata={business_claim_id, evidence})
+                                  # and calls ensureOfficialFromClaim() instead of writing
+                                  # places.verification_status/verifiedAt directly. The old C1 guard
+                                  # (which only suppressed the direct write when a verifications row
+                                  # already existed) is gone as an active code path; submit()'s
+                                  # rejection of a trusted cache status with no owning verifications
+                                  # row is kept as a defensive guard against legacy data only (every
+                                  # new claim approval creates that row now, so the scenario should
+                                  # only occur for rows written before this milestone).
+                                  # BusinessClaimsService's constructor swapped VerificationsRepository
+                                  # for VerificationsService + SourcesRepository; SourcesModule added
+                                  # to BusinessModule's imports.
+                                  #
+                                  # Live Postgres validation (2026-08-06): approving a claim via real
+                                  # HTTP creates exactly one sources row and one verifications row
+                                  # (method=owner_claim, status=official, source_id set), with the
+                                  # expected two verification_events (null->pending, pending->
+                                  # official); places.verification_status/verified_at match: the
+                                  # audit business.claim_approved event's context carries
+                                  # {sourceId, verificationId, verificationStatus}. Approving a claim
+                                  # on a place that already has a verified row REUSES that same row
+                                  # (transitions it straight to official, method flips to owner_claim,
+                                  # a third verification_event is appended) rather than creating a
+                                  # second one -- proven by row-id equality and uq_verif_place still
+                                  # holding. A rollback drill (temporary FORCE_ROLLBACK_DRILL throw
+                                  # placed after every new write but before the claim-status update,
+                                  # inside the same transaction) confirmed business_members,
+                                  # user_roles, sources, verifications, and the cache all revert
+                                  # together on failure; throw and its temporary e2e test were removed
+                                  # immediately after confirmation. Zero source-row residue proven by
+                                  # direct SQL after the suite ran, not asserted.
+                                  #
+                                  # Two pre-existing e2e tests that asserted the OLD direct-cache-write
+                                  # behavior (in verifications.e2e-spec.ts) were rewritten to assert
+                                  # the new integrated behavior instead of being deleted -- one test
+                                  # per branch (no existing row; existing verified row gets reused).
+                                  #
+                                  # Full regression: BE unit 127 suites/1491 tests, BE e2e 28
+                                  # suites/249 tests (same file/test count as Scheduler -- no new e2e
+                                  # files added, two existing files extended with new assertions),
+                                  # monorepo build/typecheck/lint 12/12.
+                                  #
+                                  # See docs/delivery/reports/
+                                  # CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md and ADR-008's
+                                  # own Implementation Status section.
+                                  #
+                                  # Explicitly NOT started / out of scope: dashboard, metrics,
+                                  # reconciliation tooling, notifications, review replies, analytics,
+                                  # transfer improvements, queue filters, auto-reject, dispute
+                                  # heuristics, scheduler changes, business ownership changes, ADR-019
+                                  # changes; distributed locking for multi-replica deployments; a real
+                                  # cache/vote-count reconciliation job; queue reassignment/unassign
+                                  # and unassigned/SLA-breach queue filters; vote weight table by
+                                  # role/karma; Sec9B metrics/dashboards.
+                                  # ---- prior state (2026-08-06, VERIFICATION SCHEDULER -- Operational Enablement)
                                   # Owner-approved standalone milestone, run after ADR-008
                                   # CORRECTION. Sole goal: make the existing expireOverdue()
                                   # workflow operational in production safely -- no new business

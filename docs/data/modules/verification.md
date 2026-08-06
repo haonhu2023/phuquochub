@@ -19,21 +19,25 @@
 > `npm run verification:expire [-- --dry-run]`. KHÔNG một state machine hết hạn thứ hai — vẫn CHÍNH
 > XÁC `assertValidVerificationTransition`/`casUpdate`/`eventsRepo.append`/`syncTargetCache` đã có.
 >
-> **Ngoại lệ chuyển tiếp (cập nhật sau PIR + CORRECTION 2026-08-06):**
-> `BusinessClaimsService.decide()` (ADR-015) vẫn ghi thẳng `places.verification_status`/`verified_at`,
-> KHÔNG qua `verifications` — bảng mới ở đây CHƯA PHẢI nguồn sự thật cho luồng Business Claim. Hai
-> writer cùng một cột từng có thể ghi giá trị mâu thuẫn (hạ cấp badge công khai, hoặc phân kỳ vĩnh
-> viễn); ADR-008 CORRECTION đã chặn bằng **guard phòng vệ hai chiều** — claim không ghi đè khi đã có
-> dòng `verifications`, và `submit()` từ chối (409) target đang mang trạng thái tin cậy do writer khác
-> đặt. **Giới hạn kèm theo, nêu thẳng:** cơ sở đã duyệt claim CHƯA thể vào hàng đợi xác minh cho tới
-> khi có milestone tích hợp Business Claim → Source → Verification.
+> **CLAIM → SOURCE → VERIFICATION INTEGRATION (2026-08-06) — ngoại lệ chuyển tiếp ĐÃ ĐÓNG:**
+> `BusinessClaimsService.decide()` (ADR-015) KHÔNG còn ghi thẳng `places.verification_status`/
+> `verified_at`. Approve claim nay tạo một `sources` (`type=business_owner`, `kind=platform_user`,
+> gắn evidence của claim vào `metadata`) rồi gọi `VerificationsService.ensureOfficialFromClaim()` —
+> đưa place tới `official` qua ĐÚNG MỘT luồng Verification (method `owner_claim`), CÙNG transaction
+> với `business_members`/`user_roles`/`business_claims`. Bảng `verifications` giờ LÀ nguồn sự thật
+> DUY NHẤT cho MỌI trạng thái xác minh tin cậy — không còn hai writer trên cùng một cột. Guard
+> phòng vệ của ADR-008 CORRECTION (chặn `submit()` khi cache tin cậy không có dòng `verifications`
+> sở hữu) vẫn còn TRONG MÃ NGUỒN nhưng chỉ còn bảo vệ DỮ LIỆU CŨ (được ghi trước milestone này) —
+> mọi claim approve MỚI đều tạo dòng `verifications` tương ứng nên không còn tái tạo được tình
+> huống đó qua đường hợp lệ.
 >
 > **Chưa hiện thực dù §3.1 có mô tả:** auto-reject khi `dispute_count` cao, và demotion sau khi đã
 > `community_verified`. Chi tiết:
 > [ADR-008 §Tình trạng triển khai](../../99-decisions/ADR-008-verification-model.md)
 > · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md)
 > · [ADR-008-CORRECTION-2026-08-06.md](../../delivery/reports/ADR-008-CORRECTION-2026-08-06.md)
-> · [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md).
+> · [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md)
+> · [CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md](../../delivery/reports/CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 

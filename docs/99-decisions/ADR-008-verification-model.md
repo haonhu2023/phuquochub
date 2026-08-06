@@ -291,3 +291,74 @@ hàng đợi xác minh); auto-reject/demotion khi tỉ lệ dispute cao (§3.1 m
 scheduler thật cho `expireOverdue()` (chưa có lịch chạy thì KHÔNG có gì tự hết hạn); job/công cụ đối
 soát cache; unassign/reassign hàng đợi và bộ lọc "chưa ai nhận"/quá hạn SLA; batching cho
 `expireOverdue()`; tính lại `confirm_count`/`dispute_count` khi user bị xoá; metrics §9B.
+
+---
+
+**CLAIM → SOURCE → VERIFICATION INTEGRATION: ✅ ĐÃ TRIỂN KHAI (2026-08-06).** Milestone hẹp, chạy
+sau VERIFICATION SCHEDULER. Mục tiêu DUY NHẤT nêu thẳng bởi Owner: xoá bỏ ngoại lệ chuyển tiếp mà
+Owner Decision mục 1 (Foundation) và CORRECTION để lại — MỌI trạng thái xác minh tin cậy phải xuất
+phát từ hệ Verification; `BusinessClaimsService` KHÔNG còn là writer của
+`places.verification_status`/`verified_at`. KHÔNG mở rộng phạm vi: KHÔNG dashboard, KHÔNG metrics,
+KHÔNG công cụ đối soát, KHÔNG thông báo, KHÔNG phản hồi review, KHÔNG analytics, KHÔNG cải tiến
+transfer, KHÔNG bộ lọc hàng đợi, KHÔNG auto-reject, KHÔNG dispute heuristics, KHÔNG đổi scheduler,
+KHÔNG đổi business ownership, KHÔNG đổi ADR-019.
+
+**Phase 1 (đọc + kiểm kê mọi writer)** xác nhận đúng MỘT writer cần thay: nhánh approve của
+`BusinessClaimsService.decide()` (khối guard C1 từ CORRECTION). `SourcesService.verifyAttribution()`'s
+`SourceAttribution.verifiedAt` được xác nhận là khái niệm KHÔNG liên quan (thuộc
+`source_attributions`, không thuộc hệ exclusive-arc `verifications`) — không đụng tới.
+
+**Phase 4 (đánh giá tác động migration) kết luận KHÔNG cần migration nào**, chứng minh SỐNG trên
+Postgres TRƯỚC khi viết bất kỳ dòng mã nào: `VerificationMethod` đã có `owner_claim` (seed từ
+Foundation, chưa từng dùng tới trước milestone này), `SourceType` đã có `business_owner` (reliability
+85 mặc định) và `SourceKind` đã có `platform_user`, bảng `sources` đã có đủ mọi cột cần (
+`author_user_id`, `metadata` jsonb, ...). Không file migration nào được thêm — `git status` xác nhận.
+
+**Triển khai, theo hướng tách hàm tái dùng (`VerificationsService`):** `transition()` tách thành
+wrapper mở transaction + `transitionCore(manager, current, actorId, build)` (CAS + append event +
+đồng bộ cache, KHÔNG transaction, KHÔNG audit); build callback của `official()` tách thành
+`buildOfficialTransition(current, dto, actorId, method, manager)` tham số hoá theo
+`VerificationMethod` — CÙNG một đường đi cho cả HTTP moderator (`method=moderator`) VÀ claim
+(`method=owner_claim`); nhánh tạo/gửi lại của `submit()` tách thành
+`createPendingVerification()`/`resubmitVerification()`. Hàm công khai MỚI
+`ensureOfficialFromClaim(placeId, {sourceId, actorId, note}, manager)` hợp thành các hàm trên với
+bốn nhánh theo trạng thái dòng `verifications` hiện có của place: chưa có dòng nào → tạo pending rồi
+transition; `expired`/`rejected` → gửi lại (resubmit) rồi transition; `pending`/`verified`/
+`community_verified` → transition THẲNG sang `official` (TÁI DÙNG dòng đó, không tạo dòng thứ hai);
+đã `official` rồi → no-op, trả nguyên trạng. Nhận `EntityManager` từ BÊN NGOÀI, KHÔNG tự mở
+transaction/audit — caller (`BusinessClaimsService.decide()`) cung cấp cả hai, nên toàn bộ quyết
+định (business_members + user_roles + business_claims + sources + verifications +
+verification_events + cache) VẪN là một transaction nguyên tử duy nhất, CÙNG bảo đảm như trước
+milestone này.
+
+Nhánh approve của `BusinessClaimsService.decide()` giờ tạo một `sources`
+(`type=business_owner`/`kind=platform_user`/`author_user_id=requester`/`metadata={business_claim_id,
+evidence}`) rồi gọi `ensureOfficialFromClaim()` thay vì ghi `places.verification_status`/`verifiedAt`
+trực tiếp. Guard C1 cũ (chỉ ghi cache khi CHƯA có dòng `verifications`) không còn là đường ghi đang
+hoạt động; guard đối xứng ở `submit()` (từ chối 409 khi cache tin cậy không có dòng `verifications`
+sở hữu) VẪN GIỮ NGUYÊN trong mã nguồn nhưng chỉ còn ý nghĩa bảo vệ DỮ LIỆU CŨ — mọi claim approve MỚI
+đều tạo dòng `verifications` tương ứng nên tình huống đó không còn tái tạo được qua đường hợp lệ.
+`BusinessClaimsService`'s constructor đổi `VerificationsRepository` → `VerificationsService` +
+`SourcesRepository`; `SourcesModule` thêm vào imports của `BusinessModule`.
+
+**Xác nhận sống trên Postgres thật (2026-08-06):** approve claim qua HTTP thật tạo đúng MỘT `sources`
++ đúng MỘT `verifications` (`method=owner_claim`, `status=official`, `source_id` khớp) + đúng hai
+`verification_events` (null→pending, pending→official); `places.verification_status`/`verified_at`
+khớp; audit `business.claim_approved`'s context mang `{sourceId, verificationId,
+verificationStatus}`. Approve claim trên một place ĐÃ có dòng `verified` → dòng đó ĐƯỢC TÁI DÙNG
+(transition thẳng sang `official`, `method` đổi thành `owner_claim`, event thứ ba được ghi) thay vì
+tạo dòng thứ hai — xác nhận bằng đối chiếu id dòng VÀ `uq_verif_place` vẫn giữ nguyên (không vi phạm
+UNIQUE). Rollback drill thật: throw có chủ đích SAU business_members + user_roles + sources +
+verifications + verification_events NHƯNG TRƯỚC `business_claims.status` commit — xác nhận CẢ NĂM
+đều rollback về baseline cùng lúc, throw + test tạm đã xoá ngay sau khi xác nhận. Hai e2e trước đó
+khẳng định hành vi ghi cache trực tiếp CŨ (`verifications.e2e-spec.ts`) đã được VIẾT LẠI để khẳng
+định hành vi tích hợp MỚI (không xoá — đổi đúng theo hành vi mới của từng nhánh). 0 residue `sources`
+chứng minh qua truy vấn trực tiếp sau khi chạy suite, không chỉ tuyên bố. Full regression: BE unit
+127 suite/1491 test, BE e2e 28 suite/249 test (cùng số file/test với Scheduler — không thêm file e2e
+mới, mở rộng đúng hai file có sẵn), monorepo build/typecheck/lint 12/12. Chi tiết đầy đủ:
+[CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md](../delivery/reports/CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md).
+
+**Vẫn ngoài phạm vi sau milestone này (có chủ đích, KHÔNG bỏ sót):** dashboard chủ cơ sở, metrics,
+công cụ đối soát cache/vote-count, thông báo, phản hồi review, số liệu/analytics, cải tiến transfer,
+bộ lọc hàng đợi mới, auto-reject/demotion khi dispute cao, bảng trọng số phiếu theo vai trò/karma,
+khoá phân tán đa-replica, metrics/dashboard §9B thật, mọi milestone Business/Place khác.
