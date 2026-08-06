@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull, Repository } from 'typeorm';
 import { Contact } from '../entities/contact.entity';
 
 @Injectable()
@@ -36,5 +36,19 @@ export class ContactsRepository {
   /** Bỏ cờ is_primary các contact cùng loại/chủ (đảm bảo 1 primary/loại). */
   async clearPrimary(ownerType: string, ownerId: string, contactType: string): Promise<void> {
     await this.repo.update({ ownerType, ownerId, contactType, isPrimary: true }, { isPrimary: false });
+  }
+
+  /**
+   * Cập nhật trường scalar — cùng quy ước `PlacesRepository.updateScalars()`. `manager` TUỲ CHỌN:
+   * truyền vào khi caller (VerificationsService, ADR-008) cần đồng bộ `verificationStatus`/
+   * `verifiedAt` CÙNG transaction với `verifications`/`verification_events`.
+   */
+  async updateScalars(id: string, patch: Record<string, unknown>, manager?: EntityManager): Promise<void> {
+    const keys = Object.keys(patch);
+    if (keys.length === 0) {
+      return;
+    }
+    const repo = manager ? manager.getRepository(Contact) : this.repo;
+    await repo.update({ id }, patch);
   }
 }
