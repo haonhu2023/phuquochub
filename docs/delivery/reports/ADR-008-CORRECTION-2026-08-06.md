@@ -168,4 +168,6 @@ Modified: `verifications.service.ts`, `verifications.service.spec.ts`,
 
 ## Commit hashes
 
-Recorded in a follow-up entry after commits are created (see final status).
+- `f34507b` — `fix(verification): guard conflicting cache writes and stale FSM fields`
+- `c6f1743` — `test(verification): cover correction guards and fix leaking fixtures`
+- `ad65b1f` — `docs(verification): correct PIR-identified statements, record correction`
