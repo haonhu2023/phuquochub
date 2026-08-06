@@ -69,10 +69,10 @@ Chúng ta sẽ thêm thực thể **`audit_logs`** làm **tầng kiểm toán xu
 
 ## Tình trạng triển khai — H-1 THU HỒI ACCESS TOKEN (2026-08-06)
 
-**✅ ĐÃ TRIỂN KHAI.** Milestone hardening hẹp, đóng finding **H-1** của
-[PRODUCTION-READINESS-REVIEW](../delivery/reports/H-1-ACCESS-TOKEN-REVOCATION-2026-08-06.md):
-*"Access tokens cannot be revoked; deactivated or banned users retain API access until
-JWT_ACCESS_TTL expires."*
+**✅ ĐÃ TRIỂN KHAI.** Milestone hardening hẹp, đóng finding **H-1** của Production Readiness Review
+(rà soát toàn repo, read-only, 2026-08-06 — báo cáo đó KHÔNG được ghi thành file trong repo này nên
+không có tài liệu để dẫn link): *"Access tokens cannot be revoked; deactivated or banned users retain
+API access until JWT_ACCESS_TTL expires."*
 
 Liên quan tới ADR này vì đây là **hành động đặc quyền thuộc miền danh tính** mà §Bối cảnh (dòng 12/16)
 nêu thẳng là chưa được bao phủ. Milestone này **KHÔNG** thêm audit event nào cho auth (đó là finding

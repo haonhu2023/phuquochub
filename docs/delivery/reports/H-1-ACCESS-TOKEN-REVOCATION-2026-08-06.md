@@ -2,8 +2,10 @@
 
 ## Status
 
-**Complete.** Narrow hardening milestone closing finding **H-1** of the
-[PRODUCTION READINESS REVIEW](./PRODUCTION-READINESS-REVIEW-2026-08-06.md):
+**Complete.** Narrow hardening milestone closing finding **H-1** of the read-only Production
+Readiness Review (full-repository audit, 2026-08-06). That review was delivered as a session report
+and was **not** written to a file in this repository — so there is no document to link here; the
+finding is quoted verbatim below instead:
 
 > "Access tokens cannot be revoked; deactivated or banned users retain API access until
 > `JWT_ACCESS_TTL` expires."
