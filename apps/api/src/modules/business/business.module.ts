@@ -14,15 +14,18 @@ import { PlacesModule } from '../places/places.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { UsersModule } from '../users/users.module';
 import { VerificationsModule } from '../verifications/verifications.module';
+import { SourcesModule } from '../sources/sources.module';
 
 // ADR-015 Claim Decision Workflow + Business Manager Assignment/Revocation + Business Ownership
-// Transfer — `PlacesModule` cấp `PlacesRepository` (đọc place khi submit + ghi verification cache
-// khi approve claim, cùng transaction). `RbacModule` cấp `RolesRepository`/`UserRolesRepository`
-// (gán/thu hồi `business_owner`/`business_manager`). `UsersModule` cấp `UsersRepository` (xác nhận
-// target user tồn tại khi gán manager/transfer). `VerificationsModule` cấp `VerificationsRepository`
-// — CHỈ để đọc, cho guard C1 ở `BusinessClaimsService.decide()` (ADR-008 CORRECTION: không ghi đè
-// cache khi Verification đã sở hữu nó). Một chiều: `VerificationsModule` KHÔNG import BusinessModule
-// (nó chỉ import Places/Contacts/Prices/Sources) — không vòng lặp, cùng tiền lệ `ModerationModule`.
+// Transfer — `PlacesModule` cấp `PlacesRepository` (đọc place khi submit). `RbacModule` cấp
+// `RolesRepository`/`UserRolesRepository` (gán/thu hồi `business_owner`/`business_manager`).
+// `UsersModule` cấp `UsersRepository` (xác nhận target user tồn tại khi gán manager/transfer).
+// CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06): `VerificationsModule` cấp
+// `VerificationsService` (`ensureOfficialFromClaim()` — đưa place tới `official` khi approve claim,
+// nguồn sự thật DUY NHẤT của `places.verification_status`/`verifiedAt` từ nay), `SourcesModule` cấp
+// `SourcesRepository` (tạo `sources` type=business_owner cho mỗi claim approve). Một chiều:
+// `VerificationsModule`/`SourcesModule` KHÔNG import ngược BusinessModule — không vòng lặp, cùng
+// tiền lệ `ModerationModule`.
 @Module({
   imports: [
     TypeOrmModule.forFeature([BusinessClaim, BusinessMember]),
@@ -30,6 +33,7 @@ import { VerificationsModule } from '../verifications/verifications.module';
     RbacModule,
     UsersModule,
     VerificationsModule,
+    SourcesModule,
   ],
   controllers: [BusinessClaimsController, BusinessManagersController, BusinessTransferController],
   providers: [

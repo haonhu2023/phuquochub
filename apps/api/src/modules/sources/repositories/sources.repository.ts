@@ -30,7 +30,14 @@ export class SourcesRepository {
     return this.repo.create(data);
   }
 
-  save(source: Source): Promise<Source> {
-    return this.repo.save(source);
+  /**
+   * `manager` TUỲ CHỌN (ADR-008 CLAIM -> SOURCE -> VERIFICATION INTEGRATION) — lưu TRONG
+   * transaction của caller khi `BusinessClaimsService.decide()` cần tạo `Source` CÙNG transaction
+   * với `business_members`/`user_roles`/`verifications`; bỏ trống dùng `this.repo` như trước
+   * (không phá vỡ `SourcesService.createSource()` hiện có).
+   */
+  save(source: Source, manager?: EntityManager): Promise<Source> {
+    const repo = manager ? manager.getRepository(Source) : this.repo;
+    return repo.save(source);
   }
 }

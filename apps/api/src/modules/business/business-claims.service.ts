@@ -13,7 +13,9 @@ import { BusinessClaimsRepository } from './repositories/business-claims.reposit
 import { BusinessMembersRepository } from './repositories/business-members.repository';
 import { BusinessClaim } from './entities/business-claim.entity';
 import { PlacesRepository } from '../places/repositories/places.repository';
-import { VerificationsRepository } from '../verifications/repositories/verifications.repository';
+import { VerificationsService } from '../verifications/verifications.service';
+import { SourcesRepository } from '../sources/repositories/sources.repository';
+import { SourceType, SourceKind, SOURCE_TYPE_DEFAULT_RELIABILITY } from '../sources/sources.enums';
 import { RolesRepository } from '../rbac/repositories/roles.repository';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
 import { ScopeType } from '../rbac/rbac.enums';
@@ -21,7 +23,7 @@ import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import { assertValidClaimTransition } from './business-claim.transition';
 import { BusinessClaimDecision, ClaimStatus } from './business.enums';
-import { VerificationStatus, PlaceStatus } from '../places/place.enums';
+import { PlaceStatus } from '../places/place.enums';
 import { SubmitBusinessClaimDto, DecideBusinessClaimDto, ListBusinessClaimsQueryDto } from './dto/business.dto';
 import {
   toBusinessClaimDetail,
@@ -37,18 +39,16 @@ const BUSINESS_OWNER_ROLE_CODE = 'business_owner';
 // Business.Verify, chỉ approve/reject — dispute TỰ ĐỘNG khi xung đột owner). withdraw() = actor
 // requester, KHÔNG cần Business.Verify (business.md §4: "withdrawn | ... | requester").
 //
-// Owner Decision 1: verification = CHỈ ghi `places.verification_status`/`verified_at` (cache có
-// sẵn, ADR-008 §Decision mục 3) — KHÔNG tạo `verifications`/`verification_events`, ADR-008 vẫn hoãn.
-//
-// ADR-008 CORRECTION (2026-08-06, PIR finding C1) — GUARD PHÒNG VỆ, KHÔNG phải tích hợp:
-// `decide(approve)` chỉ ghi cache `places.verification_status` khi cơ sở đó CHƯA có dòng
-// `verifications` nào. Nếu đã có, dòng `verifications` LÀ nguồn sự thật của cache đó (ADR-008) và
-// việc ghi đè ở đây sẽ tạo ra hai giá trị mâu thuẫn VĨNH VIỄN (cache nói `official`, entity nói
-// khác; job hết hạn đọc entity nên cache `official` không bao giờ hết hạn). Guard này KHÔNG tạo
-// `verifications`/`verification_events`, KHÔNG sinh `sources` — đúng phạm vi Owner đã chốt; nó chỉ
-// NGỪNG ghi đè. Việc claim vẫn approve bình thường (ownership/`business_members`/`user_roles` không
-// đổi) — chỉ badge cache là do Verification quản. Kết quả được ghi vào audit context
-// (`verification_cache_written`) để KHÔNG âm thầm.
+// CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06) — thay thế Owner Decision 1 (verification
+// chỉ ghi thẳng cache) VÀ guard C1 (chỉ NGỪNG ghi đè) đã áp dụng trước đây: `decide(approve)` giờ
+// KHÔNG còn ghi `places.verificationStatus`/`verifiedAt` trực tiếp. Thay vào đó, nó tạo MỘT
+// `sources` (type=business_owner, kind=platform_user, gắn evidence của claim vào `metadata`) rồi gọi
+// `VerificationsService.ensureOfficialFromClaim()` — đưa place tới trạng thái `official` qua ĐÚNG
+// MỘT luồng Verification (tạo/gửi lại dòng `verifications` nếu cần rồi transition, method
+// `owner_claim`), CÙNG transaction với `business_members`/`user_roles`/`business_claims` (một
+// approve = một transaction, không có state nửa vời). `places.verification_status`/`verifiedAt` giờ
+// CHỈ còn được `VerificationsService.syncTargetCache()` ghi — BusinessClaimsService không còn là
+// writer nào của cache đó nữa (đóng transitional exception mà ADR-008 CORRECTION từng ghi nhận).
 @Injectable()
 export class BusinessClaimsService {
   constructor(
@@ -57,7 +57,8 @@ export class BusinessClaimsService {
     private readonly placesRepo: PlacesRepository,
     private readonly rolesRepo: RolesRepository,
     private readonly userRolesRepo: UserRolesRepository,
-    private readonly verificationsRepo: VerificationsRepository,
+    private readonly verificationsService: VerificationsService,
+    private readonly sourcesRepo: SourcesRepository,
     private readonly audit: AuditService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -129,9 +130,9 @@ export class BusinessClaimsService {
       throw new UnprocessableEntityException('Từ chối claim bắt buộc có reason_code.');
     }
 
-    // Ghi lại việc guard C1 có cho ghi cache hay không, để audit phản ánh ĐÚNG chuyện đã xảy ra
+    // Ghi lại source/verification vừa tạo (nhánh approve) để audit phản ánh ĐÚNG chuyện đã xảy ra
     // (gán trong transaction callback, đọc sau commit — decide() không retry transaction).
-    let verificationCacheWritten: boolean | null = null;
+    let verificationResult: { sourceId: string; verificationId: string; verificationStatus: string } | null = null;
 
     const result = await this.dataSource.transaction<BusinessClaim>(async (manager) => {
       const claim = await this.claimsRepo.findByIdForUpdate(manager, claimId);
@@ -205,22 +206,38 @@ export class BusinessClaimsService {
         manager,
       );
 
-      // ADR-008 CORRECTION (PIR C1) — chỉ ghi cache khi Verification CHƯA sở hữu nó. Xem chú thích
-      // đầu class: nếu đã có dòng `verifications` cho cơ sở này, dòng đó là nguồn sự thật của
-      // `places.verification_status`; ghi đè ở đây tạo mâu thuẫn vĩnh viễn (job hết hạn đọc entity,
-      // nên cache `official` do claim ghi sẽ không bao giờ hết hạn). Claim VẪN approve bình thường.
-      const existingVerification = await this.verificationsRepo.findActiveByTarget(
-        { placeId: claim.placeId },
+      // CLAIM -> SOURCE -> VERIFICATION INTEGRATION — tạo một `sources` gắn evidence của claim, rồi
+      // đưa place tới `official` qua ĐÚNG MỘT luồng Verification (xem chú thích đầu class). Đây là
+      // nguồn sự thật DUY NHẤT cho `places.verification_status`/`verifiedAt` từ nay — không còn ghi
+      // cache trực tiếp ở đây.
+      const source = await this.sourcesRepo.save(
+        this.sourcesRepo.create({
+          type: SourceType.BUSINESS_OWNER,
+          kind: SourceKind.PLATFORM_USER,
+          title: null,
+          url: null,
+          externalRef: null,
+          publisher: null,
+          authorUserId: claim.requesterId,
+          license: null,
+          reliability: SOURCE_TYPE_DEFAULT_RELIABILITY[SourceType.BUSINESS_OWNER],
+          language: null,
+          retrievedAt: decidedAt,
+          metadata: { business_claim_id: claim.id, evidence: claim.evidence },
+        }),
         manager,
       );
-      verificationCacheWritten = existingVerification === null;
-      if (verificationCacheWritten) {
-        await this.placesRepo.updateScalars(
-          claim.placeId,
-          { verificationStatus: VerificationStatus.OFFICIAL, verifiedAt: decidedAt },
-          manager,
-        );
-      }
+
+      const verification = await this.verificationsService.ensureOfficialFromClaim(
+        claim.placeId,
+        { sourceId: source.id, actorId, note: dto.decision_note ?? null },
+        manager,
+      );
+      verificationResult = {
+        sourceId: source.id,
+        verificationId: verification.id,
+        verificationStatus: verification.status,
+      };
 
       await this.claimsRepo.updateDecision(manager, claim.id, {
         status: approvedStatus,
@@ -248,10 +265,11 @@ export class BusinessClaimsService {
       actorId,
       result: AuditResult.SUCCESS,
       after: { status: result.status, place_id: result.placeId },
-      // `null` = nhánh reject/dispute (không có bước ghi cache nào). `false` = guard C1 đã CHẶN ghi
-      // đè vì cơ sở đã có dòng `verifications` sở hữu cache đó — hiện diện tường minh ở audit để
-      // moderator/điều tra sau này biết badge do Verification quản, không phải do claim này.
-      context: { verification_cache_written: verificationCacheWritten },
+      // `null` = nhánh reject/dispute/redirect-to-disputed (không tạo source/verification nào).
+      // Nhánh approve gắn source_id/verification_id/verification_status vừa qua
+      // `ensureOfficialFromClaim()` — truy vết được badge `official` của place này về ĐÚNG source +
+      // dòng verifications nào.
+      context: { verification: verificationResult },
     });
 
     return toBusinessClaimSummary(result);

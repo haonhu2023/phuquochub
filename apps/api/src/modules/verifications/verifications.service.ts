@@ -45,12 +45,15 @@ import {
 //
 // Owner Decision (2026-08-06): permission model KHÔNG đổi — `Verification.Verify`/`Reject` vẫn
 // moderator-only, KHÔNG hậu tố scope, KHÔNG cấp cho `business_owner`, KHÔNG có biến thể `.Managed`.
-// `BusinessClaimsService.decide()` KHÔNG bị đụng tới — tiếp tục ghi thẳng
-// `places.verificationStatus`/`verifiedAt` khi approve claim, KHÔNG tạo dòng `verifications` nào.
-// Bảng `verifications` ở milestone này KHÔNG PHẢI nguồn sự thật duy nhất cho luồng ADR-015 claim —
-// chỉ là nguồn sự thật cho các luồng xác minh mà CHÍNH milestone này triển khai (verify/official/
-// reject/vote/expire qua endpoint `/verifications/*`). Tích hợp Business Claim -> Source ->
-// Verification là việc tương lai riêng, cần quyết định mô hình Source cho claim trước.
+//
+// CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06): `BusinessClaimsService.decide()` không
+// còn ghi thẳng `places.verificationStatus`/`verifiedAt` nữa (guard C1/ADR-008 CORRECTION nay chỉ
+// còn bảo vệ DỮ LIỆU CŨ, không phải luồng ghi đang hoạt động — xem `submit()`). Approve claim tạo
+// một `sources` (type=business_owner) rồi gọi `ensureOfficialFromClaim()` — đi qua ĐÚNG MỘT luồng
+// Verification (tạo/gửi lại dòng `verifications` nếu cần rồi transition sang `official`, method
+// `owner_claim`), TRONG transaction của `BusinessClaimsService.decide()`. Bảng `verifications` giờ
+// LÀ nguồn sự thật duy nhất cho MỌI trạng thái xác minh tin cậy (verify/official/reject/vote/expire
+// qua endpoint `/verifications/*`, VÀ business claim approval qua `ensureOfficialFromClaim()`).
 const COMMUNITY_CONFIRM_THRESHOLD = 5; // Σ weight(confirm) ≥ 5 (verification.md §10 mục 2)
 const COMMUNITY_DISPUTE_RATIO_MAX = 0.2; // dispute/confirm < 0.2
 
@@ -167,103 +170,25 @@ export class VerificationsService {
 
       if (!existing) {
         // ADR-008 CORRECTION (PIR finding C1) — GUARD PHÒNG VỆ: cache đang ở trạng thái TIN CẬY mà
-        // KHÔNG có dòng `verifications` nào nghĩa là một writer KHÁC đã đặt nó (hiện chỉ có
-        // `BusinessClaimsService.decide()` khi approve claim). Tạo dòng `pending` ở đây sẽ HẠ CẤP
-        // badge công khai đó (`places.verification_status` lộ ra trên route `@Public`) một cách âm
-        // thầm. Từ chối, KHÔNG "nhận" cache làm trạng thái khởi tạo: `official` đòi `source_id`
-        // (CHECK ck_verif_official_source) mà claim KHÔNG hề sinh ra `sources` nào — nhận vào sẽ
-        // vi phạm chính ADR-008. Đây là GIỚI HẠN CHUYỂN TIẾP đã biết, không phải lỗi: mở khoá nó
-        // cần milestone tích hợp Business Claim -> Source -> Verification riêng.
+        // KHÔNG có dòng `verifications` nào nghĩa là nó được đặt trước khi CLAIM -> SOURCE ->
+        // VERIFICATION INTEGRATION tồn tại (dữ liệu cũ — từ nay `BusinessClaimsService.decide()`
+        // LUÔN tạo dòng `verifications` qua `ensureOfficialFromClaim()` khi approve). Tạo dòng
+        // `pending` ở đây sẽ HẠ CẤP badge công khai đó (`places.verification_status` lộ ra trên
+        // route `@Public`) một cách âm thầm — vẫn từ chối, KHÔNG "nhận" cache làm trạng thái khởi
+        // tạo (đây là dữ liệu tồn dư, không phải luồng ghi hợp lệ nào còn tồn tại).
         if (isTrustedStatus(target.currentCacheStatus)) {
           throw new ConflictException(
-            `Target đang có trạng thái xác minh '${target.currentCacheStatus}' được đặt NGOÀI hệ ` +
-              `Verification (Business Claim approval — ADR-015). Chưa thể đưa target này vào hàng đợi ` +
-              `xác minh: làm vậy sẽ hạ cấp trạng thái đó xuống 'pending'. Cần milestone tích hợp ` +
-              `Business Claim -> Source -> Verification trước.`,
+            `Target đang có trạng thái xác minh '${target.currentCacheStatus}' được đặt trước khi có ` +
+              `dòng verifications tương ứng (dữ liệu cũ). Chưa thể đưa target này vào hàng đợi xác ` +
+              `minh: làm vậy sẽ hạ cấp trạng thái đó xuống 'pending'.`,
           );
         }
 
-        let created: Verification;
-        try {
-          created = await this.verificationsRepo.create(
-            {
-              placeId: target.placeId,
-              contactId: target.contactId,
-              priceHistoryId: target.priceHistoryId,
-              method: VerificationMethod.MODERATOR,
-              createdBy: actorId,
-              note: dto.note ?? null,
-            },
-            manager,
-          );
-        } catch (err) {
-          // ADR-008 CORRECTION (PIR finding T1): hai `submit()` đồng thời cùng target — cả hai đọc
-          // `findActiveByTarget` = null rồi cả hai INSERT. Partial-unique index là chốt chặn CUỐI
-          // CÙNG (toàn vẹn DB vẫn đúng, không có dòng trùng); trước đây lỗi 23505 nổi lên thành 500.
-          // Bắt ĐÚNG vi phạm đã lường trước, trả 409 để client đọc lại & thử lại.
-          if (isUniqueViolation(err, ...VERIFICATION_TARGET_UNIQUE_CONSTRAINTS)) {
-            throw new ConflictException(
-              'Target vừa được gửi xác minh đồng thời bởi một request khác — đọc lại và thử lại.',
-            );
-          }
-          throw err;
-        }
-        await this.eventsRepo.append(
-          {
-            verificationId: created.id,
-            fromStatus: null,
-            toStatus: VerificationStatus.PENDING,
-            method: VerificationMethod.MODERATOR,
-            actorId,
-            note: dto.note ?? null,
-          },
-          manager,
-        );
-        await this.syncTargetCache(manager, target, VerificationStatus.PENDING, new Date());
-        return created;
+        return this.createPendingVerification(target, VerificationMethod.MODERATOR, actorId, dto.note ?? null, manager);
       }
 
       // Đã có dòng — chỉ hợp lệ khi đang expired/rejected (gửi lại, verification.md §3.2).
-      const toStatus = assertValidVerificationTransition(existing.status, 'submit');
-      // ADR-008 CORRECTION (PIR finding F1): XOÁ trường của trạng thái cuối trước đó. `expiresAt`
-      // sót lại là lỗi THẬT, không chỉ mất vệ sinh dữ liệu: official(expires=T) -> expired ->
-      // submit -> verify sẽ cho ra một dòng `verified` mang `expires_at` đã QUÁ HẠN, và
-      // `expireOverdue()` hạ cấp nó ngay lần chạy kế tiếp — xác minh của moderator tự bốc hơi.
-      // `reasonCode`/`rejectedReason` sót lại thì hiện lên API trên một dòng không hề bị bác.
-      const resubmitPatch = {
-        status: toStatus,
-        method: VerificationMethod.MODERATOR,
-        note: dto.note ?? existing.note,
-        reasonCode: null,
-        rejectedReason: null,
-        expiresAt: null,
-      };
-      const ok = await this.verificationsRepo.casUpdate(
-        existing.id,
-        existing.lockVersion,
-        resubmitPatch,
-        manager,
-      );
-      if (!ok) {
-        throw new ConflictException('Verification vừa bị thay đổi đồng thời — thử lại.');
-      }
-      await this.eventsRepo.append(
-        {
-          verificationId: existing.id,
-          fromStatus: existing.status,
-          toStatus,
-          method: VerificationMethod.MODERATOR,
-          actorId,
-          note: dto.note ?? null,
-        },
-        manager,
-      );
-      await this.syncTargetCache(manager, target, toStatus, new Date());
-      // Trả về ĐÚNG những gì vừa ghi: áp CẢ patch, không chỉ `status`. Bản trước chỉ spread
-      // `existing` + `status` nên response vẫn phơi ra `expires_at`/`reason_code` CŨ dù DB đã xoá —
-      // API nói dối về trạng thái nó vừa tạo ra (chính e2e F1 bắt được lỗi này). Cùng khuôn
-      // `transition()`/`vote()` vốn đã `{ ...current, ...patch }`.
-      return { ...existing, ...resubmitPatch, lockVersion: existing.lockVersion + 1 };
+      return this.resubmitVerification(existing, VerificationMethod.MODERATOR, actorId, dto.note ?? null, manager);
     });
 
     await this.audit.record({
@@ -276,6 +201,168 @@ export class VerificationsService {
     });
 
     return toVerificationResponse(result);
+  }
+
+  /**
+   * Tạo dòng `verifications` mới (pending) cho một target CHƯA từng có dòng nào — TÁCH RIÊNG
+   * (CLAIM -> SOURCE -> VERIFICATION INTEGRATION) khỏi nhánh "chưa có dòng" của `submit()` để
+   * `ensureOfficialFromClaim()` tái dùng CHÍNH XÁC, chỉ khác `method` (moderator qua submit,
+   * owner_claim qua approve claim). KHÔNG mở transaction — caller (submit()/ensureOfficialFromClaim())
+   * cung cấp `manager`.
+   */
+  private async createPendingVerification(
+    target: TargetRef,
+    method: VerificationMethod,
+    actorId: string,
+    note: string | null,
+    manager: EntityManager,
+  ): Promise<Verification> {
+    let created: Verification;
+    try {
+      created = await this.verificationsRepo.create(
+        {
+          placeId: target.placeId,
+          contactId: target.contactId,
+          priceHistoryId: target.priceHistoryId,
+          method,
+          createdBy: actorId,
+          note,
+        },
+        manager,
+      );
+    } catch (err) {
+      // ADR-008 CORRECTION (PIR finding T1): hai request đồng thời cùng target — cả hai đọc
+      // `findActiveByTarget` = null rồi cả hai INSERT. Partial-unique index là chốt chặn CUỐI CÙNG
+      // (toàn vẹn DB vẫn đúng, không có dòng trùng); bắt ĐÚNG vi phạm đã lường trước, trả 409 để
+      // caller đọc lại & thử lại.
+      if (isUniqueViolation(err, ...VERIFICATION_TARGET_UNIQUE_CONSTRAINTS)) {
+        throw new ConflictException(
+          'Target vừa được gửi xác minh đồng thời bởi một request khác — đọc lại và thử lại.',
+        );
+      }
+      throw err;
+    }
+    await this.eventsRepo.append(
+      {
+        verificationId: created.id,
+        fromStatus: null,
+        toStatus: VerificationStatus.PENDING,
+        method,
+        actorId,
+        note,
+      },
+      manager,
+    );
+    await this.syncTargetCache(manager, target, VerificationStatus.PENDING, new Date());
+    return created;
+  }
+
+  /**
+   * Gửi lại một dòng `verifications` đã có (chỉ hợp lệ khi đang expired/rejected — FSM `submit`,
+   * verification.md §3.2) — TÁCH RIÊNG khỏi nhánh "đã có dòng" của `submit()`, cùng lý do với
+   * `createPendingVerification()`. KHÔNG mở transaction — caller cung cấp `manager`.
+   */
+  private async resubmitVerification(
+    existing: Verification,
+    method: VerificationMethod,
+    actorId: string,
+    note: string | null,
+    manager: EntityManager,
+  ): Promise<Verification> {
+    const target: TargetRef = {
+      placeId: existing.placeId,
+      contactId: existing.contactId,
+      priceHistoryId: existing.priceHistoryId,
+    };
+    const toStatus = assertValidVerificationTransition(existing.status, 'submit');
+    // ADR-008 CORRECTION (PIR finding F1): XOÁ trường của trạng thái cuối trước đó. `expiresAt` sót
+    // lại là lỗi THẬT, không chỉ mất vệ sinh dữ liệu: official(expires=T) -> expired -> submit ->
+    // verify sẽ cho ra một dòng `verified` mang `expires_at` đã QUÁ HẠN, và `expireOverdue()` hạ
+    // cấp nó ngay lần chạy kế tiếp. `reasonCode`/`rejectedReason` sót lại thì hiện lên API trên một
+    // dòng không hề bị bác.
+    const resubmitPatch = {
+      status: toStatus,
+      method,
+      note: note ?? existing.note,
+      reasonCode: null,
+      rejectedReason: null,
+      expiresAt: null,
+    };
+    const ok = await this.verificationsRepo.casUpdate(existing.id, existing.lockVersion, resubmitPatch, manager);
+    if (!ok) {
+      throw new ConflictException('Verification vừa bị thay đổi đồng thời — thử lại.');
+    }
+    await this.eventsRepo.append(
+      {
+        verificationId: existing.id,
+        fromStatus: existing.status,
+        toStatus,
+        method,
+        actorId,
+        note,
+      },
+      manager,
+    );
+    await this.syncTargetCache(manager, target, toStatus, new Date());
+    // Trả về ĐÚNG những gì vừa ghi: áp CẢ patch, không chỉ `status` (F1 — xem `submit()` bản trước).
+    return { ...existing, ...resubmitPatch, lockVersion: existing.lockVersion + 1 };
+  }
+
+  /**
+   * CLAIM -> SOURCE -> VERIFICATION INTEGRATION. Điểm vào NỘI BỘ (không phải endpoint HTTP) —
+   * `BusinessClaimsService.decide()` gọi hàm này TRONG CHÍNH transaction của nó (truyền `manager`)
+   * khi approve một business claim, để đưa place đó tới trạng thái `official` qua ĐÚNG MỘT luồng
+   * Verification (không ghi thẳng `places.verification_status` nữa — xem class doc của
+   * `BusinessClaimsService`). KHÔNG mở transaction riêng, KHÔNG audit ở đây — caller chịu trách
+   * nhiệm cả hai (audit của caller đã bao gồm `source_id`/verification id trong context).
+   *
+   * Xử lý CẢ BA khả năng dòng `verifications` hiện có của place trước khi approve claim:
+   *  - Chưa có dòng nào -> tạo pending rồi transition sang official (như submit() + official()).
+   *  - Có dòng nhưng đang expired/rejected -> gửi lại (resubmit) rồi transition sang official.
+   *  - Có dòng đang pending/verified/community_verified -> transition thẳng sang official.
+   *  - Đã là official rồi (vd approve lại một claim cho place đã official qua đường khác) -> no-op,
+   *    trả về nguyên trạng, KHÔNG tạo verification_events thừa.
+   */
+  async ensureOfficialFromClaim(
+    placeId: string,
+    input: { sourceId: string; actorId: string; note?: string | null },
+    manager: EntityManager,
+  ): Promise<Verification> {
+    const target: TargetRef = { placeId, contactId: null, priceHistoryId: null };
+    const existing = await this.verificationsRepo.findActiveByTarget({ placeId }, manager);
+
+    let current: Verification;
+    if (!existing) {
+      current = await this.createPendingVerification(
+        target,
+        VerificationMethod.OWNER_CLAIM,
+        input.actorId,
+        input.note ?? null,
+        manager,
+      );
+    } else if (existing.status === VerificationStatus.OFFICIAL) {
+      return existing;
+    } else if (existing.status === VerificationStatus.EXPIRED || existing.status === VerificationStatus.REJECTED) {
+      current = await this.resubmitVerification(
+        existing,
+        VerificationMethod.OWNER_CLAIM,
+        input.actorId,
+        input.note ?? null,
+        manager,
+      );
+    } else {
+      current = existing;
+    }
+
+    return this.transitionCore(manager, current, input.actorId, (curr, mgr) =>
+      this.buildOfficialTransition(
+        curr,
+        { source_id: input.sourceId, note: input.note ?? undefined },
+        input.actorId,
+        VerificationMethod.OWNER_CLAIM,
+        mgr,
+      ),
+    );
   }
 
   /** GET /verifications — hàng đợi moderator. */
@@ -375,49 +462,70 @@ export class VerificationsService {
 
   /** POST /verifications/{id}/official — pending|verified|community_verified -> official. */
   async official(id: string, dto: OfficialDecisionDto, actorId: string): Promise<VerificationResponse> {
-    const result = await this.transition(id, 'official', actorId, async (current, manager) => {
-      const toStatus = assertValidVerificationTransition(current.status, 'official');
-
-      const source = await this.sourcesRepo.findById(dto.source_id, manager);
-      if (!source) {
-        throw new NotFoundException('Không tìm thấy source.');
-      }
-      if (!OFFICIAL_SOURCE_TYPES.has(source.type)) {
-        throw new UnprocessableEntityException(
-          `Source loại '${source.type}' không thuộc nhóm chính thức (business_owner/official_website/government) — không thể dùng cho trạng thái official.`,
-        );
-      }
-
-      const isPriceHistory = current.priceHistoryId !== null;
-      let expiresAt: Date | null;
-      if (dto.expires_at === undefined) {
-        expiresAt = addMonths(new Date(), OFFICIAL_DEFAULT_EXPIRY_MONTHS);
-      } else if (dto.expires_at === null) {
-        if (isPriceHistory) {
-          throw new UnprocessableEntityException('price_history bắt buộc expires_at khi đặt official.');
-        }
-        expiresAt = null;
-      } else {
-        expiresAt = new Date(dto.expires_at);
-      }
-
-      const now = new Date();
-      const patch = {
-        status: toStatus,
-        method: VerificationMethod.MODERATOR,
-        sourceId: dto.source_id,
-        confidence: dto.confidence ?? null,
-        note: dto.note ?? current.note,
-        verifiedBy: actorId,
-        validFrom: now,
-        expiresAt,
-        // F1: một dòng `official` không được mang metadata bác bỏ của lần trước.
-        reasonCode: null,
-        rejectedReason: null,
-      };
-      return { toStatus, patch, method: VerificationMethod.MODERATOR, sourceId: dto.source_id, note: dto.note ?? null };
-    });
+    const result = await this.transition(id, 'official', actorId, (current, manager) =>
+      this.buildOfficialTransition(current, dto, actorId, VerificationMethod.MODERATOR, manager),
+    );
     return toVerificationResponse(result);
+  }
+
+  /**
+   * Logic build cho transition -> official, TÁCH RIÊNG (CLAIM -> SOURCE -> VERIFICATION
+   * INTEGRATION) để `ensureOfficialFromClaim()` tái dùng CHÍNH XÁC — chỉ khác `method` truyền vào
+   * (moderator qua endpoint `/verifications/{id}/official`, `owner_claim` qua approve claim).
+   */
+  private async buildOfficialTransition(
+    current: Verification,
+    dto: { source_id: string; expires_at?: string | null; confidence?: number | null; note?: string | null },
+    actorId: string,
+    method: VerificationMethod,
+    manager: EntityManager,
+  ): Promise<{
+    toStatus: VerificationStatus;
+    patch: Record<string, unknown>;
+    method: VerificationMethod;
+    sourceId: string | null;
+    note: string | null;
+  }> {
+    const toStatus = assertValidVerificationTransition(current.status, 'official');
+
+    const source = await this.sourcesRepo.findById(dto.source_id, manager);
+    if (!source) {
+      throw new NotFoundException('Không tìm thấy source.');
+    }
+    if (!OFFICIAL_SOURCE_TYPES.has(source.type)) {
+      throw new UnprocessableEntityException(
+        `Source loại '${source.type}' không thuộc nhóm chính thức (business_owner/official_website/government) — không thể dùng cho trạng thái official.`,
+      );
+    }
+
+    const isPriceHistory = current.priceHistoryId !== null;
+    let expiresAt: Date | null;
+    if (dto.expires_at === undefined) {
+      expiresAt = addMonths(new Date(), OFFICIAL_DEFAULT_EXPIRY_MONTHS);
+    } else if (dto.expires_at === null) {
+      if (isPriceHistory) {
+        throw new UnprocessableEntityException('price_history bắt buộc expires_at khi đặt official.');
+      }
+      expiresAt = null;
+    } else {
+      expiresAt = new Date(dto.expires_at);
+    }
+
+    const now = new Date();
+    const patch = {
+      status: toStatus,
+      method,
+      sourceId: dto.source_id,
+      confidence: dto.confidence ?? null,
+      note: dto.note ?? current.note,
+      verifiedBy: actorId,
+      validFrom: now,
+      expiresAt,
+      // F1: một dòng `official` không được mang metadata bác bỏ của lần trước.
+      reasonCode: null,
+      rejectedReason: null,
+    };
+    return { toStatus, patch, method, sourceId: dto.source_id, note: dto.note ?? null };
   }
 
   /** POST /verifications/{id}/reject — pending|verified|official|community_verified -> rejected. */
@@ -693,9 +801,12 @@ export class VerificationsService {
   }
 
   /**
-   * Khung chung cho các quyết định moderator (verify/official/reject) — đọc dòng hiện hành, gọi
-   * `build` để tính patch/toStatus (build có thể throw NotFound/Unprocessable TRƯỚC khi ghi gì),
-   * CAS update, ghi verification_events, đồng bộ cache target, audit SAU commit.
+   * Khung chung cho các quyết định moderator (verify/official/reject) — đọc dòng hiện hành TRONG
+   * transaction riêng, gọi `transitionCore`, audit SAU commit. `transitionCore` được TÁCH RIÊNG
+   * (CLAIM -> SOURCE -> VERIFICATION INTEGRATION) để `ensureOfficialFromClaim()` có thể tái dùng
+   * CHÍNH XÁC cùng đường CAS/event/cache-sync bên trong transaction CỦA CALLER
+   * (`BusinessClaimsService.decide()`) thay vì mở transaction thứ hai — KHÔNG một bản sao logic
+   * transition thứ hai nào.
    */
   private async transition(
     id: string,
@@ -717,30 +828,7 @@ export class VerificationsService {
       if (!current) {
         throw new NotFoundException('Không tìm thấy verification.');
       }
-
-      const { toStatus, patch, method, sourceId, note } = await build(current, manager);
-
-      const ok = await this.verificationsRepo.casUpdate(id, current.lockVersion, patch, manager);
-      if (!ok) {
-        throw new ConflictException('Verification vừa bị thay đổi đồng thời — thử lại.');
-      }
-
-      await this.eventsRepo.append(
-        {
-          verificationId: id,
-          fromStatus: current.status,
-          toStatus,
-          method,
-          sourceId,
-          actorId,
-          note,
-        },
-        manager,
-      );
-
-      await this.syncTargetCache(manager, current, toStatus, new Date());
-
-      return { ...current, ...patch, lockVersion: current.lockVersion + 1 } as Verification;
+      return this.transitionCore(manager, current, actorId, build);
     });
 
     await this.audit.record({
@@ -753,6 +841,52 @@ export class VerificationsService {
     });
 
     return result;
+  }
+
+  /**
+   * Lõi transition (KHÔNG mở transaction, KHÔNG audit) — gọi `build` để tính patch/toStatus (build
+   * có thể throw NotFound/Unprocessable TRƯỚC khi ghi gì), CAS update, ghi verification_events, đồng
+   * bộ cache target. Caller chịu trách nhiệm mở transaction (`manager`) VÀ audit sau khi transaction
+   * đó commit (§5C — audit luôn ghi SAU commit, KHÔNG trong transaction).
+   */
+  private async transitionCore(
+    manager: EntityManager,
+    current: Verification,
+    actorId: string,
+    build: (
+      current: Verification,
+      manager: EntityManager,
+    ) => Promise<{
+      toStatus: VerificationStatus;
+      patch: Record<string, unknown>;
+      method: VerificationMethod;
+      sourceId: string | null;
+      note: string | null;
+    }>,
+  ): Promise<Verification> {
+    const { toStatus, patch, method, sourceId, note } = await build(current, manager);
+
+    const ok = await this.verificationsRepo.casUpdate(current.id, current.lockVersion, patch, manager);
+    if (!ok) {
+      throw new ConflictException('Verification vừa bị thay đổi đồng thời — thử lại.');
+    }
+
+    await this.eventsRepo.append(
+      {
+        verificationId: current.id,
+        fromStatus: current.status,
+        toStatus,
+        method,
+        sourceId,
+        actorId,
+        note,
+      },
+      manager,
+    );
+
+    await this.syncTargetCache(manager, current, toStatus, new Date());
+
+    return { ...current, ...patch, lockVersion: current.lockVersion + 1 } as Verification;
   }
 
   /** Đồng bộ cache `verification_status`/`verified_at` trên ĐÚNG entity đích (exclusive arc). */
