@@ -10,6 +10,7 @@ describe('UsersService', () => {
   let rolesRepo: LooseMock<Deps[1]>;
   let userRolesRepo: LooseMock<Deps[2]>;
   let audit: LooseMock<Deps[3]>;
+  let authRevocation: LooseMock<Deps[4]>;
   let service: UsersService;
 
   beforeEach(() => {
@@ -22,7 +23,9 @@ describe('UsersService', () => {
       revoke: jest.fn(),
     });
     audit = createMock<Deps[3]>({ record: jest.fn() });
-    service = new UsersService(usersRepo, rolesRepo, userRolesRepo, audit);
+    // H-1: mặc định thu hồi thành công; hai test riêng bên dưới kiểm đúng lời gọi + đường lỗi Redis.
+    authRevocation = createMock<Deps[4]>({ revokeAllForUser: jest.fn().mockResolvedValue(1700000000) });
+    service = new UsersService(usersRepo, rolesRepo, userRolesRepo, audit, authRevocation);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -128,6 +131,65 @@ describe('UsersService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'role.revoked', entityId: 'u1', actorId: 'admin' }),
       );
+    });
+  });
+
+  // H-1 (Owner Decision D3): đổi vai trò PHẢI thu hồi access token cũ của user ĐÍCH — nếu không,
+  // một moderator vừa bị thu hồi vai trò vẫn giữ quyền tới hết JWT_ACCESS_TTL.
+  describe('H-1 — thu hồi token khi vai trò đổi', () => {
+    it('assignRole thành công -> thu hồi token của user ĐÍCH (không phải actor)', async () => {
+      rolesRepo.findById.mockResolvedValue({ id: 'r1', isAssignable: true });
+      userRolesRepo.findActive.mockResolvedValue(null);
+      usersRepo.findById.mockResolvedValue({ id: 'u1' });
+
+      await service.assignRole('u1', { role_id: 'r1' }, 'admin');
+
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledTimes(1);
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledWith('u1');
+    });
+
+    it('revokeRole thành công -> thu hồi token của user ĐÍCH', async () => {
+      await service.revokeRole('u1', 'r1', 'admin');
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledWith('u1');
+    });
+
+    it('audit ghi TRƯỚC bước thu hồi — hành động đặc quyền luôn có vết dù Redis lỗi', async () => {
+      const order: string[] = [];
+      audit.record.mockImplementation(async () => {
+        order.push('audit');
+      });
+      authRevocation.revokeAllForUser.mockImplementation(async () => {
+        order.push('revoke');
+        return 1_700_000_000;
+      });
+
+      await service.revokeRole('u1', 'r1', 'admin');
+      expect(order).toEqual(['audit', 'revoke']);
+    });
+
+    it('Redis lỗi -> lỗi NỔI LÊN tới caller, nhưng mutation DB + audit ĐÃ xảy ra (hai hệ thống, không transaction chung)', async () => {
+      authRevocation.revokeAllForUser.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.revokeRole('u1', 'r1', 'admin')).rejects.toThrow('redis down');
+      // Đây chính là sự đánh đổi được ghi nhận thẳng trong doc của UsersService: phơi lỗi (để người
+      // vận hành biết cần gọi lại) thay vì nuốt nó và tạo cảm giác an toàn giả.
+      expect(userRolesRepo.revoke).toHaveBeenCalledWith('u1', 'r1');
+      expect(audit.record).toHaveBeenCalled();
+    });
+
+    it('assignRole thất bại validate -> KHÔNG thu hồi gì', async () => {
+      rolesRepo.findById.mockResolvedValue({ id: 'r1', isAssignable: false });
+      usersRepo.findById.mockResolvedValue({ id: 'u1' });
+
+      await expect(service.assignRole('u1', { role_id: 'r1' }, 'admin')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(authRevocation.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('revokeRole tự thu hồi chính mình (Forbidden) -> KHÔNG thu hồi gì', async () => {
+      await expect(service.revokeRole('u1', 'r1', 'u1')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(authRevocation.revokeAllForUser).not.toHaveBeenCalled();
     });
   });
 });

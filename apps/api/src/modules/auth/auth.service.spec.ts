@@ -16,6 +16,7 @@ describe('AuthService', () => {
   let rolesRepo: LooseMock<Deps[1]>;
   let userRolesRepo: LooseMock<Deps[2]>;
   let tokenService: LooseMock<Deps[3]>;
+  let authRevocation: LooseMock<Deps[4]>;
   let service: AuthService;
 
   beforeEach(() => {
@@ -33,7 +34,9 @@ describe('AuthService', () => {
         .fn()
         .mockResolvedValue({ accessToken: 'a', refreshToken: 'r', expiresIn: 900 }),
     });
-    service = new AuthService(usersRepo, rolesRepo, userRolesRepo, tokenService);
+    // H-1: mặc định thu hồi thành công; test logoutAll bên dưới kiểm cả đường lỗi.
+    authRevocation = createMock<Deps[4]>({ revokeAllForUser: jest.fn().mockResolvedValue(1700000000) });
+    service = new AuthService(usersRepo, rolesRepo, userRolesRepo, tokenService, authRevocation);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -81,5 +84,45 @@ describe('AuthService', () => {
     await expect(
       service.login({ email: 'a@b.com', password: 'x' }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  // H-1 — logout-all: thu hồi CẢ refresh token lẫn access token của chính principal.
+  describe('logoutAll', () => {
+    beforeEach(() => {
+      tokenService.revokeAllRefreshForUser = jest.fn().mockResolvedValue(3);
+    });
+
+    it('thu hồi refresh TRƯỚC, mốc access SAU — thứ tự an toàn khi lỗi giữa chừng', async () => {
+      const order: string[] = [];
+      tokenService.revokeAllRefreshForUser.mockImplementation(async () => {
+        order.push('refresh');
+        return 3;
+      });
+      authRevocation.revokeAllForUser.mockImplementation(async () => {
+        order.push('access');
+        return 1_700_000_000;
+      });
+
+      await service.logoutAll('user-1');
+
+      // Nếu đảo thứ tự và bước 2 lỗi, refresh còn nguyên -> user vẫn đúc được access token MỚI,
+      // tức logout-all thất bại ÂM THẦM. Thứ tự này khiến lỗi giữa chừng vẫn an toàn.
+      expect(order).toEqual(['refresh', 'access']);
+      expect(tokenService.revokeAllRefreshForUser).toHaveBeenCalledWith('user-1');
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('lỗi thu hồi mốc access -> NÉM ra ngoài (không nuốt, không báo thành công giả)', async () => {
+      authRevocation.revokeAllForUser.mockRejectedValue(new Error('redis down'));
+      await expect(service.logoutAll('user-1')).rejects.toThrow('redis down');
+      // Refresh vẫn đã bị xoá trước đó -> user không thể tự cấp lại access token mới.
+      expect(tokenService.revokeAllRefreshForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('lỗi xoá refresh -> NÉM ngay, KHÔNG đặt mốc access', async () => {
+      tokenService.revokeAllRefreshForUser.mockRejectedValue(new Error('redis down'));
+      await expect(service.logoutAll('user-1')).rejects.toThrow('redis down');
+      expect(authRevocation.revokeAllForUser).not.toHaveBeenCalled();
+    });
   });
 });
