@@ -106,15 +106,71 @@ export class VerificationsRepository {
     return { items, total };
   }
 
-  /** Hàng đợi hết hạn (job hệ thống, §9) — mọi dòng "tin cậy" đã quá `expires_at`. */
-  listOverdueTrusted(now: Date, manager?: EntityManager): Promise<Verification[]> {
+  /**
+   * VERIFICATION SCHEDULER — Operational Enablement (2026-08-06). Trang MỘT lô (keyset cursor)
+   * của "hàng đợi hết hạn" (job hệ thống, §9) — dòng "tin cậy" đã quá `expires_at`. Thay thế
+   * `listOverdueTrusted()` cũ (tải TOÀN BỘ tập kết quả vào bộ nhớ — PIR finding, "the expiry path
+   * is unbounded"). Cùng khuôn keyset `MediaRepository.findOrphanCleanupCandidates()`: sắp xếp
+   * `(expires_at, id)` — ổn định, xác định, không phụ thuộc OFFSET (OFFSET trôi khi có ghi xen giữa
+   * hai trang). `expiresAtCursor` là chuỗi TEXT Postgres tự render (microsecond) — TUYỆT ĐỐI không
+   * dùng `Date` JS cho cursor (mất độ chính xác dưới mili-giây, có thể khiến một dòng tự thoả lại
+   * chính điều kiện `>` của nó và bị fetch lặp vô hạn — bài học đã ghi ở
+   * `OrphanCleanupCandidate.cursorCreatedAt`, áp dụng y hệt ở đây).
+   */
+  async findOverdueTrustedBatch(
+    now: Date,
+    limit: number,
+    after?: VerificationExpiryCursor,
+    manager?: EntityManager,
+  ): Promise<OverdueVerificationCandidate[]> {
     const repo = manager ? manager.getRepository(Verification) : this.repo;
-    return repo
-      .createQueryBuilder('v')
-      .where('v.status IN (:...statuses)', {
-        statuses: [VerificationStatus.VERIFIED, VerificationStatus.OFFICIAL, VerificationStatus.COMMUNITY_VERIFIED],
-      })
-      .andWhere('v.expires_at IS NOT NULL AND v.expires_at < :now', { now })
-      .getMany();
+    const params: unknown[] = after ? [now, limit, after.expiresAt, after.id] : [now, limit];
+    const rows: Array<{
+      id: string;
+      status: VerificationStatus;
+      lock_version: number;
+      place_id: string | null;
+      contact_id: string | null;
+      price_history_id: string | null;
+      expires_at: Date;
+      expires_at_text: string;
+    }> = await repo.query(
+      `SELECT id, status, lock_version, place_id, contact_id, price_history_id,
+              expires_at, expires_at::text AS expires_at_text
+       FROM verifications
+       WHERE status IN ('verified','official','community_verified')
+         AND expires_at IS NOT NULL AND expires_at < $1
+         ${after ? 'AND (expires_at, id) > ($3::timestamptz, $4)' : ''}
+       ORDER BY expires_at ASC, id ASC
+       LIMIT $2`,
+      params,
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      lockVersion: r.lock_version,
+      placeId: r.place_id,
+      contactId: r.contact_id,
+      priceHistoryId: r.price_history_id,
+      expiresAt: r.expires_at,
+      expiresAtCursor: r.expires_at_text,
+    }));
   }
+}
+
+export interface OverdueVerificationCandidate {
+  id: string;
+  status: VerificationStatus;
+  lockVersion: number;
+  placeId: string | null;
+  contactId: string | null;
+  priceHistoryId: string | null;
+  expiresAt: Date;
+  /** Postgres's own exact TEXT rendering of `expires_at` — cursor value ONLY, never for display. */
+  expiresAtCursor: string;
+}
+
+export interface VerificationExpiryCursor {
+  expiresAt: string;
+  id: string;
 }

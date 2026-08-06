@@ -8,6 +8,7 @@ import { VerificationEventsRepository } from './repositories/verification-events
 import { VerificationVotesRepository } from './repositories/verification-votes.repository';
 import { VerificationsService } from './verifications.service';
 import { VerificationsController } from './verifications.controller';
+import { VerificationExpiryScheduler } from './verification-expiry.scheduler';
 import { PlacesModule } from '../places/places.module';
 import { ContactsModule } from '../contacts/contacts.module';
 import { PricesModule } from '../prices/prices.module';
@@ -19,6 +20,12 @@ import { SourcesModule } from '../sources/sources.module';
 // entity đích, exclusive arc). `SourcesModule` cấp `SourcesRepository` (xác nhận `source_id` tồn
 // tại + đúng nhóm chính thức khi đặt `official`). Cả bốn đều KHÔNG import ngược
 // `VerificationsModule` — một chiều, không vòng lặp, cùng tiền lệ `BusinessModule`.
+//
+// VERIFICATION SCHEDULER — Operational Enablement (2026-08-06): `VerificationExpiryScheduler` đăng
+// ký ở ĐÂY (không phải AppModule) — chỉ `VerificationsModule` mới biết `VerificationsService`.
+// `ScheduleModule.forRoot()` chỉ đăng ký MỘT LẦN ở AppModule (yêu cầu "một cơ chế lập lịch duy
+// nhất"); `SchedulerRegistry` mà scheduler này cần đến từ đó, KHÔNG import lại `ScheduleModule` ở
+// đây (Nest cung cấp `SchedulerRegistry` toàn cục sau khi `forRoot()` chạy).
 @Module({
   imports: [
     TypeOrmModule.forFeature([Verification, VerificationEvent, VerificationVote]),
@@ -28,7 +35,13 @@ import { SourcesModule } from '../sources/sources.module';
     SourcesModule,
   ],
   controllers: [VerificationsController],
-  providers: [VerificationsRepository, VerificationEventsRepository, VerificationVotesRepository, VerificationsService],
+  providers: [
+    VerificationsRepository,
+    VerificationEventsRepository,
+    VerificationVotesRepository,
+    VerificationsService,
+    VerificationExpiryScheduler,
+  ],
   exports: [VerificationsRepository, VerificationsService],
 })
 export class VerificationsModule {}

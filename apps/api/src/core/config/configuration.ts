@@ -40,6 +40,13 @@ export interface AppConfig {
     bucket: string;
     forcePathStyle: boolean;
   };
+  verificationExpiry: {
+    scheduleEnabled: boolean;
+    cron: string;
+    batchSize: number;
+    maxBatches: number;
+    maxExecutionMs: number;
+  };
 }
 
 // Media Upload Foundation — bucket isolation (design review, 2026-07-30): S3_BUCKET is the ONLY
@@ -97,5 +104,20 @@ export default (): AppConfig => ({
     secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
     bucket: process.env.S3_BUCKET?.trim() || defaultS3Bucket(process.env.NODE_ENV ?? 'development'),
     forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
+  },
+  // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Mặc định TẮT
+  // (`scheduleEnabled=false`) ở MỌI môi trường, kể cả production — bật lịch chạy là một hành vi
+  // vận hành MỚI (job hệ thống ghi DB định kỳ), không suy luận ngầm từ `NODE_ENV=production` (yêu
+  // cầu tường minh: "Do not hard-code production-only assumptions"). Vận hành PHẢI đặt
+  // `VERIFICATION_EXPIRY_SCHEDULE_ENABLED=true` có chủ đích để kích hoạt. Cadence mặc định 15
+  // phút — bảo thủ, phù hợp việc hết hạn xác minh (không nhạy cảm theo giây; badge cũ tồn tại
+  // thêm vài phút không gây hại, chạy quá dày mới tốn tài nguyên vô ích). Batch/execution-budget
+  // mặc định CÙNG con số `MediaCleanupService` đã dùng (100 dòng/lô, 50 lô, 5 phút).
+  verificationExpiry: {
+    scheduleEnabled: (process.env.VERIFICATION_EXPIRY_SCHEDULE_ENABLED ?? 'false') === 'true',
+    cron: process.env.VERIFICATION_EXPIRY_CRON ?? '0 */15 * * * *',
+    batchSize: parseInt(process.env.VERIFICATION_EXPIRY_BATCH_SIZE ?? '100', 10),
+    maxBatches: parseInt(process.env.VERIFICATION_EXPIRY_MAX_BATCHES ?? '50', 10),
+    maxExecutionMs: parseInt(process.env.VERIFICATION_EXPIRY_MAX_EXECUTION_MS ?? '300000', 10),
   },
 });

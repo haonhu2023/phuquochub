@@ -1,9 +1,13 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { isUniqueViolation } from '../../common/db/unique-violation';
-import { VerificationsRepository } from './repositories/verifications.repository';
+import {
+  VerificationsRepository,
+  type OverdueVerificationCandidate,
+  type VerificationExpiryCursor,
+} from './repositories/verifications.repository';
 import { VerificationEventsRepository } from './repositories/verification-events.repository';
 import { VerificationVotesRepository } from './repositories/verification-votes.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
@@ -73,6 +77,50 @@ const OFFICIAL_SOURCE_TYPES = new Set<SourceType>([
 // cho race giữa hai `submit()` đồng thời cùng target (ADR-008 CORRECTION, PIR finding T1).
 const VERIFICATION_TARGET_UNIQUE_CONSTRAINTS = ['uq_verif_place', 'uq_verif_contact', 'uq_verif_price'];
 
+// VERIFICATION SCHEDULER — Operational Enablement (2026-08-06). Mặc định thuần tuý cho
+// `expireOverdue()` khi caller (scheduler/manual runner) không truyền — CÙNG con số
+// `MediaCleanupService` đã dùng cho job dọn dẹp không người trực tiếp gọi tương tự (100 dòng/lô,
+// tối đa 50 lô = 5,000 dòng/lần chạy, ngân sách 5 phút). Giá trị THẬT dùng khi chạy qua
+// scheduler/CLI đến từ `ConfigService` (`verificationExpiry.*`, xem configuration.ts) — các hằng
+// số này chỉ là fallback khi gọi `expireOverdue()` trực tiếp (vd unit test, code gọi thủ công).
+const DEFAULT_EXPIRY_BATCH_SIZE = 100;
+const DEFAULT_EXPIRY_MAX_BATCHES = 50;
+const DEFAULT_EXPIRY_MAX_EXECUTION_MS = 5 * 60 * 1000;
+
+export interface VerificationExpiryOptions {
+  now?: Date;
+  batchSize?: number;
+  maxBatches?: number;
+  maxExecutionMs?: number;
+  // Dùng CHUNG truy vấn lô + tiêu chí đủ điều kiện với lần chạy thật — chỉ bỏ qua bước ghi (không
+  // mở transaction). KHÔNG một state machine dry-run riêng.
+  dryRun?: boolean;
+}
+
+export interface VerificationExpirySummary {
+  dryRun: boolean;
+  // Truy vấn lô đã lọc đúng điều kiện đủ hạn (findOverdueTrustedBatch) — `scanned`/`eligible` vì
+  // vậy LUÔN bằng nhau; báo cáo tách hai trường vì kế hoạch/PIR đặt tên chúng riêng biệt (cùng quy
+  // ước MediaCleanupSummary.scanned/eligible).
+  scanned: number;
+  eligible: number;
+  expired: number;
+  // CAS thua (một tác nhân khác vừa transition CÙNG dòng) HOẶC dòng không còn ở trạng thái hợp lệ
+  // cho `expire` khi đọc lại TRONG transaction (đã bị verify/reject/expire bởi ai đó giữa lúc quét
+  // lô và lúc xử lý dòng) — cùng MỘT lớp race "ai đó vừa đụng dòng này trước", đếm gộp, KHÔNG phải
+  // lỗi hệ thống.
+  conflicts: number;
+  // Lỗi KHÔNG lường trước (vd sự cố kết nối DB giữa chừng một dòng) — dòng đó bị bỏ qua, các dòng
+  // còn lại trong lô/lần chạy VẪN tiếp tục (transaction của MỖI dòng độc lập, §5C) — cùng nguyên
+  // tắc `MediaCleanupService.processCandidate()` xử lý lỗi storage: không lỗi cả job vì một dòng.
+  errors: number;
+  batchesRun: number;
+  timeBudgetExceeded: boolean;
+  oldestProcessedExpiresAt: Date | null;
+  newestProcessedExpiresAt: Date | null;
+  durationMs: number;
+}
+
 interface TargetRef {
   placeId: string | null;
   contactId: string | null;
@@ -88,6 +136,8 @@ interface ResolvedTarget extends TargetRef {
 
 @Injectable()
 export class VerificationsService {
+  private readonly logger = new Logger(VerificationsService.name);
+
   constructor(
     private readonly verificationsRepo: VerificationsRepository,
     private readonly eventsRepo: VerificationEventsRepository,
@@ -466,27 +516,135 @@ export class VerificationsService {
   }
 
   /**
-   * Job hết hạn (verification.md §9, "* -> expired | Job hệ thống"). KHÔNG có hạ tầng lập lịch
-   * (@nestjs/schedule, BullMQ, cron...) trong repo — cùng quy ước
-   * `InventoryHoldsRepository.expireOverdueHolds()`: một job thật (sprint sau) chỉ cần gọi định kỳ
-   * phương thức này. Mỗi dòng transition trong TRANSACTION RIÊNG (một transition = một transaction,
-   * §5C) — CAS thua ở một dòng (ai đó vừa transition dòng đó) chỉ bỏ qua dòng đó, KHÔNG lỗi cả job.
+   * Job hết hạn (verification.md §9, "* -> expired | Job hệ thống"). VERIFICATION SCHEDULER —
+   * Operational Enablement (2026-08-06): trước đây tải TOÀN BỘ tập kết quả vào bộ nhớ rồi lặp
+   * không giới hạn (PIR finding, "the expiry path is unbounded") — nay lô hoá + cursor keyset +
+   * ngân sách thời gian, CÙNG cấu trúc `MediaCleanupService.run()` (batch fetch → cursor tiến sau
+   * MỖI LÔ, không phụ thuộc kết quả từng dòng → kiểm ngân sách thời gian GIỮA các dòng, không bao
+   * giờ giữa chừng một dòng). KHÔNG state machine thứ hai: mỗi dòng vẫn đi qua ĐÚNG
+   * `assertValidVerificationTransition(...,'expire')` + `casUpdate` + `eventsRepo.append` +
+   * `syncTargetCache` — y hệt bản gốc, chỉ bọc lô/cursor/ngân sách xung quanh. Mỗi dòng transition
+   * vẫn trong TRANSACTION RIÊNG (một transition = một transaction, §5C) — CAS thua hoặc dòng không
+   * còn hợp lệ cho `expire` khi đọc lại (ai đó vừa transition dòng đó giữa lúc quét và lúc xử lý)
+   * đều đếm vào `conflicts`, KHÔNG fatal, KHÔNG dừng job. Lỗi THẬT KHÔNG lường trước (vd sự cố kết
+   * nối) đếm vào `errors`, dòng đó bị bỏ qua — các dòng còn lại VẪN tiếp tục.
+   *
+   * `dryRun`: dùng CHUNG truy vấn lô + logic đủ điều kiện, chỉ bỏ qua bước ghi (không mở
+   * transaction) — KHÔNG một state machine dry-run riêng, cùng nguyên tắc `MediaCleanupService`
+   * (`if (!dryRun) { await processCandidate(...) }`).
    */
-  async expireOverdue(now: Date = new Date()): Promise<number> {
-    const overdue = await this.verificationsRepo.listOverdueTrusted(now);
-    let expiredCount = 0;
+  async expireOverdue(options: VerificationExpiryOptions = {}): Promise<VerificationExpirySummary> {
+    const now = options.now ?? new Date();
+    const dryRun = options.dryRun ?? false;
+    const batchSize = options.batchSize ?? DEFAULT_EXPIRY_BATCH_SIZE;
+    const maxBatches = options.maxBatches ?? DEFAULT_EXPIRY_MAX_BATCHES;
+    const maxExecutionMs = options.maxExecutionMs ?? DEFAULT_EXPIRY_MAX_EXECUTION_MS;
+    const startedAt = Date.now();
 
-    for (const row of overdue) {
-      const transitioned = await this.dataSource.transaction<boolean>(async (manager) => {
-        const fresh = await this.verificationsRepo.findById(row.id, manager);
+    const summary: VerificationExpirySummary = {
+      dryRun,
+      scanned: 0,
+      eligible: 0,
+      expired: 0,
+      conflicts: 0,
+      errors: 0,
+      batchesRun: 0,
+      timeBudgetExceeded: false,
+      oldestProcessedExpiresAt: null,
+      newestProcessedExpiresAt: null,
+      durationMs: 0,
+    };
+
+    // Cursor keyset (expires_at, id) — TIẾN SAU MỖI LÔ (không phải sau mỗi dòng), cùng quy ước
+    // `MediaCleanupService.run()`: tiến độ phân trang KHÔNG phụ thuộc việc một dòng có thật sự
+    // chuyển trạng thái hay không. Cursor CHỈ sống trong MỘT lần gọi `expireOverdue()` — không lưu
+    // giữa các lần chạy — nên một dòng bị bỏ lỡ do dừng giữa lô (ngân sách thời gian) vẫn được quét
+    // lại từ đầu ở lần chạy KẾ TIẾP (job tự phục hồi, không mất dòng vĩnh viễn).
+    let cursor: VerificationExpiryCursor | undefined;
+
+    for (let batch = 0; batch < maxBatches; batch++) {
+      if (Date.now() - startedAt >= maxExecutionMs) {
+        summary.timeBudgetExceeded = true;
+        break;
+      }
+
+      const candidates = await this.verificationsRepo.findOverdueTrustedBatch(now, batchSize, cursor);
+      if (candidates.length === 0) {
+        break;
+      }
+      summary.batchesRun += 1;
+      const last = candidates[candidates.length - 1];
+      cursor = { expiresAt: last.expiresAtCursor, id: last.id };
+
+      for (const candidate of candidates) {
+        this.trackExpiryCandidateStats(summary, candidate);
+
+        if (!dryRun) {
+          // Yêu cầu: "một dòng đã bắt đầu xử lý PHẢI xong an toàn" — một khi transaction của MỘT
+          // dòng bắt đầu, nó LUÔN chạy tới hoàn tất (CAS → event → cache sync, hoặc rollback sạch
+          // nếu lỗi) trước khi ngân sách thời gian được kiểm lại. Ngân sách chỉ được xét GIỮA các
+          // dòng, KHÔNG BAO GIỜ giữa chừng một dòng.
+          await this.processExpiryCandidate(candidate, summary, now);
+        }
+
+        if (Date.now() - startedAt >= maxExecutionMs) {
+          summary.timeBudgetExceeded = true;
+          break;
+        }
+      }
+
+      if (summary.timeBudgetExceeded) break;
+      if (candidates.length < batchSize) break; // trang cuối — không còn dòng nào khác
+    }
+
+    summary.durationMs = Date.now() - startedAt;
+    this.logger.log(
+      `Verification expiry ${dryRun ? '(dry-run) ' : ''}finished: ${JSON.stringify(summary)}`,
+    );
+    return summary;
+  }
+
+  private trackExpiryCandidateStats(
+    summary: VerificationExpirySummary,
+    candidate: OverdueVerificationCandidate,
+  ): void {
+    summary.scanned += 1;
+    summary.eligible += 1;
+    if (!summary.oldestProcessedExpiresAt || candidate.expiresAt < summary.oldestProcessedExpiresAt) {
+      summary.oldestProcessedExpiresAt = candidate.expiresAt;
+    }
+    if (!summary.newestProcessedExpiresAt || candidate.expiresAt > summary.newestProcessedExpiresAt) {
+      summary.newestProcessedExpiresAt = candidate.expiresAt;
+    }
+  }
+
+  /**
+   * Xử lý ĐÚNG MỘT dòng — mở transaction RIÊNG, đi qua CHÍNH XÁC con đường transition đã có
+   * (`assertValidVerificationTransition`/`casUpdate`/`eventsRepo.append`/`syncTargetCache`), KHÔNG
+   * logic thứ hai. Không throw ra ngoài: mọi kết quả (thành công/conflict/lỗi) được ghi vào
+   * `summary`, để một dòng lỗi KHÔNG làm gãy toàn bộ lô/lần chạy.
+   */
+  private async processExpiryCandidate(
+    candidate: OverdueVerificationCandidate,
+    summary: VerificationExpirySummary,
+    now: Date,
+  ): Promise<void> {
+    try {
+      const outcome = await this.dataSource.transaction<'expired' | 'conflict'>(async (manager) => {
+        const fresh = await this.verificationsRepo.findById(candidate.id, manager);
         if (!fresh) {
-          return false;
+          // Đã bị xoá (không có luồng xoá cứng nào cho verifications hiện tại, nhưng không giả
+          // định — xem như một race: dòng không còn để xử lý).
+          return 'conflict';
         }
         let toStatus: VerificationStatus;
         try {
           toStatus = assertValidVerificationTransition(fresh.status, 'expire');
         } catch {
-          return false;
+          // Không còn ở trạng thái hợp lệ cho `expire` — ai đó (moderator/job cộng đồng) đã
+          // transition dòng này giữa lúc quét lô và lúc xử lý. Cùng LỚP race với CAS thua bên
+          // dưới — đếm gộp vào `conflicts`.
+          return 'conflict';
         }
 
         const ok = await this.verificationsRepo.casUpdate(
@@ -496,7 +654,7 @@ export class VerificationsService {
           manager,
         );
         if (!ok) {
-          return false;
+          return 'conflict';
         }
 
         await this.eventsRepo.append(
@@ -510,15 +668,28 @@ export class VerificationsService {
           },
           manager,
         );
+        // `expired` KHÔNG phải trạng thái tin cậy — `syncTargetCache` sẽ KHÔNG set `verifiedAt`
+        // (chỉ set khi ĐẾN trạng thái tin cậy, F1/ADR-008 CORRECTION) nên giá trị `now` truyền vào
+        // đây chỉ có ý nghĩa lý thuyết, không ảnh hưởng ghi thật.
         await this.syncTargetCache(manager, fresh, toStatus, now);
-        return true;
+        return 'expired';
       });
-      if (transitioned) {
-        expiredCount += 1;
-      }
-    }
 
-    return expiredCount;
+      if (outcome === 'expired') {
+        summary.expired += 1;
+      } else {
+        summary.conflicts += 1;
+      }
+    } catch (err) {
+      // Lỗi THẬT không lường trước (vd sự cố kết nối DB giữa chừng transaction) — dòng bị bỏ qua,
+      // các dòng CÒN LẠI trong lô/lần chạy vẫn tiếp tục. Dòng này vẫn đủ điều kiện (không đổi gì)
+      // nên sẽ được quét lại ở lần chạy kế tiếp — job tự phục hồi, không cần can thiệp thủ công.
+      summary.errors += 1;
+      this.logger.error(
+        `Verification expiry: lỗi khi xử lý verification ${candidate.id} — bỏ qua, sẽ thử lại lần chạy sau: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+    }
   }
 
   /**

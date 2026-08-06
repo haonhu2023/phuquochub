@@ -82,4 +82,13 @@ export const envValidationSchema = Joi.object({
   S3_BUCKET: Joi.string().allow('').optional(),
   S3_REGION: Joi.string().default('us-east-1'),
   S3_FORCE_PATH_STYLE: Joi.boolean().truthy('true').falsy('false').default(true),
+
+  // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Intentionally NO
+  // production-required rule and NO NODE_ENV-conditional default — see configuration.ts's
+  // comment: enabling the schedule must always be an explicit opt-in, in every environment.
+  VERIFICATION_EXPIRY_SCHEDULE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  VERIFICATION_EXPIRY_CRON: Joi.string().default('0 */15 * * * *'),
+  VERIFICATION_EXPIRY_BATCH_SIZE: Joi.number().positive().default(100),
+  VERIFICATION_EXPIRY_MAX_BATCHES: Joi.number().positive().default(50),
+  VERIFICATION_EXPIRY_MAX_EXECUTION_MS: Joi.number().positive().default(300000),
 }).unknown(true);

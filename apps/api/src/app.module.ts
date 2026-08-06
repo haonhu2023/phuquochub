@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppConfigModule } from './core/config/config.module';
 import { LoggerModule } from './core/logger/logger.module';
 import { AuditModule } from './core/audit/audit.module';
@@ -35,8 +36,15 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
 // Provenance: sources (source.md).
+//
+// VERIFICATION SCHEDULER — Operational Enablement (2026-08-06). `ScheduleModule.forRoot()` — MỘT
+// cơ chế lập lịch DUY NHẤT cho toàn app (yêu cầu tường minh), đăng ký Ở ĐÂY một lần, KHÔNG lặp lại
+// ở module con nào. `VerificationExpirySchedulerService` (trong `VerificationsModule`) tự đăng ký
+// động (SchedulerRegistry) MỘT cron job khi module khởi tạo, CHỈ khi cấu hình bật — xem
+// `verificationExpiry.scheduleEnabled` (configuration.ts).
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     AppConfigModule,
     LoggerModule,
     AuditModule,

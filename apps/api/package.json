@@ -18,6 +18,7 @@
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/core/database/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/core/database/data-source.ts",
     "media:cleanup": "ts-node src/scripts/clean-orphan-media.ts",
+    "verification:expire": "ts-node src/scripts/expire-overdue-verifications.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@nestjs/core": "^11.1.28",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/typeorm": "^11.0.3",
@@ -36,6 +38,7 @@
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "cron": "^4.4.0",
     "ioredis": "^5.4.1",
     "joi": "^17.13.3",
     "pg": "^8.12.0",
