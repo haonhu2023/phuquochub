@@ -324,4 +324,6 @@ appears in the final status above.)
 
 ## Commit hashes
 
-Recorded in a follow-up entry after commits are created (see final report).
+- `37b2435` — `feat(verification): add ADR-008 Verification Foundation`
+- `e3122b1` — `test(verification): verify ADR-008 state machine and rollback`
+- `f710614` — `docs(verification): record ADR-008 Verification Foundation milestone`
