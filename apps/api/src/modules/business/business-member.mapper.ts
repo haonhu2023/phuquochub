@@ -1,8 +1,10 @@
 import { BusinessMember } from './entities/business-member.entity';
 
 // business_members không có dữ liệu riêng tư (khác BusinessClaim.evidence) — không cần tách
-// summary/detail, trả nguyên hình dạng snake_case chuẩn (khớp data-dictionary).
-export interface BusinessManagerResponse {
+// summary/detail, trả nguyên hình dạng snake_case chuẩn (khớp data-dictionary). Dùng chung cho
+// mọi hành động ghi vào bảng này (Manager Assignment/Revocation, Ownership Transfer) — cùng một
+// dòng `business_members`, chỉ khác `role`.
+export interface BusinessMemberResponse {
   id: string;
   place_id: string;
   user_id: string;
@@ -12,7 +14,7 @@ export interface BusinessManagerResponse {
   revoked_at: string | null;
 }
 
-export function toBusinessManagerResponse(m: BusinessMember): BusinessManagerResponse {
+export function toBusinessMemberResponse(m: BusinessMember): BusinessMemberResponse {
   return {
     id: m.id,
     place_id: m.placeId,

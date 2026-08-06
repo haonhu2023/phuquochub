@@ -33,12 +33,19 @@ export class UserRolesRepository {
     return this.repo.find({ where: { userId, revokedAt: IsNull() }, relations: { role: true } });
   }
 
+  /**
+   * `manager` TUỲ CHỌN (ADR-015 Business Ownership Transfer) — đọc grant hiệu lực TRONG transaction
+   * của caller trước khi thu hồi (transfer cần biết id của grant CŨ để ghi audit "old scoped role
+   * grant/revoke result" trước khi nó biến mất). Bỏ trống dùng `this.repo` như trước.
+   */
   async findActive(
     userId: string,
     roleId: string,
     businessId: string | null,
+    manager?: EntityManager,
   ): Promise<UserRole | null> {
-    return this.repo.findOne({
+    const repo = manager ? manager.getRepository(UserRole) : this.repo;
+    return repo.findOne({
       where: { userId, roleId, businessId: businessId ?? IsNull(), revokedAt: IsNull() },
     });
   }

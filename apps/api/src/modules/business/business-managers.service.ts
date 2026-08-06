@@ -10,7 +10,7 @@ import { MemberRole } from './business.enums';
 import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import { BusinessMember } from './entities/business-member.entity';
-import { toBusinessManagerResponse, type BusinessManagerResponse } from './business-manager.mapper';
+import { toBusinessMemberResponse, type BusinessMemberResponse } from './business-member.mapper';
 
 const BUSINESS_MANAGER_ROLE_CODE = 'business_manager';
 
@@ -34,7 +34,7 @@ export class BusinessManagersService {
   ) {}
 
   /** POST /business/{placeId}/managers. */
-  async assign(placeId: string, targetUserId: string, actorId: string): Promise<BusinessManagerResponse> {
+  async assign(placeId: string, targetUserId: string, actorId: string): Promise<BusinessMemberResponse> {
     const targetUser = await this.usersRepo.findById(targetUserId);
     if (!targetUser) {
       throw new NotFoundException('Không tìm thấy user cần gán làm manager');
@@ -82,16 +82,17 @@ export class BusinessManagersService {
       after: { place_id: placeId, user_id: targetUserId, role: MemberRole.MANAGER },
     });
 
-    return toBusinessManagerResponse(result);
+    return toBusinessMemberResponse(result);
   }
 
   /** DELETE /business/{placeId}/managers/{userId}. */
   async revoke(placeId: string, targetUserId: string, actorId: string): Promise<void> {
     const result = await this.dataSource.transaction<BusinessMember>(async (manager) => {
       const membership = await this.membersRepo.findActiveMembershipForUpdate(manager, placeId, targetUserId);
-      // BR-B6: endpoint này CHỈ thu hồi manager — KHÔNG thể dùng để gỡ owner (đó là transfer,
-      // ngoài phạm vi milestone này). Không tìm thấy HOẶC tìm thấy nhưng là owner -> 404 đồng nhất
-      // (không tiết lộ "có owner nhưng bạn không được đụng vào" so với "không có gì cả").
+      // BR-B6: endpoint này CHỈ thu hồi manager — KHÔNG thể dùng để gỡ owner (gỡ owner là
+      // Ownership Transfer, `BusinessTransferService`, một luồng riêng với transaction khác hẳn).
+      // Không tìm thấy HOẶC tìm thấy nhưng là owner -> 404 đồng nhất (không tiết lộ "có owner
+      // nhưng bạn không được đụng vào" so với "không có gì cả").
       if (!membership || membership.role !== MemberRole.MANAGER) {
         throw new NotFoundException('Không tìm thấy manager hiệu lực tại cơ sở này.');
       }

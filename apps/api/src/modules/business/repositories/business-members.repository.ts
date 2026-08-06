@@ -7,7 +7,8 @@ import { MemberRole } from '../business.enums';
 export interface NewOwnerMembership {
   placeId: string;
   userId: string;
-  claimId: string;
+  /** `null` cho owner phát sinh từ transfer (không có claim gốc) — chỉ claim-approval mới có claim_id thật. */
+  claimId: string | null;
   grantedBy: string;
 }
 
@@ -20,7 +21,10 @@ export interface NewManagerMembership {
 // Repository `business_members` (ADR-015 §3, business.md §3). Business Manager Assignment/
 // Revocation milestone bổ sung: đọc/khoá MỘT thành viên hiệu lực (owner HOẶC manager) của
 // (place,user) — dùng để chặn gán trùng (uq_member_active) và để xác nhận đúng dòng cần thu hồi —
-// và tạo/thu hồi dòng manager. Chuyển nhượng (transfer owner) vẫn ngoài phạm vi (Owner exclusion list).
+// và tạo/thu hồi dòng manager. Business Ownership Transfer milestone tái dùng NGUYÊN VẸN
+// `findActiveOwnerForUpdate`/`findActiveMembershipForUpdate`/`createOwner`/`revokeMembership` —
+// không thêm method mới (chỉ `NewOwnerMembership.claimId` nới thành `string | null` cho owner phát
+// sinh từ transfer).
 @Injectable()
 export class BusinessMembersRepository {
   constructor(

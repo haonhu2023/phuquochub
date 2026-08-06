@@ -8,16 +8,18 @@ import { BusinessClaimsService } from './business-claims.service';
 import { BusinessClaimsController } from './business-claims.controller';
 import { BusinessManagersService } from './business-managers.service';
 import { BusinessManagersController } from './business-managers.controller';
+import { BusinessTransferService } from './business-transfer.service';
+import { BusinessTransferController } from './business-transfer.controller';
 import { PlacesModule } from '../places/places.module';
 import { RbacModule } from '../rbac/rbac.module';
 import { UsersModule } from '../users/users.module';
 
-// ADR-015 Claim Decision Workflow + Business Manager Assignment/Revocation — `PlacesModule` cấp
-// `PlacesRepository` (đọc place khi submit + ghi verification cache khi approve claim, cùng
-// transaction). `RbacModule` cấp `RolesRepository`/`UserRolesRepository` (gán/thu hồi
-// `business_owner`/`business_manager`). `UsersModule` cấp `UsersRepository` (xác nhận target user
-// tồn tại khi gán manager — Business Manager milestone). Cả ba đều KHÔNG import ngược
-// BusinessModule — một chiều, không vòng lặp, cùng tiền lệ `ModerationModule`.
+// ADR-015 Claim Decision Workflow + Business Manager Assignment/Revocation + Business Ownership
+// Transfer — `PlacesModule` cấp `PlacesRepository` (đọc place khi submit + ghi verification cache
+// khi approve claim, cùng transaction). `RbacModule` cấp `RolesRepository`/`UserRolesRepository`
+// (gán/thu hồi `business_owner`/`business_manager`). `UsersModule` cấp `UsersRepository` (xác nhận
+// target user tồn tại khi gán manager/transfer). Cả ba đều KHÔNG import ngược BusinessModule — một
+// chiều, không vòng lặp, cùng tiền lệ `ModerationModule`.
 @Module({
   imports: [
     TypeOrmModule.forFeature([BusinessClaim, BusinessMember]),
@@ -25,12 +27,13 @@ import { UsersModule } from '../users/users.module';
     RbacModule,
     UsersModule,
   ],
-  controllers: [BusinessClaimsController, BusinessManagersController],
+  controllers: [BusinessClaimsController, BusinessManagersController, BusinessTransferController],
   providers: [
     BusinessClaimsRepository,
     BusinessMembersRepository,
     BusinessClaimsService,
     BusinessManagersService,
+    BusinessTransferService,
   ],
   exports: [BusinessClaimsRepository, BusinessMembersRepository],
 })
