@@ -334,16 +334,33 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
     expect(source.type).toBe('business_owner');
     expect(source.kind).toBe('platform_user');
     expect(source.author_user_id).toBe(ownerId);
-    expect(source.metadata.evidence).toEqual(evidence);
+
+    // PRIVACY (Owner Decision 1, CLAIM -> SOURCE -> VERIFICATION CORRECTION): `metadata` CHỈ chứa
+    // `business_claim_id` — KHÔNG sao chép `evidence`. Khẳng định TOÀN BỘ object trong DB (toEqual,
+    // không toMatchObject) để một `evidence` sót lại là FAIL, không phải lọt.
+    expect(source.metadata).toEqual({ business_claim_id: claimId });
+    expect(source.metadata).not.toHaveProperty('evidence');
+
+    // Và chứng minh HẬU QUẢ thật của quyết định đó trên kênh CÔNG KHAI: `GET /sources/:id` là
+    // @Public() (không Authorization header) và trả nguyên entity — evidence của claim KHÔNG được
+    // xuất hiện ở đâu trong payload đó, dưới bất kỳ hình thức nào.
+    const publicSource = await request(app.getHttpServer()).get(`/api/sources/${source.id}`);
+    expect(publicSource.status).toBe(200);
+    expect(publicSource.body.data.metadata).toEqual({ business_claim_id: claimId });
+    expect(JSON.stringify(publicSource.body)).not.toContain('media-e2e-1'); // evidence[0].reference
+    expect(JSON.stringify(publicSource.body)).not.toContain('business_license'); // evidence[0].type
 
     const [verification] = await ds.query(
-      `SELECT id, status, method, source_id FROM verifications WHERE place_id = $1`,
+      `SELECT id, status, method, source_id, expires_at FROM verifications WHERE place_id = $1`,
       [placeAId],
     );
     expect(verification).toBeDefined();
     expect(verification.status).toBe('official');
     expect(verification.method).toBe('owner_claim');
     expect(verification.source_id).toBe(source.id);
+    // Owner Decision 3 (CORRECTION): claim-driven official KHÔNG có hạn — chưa có luồng gia hạn nào
+    // cho chủ cơ sở, nên hạn 12 tháng mặc định của `official()` qua HTTP KHÔNG áp ở đây.
+    expect(verification.expires_at).toBeNull();
 
     const events = await ds.query(
       `SELECT from_status, to_status, method FROM verification_events WHERE verification_id = $1 ORDER BY created_at ASC`,
@@ -356,6 +373,7 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
     const approvedAudit = auditRows.find((r: { event: string }) => r.event === 'business.claim_approved');
     expect(approvedAudit.context.verification).toMatchObject({
       sourceId: source.id,
+      sourceCreated: true,
       verificationId: verification.id,
       verificationStatus: 'official',
     });
@@ -386,6 +404,17 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
       .set('Authorization', `Bearer ${modToken}`)
       .send({ decision: 'approve' });
     expect(firstDecide.body.data.status).toBe('approved');
+
+    // X1 (ADR-008 CORRECTION) — LEAK ĐÃ SỬA (CLAIM -> SOURCE -> VERIFICATION CORRECTION): approve
+    // THÀNH CÔNG ở trên cũng tạo một `sources` (qua ensureOfficialFromClaim), y như test approve
+    // chính. Trước đây nó KHÔNG được track nên mỗi lần chạy file này rò rỉ đúng một dòng `sources`
+    // vĩnh viễn (đã xác nhận trên Postgres thật: 8 -> 9 sau một lần chạy). Track theo id THẬT.
+    const [firstApproveSource] = await ds.query(
+      `SELECT id FROM sources WHERE metadata->>'business_claim_id' = $1`,
+      [firstSubmit.body.data.id],
+    );
+    expect(firstApproveSource).toBeDefined();
+    sourceIds.push(firstApproveSource.id);
 
     const { accessToken: secondToken, userId: secondOwnerId } = await createMember('conflict_second');
     const secondSubmit = await submitClaim(secondToken, placeBId); // submit call #9

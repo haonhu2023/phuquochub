@@ -512,20 +512,25 @@ describe('Verification Foundation (live Postgres)', () => {
     // Nguồn sự thật của cache trên là ĐÚNG MỘT dòng `verifications` (method=owner_claim), KHÔNG
     // còn là ghi trực tiếp từ BusinessClaimsService.
     const verifRows = await ds.query(
-      `SELECT id, status, method, source_id FROM verifications WHERE place_id=$1`,
+      `SELECT id, status, method, source_id, expires_at FROM verifications WHERE place_id=$1`,
       [placeId],
     );
     expect(verifRows).toHaveLength(1);
     expect(verifRows[0].status).toBe('official');
     expect(verifRows[0].method).toBe('owner_claim');
     expect(verifRows[0].source_id).not.toBeNull();
+    // Owner Decision 3 (CORRECTION): claim-driven official KHÔNG có hạn (chưa có luồng gia hạn cho
+    // chủ cơ sở) — khác `official()` qua HTTP vốn mặc định +12 tháng.
+    expect(verifRows[0].expires_at).toBeNull();
     // X1 (ADR-008 CORRECTION): `sources` KHÔNG cascade từ places/verifications — track ID THẬT để
     // afterAll dọn sạch.
     sourceIds.push(verifRows[0].source_id);
 
-    const source = await ds.query(`SELECT type, kind FROM sources WHERE id=$1`, [verifRows[0].source_id]);
+    const source = await ds.query(`SELECT type, kind, metadata FROM sources WHERE id=$1`, [verifRows[0].source_id]);
     expect(source[0].type).toBe('business_owner');
     expect(source[0].kind).toBe('platform_user');
+    // PRIVACY (Owner Decision 1, CORRECTION): CHỈ `business_claim_id`, KHÔNG evidence.
+    expect(Object.keys(source[0].metadata)).toEqual(['business_claim_id']);
 
     // Target đã `official` — submit() lại KHÔNG còn hợp lệ (FSM `submit` chỉ nhận null/expired/
     // rejected, verification.md §3.2) — 422, khác 409 của guard C1 cũ (đã đóng, xem class doc).
@@ -609,6 +614,110 @@ describe('Verification Foundation (live Postgres)', () => {
     );
     expect(auditRow[0].context.verification).toMatchObject({
       verificationId: verifRows[0].id,
+      verificationStatus: 'official',
+    });
+
+    await ds.query(`DELETE FROM business_members WHERE place_id=$1`, [placeId]);
+    await ds.query(`DELETE FROM user_roles WHERE user_id=$1 AND business_id=$2`, [owner.userId, placeId]);
+  });
+
+  // CLAIM -> SOURCE -> VERIFICATION CORRECTION (2026-08-06, Owner Decision 2 / PIR M-1). Bản trước
+  // tạo `sources` TRƯỚC khi biết nhánh no-op có xảy ra hay không, nên approve claim trên một place
+  // ĐÃ `official` (do moderator đặt qua đường khác) để lại một dòng `sources` MỒ CÔI và audit ghi
+  // một `source_id` mà dòng `verifications` KHÔNG hề dùng. Nay callback tạo source là LƯỜI.
+  it('CORRECTION: approve claim trên place ĐÃ official -> NO-OP THẬT (0 source mới, 0 event mới, audit trỏ source đang gắn)', async () => {
+    const owner = await createUser('claim_noop_owner', 'member');
+    const moderator = await createUser('claim_noop_moderator', 'moderator');
+    const placeId = await mkPlace('claim_noop');
+    const preexistingSourceId = await mkSource('official_website');
+
+    // Moderator đưa place tới `official` qua đường HTTP thường (source official_website).
+    const submitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    expect(submitRes.status).toBe(201);
+    const verificationId = submitRes.body.data.id;
+    const officialRes = await request(app.getHttpServer())
+      .post(`/api/verifications/${verificationId}/official`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ source_id: preexistingSourceId });
+    expect(officialRes.status).toBe(200);
+
+    // Đếm theo `author_user_id` = owner của CHÍNH test này (user mới tạo, chưa từng có source nào):
+    // mọi dòng `sources` mà nhánh approve có thể sinh ra đều mang `author_user_id` = requester, nên
+    // phép đếm này bắt được dòng mồ côi BẤT KỂ `metadata` chứa gì — mà vẫn KHÔNG phụ thuộc dòng do
+    // file e2e khác tạo song song (bài học --runInBand từ milestone Scheduler: KHÔNG khẳng định trên
+    // phép đếm toàn cục mà file khác có thể làm nhiễu).
+    const sourcesBefore = await ds.query(`SELECT count(*)::int AS n FROM sources WHERE author_user_id = $1`, [
+      owner.userId,
+    ]);
+    const eventsBefore = await ds.query(
+      `SELECT count(*)::int AS n FROM verification_events WHERE verification_id=$1`,
+      [verificationId],
+    );
+    const verifBefore = await ds.query(`SELECT updated_at, lock_version FROM verifications WHERE id=$1`, [
+      verificationId,
+    ]);
+
+    // Giờ mới approve một claim trên CHÍNH place đó.
+    const claimRes = await request(app.getHttpServer())
+      .post('/api/business-claims')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ place_id: placeId, evidence: [{ type: 'business_license', reference: 'GP-NOOP-2026' }] });
+    expect(claimRes.status).toBe(201);
+    const decideRes = await request(app.getHttpServer())
+      .post(`/api/business-claims/${claimRes.body.data.id}/decide`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ decision: 'approve' });
+    expect(decideRes.status).toBe(200);
+    expect(decideRes.body.data.status).toBe('approved');
+
+    // 1) KHÔNG dòng `sources` nào được thêm cho requester này (0 trước, 0 sau) — bắt cả dòng mồ côi
+    //    không khớp filter `metadata` nào, đúng lỗi mà bản trước để lọt.
+    const sourcesAfter = await ds.query(`SELECT count(*)::int AS n FROM sources WHERE author_user_id = $1`, [
+      owner.userId,
+    ]);
+    expect(sourcesBefore[0].n).toBe(0);
+    expect(sourcesAfter[0].n).toBe(0);
+    const orphan = await ds.query(
+      `SELECT count(*)::int AS n FROM sources WHERE metadata->>'business_claim_id' = $1`,
+      [claimRes.body.data.id],
+    );
+    expect(orphan[0].n).toBe(0);
+
+    // 2) Dòng `verifications` KHÔNG bị chạm: 0 event mới, lock_version/updated_at nguyên vẹn,
+    //    `source_id` vẫn là source official_website ban đầu.
+    const eventsAfter = await ds.query(
+      `SELECT count(*)::int AS n FROM verification_events WHERE verification_id=$1`,
+      [verificationId],
+    );
+    expect(eventsAfter[0].n).toBe(eventsBefore[0].n);
+    const verifAfter = await ds.query(
+      `SELECT source_id, status, lock_version, updated_at FROM verifications WHERE id=$1`,
+      [verificationId],
+    );
+    expect(verifAfter[0].status).toBe('official');
+    expect(verifAfter[0].source_id).toBe(preexistingSourceId);
+    expect(verifAfter[0].lock_version).toBe(verifBefore[0].lock_version);
+    expect(verifAfter[0].updated_at.getTime()).toBe(verifBefore[0].updated_at.getTime());
+
+    // 3) Ownership VẪN được cấp (no-op chỉ áp cho phần verification, KHÔNG cho claim/ownership).
+    const ownerRow = await ds.query(
+      `SELECT count(*)::int AS n FROM business_members WHERE place_id=$1 AND user_id=$2 AND role='owner' AND revoked_at IS NULL`,
+      [placeId, owner.userId],
+    );
+    expect(ownerRow[0].n).toBe(1);
+
+    // 4) Audit trỏ tới source THẬT đang gắn trên dòng verifications, và nói rõ không tạo source mới.
+    const auditRow = await ds.query(
+      `SELECT context FROM audit_logs WHERE event='business.claim_approved' AND entity_id=$1`,
+      [claimRes.body.data.id],
+    );
+    expect(auditRow[0].context.verification).toMatchObject({
+      sourceId: preexistingSourceId,
+      sourceCreated: false,
+      verificationId,
       verificationStatus: 'official',
     });
 

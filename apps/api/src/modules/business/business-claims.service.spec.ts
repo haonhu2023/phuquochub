@@ -111,8 +111,21 @@ describe('BusinessClaimsService', () => {
     // công, trả một verification `official`. Test riêng bên dưới xác nhận input/side-effect chính
     // xác của lời gọi này (KHÔNG test lại nội bộ `ensureOfficialFromClaim()` — đã có
     // verifications.service.spec.ts riêng cho hàm đó).
+    //
+    // CORRECTION (PIR M-1): mock PHẢI gọi `input.createSource(mgr)` như hàm thật để nhánh tạo source
+    // của `decide()` thực sự chạy — nếu mock bỏ qua callback thì mọi khẳng định về `sources` sẽ là
+    // dương tính giả. Nhánh no-op được mock RIÊNG ở test tương ứng (không gọi callback).
     verificationsService = createMock<VerificationsService>({
-      ensureOfficialFromClaim: jest.fn().mockResolvedValue(makeVerification()),
+      ensureOfficialFromClaim: jest.fn(
+        async (
+          _placeId: string,
+          input: { createSource: (m: EntityManager) => Promise<string> },
+          mgr: EntityManager,
+        ) => {
+          const sourceId = await input.createSource(mgr);
+          return { verification: makeVerification(), sourceId, sourceCreated: true };
+        },
+      ),
     });
     sourcesRepo = createMock<SourcesRepository>({
       create: jest.fn((data: Partial<Source>) => Object.assign(new Source(), data)),
@@ -266,7 +279,16 @@ describe('BusinessClaimsService', () => {
       membersRepo.createOwner.mockResolvedValue(new BusinessMember());
       rolesRepo.findByCode.mockResolvedValue(makeRole());
       const verification = makeVerification();
-      verificationsService.ensureOfficialFromClaim.mockResolvedValue(verification);
+      verificationsService.ensureOfficialFromClaim.mockImplementation(
+        async (
+          _placeId: string,
+          input: { createSource: (m: EntityManager) => Promise<string> },
+          mgr: EntityManager,
+        ) => {
+          const sourceId = await input.createSource(mgr);
+          return { verification, sourceId, sourceCreated: true };
+        },
+      );
 
       const result = await service.decide('claim-1', { decision: BusinessClaimDecision.APPROVE, decision_note: 'ok' }, 'mod-1');
 
@@ -287,22 +309,30 @@ describe('BusinessClaimsService', () => {
         manager,
       );
       // CLAIM -> SOURCE -> VERIFICATION INTEGRATION: một `sources` (business_owner/platform_user)
-      // được tạo, gắn evidence của claim vào metadata, TRƯỚC KHI gọi ensureOfficialFromClaim.
+      // được tạo QUA CALLBACK do ensureOfficialFromClaim gọi (không còn tạo trước).
       expect(sourcesRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           type: SourceType.BUSINESS_OWNER,
           kind: SourceKind.PLATFORM_USER,
           authorUserId: 'requester-1',
-          metadata: expect.objectContaining({ business_claim_id: 'claim-1' }),
         }),
       );
       expect(sourcesRepo.save).toHaveBeenCalledWith(expect.anything(), manager);
+      // PRIVACY (Owner Decision 1, CORRECTION) — `metadata` CHỈ chứa `business_claim_id`. `evidence`
+      // TUYỆT ĐỐI không được sao vào đây: `GET /sources/:id` là @Public() và trả nguyên `metadata`,
+      // nên evidence ở đó = phơi giấy tờ riêng tư ra kênh không cần đăng nhập. Khẳng định bằng so
+      // sánh TOÀN BỘ object (toEqual) + keys, KHÔNG objectContaining — objectContaining sẽ pass ngay
+      // cả khi `evidence` vẫn còn nằm trong đó (chính lỗi PIR đã bắt).
+      const createdSource = sourcesRepo.create.mock.calls[0][0] as { metadata: Record<string, unknown> };
+      expect(createdSource.metadata).toEqual({ business_claim_id: 'claim-1' });
+      expect(Object.keys(createdSource.metadata)).toEqual(['business_claim_id']);
+      expect(createdSource.metadata).not.toHaveProperty('evidence');
       // Không còn ghi thẳng cache — `places.verification_status`/`verifiedAt` giờ CHỈ do
       // `VerificationsService.syncTargetCache()` ghi, bên trong `ensureOfficialFromClaim()`.
       expect(placesRepo.updateScalars).not.toHaveBeenCalled();
       expect(verificationsService.ensureOfficialFromClaim).toHaveBeenCalledWith(
         'place-1',
-        expect.objectContaining({ sourceId: 'source-1', actorId: 'mod-1', note: 'ok' }),
+        expect.objectContaining({ actorId: 'mod-1', note: 'ok', createSource: expect.any(Function) }),
         manager,
       );
       expect(claimsRepo.updateDecision).toHaveBeenCalledWith(
@@ -317,8 +347,48 @@ describe('BusinessClaimsService', () => {
           context: {
             verification: {
               sourceId: 'source-1',
+              sourceCreated: true,
               verificationId: verification.id,
               verificationStatus: verification.status,
+            },
+          },
+        }),
+      );
+    });
+
+    // CORRECTION (Owner Decision 2, PIR M-1). Bản trước tạo `sources` TRƯỚC khi biết nhánh no-op có
+    // xảy ra hay không -> mỗi lần approve trên một place ĐÃ `official` để lại một dòng `sources` mồ
+    // côi (không verification nào trỏ tới) VÀ audit ghi source_id mà dòng verifications không dùng.
+    it('place ĐÃ official (no-op) -> KHÔNG tạo source mới, audit trỏ tới source THẬT đang gắn', async () => {
+      claimsRepo.findByIdForUpdate.mockResolvedValue(makeClaim());
+      membersRepo.findActiveOwnerForUpdate.mockResolvedValue(null);
+      membersRepo.createOwner.mockResolvedValue(new BusinessMember());
+      const existing = makeVerification({ id: 'verif-existing', sourceId: 'source-already-attached' });
+      // Nhánh no-op của hàm thật KHÔNG gọi `input.createSource` — mock phản ánh đúng điều đó.
+      verificationsService.ensureOfficialFromClaim.mockImplementation(async () => ({
+        verification: existing,
+        sourceId: existing.sourceId,
+        sourceCreated: false,
+      }));
+
+      const result = await service.decide('claim-1', { decision: BusinessClaimDecision.APPROVE }, 'mod-1');
+
+      // ZERO dòng `sources` mới — khẳng định ở CẢ create và save (create không chạm DB, save mới ghi).
+      expect(sourcesRepo.create).not.toHaveBeenCalled();
+      expect(sourcesRepo.save).not.toHaveBeenCalled();
+      // Ownership VẪN được cấp bình thường — no-op chỉ áp cho phần verification.
+      expect(membersRepo.createOwner).toHaveBeenCalled();
+      expect(userRolesRepo.assign).toHaveBeenCalled();
+      expect(result.status).toBe(ClaimStatus.APPROVED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'business.claim_approved',
+          context: {
+            verification: {
+              sourceId: 'source-already-attached',
+              sourceCreated: false,
+              verificationId: 'verif-existing',
+              verificationStatus: VerificationStatus.OFFICIAL,
             },
           },
         }),

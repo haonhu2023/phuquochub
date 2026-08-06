@@ -433,17 +433,29 @@ describe('VerificationsService', () => {
   // vào NỘI BỘ `BusinessClaimsService.decide()` gọi TRONG transaction của chính nó (truyền
   // `manager` trực tiếp — KHÔNG mở transaction ở đây, khác `submit()`/`official()` qua HTTP).
   describe('ensureOfficialFromClaim', () => {
+    // CORRECTION (PIR M-1): `createSource` là callback LƯỜI. Spy này cho phép khẳng định TRỰC TIẾP
+    // "nhánh no-op KHÔNG tạo source nào" — điều test cũ không thể thấy vì source được tạo bên ngoài.
+    let createSource: jest.Mock<Promise<string>, [EntityManager]>;
+
+    beforeEach(() => {
+      createSource = jest.fn(async (_manager: EntityManager) => 'source-1');
+    });
+
     it('CHƯA có dòng verifications nào -> tạo pending (method owner_claim) rồi transition sang official', async () => {
       verificationsRepo.findActiveByTarget.mockResolvedValue(null);
       verificationsRepo.create.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING, lockVersion: 0 }));
       sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
       verificationsRepo.casUpdate.mockResolvedValue(true);
 
-      const result = await service.ensureOfficialFromClaim(
+      const { verification: result, sourceId, sourceCreated } = await service.ensureOfficialFromClaim(
         'place-1',
-        { sourceId: 'source-1', actorId: 'mod-1', note: 'ghi chú claim' },
+        { actorId: 'mod-1', note: 'ghi chú claim', createSource },
         manager,
       );
+      expect(createSource).toHaveBeenCalledTimes(1);
+      expect(createSource).toHaveBeenCalledWith(manager);
+      expect(sourceId).toBe('source-1');
+      expect(sourceCreated).toBe(true);
 
       expect(verificationsRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ placeId: 'place-1', method: VerificationMethod.OWNER_CLAIM, createdBy: 'mod-1' }),
@@ -472,17 +484,42 @@ describe('VerificationsService', () => {
       expect(result.status).toBe(VerificationStatus.OFFICIAL);
     });
 
-    it('đã OFFICIAL rồi -> no-op, trả về nguyên trạng, KHÔNG ghi gì thêm', async () => {
+    // Owner Decision 3 (CORRECTION): claim-driven official KHÔNG có hạn — khác `official()` qua HTTP
+    // (mặc định +12 tháng) vì chưa có luồng gia hạn nào cho chủ cơ sở.
+    it('claim-driven official -> expires_at = null (KHÔNG áp hạn 12 tháng mặc định của official())', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING, lockVersion: 0 }));
+      sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const { verification } = await service.ensureOfficialFromClaim(
+        'place-1',
+        { actorId: 'mod-1', createSource },
+        manager,
+      );
+
+      const patch = verificationsRepo.casUpdate.mock.calls[0][2] as { expiresAt: Date | null; status: string };
+      expect(patch.status).toBe(VerificationStatus.OFFICIAL);
+      expect(patch.expiresAt).toBeNull();
+      expect(verification.expiresAt).toBeNull();
+    });
+
+    it('đã OFFICIAL rồi -> NO-OP THẬT: KHÔNG tạo source, KHÔNG ghi gì, trả source_id ĐANG gắn', async () => {
       const existing = makeVerification({ status: VerificationStatus.OFFICIAL, sourceId: 'source-old' });
       verificationsRepo.findActiveByTarget.mockResolvedValue(existing);
 
-      const result = await service.ensureOfficialFromClaim(
+      const { verification: result, sourceId, sourceCreated } = await service.ensureOfficialFromClaim(
         'place-1',
-        { sourceId: 'source-1', actorId: 'mod-1' },
+        { actorId: 'mod-1', createSource },
         manager,
       );
 
       expect(result).toBe(existing);
+      // CORRECTION (PIR M-1) — điểm cốt lõi: KHÔNG dòng `sources` nào được tạo ở nhánh này, và
+      // `sourceId` trả về là source THẬT đang gắn trên dòng verifications (KHÔNG phải source mới).
+      expect(createSource).not.toHaveBeenCalled();
+      expect(sourceCreated).toBe(false);
+      expect(sourceId).toBe('source-old');
       expect(verificationsRepo.create).not.toHaveBeenCalled();
       expect(verificationsRepo.casUpdate).not.toHaveBeenCalled();
       expect(eventsRepo.append).not.toHaveBeenCalled();
@@ -499,12 +536,13 @@ describe('VerificationsService', () => {
         sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
         verificationsRepo.casUpdate.mockResolvedValue(true);
 
-        const result = await service.ensureOfficialFromClaim(
+        const { verification: result } = await service.ensureOfficialFromClaim(
           'place-1',
-          { sourceId: 'source-1', actorId: 'mod-1' },
+          { actorId: 'mod-1', createSource },
           manager,
         );
 
+        expect(createSource).toHaveBeenCalledTimes(1);
         expect(verificationsRepo.create).not.toHaveBeenCalled();
         expect(verificationsRepo.casUpdate).toHaveBeenCalledTimes(2);
         expect(eventsRepo.append).toHaveBeenCalledTimes(2);
@@ -525,9 +563,9 @@ describe('VerificationsService', () => {
         sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
         verificationsRepo.casUpdate.mockResolvedValue(true);
 
-        const result = await service.ensureOfficialFromClaim(
+        const { verification: result } = await service.ensureOfficialFromClaim(
           'place-1',
-          { sourceId: 'source-1', actorId: 'mod-1' },
+          { actorId: 'mod-1', createSource },
           manager,
         );
 
@@ -544,9 +582,48 @@ describe('VerificationsService', () => {
       sourcesRepo.findById.mockResolvedValue(null);
 
       await expect(
-        service.ensureOfficialFromClaim('place-1', { sourceId: 'src-missing', actorId: 'mod-1' }, manager),
+        service.ensureOfficialFromClaim('place-1', { actorId: 'mod-1', createSource }, manager),
       ).rejects.toThrow(NotFoundException);
       expect(verificationsRepo.casUpdate).not.toHaveBeenCalled();
+    });
+
+    // CORRECTION (PIR §8 "missing proof"): hai lớp race THẬT đi qua ĐÚNG đường claim approve, cả hai
+    // PHẢI thành 409 để `decide()` trả ConflictException thay vì 500 — trước đây chỉ được chứng minh
+    // qua `submit()`/`official()`, chưa bao giờ qua `ensureOfficialFromClaim()`.
+    it('CAS thua (ai đó vừa transition cùng dòng) -> ConflictException (409)', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(
+        makeVerification({ status: VerificationStatus.PENDING, lockVersion: 3 }),
+      );
+      sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+      verificationsRepo.casUpdate.mockResolvedValue(false);
+
+      await expect(
+        service.ensureOfficialFromClaim('place-1', { actorId: 'mod-1', createSource }, manager),
+      ).rejects.toThrow(ConflictException);
+      // CAS thua TRƯỚC khi ghi event/cache — không có nửa vời nào.
+      expect(eventsRepo.append).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+    });
+
+    it('unique_violation uq_verif_place (submit đồng thời cùng place) -> ConflictException (409), KHÔNG 500', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockRejectedValue({ code: '23505', constraint: 'uq_verif_place' });
+
+      await expect(
+        service.ensureOfficialFromClaim('place-1', { actorId: 'mod-1', createSource }, manager),
+      ).rejects.toThrow(ConflictException);
+      expect(eventsRepo.append).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+    });
+
+    it('lỗi DB KHÁC (không phải unique_violation) -> ném lại nguyên vẹn, KHÔNG che thành 409', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      const dbError = new Error('connection lost');
+      verificationsRepo.create.mockRejectedValue(dbError);
+
+      await expect(
+        service.ensureOfficialFromClaim('place-1', { actorId: 'mod-1', createSource }, manager),
+      ).rejects.toBe(dbError);
     });
   });
 
