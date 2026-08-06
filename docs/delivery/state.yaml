@@ -30,7 +30,104 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, CLAIM -> SOURCE -> VERIFICATION CORRECTION)
+  task: none                      # (2026-08-06, H-1 ACCESS TOKEN REVOCATION)
+                                  # Narrow Owner-authorized hardening milestone closing finding H-1
+                                  # of the PRODUCTION READINESS REVIEW: "access tokens cannot be
+                                  # revoked; deactivated or banned users retain API access until
+                                  # JWT_ACCESS_TTL expires". No schema, no migration, no JWT format
+                                  # change, no change to refresh rotation semantics, and no change to
+                                  # the permission model / PDP / PEP / ADR-019 / role semantics.
+                                  #
+                                  # PHASE 1 STOPPED AND REPORTED A CONTRADICTION before any code was
+                                  # written: two of the four triggers named in the brief have NO call
+                                  # site in this repository. Evidence: isActive is written exactly
+                                  # once in non-test code (`isActive: true` at registration), so
+                                  # is_active=false is reachable only by out-of-band SQL; `User.Ban`
+                                  # is seeded and granted to administrator but has ZERO enforcement
+                                  # points; moderation.md §UC-M names warn/mute/ban state the users
+                                  # table cannot hold; and no password-change/reset flow exists. The
+                                  # only reachable trigger was role change -- which is also the live
+                                  # bug: revoking a moderator's role left them with moderator
+                                  # authority for up to JWT_ACCESS_TTL.
+                                  #
+                                  # MECHANISM: Redis revocation epoch `authrev:{userId}` (epoch
+                                  # SECONDS) with TTL = jwt.accessTtl, enforced in JwtAuthGuard.
+                                  # JWT format UNCHANGED -- uses `iat`, already present in every
+                                  # token, so pre-existing tokens keep working (no token migration,
+                                  # no coordinated deploy). Key TTL = access TTL is load-bearing:
+                                  # after that window every token issued before the epoch is
+                                  # independently expired, so storage is O(recently-revoked users),
+                                  # self-cleaning, no sweeper job. Cost: ONE Redis GET per
+                                  # authenticated request, ZERO DB lookups; @Public() routes return
+                                  # before it. AuthRevocationModule sits in core/ as @Global()
+                                  # following the AuditModule precedent -- not stylistic: the three
+                                  # consumers span three modules and AuthModule already imports
+                                  # UsersModule, so housing it in AuthModule would create a module
+                                  # cycle.
+                                  #
+                                  # TRIGGERS WIRED (Owner D1-A/D3): successful assignRole(),
+                                  # successful revokeRole() (both revoke the TARGET user, ordered
+                                  # DB -> audit -> revoke so privileged actions always leave a trail),
+                                  # and a new authenticated POST /auth/logout-all (principal from JWT
+                                  # only, no body). logout-all also kills every refresh token, which
+                                  # required a minimal per-user refresh index `refresh:user:{userId}`
+                                  # (Redis SET of jtis) -- previously Redis held only
+                                  # refresh:{jti} -> userId with no way to enumerate a user's tokens.
+                                  # Index bookkeeping ONLY: rotation stays single-use, jti-checked and
+                                  # isActive-checked. NOT family/reuse detection (that is H-5).
+                                  #
+                                  # FAIL CLOSED (Owner D2): Redis failure during the check denies the
+                                  # request (401) and logs at error; never falls back to
+                                  # signature-only acceptance. Log-level discipline: only
+                                  # infrastructure/control failures (Redis unreadable, corrupt epoch,
+                                  # token missing iat) log error -- an ordinary revoked token is a
+                                  # normal auth failure and is NOT error-logged, or every logout-all
+                                  # would flood the error channel. Both branches are unit-tested with
+                                  # a spy asserting the log is and is not called.
+                                  #
+                                  # CROSS-SYSTEM ATOMICITY, RECORDED HONESTLY: the user_roles
+                                  # mutation is in Postgres and the epoch is in Redis with NO shared
+                                  # transaction. If Redis fails, revokeAllForUser throws (503 reaches
+                                  # the caller) but the role change has ALREADY committed and the
+                                  # audit row has ALREADY been written; old tokens survive to TTL. We
+                                  # surface rather than swallow; an outbox/retry needs infrastructure
+                                  # this repo lacks and is out of H-1 scope. A unit test asserts the
+                                  # error propagates AND the DB mutation + audit still happened.
+                                  #
+                                  # KNOWN LIMITS (deliberate): no deactivate/ban endpoint exists, so
+                                  # future deactivate/ban/password flows MUST call the exposed
+                                  # primitive AuthRevocationService.revokeAllForUser(); out-of-band
+                                  # SQL deactivation emits no revocation signal and therefore does NOT
+                                  # invalidate an access token immediately (login and refresh are
+                                  # still blocked -- both check isActive); and a <=1s miss window is
+                                  # inherent to iat's second-level resolution (chosen deliberately
+                                  # over millisecond comparison, which would wrongly reject a freshly
+                                  # issued token in the same second as a revocation).
+                                  #
+                                  # TEST-DESIGN NOTES: the first e2e draft was WRONG and rewritten --
+                                  # it built fixtures via POST /auth/register + /auth/login, which are
+                                  # throttled at 10 req/60s, and would have hit 429 mid-suite; the
+                                  # rewrite follows the existing authz-scoped-pep-rollout /
+                                  # business-claims pattern (SQL INSERT + mint via the app's own
+                                  # JwtService/TokenService). One e2e test documents a LIMITATION
+                                  # rather than a success (SQL-only deactivation still returns 200).
+                                  # A real bug in the suite's own afterAll was found and fixed:
+                                  # entity_id::text = ANY(uuid[]) raised "operator does not exist:
+                                  # text = uuid" (audit_logs.entity_id is uuid; the cast was removed).
+                                  #
+                                  # Validation: BE unit 129 suites/1527 tests (+2 suites, +31 tests),
+                                  # BE e2e --runInBand 29 suites/263 tests (+1 suite, +13 tests),
+                                  # tsc/eslint/nest build clean, monorepo turbo 12/12, no new
+                                  # migrations, git diff --check clean.
+                                  # Still open by design: H-3 (no auth audit events -- the very domain
+                                  # ADR-016 was written to cover), H-4 (/auth/refresh lacks the auth
+                                  # throttle), H-5 (no refresh reuse detection), and POST
+                                  # /auth/logout-all is not yet in openapi.yaml.
+                                  # Report: docs/delivery/reports/
+                                  #   H-1-ACCESS-TOKEN-REVOCATION-2026-08-06.md
+                                  #
+                                  # ---- prior state (2026-08-06, CLAIM -> SOURCE -> VERIFICATION
+                                  # ---- CORRECTION) ----
                                   # Narrow Owner-authorized correction, run after a READ-ONLY
                                   # post-implementation review of the INTEGRATION milestone below
                                   # found 1 Critical + 4 Major issues in work already committed and

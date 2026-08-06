@@ -64,3 +64,78 @@ Chúng ta sẽ thêm thực thể **`audit_logs`** làm **tầng kiểm toán xu
 - Đề xuất: Principal Software Architect. Ngày: 2026-07-13. Nguồn: GAP-1 trong rà soát Trust Layer (kết Wave 1).
 - Còn mở (theo dõi): chuẩn định dạng bản ghi chi tiết & retention (security.md §12); ghi audit tập trung ở PEP/middleware vs từng service; danh mục `event` chuẩn hóa đầy đủ.
 - **Không** giải quyết GAP-2 (Source ADR), GAP-3/4 (Contribution/Report) — xử lý ở ADR riêng.
+
+---
+
+## Tình trạng triển khai — H-1 THU HỒI ACCESS TOKEN (2026-08-06)
+
+**✅ ĐÃ TRIỂN KHAI.** Milestone hardening hẹp, đóng finding **H-1** của
+[PRODUCTION-READINESS-REVIEW](../delivery/reports/H-1-ACCESS-TOKEN-REVOCATION-2026-08-06.md):
+*"Access tokens cannot be revoked; deactivated or banned users retain API access until
+JWT_ACCESS_TTL expires."*
+
+Liên quan tới ADR này vì đây là **hành động đặc quyền thuộc miền danh tính** mà §Bối cảnh (dòng 12/16)
+nêu thẳng là chưa được bao phủ. Milestone này **KHÔNG** thêm audit event nào cho auth (đó là finding
+H-3 riêng, vẫn còn mở) — nó chỉ làm cho việc **đổi vai trò** (đã có audit `role.assigned`/
+`role.revoked` từ trước) thực sự có hiệu lực NGAY trên phiên đang chạy.
+
+**Cơ chế: mốc thu hồi (revocation epoch) trên Redis, cưỡng chế tại `JwtAuthGuard`.**
+- Khoá `authrev:{userId}` = mốc thu hồi (epoch **giây**), TTL = `jwt.accessTtl`. Sau khoảng đó mọi
+  token cấp trước mốc đều tự hết hạn nên khoá không còn mang thông tin — tự tiêu, dung lượng là
+  O(số user vừa bị thu hồi), KHÔNG cần job dọn dẹp.
+- **KHÔNG đổi định dạng JWT.** Dùng `iat` vốn đã có trong MỌI access token (`@nestjs/jwt` →
+  `jsonwebtoken` tự thêm `iat`; `AuthModule` chỉ đặt `expiresIn`). Token cấp TRƯỚC khi tính năng này
+  triển khai vẫn hoạt động — không migration token, không deploy đồng bộ.
+- **Chi phí: đúng MỘT `GET` Redis mỗi request đã xác thực. KHÔNG truy vấn DB.** Route `@Public()`
+  return TRƯỚC bước này (đã có e2e khẳng định kênh công khai không phụ thuộc Redis).
+- `AuthRevocationModule` đặt ở `core/` + `@Global()` theo ĐÚNG tiền lệ `AuditModule`: ba consumer nằm
+  ở ba module khác nhau và `AuthModule` đã import `UsersModule`, nên đặt service trong `AuthModule`
+  sẽ tạo VÒNG LẶP module. Không dùng `forwardRef`.
+
+**Ba trigger đã nối (Owner Decision D1-A/D3):** gán vai trò thành công, thu hồi vai trò thành công
+(cả hai trong `UsersService`, thu hồi token của user **ĐÍCH**), và endpoint MỚI
+`POST /auth/logout-all` (đã xác thực, `userId` LUÔN từ JWT — không từ body). Logout-all xoá CẢ mốc
+access **và** mọi refresh token của user đó; để làm được việc thứ hai, Redis được thêm chỉ mục
+`refresh:user:{userId}` (SET các `jti`) — trước đây chỉ có `refresh:{jti} → userId` nên không có đường
+nào liệt kê token của một user. Đây là chỉ mục THUẦN BỔ TRỢ: **ngữ nghĩa xoay vòng refresh không đổi**
+(vẫn single-use, vẫn kiểm `jti`, vẫn kiểm `isActive`), và **KHÔNG** phải family/reuse detection (đó là
+finding H-5, vẫn còn mở).
+
+**Fail closed (Owner Decision D2).** Redis lỗi khi kiểm tra ⇒ **từ chối** request (401) + log mức
+`error`; TUYỆT ĐỐI không quay về "chỉ tin chữ ký". Chỉ lỗi **hạ tầng/điều khiển** (Redis không đọc
+được, mốc hỏng, token thiếu `iat`) mới log `error` — token bị thu hồi bình thường là thất bại xác thực
+THÔNG THƯỜNG, không log error (nếu không, mỗi lần logout-all sẽ bơm rác vào log lỗi).
+
+**Không nuốt lỗi bảo mật (Owner "security-side-effect rule").** `revokeAllForUser()` ném
+`ServiceUnavailableException` khi Redis lỗi. Ghi nhận thẳng: mutation `user_roles` nằm ở Postgres,
+mốc thu hồi nằm ở Redis — **KHÔNG có transaction chung**. Nếu Redis lỗi, vai trò trong DB **đã commit**
+và audit **đã ghi** (thứ tự DB → audit → revoke là có chủ đích, để hành động đặc quyền luôn có vết),
+nhưng token cũ CHƯA bị thu hồi. Ta chọn phơi lỗi cho caller thay vì im lặng; giải pháp mạnh hơn
+(outbox/retry) cần hạ tầng chưa có trong repo và KHÔNG thuộc phạm vi H-1.
+
+**Giới hạn nội tại, nêu thẳng — độ phân giải 1 giây.** `iat` tính theo GIÂY (RFC 7519), nên mốc cũng
+theo giây và một token cấp CÙNG GIÂY với lệnh thu hồi sẽ KHÔNG bị thu hồi (cửa sổ bỏ sót ≤ 1s). Đây là
+lựa chọn CÓ CHỦ ĐÍCH thay cho so sánh mili-giây, vì hướng kia sẽ từ chối SAI một token vừa cấp hợp lệ
+ngay sau lệnh thu hồi (vd logout-all rồi đăng nhập lại trong cùng giây). Xoá hẳn cửa sổ này đòi thêm
+claim mili-giây, tức ĐỔI định dạng JWT.
+
+**Giới hạn phạm vi, nêu thẳng (Owner Decision D1-A).** Repo **KHÔNG** có endpoint deactivate/ban
+(permission `User.Ban` đã seed từ `SeedRbac` và cấp cho `administrator` nhưng KHÔNG có enforcement
+point nào) và **KHÔNG** có luồng đổi/đặt lại mật khẩu — `is_active=false` hiện chỉ đạt được bằng SQL
+ngoài luồng ứng dụng. Vì vậy:
+- luồng deactivate/ban/đổi mật khẩu **tương lai PHẢI gọi** `AuthRevocationService.revokeAllForUser()`
+  — primitive được expose công khai chính cho mục đích đó;
+- **vô hiệu hoá bằng SQL ĐƠN THUẦN KHÔNG phát ra tín hiệu thu hồi nào**, nên KHÔNG vô hiệu hoá access
+  token ngay: token sống tới hết TTL. Hai e2e khẳng định CẢ HAI mặt này (một chứng minh cơ chế khi có
+  gọi primitive, một ghi nhận trung thực hành vi khi không gọi). Đường đăng nhập/`rotate` refresh thì
+  vẫn chặn ngay vì cả hai đã kiểm `isActive` từ trước.
+
+**Kiểm chứng:** BE unit 129 suite/1527 test (+2 suite, +31 test); e2e MỚI
+`auth-token-revocation.e2e-spec.ts` 13/13 trên Redis + Postgres THẬT (gồm fail-closed bằng cách mô
+phỏng sự cố Redis thật tại đúng chỗ guard đọc, và khẳng định TTL của khoá). Chi tiết đầy đủ:
+[H-1-ACCESS-TOKEN-REVOCATION-2026-08-06.md](../delivery/reports/H-1-ACCESS-TOKEN-REVOCATION-2026-08-06.md).
+
+**Vẫn còn mở sau milestone này (có chủ đích):** H-3 (không có audit event nào cho auth:
+`user.registered`/`auth.login.success`/`auth.logout` — miền mà ADR này viết ra để bao phủ), H-4
+(`POST /auth/refresh` chưa có auth-throttle), H-5 (chưa có phát hiện tái dùng refresh token /
+thu hồi theo family), và endpoint `User.Ban` vẫn chưa tồn tại.
