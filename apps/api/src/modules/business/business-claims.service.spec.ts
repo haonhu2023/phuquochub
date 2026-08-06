@@ -6,6 +6,8 @@ import { BusinessMembersRepository } from './repositories/business-members.repos
 import { PlacesRepository, PlaceCardRow } from '../places/repositories/places.repository';
 import { RolesRepository } from '../rbac/repositories/roles.repository';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
+import { VerificationsRepository } from '../verifications/repositories/verifications.repository';
+import { Verification } from '../verifications/entities/verification.entity';
 import { AuditService } from '../../core/audit/audit.service';
 import { BusinessClaim } from './entities/business-claim.entity';
 import { BusinessMember } from './entities/business-member.entity';
@@ -65,6 +67,7 @@ describe('BusinessClaimsService', () => {
   let placesRepo: LooseMock<PlacesRepository>;
   let rolesRepo: LooseMock<RolesRepository>;
   let userRolesRepo: LooseMock<UserRolesRepository>;
+  let verificationsRepo: LooseMock<VerificationsRepository>;
   let audit: LooseMock<AuditService>;
   let dataSource: LooseMock<DataSource>;
   let manager: EntityManager;
@@ -91,11 +94,25 @@ describe('BusinessClaimsService', () => {
     });
     rolesRepo = createMock<RolesRepository>({ findByCode: jest.fn().mockResolvedValue(makeRole()) });
     userRolesRepo = createMock<UserRolesRepository>({ assign: jest.fn() });
+    // Mặc định: cơ sở CHƯA có dòng `verifications` nào -> guard C1 cho phép ghi cache (hành vi
+    // ADR-015 nguyên bản). Test riêng bên dưới đảo lại giá trị này.
+    verificationsRepo = createMock<VerificationsRepository>({
+      findActiveByTarget: jest.fn().mockResolvedValue(null),
+    });
     audit = createMock<AuditService>({ record: jest.fn() });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
-    service = new BusinessClaimsService(claimsRepo, membersRepo, placesRepo, rolesRepo, userRolesRepo, audit, dataSource);
+    service = new BusinessClaimsService(
+      claimsRepo,
+      membersRepo,
+      placesRepo,
+      rolesRepo,
+      userRolesRepo,
+      verificationsRepo,
+      audit,
+      dataSource,
+    );
   });
 
   describe('submit', () => {
@@ -259,6 +276,64 @@ describe('BusinessClaimsService', () => {
       );
       expect(result.status).toBe(ClaimStatus.APPROVED);
       expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'business.claim_approved' }));
+    });
+
+    // ADR-008 CORRECTION (PIR finding C1) — guard phòng vệ hai chiều, phía Business Claim.
+    it('C1 guard: cơ sở ĐÃ có dòng verifications -> approve BÌNH THƯỜNG nhưng KHÔNG ghi đè cache verification', async () => {
+      claimsRepo.findByIdForUpdate.mockResolvedValue(makeClaim());
+      membersRepo.findActiveOwnerForUpdate.mockResolvedValue(null);
+      membersRepo.createOwner.mockResolvedValue(Object.assign(new BusinessMember(), { id: 'm1' }));
+      verificationsRepo.findActiveByTarget.mockResolvedValue(
+        Object.assign(new Verification(), { id: 'verif-1', placeId: 'place-1' }),
+      );
+
+      const result = await service.decide('claim-1', { decision: BusinessClaimDecision.APPROVE }, 'mod-1');
+
+      // Quyền sở hữu VẪN được cấp — guard chỉ chặn ghi đè badge, không chặn claim.
+      expect(membersRepo.createOwner).toHaveBeenCalled();
+      expect(userRolesRepo.assign).toHaveBeenCalled();
+      expect(result.status).toBe(ClaimStatus.APPROVED);
+      // Cache KHÔNG bị đụng — dòng `verifications` là nguồn sự thật của nó.
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      expect(verificationsRepo.findActiveByTarget).toHaveBeenCalledWith({ placeId: 'place-1' }, manager);
+      // Không âm thầm: audit nêu rõ đã KHÔNG ghi cache.
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ context: { verification_cache_written: false } }),
+      );
+    });
+
+    it('C1 guard: cơ sở CHƯA có dòng verifications -> ghi cache như cũ, audit ghi nhận đã ghi', async () => {
+      claimsRepo.findByIdForUpdate.mockResolvedValue(makeClaim());
+      membersRepo.findActiveOwnerForUpdate.mockResolvedValue(null);
+      membersRepo.createOwner.mockResolvedValue(Object.assign(new BusinessMember(), { id: 'm1' }));
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+
+      await service.decide('claim-1', { decision: BusinessClaimDecision.APPROVE }, 'mod-1');
+
+      expect(placesRepo.updateScalars).toHaveBeenCalledWith(
+        'place-1',
+        expect.objectContaining({ verificationStatus: VerificationStatus.OFFICIAL }),
+        manager,
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ context: { verification_cache_written: true } }),
+      );
+    });
+
+    it('C1 guard: nhánh reject KHÔNG chạm bước ghi cache -> audit context = null', async () => {
+      claimsRepo.findByIdForUpdate.mockResolvedValue(makeClaim());
+
+      await service.decide(
+        'claim-1',
+        { decision: BusinessClaimDecision.REJECT, reason_code: ClaimReasonCode.DUPLICATE },
+        'mod-1',
+      );
+
+      expect(verificationsRepo.findActiveByTarget).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ context: { verification_cache_written: null } }),
+      );
     });
 
     it('ĐÃ có owner hiệu lực -> redirect disputed, KHÔNG tạo owner/role/verification mới', async () => {

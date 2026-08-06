@@ -25,6 +25,11 @@ describe('Verification Foundation (live Postgres)', () => {
   const userIds: string[] = [];
   const placeIds: string[] = [];
   const contactIds: string[] = [];
+  // ADR-008 CORRECTION (PIR finding X1): theo dõi id thật của mọi `sources`/`price_history` suite
+  // này tạo ra. Bản trước dọn `sources` bằng một mệnh đề KHÔNG BAO GIỜ khớp (`author_user_id` không
+  // hề được set, và `id NOT IN (SELECT id FROM sources)` luôn sai) — mọi source đều rò rỉ vĩnh viễn.
+  const sourceIds: string[] = [];
+  const priceHistoryIds: string[] = [];
 
   async function createUser(label: string, roleCode: string): Promise<{ accessToken: string; userId: string }> {
     const email = `e2e_verif_${label}_${Date.now()}_${Math.random().toString(36).slice(2)}@phuquochub.test`;
@@ -67,11 +72,21 @@ describe('Verification Foundation (live Postgres)', () => {
     return rows[0].id;
   }
 
+  async function mkPriceHistory(placeId: string): Promise<string> {
+    const rows: Array<{ id: string }> = await ds.query(
+      `INSERT INTO price_history (entity_type, entity_id, service_name, amount) VALUES ('place',$1,'Vé vào cổng',50000) RETURNING id`,
+      [placeId],
+    );
+    priceHistoryIds.push(rows[0].id);
+    return rows[0].id;
+  }
+
   async function mkSource(type: string): Promise<string> {
     const rows: Array<{ id: string }> = await ds.query(
       `INSERT INTO sources (type, kind, reliability) VALUES ($1, 'url', 80) RETURNING id`,
       [type],
     );
+    sourceIds.push(rows[0].id);
     return rows[0].id;
   }
 
@@ -94,11 +109,32 @@ describe('Verification Foundation (live Postgres)', () => {
 
   afterAll(async () => {
     if (ds?.isInitialized) {
+      // ADR-008 CORRECTION (PIR X1) — dọn TƯỜNG MINH theo id đã theo dõi, đúng thứ tự FK, KHÔNG
+      // nuốt lỗi (`.catch()` cũ đã che đúng cái bug này). Verification phải đi TRƯỚC target của nó
+      // (`source_id` là ON DELETE NO ACTION — xoá source trước sẽ bị chặn), và trước `contacts`/
+      // `price_history` để không phụ thuộc vào CASCADE ngầm.
+      const verifTargets = [placeIds, contactIds, priceHistoryIds];
+      if (verifTargets.some((ids) => ids.length)) {
+        await ds.query(
+          `DELETE FROM verification_votes WHERE verification_id IN (
+             SELECT id FROM verifications
+             WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
+          verifTargets,
+        );
+        await ds.query(
+          `DELETE FROM verification_events WHERE verification_id IN (
+             SELECT id FROM verifications
+             WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
+          verifTargets,
+        );
+        await ds.query(
+          `DELETE FROM verifications WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3)`,
+          verifTargets,
+        );
+      }
       if (contactIds.length) await ds.query(`DELETE FROM contacts WHERE id = ANY($1)`, [contactIds]);
-      await ds.query(`DELETE FROM verification_votes WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`, [placeIds]);
-      await ds.query(`DELETE FROM verification_events WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`, [placeIds]);
-      await ds.query(`DELETE FROM verifications WHERE place_id = ANY($1)`, [placeIds]);
-      await ds.query(`DELETE FROM sources WHERE author_user_id = ANY($1) OR id NOT IN (SELECT id FROM sources)`, [userIds]).catch(() => undefined);
+      if (priceHistoryIds.length) await ds.query(`DELETE FROM price_history WHERE id = ANY($1)`, [priceHistoryIds]);
+      if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
       if (userIds.length || placeIds.length) {
         await ds.query(
           `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
@@ -255,10 +291,7 @@ describe('Verification Foundation (live Postgres)', () => {
   it('official target = price_history + expires_at=null tường minh -> 422 (bắt buộc expires_at)', async () => {
     const moderator = await createUser('mod_price_official', 'moderator');
     const placeId = await mkPlace('price_official');
-    const [{ id: priceId }]: Array<{ id: string }> = await ds.query(
-      `INSERT INTO price_history (entity_type, entity_id, service_name, amount) VALUES ('place',$1,'Vé vào cổng',50000) RETURNING id`,
-      [placeId],
-    );
+    const priceId = await mkPriceHistory(placeId);
 
     const submitRes = await request(app.getHttpServer())
       .post('/api/verifications')
@@ -273,10 +306,6 @@ describe('Verification Foundation (live Postgres)', () => {
       .set('Authorization', `Bearer ${moderator.accessToken}`)
       .send({ source_id: sourceId, expires_at: null });
     expect(res.status).toBe(422);
-
-    await ds.query(`DELETE FROM verification_events WHERE verification_id=$1`, [verificationId]);
-    await ds.query(`DELETE FROM verifications WHERE id=$1`, [verificationId]);
-    await ds.query(`DELETE FROM price_history WHERE id=$1`, [priceId]);
   });
 
   it('target_type=contact hoạt động đúng (exclusive arc KHÔNG chỉ place) — submit + verify đồng bộ cache contact', async () => {
@@ -481,8 +510,166 @@ describe('Verification Foundation (live Postgres)', () => {
     const verifRows = await ds.query(`SELECT count(*)::int AS n FROM verifications WHERE place_id=$1`, [placeId]);
     expect(verifRows[0].n).toBe(0); // KHÔNG có dòng verifications nào — đúng theo Owner Decision
 
+    // ADR-008 CORRECTION (PIR C1, chiều a): cơ sở này giờ mang badge `official` do claim đặt, KHÔNG
+    // có dòng `verifications`. Đưa nó vào hàng đợi xác minh SẼ hạ cấp badge xuống `pending` —
+    // guard phải CHẶN, và cache phải còn nguyên.
+    const submitAfterClaimRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    expect(submitAfterClaimRes.status).toBe(409);
+
+    const placeAfterBlockedSubmit = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);
+    expect(placeAfterBlockedSubmit[0].verification_status).toBe('official'); // KHÔNG bị hạ cấp
+    const stillNoVerif = await ds.query(`SELECT count(*)::int AS n FROM verifications WHERE place_id=$1`, [placeId]);
+    expect(stillNoVerif[0].n).toBe(0); // guard chặn TRƯỚC khi ghi
+
     // dọn business_members/user_roles phát sinh từ claim (ngoài phạm vi afterAll chính, dọn riêng ở đây).
     await ds.query(`DELETE FROM business_members WHERE place_id=$1`, [placeId]);
     await ds.query(`DELETE FROM user_roles WHERE user_id=$1 AND business_id=$2`, [owner.userId, placeId]);
+  });
+
+  it('C1 guard (chiều b): approve claim trên cơ sở ĐÃ có dòng verifications -> claim vẫn approved, cache KHÔNG bị ghi đè, audit ghi nhận', async () => {
+    const owner = await createUser('claim_b_owner', 'member');
+    const moderator = await createUser('claim_b_moderator', 'moderator');
+    const placeId = await mkPlace('claim_conflict_b');
+
+    // Verification sở hữu cache trước: submit -> verify.
+    const submitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    expect(submitRes.status).toBe(201);
+    const verifyRes = await request(app.getHttpServer())
+      .post(`/api/verifications/${submitRes.body.data.id}/verify`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({});
+    expect(verifyRes.status).toBe(200);
+
+    const claimRes = await request(app.getHttpServer())
+      .post('/api/business-claims')
+      .set('Authorization', `Bearer ${owner.accessToken}`)
+      .send({ place_id: placeId, evidence: [{ type: 'business_license', reference: 'GP-002-2026' }] });
+    expect(claimRes.status).toBe(201);
+
+    const decideRes = await request(app.getHttpServer())
+      .post(`/api/business-claims/${claimRes.body.data.id}/decide`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ decision: 'approve' });
+    // Claim VẪN approve — guard chỉ chặn ghi đè badge, không chặn quyền sở hữu.
+    expect(decideRes.status).toBe(200);
+    expect(decideRes.body.data.status).toBe('approved');
+
+    const ownerRow = await ds.query(
+      `SELECT count(*)::int AS n FROM business_members WHERE place_id=$1 AND user_id=$2 AND role='owner' AND revoked_at IS NULL`,
+      [placeId, owner.userId],
+    );
+    expect(ownerRow[0].n).toBe(1); // ownership vẫn được cấp bình thường
+
+    // Cache vẫn là `verified` (do Verification đặt) — KHÔNG bị claim ghi đè thành `official`.
+    const place = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);
+    expect(place[0].verification_status).toBe('verified');
+
+    const verif = await ds.query(`SELECT status FROM verifications WHERE place_id=$1`, [placeId]);
+    expect(verif[0].status).toBe('verified'); // entity và cache KHỚP NHAU — không phân kỳ
+
+    const auditRow = await ds.query(
+      `SELECT context FROM audit_logs WHERE entity_type='business_claim' AND actor_id=$1 ORDER BY created_at DESC LIMIT 1`,
+      [moderator.userId],
+    );
+    expect(auditRow[0].context.verification_cache_written).toBe(false); // không âm thầm
+
+    await ds.query(`DELETE FROM business_members WHERE place_id=$1`, [placeId]);
+    await ds.query(`DELETE FROM user_roles WHERE user_id=$1 AND business_id=$2`, [owner.userId, placeId]);
+  });
+
+  it('F1: official(expires) -> expired -> gửi lại -> verify KHÔNG mang expires_at cũ, expireOverdue KHÔNG hạ cấp lần nữa', async () => {
+    const moderator = await createUser('mod_f1', 'moderator');
+    const placeId = await mkPlace('f1_stale_expiry');
+    const sourceId = await mkSource('official_website');
+
+    const submitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    const verificationId = submitRes.body.data.id;
+
+    await request(app.getHttpServer())
+      .post(`/api/verifications/${verificationId}/official`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ source_id: sourceId });
+    // Đẩy hạn về quá khứ rồi chạy job -> expired.
+    await ds.query(`UPDATE verifications SET expires_at = now() - interval '1 day' WHERE id=$1`, [verificationId]);
+    const verificationsService = app.get(VerificationsService);
+    await verificationsService.expireOverdue(new Date());
+    const afterExpire = await ds.query(`SELECT status FROM verifications WHERE id=$1`, [verificationId]);
+    expect(afterExpire[0].status).toBe('expired');
+
+    // Gửi lại: PHẢI xoá expires_at/reason_code/rejected_reason cũ.
+    const resubmitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    expect(resubmitRes.status).toBe(201);
+    expect(resubmitRes.body.data.expires_at).toBeNull();
+
+    const afterVerify = await request(app.getHttpServer())
+      .post(`/api/verifications/${verificationId}/verify`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({});
+    expect(afterVerify.status).toBe(200);
+    expect(afterVerify.body.data.status).toBe('verified');
+    expect(afterVerify.body.data.expires_at).toBeNull();
+
+    // Job chạy lại: dòng `verified` này KHÔNG được tự hết hạn (trước fix nó bị hạ cấp ngay).
+    await verificationsService.expireOverdue(new Date());
+    const afterSecondJob = await ds.query(`SELECT status FROM verifications WHERE id=$1`, [verificationId]);
+    expect(afterSecondJob[0].status).toBe('verified');
+    const place = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);
+    expect(place[0].verification_status).toBe('verified');
+  });
+
+  it('F1: reject sau official XOÁ expires_at; gửi lại XOÁ reason_code/rejected_reason', async () => {
+    const moderator = await createUser('mod_f1b', 'moderator');
+    const placeId = await mkPlace('f1_reject_fields');
+    const sourceId = await mkSource('government');
+
+    const submitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    const verificationId = submitRes.body.data.id;
+
+    await request(app.getHttpServer())
+      .post(`/api/verifications/${verificationId}/official`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ source_id: sourceId });
+
+    const rejectRes = await request(app.getHttpServer())
+      .post(`/api/verifications/${verificationId}/reject`)
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ reason_code: 'fabricated', rejected_reason: 'bằng chứng giả' });
+    expect(rejectRes.status).toBe(200);
+    expect(rejectRes.body.data.expires_at).toBeNull(); // cửa sổ hiệu lực bị xoá
+    expect(rejectRes.body.data.reason_code).toBe('fabricated');
+
+    const resubmitRes = await request(app.getHttpServer())
+      .post('/api/verifications')
+      .set('Authorization', `Bearer ${moderator.accessToken}`)
+      .send({ target_type: 'place', target_id: placeId });
+    expect(resubmitRes.status).toBe(201);
+    expect(resubmitRes.body.data.reason_code).toBeNull();
+    expect(resubmitRes.body.data.rejected_reason).toBeNull();
+  });
+
+  // ADR-008 CORRECTION (PIR X1) — chạy CUỐI: chứng minh teardown thật sự dọn sạch, không chỉ tuyên bố.
+  it('X1: mọi source/price_history/verification suite này tạo ra đều được theo dõi để dọn (0 rò rỉ)', async () => {
+    expect(sourceIds.length).toBeGreaterThan(0);
+    const tracked = await ds.query(`SELECT count(*)::int AS n FROM sources WHERE id = ANY($1)`, [sourceIds]);
+    expect(tracked[0].n).toBe(sourceIds.length); // mọi source đã tạo đều nằm trong danh sách dọn
+    const trackedPrices = await ds.query(`SELECT count(*)::int AS n FROM price_history WHERE id = ANY($1)`, [
+      priceHistoryIds,
+    ]);
+    expect(trackedPrices[0].n).toBe(priceHistoryIds.length);
   });
 });

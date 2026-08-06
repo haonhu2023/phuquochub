@@ -45,6 +45,16 @@ function makeVerification(overrides: Partial<Verification> = {}): Verification {
   return Object.assign(v, overrides);
 }
 
+// Hàng `places` tối giản cho `getCardByIdIncludingInactive` — chỉ `verification_status` là thứ
+// service thực sự đọc (guard C1); phần còn lại chỉ cần tồn tại để thoả kiểu PlaceCardRow.
+function makePlaceCard(verificationStatus: VerificationStatus = VerificationStatus.PENDING) {
+  return { id: 'place-1', verification_status: verificationStatus } as unknown as ReturnType<
+    PlacesRepository['getCardByIdIncludingInactive']
+  > extends Promise<infer T>
+    ? T
+    : never;
+}
+
 function makeSource(overrides: Partial<Source> = {}): Source {
   const s = new Source();
   s.id = 'source-1';
@@ -82,7 +92,7 @@ describe('VerificationsService', () => {
       listByVerification: jest.fn(),
     });
     votesRepo = createMock<VerificationVotesRepository>({ cast: jest.fn(), tally: jest.fn() });
-    placesRepo = createMock<PlacesRepository>({ existsById: jest.fn(), updateScalars: jest.fn() });
+    placesRepo = createMock<PlacesRepository>({ getCardByIdIncludingInactive: jest.fn(), updateScalars: jest.fn() });
     contactsRepo = createMock<ContactsRepository>({ findById: jest.fn(), updateScalars: jest.fn() });
     pricesRepo = createMock<PricesRepository>({ findById: jest.fn(), updateScalars: jest.fn() });
     sourcesRepo = createMock<SourcesRepository>({ findById: jest.fn() });
@@ -105,7 +115,7 @@ describe('VerificationsService', () => {
 
   describe('submit', () => {
     it('target không tồn tại -> NotFoundException, KHÔNG mở transaction ghi gì', async () => {
-      placesRepo.existsById.mockResolvedValue(false);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
       await expect(
         service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'missing' }, 'mod-1'),
       ).rejects.toThrow(NotFoundException);
@@ -113,7 +123,7 @@ describe('VerificationsService', () => {
     });
 
     it('chưa từng có dòng -> tạo pending mới, ghi event (from=null), đồng bộ cache pending', async () => {
-      placesRepo.existsById.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
       verificationsRepo.findActiveByTarget.mockResolvedValue(null);
       verificationsRepo.create.mockResolvedValue(makeVerification());
 
@@ -140,7 +150,7 @@ describe('VerificationsService', () => {
     });
 
     it('đã có dòng đang pending -> ConflictException (KHÔNG resubmit được, chưa expired/rejected)', async () => {
-      placesRepo.existsById.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
       verificationsRepo.findActiveByTarget.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING }));
 
       await expect(
@@ -149,7 +159,7 @@ describe('VerificationsService', () => {
     });
 
     it('dòng đã expired -> gửi lại (CAS về pending), ghi event fromStatus=expired', async () => {
-      placesRepo.existsById.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
       verificationsRepo.findActiveByTarget.mockResolvedValue(
         makeVerification({ status: VerificationStatus.EXPIRED, lockVersion: 3 }),
       );
@@ -170,8 +180,96 @@ describe('VerificationsService', () => {
       expect(result.status).toBe(VerificationStatus.PENDING);
     });
 
+    // --- ADR-008 CORRECTION (PIR finding C1) — guard phòng vệ, phía Verification ---
+    it.each([VerificationStatus.OFFICIAL, VerificationStatus.VERIFIED, VerificationStatus.COMMUNITY_VERIFIED])(
+      'C1 guard: cache đang %s mà KHÔNG có dòng verifications -> ConflictException, KHÔNG tạo dòng, KHÔNG hạ cấp cache',
+      async (cachedStatus) => {
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard(cachedStatus));
+        verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+
+        await expect(
+          service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'place-1' }, 'mod-1'),
+        ).rejects.toThrow(ConflictException);
+
+        expect(verificationsRepo.create).not.toHaveBeenCalled();
+        expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+        expect(eventsRepo.append).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([VerificationStatus.PENDING, VerificationStatus.EXPIRED, VerificationStatus.REJECTED])(
+      'C1 guard: cache %s (KHÔNG tin cậy) -> submit chạy bình thường',
+      async (cachedStatus) => {
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard(cachedStatus));
+        verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+        verificationsRepo.create.mockResolvedValue(makeVerification());
+
+        await expect(
+          service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'place-1' }, 'mod-1'),
+        ).resolves.toBeDefined();
+        expect(verificationsRepo.create).toHaveBeenCalled();
+      },
+    );
+
+    // --- ADR-008 CORRECTION (PIR finding T1) — 23505 -> 409, không phải 500 ---
+    it('T1: submit đồng thời làm INSERT vi phạm uq_verif_place -> ConflictException (không rò lỗi DB thô)', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockRejectedValue(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+          constraint: 'uq_verif_place',
+        }),
+      );
+
+      await expect(
+        service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'place-1' }, 'mod-1'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('T1: lỗi DB KHÁC (không phải 23505 của target unique) vẫn nổi lên nguyên trạng, KHÔNG bị nuốt thành 409', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockRejectedValue(
+        Object.assign(new Error('not-null violation'), { code: '23502' }),
+      );
+
+      await expect(
+        service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'place-1' }, 'mod-1'),
+      ).rejects.toThrow('not-null violation');
+    });
+
+    // --- ADR-008 CORRECTION (PIR finding F1) — trường trạng thái cuối không được sống sót ---
+    it('F1: gửi lại từ rejected/expired -> XOÁ reasonCode/rejectedReason/expiresAt trong CÙNG patch', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard(VerificationStatus.REJECTED));
+      verificationsRepo.findActiveByTarget.mockResolvedValue(
+        makeVerification({
+          status: VerificationStatus.REJECTED,
+          reasonCode: 'fabricated' as never,
+          rejectedReason: 'bằng chứng giả',
+          expiresAt: new Date('2026-01-01T00:00:00Z'),
+          lockVersion: 7,
+        }),
+      );
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      await service.submit({ target_type: VerificationTargetType.PLACE, target_id: 'place-1' }, 'mod-1');
+
+      expect(verificationsRepo.casUpdate).toHaveBeenCalledWith(
+        'verif-1',
+        7,
+        expect.objectContaining({
+          status: VerificationStatus.PENDING,
+          reasonCode: null,
+          rejectedReason: null,
+          expiresAt: null,
+        }),
+        manager,
+      );
+    });
+
     it('CAS thua khi gửi lại -> ConflictException', async () => {
-      placesRepo.existsById.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(makePlaceCard());
       verificationsRepo.findActiveByTarget.mockResolvedValue(makeVerification({ status: VerificationStatus.REJECTED }));
       verificationsRepo.casUpdate.mockResolvedValue(false);
 
@@ -258,6 +356,22 @@ describe('VerificationsService', () => {
       verificationsRepo.casUpdate.mockResolvedValue(false);
       await expect(service.verify('verif-1', {}, 'mod-1')).rejects.toThrow(ConflictException);
     });
+
+    it('F1: verify XOÁ reasonCode/rejectedReason (dòng verified không mang metadata bác bỏ)', async () => {
+      verificationsRepo.findById.mockResolvedValue(
+        makeVerification({ reasonCode: 'outdated' as never, rejectedReason: 'cũ' }),
+      );
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      await service.verify('verif-1', {}, 'mod-1');
+
+      expect(verificationsRepo.casUpdate).toHaveBeenCalledWith(
+        'verif-1',
+        0,
+        expect.objectContaining({ reasonCode: null, rejectedReason: null }),
+        manager,
+      );
+    });
   });
 
   describe('official', () => {
@@ -335,6 +449,22 @@ describe('VerificationsService', () => {
       expect(placesRepo.updateScalars).toHaveBeenCalledWith(
         'place-1',
         { verificationStatus: VerificationStatus.REJECTED },
+        manager,
+      );
+    });
+
+    it('F1: reject XOÁ expiresAt (dòng bị bác không còn cửa sổ hiệu lực)', async () => {
+      verificationsRepo.findById.mockResolvedValue(
+        makeVerification({ status: VerificationStatus.OFFICIAL, expiresAt: new Date('2027-01-01T00:00:00Z') }),
+      );
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      await service.reject('verif-1', { reason_code: 'outdated' as never }, 'mod-1');
+
+      expect(verificationsRepo.casUpdate).toHaveBeenCalledWith(
+        'verif-1',
+        0,
+        expect.objectContaining({ status: VerificationStatus.REJECTED, expiresAt: null }),
         manager,
       );
     });
