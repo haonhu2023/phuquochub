@@ -362,3 +362,83 @@ mới, mở rộng đúng hai file có sẵn), monorepo build/typecheck/lint 12/
 công cụ đối soát cache/vote-count, thông báo, phản hồi review, số liệu/analytics, cải tiến transfer,
 bộ lọc hàng đợi mới, auto-reject/demotion khi dispute cao, bảng trọng số phiếu theo vai trò/karma,
 khoá phân tán đa-replica, metrics/dashboard §9B thật, mọi milestone Business/Place khác.
+
+---
+
+**CLAIM → SOURCE → VERIFICATION CORRECTION: ✅ ĐÃ TRIỂN KHAI (2026-08-06).** Milestone sửa lỗi HẸP,
+chạy sau khi một **post-implementation review READ-ONLY** của INTEGRATION ở trên phát hiện 1 lỗi
+Critical + 4 lỗi Major trong một milestone ĐÃ commit và ĐÃ báo cáo là hoàn tất. Ba quyết định Owner
+chốt hành vi; hai hạng mục còn lại là hợp đồng API + vệ sinh tài liệu. KHÔNG schema mới, KHÔNG endpoint
+mới, KHÔNG migration mới.
+
+**1. PRIVACY (Critical).** `sources.metadata` của claim CHỈ còn `{business_claim_id}` — KHÔNG còn sao
+`claim.evidence` vào đó. Lý do: `GET /sources/:id` là `@Public()` và trả NGUYÊN entity (gồm
+`metadata`), nên evidence ở đó = phơi giấy tờ kinh doanh riêng tư (số giấy phép, mã hoá đơn, bản ghi
+xác thực điện thoại) ra kênh KHÔNG cần đăng nhập — CHÍNH những gì API Business Claim cố tình che
+(summary/list không có `evidence`; chỉ `GET /business-claims/{id}` sau `Business.Verify` mới trả).
+Theo Owner Decision 1, API Sources công khai KHÔNG bị thiết kế lại — điều kiện kèm theo là evidence
+phải KHÔNG còn lộ sau thay đổi này, đã chứng minh cả hai chiều: unit khẳng định `metadata` bằng
+`toEqual` + `Object.keys` + `not.toHaveProperty('evidence')` (CỐ Ý không dùng `objectContaining` —
+`objectContaining` sẽ pass ngay cả khi `evidence` vẫn còn, đúng cách lỗi gốc lọt qua chính test của
+nó), và e2e sống gọi `GET /api/sources/:id` KHÔNG kèm Authorization rồi khẳng định payload không chứa
+`reference` lẫn `type` của evidence ở bất kỳ đâu.
+
+**2. NO-OP THẬT (Major).** `ensureOfficialFromClaim()` nhận callback LƯỜI `createSource` và kiểm tra
+"đã official?" TRƯỚC MỌI THỨ. Bản trước tạo `sources` TRƯỚC khi biết nhánh nào sẽ chạy, nên mỗi lần
+approve lại trên một place đã `official` để lại một dòng `sources` MỒ CÔI (không `verifications` nào
+trỏ tới) và audit ghi một `source_id` mà dòng `verifications` KHÔNG hề dùng. Nay nhánh đó: KHÔNG tạo
+source, KHÔNG append event, KHÔNG ghi cache, KHÔNG CAS; trả về `sourceId` ĐANG gắn trên dòng đó kèm
+`sourceCreated=false` để audit nói rõ chuyện đã xảy ra thay vì im lặng. Callback ở lại
+`BusinessClaimsService` (tri thức "hình dạng Source của claim" thuộc miền claim, không đẩy khái niệm
+business claim vào `VerificationsService`).
+
+**3. CHÍNH SÁCH HẠN (Major).** Claim-driven official dùng `expires_at = null`; `POST
+/verifications/{id}/official` qua HTTP GIỮ NGUYÊN mặc định +12 tháng. Lý do ghi thẳng vì đây là sai
+khác CÓ CHỦ ĐÍCH: verification.md §7 nói hạn `official` tồn tại để "buộc chủ cơ sở tái xác nhận",
+nhưng CHƯA có đường nào để chủ cơ sở làm việc đó — `Verification.Verify` là moderator-only (Owner
+Decision 2, Foundation), và claim lại bị BR-B2 đẩy sang `disputed` vì đã có owner hiệu lực. Đặt hạn 12
+tháng sẽ khiến badge công khai của một cơ sở có chủ HỢP LỆ tự rơi xuống `expired` mà KHÔNG ai phục hồi
+được ngoài moderator. `null` cho tới khi có renewal UX (§7/§10-3 cho phép `expires_at` tuỳ chọn với
+target `place`, chỉ bắt buộc với `price_history`).
+
+**4. HỢP ĐỒNG API (Major).** `docs/api/openapi.yaml` KHÔNG được sửa ở milestone INTEGRATION nên vẫn
+khẳng định mô hình CŨ: chú thích §Verification nói "Business Claim … vẫn ghi thẳng cache
+`places.verification_status`", và mô tả `POST /business-claims/{id}/decide` nói approve "đặt
+`places.verification_status=official`". Cả hai đã viết lại theo luồng thật (Source → Verification →
+VerificationEvent → cache, một transaction). Thêm `409` cho `decide` (dạng lỗi MỚI mà INTEGRATION tạo
+ra nhưng chưa từng ghi: CAS thua trên dòng `verifications` của place, hoặc `uq_verif_place` do một
+`POST /verifications` đồng thời — TOÀN BỘ quyết định rollback) và `409` cho `POST /verifications`
+(thiếu sót có từ trước, gồm cả race T1 và guard dữ liệu cũ).
+
+**5. X1′ — RÒ RỈ mà tuyên bố "zero residue" của INTEGRATION KHÔNG THỂ thấy.** Ghi lại đầy đủ vì báo
+cáo trước đã khẳng định zero residue và điều đó SAI. Hai truy vấn dùng để xác minh (join `sources` với
+user `e2e_%`, và `verifications` có `method='owner_claim'`) không bao giờ bắt được rò rỉ:
+`sources.author_user_id` là `ON DELETE SET NULL` nên khi user e2e bị xoá thì join khớp rỗng, còn dòng
+`owner_claim` thì CASCADE thật theo place. Truy vấn KHÔNG lọc (`metadata ? 'business_claim_id'`) tìm ra
+**9 dòng mồ côi** (author null, không `verifications`/`verification_events`/`source_attributions` nào
+trỏ tới, claim đã bị xoá) — **6 dòng vẫn còn `evidence`**. Nguyên nhân khoanh vùng bằng cách chạy
+riêng file rồi đếm trước/sau (8 → 9, đúng một dòng mỗi lần chạy): lần approve THÀNH CÔNG ĐẦU TIÊN
+trong test tranh chấp của `business-claims.e2e-spec.ts` cũng tạo một `sources` y như test approve
+chính, nhưng id của nó CHƯA BAO GIỜ được push vào `sourceIds` (test chỉ khẳng định trên quyết định thứ
+hai — quyết định bị `disputed`). Đã sửa bằng cách track theo id THẬT; chạy lại: residue giữ nguyên
+(thêm 0). 9 dòng mồ côi lịch sử đã bị xoá khỏi DB dev sau khi xác nhận cả bốn phép đếm tham chiếu = 0.
+
+**Xác nhận sống + regression:** BE unit 127 suite/1496 test (+5), BE e2e `--runInBand` 28 suite/250
+test (+1), tsc/eslint/nest build sạch, monorepo `turbo run typecheck lint build` 12/12, zero residue
+chứng minh bằng truy vấn KHÔNG lọc, secret scan + `git diff --check` sạch, KHÔNG migration mới. KHÔNG
+chạy lại rollback drill — correction này không thêm/bớt/đổi thứ tự bất kỳ write nào trong transaction
+(chỉ làm MỘT write trở thành có điều kiện và thu hẹp một payload jsonb); nói thẳng: tính nguyên tử vẫn
+CHƯA có test regression thường trú (drill là tạm thời theo quy ước). Chi tiết đầy đủ:
+[CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md](../delivery/reports/CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md).
+
+**Giới hạn CÒN LẠI có chủ đích sau correction này:** chưa có luồng gia hạn/tái xác nhận cho chủ cơ sở
+(lý do trực tiếp của `expires_at=null`); `GET /sources/:id` vẫn phơi `author_user_id` công khai (ngoài
+phạm vi theo Owner Decision 1); chưa ràng buộc Source với target (`buildOfficialTransition` chỉ xác
+thực `source.type`, nên một Source `business_owner` của place A vẫn dùng được để đặt official cho place
+B — cần `Verification.Verify`, không tạo đặc quyền mới); `assigned_to`/`sla_due_at` cũ còn sót sau
+transition từ claim; KHÔNG có dòng `verification.set_official` trong `audit_logs` cho official từ claim
+(`verification_events` vẫn giữ bản ghi domain); tính nguyên tử không có test thường trú; KHÔNG có test
+concurrency thật trên đường claim (hợp đồng 409 chỉ được ghim ở tầng unit); ~987 user `e2e_%` tồn dư từ
+các suite cũ không liên quan; và toàn bộ danh sách ngoài phạm vi thường trực (dashboard, metrics, đối
+soát, thông báo, phản hồi review, analytics, transfer, bộ lọc hàng đợi, auto-reject/demotion, bảng
+trọng số phiếu, khoá phân tán đa-replica, §9B).

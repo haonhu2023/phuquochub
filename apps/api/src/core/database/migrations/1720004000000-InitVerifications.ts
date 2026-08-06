@@ -8,12 +8,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // new state-machine entity share literally the same 6-value type, by design (ADR-008 §Decision
 // mục 3-4).
 //
-// Owner Decision (2026-08-06, ADR-008 kickoff): BusinessClaimsService.decide() is explicitly LEFT
-// UNCHANGED by this milestone — it continues writing places.verificationStatus/verifiedAt directly
-// on claim approval, WITHOUT creating a verifications/verification_events row. This table is
-// therefore NOT yet the sole source of truth for the ADR-015 claim path; that integration
-// (business_claims -> Source -> Verification) is explicit future work requiring its own Source-
-// model decision. See docs/99-decisions/ADR-008-verification-model.md Implementation Status.
+// SCHEMA NOTE — this migration's DDL has never changed since it shipped; only the surrounding
+// application behavior did. At authoring time (Owner Decision, 2026-08-06, ADR-008 kickoff)
+// BusinessClaimsService.decide() was deliberately left writing places.verificationStatus/verifiedAt
+// directly, so this table was NOT yet the sole source of truth for the ADR-015 claim path.
+// SUPERSEDED (2026-08-06, CLAIM -> SOURCE -> VERIFICATION INTEGRATION): claim approval now goes
+// through VerificationsService.ensureOfficialFromClaim() — it creates a `sources` row and a real
+// `verifications`/`verification_events` transition (method='owner_claim'), so this table IS now the
+// sole source of truth for every trusted verification state, claim-driven included. No schema change
+// was required for that (`owner_claim` was already in the enum below, unused until then).
+// See docs/99-decisions/ADR-008-verification-model.md Implementation Status.
 export class InitVerifications1720004000000 implements MigrationInterface {
   name = 'InitVerifications1720004000000';
 

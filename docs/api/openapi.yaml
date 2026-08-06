@@ -746,9 +746,16 @@ paths:
   # `Verification.Verify`/`Verification.Reject` moderator-only, KHÔNG hậu tố scope (Owner Decision
   # 2026-08-06 mục 2 — KHÔNG cấp `business_owner`, KHÔNG biến thể `.Managed`). `Verification.Vote`
   # local_guide + DAG (moderator/administrator/super_administrator kế thừa qua `role_parents` sẵn
-  # có). KHÔNG endpoint nào ở đây cần `@AuthorizationContext` (permission global). Business Claim
-  # (ADR-015) KHÔNG đi qua các endpoint này — vẫn ghi thẳng cache `places.verification_status`
-  # (xem /business-claims/{id}/decide) — xem ADR-008 §Tình trạng triển khai mục "Ngoại lệ chuyển tiếp".
+  # có). KHÔNG endpoint nào ở đây cần `@AuthorizationContext` (permission global).
+  #
+  # CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06): Business Claim (ADR-015) KHÔNG đi qua
+  # các endpoint HTTP này, NHƯNG từ nay đi qua CHÍNH hệ Verification ở tầng service
+  # (`VerificationsService.ensureOfficialFromClaim()`) — approve claim tạo một `sources`
+  # (`type=business_owner`) rồi transition dòng `verifications` của place sang `official`
+  # (`method=owner_claim`) kèm `verification_events` + đồng bộ cache, tất cả trong CÙNG transaction
+  # với quyết định claim. `BusinessClaimsService` KHÔNG còn ghi thẳng `places.verification_status`/
+  # `verified_at` (ngoại lệ chuyển tiếp ĐÃ ĐÓNG) — bảng `verifications` là nguồn sự thật DUY NHẤT.
+  # Xem /business-claims/{id}/decide và ADR-008 §Tình trạng triển khai.
   /verifications:
     post:
       tags: [Verification]
@@ -783,6 +790,14 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Thiếu Verification.Verify }
         '404': { description: Không tìm thấy target (place/contact/price_history) }
+        '409':
+          description: >-
+            Xung đột đồng thời — HAI dạng, cùng ngữ nghĩa "đọc lại rồi thử lại": (a) một request khác
+            vừa gửi xác minh cho CHÍNH target này (partial-unique index `uq_verif_place`/`_contact`/
+            `_price` là chốt chặn cuối, ADR-008 CORRECTION finding T1); (b) target đang mang trạng
+            thái xác minh TIN CẬY nhưng KHÔNG có dòng `verifications` sở hữu nó — dữ liệu ghi TRƯỚC
+            khi CLAIM -> SOURCE -> VERIFICATION INTEGRATION tồn tại; nhận vào hàng đợi sẽ âm thầm hạ
+            cấp badge công khai đó xuống `pending`, nên bị từ chối.
         '422': { description: Target đã có dòng xác minh đang active (không phải expired/rejected) }
     get:
       tags: [Verification]
@@ -1979,11 +1994,30 @@ paths:
       summary: Duyệt/bác claim (Business.Verify, moderator)
       operationId: decideBusinessClaim
       description: >-
-        MỘT transaction: khoá claim, chặn tự xác minh (403), approve tạo `business_members(owner)` +
-        gán `business_owner` (`user_roles`, scope Managed, `business_id=place_id`) + đặt
-        `places.verification_status=official`/`verified_at` — TRỪ KHI cơ sở đã có owner hiệu lực,
-        khi đó tự động chuyển `disputed` thay vì approve (business.md §4). `reject` bắt buộc
-        `reason_code` (422 nếu thiếu).
+        MỘT transaction cho TOÀN BỘ quyết định: khoá claim, chặn tự xác minh (403), approve tạo
+        `business_members(owner)` + gán `business_owner` (`user_roles`, scope Managed,
+        `business_id=place_id`) — TRỪ KHI cơ sở đã có owner hiệu lực, khi đó tự động chuyển `disputed`
+        thay vì approve (business.md §4). `reject` bắt buộc `reason_code` (422 nếu thiếu).
+
+
+        CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06): approve KHÔNG còn ghi thẳng
+        `places.verification_status`/`verified_at`. Thay vào đó, trong CÙNG transaction trên, nó đi
+        qua hệ Verification (ADR-008): tạo MỘT `sources` (`type=business_owner`,
+        `kind=platform_user`, `author_user_id`=requester, `metadata` CHỈ chứa `business_claim_id` —
+        KHÔNG chứa evidence của claim, vì `GET /sources/{id}` là kênh công khai) → tạo/gửi lại dòng
+        `verifications` của place nếu cần rồi transition sang `official` (`method=owner_claim`,
+        `source_id` trỏ tới source vừa tạo) → append `verification_events` → đồng bộ cache
+        `places.verification_status`/`verified_at`. Bảng `verifications` là nguồn sự thật DUY NHẤT
+        của cache đó. `expires_at = null` cho claim-driven official (KHÔNG áp hạn 12 tháng mặc định
+        của `POST /verifications/{id}/official`) — chính sách TẠM THỜI, có chủ đích, tới khi có luồng
+        gia hạn/tái xác nhận cho chủ cơ sở.
+
+
+        Nếu place ĐÃ có một xác minh `official` (vd moderator đặt trước qua
+        `POST /verifications/{id}/official`): phần verification là NO-OP THẬT — KHÔNG tạo `sources`
+        mới, KHÔNG append event, KHÔNG ghi cache; ownership/claim vẫn được xử lý bình thường, và
+        audit context trỏ tới `source_id` ĐANG gắn trên dòng `verifications` đó
+        (`verification.sourceCreated=false`).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -2009,7 +2043,15 @@ paths:
                   - properties: { data: { $ref: '#/components/schemas/BusinessClaimSummary' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Thiếu Business.Verify, hoặc actor chính là requester (tự xác minh) }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '404': { description: Không tìm thấy claim, hoặc không tìm thấy source vừa tạo khi đặt official }
+        '409':
+          description: >-
+            Xung đột đồng thời trong bước Verification của nhánh approve (CLAIM -> SOURCE ->
+            VERIFICATION INTEGRATION): một tác nhân khác (moderator qua `/verifications/*`, hoặc job
+            hết hạn) vừa thay đổi CÙNG dòng `verifications` của place này (CAS `lock_version` thua),
+            HOẶC một `POST /verifications` đồng thời vừa tạo dòng xác minh cho chính place đó
+            (`uq_verif_place`). TOÀN BỘ quyết định rollback — claim giữ nguyên trạng thái cũ, KHÔNG có
+            ownership/source/verification nào được ghi. Đọc lại rồi quyết định lại.
         '422': { description: reject thiếu reason_code, hoặc claim không ở trạng thái cho phép quyết định }
   /business-claims/{id}/withdraw:
     post:

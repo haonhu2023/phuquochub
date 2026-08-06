@@ -30,7 +30,78 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, CLAIM -> SOURCE -> VERIFICATION INTEGRATION)
+  task: none                      # (2026-08-06, CLAIM -> SOURCE -> VERIFICATION CORRECTION)
+                                  # Narrow Owner-authorized correction, run after a READ-ONLY
+                                  # post-implementation review of the INTEGRATION milestone below
+                                  # found 1 Critical + 4 Major issues in work already committed and
+                                  # already reported complete. No new schema/endpoint/migration.
+                                  #
+                                  # 1. PRIVACY (Critical): claim Source metadata is now
+                                  #    {business_claim_id} ONLY -- claim.evidence is no longer copied
+                                  #    there. GET /sources/:id is @Public() and returns the raw
+                                  #    entity, so evidence there exposed private business documents
+                                  #    (licence numbers, invoice refs, phone-verification records)
+                                  #    unauthenticated -- exactly what the Business Claim API
+                                  #    deliberately withholds. Per Owner Decision 1 the public
+                                  #    Sources API was NOT redesigned; that was conditional on
+                                  #    evidence no longer being exposed, proven by a unit assertion
+                                  #    (toEqual + Object.keys, deliberately NOT objectContaining,
+                                  #    which is how the original defect passed its own test) and a
+                                  #    live unauthenticated GET /api/sources/:id check.
+                                  # 2. GENUINE NO-OP (Major): ensureOfficialFromClaim() takes a LAZY
+                                  #    createSource callback and checks already-official FIRST. The
+                                  #    previous version created the Source before knowing which
+                                  #    branch would run, so every re-approval on an already-official
+                                  #    place committed an orphan sources row and the audit reported a
+                                  #    source_id the verification never used. Now: no source, no
+                                  #    event, no cache write, no CAS; returns the verification's real
+                                  #    sourceId plus sourceCreated=false so the no-op is explicit.
+                                  # 3. EXPIRY POLICY (Major): claim-driven official uses
+                                  #    expires_at = null (HTTP official() keeps its +12mo default).
+                                  #    Deliberate interim divergence: verification.md §7 says the
+                                  #    expiry exists to force owner re-confirmation, but no owner
+                                  #    path exists (Verification.Verify is moderator-only; re-claim
+                                  #    is redirected to disputed by BR-B2), so a 12-month clock would
+                                  #    drop a legitimately-owned business's public badge to expired
+                                  #    with moderator-only recovery. Revisit WITH renewal UX.
+                                  # 4. API CONTRACT (Major): openapi.yaml was untouched by the
+                                  #    INTEGRATION milestone and still asserted the old direct-cache
+                                  #    model in two places; both rewritten to the real
+                                  #    Source -> Verification -> VerificationEvent -> cache flow.
+                                  #    Added 409 to /business-claims/{id}/decide (a NEW client-visible
+                                  #    failure mode the integration introduced: CAS loss on the
+                                  #    place's verifications row, or uq_verif_place from a concurrent
+                                  #    POST /verifications -- whole decision rolls back) and 409 to
+                                  #    POST /verifications (pre-existing omission).
+                                  # 5. X1' (Major, found DURING this milestone): the INTEGRATION
+                                  #    milestone's "zero residue" claim was scoped so it could not
+                                  #    see its own leak -- sources.author_user_id is ON DELETE SET
+                                  #    NULL so the e2e-user join matched nothing. An UNSCOPED query
+                                  #    (metadata ? 'business_claim_id') found 9 orphan rows, 6 still
+                                  #    carrying claim evidence. Root cause isolated by running the
+                                  #    file alone and counting (8 -> 9 per run): the FIRST, successful
+                                  #    approve in business-claims.e2e-spec.ts's dispute test creates a
+                                  #    Source whose id was never pushed into sourceIds. Fixed by
+                                  #    tracking it; residue now flat. The 9 historical orphans were
+                                  #    deleted from the dev DB after confirming all four reference
+                                  #    counts were 0.
+                                  #
+                                  # Validation: BE unit 127 suites/1496 tests (+5), BE e2e --runInBand
+                                  # 28 suites/250 tests (+1), tsc/eslint/nest build clean, monorepo
+                                  # turbo typecheck+lint+build 12/12, zero residue by unscoped SQL,
+                                  # secret scan + git diff --check clean, no new migrations. Rollback
+                                  # drill deliberately NOT re-run: this correction adds/removes/
+                                  # reorders no write inside the transaction (it makes one write
+                                  # conditional and narrows a jsonb payload). Stated plainly:
+                                  # atomicity still has NO standing regression test (drills are
+                                  # temporary by convention), and there are still no genuine
+                                  # concurrency tests on the claim path -- the 409 contract is pinned
+                                  # at unit level only.
+                                  # Report: docs/delivery/reports/
+                                  #   CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md
+                                  #
+                                  # ---- prior state (2026-08-06, CLAIM -> SOURCE -> VERIFICATION
+                                  # ---- INTEGRATION) ----
                                   # Owner-approved standalone milestone, run after the Scheduler.
                                   # Objective: remove the transitional exception the CORRECTION
                                   # milestone left open -- every trusted verification state must now

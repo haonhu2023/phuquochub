@@ -31,13 +31,29 @@
 > mọi claim approve MỚI đều tạo dòng `verifications` tương ứng nên không còn tái tạo được tình
 > huống đó qua đường hợp lệ.
 >
+> **CLAIM → SOURCE → VERIFICATION CORRECTION (2026-08-06)** — sau một post-implementation review
+> read-only của milestone trên (1 Critical + 4 Major). Ba điểm chốt hành vi:
+> **(a) Privacy:** `sources.metadata` của claim CHỈ chứa `{business_claim_id}` — KHÔNG sao
+> `claim.evidence` vào đó, vì `GET /sources/:id` là `@Public()` và trả nguyên `metadata` (evidence
+> CHỈ lộ qua `GET /business-claims/{id}` sau `Business.Verify`).
+> **(b) No-op THẬT:** approve claim trên place ĐÃ `official` KHÔNG tạo `sources` mới, KHÔNG append
+> event, KHÔNG ghi cache — `sources` tạo qua callback LƯỜI nên không còn dòng mồ côi, và audit trỏ
+> tới `source_id` THẬT đang gắn (`sourceCreated=false`).
+> **(c) Hạn:** claim-driven official dùng `expires_at = null` — KHÔNG áp mặc định +12 tháng của
+> `POST /verifications/{id}/official`. Đây là chính sách TẠM THỜI có chủ đích: §7 nói hạn `official`
+> để "buộc chủ cơ sở tái xác nhận", nhưng CHƯA có đường nào cho chủ cơ sở làm việc đó
+> (`Verification.Verify` moderator-only; claim lại bị BR-B2 đẩy sang `disputed`), nên hạn 12 tháng sẽ
+> khiến badge của cơ sở có chủ hợp lệ tự rơi xuống `expired` không ai phục hồi được ngoài moderator.
+> Xét lại CÙNG lúc renewal UX được xây.
+>
 > **Chưa hiện thực dù §3.1 có mô tả:** auto-reject khi `dispute_count` cao, và demotion sau khi đã
 > `community_verified`. Chi tiết:
 > [ADR-008 §Tình trạng triển khai](../../99-decisions/ADR-008-verification-model.md)
 > · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md)
 > · [ADR-008-CORRECTION-2026-08-06.md](../../delivery/reports/ADR-008-CORRECTION-2026-08-06.md)
 > · [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md)
-> · [CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md](../../delivery/reports/CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md).
+> · [CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md](../../delivery/reports/CLAIM-SOURCE-VERIFICATION-INTEGRATION-2026-08-06.md)
+> · [CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md](../../delivery/reports/CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 

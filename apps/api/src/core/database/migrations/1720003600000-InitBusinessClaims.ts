@@ -2,10 +2,16 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 // ADR-015 (Business Ownership Model, Model A — Place-centric) — bảng đầu tiên của ADR-015 được
 // migrate trong repository này (§Milestone interpretation: KHÔNG có M1/M2 trước đó — đây là
-// prerequisite schema cho Claim Decision Workflow). Hai bảng MỚI, KHÔNG đụng `places`: cache
-// verification (`places.verification_status`/`verified_at`, ADR-008 §Decision mục 3) là cơ chế
-// Official DUY NHẤT dùng ở milestone này — Owner Decision 1: ADR-008 (`verifications`/
-// `verification_events`/`verification_votes`) VẪN HOÃN, không tạo ở đây.
+// prerequisite schema cho Claim Decision Workflow). Hai bảng MỚI, KHÔNG đụng `places`.
+//
+// SCHEMA NOTE — DDL ở đây chưa từng đổi; chỉ hành vi ứng dụng xung quanh đổi. Lúc viết migration này
+// (Owner Decision 1): cache verification (`places.verification_status`/`verified_at`, ADR-008
+// §Decision mục 3) là cơ chế Official DUY NHẤT, và ADR-008 (`verifications`/`verification_events`/
+// `verification_votes`) VẪN HOÃN — không tạo ở đây.
+// ĐÃ THAY THẾ (2026-08-06): ADR-008 Verification Foundation đã migrate các bảng đó
+// (InitVerifications1720004000000), và CLAIM -> SOURCE -> VERIFICATION INTEGRATION đưa approve claim
+// đi qua `VerificationsService.ensureOfficialFromClaim()` — cache trên `places` giờ CHỈ do
+// `VerificationsService.syncTargetCache()` ghi, không còn do `BusinessClaimsService` ghi trực tiếp.
 //
 // business_id ở toàn hệ = places.id (ADR-015 §Decision mục 3) — `business_claims`/
 // `business_members` dùng thẳng `place_id`, không có cột `business_id` riêng.

@@ -1,5 +1,15 @@
 # ADR-008 — CLAIM → SOURCE → VERIFICATION INTEGRATION
 
+> **SUPERSEDED IN PART (2026-08-06) — see
+> [CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md](./CLAIM-SOURCE-VERIFICATION-CORRECTION-2026-08-06.md).**
+> A read-only post-implementation review of this milestone found one Critical and four Major issues.
+> Three statements below are no longer true of the shipped code and are corrected **in place** with
+> `**CORRECTED:**` notes rather than silently rewritten (same convention as ADR-008 CORRECTION):
+> the Source's `metadata` no longer carries `evidence` (privacy); the Source is no longer created
+> before the already-`official` check (no orphan rows); and claim-driven `official` now uses
+> `expires_at = null` instead of the 12-month default. The accounting slips the review flagged in
+> Phases 7–8 are corrected below too.
+
 ## Status
 
 Standalone milestone, run immediately after VERIFICATION SCHEDULER — Operational Enablement.
@@ -57,13 +67,31 @@ by extraction, preserving every existing public method's external behavior exact
   - already `official` → no-op, returns the row as-is (idempotent; a re-approved claim on an
     already-official place does not re-verify or re-append events).
 
+  **CORRECTED (2026-08-06):** the no-op branch was idempotent only in `verifications`. Because the
+  caller created the `Source` *before* calling this method, every re-approval on an already-official
+  place still committed one orphan `sources` row and the audit reported a `source_id` the verification
+  did not use. `ensureOfficialFromClaim` now takes a **lazy** `createSource` callback, checks
+  already-`official` **first**, and returns `{verification, sourceId, sourceCreated}` — the branch is
+  a genuine no-op. See the CORRECTION report.
+
 **`BusinessClaimsService`** (`apps/api/src/modules/business/business-claims.service.ts`): constructor
 swapped `VerificationsRepository` for `VerificationsService` + added `SourcesRepository`. The approve
 branch of `decide()` now, inside its existing single transaction: creates one `sources` row
 (`type=business_owner`, `kind=platform_user`, `authorUserId=claim.requesterId`,
 `reliability=SOURCE_TYPE_DEFAULT_RELIABILITY[BUSINESS_OWNER]` (85), `retrievedAt=decidedAt`,
 `metadata={business_claim_id, evidence}`), then calls `ensureOfficialFromClaim(claim.placeId,
-{sourceId, actorId, note: decision_note}, manager)`. The old direct write
+{sourceId, actorId, note: decision_note}, manager)`.
+
+**CORRECTED (2026-08-06) — two changes to the sentence above.** (1) `metadata` is now
+`{business_claim_id}` **only**. Copying `claim.evidence` there was a privacy regression: `GET
+/sources/:id` is `@Public()` and returns the raw entity, so private business documents (licence
+numbers, invoice references, phone-verification records) that the Business Claim API deliberately
+withholds became readable without authentication. (2) The Source is no longer created here at all —
+`decide()` passes a lazy `createSource` callback and `ensureOfficialFromClaim` invokes it only when a
+transition will actually happen. Claim-driven `official` also now sets `expires_at = null` rather than
+inheriting `official()`'s 12-month default. See the CORRECTION report.
+
+The old direct write
 (`placesRepo.updateScalars(..., {verificationStatus: OFFICIAL, verifiedAt: decidedAt}, manager)`) is
 gone. The class doc comment and the guard's inline comments were updated to describe the current
 state, not rewritten as if the old state never existed (see the "surviving guard" note below).
@@ -145,6 +173,17 @@ by row-id equality between before and after, not just a count.
 rows. (987 pre-existing `e2e_%` users remain from unrelated prior test suites — a known,
 previously-flagged, out-of-scope finding, not touched.)
 
+**CORRECTED (2026-08-06) — this zero-residue claim was incomplete.** Both queries above were
+scoped in ways that could not see the actual leak: the claim-created `sources` rows had their
+`author_user_id` nulled when their `e2e_%` users were deleted (FK `ON DELETE SET NULL`), so the join
+matched nothing, and `method='owner_claim'` rows genuinely do cascade away with their places. The
+CORRECTION milestone found **9 orphan `sources` rows** (`metadata ? 'business_claim_id'`, no author,
+no referencing `verifications`, claims already gone) accumulated from this milestone's own e2e runs —
+6 of them still carrying claim `evidence`. Root cause: the first (successful) approve inside
+`business-claims.e2e-spec.ts`'s dispute test creates a Source that was never pushed into `sourceIds`.
+Fixed and re-proven in the CORRECTION milestone with an unscoped `metadata ? 'business_claim_id'`
+count; the orphans were deleted from the dev database.
+
 **Bug caught and fixed during this phase:** the first draft of both rewritten `verifications.e2e-spec.ts`
 tests queried and asserted against the newly-created `sources` row but never pushed its id into the
 file's `sourceIds` tracking array — the exact X1 leak pattern ADR-008 CORRECTION fixed, reintroduced by
@@ -159,7 +198,9 @@ Temporary `FORCE_ROLLBACK_DRILL=1`-gated `throw` inserted in `decide()`'s approv
 **after** `business_members` insert + `user_roles.assign()` + `sources.save()` +
 `ensureOfficialFromClaim()` had all executed inside the transaction, but **before** the claim-status
 `updateDecision()` call. A temporary e2e test (`test/_rollback-drill.e2e-spec.ts`) submitted a claim,
-called `decide(approve)`, got a real `500`, then queried all five affected areas directly via SQL:
+called `decide(approve)`, got a real `500`, then queried all **six** affected areas directly via SQL
+(**CORRECTED:** the original text said "five" while listing six bullets — the target cache is a
+distinct area from the `verifications` row that drives it):
 
 - `business_claims.status` — still `pending`, `reviewer_id`/`decided_at` still `NULL`.
 - `business_members` — zero rows for the place.
@@ -168,15 +209,20 @@ called `decide(approve)`, got a real `500`, then queried all five affected areas
 - `verifications` — zero rows for the place.
 - `places.verification_status`/`verified_at` — still `pending`/`NULL`.
 
-All reverted to baseline together, confirming the whole decision — now five writes instead of the
-original three — is still one atomic unit. The throw and the temporary test file were removed
+All reverted to baseline together, confirming the whole decision is still one atomic unit.
+**CORRECTED:** the original text said "now five writes instead of the original three". The accurate
+count is **seven** write targets after the integration (`business_claims.status`, `business_members`,
+`user_roles`, `sources`, `verifications`, `verification_events`, target cache) versus **four** before
+it (`business_claims.status`, `business_members`, `user_roles`, target cache). The throw and the
+temporary test file were removed
 immediately after confirmation; `business-claims.e2e-spec.ts` was rerun afterward to confirm normal
 behavior was restored (8/8 passing).
 
 ## Phase 8 — full regression
 
-- BE unit: **127 suites / 1491 tests**, all passing.
-- BE e2e (`--runInBand`, live Postgres): **28 suites / 249 tests**, all passing — same file and test
+- BE unit: **127 suites, 1491 tests**, all passing. (**CORRECTED:** originally written as
+  "127/1491", which reads as a ratio rather than suites/tests.)
+- BE e2e (`--runInBand`, live Postgres): **28 suites, 249 tests**, all passing — same file and test
   count as the Scheduler milestone (no new e2e files; two existing files extended).
 - `eslint "src/**/*.ts" --max-warnings=0`: clean. The two modified e2e files individually linted
   clean as well (a pre-existing unrelated warning in `authz-own-scope-hardening.e2e-spec.ts`, outside

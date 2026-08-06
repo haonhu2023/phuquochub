@@ -218,10 +218,16 @@ export class PlacesRepository {
 
   /**
    * Cập nhật trường scalar (không đụng location). `manager` TUỲ CHỌN — cùng quy ước
-   * `recalculateRating()`: truyền vào khi caller cần chạy trong transaction của họ (vd
-   * BusinessClaimsService.decide() cập nhật verification_status/verified_at CÙNG transaction với
-   * business_claims/business_members/user_roles, ADR-015 Claim Decision Workflow); bỏ trống dùng
+   * `recalculateRating()`: truyền vào khi caller cần chạy trong transaction của họ; bỏ trống dùng
    * `this.repo` như trước (không phá vỡ lời gọi cũ nào ngoài transaction).
+   *
+   * Caller DUY NHẤT ghi `verification_status`/`verified_at` qua đây là
+   * `VerificationsService.syncTargetCache()` (ADR-008) — nó cần `manager` để đồng bộ cache CÙNG
+   * transaction với `verifications`/`verification_events` (§5C "một transition = một transaction").
+   * `BusinessClaimsService.decide()` từng ghi cặp cột đó trực tiếp ở đây nhưng KHÔNG còn nữa kể từ
+   * CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06) — nó gọi
+   * `VerificationsService.ensureOfficialFromClaim()` thay thế. Mọi caller khác (vd
+   * `PlacesService.update()`) chỉ truyền các cột nội dung, KHÔNG bao giờ cặp cột cache xác minh.
    */
   async updateScalars(id: string, patch: Record<string, unknown>, manager?: EntityManager): Promise<void> {
     const keys = Object.keys(patch);
