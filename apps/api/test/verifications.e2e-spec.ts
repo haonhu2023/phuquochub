@@ -470,8 +470,8 @@ describe('Verification Foundation (live Postgres)', () => {
     const verifiedAtBefore = await ds.query(`SELECT verified_at FROM places WHERE id=$1`, [placeOverdue]);
 
     const verificationsService = app.get(VerificationsService);
-    const expiredCount = await verificationsService.expireOverdue(new Date());
-    expect(expiredCount).toBeGreaterThanOrEqual(1);
+    const summary = await verificationsService.expireOverdue({ now: new Date() });
+    expect(summary.expired).toBeGreaterThanOrEqual(1);
 
     const overdueAfter = await ds.query(`SELECT verification_status, verified_at FROM places WHERE id=$1`, [
       placeOverdue,
@@ -601,7 +601,7 @@ describe('Verification Foundation (live Postgres)', () => {
     // Đẩy hạn về quá khứ rồi chạy job -> expired.
     await ds.query(`UPDATE verifications SET expires_at = now() - interval '1 day' WHERE id=$1`, [verificationId]);
     const verificationsService = app.get(VerificationsService);
-    await verificationsService.expireOverdue(new Date());
+    await verificationsService.expireOverdue({ now: new Date() });
     const afterExpire = await ds.query(`SELECT status FROM verifications WHERE id=$1`, [verificationId]);
     expect(afterExpire[0].status).toBe('expired');
 
@@ -622,7 +622,7 @@ describe('Verification Foundation (live Postgres)', () => {
     expect(afterVerify.body.data.expires_at).toBeNull();
 
     // Job chạy lại: dòng `verified` này KHÔNG được tự hết hạn (trước fix nó bị hạ cấp ngay).
-    await verificationsService.expireOverdue(new Date());
+    await verificationsService.expireOverdue({ now: new Date() });
     const afterSecondJob = await ds.query(`SELECT status FROM verifications WHERE id=$1`, [verificationId]);
     expect(afterSecondJob[0].status).toBe('verified');
     const place = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);

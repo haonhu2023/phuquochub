@@ -1,7 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { VerificationsService } from './verifications.service';
-import { VerificationsRepository } from './repositories/verifications.repository';
+import { VerificationsRepository, type OverdueVerificationCandidate } from './repositories/verifications.repository';
 import { VerificationEventsRepository } from './repositories/verification-events.repository';
 import { VerificationVotesRepository } from './repositories/verification-votes.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
@@ -85,7 +85,7 @@ describe('VerificationsService', () => {
       create: jest.fn(),
       casUpdate: jest.fn(),
       list: jest.fn(),
-      listOverdueTrusted: jest.fn(),
+      findOverdueTrustedBatch: jest.fn(),
     });
     eventsRepo = createMock<VerificationEventsRepository>({
       append: jest.fn(),
@@ -577,28 +577,49 @@ describe('VerificationsService', () => {
     });
   });
 
-  describe('expireOverdue', () => {
-    it('không có dòng quá hạn -> trả về 0, không mở transaction nào', async () => {
-      verificationsRepo.listOverdueTrusted.mockResolvedValue([]);
-      const count = await service.expireOverdue(new Date());
-      expect(count).toBe(0);
+  describe('expireOverdue (VERIFICATION SCHEDULER — Operational Enablement)', () => {
+    function makeCandidate(overrides: Partial<OverdueVerificationCandidate> = {}): OverdueVerificationCandidate {
+      return {
+        id: 'v1',
+        status: VerificationStatus.OFFICIAL,
+        lockVersion: 0,
+        placeId: 'place-1',
+        contactId: null,
+        priceHistoryId: null,
+        expiresAt: new Date('2026-08-01T00:00:00Z'),
+        expiresAtCursor: '2026-08-01 00:00:00',
+        ...overrides,
+      };
+    }
+
+    it('không có dòng quá hạn -> summary rỗng, KHÔNG mở transaction nào', async () => {
+      verificationsRepo.findOverdueTrustedBatch.mockResolvedValue([]);
+      const summary = await service.expireOverdue();
+      expect(summary).toMatchObject({ scanned: 0, eligible: 0, expired: 0, conflicts: 0, errors: 0, batchesRun: 0 });
       expect(dataSource.transaction).not.toHaveBeenCalled();
     });
 
-    it('chuyển đúng các dòng quá hạn -> expired, ghi event method=system_auto actorId=null, đếm đúng số dòng', async () => {
+    it('chuyển đúng các dòng quá hạn -> expired, ghi event method=system_auto actorId=null, summary.expired đúng số dòng, KHÔNG audit_logs', async () => {
       const now = new Date('2026-09-01T00:00:00Z');
-      verificationsRepo.listOverdueTrusted.mockResolvedValue([
-        makeVerification({ id: 'v1', status: VerificationStatus.OFFICIAL, lockVersion: 2 }),
-        makeVerification({ id: 'v2', status: VerificationStatus.VERIFIED, lockVersion: 0 }),
-      ]);
+      verificationsRepo.findOverdueTrustedBatch
+        .mockResolvedValueOnce([
+          makeCandidate({ id: 'v1', status: VerificationStatus.OFFICIAL, lockVersion: 2 }),
+          makeCandidate({ id: 'v2', status: VerificationStatus.VERIFIED, lockVersion: 0 }),
+        ])
+        .mockResolvedValueOnce([]);
       verificationsRepo.findById
         .mockResolvedValueOnce(makeVerification({ id: 'v1', status: VerificationStatus.OFFICIAL, lockVersion: 2 }))
         .mockResolvedValueOnce(makeVerification({ id: 'v2', status: VerificationStatus.VERIFIED, lockVersion: 0 }));
       verificationsRepo.casUpdate.mockResolvedValue(true);
 
-      const count = await service.expireOverdue(now);
+      const summary = await service.expireOverdue({ now });
 
-      expect(count).toBe(2);
+      expect(summary.scanned).toBe(2);
+      expect(summary.eligible).toBe(2);
+      expect(summary.expired).toBe(2);
+      expect(summary.conflicts).toBe(0);
+      expect(summary.errors).toBe(0);
+      expect(summary.batchesRun).toBe(1);
       expect(eventsRepo.append).toHaveBeenCalledWith(
         expect.objectContaining({
           verificationId: 'v1',
@@ -612,20 +633,128 @@ describe('VerificationsService', () => {
       expect(audit.record).not.toHaveBeenCalled(); // job hệ thống — không audit_logs (không actor người dùng)
     });
 
-    it('CAS thua trên một dòng -> bỏ qua dòng đó, KHÔNG lỗi cả job', async () => {
-      verificationsRepo.listOverdueTrusted.mockResolvedValue([makeVerification({ id: 'v1', lockVersion: 0 })]);
+    it('CAS thua trên một dòng -> đếm vào conflicts, KHÔNG fatal, KHÔNG lỗi cả job', async () => {
+      verificationsRepo.findOverdueTrustedBatch.mockResolvedValueOnce([makeCandidate({ id: 'v1', lockVersion: 0 })]).mockResolvedValueOnce([]);
       verificationsRepo.findById.mockResolvedValue(makeVerification({ id: 'v1', lockVersion: 0 }));
       verificationsRepo.casUpdate.mockResolvedValue(false);
 
-      const count = await service.expireOverdue(new Date());
-      expect(count).toBe(0);
+      const summary = await service.expireOverdue();
+      expect(summary.conflicts).toBe(1);
+      expect(summary.expired).toBe(0);
+      expect(summary.errors).toBe(0);
     });
 
-    it('dòng đã bị xoá/transition khỏi trạng thái hợp lệ giữa lúc quét và lúc xử lý -> bỏ qua an toàn', async () => {
-      verificationsRepo.listOverdueTrusted.mockResolvedValue([makeVerification({ id: 'v1' })]);
+    it('dòng đã bị xoá/transition khỏi trạng thái hợp lệ giữa lúc quét và lúc xử lý -> đếm vào conflicts, bỏ qua an toàn', async () => {
+      verificationsRepo.findOverdueTrustedBatch.mockResolvedValueOnce([makeCandidate({ id: 'v1' })]).mockResolvedValueOnce([]);
       verificationsRepo.findById.mockResolvedValue(null);
-      const count = await service.expireOverdue(new Date());
-      expect(count).toBe(0);
+      const summary = await service.expireOverdue();
+      expect(summary.conflicts).toBe(1);
+      expect(summary.expired).toBe(0);
+    });
+
+    it('lỗi hệ thống KHÔNG lường trước trên MỘT dòng -> đếm vào errors, KHÔNG chặn các dòng còn lại (cùng lô)', async () => {
+      verificationsRepo.findOverdueTrustedBatch
+        .mockResolvedValueOnce([makeCandidate({ id: 'v1' }), makeCandidate({ id: 'v2' })])
+        .mockResolvedValueOnce([]);
+      verificationsRepo.findById
+        .mockRejectedValueOnce(new Error('sự cố kết nối DB'))
+        .mockResolvedValueOnce(makeVerification({ id: 'v2', status: VerificationStatus.OFFICIAL }));
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const summary = await service.expireOverdue();
+      expect(summary.errors).toBe(1);
+      expect(summary.expired).toBe(1); // v2 vẫn được xử lý dù v1 lỗi
+    });
+
+    it('batching: đúng batchSize truyền cho findOverdueTrustedBatch mỗi lô', async () => {
+      verificationsRepo.findOverdueTrustedBatch.mockResolvedValue([]);
+      await service.expireOverdue({ batchSize: 25 });
+      expect(verificationsRepo.findOverdueTrustedBatch).toHaveBeenCalledWith(expect.any(Date), 25, undefined);
+    });
+
+    it('cursor tiến SAU MỖI LÔ theo dòng CUỐI của lô (keyset, không phụ thuộc kết quả từng dòng)', async () => {
+      verificationsRepo.findOverdueTrustedBatch
+        .mockResolvedValueOnce([
+          makeCandidate({ id: 'v1', expiresAtCursor: 'c1' }),
+          makeCandidate({ id: 'v2', expiresAtCursor: 'c2' }),
+        ])
+        .mockResolvedValueOnce([]);
+      verificationsRepo.findById.mockResolvedValue(makeVerification());
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      await service.expireOverdue({ batchSize: 2 });
+
+      expect(verificationsRepo.findOverdueTrustedBatch).toHaveBeenNthCalledWith(1, expect.any(Date), 2, undefined);
+      expect(verificationsRepo.findOverdueTrustedBatch).toHaveBeenNthCalledWith(2, expect.any(Date), 2, {
+        expiresAt: 'c2',
+        id: 'v2',
+      });
+    });
+
+    it('maxBatches: dừng ĐÚNG sau số lô cho phép dù còn dòng đủ điều kiện', async () => {
+      verificationsRepo.findOverdueTrustedBatch.mockResolvedValue([makeCandidate({ id: 'v1' })]); // luôn trả 1 dòng — "còn nữa"
+      verificationsRepo.findById.mockResolvedValue(makeVerification());
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const summary = await service.expireOverdue({ batchSize: 1, maxBatches: 3 });
+      expect(summary.batchesRun).toBe(3);
+      expect(verificationsRepo.findOverdueTrustedBatch).toHaveBeenCalledTimes(3);
+    });
+
+    it('time budget: dừng GIỮA các dòng, đánh dấu timeBudgetExceeded, KHÔNG xử lý dở dang một dòng', async () => {
+      let now = 0;
+      const realDateNow = Date.now;
+      Date.now = jest.fn(() => now);
+      try {
+        verificationsRepo.findOverdueTrustedBatch
+          .mockResolvedValueOnce([makeCandidate({ id: 'v1' }), makeCandidate({ id: 'v2' })])
+          .mockResolvedValueOnce([]);
+        verificationsRepo.findById.mockImplementation(async () => {
+          now = 10; // "thời gian trôi" khi xử lý xong dòng đầu — vượt ngân sách trước dòng kế
+          return makeVerification({ id: 'v1', status: VerificationStatus.OFFICIAL });
+        });
+        verificationsRepo.casUpdate.mockResolvedValue(true);
+
+        const summary = await service.expireOverdue({ maxExecutionMs: 5 });
+
+        expect(summary.timeBudgetExceeded).toBe(true);
+        expect(summary.expired).toBe(1); // dòng ĐANG xử lý khi vượt ngân sách vẫn chạy XONG trọn vẹn
+        expect(verificationsRepo.findById).toHaveBeenCalledTimes(1); // dòng thứ hai KHÔNG bị đụng vào
+      } finally {
+        Date.now = realDateNow;
+      }
+    });
+
+    it('dryRun: đếm scanned/eligible như thật, KHÔNG mở transaction, KHÔNG ghi gì, expired luôn = 0', async () => {
+      verificationsRepo.findOverdueTrustedBatch
+        .mockResolvedValueOnce([makeCandidate({ id: 'v1' }), makeCandidate({ id: 'v2' })])
+        .mockResolvedValueOnce([]);
+
+      const summary = await service.expireOverdue({ dryRun: true });
+
+      expect(summary.dryRun).toBe(true);
+      expect(summary.scanned).toBe(2);
+      expect(summary.eligible).toBe(2);
+      expect(summary.expired).toBe(0);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+      expect(verificationsRepo.casUpdate).not.toHaveBeenCalled();
+      expect(eventsRepo.append).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+    });
+
+    it('oldest/newestProcessedExpiresAt phản ánh đúng biên của các dòng đã quét', async () => {
+      verificationsRepo.findOverdueTrustedBatch
+        .mockResolvedValueOnce([
+          makeCandidate({ id: 'v1', expiresAt: new Date('2026-01-01T00:00:00Z') }),
+          makeCandidate({ id: 'v2', expiresAt: new Date('2026-06-01T00:00:00Z') }),
+        ])
+        .mockResolvedValueOnce([]);
+      verificationsRepo.findById.mockResolvedValue(makeVerification());
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const summary = await service.expireOverdue();
+      expect(summary.oldestProcessedExpiresAt).toEqual(new Date('2026-01-01T00:00:00Z'));
+      expect(summary.newestProcessedExpiresAt).toEqual(new Date('2026-06-01T00:00:00Z'));
     });
   });
 });
