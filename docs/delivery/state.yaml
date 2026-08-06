@@ -30,7 +30,119 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, ADR-015 Business Ownership Transfer -- UC-B7)
+  task: none                      # (2026-08-06, ADR-008 Verification Foundation) Owner-approved
+                                  # implementation. First real ADR-008 implementation in this
+                                  # repository -- verifications/verification_events/
+                                  # verification_votes were never migrated before this; the only
+                                  # verification mechanism was the cache columns
+                                  # (verification_status/verified_at) on places/contacts/
+                                  # price_history, used directly as a placeholder by
+                                  # BusinessClaimsService.decide() (ADR-015 Claim Foundation).
+                                  #
+                                  # Preceding read-only assessment found two things needing an
+                                  # Owner call before writing code: (1) BusinessClaimsService.decide()
+                                  # already writes places.verificationStatus=official directly, with
+                                  # no verifications row at all -- if left unaddressed this creates
+                                  # exactly the "two sources of truth" problem ADR-008 exists to
+                                  # remove, and a real fix requires either synthesizing a sources row
+                                  # from business_claims.evidence (Source-module scope) or loosening
+                                  # the official-requires-source_id CHECK (contradicts ADR-008
+                                  # directly); (2) verification.md Sec5D's own RBAC table lists
+                                  # "Business (đã claim)" as an actor for -> official via
+                                  # Verification.Verify, but rbac.md's capability matrix and the
+                                  # already-seeded SeedRbac grant say Verify is moderator-only --
+                                  # the two design docs contradict each other.
+                                  #
+                                  # Owner Decision 1: BusinessClaimsService.decide() explicitly LEFT
+                                  # UNCHANGED -- continues writing the cache columns directly, no
+                                  # verifications/verification_events row created, no sources row
+                                  # synthesized from claim evidence, CHECK left exactly as ADR-008
+                                  # specifies. verifications is NOT yet the sole source of truth for
+                                  # the ADR-015 claim path; that integration is separate future work
+                                  # requiring its own Source-model decision -- documented as a known,
+                                  # deliberate transitional exception, proven live via e2e (last test
+                                  # in verifications.e2e-spec.ts). Owner Decision 2: permission model
+                                  # unchanged -- Verification.Verify/Reject stay moderator-only,
+                                  # unscoped, no grant to business_owner, no .Managed variant.
+                                  # verification.md's "Business (đã claim)" wording is read as the
+                                  # conceptual outcome ADR-015 already delivers through its own
+                                  # separate Business.Verify path, not a literal permission grant.
+                                  # Owner Decision 3: Verification.Vote seeded fresh, granted ONLY to
+                                  # local_guide (the one role rbac.md names explicitly) -- moderator/
+                                  # administrator/super_administrator inherit through the REAL
+                                  # role_parents DAG edge (moderator -> local_guide, already seeded),
+                                  # not assumed from role naming.
+                                  #
+                                  # New module apps/api/src/modules/verifications/: Verification/
+                                  # VerificationEvent/VerificationVote entities, a pure FSM
+                                  # (verification.transition.ts: submit/verify/official/
+                                  # communityVerify/reject/expire, preferring verification.md Sec3.2's
+                                  # table over the informal Sec3 ASCII diagram where they disagree),
+                                  # VerificationsRepository/VerificationEventsRepository/
+                                  # VerificationVotesRepository (optimistic lock_version CAS via
+                                  # casUpdate(), no FOR UPDATE -- true to Sec5C's concurrency model),
+                                  # VerificationsService (submit/list/getById/listEvents/claim/verify/
+                                  # official/reject/vote/expireOverdue), VerificationsController (POST/
+                                  # GET /verifications, GET /verifications/:id[/events], POST
+                                  # /verifications/:id/{claim,verify,official,reject,votes}). New
+                                  # migration InitVerifications (3 new tables, REUSES the existing
+                                  # verification_status enum from InitPlaces -- no new type, self-
+                                  # refusing down() when verification_events already has real rows)
+                                  # and SeedVerificationPermissions (Verification.Vote, local_guide
+                                  # only). ContactsRepository/PricesRepository each gained
+                                  # updateScalars() (Places already had it from ADR-015) so
+                                  # VerificationsService can sync verification_status/verified_at onto
+                                  # whichever entity type the exclusive arc points at.
+                                  #
+                                  # Deliberate departures from the literal design doc, documented:
+                                  # claim (assigned_to/priority/sla_due_at) is a plain field update,
+                                  # NOT a status transition -- no verification_events row, matching
+                                  # Sec5D listing "nhận việc" as a separate row from the transition
+                                  # rows. Vote weight is UNIFORM = 1 for every voter -- verification.md
+                                  # Sec10 item 7 explicitly marks role-based weighting as still open
+                                  # ("chốt cùng growth.md"); the weight column exists and is fully
+                                  # wired for a real weighting table once that's decided, this
+                                  # milestone does not invent numbers ADR-008 never approved.
+                                  # expireOverdue() is a plain method with no scheduler wired, same
+                                  # convention as the pre-existing
+                                  # InventoryHoldsRepository.expireOverdueHolds(). SLA defaults to
+                                  # +48h when not specified -- an explicit assumption, ADR-008 doesn't
+                                  # specify one.
+                                  #
+                                  # Live Postgres validation (2026-08-06): full lifecycle proven over
+                                  # real HTTP + direct SQL -- submit -> claim -> verify -> official
+                                  # (wrong-type source -> 422, correct-type source defaults expires_at
+                                  # to +12 months) -> reject (missing reason_code -> 400 DTO
+                                  # validation) -> resubmit (reuses the SAME row, no new insert) --
+                                  # cache synced at exactly the right moments (verified_at untouched on
+                                  # reject/expire, only set when entering a trusted status). Exclusive
+                                  # arc proven with both a place and a contact target. 5 local_guide
+                                  # users voting confirm (weight 1 each) auto-promoted to
+                                  # community_verified on the 5th vote within that same request,
+                                  # verification_events recorded method=community_vote actor_id=null;
+                                  # changing a vote is idempotent, does not double-count. expireOverdue()
+                                  # transitions only rows actually past expires_at, leaves others alone.
+                                  # A temporary forced-failure rollback drill (throw after the CAS
+                                  # update + event insert + cache update but before commit, then
+                                  # removed) proved all three roll back together on a real Postgres
+                                  # 500. Migration apply -> revert (self-refusing guard correctly fired
+                                  # once real verification_events existed) -> verified zero residue ->
+                                  # reapply matched exactly. Full regression: BE unit 125 suites/1448
+                                  # tests (up from 121/1354), BE e2e 27 suites/237 tests (up from
+                                  # 26/225, includes verifications.e2e-spec.ts, 12 tests), monorepo
+                                  # build/typecheck/lint 12/12, git diff --check clean, secret scan
+                                  # clean. See docs/delivery/reports/
+                                  # ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md and ADR-008's own
+                                  # Implementation Status section.
+                                  #
+                                  # Explicitly NOT started / out of scope: Business Claim -> Source ->
+                                  # Verification integration (the transitional exception above), a
+                                  # fourth exclusive-arc target type (review/media -- Sec10 item 6,
+                                  # still open), a real role/karma-based vote weight table (Sec10 item
+                                  # 7, still open), a real scheduler for expireOverdue()/SLA alerting/
+                                  # queue dashboards (Sec9B observability), any Business/Place
+                                  # milestone beyond this one.
+                                  # ---- prior state (2026-08-06, ADR-015 Business Ownership Transfer -- UC-B7)
                                   # Owner-approved implementation. Third ADR-015 milestone in this
                                   # repository, immediately after Manager Assignment/Revocation.
                                   # Resolves business.md Sec7 item 5 (open since Claim Foundation):

@@ -742,18 +742,58 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/PriceInput' } } }
       responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
 
-  # ---- Verification (§11.3) ----
+  # ---- Verification Foundation (ADR-008, verification.md §3-§5C) — ĐÃ TRIỂN KHAI (2026-08-06).
+  # `Verification.Verify`/`Verification.Reject` moderator-only, KHÔNG hậu tố scope (Owner Decision
+  # 2026-08-06 mục 2 — KHÔNG cấp `business_owner`, KHÔNG biến thể `.Managed`). `Verification.Vote`
+  # local_guide + DAG (moderator/administrator/super_administrator kế thừa qua `role_parents` sẵn
+  # có). KHÔNG endpoint nào ở đây cần `@AuthorizationContext` (permission global). Business Claim
+  # (ADR-015) KHÔNG đi qua các endpoint này — vẫn ghi thẳng cache `places.verification_status`
+  # (xem /business-claims/{id}/decide) — xem ADR-008 §Tình trạng triển khai mục "Ngoại lệ chuyển tiếp".
   /verifications:
+    post:
+      tags: [Verification]
+      summary: Gửi (hoặc gửi lại) một target vào hàng đợi xác minh (Verification.Verify)
+      operationId: submitVerification
+      description: >-
+        `target_type`+`target_id` ánh xạ đúng MỘT trong ba FK exclusive-arc (place/contact/
+        price_history). Target CHƯA từng có dòng xác minh → tạo mới (`pending`). Target đã có dòng
+        đang `expired`/`rejected` → gửi lại, TÁI SỬ DỤNG cùng dòng (không insert mới, `id` giữ
+        nguyên). Target đang có dòng active khác (`pending`/`verified`/`official`/
+        `community_verified`) → 422.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_type, target_id]
+              properties:
+                target_type: { type: string, enum: [place, contact, price_history] }
+                target_id: { type: string, format: uuid }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '201':
+          description: Created (dòng mới) hoặc OK-tái-sử-dụng (gửi lại) — luôn 201, `data.id` giữ nguyên khi gửi lại.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
+        '404': { description: Không tìm thấy target (place/contact/price_history) }
+        '422': { description: Target đã có dòng xác minh đang active (không phải expired/rejected) }
     get:
       tags: [Verification]
-      summary: Hàng đợi xác minh
+      summary: Hàng đợi xác minh (Verification.Verify)
       operationId: listVerifications
+      description: Thứ tự CỐ ĐỊNH priority DESC, created_at ASC — không có tham số sort tuỳ chỉnh.
       parameters:
         - { name: status, in: query, schema: { $ref: '#/components/schemas/VerificationStatus' } }
         - { name: assigned_to, in: query, schema: { type: string, format: uuid } }
-        - { name: priority, in: query, schema: { type: integer } }
-        - { name: overdue, in: query, schema: { type: boolean } }
-        - { $ref: '#/components/parameters/SortParam' }
+        - { $ref: '#/components/parameters/PageParam' }
+        - { $ref: '#/components/parameters/LimitParam' }
       responses:
         '200':
           description: OK
@@ -763,10 +803,12 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/SuccessEnvelope'
                   - properties: { data: { type: array, items: { $ref: '#/components/schemas/Verification' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
   /verifications/{id}:
     get:
       tags: [Verification]
-      summary: Chi tiết xác minh
+      summary: Chi tiết xác minh (Verification.Verify)
       operationId: getVerification
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       responses:
@@ -778,11 +820,36 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/SuccessEnvelope'
                   - properties: { data: { $ref: '#/components/schemas/Verification' } }
-  /verifications/{id}/assign:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /verifications/{id}/events:
+    get:
+      tags: [Verification]
+      summary: Lịch sử chuyển trạng thái, append-only (Verification.Verify)
+      operationId: listVerificationEvents
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { type: array, items: { $ref: '#/components/schemas/VerificationEvent' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /verifications/{id}/claim:
     post:
       tags: [Verification]
-      summary: Nhận việc / gán moderator
-      operationId: assignVerification
+      summary: Moderator nhận việc (Verification.Verify)
+      operationId: claimVerification
+      description: >-
+        KHÔNG phải status transition (không ghi verification_events) — chỉ set assigned_to/
+        assigned_at/sla_due_at/priority. `sla_due_at` mặc định +48h nếu bỏ trống. Đã được moderator
+        KHÁC nhận việc → 403 (re-claim chính mình thì OK).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         content:
@@ -790,15 +857,60 @@ paths:
             schema:
               type: object
               properties:
-                assigned_to: { type: string, format: uuid }
-                priority: { type: integer }
+                priority: { type: integer, minimum: 0, maximum: 3 }
                 sla_due_at: { type: string, format: date-time }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify, hoặc đã được moderator khác nhận việc }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /verifications/{id}/verify:
     post:
       tags: [Verification]
-      summary: Đặt verified/official
+      summary: pending|community_verified -> verified (Verification.Verify)
       operationId: verifyVerification
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source_id: { type: string, format: uuid }
+                confidence: { type: integer, minimum: 0, maximum: 100 }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { description: Trạng thái hiện tại không cho phép verify }
+  /verifications/{id}/official:
+    post:
+      tags: [Verification]
+      summary: pending|verified|community_verified -> official (Verification.Verify)
+      operationId: officialVerification
+      description: >-
+        `source_id` BẮT BUỘC, PHẢI thuộc nhóm nguồn chính thức (business_owner/official_website/
+        government — source.md §4.1), khác đi → 422. `expires_at` mặc định +12 tháng khi bỏ trống;
+        `null` tường minh chỉ chấp nhận khi target KHÔNG phải price_history (price_history bắt buộc
+        có hạn — verification.md §7).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -806,19 +918,30 @@ paths:
           application/json:
             schema:
               type: object
-              required: [status]
+              required: [source_id]
               properties:
-                status: { type: string, enum: [verified, official] }
-                source_id: { type: [string, 'null'], format: uuid }
+                source_id: { type: string, format: uuid }
+                confidence: { type: integer, minimum: 0, maximum: 100 }
+                note: { type: string, maxLength: 300 }
                 expires_at: { type: [string, 'null'], format: date-time }
-                note: { type: string }
       responses:
-        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Verify }
+        '404': { description: Không tìm thấy verification, hoặc không tìm thấy source }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { description: Trạng thái hiện tại không cho phép official, source sai nhóm chính thức, hoặc thiếu expires_at bắt buộc (price_history) }
   /verifications/{id}/reject:
     post:
       tags: [Verification]
-      summary: Bác xác minh (kèm reason_code)
+      summary: pending|verified|official|community_verified -> rejected (Verification.Reject)
       operationId: rejectVerification
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
@@ -830,13 +953,32 @@ paths:
               required: [reason_code]
               properties:
                 reason_code: { $ref: '#/components/schemas/VerificationReasonCode' }
-                rejected_reason: { type: string }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
-  /verifications/{id}/vote:
+                rejected_reason: { type: string, maxLength: 300 }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Reject }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { description: Trạng thái hiện tại không cho phép reject (vd expired — phải gửi lại trước) }
+  /verifications/{id}/votes:
     post:
       tags: [Verification]
-      summary: Bỏ phiếu cộng đồng (idempotent)
-      operationId: voteVerification
+      summary: Bỏ/đổi phiếu cộng đồng, idempotent (Verification.Vote)
+      operationId: castVerificationVote
+      description: >-
+        Đổi phiếu = gọi lại với `vote` khác (UPDATE dòng hiện có, KHÔNG nhân đôi — `uq_vote_user`).
+        Trọng số ĐỒNG NHẤT = 1 ở milestone này (verification.md §10 mục 7 còn mở, chưa chốt bảng
+        trọng số theo vai trò). Đủ ngưỡng (Σweight(confirm) ≥ 5 và dispute/confirm < 0.2) VÀ đang
+        `pending` → tự động chuyển `community_verified` trong CÙNG request.
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -847,15 +989,20 @@ paths:
               required: [vote]
               properties:
                 vote: { type: string, enum: [confirm, dispute] }
-                note: { type: string }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
-  /verifications/{id}/events:
-    get:
-      tags: [Verification]
-      summary: Audit trail chuyển trạng thái
-      operationId: listVerificationEvents
-      parameters: [{ $ref: '#/components/parameters/IdPath' }]
-      responses: { '200': { $ref: '#/components/responses/CollectionResponse' } }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/Verification' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Verification.Vote }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   # ============================ HOTELS ============================
   /hotels:
@@ -3048,6 +3195,7 @@ components:
         status: { type: string, enum: [pending, published, hidden, rejected] }
     Verification:
       type: object
+      description: ADR-008 Verification Foundation — dòng `verifications` (exclusive arc, một dòng tái sử dụng xuyên suốt vòng đời).
       properties:
         id: { type: string, format: uuid }
         place_id: { type: [string, 'null'], format: uuid }
@@ -3055,11 +3203,37 @@ components:
         price_history_id: { type: [string, 'null'], format: uuid }
         status: { $ref: '#/components/schemas/VerificationStatus' }
         method: { type: string, enum: [moderator, owner_claim, source_match, community_vote, system_auto] }
+        source_id: { type: [string, 'null'], format: uuid }
+        confidence: { type: [integer, 'null'], minimum: 0, maximum: 100 }
         confirm_count: { type: integer }
         dispute_count: { type: integer }
-        lock_version: { type: integer }
+        reason_code: { oneOf: [{ $ref: '#/components/schemas/VerificationReasonCode' }, { type: 'null' }] }
+        verified_by: { type: [string, 'null'], format: uuid }
+        assigned_to: { type: [string, 'null'], format: uuid }
+        assigned_at: { type: [string, 'null'], format: date-time }
         sla_due_at: { type: [string, 'null'], format: date-time }
+        priority: { type: integer, minimum: 0, maximum: 3 }
+        note: { type: [string, 'null'] }
+        rejected_reason: { type: [string, 'null'] }
+        valid_from: { type: [string, 'null'], format: date-time }
         expires_at: { type: [string, 'null'], format: date-time }
+        lock_version: { type: integer }
+        created_by: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    VerificationEvent:
+      type: object
+      description: ADR-008 — dòng `verification_events`, append-only.
+      properties:
+        id: { type: string, format: uuid }
+        verification_id: { type: string, format: uuid }
+        from_status: { oneOf: [{ $ref: '#/components/schemas/VerificationStatus' }, { type: 'null' }] }
+        to_status: { $ref: '#/components/schemas/VerificationStatus' }
+        method: { type: string, enum: [moderator, owner_claim, source_match, community_vote, system_auto] }
+        source_id: { type: [string, 'null'], format: uuid }
+        actor_id: { type: [string, 'null'], format: uuid, description: 'null = hệ thống (job hết hạn/job cộng đồng)' }
+        note: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
     WikiRevision:
       type: object
       properties:

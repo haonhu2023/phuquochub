@@ -1,6 +1,20 @@
 # PhuQuocHub — Thiết kế Entity `Verification` (Xác minh dữ liệu)
 
 > Tài liệu này chỉ **thiết kế** (không code). Bổ sung thực thể `Verification` để mọi dữ liệu (`Place`, `Contact`, `PriceHistory`) đều có trạng thái xác minh và vòng đời tin cậy rõ ràng. Gắn với [module-source.md](./source.md) (nguồn gốc) và [vision.md](../../overview/vision.md) §6 (trust model).
+>
+> **Verification Foundation: ĐÃ TRIỂN KHAI (2026-08-06).** §3-§5C (máy trạng thái + `verifications`/
+> `verification_events`/`verification_votes` + CAS `lock_version` + cache §6) sống trên Postgres
+> thật — submit/claim/verify/official/reject/vote (kèm tự động `community_verified` khi đủ ngưỡng
+> phiếu) + job hết hạn (`expireOverdue()`, phương thức thuần, chưa có hạ tầng lập lịch). §5D permission
+> giữ NGUYÊN như đã seed (`Verification.Verify`/`Reject` moderator-only; `Verification.Vote` MỚI seed,
+> chỉ `local_guide` tường minh + kế thừa DAG). §10 mục 7 (trọng số phiếu theo vai trò) **vẫn còn mở**
+> — milestone này dùng trọng số đồng nhất = 1 làm mặc định tạm thời, KHÔNG tự chốt bảng trọng số.
+>
+> **Ngoại lệ chuyển tiếp:** `BusinessClaimsService.decide()` (ADR-015) vẫn ghi thẳng
+> `places.verification_status`/`verified_at`, KHÔNG qua `verifications` — bảng mới ở đây CHƯA PHẢI
+> nguồn sự thật cho luồng Business Claim. Chi tiết:
+> [ADR-008 §Tình trạng triển khai](../../99-decisions/ADR-008-verification-model.md)
+> · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 
