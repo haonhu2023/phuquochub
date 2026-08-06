@@ -183,7 +183,8 @@ chứng minh 0 residue trên 11 bảng ở ADR-008 CORRECTION, xem
 **Ngoài phạm vi milestone này:** tích hợp Business Claim → Source → Verification (ngoại lệ chuyển
 tiếp ở trên), thực thể mở rộng thứ tư (review/media — §10 mục 6 còn mở), bảng trọng số phiếu theo
 vai trò/karma cụ thể (§10 mục 7 còn mở), job hết hạn/công cụ vận hành thật (dashboard §9B, SLA
-alerting), mọi milestone Business/Place khác.
+alerting) — **job hết hạn nay ĐÃ có hạ tầng lập lịch, xem VERIFICATION SCHEDULER dưới đây; dashboard/
+SLA alerting vẫn ngoài phạm vi** —, mọi milestone Business/Place khác.
 
 ---
 
@@ -210,6 +211,79 @@ Sửa đúng bốn hạng mục PIR:
    bảng bằng truy vấn thật sau khi chạy — không chỉ tuyên bố.
 
 Chi tiết đầy đủ: [ADR-008-CORRECTION-2026-08-06.md](../delivery/reports/ADR-008-CORRECTION-2026-08-06.md).
+
+---
+
+**VERIFICATION SCHEDULER — Operational Enablement: ✅ ĐÃ TRIỂN KHAI (2026-08-06).** Milestone hẹp,
+độc lập, chạy sau CORRECTION. Mục tiêu DUY NHẤT: đưa `expireOverdue()` (đã có từ Foundation) vào
+vận hành production một cách an toàn — KHÔNG mở rộng phạm vi: KHÔNG tích hợp Claim→Source, KHÔNG
+reassign hàng đợi, KHÔNG bộ lọc hàng đợi mới, KHÔNG job đối soát cache, KHÔNG metrics/dashboard,
+KHÔNG auto-reject/demotion, KHÔNG API endpoint mới, KHÔNG một state machine hết hạn thứ hai. Không
+migration nào (schema không đổi).
+
+Đóng đúng khoảng trống PIR đã nêu ("the expiry path is unbounded"):
+
+1. **Lô hoá + cursor keyset.** `VerificationsRepository.findOverdueTrustedBatch()` thay
+   `listOverdueTrusted()` cũ (tải TOÀN BỘ kết quả) — cùng khuôn keyset
+   `MediaRepository.findOrphanCleanupCandidates()`, sắp `(expires_at, id)`, cursor TEXT chính xác
+   (không dùng `Date` JS — mất độ chính xác dưới mili-giây, rủi ro fetch lặp).
+2. **Ngân sách thời gian + giới hạn lô.** `VerificationExpiryOptions` (`batchSize`/`maxBatches`/
+   `maxExecutionMs`) — kiểm ngân sách GIỮA các dòng, KHÔNG BAO GIỜ giữa chừng một dòng (dòng đã bắt
+   đầu transaction luôn chạy tới hoàn tất). Mặc định 100 dòng/lô, 50 lô, 5 phút — CÙNG con số
+   `MediaCleanupService` đã dùng.
+3. **`VerificationExpirySummary` có cấu trúc** (`scanned`/`eligible`/`expired`/`conflicts`/`errors`/
+   `batchesRun`/`timeBudgetExceeded`/`oldest+newestProcessedExpiresAt`/`durationMs`) — CAS thua HOẶC
+   dòng không còn hợp lệ cho `expire` (ai đó vừa transition) đếm vào `conflicts`, KHÔNG fatal; lỗi
+   hệ thống KHÔNG lường trước đếm vào `errors`, dòng đó bị bỏ qua, các dòng CÒN LẠI vẫn tiếp tục.
+4. **Lịch chạy thật.** `VerificationExpiryScheduler` đăng ký cron job ĐỘNG (biểu thức từ
+   `ConfigService`, không thể dùng `@Cron()` tĩnh) qua `@nestjs/schedule`/`cron`
+   (`ScheduleModule.forRoot()` MỘT LẦN ở `AppModule` — "một cơ chế lập lịch duy nhất"). Mặc định
+   TẮT ở MỌI môi trường (`VERIFICATION_EXPIRY_SCHEDULE_ENABLED=true` để bật có chủ đích — KHÔNG suy
+   luận ngầm từ `NODE_ENV=production`). Cadence mặc định mỗi 15 phút, UTC.
+5. **Chống chạy chồng TRONG MỘT tiến trình** — cờ `isRunning` (instance, singleton) trên
+   `VerificationExpiryScheduler`; lần gọi chồng bị BỎ QUA (log WARN, KHÔNG lỗi), khoá LUÔN được giải
+   phóng ở `finally` kể cả khi `expireOverdue()` throw. **Nhiều replica API là mối lo triển khai
+   RIÊNG, ghi rõ, KHÔNG âm thầm giả định** — không có khoá phân tán (Redis/DB advisory lock) nào
+   được xây; mỗi replica bật lịch sẽ chạy job độc lập (không hỏng toàn vẹn dữ liệu nhờ CAS, nhưng
+   lãng phí tài nguyên).
+6. **Manual runner** (`npm run verification:expire [-- --dry-run|--batch-size=N|--max-batches=N|
+   --max-execution-ms=N]`) — cùng khuôn `clean-orphan-media.ts`
+   (`NestFactory.createApplicationContext()`, không HTTP server, không lịch). `--dry-run` dùng
+   CHUNG truy vấn lô + tiêu chí đủ điều kiện, chỉ bỏ qua bước ghi — KHÔNG một state machine dry-run
+   riêng. Exit code khác 0 CHỈ khi `errors > 0` (lỗi hệ thống) — `conflicts` là race bình thường,
+   KHÔNG coi là thất bại lần chạy.
+
+**Xác nhận sống trên Postgres thật (2026-08-06):** 5 dòng đủ điều kiện + `batchSize=2` → đúng 3 lô,
+cả 5 expired, đúng MỘT `verification_event`/dòng (không xử lý hai lần). `maxBatches` dừng ĐÚNG số lô
+dù còn dòng đủ điều kiện, dòng chưa tới lượt vẫn nguyên `official` (không mất). Ngân sách thời gian
+cực nhỏ → dừng sớm giữa các dòng, không dòng nào dở dang. Chạy lại lần hai trên tập đã xử lý hết →
+0 event mới (idempotent). **CAS race THẬT** (không mock): `POST /verifications/{id}/reject` qua
+HTTP và `expireOverdue()` chạy ĐỒNG THỜI qua `Promise.all` trên CÙNG một dòng — đúng MỘT bên thắng,
+đúng MỘT `verification_event` được ghi, KHÔNG mất mát/nhân đôi. Hai lần gọi `runTick()` chồng nhau
+trong tiến trình → đúng MỘT lần chạy, lần còn lại bị bỏ qua. **Manual runner chạy như CLI THẬT**
+(tiến trình con `node -r ts-node/register`, không phải gọi hàm nội bộ) — `--dry-run` không ghi gì
+lên dòng của test, chạy thật sau đó expire đúng dòng. 0 residue chứng minh qua truy vấn trực tiếp
+sau khi chạy (không chỉ tuyên bố). Full regression: BE unit 127 suite/1485 test (từ 125/1462 tại
+CORRECTION — không tính lại số cũ, xem báo cáo cho số chính xác), BE e2e 28 suite/249 test (+2 file
+mới: `verification-scheduler.e2e-spec.ts` 8 test + cập nhật `verifications.e2e-spec.ts`), monorepo
+build/typecheck/lint 12/12, `git diff --check` sạch, secret scan sạch, 0 residue.
+
+**Ghi chú trung thực về e2e song song:** khi Jest chạy NHIỀU file e2e song song (mặc định), CLI
+runner test (có cửa sổ thời gian ~24s do chi phí khởi động subprocess) có thể va chạm với một lần
+chạy `expireOverdue()` THẬT ở file KHÁC (`verifications.e2e-spec.ts` cũng gọi job này) — vì
+`expireOverdue()` quét TOÀN CỤC theo đúng thiết kế (một job nền thật, không lọc theo test). Đã sửa
+bằng cách đối chiếu TRỰC TIẾP qua SQL trên dòng của CHÍNH test thay vì tin số liệu tổng hợp toàn cục
+trong stdout CLI. Bộ e2e đầy đủ xác nhận SẠCH khi chạy `--runInBand` (28/28, 249/249) — khuyến nghị
+cho CI khi có mặt file scheduler này. Đây là đặc tính hạ tầng test dùng chung một Postgres sống,
+KHÔNG phải khiếm khuyết ở mã sản phẩm (đã chứng minh bằng chính test CAS-race/overlap ở trên, chạy
+concurrency THẬT và đúng).
+
+Chi tiết đầy đủ: [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md).
+
+**Vẫn ngoài phạm vi sau milestone này (có chủ đích, KHÔNG bỏ sót):** tích hợp Business Claim →
+Source → Verification; khoá phân tán đa-replica; job/công cụ đối soát cache; reassign/unassign hàng
+đợi + bộ lọc "chưa ai nhận"/quá hạn SLA; auto-reject/demotion khi dispute cao; bảng trọng số phiếu
+theo vai trò/karma; metrics/dashboard §9B thật.
 
 **Vẫn còn mở sau CORRECTION (đã biết, có chủ đích, KHÔNG thuộc phạm vi lần sửa này):** tích hợp
 Business Claim → Source → Verification (và giới hạn kèm theo: cơ sở đã duyệt claim chưa vào được

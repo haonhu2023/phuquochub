@@ -30,7 +30,112 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, ADR-008 CORRECTION) Owner-approved narrow
+  task: none                      # (2026-08-06, VERIFICATION SCHEDULER -- Operational Enablement)
+                                  # Owner-approved standalone milestone, run after ADR-008
+                                  # CORRECTION. Sole goal: make the existing expireOverdue()
+                                  # workflow operational in production safely -- no new business
+                                  # logic, no second expiry state machine, no schema change/
+                                  # migration. Explicitly NOT started: Claim->Source integration,
+                                  # queue reassignment, queue filters, reconciliation, metrics/
+                                  # dashboard, auto-reject/demotion, notifications, distributed
+                                  # locking across replicas.
+                                  #
+                                  # Closes the exact gap the PIR named ("the expiry path is
+                                  # unbounded"): VerificationsRepository.findOverdueTrustedBatch()
+                                  # replaces listOverdueTrusted() (which loaded the entire result
+                                  # set) with keyset-cursor pagination (expires_at, id) -- same
+                                  # convention as MediaRepository.findOrphanCleanupCandidates(),
+                                  # including the same "use Postgres's own text rendering for the
+                                  # cursor, never a JS Date" lesson (sub-millisecond precision loss
+                                  # risks an infinite re-fetch loop). expireOverdue() now takes
+                                  # batchSize/maxBatches/maxExecutionMs and returns a structured
+                                  # VerificationExpirySummary (scanned/eligible/expired/conflicts/
+                                  # errors/batchesRun/timeBudgetExceeded/oldest+newest processed/
+                                  # durationMs) -- defaults (100/50/300000ms) match
+                                  # MediaCleanupService's existing constants. Time budget is only
+                                  # ever checked BETWEEN rows, never mid-row (a started transaction
+                                  # always runs to completion). CAS loss or a row no longer valid
+                                  # for 'expire' (someone else transitioned it between batch fetch
+                                  # and per-row processing) both count as conflicts, not fatal;
+                                  # genuine unexpected errors count separately and do not abort the
+                                  # rest of the run -- exactly the row-independent-transaction
+                                  # contract PIR asked for, with zero duplication of the FSM.
+                                  #
+                                  # New: VerificationExpiryScheduler registers ONE dynamic cron job
+                                  # (@nestjs/schedule + cron package -- cron expression comes from
+                                  # ConfigService, so the static @Cron() decorator can't be used;
+                                  # SchedulerRegistry.addCronJob() instead) inside
+                                  # VerificationsModule; ScheduleModule.forRoot() registered exactly
+                                  # once at AppModule (the "single scheduler mechanism" requirement).
+                                  # Disabled by default in EVERY environment, including production --
+                                  # enabling it is always an explicit opt-in
+                                  # (VERIFICATION_EXPIRY_SCHEDULE_ENABLED=true), never inferred from
+                                  # NODE_ENV. Default cadence: every 15 minutes, UTC
+                                  # (VERIFICATION_EXPIRY_CRON). In-process overlap prevention via an
+                                  # isRunning instance flag on the scheduler singleton; an
+                                  # overlapping tick is skipped and logged at WARN (not an error);
+                                  # the flag is always released in a finally block, including after
+                                  # expireOverdue() throws. Multi-replica overlap is explicitly
+                                  # documented as an unsolved deployment concern, not silently
+                                  # assumed away -- no distributed lock was invented. Manual runner
+                                  # (npm run verification:expire [-- --dry-run|--batch-size=N|
+                                  # --max-batches=N|--max-execution-ms=N]) mirrors
+                                  # clean-orphan-media.ts's NestFactory.createApplicationContext()
+                                  # pattern; --dry-run reuses the exact same batch query and
+                                  # eligibility check, only skipping the write transaction -- no
+                                  # second dry-run implementation. Exit code is non-zero only when
+                                  # errors > 0 (systemic failures); conflicts are a normal race, not
+                                  # a run failure.
+                                  #
+                                  # Live Postgres validation (2026-08-06): 5 eligible rows with
+                                  # batchSize=2 -> exactly 3 batches, all 5 expired, exactly one
+                                  # verification_event per row (no double-processing). maxBatches
+                                  # stops at exactly the configured count with remaining rows left
+                                  # completely intact (not lost, just not yet due). A near-zero time
+                                  # budget with multiple rows stops early between rows with nothing
+                                  # left half-processed. Re-running against an already-fully-expired
+                                  # set produces zero new events (idempotent). A GENUINE (not
+                                  # mocked) CAS race: a real POST /verifications/:id/reject over
+                                  # HTTP and a real expireOverdue() call fired concurrently via
+                                  # Promise.all on the same row -- exactly one side wins, exactly one
+                                  # verification_event is written, nothing lost or duplicated. Two
+                                  # concurrent scheduler.runTick() calls -- exactly one runs, the
+                                  # other is skipped. The manual runner was run as a REAL child
+                                  # process (node -r ts-node/register, not an in-process function
+                                  # call) -- --dry-run touched nothing, the real run then expired the
+                                  # row, proven via direct SQL both times. Zero residue proven by
+                                  # querying all affected tables directly after the run, not
+                                  # asserted. Full regression: BE unit 127 suites/1485 tests, BE e2e
+                                  # 28 suites/249 tests (up from 27/241 at CORRECTION, +1 new file:
+                                  # verification-scheduler.e2e-spec.ts, 8 tests), monorepo build/
+                                  # typecheck/lint 12/12, git diff --check clean, secret scan clean.
+                                  #
+                                  # Honest note on e2e parallelism: Jest's default parallel-file
+                                  # execution let the manual-runner test (a ~24s window due to
+                                  # subprocess startup cost) occasionally collide with a genuine
+                                  # expireOverdue() run in the sibling verifications.e2e-spec.ts file
+                                  # -- expected, since the job scans globally by design and isn't
+                                  # scoped to any one test's fixtures. Fixed by asserting against
+                                  # this test's own row via direct SQL instead of trusting the CLI's
+                                  # global aggregate counts in stdout. The full e2e suite is clean
+                                  # under --runInBand (28/28, 249/249); recommended for CI once this
+                                  # file is present. This is a shared-live-database test-
+                                  # infrastructure characteristic, not a product defect -- the same
+                                  # milestone's CAS-race and scheduler-overlap tests independently
+                                  # prove correctness under real concurrency.
+                                  #
+                                  # See docs/delivery/reports/
+                                  # VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md and
+                                  # ADR-008's own Implementation Status section.
+                                  #
+                                  # Explicitly NOT started / out of scope: Claim->Source->Verification
+                                  # integration (unchanged from CORRECTION); distributed locking for
+                                  # multi-replica deployments (documented as an open deployment
+                                  # concern); a real cache/vote-count reconciliation job; queue
+                                  # reassignment/unassign and unassigned/SLA-breach queue filters;
+                                  # auto-reject/demotion on high dispute; Sec9B metrics/dashboards;
+                                  # any later Business/Place milestone.
+                                  # ---- prior state (2026-08-06, ADR-008 CORRECTION) Owner-approved narrow
                                   # correction milestone, run immediately after the ADR-008
                                   # post-implementation review (PIR). No schema change, no
                                   # migration. Explicitly NOT started: Claim->Source integration,

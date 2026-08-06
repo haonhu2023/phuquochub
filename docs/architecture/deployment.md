@@ -257,6 +257,13 @@ feature/* ──PR──► develop ──auto──► DEVELOPMENT
 - **12-factor:** cấu hình qua **biến môi trường**; mỗi môi trường một tập giá trị; `.env.example` liệt kê khóa (không giá trị thật).
 - **Secrets:** GitHub Environments (CI/CD) + file bảo vệ quyền trên VPS; **không commit**; **xoay vòng** định kỳ (JWT, DB pass, API keys, CF/registry token).
 - **Validate lúc khởi động** (`core/config`) — thiếu/sai → fail fast.
+- **VERIFICATION SCHEDULER (ADR-008, 2026-08-06):** 5 biến mới, KHÔNG bắt buộc ở bất kỳ môi trường
+  nào (mặc định TẮT ở mọi nơi, kể cả production — bật lịch chạy PHẢI là một quyết định vận hành
+  tường minh): `VERIFICATION_EXPIRY_SCHEDULE_ENABLED` (mặc định `false`),
+  `VERIFICATION_EXPIRY_CRON` (mặc định `0 */15 * * * *`, UTC), `VERIFICATION_EXPIRY_BATCH_SIZE`
+  (mặc định `100`), `VERIFICATION_EXPIRY_MAX_BATCHES` (mặc định `50`),
+  `VERIFICATION_EXPIRY_MAX_EXECUTION_MS` (mặc định `300000`). Chi tiết đầy đủ + lý do từng mặc định:
+  [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md).
 
 ## 9. Luồng deploy & Zero-downtime
 
@@ -347,6 +354,29 @@ feature/* ──PR──► develop ──auto──► DEVELOPMENT
 - **Log:** job log (payload đã sanitize), failed job.
 - **Alert:** backlog tăng liên tục, tỉ lệ fail cao, **job stalled**, dead-letter tích tụ.
 - **Dashboard:** hàng đợi (backlog/throughput/failures) theo loại job.
+
+### 12.4b Verification Expiry Schedule (ADR-008, 2026-08-06)
+
+Job nền chuyển `verifications` đã hết hạn (`verified`/`official`/`community_verified` quá
+`expires_at`) sang `expired`, chạy trong CHÍNH tiến trình API qua `@nestjs/schedule` (`cron`
+package) — KHÔNG phải một worker/queue riêng như BullMQ ở trên, nên KHÔNG có backlog/dead-letter
+theo nghĩa đó. Ghi lại đây CHỈ đặc tính vận hành đã triển khai — **metrics/dashboard/alerting THẬT
+cho job này CHƯA xây** (ngoài phạm vi milestone, xem báo cáo giao hàng):
+
+- **Cadence:** mặc định mỗi 15 phút (`VERIFICATION_EXPIRY_CRON`, UTC) — bảo thủ, phù hợp việc hết
+  hạn xác minh (không nhạy cảm theo giây).
+- **Bật/tắt:** `VERIFICATION_EXPIRY_SCHEDULE_ENABLED=true` — mặc định TẮT ở MỌI môi trường; vận
+  hành phải bật có chủ đích.
+- **Giới hạn MỘT tiến trình:** chống chạy chồng chỉ có hiệu lực TRONG một tiến trình API
+  (`isRunning` in-memory). **Nếu triển khai nhiều replica API cùng bật lịch, MỖI replica sẽ chạy
+  job độc lập** — không có khoá phân tán (Redis/DB advisory lock) nào được xây ở milestone này.
+  KHÔNG nguy hiểm về toàn vẹn dữ liệu (mọi transition vẫn qua CAS `lock_version`, một replica
+  "thua" chỉ đếm vào `conflicts`, không hỏng gì) — nhưng LÃNG PHÍ tài nguyên nếu chạy nhiều replica
+  với lịch trùng nhau. **Trước khi scale ngang** (§14) mà vẫn bật lịch này: hoặc chỉ bật ở MỘT
+  replica được chỉ định, hoặc bổ sung khoá phân tán (việc tương lai, chưa xây).
+- **Phục hồi:** job tự phục hồi — cursor phân trang chỉ sống trong MỘT lần chạy (không lưu giữa các
+  lần); một dòng lỗi ở lần chạy này tự động được quét lại ở lần chạy kế tiếp, không cần can thiệp
+  thủ công. Chạy tay khẩn cấp: `npm run verification:expire` (`--dry-run` để xem trước).
 
 ### 12.5 AI Services
 - **Metric:** số request/tác vụ, **token & chi phí**, độ trễ, **tỉ lệ fallback**, tỉ lệ gắn cờ moderation, **tỉ lệ đầu ra AI được duyệt**, cache/`source_hash` hit.

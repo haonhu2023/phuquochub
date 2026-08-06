@@ -5,10 +5,19 @@
 > **Verification Foundation: ĐÃ TRIỂN KHAI (2026-08-06).** §3-§5C (máy trạng thái + `verifications`/
 > `verification_events`/`verification_votes` + CAS `lock_version` + cache §6) sống trên Postgres
 > thật — submit/claim/verify/official/reject/vote (kèm tự động `community_verified` khi đủ ngưỡng
-> phiếu) + job hết hạn (`expireOverdue()`, phương thức thuần, chưa có hạ tầng lập lịch). §5D permission
-> giữ NGUYÊN như đã seed (`Verification.Verify`/`Reject` moderator-only; `Verification.Vote` MỚI seed,
-> chỉ `local_guide` tường minh + kế thừa DAG). §10 mục 7 (trọng số phiếu theo vai trò) **vẫn còn mở**
-> — milestone này dùng trọng số đồng nhất = 1 làm mặc định tạm thời, KHÔNG tự chốt bảng trọng số.
+> phiếu) + job hết hạn (`expireOverdue()`). §5D permission giữ NGUYÊN như đã seed
+> (`Verification.Verify`/`Reject` moderator-only; `Verification.Vote` MỚI seed, chỉ `local_guide`
+> tường minh + kế thừa DAG). §10 mục 7 (trọng số phiếu theo vai trò) **vẫn còn mở** — milestone này
+> dùng trọng số đồng nhất = 1 làm mặc định tạm thời, KHÔNG tự chốt bảng trọng số.
+>
+> **VERIFICATION SCHEDULER — Operational Enablement (2026-08-06).** §9 "Job hệ thống" nay CÓ hạ
+> tầng lập lịch thật: `expireOverdue()` lô hoá + cursor keyset + ngân sách thời gian (không còn tải
+> toàn bộ tập kết quả — điểm PIR đã nêu), gọi định kỳ qua `@nestjs/schedule` (mặc định mỗi 15 phút,
+> UTC — `VERIFICATION_EXPIRY_CRON`), **TẮT theo mặc định** ở MỌI môi trường
+> (`VERIFICATION_EXPIRY_SCHEDULE_ENABLED=true` để bật có chủ đích). Chống chạy chồng CHỈ trong một
+> tiến trình API — nhiều replica cần khoá phân tán riêng (chưa xây, xem báo cáo). Manual runner:
+> `npm run verification:expire [-- --dry-run]`. KHÔNG một state machine hết hạn thứ hai — vẫn CHÍNH
+> XÁC `assertValidVerificationTransition`/`casUpdate`/`eventsRepo.append`/`syncTargetCache` đã có.
 >
 > **Ngoại lệ chuyển tiếp (cập nhật sau PIR + CORRECTION 2026-08-06):**
 > `BusinessClaimsService.decide()` (ADR-015) vẫn ghi thẳng `places.verification_status`/`verified_at`,
@@ -23,7 +32,8 @@
 > `community_verified`. Chi tiết:
 > [ADR-008 §Tình trạng triển khai](../../99-decisions/ADR-008-verification-model.md)
 > · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md)
-> · [ADR-008-CORRECTION-2026-08-06.md](../../delivery/reports/ADR-008-CORRECTION-2026-08-06.md).
+> · [ADR-008-CORRECTION-2026-08-06.md](../../delivery/reports/ADR-008-CORRECTION-2026-08-06.md)
+> · [VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md](../../delivery/reports/VERIFICATION-SCHEDULER-OPERATIONAL-ENABLEMENT-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 
