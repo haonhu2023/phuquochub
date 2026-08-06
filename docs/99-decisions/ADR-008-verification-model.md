@@ -120,13 +120,42 @@ KHÔNG tạo type mới, tự-chối `down()` nếu đã có `verification_event
   có trong repo; một job thật (sprint sau) chỉ cần gọi định kỳ.
 - SLA mặc định +48h khi không truyền `sla_due_at` — giả định tường minh (ADR-008 không chỉ định).
 
-**Ngoại lệ chuyển tiếp (transitional exception, xem Owner quyết định mục 1):**
-`BusinessClaimsService.decide()` (ADR-015) tiếp tục là một writer ĐỘC LẬP của
-`places.verification_status`/`verified_at`, hoàn toàn tách biệt khỏi bảng `verifications` mới. Một
-place được duyệt qua claim sẽ có `verification_status=official` NHƯNG `verifications` KHÔNG có dòng
-nào cho place đó — xác nhận sống bằng e2e (`verifications.e2e-spec.ts`, test cuối). Đây là trạng thái
-TẠM THỜI, có chủ đích, đã được Owner xác nhận — KHÔNG phải một khiếm khuyết bỏ sót. Đóng khoảng cách
-này (Business Claim → Source → Verification) là việc tương lai riêng.
+**Ngoại lệ chuyển tiếp (transitional exception, xem Owner quyết định mục 1) — ĐÃ SỬA LẠI SAU PIR
+(2026-08-06):** `BusinessClaimsService.decide()` (ADR-015) tiếp tục là một writer ĐỘC LẬP của
+`places.verification_status`/`verified_at`, tách biệt khỏi bảng `verifications` mới.
+
+Bản ghi đầu tiên của mục này mô tả tình trạng đó là "tạm thời, có chủ đích, không phải khiếm khuyết"
+và dừng ở đó. **Đánh giá sau triển khai (PIR) cho thấy cách diễn đạt ấy SAI ở phần quan trọng nhất:**
+việc hoãn tích hợp đúng là có chủ đích, nhưng HỆ QUẢ của nó thì KHÔNG hề được kiểm soát. Hai writer
+cùng sở hữu một cột được phơi công khai (`places.verification_status` trả về trên route `@Public`
+qua `toPlaceCard`), và hai đường đi THẬT đều chạm tới được chỉ bằng thao tác hợp lệ:
+
+- **(a) Hạ cấp âm thầm:** cơ sở được duyệt claim (cache `official`, KHÔNG dòng `verifications`) →
+  bất kỳ moderator nào gọi `POST /verifications` → tạo dòng `pending` → cache bị ghi đè
+  `official` → `pending`. Cơ sở mất badge công khai vì một thao tác không liên quan.
+- **(b) Phân kỳ vĩnh viễn:** cơ sở đã có dòng `verifications` (vd `verified`) → duyệt claim → cache
+  bị ép thành `official` trong khi entity vẫn `verified`. `uq_verif_place` giữ dòng đó tồn tại mãi,
+  và job hết hạn đọc entity nên cache `official` KHÔNG BAO GIỜ hết hạn. Hai giá trị mâu thuẫn vĩnh viễn.
+
+E2e ban đầu chỉ chứng minh trường hợp lành tính (place mới tinh, `count = 0`) rồi khái quát hoá —
+không hề kiểm chứng hai thứ tự trên.
+
+**ADR-008 CORRECTION (2026-08-06) đã đóng cả hai đường bằng một GUARD PHÒNG VỆ HAI CHIỀU** (KHÔNG
+phải tích hợp — phạm vi tích hợp giữ nguyên là milestone riêng):
+
+- `BusinessClaimsService.decide(approve)` chỉ ghi cache khi cơ sở CHƯA có dòng `verifications`. Nếu
+  đã có, dòng đó là nguồn sự thật của cache và claim KHÔNG ghi đè. Claim vẫn approve bình thường
+  (ownership/`business_members`/`user_roles` không đổi); kết quả ghi vào audit context
+  `verification_cache_written` để không âm thầm.
+- `VerificationsService.submit()` từ chối (409) khi target đang mang trạng thái TIN CẬY do writer
+  khác đặt mà chưa có dòng `verifications`. KHÔNG "nhận" cache làm trạng thái khởi tạo, vì `official`
+  đòi `source_id` (CHECK `ck_verif_official_source`) mà claim không hề sinh `sources` — nhận vào sẽ
+  vi phạm chính ADR-008.
+
+**Giới hạn còn lại, nêu thẳng:** hệ quả của guard (a) là cơ sở đã duyệt claim **chưa thể đưa vào hàng
+đợi xác minh** cho tới khi milestone tích hợp Business Claim → Source → Verification hoàn thành. Đây
+là một giới hạn chức năng THẬT, được chấp nhận có ý thức để đổi lấy việc không làm hỏng badge công
+khai; nó KHÔNG phải là trạng thái cuối cùng mong muốn. Cả hai chiều nay đều có e2e chứng minh.
 
 **Xác nhận sống trên Postgres thật (2026-08-06):** submit → claim → verify → official (nguồn sai
 nhóm → 422, nguồn đúng nhóm + mặc định `expires_at` +12 tháng) → reject (thiếu `reason_code` → 400
@@ -145,7 +174,46 @@ BE unit 125 suite/1448 test, BE e2e 27 suite/237 test (gồm `verifications.e2e-
 monorepo build/typecheck/lint 12/12, `git diff --check` sạch, secret scan sạch. Chi tiết đầy đủ:
 [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md).
 
+*(Lưu ý sửa sau PIR: câu "0 residue" ở trên đúng với `verifications`/`verification_events`/
+`verification_votes`/`users`/`places` — những bảng đã thực sự kiểm — nhưng KHÔNG đúng với `sources`:
+teardown e2e có một mệnh đề không bao giờ khớp nên mọi `sources` do suite tạo đều rò rỉ. Đã sửa và
+chứng minh 0 residue trên 11 bảng ở ADR-008 CORRECTION, xem
+[ADR-008-CORRECTION-2026-08-06.md](../delivery/reports/ADR-008-CORRECTION-2026-08-06.md).)*
+
 **Ngoài phạm vi milestone này:** tích hợp Business Claim → Source → Verification (ngoại lệ chuyển
 tiếp ở trên), thực thể mở rộng thứ tư (review/media — §10 mục 6 còn mở), bảng trọng số phiếu theo
 vai trò/karma cụ thể (§10 mục 7 còn mở), job hết hạn/công cụ vận hành thật (dashboard §9B, SLA
 alerting), mọi milestone Business/Place khác.
+
+---
+
+**ADR-008 CORRECTION: ✅ ĐÃ TRIỂN KHAI (2026-08-06).** Milestone sửa lỗi hẹp, chạy ngay sau đánh giá
+sau triển khai (PIR). KHÔNG mở rộng phạm vi: KHÔNG tích hợp Claim→Source, KHÔNG scheduler, KHÔNG job
+đối soát, KHÔNG reassign hàng đợi, KHÔNG metrics, KHÔNG auto-reject/demotion, KHÔNG API mới. Không
+migration nào (chỉ sửa mã + test + tài liệu; schema không đổi).
+
+Sửa đúng bốn hạng mục PIR:
+
+1. **C1 (Critical)** — guard phòng vệ hai chiều chặn hai writer ghi giá trị `verification_status`
+   mâu thuẫn; chi tiết ở mục "Ngoại lệ chuyển tiếp" phía trên.
+2. **F1 (Major)** — `expiresAt`/`reasonCode`/`rejectedReason` không còn sống sót sang trạng thái
+   không thuộc về chúng: gửi lại xoá cả ba; `verify`/`official` xoá metadata bác bỏ; `reject` xoá
+   cửa sổ hiệu lực. Lỗi thật đã đóng: `official(expires=T)` → `expired` → gửi lại → `verify` từng
+   cho ra dòng `verified` mang `expires_at` QUÁ HẠN và bị job hạ cấp ngay lần chạy kế tiếp.
+   E2e mới bắt thêm một lỗi cấp hai trong lúc sửa: `submit()` trả response dựng từ entity TRƯỚC
+   update nên vẫn phơi giá trị cũ dù DB đã đúng — đã sửa để trả đúng những gì vừa ghi.
+3. **T1 (Major)** — hai `submit()` đồng thời cùng target: vi phạm `uq_verif_*` (23505) nay thành
+   409 thay vì 500, dùng chung helper `isUniqueViolation` (tách từ `BusinessClaimsService` sang
+   `common/db/unique-violation.ts`, bắt ĐÚNG constraint đã lường trước, lỗi khác vẫn nổi nguyên trạng).
+4. **X1 (Major)** — teardown e2e dọn `sources`/`price_history` theo id đã theo dõi (mệnh đề cũ không
+   bao giờ khớp và `.catch()` che mất). Đã dọn 12 dòng rò rỉ sẵn có và chứng minh 0 residue trên 11
+   bảng bằng truy vấn thật sau khi chạy — không chỉ tuyên bố.
+
+Chi tiết đầy đủ: [ADR-008-CORRECTION-2026-08-06.md](../delivery/reports/ADR-008-CORRECTION-2026-08-06.md).
+
+**Vẫn còn mở sau CORRECTION (đã biết, có chủ đích, KHÔNG thuộc phạm vi lần sửa này):** tích hợp
+Business Claim → Source → Verification (và giới hạn kèm theo: cơ sở đã duyệt claim chưa vào được
+hàng đợi xác minh); auto-reject/demotion khi tỉ lệ dispute cao (§3.1 mô tả nhưng chưa hiện thực);
+scheduler thật cho `expireOverdue()` (chưa có lịch chạy thì KHÔNG có gì tự hết hạn); job/công cụ đối
+soát cache; unassign/reassign hàng đợi và bộ lọc "chưa ai nhận"/quá hạn SLA; batching cho
+`expireOverdue()`; tính lại `confirm_count`/`dispute_count` khi user bị xoá; metrics §9B.

@@ -30,7 +30,79 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, ADR-008 Verification Foundation) Owner-approved
+  task: none                      # (2026-08-06, ADR-008 CORRECTION) Owner-approved narrow
+                                  # correction milestone, run immediately after the ADR-008
+                                  # post-implementation review (PIR). No schema change, no
+                                  # migration. Explicitly NOT started: Claim->Source integration,
+                                  # scheduler, reconciliation job, queue reassignment, metrics,
+                                  # auto-reject, demotion, dashboards, new APIs.
+                                  #
+                                  # C1 (Critical) -- two writers owned places.verification_status,
+                                  # which is public via toPlaceCard on @Public routes. Two reachable
+                                  # paths: (a) claim-approved place + any moderator submitting it to
+                                  # /verifications silently downgraded the public badge official ->
+                                  # pending; (b) claim approved on a place that already had a
+                                  # verifications row forced the cache to official while the entity
+                                  # said otherwise, diverging permanently (uq_verif_place keeps the
+                                  # row, and the expiry job reasons off the entity, so that cache
+                                  # official never expires). Fixed with a minimal bidirectional
+                                  # defensive guard, NOT integration: decide(approve) writes the
+                                  # cache only when no verifications row exists (claim still
+                                  # approves; ownership untouched; outcome recorded in audit as
+                                  # verification_cache_written), and submit() returns 409 when the
+                                  # target already carries a trusted status set outside the
+                                  # verification system. Adoption of the cache as an initial row
+                                  # state was rejected on purpose: official requires source_id and a
+                                  # claim produces no sources row, so adopting would violate ADR-008.
+                                  # Accepted cost, stated plainly: claim-approved businesses cannot
+                                  # enter the verification queue until the integration milestone.
+                                  #
+                                  # F1 (Major) -- expiresAt/reasonCode/rejectedReason survived into
+                                  # states they don't belong to. Real failure closed:
+                                  # official(expires=T) -> expired -> resubmit -> verify produced a
+                                  # verified row still carrying a PAST expires_at, which the expiry
+                                  # job demoted on its next run. Now cleared per transition. While
+                                  # fixing it the new e2e caught a second-order bug the unit test
+                                  # could not: submit()'s resubmit branch built its response from the
+                                  # PRE-update entity, so the API returned stale expires_at/
+                                  # reason_code even though the DB row was already correct -- fixed
+                                  # to return what was actually written.
+                                  #
+                                  # T1 (Major) -- concurrent submit on the same target surfaced the
+                                  # raw 23505 as HTTP 500 (integrity was never at risk; the partial
+                                  # unique index held). The isUniqueViolation helper was extracted
+                                  # from BusinessClaimsService to common/db/unique-violation.ts and
+                                  # is now shared; submit() maps uq_verif_place/contact/price to 409
+                                  # while any other DB error still propagates unchanged (tested).
+                                  #
+                                  # X1 (Major) -- the e2e teardown's sources cleanup could never
+                                  # match (author_user_id never set; `id NOT IN (SELECT id FROM
+                                  # sources)` is tautologically false) and a .catch() hid the no-op,
+                                  # so every sources row the suite created leaked -- 12 confirmed in
+                                  # the dev DB. The Foundation report's "zero residue" claim was
+                                  # therefore false and has been corrected in place. sources and
+                                  # price_history ids are now tracked and deleted explicitly in
+                                  # FK-safe order; the 12 leaked rows were removed; zero residue is
+                                  # now PROVEN by querying all 11 affected tables after a full run.
+                                  #
+                                  # Validation: BE unit 125 suites/1454 tests, BE e2e 27 suites/241
+                                  # tests (verifications e2e 12 -> 16), monorepo build/typecheck/lint
+                                  # 12/12, git diff --check clean, secret scan clean, zero residue
+                                  # proven. Migration safety and rollback proof are N/A and recorded
+                                  # as such: there is no migration and no new transaction boundary --
+                                  # the guard and field-clearing sit inside transactions already
+                                  # proven atomic by the Foundation drill.
+                                  #
+                                  # Still open after this correction (deliberate, each a later
+                                  # milestone): Claim->Source->Verification integration and the
+                                  # queue limitation it imposes; auto-reject/demotion on high dispute
+                                  # (described in verification.md Sec3.1, never implemented, now
+                                  # disclosed); a real scheduler (nothing expires until one exists);
+                                  # reconciliation tooling and vote-count recompute on user deletion;
+                                  # unassign/reassign plus unassigned and SLA-breach queue filters;
+                                  # batching for expireOverdue(); Sec9B metrics. See docs/delivery/
+                                  # reports/ADR-008-CORRECTION-2026-08-06.md.
+                                  # ---- prior state (2026-08-06, ADR-008 Verification Foundation) Owner-approved
                                   # implementation. First real ADR-008 implementation in this
                                   # repository -- verifications/verification_events/
                                   # verification_votes were never migrated before this; the only

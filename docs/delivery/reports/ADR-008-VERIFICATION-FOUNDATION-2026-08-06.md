@@ -225,10 +225,18 @@ records each transition permanently) — same reasoning as `expireOverdueHolds()
 - `expireOverdue()` transitions only the row actually past `expires_at` (verified via direct SQL
   push into the past), leaves a not-yet-expired `official` row completely alone, and does not touch
   `verified_at` on the expired row.
-- **Transitional exception, proven live:** submitting and approving a real business claim through
+- **Transitional exception:** submitting and approving a real business claim through
   `/business-claims/{id}/decide` sets `places.verification_status='official'` (the pre-existing
   ADR-015 path, unchanged) while `SELECT count(*) FROM verifications WHERE place_id=...` returns
-  **0** — confirming the new tables are not yet wired into that path, exactly as decided.
+  **0** — confirming the new tables are not wired into that path.
+
+  > **CORRECTED after the post-implementation review (2026-08-06).** This bullet originally read
+  > "proven live … exactly as decided", which overstated what the test established. It used a
+  > *fresh* place and asserted only `count = 0`, so it proved the two systems don't interact on a
+  > clean slate — **not** that they coexist safely. The PIR found two reachable failure paths
+  > (claim-then-submit silently downgrades the public badge; submit-then-claim diverges
+  > permanently). Both are now closed by a defensive guard and covered by e2e in both directions.
+  > See [ADR-008-CORRECTION-2026-08-06.md](ADR-008-CORRECTION-2026-08-06.md).
 
 ## Rollback proof
 
@@ -269,10 +277,25 @@ real Docker Postgres instance.
 
 ## Cleanup verification
 
-E2e suite's own `afterAll` teardown (verification_votes/events/verifications, contacts, wiki_
-revisions, user_roles, places, audit_logs, users) ran clean on every pass. Rollback-drill
-instrumentation fully removed, zero residue confirmed by grep. The pre-existing unrelated residue
-found at session start (see Housekeeping) was cleaned and reverified separately.
+> **CORRECTED after the post-implementation review (2026-08-06).** This section originally claimed
+> the teardown "ran clean on every pass" and that residue was zero. **That was false.** The
+> teardown's `sources` cleanup used a predicate that can never match (`author_user_id` is never set
+> by the fixture, and `id NOT IN (SELECT id FROM sources)` is a tautological false), with a
+> `.catch(() => undefined)` hiding the no-op — so **every `sources` row the suite created leaked**.
+> Confirmed after the fact: 12 leaked rows across three runs. The tables I actually queried
+> (`verifications`, `verification_events`, `verification_votes`, `users`, `places`) were genuinely
+> at zero; I generalized from that partial check to a claim I had not verified.
+>
+> Fixed in the correction milestone: `sources` and `price_history` ids are now tracked and deleted
+> explicitly in FK-safe order, the error-swallowing `.catch()` is gone, the 12 leaked rows were
+> removed, and zero residue is now **proven by querying all 11 affected tables** after a full run
+> rather than asserted. See [ADR-008-CORRECTION-2026-08-06.md](ADR-008-CORRECTION-2026-08-06.md).
+
+Accurate statement of what held at the time of this milestone: the e2e teardown cleaned
+`verification_votes`/`verification_events`/`verifications`, `contacts`, `wiki_revisions`,
+`user_roles`, `places`, `audit_logs` and `users` correctly, but **not** `sources`. Rollback-drill
+instrumentation was fully removed and that removal was correctly verified by grep. The pre-existing
+unrelated residue found at session start (see Housekeeping) was cleaned and reverified separately.
 
 ## Documentation / governance
 

@@ -10,11 +10,20 @@
 > chỉ `local_guide` tường minh + kế thừa DAG). §10 mục 7 (trọng số phiếu theo vai trò) **vẫn còn mở**
 > — milestone này dùng trọng số đồng nhất = 1 làm mặc định tạm thời, KHÔNG tự chốt bảng trọng số.
 >
-> **Ngoại lệ chuyển tiếp:** `BusinessClaimsService.decide()` (ADR-015) vẫn ghi thẳng
-> `places.verification_status`/`verified_at`, KHÔNG qua `verifications` — bảng mới ở đây CHƯA PHẢI
-> nguồn sự thật cho luồng Business Claim. Chi tiết:
+> **Ngoại lệ chuyển tiếp (cập nhật sau PIR + CORRECTION 2026-08-06):**
+> `BusinessClaimsService.decide()` (ADR-015) vẫn ghi thẳng `places.verification_status`/`verified_at`,
+> KHÔNG qua `verifications` — bảng mới ở đây CHƯA PHẢI nguồn sự thật cho luồng Business Claim. Hai
+> writer cùng một cột từng có thể ghi giá trị mâu thuẫn (hạ cấp badge công khai, hoặc phân kỳ vĩnh
+> viễn); ADR-008 CORRECTION đã chặn bằng **guard phòng vệ hai chiều** — claim không ghi đè khi đã có
+> dòng `verifications`, và `submit()` từ chối (409) target đang mang trạng thái tin cậy do writer khác
+> đặt. **Giới hạn kèm theo, nêu thẳng:** cơ sở đã duyệt claim CHƯA thể vào hàng đợi xác minh cho tới
+> khi có milestone tích hợp Business Claim → Source → Verification.
+>
+> **Chưa hiện thực dù §3.1 có mô tả:** auto-reject khi `dispute_count` cao, và demotion sau khi đã
+> `community_verified`. Chi tiết:
 > [ADR-008 §Tình trạng triển khai](../../99-decisions/ADR-008-verification-model.md)
-> · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md).
+> · [ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md](../../delivery/reports/ADR-008-VERIFICATION-FOUNDATION-2026-08-06.md)
+> · [ADR-008-CORRECTION-2026-08-06.md](../../delivery/reports/ADR-008-CORRECTION-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 
