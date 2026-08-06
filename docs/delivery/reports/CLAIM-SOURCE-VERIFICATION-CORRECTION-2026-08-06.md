@@ -236,6 +236,16 @@ convention), which the review flagged as m-6 and which remains open.
   `SUPERSEDED` blocks stating the DDL never changed while the surrounding behavior did).
 - This report.
 
+## Commits
+
+Three scoped commits on `master`:
+
+| Hash | Commit |
+|---|---|
+| `de6452b` | `fix(verification): harden claim-source integration` — `verifications.service.ts`, `business-claims.service.ts` |
+| `817f1bb` | `test(verification): verify privacy and idempotency` — 2 unit specs, 2 e2e specs |
+| `16b3574` | `docs(verification): record integration correction` — OpenAPI, ADR-008, verification.md, state.yaml, both reports, 3 comment-hygiene files |
+
 ## Remaining intentional limitations
 
 Carried forward deliberately; none is a regression from this milestone.
