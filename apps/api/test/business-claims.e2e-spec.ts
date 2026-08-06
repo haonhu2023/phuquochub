@@ -28,6 +28,10 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
   let placeBId: string;
   const userIds: string[] = [];
   const placeIds: string[] = [];
+  // CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06): `sources` KHÔNG cascade từ `places`
+  // (verifications.source_id là ON DELETE NO ACTION) — track ID CHÍNH XÁC để dọn sạch ở afterAll
+  // (X1/ADR-008 CORRECTION: dọn theo id đã track, KHÔNG dựa vào filter mơ hồ).
+  const sourceIds: string[] = [];
 
   async function createUser(label: string): Promise<{ accessToken: string; userId: string }> {
     const email = `e2e_biz_${label}_${Date.now()}_${Math.random().toString(36).slice(2)}@phuquochub.test`;
@@ -123,9 +127,15 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
       // khi xoá places, không thì DELETE places vi phạm fk_user_roles_business.
       if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
       // Xoá places SAU user_roles: business_claims.place_id/business_members.place_id CASCADE từ
-      // places -> tự động dọn sạch mọi claim/membership tạo trong test (zero residue). users vẫn
-      // an toàn để xoá sau đó vì business_claims.requester_id (NO ACTION) không còn dòng nào trỏ tới.
+      // places -> tự động dọn sạch mọi claim/membership tạo trong test (zero residue), VÀ
+      // verifications.place_id/verification_events.verification_id (ON DELETE CASCADE, xem
+      // InitVerifications) -> dọn sạch cả dòng `verifications`/`verification_events` do claim
+      // approve tạo. users vẫn an toàn để xoá sau đó vì business_claims.requester_id (NO ACTION)
+      // không còn dòng nào trỏ tới.
       if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+      // `sources` KHÔNG cascade từ places (verifications.source_id NO ACTION) — xoá RIÊNG, SAU khi
+      // places (và verifications tham chiếu nó) đã bị xoá, theo ĐÚNG id đã track ở sourceIds.
+      if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
       // audit_logs.actor_id -> users là FK ON DELETE NO ACTION (ADR-016: append-only, không
       // cascade theo thiết kế THẬT — production KHÔNG bao giờ tự xoá audit trail). Ở ĐÂY là dọn
       // fixture test throwaway của CHÍNH file này (event bắt đầu 'business.claim_'), cùng tiền lệ
@@ -307,10 +317,48 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
     expect(place.verified_at).not.toBeNull();
 
     const auditRows = await ds.query(
-      `SELECT event FROM audit_logs WHERE entity_type = 'business_claim' AND entity_id = $1`,
+      `SELECT event, context FROM audit_logs WHERE entity_type = 'business_claim' AND entity_id = $1`,
       [claimId],
     );
     expect(auditRows.map((r: { event: string }) => r.event)).toContain('business.claim_approved');
+
+    // CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06) — nguồn sự thật của cache
+    // `places.verification_status`/`verifiedAt` ở trên PHẢI đi qua ĐÚNG một `sources` +
+    // `verifications` + `verification_events`, KHÔNG còn là ghi cache trực tiếp.
+    const [source] = await ds.query(
+      `SELECT id, type, kind, author_user_id, metadata FROM sources WHERE metadata->>'business_claim_id' = $1`,
+      [claimId],
+    );
+    expect(source).toBeDefined();
+    sourceIds.push(source.id);
+    expect(source.type).toBe('business_owner');
+    expect(source.kind).toBe('platform_user');
+    expect(source.author_user_id).toBe(ownerId);
+    expect(source.metadata.evidence).toEqual(evidence);
+
+    const [verification] = await ds.query(
+      `SELECT id, status, method, source_id FROM verifications WHERE place_id = $1`,
+      [placeAId],
+    );
+    expect(verification).toBeDefined();
+    expect(verification.status).toBe('official');
+    expect(verification.method).toBe('owner_claim');
+    expect(verification.source_id).toBe(source.id);
+
+    const events = await ds.query(
+      `SELECT from_status, to_status, method FROM verification_events WHERE verification_id = $1 ORDER BY created_at ASC`,
+      [verification.id],
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ from_status: null, to_status: 'pending', method: 'owner_claim' });
+    expect(events[1]).toMatchObject({ from_status: 'pending', to_status: 'official', method: 'owner_claim' });
+
+    const approvedAudit = auditRows.find((r: { event: string }) => r.event === 'business.claim_approved');
+    expect(approvedAudit.context.verification).toMatchObject({
+      sourceId: source.id,
+      verificationId: verification.id,
+      verificationStatus: 'official',
+    });
 
     // PHASE 9 — bằng chứng tích hợp ADR-019: owner MỚI đi qua ĐÚNG cơ chế Managed đã triển khai từ
     // M0.2 (PATCH /places/:id, IDENTITY_PLACE_RESOLVER) — không có code phân quyền mới ở đây.

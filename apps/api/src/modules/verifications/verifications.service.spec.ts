@@ -429,6 +429,127 @@ describe('VerificationsService', () => {
     });
   });
 
+  // CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06). `ensureOfficialFromClaim()` là điểm
+  // vào NỘI BỘ `BusinessClaimsService.decide()` gọi TRONG transaction của chính nó (truyền
+  // `manager` trực tiếp — KHÔNG mở transaction ở đây, khác `submit()`/`official()` qua HTTP).
+  describe('ensureOfficialFromClaim', () => {
+    it('CHƯA có dòng verifications nào -> tạo pending (method owner_claim) rồi transition sang official', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING, lockVersion: 0 }));
+      sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const result = await service.ensureOfficialFromClaim(
+        'place-1',
+        { sourceId: 'source-1', actorId: 'mod-1', note: 'ghi chú claim' },
+        manager,
+      );
+
+      expect(verificationsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ placeId: 'place-1', method: VerificationMethod.OWNER_CLAIM, createdBy: 'mod-1' }),
+        manager,
+      );
+      // Hai bước ghi tách biệt (create-pending rồi transition) — CẢ HAI qua ĐÚNG đường CAS/event/cache
+      // đã có, KHÔNG logic thứ hai: eventsRepo.append 2 lần (null->pending, pending->official).
+      expect(eventsRepo.append).toHaveBeenCalledTimes(2);
+      expect(eventsRepo.append).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ fromStatus: null, toStatus: VerificationStatus.PENDING, method: VerificationMethod.OWNER_CLAIM }),
+        manager,
+      );
+      expect(eventsRepo.append).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          fromStatus: VerificationStatus.PENDING,
+          toStatus: VerificationStatus.OFFICIAL,
+          method: VerificationMethod.OWNER_CLAIM,
+          sourceId: 'source-1',
+        }),
+        manager,
+      );
+      expect(verificationsRepo.casUpdate).toHaveBeenCalledTimes(1);
+      expect(placesRepo.updateScalars).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(VerificationStatus.OFFICIAL);
+    });
+
+    it('đã OFFICIAL rồi -> no-op, trả về nguyên trạng, KHÔNG ghi gì thêm', async () => {
+      const existing = makeVerification({ status: VerificationStatus.OFFICIAL, sourceId: 'source-old' });
+      verificationsRepo.findActiveByTarget.mockResolvedValue(existing);
+
+      const result = await service.ensureOfficialFromClaim(
+        'place-1',
+        { sourceId: 'source-1', actorId: 'mod-1' },
+        manager,
+      );
+
+      expect(result).toBe(existing);
+      expect(verificationsRepo.create).not.toHaveBeenCalled();
+      expect(verificationsRepo.casUpdate).not.toHaveBeenCalled();
+      expect(eventsRepo.append).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      // KHÔNG cần xác nhận source_id mới — nhánh no-op không chạm buildOfficialTransition.
+      expect(sourcesRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it.each([VerificationStatus.EXPIRED, VerificationStatus.REJECTED])(
+      'dòng đang %s -> gửi lại (resubmit) rồi transition sang official (hai casUpdate)',
+      async (status) => {
+        const existing = makeVerification({ status, lockVersion: 2 });
+        verificationsRepo.findActiveByTarget.mockResolvedValue(existing);
+        sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+        verificationsRepo.casUpdate.mockResolvedValue(true);
+
+        const result = await service.ensureOfficialFromClaim(
+          'place-1',
+          { sourceId: 'source-1', actorId: 'mod-1' },
+          manager,
+        );
+
+        expect(verificationsRepo.create).not.toHaveBeenCalled();
+        expect(verificationsRepo.casUpdate).toHaveBeenCalledTimes(2);
+        expect(eventsRepo.append).toHaveBeenCalledTimes(2);
+        expect(eventsRepo.append).toHaveBeenNthCalledWith(
+          1,
+          expect.objectContaining({ fromStatus: status, toStatus: VerificationStatus.PENDING }),
+          manager,
+        );
+        expect(result.status).toBe(VerificationStatus.OFFICIAL);
+      },
+    );
+
+    it.each([VerificationStatus.PENDING, VerificationStatus.VERIFIED, VerificationStatus.COMMUNITY_VERIFIED])(
+      'dòng đang %s -> transition THẲNG sang official, KHÔNG tạo/resubmit',
+      async (status) => {
+        const existing = makeVerification({ status, lockVersion: 1 });
+        verificationsRepo.findActiveByTarget.mockResolvedValue(existing);
+        sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+        verificationsRepo.casUpdate.mockResolvedValue(true);
+
+        const result = await service.ensureOfficialFromClaim(
+          'place-1',
+          { sourceId: 'source-1', actorId: 'mod-1' },
+          manager,
+        );
+
+        expect(verificationsRepo.create).not.toHaveBeenCalled();
+        expect(verificationsRepo.casUpdate).toHaveBeenCalledTimes(1);
+        expect(verificationsRepo.casUpdate).toHaveBeenCalledWith(existing.id, 1, expect.anything(), manager);
+        expect(eventsRepo.append).toHaveBeenCalledTimes(1);
+        expect(result.status).toBe(VerificationStatus.OFFICIAL);
+      },
+    );
+
+    it('source_id không hợp lệ -> NotFoundException, KHÔNG ghi gì (cùng validation với official() qua HTTP)', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING }));
+      sourcesRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        service.ensureOfficialFromClaim('place-1', { sourceId: 'src-missing', actorId: 'mod-1' }, manager),
+      ).rejects.toThrow(NotFoundException);
+      expect(verificationsRepo.casUpdate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reject', () => {
     it('thành công -> CAS reasonCode/rejectedReason, cache sync KHÔNG set verifiedAt', async () => {
       verificationsRepo.findById.mockResolvedValue(makeVerification({ status: VerificationStatus.VERIFIED }));

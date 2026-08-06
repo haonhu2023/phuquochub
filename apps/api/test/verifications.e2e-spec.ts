@@ -12,9 +12,11 @@ import { VerificationsService } from '../src/modules/verifications/verifications
 
 // ADR-008 Verification Foundation — live Postgres. Covers submit/claim/verify/official/reject/vote
 // (+ auto-promotion to community_verified)/expire, exclusive-arc target dispatch (place AND
-// contact), cache sync onto the target entity, and the explicit "transitional exception" proof:
-// Business Claim approval (ADR-015) still does NOT create any verifications row (Owner Decision
-// 2026-08-06 mục 1 — BusinessClaimsService.decide() left unchanged by this milestone).
+// contact), cache sync onto the target entity, và CLAIM -> SOURCE -> VERIFICATION INTEGRATION
+// (2026-08-06): Business Claim approval (ADR-015) giờ tạo một `sources` + đi qua ĐÚNG MỘT luồng
+// Verification (`ensureOfficialFromClaim()`) — đóng transitional exception mà Owner Decision
+// 2026-08-06 mục 1 từng ghi nhận (BusinessClaimsService KHÔNG còn ghi `places.verification_status`
+// trực tiếp).
 describe('Verification Foundation (live Postgres)', () => {
   let app: INestApplication;
   let ds: DataSource;
@@ -483,10 +485,10 @@ describe('Verification Foundation (live Postgres)', () => {
     expect(freshAfter[0].verification_status).toBe('official'); // KHÔNG bị đụng
   });
 
-  it('Business Claim approval (ADR-015) KHÔNG tạo verifications row nào — transitional exception còn hiệu lực (Owner Decision 2026-08-06 mục 1)', async () => {
+  it('CLAIM -> SOURCE -> VERIFICATION INTEGRATION: Business Claim approval tạo ĐÚNG MỘT dòng verifications (owner_claim/official) qua ĐÚNG MỘT luồng Verification — KHÔNG còn ghi cache trực tiếp', async () => {
     const owner = await createUser('claim_owner', 'member');
     const moderator = await createUser('claim_moderator', 'moderator');
-    const placeId = await mkPlace('claim_transitional');
+    const placeId = await mkPlace('claim_integrated');
 
     const submitClaimRes = await request(app.getHttpServer())
       .post('/api/business-claims')
@@ -504,37 +506,45 @@ describe('Verification Foundation (live Postgres)', () => {
     expect(decideRes.status).toBe(200);
 
     const place = await ds.query(`SELECT verification_status, verified_at FROM places WHERE id=$1`, [placeId]);
-    expect(place[0].verification_status).toBe('official'); // cache trực tiếp, ADR-015 legacy path
+    expect(place[0].verification_status).toBe('official');
     expect(place[0].verified_at).not.toBeNull();
 
-    const verifRows = await ds.query(`SELECT count(*)::int AS n FROM verifications WHERE place_id=$1`, [placeId]);
-    expect(verifRows[0].n).toBe(0); // KHÔNG có dòng verifications nào — đúng theo Owner Decision
+    // Nguồn sự thật của cache trên là ĐÚNG MỘT dòng `verifications` (method=owner_claim), KHÔNG
+    // còn là ghi trực tiếp từ BusinessClaimsService.
+    const verifRows = await ds.query(
+      `SELECT id, status, method, source_id FROM verifications WHERE place_id=$1`,
+      [placeId],
+    );
+    expect(verifRows).toHaveLength(1);
+    expect(verifRows[0].status).toBe('official');
+    expect(verifRows[0].method).toBe('owner_claim');
+    expect(verifRows[0].source_id).not.toBeNull();
+    // X1 (ADR-008 CORRECTION): `sources` KHÔNG cascade từ places/verifications — track ID THẬT để
+    // afterAll dọn sạch.
+    sourceIds.push(verifRows[0].source_id);
 
-    // ADR-008 CORRECTION (PIR C1, chiều a): cơ sở này giờ mang badge `official` do claim đặt, KHÔNG
-    // có dòng `verifications`. Đưa nó vào hàng đợi xác minh SẼ hạ cấp badge xuống `pending` —
-    // guard phải CHẶN, và cache phải còn nguyên.
-    const submitAfterClaimRes = await request(app.getHttpServer())
+    const source = await ds.query(`SELECT type, kind FROM sources WHERE id=$1`, [verifRows[0].source_id]);
+    expect(source[0].type).toBe('business_owner');
+    expect(source[0].kind).toBe('platform_user');
+
+    // Target đã `official` — submit() lại KHÔNG còn hợp lệ (FSM `submit` chỉ nhận null/expired/
+    // rejected, verification.md §3.2) — 422, khác 409 của guard C1 cũ (đã đóng, xem class doc).
+    const resubmitRes = await request(app.getHttpServer())
       .post('/api/verifications')
       .set('Authorization', `Bearer ${moderator.accessToken}`)
       .send({ target_type: 'place', target_id: placeId });
-    expect(submitAfterClaimRes.status).toBe(409);
+    expect(resubmitRes.status).toBe(422);
 
-    const placeAfterBlockedSubmit = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);
-    expect(placeAfterBlockedSubmit[0].verification_status).toBe('official'); // KHÔNG bị hạ cấp
-    const stillNoVerif = await ds.query(`SELECT count(*)::int AS n FROM verifications WHERE place_id=$1`, [placeId]);
-    expect(stillNoVerif[0].n).toBe(0); // guard chặn TRƯỚC khi ghi
-
-    // dọn business_members/user_roles phát sinh từ claim (ngoài phạm vi afterAll chính, dọn riêng ở đây).
     await ds.query(`DELETE FROM business_members WHERE place_id=$1`, [placeId]);
     await ds.query(`DELETE FROM user_roles WHERE user_id=$1 AND business_id=$2`, [owner.userId, placeId]);
   });
 
-  it('C1 guard (chiều b): approve claim trên cơ sở ĐÃ có dòng verifications -> claim vẫn approved, cache KHÔNG bị ghi đè, audit ghi nhận', async () => {
+  it('CLAIM -> SOURCE -> VERIFICATION INTEGRATION: approve claim trên cơ sở ĐÃ có dòng verifications (verified) -> dòng đó ĐƯỢC transition thẳng sang official (KHÔNG tạo dòng thứ hai)', async () => {
     const owner = await createUser('claim_b_owner', 'member');
     const moderator = await createUser('claim_b_moderator', 'moderator');
     const placeId = await mkPlace('claim_conflict_b');
 
-    // Verification sở hữu cache trước: submit -> verify.
+    // Verification đã tồn tại trước: submit -> verify (method=moderator, chưa official).
     const submitRes = await request(app.getHttpServer())
       .post('/api/verifications')
       .set('Authorization', `Bearer ${moderator.accessToken}`)
@@ -556,7 +566,6 @@ describe('Verification Foundation (live Postgres)', () => {
       .post(`/api/business-claims/${claimRes.body.data.id}/decide`)
       .set('Authorization', `Bearer ${moderator.accessToken}`)
       .send({ decision: 'approve' });
-    // Claim VẪN approve — guard chỉ chặn ghi đè badge, không chặn quyền sở hữu.
     expect(decideRes.status).toBe(200);
     expect(decideRes.body.data.status).toBe('approved');
 
@@ -566,18 +575,42 @@ describe('Verification Foundation (live Postgres)', () => {
     );
     expect(ownerRow[0].n).toBe(1); // ownership vẫn được cấp bình thường
 
-    // Cache vẫn là `verified` (do Verification đặt) — KHÔNG bị claim ghi đè thành `official`.
+    // ĐÚNG MỘT luồng Verification sở hữu cache — dòng `verified` có sẵn ĐƯỢC TÁI DÙNG (transition
+    // thẳng sang official qua ensureOfficialFromClaim), KHÔNG tạo dòng verifications thứ hai
+    // (constraint `uq_verif_place` sẽ chặn nếu có bug tạo trùng).
     const place = await ds.query(`SELECT verification_status FROM places WHERE id=$1`, [placeId]);
-    expect(place[0].verification_status).toBe('verified');
+    expect(place[0].verification_status).toBe('official');
 
-    const verif = await ds.query(`SELECT status FROM verifications WHERE place_id=$1`, [placeId]);
-    expect(verif[0].status).toBe('verified'); // entity và cache KHỚP NHAU — không phân kỳ
+    const verifRows = await ds.query(
+      `SELECT id, status, method, source_id FROM verifications WHERE place_id=$1`,
+      [placeId],
+    );
+    expect(verifRows).toHaveLength(1);
+    expect(verifRows[0].id).toBe(submitRes.body.data.id); // CÙNG dòng, không tạo mới
+    expect(verifRows[0].status).toBe('official');
+    expect(verifRows[0].method).toBe('owner_claim'); // method mới nhất thắng, cùng quy ước verify/official qua HTTP
+    // X1 (ADR-008 CORRECTION): `sources` KHÔNG cascade từ places/verifications — track ID THẬT để
+    // afterAll dọn sạch (đúng bài học đã sửa, không lặp lại lỗi).
+    expect(verifRows[0].source_id).not.toBeNull();
+    sourceIds.push(verifRows[0].source_id);
+
+    const events = await ds.query(
+      `SELECT from_status, to_status, method FROM verification_events WHERE verification_id=$1 ORDER BY created_at ASC`,
+      [verifRows[0].id],
+    );
+    // submit (null->pending, moderator) -> verify (pending->verified, moderator) -> claim approve
+    // (verified->official, owner_claim).
+    expect(events).toHaveLength(3);
+    expect(events[2]).toMatchObject({ from_status: 'verified', to_status: 'official', method: 'owner_claim' });
 
     const auditRow = await ds.query(
       `SELECT context FROM audit_logs WHERE entity_type='business_claim' AND actor_id=$1 ORDER BY created_at DESC LIMIT 1`,
       [moderator.userId],
     );
-    expect(auditRow[0].context.verification_cache_written).toBe(false); // không âm thầm
+    expect(auditRow[0].context.verification).toMatchObject({
+      verificationId: verifRows[0].id,
+      verificationStatus: 'official',
+    });
 
     await ds.query(`DELETE FROM business_members WHERE place_id=$1`, [placeId]);
     await ds.query(`DELETE FROM user_roles WHERE user_id=$1 AND business_id=$2`, [owner.userId, placeId]);
