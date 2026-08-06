@@ -130,6 +130,19 @@ interface TargetRef {
   priceHistoryId: string | null;
 }
 
+/**
+ * Kết quả `ensureOfficialFromClaim()` (CLAIM -> SOURCE -> VERIFICATION CORRECTION). Trả về CẢ
+ * `sourceId` THẬT đang gắn trên dòng `verifications` VÀ cờ `sourceCreated` để caller ghi audit đúng
+ * chuyện đã xảy ra: nhánh no-op (đã `official`) KHÔNG tạo `sources` mới nên audit phải trỏ tới
+ * source ĐANG gắn trên dòng đó, KHÔNG phải một source vừa tạo (PIR finding M-1: bản trước tạo
+ * `sources` TRƯỚC khi biết có cần hay không, để lại dòng mồ côi + audit nói dối về provenance).
+ */
+export interface ClaimVerificationOutcome {
+  verification: Verification;
+  sourceId: string | null;
+  sourceCreated: boolean;
+}
+
 // Trạng thái cache hiện tại của target, đọc cùng lúc xác nhận target tồn tại — cần cho guard C1
 // (ADR-008 CORRECTION): một cache đang ở trạng thái tin cậy mà KHÔNG có dòng `verifications` nào
 // nghĩa là nó do một writer KHÁC đặt (hiện tại chỉ có một: `BusinessClaimsService.decide()`).
@@ -316,20 +329,45 @@ export class VerificationsService {
    * `BusinessClaimsService`). KHÔNG mở transaction riêng, KHÔNG audit ở đây — caller chịu trách
    * nhiệm cả hai (audit của caller đã bao gồm `source_id`/verification id trong context).
    *
-   * Xử lý CẢ BA khả năng dòng `verifications` hiện có của place trước khi approve claim:
+   * Xử lý CẢ BỐN khả năng dòng `verifications` hiện có của place trước khi approve claim:
+   *  - Đã là official rồi -> NO-OP THẬT (kiểm tra ĐẦU TIÊN, trước mọi ghi): KHÔNG gọi
+   *    `createSource`, KHÔNG append event, KHÔNG ghi cache; trả về `sourceId` ĐANG gắn trên dòng đó.
    *  - Chưa có dòng nào -> tạo pending rồi transition sang official (như submit() + official()).
    *  - Có dòng nhưng đang expired/rejected -> gửi lại (resubmit) rồi transition sang official.
    *  - Có dòng đang pending/verified/community_verified -> transition thẳng sang official.
-   *  - Đã là official rồi (vd approve lại một claim cho place đã official qua đường khác) -> no-op,
-   *    trả về nguyên trạng, KHÔNG tạo verification_events thừa.
+   *
+   * CLAIM -> SOURCE -> VERIFICATION CORRECTION (PIR finding M-1): `createSource` là CALLBACK LƯỜI
+   * (lazy), CHỈ được gọi khi thực sự sắp có một transition. Bản trước nhận sẵn `sourceId` nên caller
+   * buộc phải tạo `sources` TRƯỚC khi biết nhánh no-op có xảy ra hay không — để lại dòng `sources`
+   * mồ côi (không dòng `verifications` nào trỏ tới) và audit ghi một `source_id` mà dòng
+   * `verifications` KHÔNG hề dùng. Callback giữ tri thức "hình dạng Source của claim" ở đúng
+   * `BusinessClaimsService` (không đẩy khái niệm business claim vào VerificationsService).
+   *
+   * Owner Decision 3 (CORRECTION): claim-driven official dùng `expires_at = null` — KHÔNG áp hạn 12
+   * tháng mặc định của `official()` qua HTTP. Lý do: CHƯA có luồng gia hạn/tái xác nhận nào cho chủ
+   * cơ sở (`Verification.Verify` là moderator-only theo Owner Decision 2, và claim lại sẽ bị BR-B2
+   * đẩy sang `disputed` vì đã có owner hiệu lực) — đặt hạn 12 tháng sẽ khiến badge của một cơ sở có
+   * chủ hợp lệ tự rơi xuống `expired` mà KHÔNG ai có đường phục hồi ngoài moderator. Chính sách này
+   * là TẠM THỜI, có chủ đích, cho tới khi renewal UX tồn tại.
    */
   async ensureOfficialFromClaim(
     placeId: string,
-    input: { sourceId: string; actorId: string; note?: string | null },
+    input: {
+      actorId: string;
+      note?: string | null;
+      createSource: (manager: EntityManager) => Promise<string>;
+    },
     manager: EntityManager,
-  ): Promise<Verification> {
+  ): Promise<ClaimVerificationOutcome> {
     const target: TargetRef = { placeId, contactId: null, priceHistoryId: null };
     const existing = await this.verificationsRepo.findActiveByTarget({ placeId }, manager);
+
+    // NO-OP TRƯỚC MỌI THỨ — không tạo source, không ghi gì, không event nào.
+    if (existing && existing.status === VerificationStatus.OFFICIAL) {
+      return { verification: existing, sourceId: existing.sourceId, sourceCreated: false };
+    }
+
+    const sourceId = await input.createSource(manager);
 
     let current: Verification;
     if (!existing) {
@@ -340,8 +378,6 @@ export class VerificationsService {
         input.note ?? null,
         manager,
       );
-    } else if (existing.status === VerificationStatus.OFFICIAL) {
-      return existing;
     } else if (existing.status === VerificationStatus.EXPIRED || existing.status === VerificationStatus.REJECTED) {
       current = await this.resubmitVerification(
         existing,
@@ -354,15 +390,16 @@ export class VerificationsService {
       current = existing;
     }
 
-    return this.transitionCore(manager, current, input.actorId, (curr, mgr) =>
+    const verification = await this.transitionCore(manager, current, input.actorId, (curr, mgr) =>
       this.buildOfficialTransition(
         curr,
-        { source_id: input.sourceId, note: input.note ?? undefined },
+        { source_id: sourceId, expires_at: null, note: input.note ?? undefined },
         input.actorId,
         VerificationMethod.OWNER_CLAIM,
         mgr,
       ),
     );
+    return { verification, sourceId, sourceCreated: true };
   }
 
   /** GET /verifications — hàng đợi moderator. */

@@ -41,14 +41,24 @@ const BUSINESS_OWNER_ROLE_CODE = 'business_owner';
 //
 // CLAIM -> SOURCE -> VERIFICATION INTEGRATION (2026-08-06) — thay thế Owner Decision 1 (verification
 // chỉ ghi thẳng cache) VÀ guard C1 (chỉ NGỪNG ghi đè) đã áp dụng trước đây: `decide(approve)` giờ
-// KHÔNG còn ghi `places.verificationStatus`/`verifiedAt` trực tiếp. Thay vào đó, nó tạo MỘT
-// `sources` (type=business_owner, kind=platform_user, gắn evidence của claim vào `metadata`) rồi gọi
+// KHÔNG còn ghi `places.verificationStatus`/`verifiedAt` trực tiếp. Thay vào đó, nó gọi
 // `VerificationsService.ensureOfficialFromClaim()` — đưa place tới trạng thái `official` qua ĐÚNG
 // MỘT luồng Verification (tạo/gửi lại dòng `verifications` nếu cần rồi transition, method
 // `owner_claim`), CÙNG transaction với `business_members`/`user_roles`/`business_claims` (một
 // approve = một transaction, không có state nửa vời). `places.verification_status`/`verifiedAt` giờ
 // CHỈ còn được `VerificationsService.syncTargetCache()` ghi — BusinessClaimsService không còn là
 // writer nào của cache đó nữa (đóng transitional exception mà ADR-008 CORRECTION từng ghi nhận).
+//
+// CLAIM -> SOURCE -> VERIFICATION CORRECTION (2026-08-06, hai quyết định Owner sau PIR):
+//  1. PRIVACY (Owner Decision 1): `sources.metadata` của claim CHỈ chứa `business_claim_id` —
+//     TUYỆT ĐỐI KHÔNG sao chép `claim.evidence` vào đó. `GET /sources/:id` là `@Public()` và trả
+//     nguyên entity (gồm `metadata`), nên evidence nằm ở đó là phơi giấy tờ kinh doanh riêng tư ra
+//     kênh KHÔNG cần đăng nhập — đúng thứ mà API Business Claim cố tình che (summary/list không có
+//     `evidence`; chỉ `GET /business-claims/{id}` sau `Business.Verify` mới trả). Evidence CHỈ đi qua
+//     endpoint có phân quyền đó. `business_claim_id` là con trỏ không nhạy cảm: moderator tự tra lại.
+//  2. NO-OP THẬT (Owner Decision 2): `sources` tạo qua callback LƯỜI truyền vào
+//     `ensureOfficialFromClaim()`, nên nhánh "đã official" không sinh dòng `sources` mồ côi nào và
+//     audit trỏ tới `verification.source_id` THẬT (xem `createClaimSource()` + audit context).
 @Injectable()
 export class BusinessClaimsService {
   constructor(
@@ -130,9 +140,16 @@ export class BusinessClaimsService {
       throw new UnprocessableEntityException('Từ chối claim bắt buộc có reason_code.');
     }
 
-    // Ghi lại source/verification vừa tạo (nhánh approve) để audit phản ánh ĐÚNG chuyện đã xảy ra
+    // Ghi lại source/verification thật (nhánh approve) để audit phản ánh ĐÚNG chuyện đã xảy ra
     // (gán trong transaction callback, đọc sau commit — decide() không retry transaction).
-    let verificationResult: { sourceId: string; verificationId: string; verificationStatus: string } | null = null;
+    // `sourceCreated=false` = nhánh no-op: place đã `official`, KHÔNG tạo source mới, `sourceId` là
+    // source ĐANG gắn trên dòng `verifications` đó (CORRECTION, PIR M-1).
+    let verificationResult: {
+      sourceId: string | null;
+      sourceCreated: boolean;
+      verificationId: string;
+      verificationStatus: string;
+    } | null = null;
 
     const result = await this.dataSource.transaction<BusinessClaim>(async (manager) => {
       const claim = await this.claimsRepo.findByIdForUpdate(manager, claimId);
@@ -206,37 +223,27 @@ export class BusinessClaimsService {
         manager,
       );
 
-      // CLAIM -> SOURCE -> VERIFICATION INTEGRATION — tạo một `sources` gắn evidence của claim, rồi
-      // đưa place tới `official` qua ĐÚNG MỘT luồng Verification (xem chú thích đầu class). Đây là
-      // nguồn sự thật DUY NHẤT cho `places.verification_status`/`verifiedAt` từ nay — không còn ghi
-      // cache trực tiếp ở đây.
-      const source = await this.sourcesRepo.save(
-        this.sourcesRepo.create({
-          type: SourceType.BUSINESS_OWNER,
-          kind: SourceKind.PLATFORM_USER,
-          title: null,
-          url: null,
-          externalRef: null,
-          publisher: null,
-          authorUserId: claim.requesterId,
-          license: null,
-          reliability: SOURCE_TYPE_DEFAULT_RELIABILITY[SourceType.BUSINESS_OWNER],
-          language: null,
-          retrievedAt: decidedAt,
-          metadata: { business_claim_id: claim.id, evidence: claim.evidence },
-        }),
-        manager,
-      );
-
-      const verification = await this.verificationsService.ensureOfficialFromClaim(
+      // CLAIM -> SOURCE -> VERIFICATION INTEGRATION — đưa place tới `official` qua ĐÚNG MỘT luồng
+      // Verification (xem chú thích đầu class). Đây là nguồn sự thật DUY NHẤT cho
+      // `places.verification_status`/`verifiedAt` từ nay — không còn ghi cache trực tiếp ở đây.
+      //
+      // CORRECTION (PIR M-1): `sources` được tạo qua CALLBACK LƯỜI, chỉ khi `ensureOfficialFromClaim`
+      // xác định thật sự cần một transition. Nhánh no-op (place đã `official`) KHÔNG gọi callback ->
+      // KHÔNG dòng `sources` mồ côi nào, và audit trỏ tới source THẬT đang gắn trên dòng đó.
+      const outcome = await this.verificationsService.ensureOfficialFromClaim(
         claim.placeId,
-        { sourceId: source.id, actorId, note: dto.decision_note ?? null },
+        {
+          actorId,
+          note: dto.decision_note ?? null,
+          createSource: (mgr) => this.createClaimSource(claim, decidedAt, mgr),
+        },
         manager,
       );
       verificationResult = {
-        sourceId: source.id,
-        verificationId: verification.id,
-        verificationStatus: verification.status,
+        sourceId: outcome.sourceId,
+        sourceCreated: outcome.sourceCreated,
+        verificationId: outcome.verification.id,
+        verificationStatus: outcome.verification.status,
       };
 
       await this.claimsRepo.updateDecision(manager, claim.id, {
@@ -266,9 +273,10 @@ export class BusinessClaimsService {
       result: AuditResult.SUCCESS,
       after: { status: result.status, place_id: result.placeId },
       // `null` = nhánh reject/dispute/redirect-to-disputed (không tạo source/verification nào).
-      // Nhánh approve gắn source_id/verification_id/verification_status vừa qua
+      // Nhánh approve gắn source_id/source_created/verification_id/verification_status THẬT sau
       // `ensureOfficialFromClaim()` — truy vết được badge `official` của place này về ĐÚNG source +
-      // dòng verifications nào.
+      // dòng verifications nào, và `sourceCreated` nói rõ lần approve NÀY có sinh source mới hay
+      // dùng lại source của một xác minh `official` đã có (nhánh no-op).
       context: { verification: verificationResult },
     });
 
@@ -300,6 +308,42 @@ export class BusinessClaimsService {
     });
 
     return toBusinessClaimSummary(result);
+  }
+
+  /**
+   * Tạo `sources` cho một claim vừa được approve — CALLBACK LƯỜI truyền vào
+   * `VerificationsService.ensureOfficialFromClaim()`, CHỈ chạy khi thật sự sắp có transition
+   * (CORRECTION, PIR M-1: không còn dòng `sources` mồ côi ở nhánh no-op). Trả về `id` để
+   * `buildOfficialTransition()` xác thực + gắn vào `verifications.source_id`.
+   *
+   * `metadata` CHỈ chứa `business_claim_id` (Owner Decision 1, CORRECTION) — KHÔNG `claim.evidence`.
+   * `GET /sources/:id` là `@Public()` và trả nguyên entity, nên mọi thứ đặt vào `metadata` là dữ liệu
+   * CÔNG KHAI. Evidence của claim là riêng tư, chỉ lộ qua `GET /business-claims/{id}` sau
+   * `Business.Verify`; `business_claim_id` là con trỏ không nhạy cảm để moderator tra lại từ đó.
+   */
+  private async createClaimSource(
+    claim: BusinessClaim,
+    decidedAt: Date,
+    manager: EntityManager,
+  ): Promise<string> {
+    const source = await this.sourcesRepo.save(
+      this.sourcesRepo.create({
+        type: SourceType.BUSINESS_OWNER,
+        kind: SourceKind.PLATFORM_USER,
+        title: null,
+        url: null,
+        externalRef: null,
+        publisher: null,
+        authorUserId: claim.requesterId,
+        license: null,
+        reliability: SOURCE_TYPE_DEFAULT_RELIABILITY[SourceType.BUSINESS_OWNER],
+        language: null,
+        retrievedAt: decidedAt,
+        metadata: { business_claim_id: claim.id },
+      }),
+      manager,
+    );
+    return source.id;
   }
 
   private async redirectToDisputed(
