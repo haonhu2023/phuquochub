@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException, U
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
+import { isUniqueViolation } from '../../common/db/unique-violation';
 import { VerificationsRepository } from './repositories/verifications.repository';
 import { VerificationEventsRepository } from './repositories/verification-events.repository';
 import { VerificationVotesRepository } from './repositories/verification-votes.repository';
@@ -68,10 +69,21 @@ const OFFICIAL_SOURCE_TYPES = new Set<SourceType>([
   SourceType.GOVERNMENT,
 ]);
 
+// Partial-unique index trên `verifications` (một xác minh hiện hành / target) — chốt chặn CUỐI CÙNG
+// cho race giữa hai `submit()` đồng thời cùng target (ADR-008 CORRECTION, PIR finding T1).
+const VERIFICATION_TARGET_UNIQUE_CONSTRAINTS = ['uq_verif_place', 'uq_verif_contact', 'uq_verif_price'];
+
 interface TargetRef {
   placeId: string | null;
   contactId: string | null;
   priceHistoryId: string | null;
+}
+
+// Trạng thái cache hiện tại của target, đọc cùng lúc xác nhận target tồn tại — cần cho guard C1
+// (ADR-008 CORRECTION): một cache đang ở trạng thái tin cậy mà KHÔNG có dòng `verifications` nào
+// nghĩa là nó do một writer KHÁC đặt (hiện tại chỉ có một: `BusinessClaimsService.decide()`).
+interface ResolvedTarget extends TargetRef {
+  currentCacheStatus: VerificationStatus;
 }
 
 @Injectable()
@@ -104,17 +116,48 @@ export class VerificationsService {
       );
 
       if (!existing) {
-        const created = await this.verificationsRepo.create(
-          {
-            placeId: target.placeId,
-            contactId: target.contactId,
-            priceHistoryId: target.priceHistoryId,
-            method: VerificationMethod.MODERATOR,
-            createdBy: actorId,
-            note: dto.note ?? null,
-          },
-          manager,
-        );
+        // ADR-008 CORRECTION (PIR finding C1) — GUARD PHÒNG VỆ: cache đang ở trạng thái TIN CẬY mà
+        // KHÔNG có dòng `verifications` nào nghĩa là một writer KHÁC đã đặt nó (hiện chỉ có
+        // `BusinessClaimsService.decide()` khi approve claim). Tạo dòng `pending` ở đây sẽ HẠ CẤP
+        // badge công khai đó (`places.verification_status` lộ ra trên route `@Public`) một cách âm
+        // thầm. Từ chối, KHÔNG "nhận" cache làm trạng thái khởi tạo: `official` đòi `source_id`
+        // (CHECK ck_verif_official_source) mà claim KHÔNG hề sinh ra `sources` nào — nhận vào sẽ
+        // vi phạm chính ADR-008. Đây là GIỚI HẠN CHUYỂN TIẾP đã biết, không phải lỗi: mở khoá nó
+        // cần milestone tích hợp Business Claim -> Source -> Verification riêng.
+        if (isTrustedStatus(target.currentCacheStatus)) {
+          throw new ConflictException(
+            `Target đang có trạng thái xác minh '${target.currentCacheStatus}' được đặt NGOÀI hệ ` +
+              `Verification (Business Claim approval — ADR-015). Chưa thể đưa target này vào hàng đợi ` +
+              `xác minh: làm vậy sẽ hạ cấp trạng thái đó xuống 'pending'. Cần milestone tích hợp ` +
+              `Business Claim -> Source -> Verification trước.`,
+          );
+        }
+
+        let created: Verification;
+        try {
+          created = await this.verificationsRepo.create(
+            {
+              placeId: target.placeId,
+              contactId: target.contactId,
+              priceHistoryId: target.priceHistoryId,
+              method: VerificationMethod.MODERATOR,
+              createdBy: actorId,
+              note: dto.note ?? null,
+            },
+            manager,
+          );
+        } catch (err) {
+          // ADR-008 CORRECTION (PIR finding T1): hai `submit()` đồng thời cùng target — cả hai đọc
+          // `findActiveByTarget` = null rồi cả hai INSERT. Partial-unique index là chốt chặn CUỐI
+          // CÙNG (toàn vẹn DB vẫn đúng, không có dòng trùng); trước đây lỗi 23505 nổi lên thành 500.
+          // Bắt ĐÚNG vi phạm đã lường trước, trả 409 để client đọc lại & thử lại.
+          if (isUniqueViolation(err, ...VERIFICATION_TARGET_UNIQUE_CONSTRAINTS)) {
+            throw new ConflictException(
+              'Target vừa được gửi xác minh đồng thời bởi một request khác — đọc lại và thử lại.',
+            );
+          }
+          throw err;
+        }
         await this.eventsRepo.append(
           {
             verificationId: created.id,
@@ -132,10 +175,23 @@ export class VerificationsService {
 
       // Đã có dòng — chỉ hợp lệ khi đang expired/rejected (gửi lại, verification.md §3.2).
       const toStatus = assertValidVerificationTransition(existing.status, 'submit');
+      // ADR-008 CORRECTION (PIR finding F1): XOÁ trường của trạng thái cuối trước đó. `expiresAt`
+      // sót lại là lỗi THẬT, không chỉ mất vệ sinh dữ liệu: official(expires=T) -> expired ->
+      // submit -> verify sẽ cho ra một dòng `verified` mang `expires_at` đã QUÁ HẠN, và
+      // `expireOverdue()` hạ cấp nó ngay lần chạy kế tiếp — xác minh của moderator tự bốc hơi.
+      // `reasonCode`/`rejectedReason` sót lại thì hiện lên API trên một dòng không hề bị bác.
+      const resubmitPatch = {
+        status: toStatus,
+        method: VerificationMethod.MODERATOR,
+        note: dto.note ?? existing.note,
+        reasonCode: null,
+        rejectedReason: null,
+        expiresAt: null,
+      };
       const ok = await this.verificationsRepo.casUpdate(
         existing.id,
         existing.lockVersion,
-        { status: toStatus, method: VerificationMethod.MODERATOR, note: dto.note ?? existing.note },
+        resubmitPatch,
         manager,
       );
       if (!ok) {
@@ -153,7 +209,11 @@ export class VerificationsService {
         manager,
       );
       await this.syncTargetCache(manager, target, toStatus, new Date());
-      return { ...existing, status: toStatus, lockVersion: existing.lockVersion + 1 };
+      // Trả về ĐÚNG những gì vừa ghi: áp CẢ patch, không chỉ `status`. Bản trước chỉ spread
+      // `existing` + `status` nên response vẫn phơi ra `expires_at`/`reason_code` CŨ dù DB đã xoá —
+      // API nói dối về trạng thái nó vừa tạo ra (chính e2e F1 bắt được lỗi này). Cùng khuôn
+      // `transition()`/`vote()` vốn đã `{ ...current, ...patch }`.
+      return { ...existing, ...resubmitPatch, lockVersion: existing.lockVersion + 1 };
     });
 
     await this.audit.record({
@@ -254,6 +314,9 @@ export class VerificationsService {
         note: dto.note ?? current.note,
         verifiedBy: actorId,
         validFrom: now,
+        // F1: một dòng `verified` không được mang metadata bác bỏ của lần trước.
+        reasonCode: null,
+        rejectedReason: null,
       };
       return { toStatus, patch, method: VerificationMethod.MODERATOR, sourceId: dto.source_id ?? null, note: dto.note ?? null };
     });
@@ -298,6 +361,9 @@ export class VerificationsService {
         verifiedBy: actorId,
         validFrom: now,
         expiresAt,
+        // F1: một dòng `official` không được mang metadata bác bỏ của lần trước.
+        reasonCode: null,
+        rejectedReason: null,
       };
       return { toStatus, patch, method: VerificationMethod.MODERATOR, sourceId: dto.source_id, note: dto.note ?? null };
     });
@@ -314,6 +380,9 @@ export class VerificationsService {
         reasonCode: dto.reason_code,
         rejectedReason: dto.rejected_reason ?? null,
         note: dto.note ?? current.note,
+        // F1: một dòng bị bác KHÔNG còn cửa sổ hiệu lực — `expires_at` của trạng thái tin cậy
+        // trước đó (vd official) không được sống tiếp sang `rejected`.
+        expiresAt: null,
       };
       return { toStatus, patch, method: VerificationMethod.MODERATOR, sourceId: null, note: dto.note ?? null };
     });
@@ -535,26 +604,48 @@ export class VerificationsService {
     }
   }
 
-  private async resolveAndValidateTarget(type: VerificationTargetType, id: string): Promise<TargetRef> {
+  /**
+   * Xác nhận target tồn tại VÀ đọc trạng thái cache hiện tại của nó (cho guard C1). Với `place`
+   * dùng `getCardByIdIncludingInactive` — CÙNG method `BusinessClaimsService.submit()` đã dùng
+   * (privileged read, hợp lệ ở đây: mọi route `/verifications/*` đều gác `Verification.Verify`,
+   * KHÔNG `@Public`) — nó vừa trả `verification_status` vừa lọc `deleted_at IS NULL`, đúng cùng
+   * ngữ nghĩa `existsById` trước đó chứ không nới lỏng gì.
+   */
+  private async resolveAndValidateTarget(type: VerificationTargetType, id: string): Promise<ResolvedTarget> {
     if (type === VerificationTargetType.PLACE) {
-      const exists = await this.placesRepo.existsById(id);
-      if (!exists) {
+      const place = await this.placesRepo.getCardByIdIncludingInactive(id);
+      if (!place) {
         throw new NotFoundException('Không tìm thấy place.');
       }
-      return { placeId: id, contactId: null, priceHistoryId: null };
+      return {
+        placeId: id,
+        contactId: null,
+        priceHistoryId: null,
+        currentCacheStatus: place.verification_status as VerificationStatus,
+      };
     }
     if (type === VerificationTargetType.CONTACT) {
       const contact = await this.contactsRepo.findById(id);
       if (!contact) {
         throw new NotFoundException('Không tìm thấy contact.');
       }
-      return { placeId: null, contactId: id, priceHistoryId: null };
+      return {
+        placeId: null,
+        contactId: id,
+        priceHistoryId: null,
+        currentCacheStatus: contact.verificationStatus,
+      };
     }
     const price = await this.pricesRepo.findById(id);
     if (!price) {
       throw new NotFoundException('Không tìm thấy price_history.');
     }
-    return { placeId: null, contactId: null, priceHistoryId: id };
+    return {
+      placeId: null,
+      contactId: null,
+      priceHistoryId: id,
+      currentCacheStatus: price.verificationStatus,
+    };
   }
 }
 

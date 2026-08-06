@@ -8,10 +8,12 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
+import { isUniqueViolation } from '../../common/db/unique-violation';
 import { BusinessClaimsRepository } from './repositories/business-claims.repository';
 import { BusinessMembersRepository } from './repositories/business-members.repository';
 import { BusinessClaim } from './entities/business-claim.entity';
 import { PlacesRepository } from '../places/repositories/places.repository';
+import { VerificationsRepository } from '../verifications/repositories/verifications.repository';
 import { RolesRepository } from '../rbac/repositories/roles.repository';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
 import { ScopeType } from '../rbac/rbac.enums';
@@ -30,13 +32,6 @@ import {
 
 const BUSINESS_OWNER_ROLE_CODE = 'business_owner';
 
-function isUniqueViolation(err: unknown, constraintName: string): boolean {
-  const e = err as { code?: string; constraint?: string; driverError?: { code?: string; constraint?: string } };
-  const code = e.code ?? e.driverError?.code;
-  const constraint = e.constraint ?? e.driverError?.constraint;
-  return code === '23505' && constraint === constraintName;
-}
-
 // BusinessClaimsService — ADR-015 Claim Decision Workflow (M3, không có M1/M2 trước đó trong repo
 // này). submit() = WF-05 UC-B1 (Member, Business.Claim). decide() = UC-B2 (Moderator,
 // Business.Verify, chỉ approve/reject — dispute TỰ ĐỘNG khi xung đột owner). withdraw() = actor
@@ -44,6 +39,16 @@ function isUniqueViolation(err: unknown, constraintName: string): boolean {
 //
 // Owner Decision 1: verification = CHỈ ghi `places.verification_status`/`verified_at` (cache có
 // sẵn, ADR-008 §Decision mục 3) — KHÔNG tạo `verifications`/`verification_events`, ADR-008 vẫn hoãn.
+//
+// ADR-008 CORRECTION (2026-08-06, PIR finding C1) — GUARD PHÒNG VỆ, KHÔNG phải tích hợp:
+// `decide(approve)` chỉ ghi cache `places.verification_status` khi cơ sở đó CHƯA có dòng
+// `verifications` nào. Nếu đã có, dòng `verifications` LÀ nguồn sự thật của cache đó (ADR-008) và
+// việc ghi đè ở đây sẽ tạo ra hai giá trị mâu thuẫn VĨNH VIỄN (cache nói `official`, entity nói
+// khác; job hết hạn đọc entity nên cache `official` không bao giờ hết hạn). Guard này KHÔNG tạo
+// `verifications`/`verification_events`, KHÔNG sinh `sources` — đúng phạm vi Owner đã chốt; nó chỉ
+// NGỪNG ghi đè. Việc claim vẫn approve bình thường (ownership/`business_members`/`user_roles` không
+// đổi) — chỉ badge cache là do Verification quản. Kết quả được ghi vào audit context
+// (`verification_cache_written`) để KHÔNG âm thầm.
 @Injectable()
 export class BusinessClaimsService {
   constructor(
@@ -52,6 +57,7 @@ export class BusinessClaimsService {
     private readonly placesRepo: PlacesRepository,
     private readonly rolesRepo: RolesRepository,
     private readonly userRolesRepo: UserRolesRepository,
+    private readonly verificationsRepo: VerificationsRepository,
     private readonly audit: AuditService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -122,6 +128,10 @@ export class BusinessClaimsService {
     if (dto.decision === BusinessClaimDecision.REJECT && !dto.reason_code) {
       throw new UnprocessableEntityException('Từ chối claim bắt buộc có reason_code.');
     }
+
+    // Ghi lại việc guard C1 có cho ghi cache hay không, để audit phản ánh ĐÚNG chuyện đã xảy ra
+    // (gán trong transaction callback, đọc sau commit — decide() không retry transaction).
+    let verificationCacheWritten: boolean | null = null;
 
     const result = await this.dataSource.transaction<BusinessClaim>(async (manager) => {
       const claim = await this.claimsRepo.findByIdForUpdate(manager, claimId);
@@ -195,11 +205,22 @@ export class BusinessClaimsService {
         manager,
       );
 
-      await this.placesRepo.updateScalars(
-        claim.placeId,
-        { verificationStatus: VerificationStatus.OFFICIAL, verifiedAt: decidedAt },
+      // ADR-008 CORRECTION (PIR C1) — chỉ ghi cache khi Verification CHƯA sở hữu nó. Xem chú thích
+      // đầu class: nếu đã có dòng `verifications` cho cơ sở này, dòng đó là nguồn sự thật của
+      // `places.verification_status`; ghi đè ở đây tạo mâu thuẫn vĩnh viễn (job hết hạn đọc entity,
+      // nên cache `official` do claim ghi sẽ không bao giờ hết hạn). Claim VẪN approve bình thường.
+      const existingVerification = await this.verificationsRepo.findActiveByTarget(
+        { placeId: claim.placeId },
         manager,
       );
+      verificationCacheWritten = existingVerification === null;
+      if (verificationCacheWritten) {
+        await this.placesRepo.updateScalars(
+          claim.placeId,
+          { verificationStatus: VerificationStatus.OFFICIAL, verifiedAt: decidedAt },
+          manager,
+        );
+      }
 
       await this.claimsRepo.updateDecision(manager, claim.id, {
         status: approvedStatus,
@@ -227,6 +248,10 @@ export class BusinessClaimsService {
       actorId,
       result: AuditResult.SUCCESS,
       after: { status: result.status, place_id: result.placeId },
+      // `null` = nhánh reject/dispute (không có bước ghi cache nào). `false` = guard C1 đã CHẶN ghi
+      // đè vì cơ sở đã có dòng `verifications` sở hữu cache đó — hiện diện tường minh ở audit để
+      // moderator/điều tra sau này biết badge do Verification quản, không phải do claim này.
+      context: { verification_cache_written: verificationCacheWritten },
     });
 
     return toBusinessClaimSummary(result);
