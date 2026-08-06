@@ -289,4 +289,6 @@ from the Correction milestone remains the only protection at that seam.
 
 ## Commit hashes
 
-Recorded in a follow-up entry after commits are created (see final status).
+- `79abdff` — `feat(verification): schedule bounded expiry processing`
+- `a23b81e` — `test(verification): verify scheduler and expiry operations`
+- `9879ab8` — `docs(verification): record scheduler operational enablement`
