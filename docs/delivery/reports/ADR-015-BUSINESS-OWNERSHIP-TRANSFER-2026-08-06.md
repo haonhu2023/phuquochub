@@ -362,4 +362,6 @@ appears in the final status above.)
 
 ## Commit hashes
 
-Recorded in a follow-up entry after commits are created (see final report).
+- `30ff8f9` — `feat(business): add ownership transfer workflow`
+- `b6907d5` — `test(business): verify ownership transfer and rollback`
+- `c0a215a` — `docs(business): record ownership transfer milestone`
