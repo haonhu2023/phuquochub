@@ -18,11 +18,21 @@
 > `Business.Verify`), enforcement HOÀN TOÀN qua đường Managed sẵn có của ADR-019, không kiểm tra
 > ownership thủ công nào khác.
 >
-> §7 mục "Còn mở" (transfer, chuỗi/thương hiệu) và §3 tính năng Dashboard/phản hồi review/analytics,
+> **Business Ownership Transfer (UC-B7): ĐÃ TRIỂN KHAI (2026-08-06).** §7 mục 5 "Chuyển nhượng" —
+> câu hỏi mở đã chốt: **KHÔNG** bảng `business_transfers` mới. Owner hiện tại tự chuyển nhượng
+> (`POST /business/{id}/transfer`) — revoke owner cũ + insert owner mới trên `business_members`
+> (`claim_id=null`) + đồng bộ scoped `business_owner` (revoke cũ/assign mới), lịch sử đọc được qua
+> `business_members.revoked_at` + `audit_logs`. Permission `Business.Transfer.Managed` (CÓ hậu tố
+> scope, cùng lớp với Manager Assignment). Không moderator, không bước chấp thuận owner mới, hiệu
+> lực NGAY sau commit. Manager giữ nguyên; target đang có vai trò hiệu lực khác (kể cả đang là
+> manager) → 409, phải thu hồi trước.
+>
+> §7 mục "Còn mở" (chuỗi/thương hiệu) và §3 tính năng Dashboard/phản hồi review/analytics,
 > `Business.Edit.Managed` (dành cho một Business Profile surface tương lai) **vẫn chưa triển khai**.
 > Chi tiết: [ADR-015 §Tình trạng triển khai](../../99-decisions/ADR-015-business-ownership-model.md)
 > · [ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-CLAIM-FOUNDATION-2026-08-05.md)
-> · [ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md).
+> · [ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md](../../delivery/reports/ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md)
+> · [ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md](../../delivery/reports/ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md).
 
 ## 1. Nguyên tắc & phạm vi
 
@@ -137,9 +147,15 @@ SELECT * FROM business_claims WHERE status = 'pending' ORDER BY created_at;
 2. `business_id = places.id`; giữ arc official/community cho media & contacts.
 3. BR-B2 cưỡng chế bằng partial unique.
 4. Official qua Verification, không state riêng.
+5. **Chuyển nhượng (transfer, UC-B7 — chốt 2026-08-06):** revoke owner cũ + insert owner mới trên
+   `business_members` (`claim_id=null`) + đồng bộ scoped `business_owner` (`user_roles`) — **KHÔNG**
+   bảng lịch sử `business_transfers` riêng. Lịch sử/audit pháp lý đọc được đầy đủ qua
+   `business_members.revoked_at` (dòng owner cũ vẫn còn, chỉ đánh dấu thu hồi) + `audit_logs`
+   (`business.ownership_transferred`, context đủ `business_id`/`from_user_id`/`to_user_id`/
+   `initiated_by`/`reason`/id của cả hai membership/role-grant liên quan). Chi tiết:
+   [ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md](../../delivery/reports/ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md).
 
 **Còn mở:**
-5. **Chuyển nhượng (transfer):** biểu diễn bằng revoke owner cũ + insert owner mới (đề xuất) — có cần bảng lịch sử `business_transfers` riêng cho audit pháp lý không, hay đủ với `business_members` + audit log?
 6. **Chuỗi/thương hiệu nhiều chi nhánh:** để Wave 5 (brand-link nhẹ) nếu phát sinh nhu cầu thật.
 
 ---

@@ -107,9 +107,9 @@ typecheck/lint 6/6, `git diff --check` sạch, secret scan sạch (21 file kiể
 
 **Ngoài phạm vi milestone Claim Foundation (business.md §7 "còn mở" + Owner exclusion list, KHÔNG
 bắt đầu ở milestone đó):** quản lý Manager (gán/thu hồi, UC-B6) — **nay ĐÃ TRIỂN KHAI, xem dưới**;
-chuyển nhượng (transfer, UC-B7), dashboard chủ cơ sở (UC-B3/B5), phản hồi review (UC-B4), thông
-báo, chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh, ADR-008 đầy đủ (bảng
-`verifications`/`verification_events`/`verification_votes`) — vẫn ngoài phạm vi.
+chuyển nhượng (transfer, UC-B7) — **nay ĐÃ TRIỂN KHAI, xem dưới**; dashboard chủ cơ sở (UC-B3/B5),
+phản hồi review (UC-B4), thông báo, chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh,
+ADR-008 đầy đủ (bảng `verifications`/`verification_events`/`verification_votes`) — vẫn ngoài phạm vi.
 
 ---
 
@@ -160,5 +160,59 @@ chứng minh sống ở Claim Foundation; review mã nguồn xác nhận cả ha
 (`assign()`/`revoke()`) đều nhận đúng `manager` dùng chung. Chi tiết đầy đủ:
 [ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md](../delivery/reports/ADR-015-BUSINESS-MANAGER-ASSIGNMENT-2026-08-05.md).
 
-**Ngoài phạm vi milestone này:** chuyển nhượng (transfer, UC-B7), dashboard, phản hồi review, thông
-báo, số liệu/analytics, chuỗi nhiều chi nhánh, `Business.Edit.Managed`, ADR-008 đầy đủ.
+**Ngoài phạm vi milestone này:** chuyển nhượng (transfer, UC-B7) — **nay ĐÃ TRIỂN KHAI, xem dưới**;
+dashboard, phản hồi review, thông báo, số liệu/analytics, chuỗi nhiều chi nhánh,
+`Business.Edit.Managed`, ADR-008 đầy đủ.
+
+---
+
+**Business Ownership Transfer (UC-B7): ✅ ĐÃ TRIỂN KHAI (2026-08-06).** Milestone thứ ba của
+ADR-015 trong repo này, ngay sau Manager Assignment/Revocation. Tái sử dụng nguyên vẹn schema
+`business_members`/`user_roles` (không migration bảng/enum mới — chỉ seed permission). Owner-quyết
+định phạm vi (2026-08-06):
+
+1. **Biểu diễn transfer = mô hình sẵn có, KHÔNG bảng `business_transfers` mới.** business.md §7 mục
+   5 (câu hỏi mở từ Claim Foundation) chốt dứt điểm: revoke owner cũ + insert owner mới trên
+   `business_members` (`claim_id=null`, giống manager) + đồng bộ scoped `business_owner` trên
+   `user_roles` (revoke cũ, assign mới), ghi đầy đủ vào `audit_logs`
+   (`business.ownership_transferred`, context gồm `business_id`/`from_user_id`/`to_user_id`/
+   `initiated_by`/`reason`/id của cả bốn thay đổi liên quan — membership cũ/mới, role-grant cũ/mới).
+2. **Permission CÓ hậu tố `.Managed`, cùng lớp Manager Assignment.** `Business.Transfer.Managed` —
+   KHÔNG seed/dùng chuỗi không hậu tố `Business.Transfer` mà rbac.md ghi, cùng lý do ADR-019 D6 đã
+   buộc sửa ở M3.5 (Manager Assignment).
+3. **Hành động trực tiếp của owner hiện tại — KHÔNG moderator, KHÔNG bước chấp thuận của owner
+   mới.** Có hiệu lực NGAY sau khi transaction commit. Manager giữ nguyên — transfer KHÔNG đụng tới
+   bất kỳ dòng `business_members(role='manager')` nào.
+4. **Transaction MỘT-KHỐI, thứ tự cố định:** khoá + xác nhận owner hiệu lực hiện tại → xác nhận
+   actor CHÍNH LÀ owner đó → xác nhận target user tồn tại → xác nhận target CHƯA có vai trò hiệu lực
+   nào tại cơ sở này (bao gồm cả đang là manager — 409, không ngầm định "thăng chức" thu hồi vai trò
+   manager của họ) → revoke membership cũ → revoke scoped role cũ (CHỈ businessId này) → insert
+   membership mới → assign scoped role mới → commit → audit SAU commit.
+
+**Triển khai:** `BusinessTransferService` (transaction một khối, audit sau commit) +
+`BusinessTransferController` (`POST /business/{id}/transfer`) + migration
+`SeedBusinessTransferPermission` (1 permission mới, grant CHỈ `business_owner`) + `business-member.
+mapper.ts` mới (hợp nhất response shape `business_members`, dùng chung cho cả Manager Assignment lẫn
+Transfer, thay `business-manager.mapper.ts` cũ) + `UsersRepository.findById()`/`UserRolesRepository.
+findActive()` mở rộng tham số `manager` tuỳ chọn (đọc TRONG transaction của caller, cùng quy ước
+`assign()`/`revoke()` đã có).
+
+**Xác nhận sống trên Postgres thật (2026-08-06):** owner chuyển nhượng → `business_members` owner cũ
+`revoked_at` được set, owner mới insert (`claim_id=null`), `user_roles` scoped grant cũ revoke/mới
+assign đúng `business_id`, quyền Managed của owner cũ mất hiệu lực NGAY (PATCH place → 403 tức thì
+sau transfer, 200 ngay trước đó) và owner mới có hiệu lực NGAY (200). Manager giữ nguyên (PATCH place
+vẫn 200 sau transfer). Owner sở hữu HAI cơ sở, transfer một cơ sở KHÔNG đụng scoped grant ở cơ sở
+kia. Cross-business isolation giữ nguyên qua ADR-019 (owner cơ sở A transfer cơ sở B → 403, không
+cần code phân quyền mới). Target đang là manager tại cơ sở này → 409, vai trò manager giữ nguyên.
+Rollback drill thật: throw có chủ đích SAU cả bốn lệnh ghi (revoke membership cũ, revoke role cũ,
+insert membership mới, assign role mới) NHƯNG TRƯỚC commit — xác nhận CẢ BỐN đều rollback về
+baseline (owner cũ vẫn còn quyền Managed, owner mới không có quyền gì, không audit row nào được ghi),
+throw + test tạm đã xoá ngay sau khi xác nhận, 0 residue. Migration apply → revert → verify 0 residue
+→ reapply. Full regression: BE unit 121 suite/1354 test (từ 119/1341), BE e2e 26 suite/225 test (từ
+25/216, gồm `business-transfer.e2e-spec.ts` mới, 9 test), monorepo build/typecheck/lint 12/12, `git
+diff --check` sạch, secret scan sạch. Live HTTP walkthrough riêng qua server thật (không chỉ
+supertest) xác nhận toàn bộ hành vi trên qua HTTP + SQL trực tiếp, dọn sạch 0 residue. Chi tiết đầy
+đủ: [ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md](../delivery/reports/ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md).
+
+**Ngoài phạm vi milestone này:** dashboard chủ cơ sở (UC-B3/B5), phản hồi review (UC-B4), thông báo,
+chế tài/sanction, số liệu/analytics, chuỗi nhiều chi nhánh, `Business.Edit.Managed`, ADR-008 đầy đủ.

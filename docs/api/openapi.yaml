@@ -1943,11 +1943,24 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { description: Thiếu Business.Manager.Revoke.Managed, hoặc không phải owner hiệu lực của cơ sở này }
         '404': { description: Không tìm thấy manager hiệu lực tại cơ sở này (bao gồm cả khi target là owner) }
+  # Business Ownership Transfer (UC-B7) — ĐÃ TRIỂN KHAI (2026-08-06). `Business.Transfer.Managed`
+  # (CÓ hậu tố scope, cùng lớp rủi ro đã phát hiện/chốt ở Manager Assignment) +
+  # `@AuthorizationContext(resourceType:'place', param:'id')` — actor phải giữ grant Managed mà
+  # business_id khớp ĐÚNG `id` route. Hành động trực tiếp của owner hiện tại — KHÔNG moderator,
+  # KHÔNG bước chấp thuận của owner mới, có hiệu lực NGAY sau commit. Tái dùng nguyên
+  # `business_members`/`user_roles` (revoke owner cũ + insert owner mới + đồng bộ scoped role) —
+  # KHÔNG có bảng `business_transfers` mới.
   /business/{id}/transfer:
     post:
       tags: [Business]
-      summary: Chuyển nhượng quyền sở hữu
+      summary: Chuyển nhượng quyền sở hữu (Business.Transfer.Managed, owner của ĐÚNG cơ sở này)
       operationId: transferBusiness
+      description: >-
+        200 (không phải 201) — thay thế trạng thái sở hữu hiện có, không tạo thêm thành viên mới.
+        `reason` tuỳ chọn, chỉ ghi vào audit context. Manager giữ nguyên — endpoint này không đụng
+        tới bất kỳ dòng `business_members(role='manager')` nào. Target đang có vai trò hiệu lực khác
+        (kể cả đang là manager tại cơ sở này) → 409, phải thu hồi vai trò đó trước qua
+        `/business/{id}/managers/{userId}`.
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -1956,8 +1969,22 @@ paths:
             schema:
               type: object
               required: [new_owner_id]
-              properties: { new_owner_id: { type: string, format: uuid } }
-      responses: { '200': { $ref: '#/components/responses/EmptySuccess' } }
+              properties:
+                new_owner_id: { type: string, format: uuid }
+                reason: { type: string, maxLength: 300, description: Tuỳ chọn — ghi vào audit_logs.context.reason }
+      responses:
+        '200':
+          description: OK — owner mới, dòng business_members mới (claim_id null)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/BusinessManager' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Transfer.Managed, hoặc không phải owner hiệu lực của cơ sở này }
+        '404': { description: Cơ sở chưa có owner hiệu lực, hoặc target user không tồn tại }
+        '409': { description: Target đã là owner hiệu lực (kể cả chuyển cho chính mình), hoặc đang có vai trò hiệu lực khác (vd manager) tại cơ sở này }
 
   # ============================ MEDIA ============================
   # Media Upload Foundation (design review, 2026-07-30). Backend only — see

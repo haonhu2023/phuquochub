@@ -30,7 +30,72 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-05, ADR-015 Business Manager Assignment/Revocation --
+  task: none                      # (2026-08-06, ADR-015 Business Ownership Transfer -- UC-B7)
+                                  # Owner-approved implementation. Third ADR-015 milestone in this
+                                  # repository, immediately after Manager Assignment/Revocation.
+                                  # Resolves business.md Sec7 item 5 (open since Claim Foundation):
+                                  # NO business_transfers table. Reuses business_members/user_roles
+                                  # as-is -- revoke old owner membership + insert new (claim_id=null)
+                                  # + revoke/assign scoped business_owner, recorded in audit_logs.
+                                  #
+                                  # Owner Decision 1 (audit model): the five writes above, no new
+                                  # table; audit context carries business_id/from_user_id/
+                                  # to_user_id/initiated_by/reason/old+new membership id/old+new
+                                  # role-grant id. Owner Decision 2 (permission naming): seeded
+                                  # Business.Transfer.Managed WITH the .Managed suffix, same class of
+                                  # fix already applied at Manager Assignment (rbac.md documents the
+                                  # scope-less string; ADR-019 D6 determines scope class from the
+                                  # suffix). Owner Decision 3 (workflow): direct owner action, no
+                                  # moderator, no recipient acceptance, managers untouched, immediate
+                                  # on commit. Owner Decision 4 (transaction): fixed step order --
+                                  # lock+verify current owner, verify actor is that owner, verify
+                                  # target exists, verify target not already active/has another role
+                                  # (409 if so -- e.g. already a manager; must be revoked first via
+                                  # the Manager Assignment endpoint, transfer never implicitly
+                                  # promotes/demotes a manager), revoke old membership, revoke old
+                                  # scoped role (businessId-scoped only), insert new membership,
+                                  # assign new scoped role, commit, audit after commit.
+                                  #
+                                  # New: BusinessTransferService (single transaction, audit after
+                                  # commit), BusinessTransferController (POST /business/:id/transfer),
+                                  # SeedBusinessTransferPermission migration (1 permission, granted to
+                                  # business_owner only). business-member.mapper.ts replaces
+                                  # business-manager.mapper.ts -- one shared business_members response
+                                  # shape now used by both Manager Assignment and Transfer.
+                                  # UsersRepository.findById() and UserRolesRepository.findActive()
+                                  # gained an optional transaction-manager parameter (same convention
+                                  # as assign()/revoke()) so the transfer transaction can read both in
+                                  # its own transaction per Owner Decision 4's fixed step order.
+                                  #
+                                  # Live Postgres validation (2026-08-06): owner transfers -> old
+                                  # membership revoked, new membership inserted (claim_id=null), old
+                                  # scoped grant revoked (businessId-scoped only -- a second business
+                                  # owned by the same actor was left untouched, verified explicitly),
+                                  # new scoped grant assigned; old owner loses Managed access
+                                  # immediately (403 right after, 200 right before), new owner gains
+                                  # it immediately (200); manager untouched (200 unaffected); target
+                                  # already a manager -> 409, manager role unchanged; cross-business
+                                  # isolation via ADR-019 unchanged (owner of A transferring B -> 403,
+                                  # zero new authz code); audit context confirmed complete via SQL. A
+                                  # temporary forced-failure drill (throw AFTER all four writes but
+                                  # BEFORE commit, then removed) proved atomicity: all four rolled back
+                                  # to baseline, including zero audit rows written. Migration apply ->
+                                  # revert -> verified zero residue -> reapply. A separate live HTTP
+                                  # walkthrough (real running server, not just supertest, real signed
+                                  # JWTs, real SQL verification) repeated the full flow end-to-end and
+                                  # confirmed zero residue after cleanup. Full regression: BE unit 121
+                                  # suites/1354 tests (up from 119/1341), BE e2e 26 suites/225 tests (up
+                                  # from 25/216, includes business-transfer.e2e-spec.ts, 9 tests),
+                                  # monorepo build/typecheck/lint 12/12, git diff --check clean, secret
+                                  # scan clean. See docs/delivery/reports/
+                                  # ADR-015-BUSINESS-OWNERSHIP-TRANSFER-2026-08-06.md and ADR-015's own
+                                  # Implementation Status section.
+                                  #
+                                  # Explicitly NOT started (Owner exclusion list, unchanged from
+                                  # Manager Assignment plus this milestone itself now done): business
+                                  # dashboard (UC-B3/B5), review replies (UC-B4), notifications,
+                                  # analytics, Business.Edit.Managed, any later Business milestone.
+                                  # ---- prior state (2026-08-05, ADR-015 Business Manager Assignment/Revocation --
                                   # UC-B6) Owner-approved implementation. Second ADR-015 milestone in
                                   # this repository, immediately after Claim Foundation. Reuses the
                                   # existing business_members schema as-is -- no new table, no new
