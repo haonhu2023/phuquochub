@@ -143,6 +143,23 @@ export class AuthService {
     try {
       tokens = await this.tokenService.rotate(refreshToken);
     } catch (err) {
+      // H-5: tái dùng refresh token đã tiêu thụ — family ĐÃ bị đánh dấu thu hồi bên trong
+      // TokenService (Lua atomic, đã commit trước khi lỗi này tới được đây) nên audit/H-1 lỗi ở
+      // bước dưới KHÔNG thể "khôi phục" một family đã compromise. Ghi audit TRƯỚC (best-effort,
+      // không bao giờ ném) rồi mới gọi H-1 (CÓ THỂ ném 503 — không nuốt, cùng quy ước H-1) để dấu
+      // vết điều tra luôn có mặt kể cả khi bước thu hồi access token thất bại.
+      if (err instanceof RefreshTokenError && err.reason === 'reused' && err.userId) {
+        await this.emitAudit({
+          event: 'auth.refresh.reuse_detected',
+          entityType: 'user',
+          entityId: err.userId,
+          actorId: err.userId,
+          result: AuditResult.FAILURE,
+          context: { family_id: err.familyId, reason: 'reused' },
+        });
+        await this.authRevocation.revokeAllForUser(err.userId);
+        throw err;
+      }
       // Rule 5: ghi audit TRƯỚC, rồi ném LẠI NGUYÊN VẸN exception gốc — KHÔNG đổi status/response.
       await this.emitAudit({
         event: 'auth.refresh.failure',
