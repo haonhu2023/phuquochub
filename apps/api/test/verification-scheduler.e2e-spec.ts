@@ -113,32 +113,38 @@ describe('Verification Scheduler — Operational Enablement (live Postgres)', ()
     categoryId = id;
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      await ds.query(
-        `DELETE FROM verification_votes WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`,
-        [placeIds],
-      );
-      await ds.query(
-        `DELETE FROM verification_events WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`,
-        [placeIds],
-      );
-      await ds.query(`DELETE FROM verifications WHERE place_id = ANY($1)`, [placeIds]);
-      if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
-      if (userIds.length || placeIds.length) {
+    try {
+      if (ds?.isInitialized) {
         await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
+          `DELETE FROM verification_votes WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`,
+          [placeIds],
         );
+        await ds.query(
+          `DELETE FROM verification_events WHERE verification_id IN (SELECT id FROM verifications WHERE place_id = ANY($1))`,
+          [placeIds],
+        );
+        await ds.query(`DELETE FROM verifications WHERE place_id = ANY($1)`, [placeIds]);
+        if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
       }
-      if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
-      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   it('batching: 5 dòng đủ điều kiện, batchSize=2 -> đúng 3 lô, TẤT CẢ 5 dòng expired, KHÔNG dòng nào bị bỏ sót hay xử lý hai lần', async () => {

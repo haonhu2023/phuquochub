@@ -91,13 +91,19 @@ describe('ADR-019 M0.3 — Own-scope hardening (live Postgres)', () => {
     config = app.get(ConfigService);
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized && userIds.length) {
-      if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
-      await ds.query(`DELETE FROM media WHERE uploaded_by = ANY($1)`, [userIds]);
-      await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    try {
+      if (ds?.isInitialized && userIds.length) {
+        if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
+        await ds.query(`DELETE FROM media WHERE uploaded_by = ANY($1)`, [userIds]);
+        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   describe('Live Own routes — real users, real permissions (D16 inventory: 3 handlers)', () => {

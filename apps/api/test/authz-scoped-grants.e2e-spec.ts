@@ -80,14 +80,20 @@ describe('UserRolesRepository.getScopedGrants — real Postgres recursive CTE (A
     placeBId = placeB[0].id;
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
-      if (placeAId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeAId]);
-      if (placeBId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeBId]);
-      if (userId) await ds.query(`DELETE FROM users WHERE id = $1`, [userId]);
+    try {
+      if (ds?.isInitialized) {
+        if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
+        if (placeAId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeAId]);
+        if (placeBId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeBId]);
+        if (userId) await ds.query(`DELETE FROM users WHERE id = $1`, [userId]);
+      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   it('không có user_roles hiệu lực nào -> mảng rỗng', async () => {

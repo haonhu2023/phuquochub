@@ -101,27 +101,33 @@ describe('Business Ownership Transfer (live Postgres)', () => {
     categoryId = id;
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (userIds.length || placeIds.length) {
-        await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
-        );
+    try {
+      if (ds?.isInitialized) {
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        if (userIds.length) {
+          // Xoá TOÀN BỘ audit_logs của user THUỘC FILE NÀY — không chỉ 'business.ownership_%'.
+          // Vài test ở đây tự gọi POST /business/:id/managers làm fixture setup (gán manager trước
+          // khi transfer), việc đó cũng ghi audit 'business.manager_assigned' với actor_id = owner
+          // của CHÍNH file này — lọc chỉ theo 'ownership_%' bỏ sót các dòng đó và chặn DELETE users
+          // bên dưới (audit_logs.actor_id NO ACTION, cùng bài học business-claims.e2e-spec.ts).
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
       }
-      if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      if (userIds.length) {
-        // Xoá TOÀN BỘ audit_logs của user THUỘC FILE NÀY — không chỉ 'business.ownership_%'.
-        // Vài test ở đây tự gọi POST /business/:id/managers làm fixture setup (gán manager trước
-        // khi transfer), việc đó cũng ghi audit 'business.manager_assigned' với actor_id = owner
-        // của CHÍNH file này — lọc chỉ theo 'ownership_%' bỏ sót các dòng đó và chặn DELETE users
-        // bên dưới (audit_logs.actor_id NO ACTION, cùng bài học business-claims.e2e-spec.ts).
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
-      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   it('anonymous -> 401', async () => {

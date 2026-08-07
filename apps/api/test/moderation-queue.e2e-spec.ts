@@ -88,13 +88,19 @@ describe('Moderation Queue Read API (e2e)', () => {
     reportIds.push(...rep.map((r) => r.id));
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (reportIds.length) await ds.query(`DELETE FROM reports WHERE id = ANY($1)`, [reportIds]);
-      if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
-      if (grantedUserRoleId) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [grantedUserRoleId]);
+    try {
+      if (ds?.isInitialized) {
+        if (reportIds.length) await ds.query(`DELETE FROM reports WHERE id = ANY($1)`, [reportIds]);
+        if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
+        if (grantedUserRoleId) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [grantedUserRoleId]);
+      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   describe('Authorization', () => {

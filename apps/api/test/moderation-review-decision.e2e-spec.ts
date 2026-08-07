@@ -210,22 +210,28 @@ describe('Moderation Review Decision Workflow (e2e)', () => {
     placeId = placeRows[0].id;
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
-      await ds.query(`DELETE FROM audit_logs WHERE event = 'moderation.decided' AND entity_type = 'review' AND entity_id = ANY($1)`, [
-        reviewIds.length ? reviewIds : ['00000000-0000-0000-0000-000000000000'],
-      ]);
-      if (reviewIds.length) await ds.query(`DELETE FROM reviews WHERE id = ANY($1)`, [reviewIds]);
-      if (placeId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeId]);
-      if (reviewerUserIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [reviewerUserIds]);
-      for (const id of grantedUserRoleIds) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [id]);
-      if (mediaOnlyRoleId) {
-        await ds.query(`DELETE FROM role_permissions WHERE role_id = $1`, [mediaOnlyRoleId]);
-        await ds.query(`DELETE FROM roles WHERE id = $1`, [mediaOnlyRoleId]);
+    try {
+      if (ds?.isInitialized) {
+        if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
+        await ds.query(`DELETE FROM audit_logs WHERE event = 'moderation.decided' AND entity_type = 'review' AND entity_id = ANY($1)`, [
+          reviewIds.length ? reviewIds : ['00000000-0000-0000-0000-000000000000'],
+        ]);
+        if (reviewIds.length) await ds.query(`DELETE FROM reviews WHERE id = ANY($1)`, [reviewIds]);
+        if (placeId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeId]);
+        if (reviewerUserIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [reviewerUserIds]);
+        for (const id of grantedUserRoleIds) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [id]);
+        if (mediaOnlyRoleId) {
+          await ds.query(`DELETE FROM role_permissions WHERE role_id = $1`, [mediaOnlyRoleId]);
+          await ds.query(`DELETE FROM roles WHERE id = $1`, [mediaOnlyRoleId]);
+        }
       }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   describe('Authorization', () => {

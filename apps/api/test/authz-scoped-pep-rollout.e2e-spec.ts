@@ -131,24 +131,30 @@ describe('ADR-019 M0.2 — resource-scoped PEP rollout (red-then-green, live Pos
     priceBId = await mkPrice(placeBId);
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      // wiki_revisions.editor_id có FK cứng -> users.id (ON DELETE NO ACTION) — contributor/
-      // super_admin PATCH place tạo revision với editor_id = họ (PlacesService.update). Phải xoá
-      // TRƯỚC users, không thì DELETE users vi phạm FK.
-      if (userIds.length || placeIds.length) {
-        await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type = 'place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
-        );
+    try {
+      if (ds?.isInitialized) {
+        // wiki_revisions.editor_id có FK cứng -> users.id (ON DELETE NO ACTION) — contributor/
+        // super_admin PATCH place tạo revision với editor_id = họ (PlacesService.update). Phải xoá
+        // TRƯỚC users, không thì DELETE users vi phạm FK.
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type = 'place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
+        if (priceIds.length) await ds.query(`DELETE FROM price_history WHERE id = ANY($1)`, [priceIds]);
+        if (contactIds.length) await ds.query(`DELETE FROM contacts WHERE id = ANY($1)`, [contactIds]);
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        if (userIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
       }
-      if (userRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [userRoleIds]);
-      if (priceIds.length) await ds.query(`DELETE FROM price_history WHERE id = ANY($1)`, [priceIds]);
-      if (contactIds.length) await ds.query(`DELETE FROM contacts WHERE id = ANY($1)`, [contactIds]);
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      if (userIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   describe('Finding A — cross-business isolation for business_manager (place-identity handlers)', () => {

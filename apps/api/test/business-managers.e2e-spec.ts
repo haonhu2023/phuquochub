@@ -105,25 +105,31 @@ describe('Business Manager Assignment/Revocation (live Postgres)', () => {
     categoryId = id;
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (userIds.length || placeIds.length) {
-        await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
-        );
+    try {
+      if (ds?.isInitialized) {
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        // user_roles.business_id -> places NO ACTION -> xoá TRƯỚC places (bài học từ business-claims.e2e-spec.ts).
+        if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) AND event LIKE 'business.manager_%'`, [
+            userIds,
+          ]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
       }
-      // user_roles.business_id -> places NO ACTION -> xoá TRƯỚC places (bài học từ business-claims.e2e-spec.ts).
-      if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) AND event LIKE 'business.manager_%'`, [
-          userIds,
-        ]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
-      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   it('anonymous -> 401 trên assign', async () => {

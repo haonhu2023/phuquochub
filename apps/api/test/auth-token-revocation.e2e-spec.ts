@@ -94,24 +94,32 @@ describe('H-1 Access token revocation (live Postgres + Redis)', () => {
     config = app.get(ConfigService);
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp fixture PHẢI nằm trong `try` — nếu bất kỳ bước nào ném
+  // lỗi (đã xảy ra THẬT: một cast `::text` sai kiểu từng làm afterAll ném lỗi giữa chừng), `finally`
+  // vẫn đảm bảo `app.close()` LUÔN chạy. Thiếu nó, Nest/TypeORM/ioredis giữ handle mở và Jest treo
+  // sau khi in kết quả (process không bao giờ thoát) — KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp
+  // vẫn nổi lên sau `finally`, khiến lần chạy thất bại RÕ RÀNG thay vì treo âm thầm.
   afterAll(async () => {
-    if (redis) {
-      for (const id of userIds) {
-        await redis.getClient().del(`authrev:${id}`, `refresh:user:${id}`);
+    try {
+      if (redis) {
+        for (const id of userIds) {
+          await redis.getClient().del(`authrev:${id}`, `refresh:user:${id}`);
+        }
       }
-    }
-    if (ds?.isInitialized && userIds.length) {
-      await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      // `audit_logs.actor_id`/`entity_id` đều là uuid (không cast ::text — sẽ lỗi "text = uuid").
-      // Các test gán/thu hồi vai trò ghi audit `role.assigned`/`role.revoked` với entity_id = user
-      // đích; audit_logs.actor_id là FK NO ACTION nên phải xoá TRƯỚC `users`.
-      await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) OR entity_id = ANY($1)`, [
-        userIds,
-      ]);
-      await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
-    }
-    if (app) {
-      await app.close();
+      if (ds?.isInitialized && userIds.length) {
+        await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        // `audit_logs.actor_id`/`entity_id` đều là uuid (không cast ::text — sẽ lỗi "text = uuid").
+        // Các test gán/thu hồi vai trò ghi audit `role.assigned`/`role.revoked` với entity_id = user
+        // đích; audit_logs.actor_id là FK NO ACTION nên phải xoá TRƯỚC `users`.
+        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) OR entity_id = ANY($1)`, [
+          userIds,
+        ]);
+        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+      }
+    } finally {
+      if (app) {
+        await app.close();
+      }
     }
   });
 

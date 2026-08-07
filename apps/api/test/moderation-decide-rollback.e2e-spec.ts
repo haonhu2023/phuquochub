@@ -62,21 +62,27 @@ describe('Moderation decide() — transaction rollback (e2e, live validation)', 
     grantedUserRoleId = granted[0]?.id ?? null;
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
-      if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
-      if (grantedUserRoleId) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [grantedUserRoleId]);
-      // Xoá luôn 2 user đăng ký cho suite (khác các spec anh em cùng thư mục, vốn để lại user —
-      // zero-residue live-validation, Phase 10-H). decide() thành công ghi audit_logs.actor_id
-      // = moderatorUserId nên phải xoá audit_logs trước để không vướng FK khi xoá users.
-      const userIds = [moderatorUserId, uploaderUserId].filter(Boolean);
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    try {
+      if (ds?.isInitialized) {
+        if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
+        if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
+        if (grantedUserRoleId) await ds.query(`DELETE FROM user_roles WHERE id = $1`, [grantedUserRoleId]);
+        // Xoá luôn 2 user đăng ký cho suite (khác các spec anh em cùng thư mục, vốn để lại user —
+        // zero-residue live-validation, Phase 10-H). decide() thành công ghi audit_logs.actor_id
+        // = moderatorUserId nên phải xoá audit_logs trước để không vướng FK khi xoá users.
+        const userIds = [moderatorUserId, uploaderUserId].filter(Boolean);
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
       }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   it('lỗi sau khi mutate status nhưng trước commit -> ROLLBACK toàn bộ (media/case KHÔNG đổi)', async () => {

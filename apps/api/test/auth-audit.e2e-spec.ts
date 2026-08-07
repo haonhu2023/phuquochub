@@ -102,23 +102,30 @@ describe('H-3 Authentication audit events (live Postgres)', () => {
     auditService = app.get(AuditService);
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp fixture PHẢI nằm trong `try` — nếu bất kỳ bước nào ném
+  // lỗi, `finally` vẫn đảm bảo `app.close()` LUÔN chạy, thay vì để Nest/TypeORM/ioredis giữ handle
+  // mở khiến Jest treo sau khi in kết quả. KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên
+  // sau `finally`, khiến lần chạy thất bại RÕ RÀNG thay vì treo âm thầm.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) OR entity_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    try {
+      if (ds?.isInitialized) {
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) OR entity_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
+        // Dọn audit của những user tạo qua HTTP thật (register) — track theo email pattern riêng.
+        await ds.query(
+          `DELETE FROM audit_logs WHERE entity_id IN (SELECT id FROM users WHERE email LIKE 'e2e_h3_http_%')`,
+        );
+        await ds.query(`DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'e2e_h3_http_%')`);
+        await ds.query(`DELETE FROM users WHERE email LIKE 'e2e_h3_http_%'`);
+        await ds.query(`DELETE FROM audit_logs WHERE context->>'email' LIKE 'e2e_h3_unknown_%'`);
       }
-      // Dọn audit của những user tạo qua HTTP thật (register) — track theo email pattern riêng.
-      await ds.query(
-        `DELETE FROM audit_logs WHERE entity_id IN (SELECT id FROM users WHERE email LIKE 'e2e_h3_http_%')`,
-      );
-      await ds.query(`DELETE FROM user_roles WHERE user_id IN (SELECT id FROM users WHERE email LIKE 'e2e_h3_http_%')`);
-      await ds.query(`DELETE FROM users WHERE email LIKE 'e2e_h3_http_%'`);
-      await ds.query(`DELETE FROM audit_logs WHERE context->>'email' LIKE 'e2e_h3_unknown_%'`);
-    }
-    if (app) {
-      await app.close();
+    } finally {
+      if (app) {
+        await app.close();
+      }
     }
   });
 

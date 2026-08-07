@@ -113,41 +113,47 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
     placeBId = await mkPlace('E2E Business Claim Place B');
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      // wiki_revisions không cascade từ places/users — xoá TRƯỚC (owner PATCH place tạo revision).
-      if (userIds.length || placeIds.length) {
-        await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type = 'place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
-        );
+    try {
+      if (ds?.isInitialized) {
+        // wiki_revisions không cascade từ places/users — xoá TRƯỚC (owner PATCH place tạo revision).
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type = 'place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        // user_roles.business_id -> places là FK ON DELETE NO ACTION (AddUserRoleBusinessFk) — PHẢI
+        // xoá user_roles (business_owner grant từ decide() approve trỏ business_id=placeA/B) TRƯỚC
+        // khi xoá places, không thì DELETE places vi phạm fk_user_roles_business.
+        if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        // Xoá places SAU user_roles: business_claims.place_id/business_members.place_id CASCADE từ
+        // places -> tự động dọn sạch mọi claim/membership tạo trong test (zero residue), VÀ
+        // verifications.place_id/verification_events.verification_id (ON DELETE CASCADE, xem
+        // InitVerifications) -> dọn sạch cả dòng `verifications`/`verification_events` do claim
+        // approve tạo. users vẫn an toàn để xoá sau đó vì business_claims.requester_id (NO ACTION)
+        // không còn dòng nào trỏ tới.
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        // `sources` KHÔNG cascade từ places (verifications.source_id NO ACTION) — xoá RIÊNG, SAU khi
+        // places (và verifications tham chiếu nó) đã bị xoá, theo ĐÚNG id đã track ở sourceIds.
+        if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
+        // audit_logs.actor_id -> users là FK ON DELETE NO ACTION (ADR-016: append-only, không
+        // cascade theo thiết kế THẬT — production KHÔNG bao giờ tự xoá audit trail). Ở ĐÂY là dọn
+        // fixture test throwaway của CHÍNH file này (event bắt đầu 'business.claim_'), cùng tiền lệ
+        // `moderation-media-decision.e2e-spec.ts` afterAll — KHÔNG đụng audit_logs thật nào khác.
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) AND event LIKE 'business.claim_%'`, [
+            userIds,
+          ]);
+        }
+        if (userIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
       }
-      // user_roles.business_id -> places là FK ON DELETE NO ACTION (AddUserRoleBusinessFk) — PHẢI
-      // xoá user_roles (business_owner grant từ decide() approve trỏ business_id=placeA/B) TRƯỚC
-      // khi xoá places, không thì DELETE places vi phạm fk_user_roles_business.
-      if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      // Xoá places SAU user_roles: business_claims.place_id/business_members.place_id CASCADE từ
-      // places -> tự động dọn sạch mọi claim/membership tạo trong test (zero residue), VÀ
-      // verifications.place_id/verification_events.verification_id (ON DELETE CASCADE, xem
-      // InitVerifications) -> dọn sạch cả dòng `verifications`/`verification_events` do claim
-      // approve tạo. users vẫn an toàn để xoá sau đó vì business_claims.requester_id (NO ACTION)
-      // không còn dòng nào trỏ tới.
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      // `sources` KHÔNG cascade từ places (verifications.source_id NO ACTION) — xoá RIÊNG, SAU khi
-      // places (và verifications tham chiếu nó) đã bị xoá, theo ĐÚNG id đã track ở sourceIds.
-      if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
-      // audit_logs.actor_id -> users là FK ON DELETE NO ACTION (ADR-016: append-only, không
-      // cascade theo thiết kế THẬT — production KHÔNG bao giờ tự xoá audit trail). Ở ĐÂY là dọn
-      // fixture test throwaway của CHÍNH file này (event bắt đầu 'business.claim_'), cùng tiền lệ
-      // `moderation-media-decision.e2e-spec.ts` afterAll — KHÔNG đụng audit_logs thật nào khác.
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1) AND event LIKE 'business.claim_%'`, [
-          userIds,
-        ]);
-      }
-      if (userIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   it('anonymous -> 401 trên submit', async () => {

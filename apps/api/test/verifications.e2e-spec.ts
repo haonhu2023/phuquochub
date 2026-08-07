@@ -109,48 +109,55 @@ describe('Verification Foundation (live Postgres)', () => {
     categoryId = id;
   }, 60_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally` (đúng bài học X1 dưới đây
+  // — `.catch()` từng CHE một lỗi dọn dẹp thật, không phải chỗ để lặp lại kiểu nuốt lỗi đó).
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      // ADR-008 CORRECTION (PIR X1) — dọn TƯỜNG MINH theo id đã theo dõi, đúng thứ tự FK, KHÔNG
-      // nuốt lỗi (`.catch()` cũ đã che đúng cái bug này). Verification phải đi TRƯỚC target của nó
-      // (`source_id` là ON DELETE NO ACTION — xoá source trước sẽ bị chặn), và trước `contacts`/
-      // `price_history` để không phụ thuộc vào CASCADE ngầm.
-      const verifTargets = [placeIds, contactIds, priceHistoryIds];
-      if (verifTargets.some((ids) => ids.length)) {
-        await ds.query(
-          `DELETE FROM verification_votes WHERE verification_id IN (
-             SELECT id FROM verifications
-             WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
-          verifTargets,
-        );
-        await ds.query(
-          `DELETE FROM verification_events WHERE verification_id IN (
-             SELECT id FROM verifications
-             WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
-          verifTargets,
-        );
-        await ds.query(
-          `DELETE FROM verifications WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3)`,
-          verifTargets,
-        );
+    try {
+      if (ds?.isInitialized) {
+        // ADR-008 CORRECTION (PIR X1) — dọn TƯỜNG MINH theo id đã theo dõi, đúng thứ tự FK, KHÔNG
+        // nuốt lỗi (`.catch()` cũ đã che đúng cái bug này). Verification phải đi TRƯỚC target của nó
+        // (`source_id` là ON DELETE NO ACTION — xoá source trước sẽ bị chặn), và trước `contacts`/
+        // `price_history` để không phụ thuộc vào CASCADE ngầm.
+        const verifTargets = [placeIds, contactIds, priceHistoryIds];
+        if (verifTargets.some((ids) => ids.length)) {
+          await ds.query(
+            `DELETE FROM verification_votes WHERE verification_id IN (
+               SELECT id FROM verifications
+               WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
+            verifTargets,
+          );
+          await ds.query(
+            `DELETE FROM verification_events WHERE verification_id IN (
+               SELECT id FROM verifications
+               WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3))`,
+            verifTargets,
+          );
+          await ds.query(
+            `DELETE FROM verifications WHERE place_id = ANY($1) OR contact_id = ANY($2) OR price_history_id = ANY($3)`,
+            verifTargets,
+          );
+        }
+        if (contactIds.length) await ds.query(`DELETE FROM contacts WHERE id = ANY($1)`, [contactIds]);
+        if (priceHistoryIds.length) await ds.query(`DELETE FROM price_history WHERE id = ANY($1)`, [priceHistoryIds]);
+        if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
+        if (userIds.length || placeIds.length) {
+          await ds.query(
+            `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
+            [userIds, placeIds],
+          );
+        }
+        if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
+        if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
+        if (userIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+        }
       }
-      if (contactIds.length) await ds.query(`DELETE FROM contacts WHERE id = ANY($1)`, [contactIds]);
-      if (priceHistoryIds.length) await ds.query(`DELETE FROM price_history WHERE id = ANY($1)`, [priceHistoryIds]);
-      if (sourceIds.length) await ds.query(`DELETE FROM sources WHERE id = ANY($1)`, [sourceIds]);
-      if (userIds.length || placeIds.length) {
-        await ds.query(
-          `DELETE FROM wiki_revisions WHERE editor_id = ANY($1) OR (entity_type='place' AND entity_id = ANY($2))`,
-          [userIds, placeIds],
-        );
-      }
-      if (userIds.length) await ds.query(`DELETE FROM user_roles WHERE user_id = ANY($1)`, [userIds]);
-      if (placeIds.length) await ds.query(`DELETE FROM places WHERE id = ANY($1)`, [placeIds]);
-      if (userIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [userIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
-      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   }, 30_000);
 
   it('anonymous -> 401', async () => {

@@ -141,19 +141,25 @@ describe('Moderation Reporting Workflow (e2e)', () => {
     reporterTokens = registrations.map((r) => r.body.data.access_token as string);
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
-      await ds.query(`DELETE FROM audit_logs WHERE event = 'report.created'`);
-      if (reviewIds.length) await ds.query(`DELETE FROM reviews WHERE id = ANY($1)`, [reviewIds]);
-      if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
-      if (placeId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeId]);
-      if (authorUserIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [authorUserIds]);
-      // Reporter pool accounts (via /api/auth/register) deliberately NOT deleted — this repo's
-      // existing e2e convention never deletes registered accounts (see
-      // moderation-review-decision.e2e-spec.ts).
+    try {
+      if (ds?.isInitialized) {
+        if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
+        await ds.query(`DELETE FROM audit_logs WHERE event = 'report.created'`);
+        if (reviewIds.length) await ds.query(`DELETE FROM reviews WHERE id = ANY($1)`, [reviewIds]);
+        if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
+        if (placeId) await ds.query(`DELETE FROM places WHERE id = $1`, [placeId]);
+        if (authorUserIds.length) await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [authorUserIds]);
+        // Reporter pool accounts (via /api/auth/register) deliberately NOT deleted — this repo's
+        // existing e2e convention never deletes registered accounts (see
+        // moderation-review-decision.e2e-spec.ts).
+      }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   // Toàn bộ T3 (case mới -> tái sử dụng -> escalation -> chống trùng) trong MỘT test, đúng 5 lệnh

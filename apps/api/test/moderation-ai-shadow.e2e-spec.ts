@@ -125,20 +125,26 @@ describe('Moderation M7 — AI Shadow Mode (e2e)', () => {
     if (grant2[0]) grantedUserRoleIds.push(grant2[0].id);
   }, 30_000);
 
+  // Teardown hang fix (2026-08-07): dọn dẹp trong `try` — nếu một bước ném lỗi, `finally` vẫn đảm
+  // bảo `app.close()` chạy (không thì Nest/TypeORM giữ handle mở, Jest treo sau khi in kết quả).
+  // KHÔNG nuốt lỗi bằng `.catch()`: lỗi dọn dẹp vẫn nổi lên sau `finally`.
   afterAll(async () => {
-    if (ds?.isInitialized) {
-      // ai_recommendations cascade-deletes with moderation_cases (FK ON DELETE CASCADE) — no
-      // separate cleanup needed for that table.
-      if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
-      if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
-      if (grantedUserRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [grantedUserRoleIds]);
-      const allUserIds = [aiAgentUserId, moderatorUserId, ...authorUserIds].filter(Boolean);
-      if (allUserIds.length) {
-        await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [allUserIds]);
-        await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [allUserIds]);
+    try {
+      if (ds?.isInitialized) {
+        // ai_recommendations cascade-deletes with moderation_cases (FK ON DELETE CASCADE) — no
+        // separate cleanup needed for that table.
+        if (caseIds.length) await ds.query(`DELETE FROM moderation_cases WHERE id = ANY($1)`, [caseIds]);
+        if (mediaIds.length) await ds.query(`DELETE FROM media WHERE id = ANY($1)`, [mediaIds]);
+        if (grantedUserRoleIds.length) await ds.query(`DELETE FROM user_roles WHERE id = ANY($1)`, [grantedUserRoleIds]);
+        const allUserIds = [aiAgentUserId, moderatorUserId, ...authorUserIds].filter(Boolean);
+        if (allUserIds.length) {
+          await ds.query(`DELETE FROM audit_logs WHERE actor_id = ANY($1)`, [allUserIds]);
+          await ds.query(`DELETE FROM users WHERE id = ANY($1)`, [allUserIds]);
+        }
       }
+    } finally {
+      if (app) await app.close();
     }
-    if (app) await app.close();
   });
 
   describe('Recommendation creation', () => {
