@@ -30,7 +30,110 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-07, H-4 REFRESH THROTTLE)
+  task: none                      # (2026-08-07, H-5 REFRESH TOKEN REUSE DETECTION / FAMILY REVOCATION)
+                                  # Narrow Owner-authorized hardening milestone closing finding H-5
+                                  # of the PRODUCTION READINESS REVIEW: "Refresh-token rotation
+                                  # currently rejects a replayed/consumed token with 401, but does
+                                  # not detect compromise lineage or revoke the descendant token
+                                  # family." Implements ONLY reuse detection + family revocation --
+                                  # no Medium finding started after this (explicit stop condition).
+                                  #
+                                  # NO NEW JWT CLAIM. Refresh payload ({sub, jti, type}) is byte-for-
+                                  # byte unchanged -- family lives ENTIRELY in Redis, folded into the
+                                  # value of the jti key H-1 already owned (refresh:{jti}), now
+                                  # `${state}:${userId}:${familyId}` instead of bare userId. Server
+                                  # round-trips family through the exact same mechanism H-1 already
+                                  # used for userId -- no token format change, no migration needed
+                                  # for tokens already in circulation.
+                                  #
+                                  # FOUR REDIS KEYS, all bounded (TTL = jwt.refreshTtl, self-
+                                  # expiring, no cleanup job): refresh:{jti} (state+owner+family,
+                                  # extends H-1), refresh:user:{userId} (active jti SET, unchanged
+                                  # from H-1), refresh:user:families:{userId} (NEW -- family SET,
+                                  # used only by logout-all to cascade family revocation),
+                                  # refresh:family:{familyId}:revoked (NEW -- existence = revoked).
+                                  #
+                                  # ATOMIC CONSUME VIA ONE LUA EVAL, replacing the old GET-then-DEL.
+                                  # rotate() previously had a REAL race: GET check, then a separate
+                                  # MULTI(DEL, SREM) -- two concurrent rotate() calls on the same
+                                  # token could both pass the check before either deleted. The new
+                                  # CONSUME_JTI_SCRIPT (token.service.ts) folds read-check-mutate
+                                  # into ONE Redis command -- Redis runs the whole Lua script as an
+                                  # indivisible unit, so no other command (including another EVAL)
+                                  # can interleave. The family key's name depends on familyId, only
+                                  # knowable AFTER reading the jti key inside the script -- built
+                                  # dynamically from ARGV via Lua string concat, safe on this
+                                  # single-instance Redis (docker-compose redis:7-alpine, not
+                                  # Cluster; would break on Cluster due to hash-slot placement).
+                                  #
+                                  # FOUR OUTCOMES: invalid (jti never existed -- 401, unchanged from
+                                  # before) / family_revoked (family already dead from a prior
+                                  # detection or logout-all -- 401, does NOT re-trigger H-1/audit) /
+                                  # reused (jti was already consumed -- GENUINE reuse; script itself
+                                  # atomically sets the family-revoked marker, independent of
+                                  # anything downstream) / ok (valid, active->consumed via SET ...
+                                  # KEEPTTL, original TTL preserved not extended).
+                                  #
+                                  # REACTION TO REUSE (AuthService.refresh()): emit
+                                  # auth.refresh.reuse_detected (best-effort, never throws -- H-3's
+                                  # emitAudit() convention) FIRST, then call
+                                  # AuthRevocationService.revokeAllForUser() (H-1's primitive -- CAN
+                                  # throw 503, not swallowed, same security-side-effect rule as H-1),
+                                  # then rethrow the original 401 unchanged. Family revocation is
+                                  # already committed inside the Lua script before either of these
+                                  # two steps runs, so a failure in either CANNOT un-revoke a
+                                  # compromised family.
+                                  #
+                                  # RACE POLICY, STATED PLAINLY: two concurrent refreshes on the same
+                                  # token deterministically produce exactly one 'ok' + one 'reused'
+                                  # (proven live against real Redis, not mocked -- see concurrency
+                                  # test). The losing branch is treated identically to a genuine
+                                  # replay -- family dies -- even if it was just a legitimate
+                                  # double-click/retry race, because Redis cannot distinguish intent
+                                  # between two identical concurrent requests. Revoke-over-allow,
+                                  # same posture other refresh-rotation providers document; accepted
+                                  # false positive, not a bug.
+                                  #
+                                  # KNOWN LIMITATION, DISCLOSED: the winning branch's freshly-minted
+                                  # access token can be issued in the SAME SECOND as the losing
+                                  # branch's H-1 revocation epoch -- H-1's existing 1-second
+                                  # resolution (a token issued the same second as a revocation is NOT
+                                  # revoked, by design since H-1) means that access token can survive
+                                  # up to its full TTL even though its refresh token is dead
+                                  # immediately. The refresh/family layer closes the loop
+                                  # deterministically regardless of clock granularity (proven by
+                                  # replaying the winner's own refresh token -- 401 immediately).
+                                  #
+                                  # TWO EXISTING E2E FILES UPDATED (not regressed): auth-refresh-
+                                  # throttle.e2e-spec.ts and auth-audit.e2e-spec.ts each had a
+                                  # "replay an already-rotated token" scenario asserting
+                                  # auth.refresh.failure(reason=revoked) -- that scenario now
+                                  # correctly emits auth.refresh.reuse_detected(reason=reused)
+                                  # instead. External HTTP response (401 + exact message) is
+                                  # byte-for-byte unchanged; only the audit trail got more specific,
+                                  # which is the entire point of this milestone.
+                                  #
+                                  # Validation: BE unit 129 suites/1558 tests (+11 token.service.spec
+                                  # assertions rewritten for the new value format/Lua mock, +9 new
+                                  # auth.service.spec tests for the reuse branch), BE e2e --runInBand
+                                  # 32 suites/281 tests (+1 new file, 2 tests: full 10-step scenario +
+                                  # concurrency proof against REAL Redis), tsc/eslint (src+test)/nest
+                                  # build clean, monorepo turbo 12/12, git diff --check clean (CRLF
+                                  # warnings only), secret scan clean, zero lingering node processes.
+                                  # No new migrations -- Redis-only, no DB table added.
+                                  #
+                                  # OpenAPI: unchanged -- no externally observable contract change
+                                  # (response shapes, status codes, and error messages are identical
+                                  # to before this milestone). deployment.md: unchanged -- H-5 is an
+                                  # application-layer token/family mechanism, not an infra/rate-limit
+                                  # concern (ADR-016 is the correct and sufficient home, matching the
+                                  # H-1/H-3 precedent; only H-4 touched deployment.md because
+                                  # throttling specifically is shared rate-limit infrastructure).
+                                  #
+                                  # Report: docs/delivery/reports/
+                                  #   H5-REFRESH-TOKEN-REUSE-DETECTION-2026-08-07.md
+                                  #
+                                  # ---- prior state (2026-08-07, H-4 REFRESH THROTTLE) ----
                                   # Narrow Owner-authorized hardening milestone closing finding H-4
                                   # of the PRODUCTION READINESS REVIEW: "The refresh endpoint
                                   # currently lacks a dedicated throttle and therefore allows

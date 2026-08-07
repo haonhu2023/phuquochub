@@ -212,3 +212,98 @@ auth-throttle riêng), H-5 (chưa có phát hiện tái dùng refresh token/thu 
 inactive` chỉ đạt được qua SQL ngoài luồng, cùng giới hạn đã ghi ở mục H-1 phía trên), và
 `ip`/`user_agent` của `AuditEvent` VẪN chưa được điền ở BẤT KỲ service nào trong repo (không riêng
 Auth) — giữ nguyên trạng thái pre-existing, không phải phạm vi milestone này.
+
+---
+
+## Tình trạng triển khai — H-5 PHÁT HIỆN TÁI DÙNG REFRESH TOKEN / THU HỒI THEO FAMILY (2026-08-07)
+
+**✅ ĐÃ TRIỂN KHAI.** Đóng finding **H-5** của Production Readiness Review (rà soát toàn repo,
+read-only, 2026-08-06 — báo cáo đó KHÔNG được ghi thành file trong repo này, cùng nguồn với H-1/H-3/
+H-4): *"Refresh-token rotation currently rejects a replayed/consumed token with 401, but does not
+detect compromise lineage or revoke the descendant token family."*
+
+Trước milestone này, `TokenService.rotate()` chỉ có MỘT trạng thái cho một jti không dùng được:
+"không có trong Redis" → 401 `reason=revoked`. Replay một jti ĐÃ tiêu thụ hợp lệ (dấu hiệu kinh điển
+của token bị đánh cắp) và một jti CHƯA TỪNG tồn tại (garbage) tạo ra CÙNG một tín hiệu — không có
+cách nào phân biệt "compromise thật" khỏi "lỗi/hết hạn thông thường", và không có phản ứng nào ngoài
+từ chối request hiện tại.
+
+**Mô hình family — KHÔNG claim JWT mới.** Refresh JWT payload (`{sub, jti, type}`) giữ NGUYÊN — gia
+đình (family) sống HOÀN TOÀN trong Redis, gắn kèm ngay trong giá trị của khoá jti đã có sẵn từ H-1
+(`refresh:{jti}`), nay có dạng `${state}:${userId}:${familyId}` với `state ∈ {active, consumed}`
+thay vì bare `userId` như trước. Máy chủ đọc lại family qua CHÍNH cơ chế round-trip `userId` đã có
+từ H-1 — không cần thêm claim, không đổi định dạng token, không cần migrate token cũ đang lưu hành
+(một refresh token cấp TRƯỚC milestone này vẫn giải mã được bình thường; chỉ giá trị Redis MỚI mới
+mang family — token cũ dùng family ẩn danh do `issueTokens()` tự sinh khi cần).
+
+**Bốn khoá Redis (bounded, TTL = `jwt.refreshTtl` cho mọi khoá mới, tự tiêu — không job dọn dẹp):**
+| Khoá | Giá trị | Vai trò |
+|---|---|---|
+| `refresh:{jti}` | `${state}:{userId}:{familyId}` | Trạng thái MỘT token cụ thể (kế thừa H-1, mở rộng thêm state+family) |
+| `refresh:user:{userId}` | SET các jti ACTIVE | Kế thừa H-1 — logout-all kill NGAY |
+| `refresh:user:families:{userId}` | SET các familyId | MỚI (H-5) — logout-all liệt kê family cần thu hồi |
+| `refresh:family:{familyId}:revoked` | `'1'` (tồn tại = đã thu hồi) | MỚI (H-5) — chặn TOÀN BỘ jti của family, active lẫn consumed |
+
+**Tiêu thụ ATOMIC bằng MỘT Lua `EVAL`, thay cho GET-rồi-DEL cũ.** `rotate()` trước đây có khoảng hở
+THẬT: `GET` kiểm tra rồi `MULTI(DEL, SREM)` riêng — hai round-trip Redis, hai `rotate()` gọi đồng
+thời với CÙNG một token có thể CÙNG vượt qua bước kiểm tra trước khi bên nào kịp xoá. `CONSUME_JTI_
+SCRIPT` (`token.service.ts`) gộp đọc-kiểm-đổi thành MỘT lệnh: Redis thực thi toàn bộ Lua script như
+một đơn vị không thể chia cắt — không lệnh nào khác (kể cả một `EVAL` khác) xen được vào giữa lúc
+script đang chạy. Khoá family (tên phụ thuộc `familyId` — chỉ biết được SAU khi đã đọc khoá jti bên
+trong script) được DỰNG ĐỘNG bằng Lua string concat từ ARGV, an toàn trên Redis đơn instance (docker-
+compose `redis:7-alpine`, một node, không phải Cluster — trên Cluster cách này sẽ vỡ vì hash-slot).
+
+**Bốn kết quả có thể có:** `invalid` (jti không tồn tại — hành vi 401 KHÔNG đổi so với trước) ·
+`family_revoked` (family đã chết từ một lần phát hiện trước đó/logout-all — 401, KHÔNG kích hoạt lại
+phản ứng H-1/audit) · `reused` (jti ĐÃ consumed → TÁI DÙNG thật — script TỰ đặt khoá family-revoked
+NGAY trong cùng lệnh atomic, độc lập hoàn toàn với mọi bước ở tầng ứng dụng phía sau) · `ok` (hợp lệ,
+chuyển active→consumed bằng `SET ... KEEPTTL` — giữ nguyên TTL gốc, không gia hạn).
+
+**Phản ứng khi phát hiện tái dùng (`AuthService.refresh()`):** ghi audit
+`auth.refresh.reuse_detected` (best-effort, KHÔNG BAO GIỜ ném — cùng quy ước `emitAudit()` của H-3)
+TRƯỚC, rồi gọi `AuthRevocationService.revokeAllForUser()` (primitive H-1 — CÓ THỂ ném
+`ServiceUnavailableException`, KHÔNG nuốt, cùng "security-side-effect rule" đã áp cho H-1), rồi ném
+LẠI nguyên vẹn lỗi 401 gốc — response HTTP bên ngoài KHÔNG đổi một byte so với một refresh thất bại
+thông thường, chỉ audit trail phân biệt được. Vì family-revoked marker đã COMMIT bên trong Lua script
+TRƯỚC KHI hai bước audit/H-1 chạy, một lỗi ở HAI bước đó (audit lỗi, hoặc Redis lỗi khi gọi H-1)
+KHÔNG THỂ "khôi phục" một family đã compromise.
+
+**Chính sách xử lý race, nêu thẳng (có chủ đích).** Hai refresh đồng thời cùng một token: Redis đảm
+bảo đúng MỘT nhánh nhận `ok` (xoay vòng bình thường), nhánh còn lại nhận `reused` — TRIỆT ĐỂ giống
+một tái dùng thật, kể cả khi nguyên nhân chỉ là double-click/retry mạng của chính chủ sở hữu hợp
+pháp. Đây là lựa chọn AN TOÀN-LÀ-MẶC-ĐỊNH (revoke-over-allow) có chủ đích: Redis không có cách nào
+phân biệt ý định giữa hai request đồng thời giống hệt nhau — cùng triết lý với các nhà cung cấp
+refresh-token-rotation khác, false positive này được coi là CHẤP NHẬN ĐƯỢC, không phải lỗi.
+
+**Tương tác với H-1/H-3/H-4, không đổi hành vi của cả ba:** logout-all (`revokeAllRefreshForUser`)
+nay CŨNG đặt khoá family-revoked cho MỌI family của user (đóng một khe hở nhỏ: nếu không làm vậy,
+một jti "consumed" cũ còn sống tới hết TTL gốc, bị phát lại SAU logout-all sẽ rơi vào nhánh `reused`
+thay vì `family_revoked` gọn hơn); audit dùng lại nguyên `emitAudit()`/`AuditEvent` của H-3, KHÔNG
+đổi bảng/redaction nào; throttle của H-4 (`@Throttle(AUTH_THROTTLE)` trên `/auth/refresh`) áp dụng
+TRƯỚC handler như cũ — không đổi gì ở tầng token/family.
+
+**Giới hạn nội tại, nêu thẳng.** (1) Race trên chính chủ sở hữu hợp pháp (double-click/mạng chập
+chờn) tạo false-positive reuse — đã giải thích ở trên, chấp nhận được. (2) Access token của NHÁNH
+THẮNG trong một race được cấp ngay TRONG khoảnh khắc family bị thu hồi — có thể rơi vào ĐÚNG cùng
+giây với mốc thu hồi H-1, và độ phân giải 1 giây SẴN CÓ của H-1 (token cấp cùng giây với lệnh thu hồi
+KHÔNG bị thu hồi — xem mục H-1 phía trên) khiến access token đó có thể sống sót tới hết TTL truy cập
+(tối đa `jwt.accessTtl`, mặc định 900s) dù refresh token tương ứng đã chết ngay lập tức (chứng minh
+bằng `auth-refresh-reuse.e2e-spec.ts`, kịch bản CONCURRENCY). (3) Dựng khoá family động trong Lua chỉ
+an toàn trên Redis đơn instance — chuyển sang Redis Cluster cần thiết kế lại (đưa familyId vào key
+qua hash-tag, hoặc tính khoá family ở tầng ứng dụng và truyền qua KEYS thay vì ARGV). (4) KHÔNG thêm
+bảng Postgres nào — gia đình hoàn toàn Redis-only theo đúng yêu cầu; hệ quả là lịch sử family KHÔNG
+sống sót qua việc xoá `authrev`/`refresh:*` bằng tay hoặc qua flush Redis (đã chấp nhận, cùng tính
+chất "cache/session tier" mà `RedisService`'s docstring mô tả từ đầu).
+
+**Kiểm chứng:** BE unit 129 suite/1558 test (+11 test — `token.service.spec.ts` mở rộng, +9 test mới
+ở `auth.service.spec.ts`); e2e MỚI `auth-refresh-reuse.e2e-spec.ts` 2/2 trên Redis + Postgres THẬT
+(kịch bản 10 bước đầy đủ + kịch bản CONCURRENCY hai refresh đồng thời, chứng minh atomic bằng Redis
+thật chứ không phải mock). Hai e2e đã có (`auth-refresh-throttle.e2e-spec.ts`,
+`auth-audit.e2e-spec.ts`) được CẬP NHẬT (không phải hồi quy) vì kịch bản "replay token đã dùng" của
+chúng nay CHÍNH XÁC là một trường hợp reuse detection — audit event đổi từ
+`auth.refresh.failure`(reason=revoked) sang `auth.refresh.reuse_detected`(reason=reused); response
+HTTP (401 + message) không đổi. Chi tiết đầy đủ:
+[H5-REFRESH-TOKEN-REUSE-DETECTION-2026-08-07.md](../delivery/reports/H5-REFRESH-TOKEN-REUSE-DETECTION-2026-08-07.md).
+
+**Không còn Medium/High finding nào của Production Readiness Review được lên lịch tiếp theo trong
+milestone hardening này (chỉ định rõ: dừng ở H-5).**
