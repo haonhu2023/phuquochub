@@ -30,7 +30,102 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-06, H-1 ACCESS TOKEN REVOCATION)
+  task: none                      # (2026-08-07, H-3 AUTHENTICATION AUDIT EVENTS)
+                                  # Narrow Owner-authorized hardening milestone closing finding H-3
+                                  # of the PRODUCTION READINESS REVIEW: "Auth currently emits no
+                                  # audit events, despite ADR-016 explicitly requiring identity/auth
+                                  # events." This is the exact gap ADR-016 Context names as its
+                                  # opening example (user.registered/auth.login.success listed
+                                  # alongside place.status_changed/moderation.decided from the day
+                                  # ADR-016 was accepted, 2026-07-13) -- auth was the one domain in
+                                  # that list with zero AuditService.record() calls until now.
+                                  #
+                                  # 7 events: user.registered, auth.login.success/.failure,
+                                  # auth.refresh.success/.failure, auth.logout, auth.logout_all. All
+                                  # emitted from AuthService through one emitAudit() helper --
+                                  # try/catch, log at error, NEVER throws (same post-commit
+                                  # convention as ModerationService.emitPostCommit/ReviewsService):
+                                  # an audit failure must never turn a valid login/register into an
+                                  # error, and must never turn a real 401 into a 500. Failure events
+                                  # are audited BEFORE the original exception is rethrown UNCHANGED
+                                  # (refresh() rethrows by reference -- provably the same object).
+                                  #
+                                  # PRIVACY (rule 2): login failure responses were already identical
+                                  # for "unknown email" and "wrong password" (same
+                                  # UnauthorizedException, same message) -- unchanged. The audit
+                                  # context (readable only via System.Audit.View, not the API
+                                  # response) now records a normalized email (trim+lowercase, not a
+                                  # hash -- AuditService has no other privacy-safe-identifier
+                                  # transform) and a reason (user_not_found/invalid_password/
+                                  # account_inactive) so investigators can distinguish what the
+                                  # public response deliberately does not.
+                                  #
+                                  # REFRESH FAILURE ATTRIBUTION: TokenService gained
+                                  # RefreshTokenError (still UnauthorizedException, same 401,
+                                  # AllExceptionsFilter needs only instanceof HttpException +
+                                  # getStatus()/getResponse(), both inherited unchanged) carrying a
+                                  # reason (invalid_token/revoked/user_inactive) and a userId that is
+                                  # ONLY ever set from a signature-verified payload -- never trusted
+                                  # for authorization, only used as a best-effort audit correlator.
+                                  # IssuedTokens (from H-1) gained a userId field so refresh(), which
+                                  # only ever held an opaque token string, can attribute
+                                  # auth.refresh.success correctly.
+                                  #
+                                  # LOGOUT: AuthController.logout() previously fetched
+                                  # @CurrentUser() but discarded it (route was already
+                                  # authenticated, the value just had no consumer) -- now threads
+                                  # user.sub through as actorId, independent of whatever
+                                  # refresh_token was sent in the body. logout_all only audits AFTER
+                                  # both H-1 revocation steps succeed; if either throws, nothing is
+                                  # audited, because claiming success then would be false.
+                                  #
+                                  # RULE 1 (no secrets in audit payloads) verified two ways, not
+                                  # asserted: unit tests JSON-stringify actual audit.record call
+                                  # arguments and assert the real password/token values used in that
+                                  # same test are absent; the e2e file does the same across
+                                  # before/after/context for every event, using the real
+                                  # tokens/passwords the test itself generated.
+                                  #
+                                  # TEST-DESIGN NOTE: two e2e tests spy on the RUNNING app's own
+                                  # AuditService.record() (app.get(AuditService), one rejected call)
+                                  # and drive a real HTTP login through the full stack -- proving
+                                  # rules 5/6 against the actual DI-wired service, the same technique
+                                  # the H-1 e2e suite used for fail-closed against a live Redis
+                                  # client, rather than relying on unit-level mocks alone.
+                                  #
+                                  # PRE-EXISTING FLAKE OBSERVED, NOT CAUSED HERE: one full e2e run
+                                  # failed once on media-orphan-cleanup.e2e-spec.ts (a file this
+                                  # milestone never touches). Isolated re-run: 10/10 pass. Immediate
+                                  # full-suite re-run: 30/30 suites, 274/274 tests pass. Zero file
+                                  # overlap plus a clean pass both isolated and on re-run -> recorded
+                                  # as a pre-existing order/timing sensitivity, not a regression, and
+                                  # not investigated further (out of scope for an auth-only
+                                  # milestone).
+                                  #
+                                  # Validation: BE unit 129 suites/1547 tests (+20 tests, no new
+                                  # suite files), BE e2e --runInBand 30 suites/274 tests (clean run),
+                                  # tsc/eslint/nest build clean, monorepo turbo 12/12, zero DB
+                                  # residue after the full e2e run, no new migrations, git diff
+                                  # --check + secret scan clean.
+                                  #
+                                  # OpenAPI: added POST /auth/logout-all (200/401/503, matching the
+                                  # real ServiceUnavailableException on Redis failure) -- did NOT
+                                  # touch the pre-existing /auth/logout block (missing its own 401),
+                                  # since that is exactly the general drift M-4 already tracks and
+                                  # this milestone was told not to address it.
+                                  #
+                                  # Still open by design: H-4 (/auth/refresh has no auth-specific
+                                  # throttle, falls under the global 100/60s limit), H-5 (no
+                                  # refresh-token family/reuse detection -- a replayed token is only
+                                  # caught reactively, now at least with reason=revoked audited), no
+                                  # User.Ban/deactivate endpoint or password reset/change flow (so
+                                  # account_inactive stays SQL-only, same limitation recorded in the
+                                  # H-1 section), and AuditEvent.ip/.userAgent remain unpopulated
+                                  # everywhere in the repo, not just Auth.
+                                  # Report: docs/delivery/reports/
+                                  #   H-3-AUTHENTICATION-AUDIT-EVENTS-2026-08-07.md
+                                  #
+                                  # ---- prior state (2026-08-06, H-1 ACCESS TOKEN REVOCATION) ----
                                   # Narrow Owner-authorized hardening milestone closing finding H-1
                                   # of the PRODUCTION READINESS REVIEW: "access tokens cannot be
                                   # revoked; deactivated or banned users retain API access until

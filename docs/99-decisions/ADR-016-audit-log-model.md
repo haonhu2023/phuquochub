@@ -139,3 +139,76 @@ phỏng sự cố Redis thật tại đúng chỗ guard đọc, và khẳng đ�
 `user.registered`/`auth.login.success`/`auth.logout` — miền mà ADR này viết ra để bao phủ), H-4
 (`POST /auth/refresh` chưa có auth-throttle), H-5 (chưa có phát hiện tái dùng refresh token /
 thu hồi theo family), và endpoint `User.Ban` vẫn chưa tồn tại.
+
+---
+
+## Tình trạng triển khai — H-3 SỰ KIỆN AUDIT CHO AUTHENTICATION (2026-08-07)
+
+**✅ ĐÃ TRIỂN KHAI.** Đóng finding **H-3** của Production Readiness Review (rà soát toàn repo,
+read-only, 2026-08-06 — báo cáo đó KHÔNG được ghi thành file trong repo này): *"Auth currently emits
+no audit events, despite ADR-016 explicitly requiring identity/auth events."* Đây CHÍNH là khoảng
+trống mà §Context của ADR này (dòng 9) nêu làm ví dụ MỞ ĐẦU — `user.registered`/`auth.login.success`
+được liệt kê SONG SONG với `place.status_changed`/`moderation.decided`/`business.claim_approved`
+ngay từ ngày ADR-016 được viết (2026-07-13), nhưng miền auth là miền DUY NHẤT trong danh sách đó
+CHƯA từng có bất kỳ lời gọi `AuditService.record()` nào cho tới milestone này.
+
+**7 sự kiện, đúng danh sách yêu cầu:** `user.registered`, `auth.login.success`, `auth.login.failure`,
+`auth.refresh.success`, `auth.refresh.failure`, `auth.logout`, `auth.logout_all`. Toàn bộ nằm trong
+`AuthService` — controller vẫn mỏng, không service nào khác bị đụng tới ngoài `TokenService` (chỉ
+thêm typed metadata cho lỗi refresh, KHÔNG tự ghi audit — xem dưới).
+
+**Quy ước post-commit, ÁP DỤNG NHẤT QUÁN:** mọi lời gọi audit đi qua MỘT hàm riêng `emitAudit()` —
+bọc try/catch, log lỗi ở mức `error`, KHÔNG BAO GIỜ ném ra ngoài. Cùng đúng khuôn
+`ModerationService.emitPostCommit`/`ReviewsService` đã dùng từ trước: một lỗi ghi audit KHÔNG được
+phép biến một đăng nhập/đăng ký HỢP LỆ thành lỗi, và KHÔNG được phép biến một 401 THẬT thành 500.
+Với nhánh THẤT BẠI (login/refresh), audit được ghi TRƯỚC khi exception GỐC được `throw` LẠI NGUYÊN
+VẸN — chưa từng có logic nào thay thế/bọc lại lỗi gốc. Kiểm chứng CẢ hai chiều bằng cách spy trực
+tiếp trên `AuditService.record()` (mock reject) — ở cả tầng unit LẪN một e2e SỐNG (spy trên chính
+instance `AuditService` thật của app, ép một lần ghi audit thất bại THẬT giữa một request HTTP
+thật) — response cho cả đăng nhập thành công lẫn thất bại đều KHÔNG đổi.
+
+**Privacy trên thất bại đăng nhập (rule 2).** "Email không tồn tại" và "sai mật khẩu" tiếp tục trả
+về ĐÚNG cùng response bên ngoài (đã đúng từ trước milestone này — cùng `UnauthorizedException` +
+cùng message cho cả hai nhánh, KHÔNG đổi). Ở TẦNG AUDIT (chỉ đọc được qua `System.Audit.View`,
+KHÔNG phải bề mặt tấn công), `context` ghi `email` đã CHUẨN HOÁ (trim + lowercase — KHÔNG hash, vì
+`AuditService` hiện không có biến đổi "privacy-safe identifier" nào khác) và `reason` phân biệt
+`user_not_found`/`invalid_password`/`account_inactive`, để điều tra viên phân biệt được các trường
+hợp mà response công khai cố tình không phân biệt. `entityId` gắn vào user THẬT khi email khớp một
+tài khoản (kể cả sai mật khẩu) — `null` khi email không khớp tài khoản nào; `actorId` LUÔN `null`
+cho thất bại đăng nhập (chưa có danh tính nào được xác nhận).
+
+**Refresh: lỗi mang theo ngữ cảnh audit mà KHÔNG đổi mã HTTP.** `TokenService` thêm
+`RefreshTokenError` — VẪN LÀ `UnauthorizedException` (subclass, 401 không đổi, `AllExceptionsFilter`
+xử lý xuyên suốt không cần biết tới lớp con này) nhưng mang `reason`
+(`invalid_token`/`revoked`/`user_inactive`) và `userId` (CHỈ gán ở nhánh đã XÁC THỰC chữ ký JWT
+thành công — KHÔNG BAO GIỜ tin một payload chưa verify, và KHÔNG BAO GIỜ dùng cho quyết định phân
+quyền nào, chỉ để audit). `IssuedTokens` (đã có từ H-1) thêm trường `userId` thuần bổ sung, để
+`AuthService.refresh()` — vốn chỉ cầm một chuỗi refresh token cơ hội, không có object `User` nào —
+ghi được `entityId`/`actorId` đúng cho `auth.refresh.success`.
+
+**Logout: `userId` giờ THỰC SỰ được dùng.** `AuthController.logout()` trước đây nhận
+`@CurrentUser()` nhưng bỏ qua (route đã xác thực từ trước, giá trị chỉ chưa có người tiêu thụ) — nay
+truyền `user.sub` xuống `AuthService.logout()` làm actorId cho audit `auth.logout`, ĐỘC LẬP với
+`refresh_token` gửi trong body (có thể hỏng/không khớp — `TokenService.revoke()` vẫn idempotent-
+thành-công như trước, và audit vẫn ghi vì HÀNH ĐỘNG logout của principal đã thật sự xảy ra).
+`auth.logout_all` (H-1) CHỈ ghi audit SAU KHI cả hai bước thu hồi (refresh + mốc access) thành công
+— nếu một bước lỗi, hàm ném lỗi VÀ KHÔNG ghi audit "thành công" nào (sẽ nói dối).
+
+**Rule 1 — không rò rỉ.** KHÔNG context nào trong cả 7 sự kiện chứa password/access token/refresh
+token/JWT contents/Redis key nào — kiểm chứng bằng quét chuỗi TOÀN BỘ payload audit (before/after/
+context) ở cả unit lẫn e2e, tìm sự HIỆN DIỆN của giá trị mật khẩu/token thật dùng trong chính test
+đó (không chỉ dựa vào `AuditService.redact()` sẵn có — chứng minh KHÔNG có gì để redact ngay từ
+đầu, vì các trường đó chưa từng được đưa vào `AuditEvent`).
+
+**Kiểm chứng:** BE unit 129 suite/1547 test (+20 test); e2e MỚI `auth-audit.e2e-spec.ts` 11/11 trên
+Postgres THẬT qua HTTP thật (register/login/refresh/logout/logout-all + hai test spy audit-thất-bại
+SỐNG). `auth.e2e-spec.ts`/`auth-token-revocation.e2e-spec.ts` (H-1) chạy lại KHÔNG hồi quy — chữ ký
+`AuthService.logout()` đổi nhưng hành vi bên ngoài giữ nguyên. Chi tiết đầy đủ:
+[H-3-AUTHENTICATION-AUDIT-EVENTS-2026-08-07.md](../delivery/reports/H-3-AUTHENTICATION-AUDIT-EVENTS-2026-08-07.md).
+
+**Vẫn còn mở sau milestone này (có chủ đích, KHÔNG bỏ sót):** H-4 (`POST /auth/refresh` chưa có
+auth-throttle riêng), H-5 (chưa có phát hiện tái dùng refresh token/thu hồi theo family), endpoint
+`User.Ban`/đổi-đặt-lại-mật-khẩu vẫn chưa tồn tại (nên `auth.login.failure` với `reason=account_
+inactive` chỉ đạt được qua SQL ngoài luồng, cùng giới hạn đã ghi ở mục H-1 phía trên), và
+`ip`/`user_agent` của `AuditEvent` VẪN chưa được điền ở BẤT KỲ service nào trong repo (không riêng
+Auth) — giữ nguyên trạng thái pre-existing, không phải phạm vi milestone này.

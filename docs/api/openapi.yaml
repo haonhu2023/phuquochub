@@ -112,6 +112,23 @@ paths:
       operationId: authLogout
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
+  /auth/logout-all:
+    post:
+      tags: [Auth]
+      summary: Đăng xuất khỏi MỌI thiết bị (H-1, ADR-008-adjacent auth hardening)
+      operationId: authLogoutAll
+      description: >-
+        Thu hồi NGAY mọi access token đã cấp (mốc thu hồi Redis, `JwtAuthGuard` đối chiếu mỗi
+        request) VÀ xoá mọi refresh token còn hiệu lực của chính principal — không phân biệt thiết
+        bị nào gọi. `userId` LUÔN lấy từ JWT đã xác thực, KHÔNG từ body — không thể đăng xuất hộ
+        người khác. Không nhận request body nào.
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503':
+          description: >-
+            Không thể thu hồi phiên đăng nhập ngay lúc này (Redis lỗi) — client nên thử lại; các
+            access token cũ có thể VẪN còn hiệu lực tới khi tự hết hạn cho tới khi thu hồi thành công.
   /auth/verify-email:
     post:
       tags: [Auth]
