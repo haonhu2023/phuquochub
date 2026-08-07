@@ -35,7 +35,21 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  /**
+   * H-4 (Production Readiness Audit, 2026-08-07): trước milestone này, `/auth/refresh` KHÔNG có
+   * `@Throttle` riêng nên rơi vào giới hạn TOÀN CỤC (100 req/60s, `RateLimitModule`) — rộng hơn
+   * hẳn `login`/`register` dù cùng là bề mặt không cần xác thực (`@Public()`) mà một request hỏng/
+   * đã bị thu hồi có thể bị dội liên tục. Dùng LẠI ĐÚNG `AUTH_THROTTLE` (cùng biến môi trường
+   * `RATE_LIMIT_AUTH_TTL`/`RATE_LIMIT_AUTH_LIMIT`, cùng hạ tầng `@nestjs/throttler` đã có) — KHÔNG
+   * dựng thêm bộ giới hạn nào mới, và giữ NGUYÊN limit hiện tại của `login`/`register` (cấu hình
+   * dùng CHUNG object, không phải giá trị số MỚI).
+   *
+   * `ThrottlerGuard` (global, `APP_GUARD`) chạy TRƯỚC handler này trong chuỗi guard của Nest — một
+   * request bị chặn 429 KHÔNG BAO GIỜ chạm tới `AuthService.refresh()`, nên `auth.refresh.success`/
+   * `.failure` (H-3) KHÔNG BAO GIỜ được ghi cho request bị throttle — không cần đổi gì ở tầng audit.
+   */
   @Public()
+  @Throttle(AUTH_THROTTLE)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshDto) {
