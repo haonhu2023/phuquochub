@@ -44,8 +44,11 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Body() dto: RefreshDto, @CurrentUser() _user: AuthPrincipal) {
-    await this.authService.logout(dto.refresh_token);
+  async logout(@Body() dto: RefreshDto, @CurrentUser() user: AuthPrincipal) {
+    // H-3: `user.sub` (đã xác thực — route KHÔNG @Public()) dùng làm actorId cho audit
+    // `auth.logout`, độc lập với refresh_token gửi lên (có thể hỏng/không khớp — `revoke()` vẫn
+    // idempotent-success như trước; audit vẫn ghi vì HÀNH ĐỘNG logout của principal đã xảy ra).
+    await this.authService.logout(dto.refresh_token, user.sub);
     return null;
   }
 

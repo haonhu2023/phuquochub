@@ -10,6 +10,10 @@ export interface IssuedTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  // H-3 (Authentication Audit Events, 2026-08-07): AuthService.refresh() không có object `User`
+  // nào trong tay (chỉ một chuỗi refresh token cơ hội) nên cần userId TRẢ VỀ từ đây để ghi audit
+  // `auth.refresh.success` với entityId/actorId đúng. Thuần bổ sung — không đổi ý nghĩa 3 trường cũ.
+  userId: string;
 }
 
 const REFRESH_PREFIX = 'refresh:';
@@ -19,6 +23,30 @@ const REFRESH_PREFIX = 'refresh:';
 // xoay vòng refresh (rotate) KHÔNG đổi một byte — vẫn single-use, vẫn kiểm `jti` trong Redis, vẫn
 // kiểm `isActive`. KHÔNG phải family/lineage tracking (đó là H-5, ngoài phạm vi milestone này).
 const REFRESH_USER_PREFIX = 'refresh:user:';
+
+// H-3 (Authentication Audit Events, 2026-08-07) — lý do một refresh THẤT BẠI, mang theo qua
+// exception để `AuthService` ghi audit `auth.refresh.failure` với ngữ cảnh hữu ích.
+export type RefreshFailureReason = 'invalid_token' | 'revoked' | 'user_inactive';
+
+/**
+ * VẪN LÀ `UnauthorizedException` — mã HTTP 401 KHÔNG đổi. `AllExceptionsFilter` chỉ cần
+ * `instanceof HttpException` + `getStatus()`/`getResponse()` (cả `Catch` decorator lẫn cách đọc
+ * message), cả hai đều kế thừa NGUYÊN VẸN qua `super(message)`, nên response body/status không
+ * đổi một byte so với `UnauthorizedException` trần trước đây — chỉ THÊM hai trường chỉ để audit.
+ *
+ * `userId` CHỈ được gán ở nhánh đã XÁC THỰC chữ ký JWT thành công (`verifyRefresh()` đã pass) —
+ * KHÔNG BAO GIỜ lấy từ một payload CHƯA verify. Trường này CHỈ dùng làm actorId/entityId
+ * tốt-nhất-có-thể cho audit, TUYỆT ĐỐI không dùng cho bất kỳ quyết định phân quyền nào.
+ */
+export class RefreshTokenError extends UnauthorizedException {
+  constructor(
+    message: string,
+    readonly reason: RefreshFailureReason,
+    readonly userId: string | null = null,
+  ) {
+    super(message);
+  }
+}
 
 // Cấp/xoay/thu hồi token. Access ngắn hạn (verify bằng accessSecret);
 // refresh có jti lưu ở Redis (thu hồi được) — auth.md.
@@ -55,7 +83,7 @@ export class TokenService {
       .sadd(`${REFRESH_USER_PREFIX}${user.id}`, jti)
       .expire(`${REFRESH_USER_PREFIX}${user.id}`, refreshTtl)
       .exec();
-    return { accessToken, refreshToken, expiresIn: accessTtl };
+    return { accessToken, refreshToken, expiresIn: accessTtl, userId: user.id };
   }
 
   /** Xoay refresh token: xác thực + kiểm tra jti còn trong Redis, rồi phát bộ mới. */
@@ -64,7 +92,11 @@ export class TokenService {
     const key = `${REFRESH_PREFIX}${payload.jti}`;
     const storedUserId = await this.redis.getClient().get(key);
     if (!storedUserId || storedUserId !== payload.sub) {
-      throw new UnauthorizedException('Refresh token đã bị thu hồi hoặc không hợp lệ');
+      throw new RefreshTokenError(
+        'Refresh token đã bị thu hồi hoặc không hợp lệ',
+        'revoked',
+        payload.sub,
+      );
     }
     // H-1: xoá jti cũ + rút nó khỏi chỉ mục theo user. Ngữ nghĩa single-use KHÔNG đổi — chỉ thêm
     // bước dọn chỉ mục để nó không phình theo mỗi lần xoay vòng.
@@ -77,7 +109,11 @@ export class TokenService {
 
     const user = await this.usersRepo.findById(payload.sub);
     if (!user || !user.isActive) {
-      throw new UnauthorizedException('Người dùng không tồn tại hoặc bị vô hiệu hóa');
+      throw new RefreshTokenError(
+        'Người dùng không tồn tại hoặc bị vô hiệu hóa',
+        'user_inactive',
+        payload.sub,
+      );
     }
     return this.issueTokens(user);
   }
@@ -134,7 +170,7 @@ export class TokenService {
       }
       return { sub: payload.sub, jti: payload.jti };
     } catch {
-      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
+      throw new RefreshTokenError('Refresh token không hợp lệ hoặc đã hết hạn', 'invalid_token', null);
     }
   }
 }
