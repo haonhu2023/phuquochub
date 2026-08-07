@@ -1,5 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
-import { TokenService } from './token.service';
+import { TokenService, RefreshTokenError } from './token.service';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 // Unit test logic cấp/xoay/thu hồi token (auth.md §1.2/1.4). Mock jwt/config/redis/usersRepo
@@ -59,6 +59,16 @@ describe('TokenService', () => {
     return queued.filter((c) => c[0] === name);
   }
 
+  /** H-3: gọi rotate() mong đợi THẤT BẠI, trả về đúng lỗi RefreshTokenError đã ném (không union type). */
+  async function rotateExpectingError(refreshToken: string): Promise<RefreshTokenError> {
+    try {
+      await service.rotate(refreshToken);
+      throw new Error('rotate() lẽ ra phải ném lỗi nhưng lại thành công');
+    } catch (err) {
+      return err as RefreshTokenError;
+    }
+  }
+
   afterEach(() => jest.clearAllMocks());
 
   it('issueTokens: ký access+refresh, lưu jti vào Redis với TTL refresh', async () => {
@@ -71,6 +81,9 @@ describe('TokenService', () => {
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
       expiresIn: 900,
+      // H-3: AuthService.refresh() cần userId để ghi audit auth.refresh.success — issueTokens()
+      // giờ trả kèm nó.
+      userId: 'user-1',
     });
     expect(queuedCmd('set')[0]).toEqual([
       'set',
@@ -110,6 +123,19 @@ describe('TokenService', () => {
     expect(queuedCmd('del')).toHaveLength(0);
   });
 
+  // H-3: RefreshTokenError VẪN LÀ UnauthorizedException (mã HTTP không đổi) nhưng mang thêm
+  // reason/userId để AuthService ghi audit auth.refresh.failure đúng ngữ cảnh.
+  it('rotate: jti đã thu hồi -> RefreshTokenError(reason=revoked, userId=payload.sub)', async () => {
+    jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', jti: 'jti-1', type: 'refresh' });
+    client.get.mockResolvedValue(null);
+
+    const err = await rotateExpectingError('t');
+    expect(err).toBeInstanceOf(UnauthorizedException);
+    expect(err).toBeInstanceOf(RefreshTokenError);
+    expect(err.reason).toBe('revoked');
+    expect(err.userId).toBe('user-1');
+  });
+
   it('rotate: user bị vô hiệu hóa → Unauthorized', async () => {
     jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', jti: 'jti-1', type: 'refresh' });
     client.get.mockResolvedValue('user-1');
@@ -118,9 +144,26 @@ describe('TokenService', () => {
     await expect(service.rotate('t')).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it('rotate: user bị vô hiệu hóa -> RefreshTokenError(reason=user_inactive, userId=payload.sub)', async () => {
+    jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', jti: 'jti-1', type: 'refresh' });
+    client.get.mockResolvedValue('user-1');
+    usersRepo.findById.mockResolvedValue({ id: 'user-1', isActive: false });
+
+    const err = await rotateExpectingError('t');
+    expect(err.reason).toBe('user_inactive');
+    expect(err.userId).toBe('user-1');
+  });
+
   it('rotate: token type sai (không phải refresh) → Unauthorized', async () => {
     jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', jti: 'jti-1', type: 'access' });
     await expect(service.rotate('t')).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rotate: chữ ký/định dạng hỏng -> RefreshTokenError(reason=invalid_token, userId=null) — KHÔNG BAO GIỜ tin payload chưa verify', async () => {
+    jwt.verifyAsync.mockRejectedValue(new Error('bad signature'));
+    const err = await rotateExpectingError('t');
+    expect(err.reason).toBe('invalid_token');
+    expect(err.userId).toBeNull();
   });
 
   it('revoke: token hợp lệ → xóa jti', async () => {
