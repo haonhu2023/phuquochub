@@ -30,7 +30,95 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-07, H-3 AUTHENTICATION AUDIT EVENTS)
+  task: none                      # (2026-08-07, H-4 REFRESH THROTTLE)
+                                  # Narrow Owner-authorized hardening milestone closing finding H-4
+                                  # of the PRODUCTION READINESS REVIEW: "The refresh endpoint
+                                  # currently lacks a dedicated throttle and therefore allows
+                                  # excessive refresh attempts."
+                                  #
+                                  # ENTIRE PRODUCT-CODE CHANGE: one line. POST /auth/refresh gained
+                                  # @Throttle(AUTH_THROTTLE) -- the SAME constant already applied to
+                                  # register/login, same env vars (RATE_LIMIT_AUTH_TTL/
+                                  # RATE_LIMIT_AUTH_LIMIT, default 10 req/60s). No new env var, no
+                                  # new throttle tier, no second rate-limiter package -- existing
+                                  # @nestjs/throttler infrastructure applied to one more route.
+                                  # logout/logout-all untouched (already authenticated, not
+                                  # @Public(), fall under the global 100/60s limit as before, per
+                                  # "unless already configured").
+                                  #
+                                  # Sharing the CONFIG OBJECT does not mean sharing a COUNTER --
+                                  # verified by reading @nestjs/throttler@6.5.0's
+                                  # ThrottlerGuard.generateKey() directly rather than assuming: the
+                                  # key hashes ClassName-HandlerName-ThrottlerName + tracker (req.ip
+                                  # by default), so login/register/refresh get three independent
+                                  # buckets despite reusing identical AUTH_THROTTLE values.
+                                  #
+                                  # AUDIT INTERACTION REQUIRED ZERO CODE CHANGE: the one guarantee
+                                  # this milestone had to preserve -- a throttled request must never
+                                  # be reported as auth.refresh.success -- already followed
+                                  # structurally from Nest's guard-before-handler execution order.
+                                  # ThrottlerGuard is a global APP_GUARD that runs before ANY route
+                                  # handler body; AuthService.refresh() (H-3's audit emission) is
+                                  # only ever invoked from inside that body, so a 429-blocked request
+                                  # is structurally incapable of reaching it. Verified, not just
+                                  # reasoned about: the throttle-exceeding e2e test snapshots
+                                  # audit_logs counts before/after 11 requests (10 reaching the
+                                  # handler, 1 blocked) and asserts auth.refresh.failure increased by
+                                  # exactly 10 (not 11) and auth.refresh.success by exactly 0.
+                                  #
+                                  # LIVE PROOFS, NOT SIMULATED: window-reset waits out the REAL
+                                  # default 60s TTL (no mocked clock) plus a 1s buffer, then confirms
+                                  # the next request is no longer 429. Per-client isolation boots a
+                                  # dedicated app instance with app.set('trust proxy', 1) (mirroring
+                                  # main.ts's real conditional exactly) so X-Forwarded-For is honored
+                                  # the way it would be behind the real Caddy proxy in deployment.md,
+                                  # then proves client A's exhausted bucket does not affect client B
+                                  # identified by a different X-Forwarded-For value -- a genuine
+                                  # IP-keyed isolation proof, not a route-isolation proxy for it.
+                                  #
+                                  # TEST-DESIGN NOTE: each of the 4 describe blocks boots its OWN
+                                  # Nest app instance rather than sharing one. ThrottlerModule's
+                                  # in-memory storage is scoped to its DI container (confirmed by
+                                  # RateLimitModule's own existing comment, "in-memory, một
+                                  # instance"), so a shared instance would let one test group's
+                                  # exhausted counter leak into the next depending on execution
+                                  # order. Separate instances make every test's starting throttle
+                                  # state deterministic regardless of ordering, at the cost of ~4
+                                  # extra app bootstraps.
+                                  #
+                                  # "Revoked refresh still behaves exactly as H-1" pinned explicitly:
+                                  # reusing an already-rotated token still 401s with the exact H-1
+                                  # message and still emits auth.refresh.failure with
+                                  # context.reason='revoked', unchanged by this milestone.
+                                  #
+                                  # Validation: BE unit 129 suites/1547 tests (unchanged -- no new
+                                  # unit tests; AuthController has no existing unit spec per this
+                                  # codebase's "thin controller" convention, and a bare decorator has
+                                  # no new branching logic to unit-test), BE e2e --runInBand 31
+                                  # suites/279 tests (+1 suite, +5 tests), tsc/eslint/nest build
+                                  # clean, monorepo turbo 12/12, zero DB residue after the full e2e
+                                  # run, zero lingering node processes, no new migrations, git diff
+                                  # --check + secret scan clean. Focused auth regression (auth,
+                                  # auth-audit, auth-token-revocation, authz-*,
+                                  # security-hardening) 9 suites/69 tests pass unchanged -- H-1's 2
+                                  # and H-3's 4 real /auth/refresh calls stayed comfortably under the
+                                  # new limit of 10, needed no changes.
+                                  #
+                                  # OpenAPI: added 429 to /auth/refresh, matching register/login.
+                                  # No dedicated ADR governs rate limiting -- the decision (PLACE-028,
+                                  # OD2-12) has always lived in deployment.md, which gained a new
+                                  # dated addendum (PLACE-028's original paragraph left verbatim as
+                                  # historical record, not silently edited).
+                                  #
+                                  # Still open by design: H-5 (no refresh-token family/reuse
+                                  # detection -- throttling reduces the RATE of abuse but does
+                                  # nothing to detect or respond to a genuine token-theft replay
+                                  # pattern, which remains H-5's problem to solve).
+                                  # Report: docs/delivery/reports/
+                                  #   H-4-REFRESH-THROTTLE-2026-08-07.md
+                                  #
+                                  # ---- prior state (2026-08-07, H-3 AUTHENTICATION AUDIT EVENTS)
+                                  # ---- ----
                                   # Narrow Owner-authorized hardening milestone closing finding H-3
                                   # of the PRODUCTION READINESS REVIEW: "Auth currently emits no
                                   # audit events, despite ADR-016 explicitly requiring identity/auth

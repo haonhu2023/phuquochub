@@ -93,6 +93,11 @@ paths:
       summary: Làm mới access token
       operationId: authRefresh
       security: []
+      description: >-
+        H-4 (2026-08-07): dùng CHUNG bucket giới hạn tần suất với `register`/`login`
+        (`RATE_LIMIT_AUTH_TTL`/`RATE_LIMIT_AUTH_LIMIT`, mặc định 10 req/60s) — trước đó route này
+        không có `@Throttle` riêng nên chỉ rơi vào giới hạn toàn cục (100 req/60s). Mỗi route có
+        bucket đếm ĐỘC LẬP theo (route, IP) dù dùng chung cấu hình.
       requestBody:
         required: true
         content:
@@ -105,6 +110,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AuthTokenResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /auth/logout:
     post:
       tags: [Auth]

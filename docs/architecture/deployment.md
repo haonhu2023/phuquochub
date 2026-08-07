@@ -43,6 +43,18 @@
 >   PHẢI đổi thành domain thật trước khi triển khai thật. Xem
 >   `docs/delivery/reports/PLACE-028-api-bootstrap-hardening-report.md` cho chi tiết đầy đủ.
 >
+> **Trạng thái triển khai (H-4, 2026-08-07 — refresh throttle).** Đoạn PLACE-028 phía trên nói giới
+> hạn nghiêm ngặt (`RATE_LIMIT_AUTH_TTL`/`RATE_LIMIT_AUTH_LIMIT`) chỉ áp cho `/api/auth/login`+
+> `/api/auth/register` — nay KHÔNG còn đúng, giữ nguyên văn phía trên (lịch sử tại thời điểm viết)
+> thay vì sửa âm thầm. `/api/auth/refresh` từ nay dùng CHUNG cấu hình đó (cùng
+> `RATE_LIMIT_AUTH_TTL`/`RATE_LIMIT_AUTH_LIMIT`, mặc định 10 req/60s) — trước đó route này KHÔNG có
+> `@Throttle` riêng nên chỉ rơi vào giới hạn toàn cục (100 req/60s), rộng hơn hẳn dù cùng là bề mặt
+> `@Public()`. Mỗi route (`login`/`register`/`refresh`) có bucket đếm ĐỘC LẬP theo (route, IP) —
+> dùng chung GIÁ TRỊ cấu hình, không chung một bộ đếm. `/api/auth/logout`/`logout-all` KHÔNG đổi
+> (đã yêu cầu xác thực từ trước, không phải bề mặt `@Public()`, rơi vào giới hạn toàn cục như cũ).
+> Chi tiết đầy đủ:
+> [H-4-REFRESH-THROTTLE-2026-08-07.md](../delivery/reports/H-4-REFRESH-THROTTLE-2026-08-07.md).
+>
 > **Quyết định Owner đã chốt (PLACE-037, 2026-07-25).** Domain production: `phuquochub.com` (API
 > qua path `/api` cùng domain). Topology: 1 VPS Hostinger (KVM, chờ xác nhận/nâng cấp) + Docker
 > Compose (Topology A). Reverse proxy: Caddy (TLS tự động). Monitoring khởi điểm: structured
