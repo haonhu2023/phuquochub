@@ -128,19 +128,23 @@ describe('H-4 Refresh throttle (live Postgres + Redis)', () => {
         .send({ refresh_token: issued.refreshToken });
       expect(first.status).toBe(200);
 
-      // Dùng LẠI CHÍNH token cũ (đã bị rotate/xoá) — hành vi H-1: 401 "đã bị thu hồi hoặc không hợp lệ".
+      // Dùng LẠI CHÍNH token cũ (đã bị rotate) — response 401 + message KHÔNG đổi so với H-1.
       const reused = await request(app.getHttpServer())
         .post('/api/auth/refresh')
         .send({ refresh_token: issued.refreshToken });
       expect(reused.status).toBe(401);
       expect(reused.body.error.message).toBe('Refresh token đã bị thu hồi hoặc không hợp lệ');
 
-      // H-3 vẫn ghi audit.refresh.failure(reason=revoked) như trước — throttle KHÔNG đụng gì ở đây.
+      // H-5 (2026-08-07): dùng lại một jti ĐÃ tiêu thụ giờ được PHÂN LOẠI CHÍNH XÁC là tái dùng
+      // (reuse) thay vì "revoked" chung chung — ghi `auth.refresh.reuse_detected`, KHÔNG còn
+      // `auth.refresh.failure` cho đúng kịch bản này (response HTTP bên ngoài không đổi một byte,
+      // chỉ audit trail chi tiết hơn). Throttle vẫn KHÔNG đụng gì ở đây — route vẫn 401 bình thường,
+      // không phải 429.
       const rows = await ds.query(
-        `SELECT context FROM audit_logs WHERE event = 'auth.refresh.failure' AND entity_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT context FROM audit_logs WHERE event = 'auth.refresh.reuse_detected' AND entity_id = $1 ORDER BY created_at DESC LIMIT 1`,
         [user.userId],
       );
-      expect(rows[0].context).toMatchObject({ reason: 'revoked' });
+      expect(rows[0].context).toMatchObject({ reason: 'reused' });
     });
   });
 

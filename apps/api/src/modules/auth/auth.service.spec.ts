@@ -300,6 +300,74 @@ describe('AuthService', () => {
     });
   });
 
+  // H-5 — tái dùng refresh token đã tiêu thụ: nhánh RIÊNG, không đi qua auth.refresh.failure thường.
+  describe('H-5 — phát hiện tái dùng refresh token (reuse detection)', () => {
+    it('reason=reused → ghi audit auth.refresh.reuse_detected (KHÔNG phải auth.refresh.failure) + gọi H-1 revokeAllForUser, rồi NÉM LẠI đúng lỗi gốc (vẫn 401)', async () => {
+      const original = new RefreshTokenError(
+        'Refresh token đã bị thu hồi hoặc không hợp lệ',
+        'reused',
+        'user-1',
+        'fam-1',
+      );
+      tokenService.rotate.mockRejectedValue(original);
+
+      await expect(service.refresh('replayed-refresh')).rejects.toBe(original);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'auth.refresh.reuse_detected',
+          entityType: 'user',
+          entityId: 'user-1',
+          actorId: 'user-1',
+          result: AuditResult.FAILURE,
+          context: { family_id: 'fam-1', reason: 'reused' },
+        }),
+      );
+      expect(audit.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'auth.refresh.failure' }),
+      );
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    // Rule 1 (H-3, kế thừa): context audit không bao giờ chứa token/secret thật.
+    it('context audit reuse_detected KHÔNG chứa refresh token thật', async () => {
+      const original = new RefreshTokenError(
+        'Refresh token đã bị thu hồi hoặc không hợp lệ',
+        'reused',
+        'user-1',
+        'fam-1',
+      );
+      tokenService.rotate.mockRejectedValue(original);
+
+      await expect(service.refresh('super-secret-replayed-token')).rejects.toBe(original);
+
+      const call = audit.record.mock.calls.find((c) => c[0].event === 'auth.refresh.reuse_detected');
+      expect(JSON.stringify(call)).not.toContain('super-secret-replayed-token');
+    });
+
+    it('audit ghi TRƯỚC khi gọi H-1 — audit thất bại (best-effort) KHÔNG chặn việc gọi revokeAllForUser', async () => {
+      const original = new RefreshTokenError('...', 'reused', 'user-1', 'fam-1');
+      tokenService.rotate.mockRejectedValue(original);
+      audit.record.mockRejectedValue(new Error('audit_logs INSERT thất bại'));
+
+      await expect(service.refresh('t')).rejects.toBe(original);
+      expect(authRevocation.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
+
+    it('H-1 revokeAllForUser lỗi (Redis down) → lỗi đó NỔI LÊN thay vì 401 gốc (không nuốt, cùng quy ước H-1 — family đã bị đánh dấu thu hồi từ trước bên trong TokenService, độc lập với bước này)', async () => {
+      const original = new RefreshTokenError('...', 'reused', 'user-1', 'fam-1');
+      tokenService.rotate.mockRejectedValue(original);
+      authRevocation.revokeAllForUser.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.refresh('t')).rejects.toThrow('redis down');
+      // Audit vẫn đã được ghi (best-effort, chạy TRƯỚC bước H-1 có thể lỗi) — dấu vết điều tra
+      // không bị mất dù bước thu hồi access token thất bại.
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'auth.refresh.reuse_detected' }),
+      );
+    });
+  });
+
   // H-3 — event bắt buộc #6.
   it('logout: ghi audit auth.logout (entityId/actorId = principal đã xác thực, KHÔNG phụ thuộc refresh_token gửi lên)', async () => {
     await service.logout('some-refresh-token', 'user-1');

@@ -228,7 +228,12 @@ describe('H-3 Authentication audit events (live Postgres)', () => {
       assertNoSecret(row, [issued.refreshToken, issued.accessToken, res.body.data.access_token, res.body.data.refresh_token]);
     });
 
-    it('refresh token đã dùng (bị thu hồi) → 401 + ghi audit auth.refresh.failure (reason=revoked, entityId = user)', async () => {
+    // H-5 (2026-08-07): dùng lại MỘT refresh token ĐÃ tiêu thụ giờ được TokenService phân loại
+    // CHÍNH XÁC là tái dùng (reuse), không còn rơi vào `auth.refresh.failure`(reason=revoked) chung
+    // chung nữa — ghi `auth.refresh.reuse_detected` riêng (xem `auth-refresh-reuse.e2e-spec.ts` cho
+    // bộ kiểm chứng đầy đủ về family revoke/H-1/concurrency). Response HTTP bên ngoài (401 + message)
+    // KHÔNG đổi — chỉ audit trail chi tiết hơn.
+    it('refresh token đã dùng (tái sử dụng) → 401 + ghi audit auth.refresh.reuse_detected (reason=reused, entityId = user)', async () => {
       const user = await mkUser('refresh_revoked');
       const issued = await tokens.issueTokens({ id: user.userId, email: user.email } as Parameters<
         typeof tokens.issueTokens
@@ -244,10 +249,10 @@ describe('H-3 Authentication audit events (live Postgres)', () => {
         .send({ refresh_token: issued.refreshToken });
       expect(second.status).toBe(401);
 
-      const row = await latestAudit('auth.refresh.failure', user.userId);
+      const row = await latestAudit('auth.refresh.reuse_detected', user.userId);
       expect(row).toBeDefined();
       expect(row.result).toBe('failure');
-      expect(row.context).toMatchObject({ reason: 'revoked' });
+      expect(row.context).toMatchObject({ reason: 'reused' });
       assertNoSecret(row, [issued.refreshToken]);
     });
 
