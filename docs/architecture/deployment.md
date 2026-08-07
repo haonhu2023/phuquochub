@@ -263,6 +263,14 @@ feature/* ──PR──► develop ──auto──► DEVELOPMENT
 | Smoke | `/health` + luồng chính; fail → rollback | ✓ |
 
 - **Migration gating:** chạy **trước** khi chuyển traffic; **tương thích ngược** (expand→migrate→contract) để zero-downtime.
+- **Dependency scan (H-2, 2026-08-08):** phần *dependency* của bước Scan nay được thực thi cụ thể —
+  job `dependency-audit` trong `.github/workflows/ci.yml` chạy `npm audit --omit=dev
+  --audit-level=high` sau `npm ci`, **chặn** (`✓`) trên bất kỳ lỗ hổng HIGH/CRITICAL nào trong cây
+  dependency production; lỗ hổng chỉ ở devDependencies không làm fail CI. Job `docker-build` (bước
+  publish image lên GHCR) khai báo `needs: dependency-audit`, nên image không thể được đẩy nếu gate
+  này fail. Chưa dùng công cụ trả phí hay Snyk/CodeQL/Trivy/Semgrep — chỉ `npm audit` có sẵn.
+  Phần *image scan (SCA container)* của bước Scan **vẫn chưa triển khai** — ngoài phạm vi H-2, để
+  ngỏ cho một milestone riêng. Chi tiết: `docs/delivery/reports/H2-PRODUCTION-DEPENDENCY-SECURITY-2026-08-08.md`.
 
 ## 8. Cấu hình & Secrets
 

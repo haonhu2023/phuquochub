@@ -30,7 +30,84 @@ repository:
 current:
   phase: implementation
   workstream: place
-  task: none                      # (2026-08-07, H-5 REFRESH TOKEN REUSE DETECTION / FAMILY REVOCATION)
+  task: none                      # (2026-08-08, H-2 PRODUCTION DEPENDENCY SECURITY HARDENING)
+                                  # Narrow Owner-authorized hardening milestone closing finding H-2
+                                  # of the PRODUCTION READINESS REVIEW: "production dependency tree
+                                  # contains high-severity advisories and CI has no dependency-
+                                  # security gate." Follow-up to PLACE-027 (2026-07-24), not a repeat
+                                  # -- PLACE-027's deferred NestJS 10->11 / Next 14->16 major
+                                  # migration had already landed outside this milestone by the time
+                                  # this task started (apps/api on @nestjs/common@^11.1.28, apps/web
+                                  # already on next@^16.2.11). The 5 advisories closed here are NEW
+                                  # CVEs published after that migration -- unlike PLACE-027, every
+                                  # one was fixable with a patch/minor change, inside already-
+                                  # declared semver ranges. No STOP condition (major upgrade / ADR
+                                  # conflict) was hit.
+                                  #
+                                  # BEFORE: npm audit --omit=dev -- 5 high, 0 critical/moderate/low.
+                                  # brace-expansion 2.1.2 (transitive, apps/api: typeorm->glob->
+                                  # minimatch, runtime-reachable via typeorm's DB layer) / nanoid
+                                  # 3.3.16 (transitive, apps/web: next->postcss, build-time only) /
+                                  # postcss 8.4.31 (transitive, HARD-PINNED by next with no caret --
+                                  # only movable via a next bump) / sharp 0.34.5 (transitive
+                                  # optionalDependency of next, ^0.34.5 caps below the fix, RUNTIME-
+                                  # REACHABLE via next/image production optimization) / next 16.2.11
+                                  # itself (flagged only via its postcss/sharp deps).
+                                  #
+                                  # WHY NO STOP: npm outdated showed next's Wanted == 16.3.0, already
+                                  # inside the existing "^16.2.11" package.json range (minor, not
+                                  # major). next@16.3.0 pins postcss@8.5.23 (fixed) and
+                                  # optionalDependencies.sharp@^0.35.3 (fixed). typeorm's only newer
+                                  # release is a major (1.1.0) and was NEVER touched --
+                                  # brace-expansion resolved via pure lockfile dedupe, since
+                                  # minimatch@9.0.9's own declared range (^2.0.1) already covers the
+                                  # fixed 2.1.4. Verified the exact change set with `npm audit fix
+                                  # --dry-run` before applying anything.
+                                  #
+                                  # FIX APPLIED: plain `npm audit fix` (no --force) at the repo root.
+                                  # next 16.2.11->16.3.0, postcss 8.4.31->8.5.23, sharp
+                                  # 0.34.5->0.35.3, nanoid 3.3.16->3.3.18, brace-expansion (apps/api
+                                  # path) 2.1.2->2.1.4. ZERO package.json files changed (root or any
+                                  # workspace) -- every fix was already inside a previously-declared
+                                  # range. Only package-lock.json changed, plus Next.js's own
+                                  # auto-regenerated apps/web/next-env.d.ts. typeorm confirmed
+                                  # untouched. AFTER: npm audit --omit=dev --audit-level=high -- 0
+                                  # vulnerabilities, exit 0. No accepted-risk item needed (contrast
+                                  # PLACE-027, where everything had to be deferred).
+                                  #
+                                  # NO BROADER UPGRADE: npm outdated shows several packages with
+                                  # newer MAJOR versions available (typeorm, react/react-dom,
+                                  # @types/node, eslint) -- none touched, since none carry a
+                                  # production advisory and bumping them would be unrelated
+                                  # modernization outside H-2's scope.
+                                  #
+                                  # CI GATE (NEW): `dependency-audit` job added to
+                                  # .github/workflows/ci.yml (checkout -> setup-node -> npm ci ->
+                                  # `npm audit --omit=dev --audit-level=high`). `docker-build` (the
+                                  # job that builds images AND pushes to GHCR -- the actual
+                                  # deployment/publication step) now declares `needs:
+                                  # dependency-audit`, so a HIGH/CRITICAL production advisory blocks
+                                  # image publication. build-test/e2e topology unchanged. Fails only
+                                  # on production (--omit=dev) HIGH/CRITICAL; dev-only advisories
+                                  # never fail CI. No Snyk/CodeQL/Trivy/Semgrep, no paid service --
+                                  # npm audit only. YAML validity + needs-wiring verified with
+                                  # js-yaml before committing.
+                                  #
+                                  # REGRESSION: monorepo typecheck/lint/build (turbo) 6/6, 6/6, 4/4
+                                  # pass; BE unit 129 suites/1558 tests pass; FE+shared unit pass
+                                  # (same turbo test run); `next build` (Turbopack) succeeded, all 18
+                                  # routes incl. /map generated, BUILD_ID produced; git diff --check
+                                  # clean (CRLF warnings only); manual secret-pattern scan over the
+                                  # diff clean (no gitleaks/trufflehog installed in this repo).
+                                  # BE e2e NOT run locally -- Docker daemon unreachable in this
+                                  # environment (docker ps failed) -- disclosed explicitly, not
+                                  # assumed safe; unchanged and still covered by CI's existing e2e
+                                  # job with real service containers on every push/PR.
+                                  #
+                                  # Report: docs/delivery/reports/
+                                  #   H2-PRODUCTION-DEPENDENCY-SECURITY-2026-08-08.md
+                                  #
+                                  # ---- prior state (2026-08-07, H-5 REFRESH TOKEN REUSE DETECTION / FAMILY REVOCATION) ----
                                   # Narrow Owner-authorized hardening milestone closing finding H-5
                                   # of the PRODUCTION READINESS REVIEW: "Refresh-token rotation
                                   # currently rejects a replayed/consumed token with 401, but does
