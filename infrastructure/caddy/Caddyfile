@@ -1,3 +1,7 @@
+www.phuquochub.com {
+    redir https://phuquochub.com{uri} permanent
+}
+
 # PLACE-038 — reverse proxy for the single-VPS Topology A stack (Owner-approved PLACE-037/038).
 #
 # Two addresses on the SAME site block (a documented, supported Caddy pattern): the real
@@ -32,3 +36,4 @@ phuquochub.com, :8080 {
 		}
 	}
 }
+
