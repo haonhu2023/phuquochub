@@ -5,6 +5,7 @@ import { useAuth } from '@/modules/auth/AuthProvider';
 import { readSession } from '@/modules/auth/session';
 import { createReview } from './api/reviews.api';
 import { useSingleImageUpload } from '@/modules/media/useSingleImageUpload';
+import type { Review } from './types';
 
 jest.mock('@/modules/auth/AuthProvider');
 jest.mock('@/modules/auth/session');
@@ -22,6 +23,21 @@ const SESSION = {
   expiresAt: Date.now() + 900_000,
   user: { id: 'u1', email: 'a@b.com', displayName: 'A', avatarUrl: null },
 };
+
+function baseReview(overrides: Partial<Review> = {}): Review {
+  return {
+    id: 'r1',
+    user_id: 'other-user',
+    author_name: 'Người dùng khác',
+    author_avatar_url: null,
+    rating: 4,
+    content: 'Rất đẹp',
+    status: 'published',
+    created_at: '2026-07-26T00:00:00Z',
+    media: [],
+    ...overrides,
+  };
+}
 
 function baseImageUpload(overrides: Partial<ReturnType<typeof useSingleImageUpload>> = {}) {
   return {
@@ -110,6 +126,103 @@ describe('ReviewsSection', () => {
 
     expect(screen.getByText('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Gửi đánh giá' })).not.toBeDisabled();
+  });
+
+  it('renders a review with no media without any image markup', () => {
+    render(<ReviewsSection placeId="p1" initialReviews={[baseReview({ media: [] })]} />);
+
+    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước).*/ })).toHaveLength(0);
+  });
+
+  it('renders one published image below the review, using url when there is no thumbnail', () => {
+    render(
+      <ReviewsSection
+        placeId="p1"
+        initialReviews={[
+          baseReview({
+            media: [
+              {
+                id: 'media-1',
+                type: 'image',
+                url: 'https://media.phuquochub.com/phuquochub-prod/media/a.jpg',
+                thumbnail_url: null,
+                caption: null,
+                alt_text: 'Bãi biển lúc hoàng hôn',
+                status: 'published',
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const img = screen.getByRole('img', { name: 'Bãi biển lúc hoàng hôn' });
+    expect(img).toHaveAttribute('src', 'https://media.phuquochub.com/phuquochub-prod/media/a.jpg');
+  });
+
+  it('renders multiple images, preferring thumbnail_url when present, and falls back to a default alt', () => {
+    render(
+      <ReviewsSection
+        placeId="p1"
+        initialReviews={[
+          baseReview({
+            media: [
+              {
+                id: 'media-1',
+                type: 'image',
+                url: 'https://media.phuquochub.com/full-1.jpg',
+                thumbnail_url: 'https://media.phuquochub.com/thumb-1.jpg',
+                caption: null,
+                alt_text: null,
+                status: 'published',
+              },
+              {
+                id: 'media-2',
+                type: 'image',
+                url: 'https://media.phuquochub.com/full-2.jpg',
+                thumbnail_url: null,
+                caption: 'Món ăn ngon',
+                alt_text: null,
+                status: 'published',
+              },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    const first = screen.getByRole('img', { name: 'Ảnh đánh giá' });
+    expect(first).toHaveAttribute('src', 'https://media.phuquochub.com/thumb-1.jpg');
+    const second = screen.getByRole('img', { name: 'Món ăn ngon' });
+    expect(second).toHaveAttribute('src', 'https://media.phuquochub.com/full-2.jpg');
+  });
+
+  it('skips a media item whose url and thumbnail_url are both empty instead of rendering a broken <img src="">', () => {
+    render(
+      <ReviewsSection
+        placeId="p1"
+        initialReviews={[
+          baseReview({
+            media: [
+              { id: 'media-1', type: 'image', url: '', thumbnail_url: null, caption: null, alt_text: null, status: 'published' },
+            ],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole('img', { name: /^(?!Ảnh xem trước).*/ })).not.toBeInTheDocument();
+  });
+
+  it('optimistically appended review after submit has no media (unchanged behavior)', async () => {
+    render(<ReviewsSection placeId="p1" initialReviews={[]} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gửi đánh giá' }));
+
+    await waitFor(() => expect(mockCreateReview).toHaveBeenCalled());
+    // Chỉ có ảnh xem trước cục bộ (nếu có) — không có ảnh review nào được render vì item optimistic
+    // luôn có media: [] (createReview trả EmptySuccess, không có media thật để hiển thị ngay).
+    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước).*/ })).toHaveLength(0);
   });
 
   it('does not render the review form for unauthenticated users', () => {

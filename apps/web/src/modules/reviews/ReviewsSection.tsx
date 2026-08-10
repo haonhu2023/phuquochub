@@ -7,7 +7,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { useSingleImageUpload } from '@/modules/media/useSingleImageUpload';
 import { createReview } from './api/reviews.api';
-import { formatReviewDate, ratingStars } from './format';
+import { formatReviewDate, ratingStars, reviewMediaAlt, reviewMediaSrc } from './format';
 import type { Review } from './types';
 import styles from './reviews.module.css';
 
@@ -100,6 +100,20 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
                 </time>
               </div>
               {r.content && <p className={styles.reviewContent}>{r.content}</p>}
+              {r.media.length > 0 && (
+                <ul className={styles.reviewMedia}>
+                  {r.media.map((m) => {
+                    const src = reviewMediaSrc(m);
+                    if (!src) return null;
+                    return (
+                      <li key={m.id}>
+                        {/* eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này), cùng quy ước PlaceCard.tsx/places/[slug]/page.tsx. */}
+                        <img className={styles.reviewMediaImg} src={src} alt={reviewMediaAlt(m)} loading="lazy" />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </li>
           ))}
         </ul>
