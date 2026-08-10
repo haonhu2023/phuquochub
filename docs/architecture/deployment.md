@@ -246,6 +246,14 @@
   presigned GET URL ký cho origin đó, TTL ngắn (`S3_PRESIGN_GET_TTL`, mặc định 300s). MinIO Console
   (`:9001`) không được proxy bởi bất kỳ site block nào — không lộ ra Internet. Chi tiết đầy đủ +
   lý do (SigV4 ký Host header) ở [media.md §13](../data/modules/media.md).
+- **IAM least-privilege + root rotation** (2026-08-10, close-out): API production KHÔNG còn dùng
+  credential root của MinIO — `S3_ACCESS_KEY`/`S3_SECRET_KEY` nay trỏ tới user chuyên dụng
+  `phuquochub-app-20260810` (chỉ `GetObject`/`PutObject`/`DeleteObject`, KHÔNG `ListBucket`). Root
+  credential đã được xoay vòng SAU KHI user này được xác nhận hoạt động đúng; root hiện chỉ dùng
+  cho thao tác quản trị thủ công. Bằng chứng production (403 unsigned / 302 API / 200 signed GET /
+  ảnh hiển thị đúng / root rotation không gián đoạn media): xem
+  [media.md §13.8-§13.12](../data/modules/media.md) và
+  [`MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md`](../delivery/reports/MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md).
 
 ### 6.7 Cloudflare
 - DNS + Proxy (ẩn IP), **TLS** biên + Full-Strict tới origin, **CDN cache** cho asset & `GET /public` (theo `Cache-Control`/ETag — [api §8](../api/api.md)), **WAF + rate-limit biên + DDoS/Bot**; cache rules bypass `/api` động.

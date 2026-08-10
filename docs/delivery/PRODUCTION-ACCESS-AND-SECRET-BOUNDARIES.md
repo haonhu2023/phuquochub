@@ -35,6 +35,8 @@ Stage 17/18 for where those real values actually get created and stored.
 | Cloudflare API token | DNS/CDN control | Owner's password manager |
 | Hostinger API token | Full account/VPS control | Owner's password manager |
 | R2 access key / secret key (`<R2_ENDPOINT>` credentials) | Object-storage account access | Same as `.env` above |
+| MinIO root credential (`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`) | Full administrative control of the MinIO instance (bucket policy, IAM, delete-everything) | Same as `.env` above; never loaded into the `api` container — see `docs/data/modules/media.md` §13.8 |
+| MinIO application-user credential (`S3_ACCESS_KEY` / `S3_SECRET_KEY`, currently the dedicated least-privilege user) | GetObject/PutObject/DeleteObject on `phuquochub-prod` | Same as `.env` above; rotation procedure in `docs/data/modules/media.md` §13.9 |
 | Backup encryption key (if backups are ever encrypted) | Without it, backups are useless; with it exposed, so is the data they protect | Owner's password manager, never alongside the backups themselves |
 | Any recovery code (2FA backup codes, Hostinger account recovery, etc.) | Account-takeover risk | Owner's password manager only |
 | Any full connection string containing a password (`postgresql://user:PASSWORD@host/db`) | Same risk as the password alone | Never logged, never committed — even in evidence files (see PLACE-042's own redaction discipline) |

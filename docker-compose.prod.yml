@@ -214,11 +214,15 @@ services:
       # dùng kiến trúc signed-URL). Với topology hiện tại (Caddyfile CÓ site block đó), production
       # PHẢI set `S3_ENDPOINT=https://media.phuquochub.com` trong `.env` trên server — lý do đầy đủ
       # (SigV4 ký cả Host header) nằm ở .env.example, không lặp lại ở đây.
-      # PHẢI khớp MINIO_ROOT_USER/MINIO_ROOT_PASSWORD của service `minio` bên dưới. Cố tình KHÔNG
-      # lồng biến (${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}) — cú pháp nội suy lồng nhau không có tiền
-      # lệ nào khác trong file này và không đáng tin cậy trên mọi phiên bản Compose; nếu để trống cả
-      # S3_ACCESS_KEY/S3_SECRET_KEY lẫn MINIO_ROOT_USER/MINIO_ROOT_PASSWORD trong `.env`, giá trị
-      # literal dưới đây (khớp default của service `minio`) vẫn tự nhất quán.
+      # MinIO IAM hardening (2026-08-10): production PHẢI đặt S3_ACCESS_KEY/S3_SECRET_KEY trong
+      # `.env` trên server thành credential của USER ỨNG DỤNG chuyên dụng (least-privilege — chỉ
+      # GetObject/PutObject/DeleteObject, KHÔNG ListBucket, xem docs/data/modules/media.md §13.8),
+      # KHÔNG BAO GIỜ là MINIO_ROOT_USER/MINIO_ROOT_PASSWORD của service `minio` bên dưới — root chỉ
+      # dùng cho thao tác quản trị thủ công (tạo user, đổi policy), không bao giờ nạp vào container
+      # `api`. Giá trị literal dưới đây (khớp default root của service `minio`) CHỈ nhằm mục đích
+      # `docker compose up` cục bộ chạy được ngay không cần `.env` — KHÔNG áp dụng cho production.
+      # Cố tình KHÔNG lồng biến (${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}) — cú pháp nội suy lồng nhau
+      # không có tiền lệ nào khác trong file này và không đáng tin cậy trên mọi phiên bản Compose.
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
       S3_SECRET_KEY: ${S3_SECRET_KEY:-change-me-minio-password}
       # KHÔNG đặt fallback ở đây (khác các biến khác phía trên) — code-level default khi để trống

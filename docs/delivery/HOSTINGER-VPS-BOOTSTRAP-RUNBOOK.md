@@ -157,6 +157,10 @@ independently confirmed** — see [`PLACE-043's report`](reports/PLACE-043-hosti
   `media.phuquochub.com` (`infrastructure/caddy/Caddyfile`) — that is a deliberate, signature-gated
   exception at the application layer (the bucket is private; every request still needs a valid
   SigV4 signature), not a firewall gap. See `docs/data/modules/media.md` §13.
+- **Note (MinIO IAM hardening, 2026-08-10):** unrelated to firewall config, but same host — the
+  application no longer uses the MinIO root credential (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`);
+  it uses a dedicated least-privilege user instead. See `docs/data/modules/media.md` §13.8-§13.9 for
+  the IAM model and the rotation runbook if this VPS's MinIO credentials ever need to be re-rotated.
 - **Action:** `sudo ufw allow OpenSSH` (or the specific SSH port in use) `&& sudo ufw allow 80/tcp
   && sudo ufw allow 443/tcp && sudo ufw enable`.
 - **Expected result:** `sudo ufw status` shows exactly SSH + 80 + 443 allowed, everything else

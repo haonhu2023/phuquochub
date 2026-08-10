@@ -369,6 +369,10 @@ chiều sâu TRƯỚC khi có luồng đặt cover — không phải vá một s
 |---|---|---|
 | `API_PUBLIC_URL` | `http://localhost:4000` | Origin trình duyệt gọi được tới API. Production PHẢI đặt `https://phuquochub.com`. |
 | `S3_ENDPOINT` | `http://localhost:9000` | **Production PHẢI đặt `https://media.phuquochub.com`** (không phải `http://minio:9000`) — StorageService dùng CHÍNH biến này để ký CẢ presigned PUT (upload) lẫn GET (đọc, §13.2), và chữ ký SigV4 bao gồm Host header. Đặt endpoint nội bộ ở đây làm mọi URL đã ký trỏ tới một tên miền trình duyệt không phân giải được. Xem §13.7. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `minioadmin` / `change-me-minio-password` (chỉ dev cục bộ) | **Production PHẢI là credential của USER ỨNG DỤNG chuyên dụng, KHÔNG BAO GIỜ là MinIO root/`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`.** Xem §13.8 (mô hình IAM) và §13.9 (quy trình xoay vòng). |
+| `S3_BUCKET` | trống → `phuquochub-dev` (hoặc `phuquochub-test` khi `NODE_ENV=test`) | **Production PHẢI set tường minh** (`phuquochub-prod`) — để trống nghĩa là media thật lặng lẽ ghi vào bucket dev. |
+| `S3_REGION` | `us-east-1` | Không ảnh hưởng hành vi với MinIO (không phải AWS thật) — giữ để tương thích SDK/chữ ký SigV4. |
+| `S3_FORCE_PATH_STYLE` | `true` | Bắt buộc `true` với MinIO (URL dạng `/{bucket}/{key}`, không phải virtual-hosted-style) — khớp giả định `handle /minio/*` ở Caddyfile (§13.7). |
 | `S3_PRESIGN_GET_TTL` | `300` | Tuổi thọ signed GET URL (giây), hợp lệ 30..3600. |
 | `S3_PUBLIC_URL` | — | **Không còn ảnh hưởng tới URL media.** Giữ lại cho tương thích deployment. |
 
@@ -410,6 +414,133 @@ thật trên VPS vào source control:
 ngắn hạn do API cấp. Việc đối soát này chỉ khép lại khoảng trống "cấu hình chạy thật khác cấu hình
 trong repo", không mở lại bất kỳ đường đọc ẩn danh nào.
 
+## 13.8 MinIO IAM — root vs application user (2026-08-10)
+
+Trước milestone này, `S3_ACCESS_KEY`/`S3_SECRET_KEY` production trỏ thẳng vào credential **root**
+của MinIO — cùng loại vấn đề với §13.1 (quyền vượt xa nhu cầu thực tế): root có toàn quyền quản
+trị (tạo/xoá bucket, đổi policy, quản lý user khác), trong khi tầng ứng dụng chỉ cần đọc/ghi/xoá
+từng object theo `object_key` đã biết trước.
+
+**Mô hình đã áp dụng:**
+
+| Vai trò | Dùng cho | Quyền trên `phuquochub-prod` |
+|---|---|---|
+| **Root credential** (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`) | CHỈ thao tác quản trị thủ công (tạo user, đổi policy, kiểm tra Console) — KHÔNG BAO GIỜ nạp vào biến môi trường của `api` | Toàn quyền (mặc định MinIO) |
+| **`phuquochub-app-20260810`** (user chuyên dụng) | `S3_ACCESS_KEY`/`S3_SECRET_KEY` production của `api` | CHỈ `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` — **KHÔNG** `s3:ListBucket` |
+
+`s3:ListBucket` bị từ chối **có chủ đích** cho cả user ứng dụng: đây chính xác là quyền đã gây ra
+sự cố ở §13.1 (canned policy `download` cấp `ListBucket` cho principal ẩn danh, cho phép liệt kê
+toàn bộ bucket). Loại nó khỏi user ứng dụng nghĩa là dù `S3_ACCESS_KEY`/`S3_SECRET_KEY` production
+có bị lộ, kẻ tấn công vẫn không liệt kê được object key — chỉ đọc/ghi được những key mà tầng ứng
+dụng (đã biết `object_key` lưu trong cột `media.object_key`, §2.1) chủ động yêu cầu. Đây là lớp
+phòng vệ **cộng thêm**, độc lập với bucket policy PRIVATE ở §13.2: bucket policy chặn truy cập ẩn
+danh; IAM least-privilege chặn cả truy cập CÓ credential app khỏi vượt phạm vi object CRUD.
+
+Root credential đã được **xoay vòng** (giá trị mới) SAU KHI user `phuquochub-app-20260810` được
+tạo và xác nhận hoạt động đúng độc lập (§13.9). Giá trị root cũ không còn hiệu lực. Root hiện tại
+**chỉ mang tính quản trị** — không được ứng dụng sử dụng ở bất kỳ đường nào, xác nhận bằng việc
+`api` chạy bình thường sau rotation mà không cần thay đổi gì khác ngoài `.env` (§13.12).
+
+## 13.9 Credential rotation runbook (MinIO app-user + root)
+
+Trình tự BẮT BUỘC — không đảo thứ tự, mỗi bước phải xác nhận PASS trước khi sang bước kế tiếp.
+Không bước nào ghi giá trị secret thật ra log/doc/commit — chỉ ghi lại KẾT QUẢ (pass/fail, HTTP
+status), khớp [`PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md`](../../delivery/PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md).
+
+1. **Tạo user ứng dụng mới trước, KHÔNG đụng root/API đang chạy.** Qua MinIO Console hoặc `mc admin
+   user`, tạo user mới + policy least-privilege đúng §13.8 (`GetObject`/`PutObject`/`DeleteObject`,
+   không `ListBucket`) trên bucket `phuquochub-prod`.
+2. **Kiểm thử user mới ĐỘC LẬP với API production** trước khi API biết tới nó — credential tạm thời
+   (`mc`/AWS SDK), xác nhận cả bốn kiểm tra đều PASS:
+   - `PutObject` một object thử nghiệm → thành công.
+   - `GetObject` chính object đó → thành công, nội dung khớp.
+   - `DeleteObject` object đó → thành công.
+   - `ListBucket` bằng credential này → bị **từ chối** (đúng policy least-privilege).
+3. **CHỈ SAU KHI bước 2 PASS cả bốn kiểm tra**, đổi `S3_ACCESS_KEY`/`S3_SECRET_KEY` trong `.env`
+   production sang user mới, khởi động lại **chỉ service `api`** (không cần recreate MinIO ở bước
+   này — chỉ đổi biến môi trường phía client).
+4. **Xác minh API sau khi chuyển sang user mới**, TRƯỚC KHI đụng tới root: chạy lại bộ kiểm tra bảo
+   mật ở §13.12 (unsigned 403, `/api/media/{id}/file` 302 → presigned GET 200, ảnh hiển thị được
+   trên trình duyệt thật).
+5. **KHÔNG BAO GIỜ xoay root TRƯỚC khi bước 4 đã PASS.** Root chỉ được xoay sau khi user ứng dụng đã
+   chứng minh hoạt động đúng, độc lập với root.
+6. **Xoay root credential.** Root user/password của MinIO được đặt qua biến môi trường container
+   (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`) lúc khởi động — đổi giá trị này đòi **recreate riêng
+   service `minio`** (không phải toàn bộ stack; `api`/`web`/`postgres`/`redis`/`caddy` không cần
+   khởi động lại). Sao lưu `.env` hiện tại TRƯỚC khi sửa (xem §13.10/§13.11).
+7. **Xác minh lại API/media SAU rotation root** — chạy lại toàn bộ §13.12 một lần nữa. Root không
+   được dùng ở bất kỳ đường nào của ứng dụng nên về lý thuyết không có gì đổi, nhưng đây là bước xác
+   nhận bắt buộc, không phải tuỳ chọn.
+
+## 13.10 Rollback
+
+Bốn kịch bản, từ nhẹ tới nặng. **Không có migration DB nào liên quan tới việc hardening media này**
+(§13 toàn bộ là thay đổi tầng application + hạ tầng object storage) — không kịch bản nào dưới đây
+cần `migration:revert`/restore Postgres.
+
+1. **Signed-media thất bại trước khi khoá private** (giai đoạn 87d010e/b696584). Nếu luồng
+   signed-URL (302 → presigned GET) lỗi trong lúc bucket còn ở trạng thái trung gian: `git revert`
+   commit hạ tầng liên quan (Caddyfile/`docker-compose.prod.yml`/`.env`), redeploy theo
+   [`RELEASE-ROLLBACK-RUNBOOK.md`](../../delivery/RELEASE-ROLLBACK-RUNBOOK.md).
+2. **Rollback anonymous-download khẩn cấp** (chỉ dùng khi THỰC SỰ cần thiết, tạm thời). Nếu luồng
+   signed-URL lỗi diện rộng và cần khôi phục hiển thị ảnh ngay trong lúc chờ sửa gốc: có thể tạm
+   thời chạy lại `mc anonymous set download local/phuquochub-prod` để quay về mô hình public-read cũ
+   (§13.1). Đây là **thụt lùi bảo mật có chủ đích, chỉ chấp nhận được như biện pháp khẩn cấp ngắn
+   hạn** — không phải trạng thái ổn định. Phải quay lại `mc anonymous set none` (private) ngay khi
+   luồng signed-URL được sửa, rồi xác minh lại bằng §13.12.
+3. **Rollback credential ứng dụng.** Nếu user `phuquochub-app-20260810` gặp sự cố (policy sai, bị vô
+   hiệu hoá nhầm...): tạo lại user mới theo đúng quy trình §13.9 từ bước 1 — KHÔNG cấp lại quyền
+   `ListBucket` hay tạm đổi về root để "chữa cháy" (đảo ngược đúng thứ hardening đang đóng ở
+   milestone này).
+4. **Rollback root credential.** Chỉ thực hiện từ bản sao `.env` được bảo vệ, sao lưu TRƯỚC lúc xoay
+   (xem §13.11) — không bao giờ từ trí nhớ/log. Sau khi khôi phục, chạy lại toàn bộ §13.12.
+
+## 13.11 Ghi chú vận hành
+
+- **`media.phuquochub.com` PHẢI giữ nguyên Host header khi proxy tới MinIO** — SigV4 ký cả Host
+  header (§13.5/§13.7). **KHÔNG được thêm `header_up Host ...`** ghi đè trong site block Caddy cho
+  host này, dù đó là thói quen phổ biến ở các site block khác trong cùng file — làm vậy phá TOÀN BỘ
+  chữ ký presigned URL (cả PUT lẫn GET) một cách ẩn (API vẫn trả 302 bình thường, chỉ là 302 tới một
+  chữ ký sai). Chi tiết đầy đủ đã có sẵn trong comment của chính `infrastructure/caddy/Caddyfile`.
+- **MinIO Console/Admin port `:9001` phải luôn ở chế độ private** — không site block Caddy nào được
+  trỏ tới nó; chỉ `:9000` (S3 API) được proxy, và ngay cả `:9000` cũng chặn `/minio/*` ở edge (§13.7)
+  vì MinIO phục vụ Admin API trên CÙNG cổng với S3 API.
+- **Caddy là ingress công khai DUY NHẤT của toàn bộ stack** — postgres/redis/minio không publish
+  cổng ra host ([deployment.md §6.2](../../architecture/deployment.md)); mọi thay đổi
+  network/topology phải giữ bất biến này.
+- **Backup rollback đang giữ trên VPS** (tại thời điểm viết, 2026-08-10):
+  - `/home/deploy/backups/a9c25f8-pre/web-review-files.tar.gz`
+  - `/home/deploy/backups/87d010e-pre/current-files.tar.gz`
+  - `/home/deploy/backups/.env-before-minio-root-rotate-20260810`
+  - `/home/deploy/phuquochub-deploy.tar.gz` (tạm giữ)
+
+  Chỉ nên xoá các bản sao trên SAU KHI: (a) rollout này đã ổn định qua ít nhất một chu kỳ vận hành
+  bình thường không phát sinh sự cố liên quan, VÀ (b) Owner xác nhận rõ ràng không còn cần đường
+  rollback về các commit/trạng thái credential trước đó. Không tự ý xoá — đây là quyết định vận
+  hành, không phải dọn dẹp tự động.
+
+## 13.12 Kiểm tra bảo mật kỳ vọng & bằng chứng xác minh production (2026-08-10)
+
+Bộ kiểm tra dưới đây là **kỳ vọng vận hành thường trực** (chạy lại sau MỌI thay đổi liên quan tới
+credential/bucket policy, không chỉ một lần) — đồng thời là bằng chứng đã xác nhận cho milestone
+đóng ngày 2026-08-10:
+
+| Kiểm tra | Kỳ vọng | Kết quả 2026-08-10 |
+|---|---|---|
+| `GET` object trực tiếp, không chữ ký (unsigned) | `403` (bucket PRIVATE, §13.2) | Xác nhận `403` |
+| `GET /api/media/{id}/file` với media `published` | `302` → presigned GET URL | Xác nhận `302` |
+| Presigned GET URL trả về từ bước trên | `200`, `Content-Type: image/jpeg` (hoặc đúng MIME gốc) | Xác nhận `200 image/jpeg` |
+| `GET /api/media/{id}/file` với `pending`/`hidden`/`rejected`/đã xoá mềm/không tồn tại | `404` đồng nhất (§13.3, bất biến không phân biệt lý do) | Không đổi (bất biến §13.3 không bị ảnh hưởng bởi rotation) |
+| MinIO Console (`:9001`) | Không thể truy cập công khai | Xác nhận không public-reachable |
+| Ảnh review trên trình duyệt thật | Hiển thị đúng | Xác nhận hiển thị đúng sau hardening |
+| API healthy | `/api/health` OK | Xác nhận |
+| MinIO healthy | Container/service khoẻ | Xác nhận |
+| Root credential rotation | Không làm gián đoạn luồng media | Hoàn tất, §13.9 bước 7 PASS |
+
+**Trạng thái milestone: HOÀN TẤT / ĐÃ XÁC MINH (COMPLETED/VERIFIED).** Không phát hiện tồn đọng
+chức năng nào ở milestone này. Báo cáo đóng đầy đủ:
+[`MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md`](../../delivery/reports/MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md).
+
 ## Related
 
 - [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md) (đa hình `entity_type`/`entity_id` —
@@ -417,3 +548,7 @@ trong repo", không mở lại bất kỳ đường đọc ẩn danh nào.
   đa hình của ADR-003)
 - [ADR-009](../../99-decisions/ADR-009-media-model.md) (mô hình `media` gốc, exclusive arc 5 nhánh)
 - [docs/api/openapi.yaml](../api/openapi.yaml) (tag `Media`)
+- [`PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md`](../../delivery/PRODUCTION-ACCESS-AND-SECRET-BOUNDARIES.md)
+  (§2 liệt kê credential MinIO app-user/root là thứ KHÔNG BAO GIỜ được lưu trong repo)
+- [`MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md`](../../delivery/reports/MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md)
+  (báo cáo đóng milestone IAM least-privilege + root rotation)
