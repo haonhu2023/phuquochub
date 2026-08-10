@@ -8,6 +8,7 @@ import { getPlace } from '@/modules/places/api/places.api';
 import type { Category } from '@/modules/categories/api/categories.api';
 import type { GeoPoint } from '@/modules/places/types';
 import { isValidCoord, clusterElement, placeElement, buildPopupCard, popupState } from './mapMarkers';
+import styles from './map.module.css';
 
 // PLACE-026 (OD2-8): nguồn tile cấu hình được qua NEXT_PUBLIC_MAP_TILE_URL — mặc định GIỮ
 // NGUYÊN URL OpenStreetMap hiện tại (không cần API key, không đổi hành vi hiện có). Đổi sang
@@ -47,7 +48,13 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
   const filtersRef = useRef({ category, ward });
   const categoriesRef = useRef(categories);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
+  // Đếm request bbox — mỗi refresh() ghi lại số thứ tự của CHÍNH nó trước khi await, rồi so lại
+  // sau khi resolve. Đổi filter trong lúc một refresh do pan/zoom trước đó còn đang bay có thể
+  // khiến request CŨ hoàn thành SAU request MỚI (mạng không đảm bảo thứ tự) — không có guard này,
+  // kết quả cũ (lọc sai) sẽ ghi đè lên kết quả mới, làm marker sai/nhấp nháy về trạng thái cũ.
+  const requestSeqRef = useRef(0);
   const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<'ok' | 'empty' | 'error'>('ok');
 
   useEffect(() => {
     filtersRef.current = { category, ward };
@@ -89,6 +96,7 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
 
     const refresh = async (): Promise<void> => {
       const b = map.getBounds();
+      const mySeq = ++requestSeqRef.current;
       try {
         const markers = await fetchBbox({
           minLng: b.getWest(),
@@ -99,20 +107,30 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
           category: filtersRef.current.category,
           ward: filtersRef.current.ward,
         });
+        // Request cũ hơn hoàn thành SAU request mới (pan/zoom rồi đổi filter trước khi request đầu
+        // trả về) — bỏ qua để không ghi đè marker mới bằng dữ liệu đã lỗi thời.
+        if (mySeq !== requestSeqRef.current) return;
         const valid = markers.filter((m) => isValidCoord(m.lng, m.lat));
         markersRef.current.forEach((mk) => mk.remove());
         markersRef.current = valid.map((m) => {
           if (m.type === 'cluster') {
-            const el = clusterElement(m.count);
-            el.onclick = () => map.flyTo({ center: [m.lng, m.lat], zoom: Math.min(map.getZoom() + 2, 20) });
-            return new maplibregl.Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(map);
+            return new maplibregl.Marker({
+              element: clusterElement(m.count, () =>
+                map.flyTo({ center: [m.lng, m.lat], zoom: Math.min(map.getZoom() + 2, 20) }),
+              ),
+            })
+              .setLngLat([m.lng, m.lat])
+              .addTo(map);
           }
-          const el = placeElement(m.title);
-          el.onclick = () => void openPlacePopup(map, m);
-          return new maplibregl.Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(map);
+          return new maplibregl.Marker({ element: placeElement(m.title, () => void openPlacePopup(map, m)) })
+            .setLngLat([m.lng, m.lat])
+            .addTo(map);
         });
+        setStatus(valid.length === 0 ? 'empty' : 'ok');
       } catch {
-        // Bỏ qua lỗi tải bbox (giữ marker hiện có).
+        if (mySeq !== requestSeqRef.current) return;
+        // Giữ marker hiện có (không xoá) — chỉ báo lỗi, không làm mất dữ liệu đã hiển thị đúng.
+        setStatus('error');
       }
     };
     refreshRef.current = refresh;
@@ -145,5 +163,19 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
     void refreshRef.current();
   }, [ready, category, ward]);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '70vh', borderRadius: 8 }} />;
+  return (
+    <div style={{ position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '70vh', borderRadius: 8 }} />
+      {status === 'error' && (
+        <div role="alert" className={styles.mapStatus}>
+          Không tải được địa điểm. Di chuyển bản đồ để thử lại.
+        </div>
+      )}
+      {status === 'empty' && (
+        <div role="status" className={styles.mapStatus}>
+          Không có địa điểm nào trong khu vực này.
+        </div>
+      )}
+    </div>
+  );
 }

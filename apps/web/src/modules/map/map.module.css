@@ -89,3 +89,23 @@
   gap: 1rem;
   margin: 0 0 1rem;
 }
+
+/* Banner lỗi/rỗng nổi trên bản đồ (MapView) — không chặn thao tác kéo/zoom bên dưới
+   (pointer-events: none), không che NavigationControl (top-right) hay attribution (bottom). */
+.mapStatus {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  pointer-events: none;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  max-width: calc(100% - 5rem);
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}

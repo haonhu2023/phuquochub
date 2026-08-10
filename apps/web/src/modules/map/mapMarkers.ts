@@ -13,7 +13,22 @@ export function isValidCoord(lng: number, lat: number): boolean {
   return Number.isFinite(lng) && Number.isFinite(lat) && Math.abs(lng) <= 180 && Math.abs(lat) <= 90;
 }
 
-export function clusterElement(count: number): HTMLElement {
+// Marker được maplibre gắn thẳng vào DOM ngoài cây React — `role="button"` một mình KHÔNG đủ để
+// bàn phím/trình đọc màn hình kích hoạt được (div không tự nhận focus, không tự bắt Enter/Space
+// như <button> thật). `bindActivation` gắn tabIndex + keydown ĐÚNG NGỮ NGHĨA `role="button"`, dùng
+// chung cho cả cluster lẫn place — tránh lặp lại logic này ở hai hàm dựng marker.
+function bindActivation(el: HTMLElement, onActivate: () => void): void {
+  el.tabIndex = 0;
+  el.onclick = onActivate;
+  el.onkeydown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      onActivate();
+    }
+  };
+}
+
+export function clusterElement(count: number, onActivate: () => void): HTMLElement {
   const el = document.createElement('div');
   el.textContent = String(count);
   el.setAttribute('role', 'button');
@@ -31,10 +46,11 @@ export function clusterElement(count: number): HTMLElement {
     fontWeight: '700',
     cursor: 'pointer',
   } as CSSStyleDeclaration);
+  bindActivation(el, onActivate);
   return el;
 }
 
-export function placeElement(title: string): HTMLElement {
+export function placeElement(title: string, onActivate: () => void): HTMLElement {
   const el = document.createElement('div');
   el.textContent = '📍';
   el.title = title;
@@ -42,6 +58,7 @@ export function placeElement(title: string): HTMLElement {
   el.setAttribute('aria-label', title);
   el.style.cursor = 'pointer';
   el.style.fontSize = '20px';
+  bindActivation(el, onActivate);
   return el;
 }
 

@@ -96,4 +96,32 @@ describe('BboxQueryDto — validation biên Phú Quốc (GAP-07)', () => {
     expect(errors.map((e) => e.property)).not.toContain('category');
     expect(errors.map((e) => e.property)).not.toContain('ward');
   });
+
+  // Map Audit (2026-08-10): bbox lộn ngược (maxLng < minLng hoặc maxLat < minLat) trước đây
+  // không bị DTO từ chối — mỗi cạnh chỉ tự kiểm tra biên Trái Đất độc lập.
+  it('TỪ CHỐI bbox lộn ngược theo kinh độ (maxLng < minLng)', async () => {
+    const errors = await validateDto(BboxQueryDto, { ...validBbox, minLng: '104.1', maxLng: '103.8' });
+    expect(errors.map((e) => e.property)).toContain('maxLng');
+  });
+
+  it('TỪ CHỐI bbox lộn ngược theo vĩ độ (maxLat < minLat)', async () => {
+    const errors = await validateDto(BboxQueryDto, { ...validBbox, minLat: '10.4', maxLat: '10.0' });
+    expect(errors.map((e) => e.property)).toContain('maxLat');
+  });
+
+  it('chấp nhận bbox suy biến (min == max, cạnh 0 độ rộng)', async () => {
+    expect(
+      await validateDto(BboxQueryDto, { minLng: '103.9', minLat: '10.2', maxLng: '103.9', maxLat: '10.2' }),
+    ).toHaveLength(0);
+  });
+
+  it('chấp nhận zoom trong trần (1..20, khớp GeoService.bbox() clamp)', async () => {
+    expect(await validateDto(BboxQueryDto, { ...validBbox, zoom: '1' })).toHaveLength(0);
+    expect(await validateDto(BboxQueryDto, { ...validBbox, zoom: '20' })).toHaveLength(0);
+  });
+
+  it('TỪ CHỐI zoom ngoài trần (0 và 21)', async () => {
+    expect((await validateDto(BboxQueryDto, { ...validBbox, zoom: '0' })).map((e) => e.property)).toContain('zoom');
+    expect((await validateDto(BboxQueryDto, { ...validBbox, zoom: '21' })).map((e) => e.property)).toContain('zoom');
+  });
 });

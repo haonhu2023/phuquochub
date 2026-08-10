@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { isValidCoord, buildPopupCard, popupState } from './mapMarkers';
+import { isValidCoord, buildPopupCard, popupState, clusterElement, placeElement } from './mapMarkers';
 import type { PlaceDetail } from '@/modules/places/types';
 import type { Category } from '@/modules/categories/api/categories.api';
 
@@ -36,6 +36,65 @@ describe('isValidCoord', () => {
   // nghĩa nghiệp vụ của 0,0, vì dữ liệu thật hợp lệ có thể (về lý thuyết) nằm ở biên dải số.
   it('0,0 hợp lệ về mặt kỹ thuật (không phải nguồn gây crash)', () => {
     expect(isValidCoord(0, 0)).toBe(true);
+  });
+});
+
+// Map Audit (2026-08-10) — marker được maplibre gắn thẳng vào DOM ngoài cây React, nên
+// `role="button"` một mình không đủ cho bàn phím/trình đọc màn hình; phải tự cấp tabIndex + xử lý
+// Enter/Space (div không tự làm điều này như <button> thật).
+describe('clusterElement — kích hoạt bằng chuột/bàn phím', () => {
+  it('có role="button", aria-label mô tả số lượng, và tabIndex=0 (focus được bằng bàn phím)', () => {
+    const el = clusterElement(5, jest.fn());
+    expect(el.getAttribute('role')).toBe('button');
+    expect(el.getAttribute('aria-label')).toContain('5');
+    expect(el.tabIndex).toBe(0);
+  });
+
+  it('click kích hoạt onActivate', () => {
+    const onActivate = jest.fn();
+    clusterElement(3, onActivate).click();
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter kích hoạt onActivate', () => {
+    const onActivate = jest.fn();
+    const el = clusterElement(3, onActivate);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('Space (" ") kích hoạt onActivate', () => {
+    const onActivate = jest.fn();
+    const el = clusterElement(3, onActivate);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+    expect(onActivate).toHaveBeenCalledTimes(1);
+  });
+
+  it('phím khác (vd Tab) KHÔNG kích hoạt onActivate', () => {
+    const onActivate = jest.fn();
+    const el = clusterElement(3, onActivate);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+});
+
+describe('placeElement — kích hoạt bằng chuột/bàn phím', () => {
+  it('có role="button", aria-label = tên địa điểm, và tabIndex=0', () => {
+    const el = placeElement('Bãi Sao', jest.fn());
+    expect(el.getAttribute('role')).toBe('button');
+    expect(el.getAttribute('aria-label')).toBe('Bãi Sao');
+    expect(el.tabIndex).toBe(0);
+  });
+
+  it('click và Enter đều kích hoạt onActivate', () => {
+    const onClick = jest.fn();
+    placeElement('Bãi Sao', onClick).click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    const onKey = jest.fn();
+    const el = placeElement('Bãi Sao', onKey);
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(onKey).toHaveBeenCalledTimes(1);
   });
 });
 
