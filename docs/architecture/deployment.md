@@ -79,6 +79,14 @@
 > - `infrastructure/caddy/Caddyfile` — reverse proxy công khai DUY NHẤT của stack; định tuyến `/`→
 >   web, `/api`→api; TLS tự động cho `phuquochub.com`; đã kiểm chứng định tuyến cục bộ (địa chỉ
 >   `:8080` phụ, chỉ dùng để kiểm thử, cùng logic định tuyến, không cần DNS/TLS thật).
+>   **Cập nhật 2026-08-10 (Secure Private Media, 87d010e):** thêm site block thứ ba
+>   `media.phuquochub.com, :8081` → `reverse_proxy minio:9000` — host công khai để presigned URL
+>   (ký cho `S3_ENDPOINT`) phân giải được từ trình duyệt. Chặn `/minio/*` ở edge (MinIO phục vụ
+>   Admin API trên CÙNG cổng 9000 với S3 API); console (:9001) KHÔNG được proxy ở bất kỳ đâu.
+>   Bucket vẫn PRIVATE — xem [media.md §13](../data/modules/media.md).
+>   **DNS bắt buộc:** ngoài `phuquochub.com` và `www.phuquochub.com`, cần thêm bản ghi `A`
+>   `media.phuquochub.com` → cùng IP VPS. Thiếu nó, Caddy không xin được chứng chỉ ACME cho host
+>   này và TOÀN BỘ ảnh hỏng, dù application/bucket đều đúng.
 > - Redis: thêm mật khẩu bắt buộc (`--requirepass`), đã kiểm chứng xác thực thật hoạt động.
 > - postgres/redis/minio/api/web: **không còn publish cổng ra host** — chỉ Caddy publish 80/443,
 >   khớp nguyên tắc "DB/Redis/MinIO không lộ ra Internet" (§2/§13).
@@ -231,6 +239,13 @@
 
 ### 6.6 MinIO / Object Storage
 - Lưu media (S3-compatible) + volume bền; **presigned URL** upload; phục vụ qua **CDN Cloudflare** (immutable, hash key); **bucket versioning** + lifecycle; đường nâng cấp **Cloudflare R2/S3**.
+- **Đã triển khai** (Secure Private Media, 2026-08-10, commit 87d010e — thay cho kế hoạch CDN
+  Cloudflare ở dòng trên, hiện CHƯA làm): bucket `phuquochub-prod` **PRIVATE** (không anonymous
+  read/list); `caddy` reverse-proxy `media.phuquochub.com` → `minio:9000` (site block trong
+  `infrastructure/caddy/Caddyfile`); API phát media qua `GET /api/media/{id}/file`, 302 tới một
+  presigned GET URL ký cho origin đó, TTL ngắn (`S3_PRESIGN_GET_TTL`, mặc định 300s). MinIO Console
+  (`:9001`) không được proxy bởi bất kỳ site block nào — không lộ ra Internet. Chi tiết đầy đủ +
+  lý do (SigV4 ký Host header) ở [media.md §13](../data/modules/media.md).
 
 ### 6.7 Cloudflare
 - DNS + Proxy (ẩn IP), **TLS** biên + Full-Strict tới origin, **CDN cache** cho asset & `GET /public` (theo `Cache-Control`/ETag — [api §8](../api/api.md)), **WAF + rate-limit biên + DDoS/Bot**; cache rules bypass `/api` động.

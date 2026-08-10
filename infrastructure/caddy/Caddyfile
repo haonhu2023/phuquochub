@@ -1,5 +1,65 @@
 www.phuquochub.com {
-    redir https://phuquochub.com{uri} permanent
+	redir https://phuquochub.com{uri} permanent
+}
+
+# Secure Private Media (87d010e) — object-storage edge for `media.phuquochub.com`.
+#
+# THIS BLOCK WAS MISSING FROM SOURCE CONTROL. It was configured directly on the VPS during the
+# private-media rollout; a clean `docker compose up` from this repo would have produced a stack with
+# NO media host at all (every image 404/NXDOMAIN). Reconciled here so the repo reproduces production.
+#
+# ── Why a public host in front of a PRIVATE bucket ───────────────────────────────────────────────
+# The bucket (`phuquochub-prod`) is private: anonymous GET returns 403, and there is no anonymous
+# list. Nothing here re-opens it. What this host serves is *presigned* URLs — SigV4-signed, short
+# lived (S3_PRESIGN_GET_TTL, 300s) links minted per-request by `GET /api/media/{id}/file` only after
+# the API has confirmed the media row is `published` and not soft-deleted. The signature is the
+# credential; the proxy is only a reachable path to the bucket.
+#
+# ── CRITICAL: never rewrite the Host header ──────────────────────────────────────────────────────
+# SigV4 signs the Host header. The AWS SDK signs these URLs for whatever origin `S3_ENDPOINT` names
+# (production: https://media.phuquochub.com), so MinIO must receive `Host: media.phuquochub.com` to
+# recompute a matching signature. Caddy's `reverse_proxy` preserves the inbound Host by default,
+# which is exactly what we need — do NOT "fix" this by adding `header_up Host {upstream_hostport}`
+# or similar. Doing so makes every signature mismatch and returns 403 on every image.
+# For the same reason `S3_ENDPOINT` in production MUST be the public origin, not `http://minio:9000`
+# — an internal endpoint would mint URLs the browser cannot resolve. See .env.example.
+media.phuquochub.com, :8081 {
+	# MinIO serves its ADMIN API from the same port as the S3 API (`/minio/admin/...` on :9000), so
+	# proxying :9000 wholesale would publish the admin surface. It is credential-gated, but this is a
+	# hard requirement, not a best-effort one — refuse the whole prefix at the edge.
+	# Safe by construction: with S3_FORCE_PATH_STYLE=true every legitimate object URL is
+	# `/{bucket}/{key}` = `/phuquochub-prod/media/{uuid}.{ext}`, which can never start with `/minio/`.
+	# The MinIO CONSOLE is a separate listener (:9001, see docker-compose.prod.yml) and is not
+	# proxied by any site block in this file — it stays unreachable from the internet.
+	handle /minio/* {
+		respond 404
+	}
+
+	handle {
+		# Presigned PUT (upload) and presigned GET (delivery) both land here. Methods are intentionally
+		# NOT filtered: uploads are browser PUTs to presigned URLs, and MinIO already rejects anything
+		# without a valid signature on a private bucket. Filtering here would risk breaking the working
+		# upload path for no additional guarantee.
+		reverse_proxy minio:9000
+	}
+
+	# Defense in depth for user-uploaded bytes. Only image/jpeg|png|webp can ever be registered
+	# (media.dto.ts allowlist, re-verified server-side against the real object), so there is no SVG
+	# script vector — nosniff keeps it that way if the allowlist ever widens.
+	header {
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	# No `encode gzip` here, unlike the app block below: JPEG/PNG/WebP are already compressed, so
+	# re-compressing burns CPU on every image for no size win.
+
+	log {
+		output file /data/media-access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
 }
 
 # PLACE-038 — reverse proxy for the single-VPS Topology A stack (Owner-approved PLACE-037/038).
@@ -36,4 +96,3 @@ phuquochub.com, :8080 {
 		}
 	}
 }
-

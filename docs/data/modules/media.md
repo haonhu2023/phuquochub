@@ -368,6 +368,7 @@ chiều sâu TRƯỚC khi có luồng đặt cover — không phải vá một s
 | Biến | Mặc định | Ghi chú |
 |---|---|---|
 | `API_PUBLIC_URL` | `http://localhost:4000` | Origin trình duyệt gọi được tới API. Production PHẢI đặt `https://phuquochub.com`. |
+| `S3_ENDPOINT` | `http://localhost:9000` | **Production PHẢI đặt `https://media.phuquochub.com`** (không phải `http://minio:9000`) — StorageService dùng CHÍNH biến này để ký CẢ presigned PUT (upload) lẫn GET (đọc, §13.2), và chữ ký SigV4 bao gồm Host header. Đặt endpoint nội bộ ở đây làm mọi URL đã ký trỏ tới một tên miền trình duyệt không phân giải được. Xem §13.7. |
 | `S3_PRESIGN_GET_TTL` | `300` | Tuổi thọ signed GET URL (giây), hợp lệ 30..3600. |
 | `S3_PUBLIC_URL` | — | **Không còn ảnh hưởng tới URL media.** Giữ lại cho tương thích deployment. |
 
@@ -377,13 +378,37 @@ bucket đọc được ẩn danh.
 
 ### 13.6 Việc CHƯA làm
 
-- Chưa gỡ anonymous policy trên bucket production (`mc anonymous set none`) — hành động vận hành,
-  tách khỏi milestone code này.
-- `media.phuquochub.com` vẫn tồn tại trên production nhưng **không có trong repo** (không có site
-  block nào trong `infrastructure/caddy/Caddyfile`) — drift hạ tầng cần xử lý riêng, xem báo cáo
-  kèm milestone này.
 - Cover image từ media upload vẫn chưa hiển thị được (subquery đọc `m.url`, luôn NULL cho upload
   row) — khoảng trống CHỨC NĂNG có sẵn từ trước, không phải do thay đổi này.
+
+### 13.7 Caddy/topology reconciliation (2026-08-10, sau khi 87d010e lên production)
+
+Khi 87d010e triển khai thật, việc phục vụ ảnh yêu cầu một host công khai đứng trước MinIO để
+presigned URL (ký cho `S3_ENDPOINT`) có nơi phân giải được — host đó (`media.phuquochub.com`) được
+cấu hình **trực tiếp trên VPS** để ảnh chạy được ngay, nhưng site block tương ứng **không có trong
+repo** (`infrastructure/caddy/Caddyfile` lúc đó không đề cập `media.phuquochub.com` ở đâu cả). Một
+`docker compose up` sạch từ repo tại thời điểm đó sẽ dựng ra một stack KHÔNG có host media nào —
+mọi ảnh 404/NXDOMAIN, dù kiến trúc signed-URL ở tầng application vẫn đúng.
+
+**Đã đối soát và đưa vào repo** — không phải thay đổi kiến trúc, chỉ là chép lại cấu hình đã chạy
+thật trên VPS vào source control:
+
+- `infrastructure/caddy/Caddyfile` — thêm site block `media.phuquochub.com, :8081` → `reverse_proxy
+  minio:9000`, kèm `handle /minio/*  { respond 404 }` (MinIO phục vụ Admin API trên CÙNG cổng 9000
+  với S3 API — chặn tường minh ở edge, không dựa vào "chỉ có credential mới gọi được" làm lớp phòng
+  vệ duy nhất) và `X-Content-Type-Options: nosniff` (phòng vệ chiều sâu cho bytes người dùng tải
+  lên, dù allowlist MIME hiện tại — `image/jpeg|png|webp` — không có vector script).
+- `docker-compose.prod.yml` — thêm `minio` vào `depends_on` của service `caddy` (thứ tự khởi động,
+  tránh 502 nhất thời trên một lần `up` sạch); sửa chú thích LỖI THỜI trên service `minio` (từng
+  ghi "hiện tại CHƯA cần" — nay là bắt buộc, cả `api` lẫn `caddy` đều phụ thuộc nó); ghi chú
+  `S3_ENDPOINT` phải là origin công khai dưới topology này.
+- `.env.example` — giải thích đầy đủ vì sao `S3_ENDPOINT` phải là `https://media.phuquochub.com`
+  trong production (SigV4 ký Host header — xem §13.5 ở trên).
+
+**KHÔNG có gì đổi về bucket policy hay kiến trúc signed-URL** — bucket vẫn PRIVATE
+(`mc anonymous set none`, đã áp dụng trên production), quyền đọc vẫn hoàn toàn tới từ chữ ký SigV4
+ngắn hạn do API cấp. Việc đối soát này chỉ khép lại khoảng trống "cấu hình chạy thật khác cấu hình
+trong repo", không mở lại bất kỳ đường đọc ẩn danh nào.
 
 ## Related
 

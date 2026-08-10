@@ -95,9 +95,19 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  # OD2-3: MinIO đứng thay cho Cloudflare R2 THẬT khi tính năng upload thật sự cần (hiện tại CHƯA
-  # cần — application code không gọi tới object storage nào, xác nhận tại PLACE-037 §4/§6). Giữ
-  # định nghĩa service để sẵn sàng khi cần, không publish cổng, không phải phần khởi chạy bắt buộc.
+  # OD2-3: MinIO đứng thay cho Cloudflare R2 THẬT.
+  #
+  # CẬP NHẬT (Secure Private Media, 87d010e) — chú thích cũ ("hiện tại CHƯA cần, application code
+  # không gọi tới object storage nào, không phải phần khởi chạy bắt buộc") đã LỖI THỜI và bị thay ở
+  # đây: service này nay là BẮT BUỘC. `api` ký presigned URL trỏ tới nó, và `caddy` proxy
+  # `media.phuquochub.com` vào nó (xem infrastructure/caddy/Caddyfile). Thiếu nó = mọi ảnh hỏng.
+  #
+  # KHÔNG publish cổng ra host — đúng nguyên tắc Topology A. Cả hai listener đều chỉ nằm trên mạng
+  # Docker nội bộ:
+  #   :9000 (S3 API)  — CHỈ `api` (nội bộ) và `caddy` (proxy có lọc `/minio/*`) gọi tới.
+  #   :9001 (Console) — KHÔNG có site block Caddy nào trỏ tới; không bao giờ ra Internet.
+  # Bucket `phuquochub-prod` là PRIVATE (`mc anonymous set none`) — quyền đọc đến từ chữ ký SigV4
+  # ngắn hạn do API cấp, không đến từ bucket policy. Đừng bao giờ đặt lại anonymous download.
   minio:
     image: minio/minio:latest
     container_name: phuquoc-minio-prod
@@ -199,6 +209,11 @@ services:
       # CHÍNH container `api`, không phải service `minio` — MinIO thật chỉ vào được qua tên service
       # nội bộ `minio:9000`, xem service `minio` bên dưới) — presign/upload thật sẽ hỏng nếu chưa vá.
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # Secure Private Media (87d010e) bổ sung: default `http://minio:9000` ở trên chỉ đúng nếu
+      # KHÔNG có site block `media.phuquochub.com` nào phục vụ media ra ngoài (tức là chưa/không
+      # dùng kiến trúc signed-URL). Với topology hiện tại (Caddyfile CÓ site block đó), production
+      # PHẢI set `S3_ENDPOINT=https://media.phuquochub.com` trong `.env` trên server — lý do đầy đủ
+      # (SigV4 ký cả Host header) nằm ở .env.example, không lặp lại ở đây.
       # PHẢI khớp MINIO_ROOT_USER/MINIO_ROOT_PASSWORD của service `minio` bên dưới. Cố tình KHÔNG
       # lồng biến (${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}) — cú pháp nội suy lồng nhau không có tiền
       # lệ nào khác trong file này và không đáng tin cậy trên mọi phiên bản Compose; nếu để trống cả
@@ -274,6 +289,11 @@ services:
     depends_on:
       - web
       - api
+      # Secure Private Media (87d010e): Caddyfile nay có site block `media.phuquochub.com` ->
+      # `minio:9000`. Thiếu dòng này, một lần `docker compose up` sạch có thể khởi động Caddy TRƯỚC
+      # khi tên `minio` phân giải được trên mạng Docker — Caddy vẫn chạy nhưng trả 502 cho ảnh cho
+      # tới lần retry kế tiếp. Khai báo tường minh để thứ tự khởi động tái lập được.
+      - minio
     ports:
       - "80:80"
       - "443:443"

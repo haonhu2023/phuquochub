@@ -151,6 +151,12 @@ independently confirmed** — see [`PLACE-043's report`](reports/PLACE-043-hosti
 - **Purpose:** implement the "DB/Redis/MinIO never exposed to the Internet" principle already
   designed in `docs/architecture/deployment.md` and matched by `docker-compose.prod.yml`'s own
   port-publishing choices (PLACE-038: only Caddy publishes 80/443).
+- **Note (Secure Private Media, 2026-08-10):** this principle is unchanged at the TCP level — MinIO
+  never binds a host port in `docker-compose.prod.yml`, so nothing here needs to change. Since
+  commit 87d010e, Caddy does reverse-proxy MinIO's S3 API to the Internet at the HTTP layer, at
+  `media.phuquochub.com` (`infrastructure/caddy/Caddyfile`) — that is a deliberate, signature-gated
+  exception at the application layer (the bucket is private; every request still needs a valid
+  SigV4 signature), not a firewall gap. See `docs/data/modules/media.md` §13.
 - **Action:** `sudo ufw allow OpenSSH` (or the specific SSH port in use) `&& sudo ufw allow 80/tcp
   && sudo ufw allow 443/tcp && sudo ufw enable`.
 - **Expected result:** `sudo ufw status` shows exactly SSH + 80 + 443 allowed, everything else
