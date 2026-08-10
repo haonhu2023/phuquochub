@@ -90,6 +90,10 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
       style: STYLE,
       center: PHU_QUOC_CENTER,
       zoom: 10,
+      // Khớp trần zoom BboxQueryDto/GeoService.bbox() (1..20) — không có dòng này, MapLibre mặc
+      // định cho zoom tới 22, người dùng cuộn/pinch quá 20 sẽ khiến MỌI request bbox kế tiếp bị
+      // backend từ chối 400 (marker ngừng cập nhật) dù nền bản đồ vẫn hiển thị bình thường.
+      maxZoom: 20,
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({}), 'top-right');
