@@ -34,7 +34,15 @@ check() {
   DESC="$1"
   URL="$2"
   EXPECT="$3"
-  CODE=$(curl -fsS -o "$TMP_BODY" -w '%{http_code}' "$URL" 2>/dev/null || curl -s -o "$TMP_BODY" -w '%{http_code}' "$URL" 2>/dev/null || echo "000")
+  # Deploy reconciliation (fd224c1 rollout, 2026-08-10): `-f`/`--fail` makes curl exit non-zero on
+  # ANY HTTP >=400 response while still writing `%{http_code}` for the completed transfer -- this
+  # script deliberately checks for an EXPECTED 404 (below), so `-f` was actively wrong here. The
+  # `||` fallback curl (no `-f`) then ran a SECOND time, also succeeded, and its output landed in
+  # the SAME captured subshell stdout as the first curl's already-written code -- e.g. "404" + "404"
+  # = "404404", never equal to any real EXPECT value. Confirmed reproducing on the real VPS. This
+  # script's own `[ "$CODE" != "$EXPECT" ]` below is what judges pass/fail -- curl only needs to
+  # report the code it saw, once, regardless of what that code is.
+  CODE=$(curl -sS -o "$TMP_BODY" -w '%{http_code}' "$URL" 2>/dev/null || echo "000")
   if [ "$CODE" != "$EXPECT" ]; then
     echo "[smoke-test] FAIL: $DESC -> $URL returned $CODE (expected $EXPECT)" >&2
     FAIL=1

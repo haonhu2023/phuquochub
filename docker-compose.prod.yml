@@ -301,6 +301,16 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # Deploy reconciliation (fd224c1 rollout, 2026-08-10): scripts/deploy.sh Step 11 / rollback.sh
+      # both call scripts/smoke-test.sh against http://127.0.0.1:8080 by default (the Caddyfile's
+      # own documented local test address, "phuquochub.com, :8080 { ... }" -- same routing logic,
+      # no DNS/TLS needed). Without a host-port mapping for it, nothing on the host can ever reach
+      # that container-internal port, and Step 11 fails with a connection error before any real
+      # health signal is read -- confirmed reproducing the exact failure hit on the real VPS.
+      # 127.0.0.1-only (never "8080:8080"): this port serves plain HTTP with no TLS and no
+      # Cloudflare/WAF in front of it -- it must stay unreachable from the public Internet, loopback
+      # access only, exactly like Caddy's own :8080 site block already documents as verification-only.
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./infrastructure/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data_prod:/data

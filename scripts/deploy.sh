@@ -24,9 +24,22 @@ COMPOSE="docker compose -f $PROJECT_DIR/docker-compose.prod.yml"
 
 echo "[deploy] === Step 5: build images tagged $TAG ==="
 docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR"
+# Deploy reconciliation (fd224c1 rollout, 2026-08-10): NEXT_PUBLIC_MAP_TILE_URL's default contains
+# literal `{`/`}` (the MapLibre tile template). POSIX `${VAR:-default}` parameter expansion ends at
+# the FIRST unescaped `}` in `default` -- here that's the one closing `{z}` -- so embedding the
+# literal inline (as this used to) silently truncated to ".../{z" and appended the remainder
+# ("/{x}/{y}.png}") as plain trailing text, leaving a stray `}` in the built value. Confirmed
+# reproducing: `sh -c 'echo "${U:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"'` prints
+# `https://tile.openstreetmap.org/{z/{x}/{y}.png}` -- that trailing `}` is exactly what showed up
+# percent-encoded (`%7D`) after MapLibre substituted a real tile y-value (`.../965.png%7D`). Fixed
+# by resolving the default as a PLAIN assignment (no braces inside a `${...}` expansion) instead.
+TILE_URL="${NEXT_PUBLIC_MAP_TILE_URL:-}"
+if [ -z "$TILE_URL" ]; then
+  TILE_URL="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+fi
 docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
   --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
-  --build-arg "NEXT_PUBLIC_MAP_TILE_URL=${NEXT_PUBLIC_MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"
+  --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL"
 
 echo "[deploy] === Step 6: tag recorded as phuquochub-api:$TAG / phuquochub-web:$TAG ==="
 echo "[deploy]     (retain this tag -- scripts/rollback.sh needs it to roll back TO)"
