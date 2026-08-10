@@ -3,12 +3,20 @@ import { MediaStatus } from './media.enums';
 
 export type MediaResponse = ReturnType<typeof toMedia>;
 
-// Map entity → response snake_case (khớp openapi Media). `resolvePublicUrl` sinh URL đọc công
-// khai từ object_key cho media upload (m.url luôn null với các dòng này — Design review §A).
-// CHỈ gọi cho media `published`: pending/hidden/rejected không bao giờ được lộ URL đọc được,
-// giữ đúng bất biến "no public URL for pending, unmoderated media" (media.service.ts's register()).
-export function toMedia(m: Media, resolvePublicUrl: (objectKey: string) => string) {
-  const url = m.url ?? (m.status === MediaStatus.PUBLISHED && m.objectKey ? resolvePublicUrl(m.objectKey) : null);
+// Map entity → response snake_case (khớp openapi Media).
+//
+// `resolveFileUrl` nhận MEDIA ID (không phải object_key nữa — Secure Private Media, 2026-08-10):
+// URL trả cho client giờ trỏ về chính API (`/media/{id}/file`), nơi trạng thái publish được kiểm
+// tra LẠI mỗi lần tải và một signed URL ngắn hạn mới được sinh ra. Trước đây hàm này nhận
+// `object_key` và dựng thẳng URL object storage — URL đó chỉ hoạt động khi bucket mở anonymous
+// read cho TOÀN BỘ object, tức là lộ cả media pending/hidden/rejected cho bất kỳ ai liệt kê được
+// bucket (docs/data/modules/media.md §13).
+//
+// Điều kiện `status === PUBLISHED` GIỮ NGUYÊN ở đây: nó vẫn là chốt chặn "không bao giờ phát URL
+// cho media chưa duyệt", và giờ được lặp lại độc lập một lần nữa trong SQL của
+// `findPublishedObjectKey()` — hai lớp, để một lỗi ở tầng này không tự động thành lỗ hổng.
+export function toMedia(m: Media, resolveFileUrl: (mediaId: string) => string) {
+  const url = m.url ?? (m.status === MediaStatus.PUBLISHED && m.objectKey ? resolveFileUrl(m.id) : null);
   return {
     id: m.id,
     type: m.type,

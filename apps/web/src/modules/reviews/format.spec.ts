@@ -5,7 +5,7 @@ function media(overrides: Partial<PlaceMedia> = {}): PlaceMedia {
   return {
     id: 'm1',
     type: 'image',
-    url: 'https://media.phuquochub.com/phuquochub-prod/media/a.jpg',
+    url: 'https://phuquochub.com/api/media/m1/file',
     thumbnail_url: null,
     caption: null,
     alt_text: null,
@@ -32,13 +32,13 @@ describe('formatReviewDate', () => {
 
 describe('reviewMediaSrc', () => {
   it('ưu tiên thumbnail_url khi có', () => {
-    const m = media({ thumbnail_url: 'https://media.phuquochub.com/thumb.jpg', url: 'https://media.phuquochub.com/full.jpg' });
-    expect(reviewMediaSrc(m)).toBe('https://media.phuquochub.com/thumb.jpg');
+    const m = media({ thumbnail_url: 'https://phuquochub.com/api/media/mt/file', url: 'https://phuquochub.com/api/media/mf/file' });
+    expect(reviewMediaSrc(m)).toBe('https://phuquochub.com/api/media/mt/file');
   });
 
   it('dùng url khi không có thumbnail_url', () => {
-    expect(reviewMediaSrc(media({ thumbnail_url: null, url: 'https://media.phuquochub.com/full.jpg' }))).toBe(
-      'https://media.phuquochub.com/full.jpg',
+    expect(reviewMediaSrc(media({ thumbnail_url: null, url: 'https://phuquochub.com/api/media/mf/file' }))).toBe(
+      'https://phuquochub.com/api/media/mf/file',
     );
   });
 

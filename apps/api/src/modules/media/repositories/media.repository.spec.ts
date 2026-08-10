@@ -153,6 +153,34 @@ describe('MediaRepository — Media Upload Foundation', () => {
     });
   });
 
+  // Secure Private Media (2026-08-10). Bốn vị từ nằm TRONG SQL — đây là lớp thực thi cuối cùng
+  // trước khi một object được ký URL, nên chúng được khẳng định tường minh ở đây.
+  describe('findPublishedObjectKey (GET /media/{id}/file)', () => {
+    it('SQL lọc đủ published + chưa xoá mềm + object_key IS NOT NULL', async () => {
+      repo.query.mockResolvedValue([{ object_key: 'media/abc.jpg' }]);
+
+      await expect(sut.findPublishedObjectKey('m1')).resolves.toBe('media/abc.jpg');
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain(
+        "SELECT object_key FROM media WHERE id = $1 AND status = 'published' AND deleted_at IS NULL AND object_key IS NOT NULL",
+      );
+      expect(params).toEqual(['m1']);
+    });
+
+    it('không khớp (không tồn tại / pending / hidden / rejected / đã xoá mềm) → null', async () => {
+      repo.query.mockResolvedValue([]);
+      await expect(sut.findPublishedObjectKey('m1')).resolves.toBeNull();
+    });
+
+    it('dòng legacy/embed không có object_key → null (không có object nào để ký URL)', async () => {
+      // SQL đã loại bằng `object_key IS NOT NULL`; phòng thêm ở tầng JS cho trường hợp driver trả
+      // về NULL — không được để `undefined` lọt ra ngoài dưới dạng giá trị "có key".
+      repo.query.mockResolvedValue([{ object_key: null }]);
+      await expect(sut.findPublishedObjectKey('m1')).resolves.toBeNull();
+    });
+  });
+
   describe('findByUploaderAndChecksum', () => {
     it('tìm theo đúng uploaded_by + checksum_sha256, loại trừ đã xoá mềm', async () => {
       repo.findOne.mockResolvedValue({ id: 'm1' });

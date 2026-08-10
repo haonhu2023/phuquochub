@@ -29,6 +29,7 @@ function makeConfig(overrides: Partial<Record<string, unknown>> = {}): ConfigSer
       bucket: 'phuquochub-test',
       forcePathStyle: true,
       publicUrl: 'http://localhost:9000',
+      presignGetTtlSeconds: 300,
     },
     ...overrides,
   };
@@ -221,13 +222,23 @@ describe('StorageService', () => {
     });
   });
 
-  describe('getPublicUrl', () => {
-    it('forcePathStyle=true → publicUrl/bucket/objectKey', () => {
+  // Secure Private Media (2026-08-10). `getPublicUrl()` — which built an unauthenticated
+  // `S3_PUBLIC_URL/bucket/key` URL and therefore REQUIRED a bucket-wide anonymous-read policy — is
+  // deleted; these tests replace its suite. See the storage.service.ts doc comment.
+  describe('createPresignedGetUrl', () => {
+    it('ký GetObjectCommand đúng bucket/key và trả về URL đã ký', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/media/abc.jpg?X-Amz-Signature=deadbeef');
       const sut = new StorageService(makeConfig());
-      expect(sut.getPublicUrl('media/abc.jpg')).toBe('http://localhost:9000/phuquochub-test/media/abc.jpg');
+
+      const url = await sut.createPresignedGetUrl('media/abc.jpg');
+
+      expect(url).toBe('https://signed.example/media/abc.jpg?X-Amz-Signature=deadbeef');
+      const [, command] = mockGetSignedUrl.mock.calls[0] as [unknown, { input: Record<string, unknown> }];
+      expect(command.input).toMatchObject({ Bucket: 'phuquochub-test', Key: 'media/abc.jpg' });
     });
 
-    it('forcePathStyle=false → publicUrl/objectKey (không chèn bucket vào path)', () => {
+    it('mặc định dùng TTL từ config (S3_PRESIGN_GET_TTL), không hard-code', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/x');
       const sut = new StorageService(
         makeConfig({
           s3: {
@@ -236,31 +247,50 @@ describe('StorageService', () => {
             accessKeyId: 'minioadmin',
             secretAccessKey: 'minioadmin',
             bucket: 'phuquochub-test',
-            forcePathStyle: false,
-            publicUrl: 'https://media.phuquochub.com',
+            forcePathStyle: true,
+            publicUrl: 'http://localhost:9000',
+            presignGetTtlSeconds: 120,
           },
         }),
       );
-      expect(sut.getPublicUrl('media/abc.jpg')).toBe('https://media.phuquochub.com/media/abc.jpg');
+
+      await sut.createPresignedGetUrl('media/abc.jpg');
+
+      expect(mockGetSignedUrl).toHaveBeenCalledWith(expect.anything(), expect.anything(), { expiresIn: 120 });
+      expect(sut.presignGetTtl).toBe(120);
     });
 
-    it('production origin (S3_PUBLIC_URL=https://media.phuquochub.com) — trailing slash bị bỏ, không lộ endpoint nội bộ', () => {
-      const sut = new StorageService(
-        makeConfig({
-          s3: {
-            endpoint: 'http://minio:9000', // docker-internal — KHÔNG được xuất hiện trong kết quả
-            region: 'us-east-1',
-            accessKeyId: 'minioadmin',
-            secretAccessKey: 'minioadmin',
-            bucket: 'phuquochub-prod',
-            forcePathStyle: true,
-            publicUrl: 'https://media.phuquochub.com/',
-          },
-        }),
-      );
-      const url = sut.getPublicUrl('media/43ac8a28-a2ed-4076-995c-8536f365f13e.jpg');
-      expect(url).toBe('https://media.phuquochub.com/phuquochub-prod/media/43ac8a28-a2ed-4076-995c-8536f365f13e.jpg');
-      expect(url).not.toContain('minio:9000');
+    it('TTL truyền tường minh ghi đè mặc định', async () => {
+      mockGetSignedUrl.mockResolvedValueOnce('https://signed.example/x');
+      const sut = new StorageService(makeConfig());
+
+      await sut.createPresignedGetUrl('media/abc.jpg', 45);
+
+      expect(mockGetSignedUrl).toHaveBeenCalledWith(expect.anything(), expect.anything(), { expiresIn: 45 });
+    });
+
+    it('SECURITY: ký bằng CÙNG client/endpoint với presigned PUT — không phát sinh origin thứ hai chưa được kiểm chứng', async () => {
+      mockGetSignedUrl.mockResolvedValue('https://signed.example/x');
+      const sut = new StorageService(makeConfig());
+
+      await sut.createPresignedPutUrl('media/abc.jpg', 'image/jpeg');
+      await sut.createPresignedGetUrl('media/abc.jpg');
+
+      const [putClient] = mockGetSignedUrl.mock.calls[0] as [unknown];
+      const [getClient] = mockGetSignedUrl.mock.calls[1] as [unknown];
+      expect(getClient).toBe(putClient);
+    });
+
+    it('SECURITY: trả về NGUYÊN VĂN kết quả của getSignedUrl — service không tự ghép chuỗi credential vào URL', async () => {
+      // Bảo đảm duy nhất về việc không lộ credential là ở CẤU TRÚC: toàn bộ việc dựng URL do AWS
+      // SDK làm (chỉ nhúng chữ ký DẪN XUẤT), service không nối thêm gì từ config. Khẳng định
+      // pass-through nguyên văn là cách kiểm chứng thật sự có ý nghĩa ở tầng unit test — một bản
+      // sửa tương lai chuyển sang tự dựng URL thủ công (nguy cơ nhúng secret) sẽ làm test này đỏ.
+      const signed = 'http://localhost:9000/phuquochub-test/media/abc.jpg?X-Amz-Signature=abc123';
+      mockGetSignedUrl.mockResolvedValueOnce(signed);
+      const sut = new StorageService(makeConfig());
+
+      await expect(sut.createPresignedGetUrl('media/abc.jpg')).resolves.toBe(signed);
     });
   });
 

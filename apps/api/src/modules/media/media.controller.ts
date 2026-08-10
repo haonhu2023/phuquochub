@@ -1,8 +1,10 @@
-import { Body, Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { PRINCIPAL_RESOLVER } from '../authz/resolvers/principal.resolver';
+import { Public } from '../authz/decorators/public.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { MediaService } from './media.service';
 import { CreateMediaDto, PresignMediaDto } from './dto/media.dto';
@@ -38,6 +40,38 @@ export class MediaController {
   })
   register(@Body() dto: CreateMediaDto, @CurrentUser() user: AuthPrincipal) {
     return this.mediaService.register(dto, user.sub);
+  }
+
+  /**
+   * Secure Private Media (2026-08-10) — điểm phát media DUY NHẤT ra công chúng.
+   *
+   * Công khai (`@Public()`) một cách CÓ CHỦ Ý: ảnh trong review/gallery phải hiển thị cho khách
+   * chưa đăng nhập, y như trước. Cái đổi không phải là "ai xem được", mà là "xem được CÁI GÌ":
+   * trước đây bucket mở anonymous read cho mọi object (kể cả pending/hidden/rejected, và kèm cả
+   * quyền liệt kê toàn bucket); giờ chỉ những media THỰC SỰ published mới phân giải được, và mỗi
+   * lần tải đều kiểm tra lại trạng thái publish hiện tại.
+   *
+   * 302 chứ KHÔNG stream bytes qua Nest (yêu cầu thiết kế): API chỉ cấp phép rồi đứng ra ngoài
+   * đường truyền — không tốn băng thông/bộ nhớ API cho mỗi ảnh, và giữ nguyên khả năng đặt CDN
+   * trước object storage sau này.
+   *
+   * `@Res()` (không passthrough) nên TransformInterceptor không bọc envelope `{success,data}` —
+   * trình duyệt cần một redirect thật cho `<img src>`, không phải JSON. Nhánh 404 vẫn ném
+   * NotFoundException BÌNH THƯỜNG trước khi chạm `res`, nên lỗi vẫn đi qua AllExceptionsFilter và
+   * giữ đúng hình dạng envelope lỗi như mọi endpoint khác.
+   *
+   * `Cache-Control: private, max-age=<nửa TTL>`: cho trình duyệt tái dùng redirect trong thời gian
+   * signed URL chắc chắn còn hiệu lực, nhưng KHÔNG cho proxy/CDN dùng chung (`private`) — một
+   * signed URL là capability dạng bearer, không được chia sẻ giữa người dùng. Nửa TTL để một
+   * response nằm sẵn trong cache không bao giờ trỏ tới URL vừa hết hạn.
+   */
+  @Get(':id/file')
+  @Public()
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  async file(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
+    const signedUrl = await this.mediaService.resolveFileUrl(id);
+    res.setHeader('Cache-Control', `private, max-age=${Math.floor(this.mediaService.fileUrlTtl / 2)}`);
+    res.redirect(HttpStatus.FOUND, signedUrl);
   }
 
   @Post(':id/report')

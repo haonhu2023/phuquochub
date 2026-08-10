@@ -6,6 +6,10 @@ export const envValidationSchema = Joi.object({
 
   API_PORT: Joi.number().port().default(4000),
   API_GLOBAL_PREFIX: Joi.string().default('api'),
+  // Browser-reachable origin of this API — used to build absolute media delivery URLs
+  // (MediaUrlService). `.uri()` rejects a bare host or a path-bearing value, both of which would
+  // silently produce broken <img src> URLs rather than failing at boot.
+  API_PUBLIC_URL: Joi.string().uri({ scheme: ['http', 'https'] }).default('http://localhost:4000'),
 
   // PLACE-029: DB credentials required in production — fail fast rather than silently
   // connecting with known dev defaults (mirrors the JWT-secret/CORS-origin precedent above).
@@ -82,10 +86,13 @@ export const envValidationSchema = Joi.object({
   S3_BUCKET: Joi.string().allow('').optional(),
   S3_REGION: Joi.string().default('us-east-1'),
   S3_FORCE_PATH_STYLE: Joi.boolean().truthy('true').falsy('false').default(true),
-  // Public read origin for media URLs served back to clients (e.g. https://media.phuquochub.com
-  // in production). Intentionally no static default — code-level default falls back to
-  // S3_ENDPOINT (see configuration.ts), which Joi's static default cannot express.
+  // Retained but NO LONGER USED for media URLs (Secure Private Media, 2026-08-10) — see
+  // configuration.ts's `s3.publicUrl` comment. Still accepted so existing deployments that set it
+  // do not fail validation on upgrade; setting it now has no effect on what clients receive.
   S3_PUBLIC_URL: Joi.string().allow('').optional(),
+  // Presigned GET lifetime (seconds) for media delivery. Bounded on BOTH ends deliberately: too
+  // short and a slow mobile image load can 403 mid-flight; too long and a leaked URL stays usable.
+  S3_PRESIGN_GET_TTL: Joi.number().min(30).max(3600).default(300),
 
   // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Intentionally NO
   // production-required rule and NO NODE_ENV-conditional default — see configuration.ts's

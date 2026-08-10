@@ -81,7 +81,7 @@ describe('TransportsRepository — đọc nền tảng (ADR-017)', () => {
       expect(ds.query).toHaveBeenCalledTimes(1);
       const q = sql(ds.query.mock.calls[0][0]);
       expect(q).toContain(
-        '(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url',
+        "(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url",
       );
       expect(q).toContain('tt.code AS transport_type_code, tt.label_vi AS transport_type_label_vi, tt.label_en AS transport_type_label_en');
       expect(q).toContain('ptd.pricing_model, ptd.price_ref, ptd.price_currency, ptd.price_unit');

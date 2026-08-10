@@ -70,7 +70,7 @@ export class AttractionsRepository {
     return this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.price_range, p.ward,
               p.rating_avg, p.rating_count, p.verification_status,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM ${attractionFrom()}
        WHERE ${where}

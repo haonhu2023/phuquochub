@@ -27,7 +27,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let mediaRepo: LooseMock<Ctor[4]>;
   let revisions: LooseMock<Ctor[5]>;
   let audit: LooseMock<Ctor[6]>;
-  let storage: LooseMock<Ctor[7]>;
+  let mediaUrl: LooseMock<Ctor[7]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -49,7 +49,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     mediaRepo = createMock<Ctor[4]>({ listPublishedByPlace: jest.fn() });
     revisions = createMock<Ctor[5]>({ recordPlaceRevision: jest.fn() });
     audit = createMock<Ctor[6]>({ record: jest.fn() });
-    storage = createMock<Ctor[7]>({ getPublicUrl: jest.fn() });
+    mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
 
     service = new PlacesService(
       placesRepo,
@@ -59,7 +59,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       mediaRepo,
       revisions,
       audit,
-      storage,
+      mediaUrl,
     );
   });
 
@@ -323,7 +323,9 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(pricesRepo.current).toHaveBeenCalledWith('place', 'p1');
     });
 
-    it('media published có object_key → dựng URL công khai qua storage.getPublicUrl (toMedia resolver)', async () => {
+    // Secure Private Media (2026-08-10): gallery Place giờ phát URL API ỔN ĐỊNH theo media id, KHÔNG
+    // phải URL object storage theo object_key. Resolver nhận id — object_key không bao giờ rời server.
+    it('media published có object_key → dựng URL API ổn định qua mediaUrl.fileUrl (toMedia resolver)', async () => {
       placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
       contactsRepo.listByOwner.mockResolvedValue([]);
       pricesRepo.current.mockResolvedValue([]);
@@ -331,14 +333,46 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         { id: 'm1', type: 'image', url: null, status: 'published', objectKey: 'media/m1.jpg' },
       ]);
       placesRepo.listFaqs.mockResolvedValue([]);
-      storage.getPublicUrl.mockReturnValue('https://media.phuquochub.com/phuquochub-prod/media/m1.jpg');
+      mediaUrl.fileUrl.mockReturnValue('https://phuquochub.com/api/media/m1/file');
 
       const res = await service.getBySlug('bai-sao');
 
-      expect(storage.getPublicUrl).toHaveBeenCalledWith('media/m1.jpg');
+      expect(mediaUrl.fileUrl).toHaveBeenCalledWith('m1');
       expect(res.media).toEqual([
-        expect.objectContaining({ id: 'm1', url: 'https://media.phuquochub.com/phuquochub-prod/media/m1.jpg' }),
+        expect.objectContaining({ id: 'm1', url: 'https://phuquochub.com/api/media/m1/file' }),
       ]);
+    });
+
+    it('SECURITY: gallery KHÔNG BAO GIỜ lộ object_key hay origin object storage ra response', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([
+        { id: 'm1', type: 'image', url: null, status: 'published', objectKey: 'media/secret-key.jpg' },
+      ]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      mediaUrl.fileUrl.mockReturnValue('https://phuquochub.com/api/media/m1/file');
+
+      const res = await service.getBySlug('bai-sao');
+
+      const serialized = JSON.stringify(res.media);
+      expect(serialized).not.toContain('secret-key.jpg');
+      expect(serialized).not.toContain('media.phuquochub.com');
+    });
+
+    it('media KHÔNG published → url null, resolver không được gọi (không rò rỉ ảnh chưa duyệt)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([
+        { id: 'm1', type: 'image', url: null, status: 'pending', objectKey: 'media/m1.jpg' },
+      ]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+
+      const res = await service.getBySlug('bai-sao');
+
+      expect(mediaUrl.fileUrl).not.toHaveBeenCalled();
+      expect(res.media).toEqual([expect.objectContaining({ id: 'm1', url: null })]);
     });
   });
 

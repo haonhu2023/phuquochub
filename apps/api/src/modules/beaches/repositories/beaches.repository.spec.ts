@@ -116,7 +116,7 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
       expect(ds.query).toHaveBeenCalledTimes(1);
       const q = sql(ds.query.mock.calls[0][0]);
       expect(q).toContain(
-        '(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url',
+        "(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url",
       );
       expect(q).toContain('p.short_description, p.price_range, p.ward');
       expect(q).toContain('p.rating_avg, p.rating_count, p.verification_status');

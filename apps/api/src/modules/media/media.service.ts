@@ -9,6 +9,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { StorageService } from '../../core/storage/storage.service';
+import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { MediaRepository } from './repositories/media.repository';
 import { ModerationReportsService } from '../moderation/moderation-reports.service';
@@ -44,6 +45,7 @@ interface PresignSession {
 export class MediaService {
   constructor(
     private readonly storage: StorageService,
+    private readonly mediaUrl: MediaUrlService,
     private readonly redis: RedisService,
     private readonly mediaRepo: MediaRepository,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -136,7 +138,34 @@ export class MediaService {
     // media.status is always 'pending' here (createUploaded never sets anything else) — toMedia()
     // only resolves a public URL for status=published, so no public URL is ever exposed for
     // pending, unmoderated media (design review §A/§8).
-    return toMedia(media, (key) => this.storage.getPublicUrl(key));
+    return toMedia(media, (id) => this.mediaUrl.fileUrl(id));
+  }
+
+  /**
+   * Secure Private Media (2026-08-10) — phân giải `GET /media/{id}/file` thành một signed GET URL
+   * ngắn hạn để controller redirect tới.
+   *
+   * `findPublishedObjectKey()` đã gộp TẤT CẢ các trường hợp không phục vụ được (không tồn tại,
+   * pending, hidden, rejected, đã xoá mềm, không có object_key) thành cùng một `null` — nên chỉ có
+   * đúng MỘT `NotFoundException` ở đây. Cố ý không phân biệt "không tồn tại" với "tồn tại nhưng
+   * không published": phân biệt chúng sẽ biến endpoint công khai này thành một oracle cho phép dò
+   * xem một media id nào đó có bị ẩn/từ chối hay không (cùng lý do `existsPublished()` đã gộp 404).
+   *
+   * KHÔNG stream bytes qua NestJS: chỉ trả URL để controller 302. Ảnh đi thẳng từ object storage
+   * tới trình duyệt, API không nằm trên đường truyền dữ liệu.
+   */
+  async resolveFileUrl(mediaId: string): Promise<string> {
+    const objectKey = await this.mediaRepo.findPublishedObjectKey(mediaId);
+    if (!objectKey) {
+      throw new NotFoundException('Không tìm thấy media');
+    }
+    return this.storage.createPresignedGetUrl(objectKey);
+  }
+
+  /** TTL (giây) của signed URL mà `resolveFileUrl()` sinh ra — controller dùng để đặt Cache-Control
+   * sao cho response cache KHÔNG BAO GIỜ sống lâu hơn chính URL nó chứa. */
+  get fileUrlTtl(): number {
+    return this.storage.presignGetTtl;
   }
 
   /**

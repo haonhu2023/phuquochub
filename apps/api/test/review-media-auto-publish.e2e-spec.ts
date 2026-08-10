@@ -478,4 +478,210 @@ describe('Review creation auto-publishes attached media (e2e)', () => {
       expect(found.media[0].id).toBe(mVisible);
     });
   });
+
+  /**
+   * Secure Private Media (2026-08-10) — `GET /media/{id}/file`.
+   *
+   * Đây là bộ e2e chứng minh TOÀN BỘ chuỗi phát media mới hoạt động THẬT với MinIO thật:
+   * upload → gắn review (auto-publish) → đọc review → URL trong response → 302 → signed URL →
+   * TẢI ĐƯỢC ĐÚNG BYTES. Và quan trọng không kém: mọi trạng thái KHÔNG published đều 404.
+   *
+   * Toàn bộ bộ này chạy mà KHÔNG cần bucket mở anonymous read — chính là điều kiện tiên quyết để
+   * `mc anonymous set none` an toàn trên production.
+   */
+  describe('GET /media/{id}/file — phát media riêng tư qua signed URL', () => {
+    // `getReviews` của describe anh em phía trên nằm trong scope RIÊNG của nó — khai báo lại ở đây
+    // thay vì nâng lên scope ngoài, để không đụng vào khối test đã ổn định.
+    function getReviews(placeIdToQuery: string) {
+      return request(app.getHttpServer()).get(`/api/places/${placeIdToQuery}/reviews`);
+    }
+
+    // Tải URL đã ký bằng fetch THẬT (không qua supertest) — nó trỏ tới MinIO, không phải app.
+    async function fetchSigned(url: string): Promise<{ status: number; body: Buffer }> {
+      const res = await fetch(url);
+      return { status: res.status, body: Buffer.from(await res.arrayBuffer()) };
+    }
+
+    /**
+     * Upload GIỮ LẠI bytes đã gửi. KHÔNG dùng lại `uploadAsToken()` ở scope ngoài: helper đó tự gọi
+     * `fakeJpegBytes()` BÊN TRONG, mà hàm này lại nhét `Date.now()`/`Math.random()` vào nội dung —
+     * nên gọi `fakeJpegBytes(seed)` lần thứ hai ở ngoài KHÔNG cho ra cùng bytes đã upload. Muốn so
+     * sánh byte-for-byte ở test "chuỗi đầy đủ" thì phải giữ đúng buffer đã PUT lên.
+     */
+    async function uploadWithContent(
+      token: string,
+      seed: string,
+      clientIp: string,
+    ): Promise<{ mediaId: string; content: Buffer }> {
+      const content = fakeJpegBytes(seed);
+      const presignRes = await presign(
+        token,
+        { content_type: CONTENT_TYPE, size: content.length, checksum_sha256: sha256(content) },
+        clientIp,
+      );
+      expect(presignRes.status).toBe(201);
+      const { key, upload_url: uploadUrl } = presignRes.body.data;
+
+      const putRes = await putToPresignedUrl(uploadUrl, content, CONTENT_TYPE);
+      expect(putRes.status).toBe(200);
+
+      const registerRes = await register(token, { key });
+      expect(registerRes.status).toBe(201);
+
+      const mediaId = registerRes.body.data.id;
+      mediaIds.push(mediaId);
+      return { mediaId, content };
+    }
+
+    async function publishedMediaOnReview(seed: string): Promise<{ mediaId: string; content: Buffer }> {
+      // Mỗi lần gọi cần một USER mới: một user chỉ được tạo MỘT review cho mỗi place. Đăng ký phải
+      // kèm X-Forwarded-For riêng — throttle của /auth/register tính theo IP (RATE_LIMIT_AUTH_LIMIT
+      // mặc định 10/60s), và khối test này tự nó đã vượt ngưỡng nếu dùng chung IP loopback. Cùng kỹ
+      // thuật đã ghi ở đầu file cho presign.
+      const clientIp = nextClientIp();
+      const email = `e2e_file_${seed}_${Date.now()}@phuquochub.test`;
+      const reg = await request(app.getHttpServer())
+        .post('/api/auth/register')
+        .set('X-Forwarded-For', clientIp)
+        .send({ email, password, display_name: `E2E File ${seed}` });
+      expect(reg.status).toBe(201);
+      const token = reg.body.data.access_token;
+
+      const { mediaId, content } = await uploadWithContent(token, seed, clientIp);
+
+      const createRes = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/reviews`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ rating: 5, media_ids: [mediaId] });
+      expect(createRes.status).toBe(201);
+
+      const [row]: Array<{ review_id: string }> = await ds.query(
+        `SELECT review_id FROM media WHERE id = $1`,
+        [mediaId],
+      );
+      reviewIds.push(row.review_id);
+      return { mediaId, content };
+    }
+
+    it('CHUỖI ĐẦY ĐỦ: review → url ổn định → 302 → signed URL → tải đúng bytes đã upload', async () => {
+      if (!placeId) return;
+      const { mediaId, content } = await publishedMediaOnReview('fullchain');
+
+      // 1. URL trong response review phải là endpoint API ổn định, KHÔNG phải URL object storage.
+      const reviewsRes = await getReviews(placeId);
+      const media = reviewsRes.body.data
+        .flatMap((r: { media: Array<{ id: string; url: string }> }) => r.media)
+        .find((m: { id: string }) => m.id === mediaId);
+      expect(media).toBeDefined();
+      expect(media.url).toContain(`/api/media/${mediaId}/file`);
+      expect(media.url).not.toContain('minio');
+      expect(media.url).not.toContain('X-Amz-Signature'); // URL ổn định, không mang chữ ký
+
+      // 2. Endpoint trả 302 (KHÔNG stream bytes qua Nest) tới một signed URL.
+      const redirectRes = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(redirectRes.status).toBe(302);
+      const signedUrl = redirectRes.headers.location;
+      expect(signedUrl).toContain('X-Amz-Signature');
+      expect(redirectRes.headers['cache-control']).toContain('private');
+      // Thân response rỗng — API không nằm trên đường truyền dữ liệu ảnh.
+      expect(redirectRes.body).toEqual({});
+
+      // 3. Signed URL tải được ĐÚNG bytes đã upload.
+      const fetched = await fetchSigned(signedUrl);
+      expect(fetched.status).toBe(200);
+      expect(fetched.body.equals(content)).toBe(true);
+    });
+
+    /**
+     * SECURITY REGRESSION (yêu cầu #8): chứng minh hành vi ứng dụng KHÔNG phụ thuộc vào việc
+     * S3_PUBLIC_URL/bucket mở anonymous read.
+     *
+     * Signed URL ở trên hoạt động nhờ CHỮ KÝ SigV4 của chính nó, không nhờ policy bucket. Ở đây ta
+     * bóc chữ ký ra khỏi URL và khẳng định request TRẦN bị từ chối — nếu bucket đang mở anonymous
+     * read (như production hiện tại), request trần sẽ trả 200 và test này ĐỎ. Nói cách khác test
+     * này vừa chứng minh signed URL là thứ thực sự cấp quyền, vừa là chuông báo nếu ai đó mở lại
+     * anonymous read trên bucket test.
+     */
+    it('SECURITY: bỏ chữ ký khỏi signed URL → object KHÔNG tải được (không dựa vào anonymous read)', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('nosig');
+
+      const redirectRes = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(redirectRes.status).toBe(302);
+
+      const signedUrl = new URL(redirectRes.headers.location);
+      const unsignedUrl = `${signedUrl.origin}${signedUrl.pathname}`; // vứt toàn bộ query đã ký
+
+      const unsigned = await fetchSigned(unsignedUrl);
+      expect(unsigned.status).toBeGreaterThanOrEqual(400);
+    });
+
+    it('pending (chưa duyệt) → 404, không redirect', async () => {
+      if (!placeId) return;
+      const mediaId = await uploadOrphanMedia('file-pending'); // đăng ký xong vẫn pending, chưa gắn review
+
+      const res = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(res.status).toBe(404);
+      expect(res.headers.location).toBeUndefined();
+    });
+
+    it('hidden (bị moderator ẩn) → 404', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('hidden');
+      await ds.query(`UPDATE media SET status = 'hidden' WHERE id = $1`, [mediaId]);
+
+      const res = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(res.status).toBe(404);
+    });
+
+    it('rejected (bị từ chối) → 404', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('rejected');
+      await ds.query(`UPDATE media SET status = 'rejected' WHERE id = $1`, [mediaId]);
+
+      const res = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(res.status).toBe(404);
+    });
+
+    it('đã xoá mềm → 404 dù status vẫn là published', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('softdel');
+      await ds.query(`UPDATE media SET deleted_at = now() WHERE id = $1`, [mediaId]);
+
+      const res = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(res.status).toBe(404);
+    });
+
+    it('media không tồn tại → 404 (cùng phản hồi với pending/hidden/rejected — không rò rỉ trạng thái)', async () => {
+      const res = await request(app.getHttpServer()).get(
+        '/api/media/00000000-0000-4000-8000-000000000000/file',
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('id không phải UUID → 400 (ParseUUIDPipe), không chạm DB', async () => {
+      const res = await request(app.getHttpServer()).get('/api/media/not-a-uuid/file');
+      expect(res.status).toBe(400);
+    });
+
+    it('CÔNG KHAI: khách chưa đăng nhập (không Authorization header) vẫn xem được ảnh published', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('anon');
+
+      // Không set Authorization — đúng kịch bản khách vãng lai xem trang chi tiết Place.
+      const res = await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`);
+      expect(res.status).toBe(302);
+    });
+
+    it('media bị ẩn SAU KHI url đã phát → lần tải kế tiếp 404 ngay (thu hồi được, khác signed URL nhúng thẳng)', async () => {
+      if (!placeId) return;
+      const { mediaId } = await publishedMediaOnReview('revoke');
+
+      expect((await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`)).status).toBe(302);
+
+      await ds.query(`UPDATE media SET status = 'hidden' WHERE id = $1`, [mediaId]);
+
+      expect((await request(app.getHttpServer()).get(`/api/media/${mediaId}/file`)).status).toBe(404);
+    });
+  });
 });

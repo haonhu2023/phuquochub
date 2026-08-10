@@ -7,6 +7,7 @@ import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('MediaService', () => {
   let storage: LooseMock<import('../../core/storage/storage.service').StorageService>;
+  let mediaUrl: LooseMock<import('../../core/media-url/media-url.service').MediaUrlService>;
   let redis: LooseMock<import('../../core/redis/redis.service').RedisService>;
   let mediaRepo: LooseMock<import('./repositories/media.repository').MediaRepository>;
   let ds: LooseMock<import('typeorm').DataSource>;
@@ -23,8 +24,12 @@ describe('MediaService', () => {
       createPresignedPutUrl: jest.fn(),
       verifyUploadedObject: jest.fn(),
       deleteObject: jest.fn(),
-      getPublicUrl: jest.fn(),
+      createPresignedGetUrl: jest.fn(),
+      presignGetTtl: 300 as unknown as never,
       bucketName: 'phuquochub-test' as unknown as never,
+    });
+    mediaUrl = createMock<import('../../core/media-url/media-url.service').MediaUrlService>({
+      fileUrl: jest.fn((id: string) => `https://phuquochub.com/api/media/${id}/file`),
     });
     redis = createMock<import('../../core/redis/redis.service').RedisService>({
       getClient: jest.fn().mockReturnValue(redisClient),
@@ -34,10 +39,11 @@ describe('MediaService', () => {
       findByUploaderAndChecksum: jest.fn(),
       createUploaded: jest.fn(),
       existsPublished: jest.fn(),
+      findPublishedObjectKey: jest.fn(),
     });
     ds = createMock<import('typeorm').DataSource>({ transaction: jest.fn() });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
-    service = new MediaService(storage, redis, mediaRepo, ds, moderationReports);
+    service = new MediaService(storage, mediaUrl, redis, mediaRepo, ds, moderationReports);
   });
 
   describe('presign', () => {
@@ -233,6 +239,42 @@ describe('MediaService', () => {
       await service.report('m1', { reason: 'spam' } as never, 'u1');
 
       expect(moderationReports.report).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
+    });
+  });
+
+  // Secure Private Media (2026-08-10) — GET /media/{id}/file. Repository gộp MỌI trường hợp không
+  // phục vụ được thành `null`; service biến `null` đó thành đúng một 404 không phân biệt.
+  describe('resolveFileUrl', () => {
+    const MEDIA_ID = '43ac8a28-a2ed-4076-995c-8536f365f13e';
+
+    it('media published → ký GET URL cho ĐÚNG object_key và trả về', async () => {
+      mediaRepo.findPublishedObjectKey.mockResolvedValue('media/abc.jpg');
+      storage.createPresignedGetUrl.mockResolvedValue('https://signed.example/media/abc.jpg?sig=1');
+
+      await expect(service.resolveFileUrl(MEDIA_ID)).resolves.toBe(
+        'https://signed.example/media/abc.jpg?sig=1',
+      );
+      expect(mediaRepo.findPublishedObjectKey).toHaveBeenCalledWith(MEDIA_ID);
+      expect(storage.createPresignedGetUrl).toHaveBeenCalledWith('media/abc.jpg');
+    });
+
+    // Repository trả `null` cho: không tồn tại, pending, hidden, rejected, đã xoá mềm, và dòng
+    // không có object_key. Tất cả PHẢI ra cùng một 404 — và tuyệt đối KHÔNG được ký URL nào.
+    it('repository trả null (không tồn tại/pending/hidden/rejected/đã xoá mềm) → 404, KHÔNG ký URL', async () => {
+      mediaRepo.findPublishedObjectKey.mockResolvedValue(null);
+
+      await expect(service.resolveFileUrl(MEDIA_ID)).rejects.toBeInstanceOf(NotFoundException);
+      expect(storage.createPresignedGetUrl).not.toHaveBeenCalled();
+    });
+
+    it('SECURITY: thông điệp 404 không tiết lộ media có tồn tại hay đang ở trạng thái kiểm duyệt nào', async () => {
+      mediaRepo.findPublishedObjectKey.mockResolvedValue(null);
+
+      await expect(service.resolveFileUrl(MEDIA_ID)).rejects.toThrow('Không tìm thấy media');
+    });
+
+    it('fileUrlTtl phản ánh TTL của storage — Cache-Control không thể sống lâu hơn signed URL', () => {
+      expect(service.fileUrlTtl).toBe(300);
     });
   });
 });

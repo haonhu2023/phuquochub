@@ -53,14 +53,17 @@ describe('toReview', () => {
       objectKey: 'media/m1.jpg',
     } as Media;
     const row = baseRow({ media: [m1] });
-    const resolvePublicUrl = jest.fn().mockReturnValue('https://media.phuquochub.com/phuquochub-prod/media/m1.jpg');
+    // Secure Private Media (2026-08-10): resolver nhận MEDIA ID và trả URL API ổn định.
+    const resolveFileUrl = jest.fn().mockReturnValue('https://phuquochub.com/api/media/m1/file');
 
-    const res = toReview(row, resolvePublicUrl);
+    const res = toReview(row, resolveFileUrl);
 
     expect(res.media).toEqual([
-      expect.objectContaining({ id: 'm1', url: 'https://media.phuquochub.com/phuquochub-prod/media/m1.jpg' }),
+      expect.objectContaining({ id: 'm1', url: 'https://phuquochub.com/api/media/m1/file' }),
     ]);
-    expect(resolvePublicUrl).toHaveBeenCalledWith('media/m1.jpg');
+    expect(resolveFileUrl).toHaveBeenCalledWith('m1');
+    // SECURITY: object_key không bao giờ được truyền ra ngoài qua resolver này.
+    expect(resolveFileUrl).not.toHaveBeenCalledWith('media/m1.jpg');
   });
 
   it('review có nhiều media → giữ nguyên thứ tự do repository trả về (đã sort_order/created_at/id ở tầng repository)', () => {

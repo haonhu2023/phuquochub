@@ -53,7 +53,7 @@ export class RestaurantsRepository {
     // riêng theo từng hàng ở tầng application, toàn bộ chạy trong một round-trip SQL).
     return this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count, p.price_range,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
               rd.is_local_specialty,
               (SELECT array_agg(c.label_vi ORDER BY c.code) FROM place_cuisines pc
                  JOIN cuisines c ON c.id = pc.cuisine_id WHERE pc.place_id = p.id) AS cuisines,

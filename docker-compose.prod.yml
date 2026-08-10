@@ -190,6 +190,40 @@ services:
       # PLACE-038: Caddy giờ đứng trước API trong topology này -> tin 1 hop proxy để lấy đúng
       # client IP thật cho rate limiting qua X-Forwarded-For (trước đây là 0, chưa có proxy nào).
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      # Media Upload Foundation (2026-08-10 fix): trước đây KHÔNG có biến S3_* nào ở đây — commit
+      # thêm S3_PUBLIC_URL (configuration.ts/env.validation.ts) không đụng tới file này, nên đặt
+      # S3_PUBLIC_URL vào `.env` cạnh docker-compose KHÔNG có tác dụng gì với container `api` (biến
+      # trong `.env` chỉ dùng để nội suy ${VAR} NGAY TRONG file YAML này, không tự động bơm vào
+      # container trừ khi được liệt kê tường minh ở `environment:` như dưới đây). Thiếu hẳn khối này
+      # nghĩa là app rơi về default trong code (`S3_ENDPOINT` -> `http://localhost:9000`, TRỎ VÀO
+      # CHÍNH container `api`, không phải service `minio` — MinIO thật chỉ vào được qua tên service
+      # nội bộ `minio:9000`, xem service `minio` bên dưới) — presign/upload thật sẽ hỏng nếu chưa vá.
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # PHẢI khớp MINIO_ROOT_USER/MINIO_ROOT_PASSWORD của service `minio` bên dưới. Cố tình KHÔNG
+      # lồng biến (${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}) — cú pháp nội suy lồng nhau không có tiền
+      # lệ nào khác trong file này và không đáng tin cậy trên mọi phiên bản Compose; nếu để trống cả
+      # S3_ACCESS_KEY/S3_SECRET_KEY lẫn MINIO_ROOT_USER/MINIO_ROOT_PASSWORD trong `.env`, giá trị
+      # literal dưới đây (khớp default của service `minio`) vẫn tự nhất quán.
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-change-me-minio-password}
+      # KHÔNG đặt fallback ở đây (khác các biến khác phía trên) — code-level default khi để trống
+      # là `phuquochub-dev` bất kể NODE_ENV (xem configuration.ts's defaultS3Bucket(), chỉ đặc cách
+      # 'test', KHÔNG đặc cách 'production') — production PHẢI set S3_BUCKET tường minh trong `.env`
+      # trên server, nếu không media thật sẽ lặng lẽ ghi vào bucket "phuquochub-dev".
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+      # KHÔNG CÒN ẢNH HƯỞNG tới URL media (Secure Private Media, 2026-08-10) — giữ lại để deployment
+      # đã đặt sẵn không phá validation. Xem API_PUBLIC_URL bên dưới cho origin thật sự được dùng.
+      S3_PUBLIC_URL: ${S3_PUBLIC_URL}
+      # Tuổi thọ presigned GET URL phát media (giây). 30..3600, mặc định 300.
+      S3_PRESIGN_GET_TTL: ${S3_PRESIGN_GET_TTL:-300}
+      # Secure Private Media (2026-08-10): origin mà TRÌNH DUYỆT gọi được tới API này — dùng để dựng
+      # URL media tuyệt đối (`{API_PUBLIC_URL}/api/media/{id}/file`) nhúng vào response review/gallery.
+      # PHẢI là domain công khai đi qua Caddy (https://phuquochub.com), KHÔNG phải `api:4000` (tên
+      # service nội bộ Docker — trình duyệt không phân giải được) và KHÔNG phải media.phuquochub.com.
+      # Default localhost dưới đây CHỈ đúng cho dev; production PHẢI đặt tường minh trong `.env`.
+      API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
     # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
     # mạng Docker nội bộ bằng tên service `api:4000`.
     logging:

@@ -4,10 +4,10 @@ import { MediaType, MediaProvider, MediaStatus } from './media.enums';
 
 describe('toMedia', () => {
   const noResolve = (): string => {
-    throw new Error('resolvePublicUrl không được gọi trong test này');
+    throw new Error('resolveFileUrl không được gọi trong test này');
   };
 
-  it('map entity → response snake_case (khớp openapi Media); m.url có sẵn (embed) → dùng thẳng, không gọi resolvePublicUrl', () => {
+  it('map entity → response snake_case (khớp openapi Media); m.url có sẵn (embed) → dùng thẳng, không gọi resolveFileUrl', () => {
     const m = {
       id: 'm1',
       type: MediaType.IMAGE,
@@ -31,7 +31,8 @@ describe('toMedia', () => {
     });
   });
 
-  it('media upload published, url cột = null, có object_key → dựng URL công khai qua resolvePublicUrl', () => {
+  // Secure Private Media (2026-08-10): resolver nhận MEDIA ID, không phải object_key.
+  it('media upload published, url cột = null, có object_key → dựng URL API ổn định qua resolveFileUrl(MEDIA ID)', () => {
     const m = {
       id: 'm2',
       type: MediaType.IMAGE,
@@ -44,15 +45,17 @@ describe('toMedia', () => {
       objectKey: 'media/abc.jpg',
     } as Media;
 
-    const resolvePublicUrl = jest.fn().mockReturnValue('https://media.phuquochub.com/phuquochub-prod/media/abc.jpg');
+    const resolveFileUrl = jest.fn().mockReturnValue('https://phuquochub.com/api/media/m2/file');
 
-    expect(toMedia(m, resolvePublicUrl)).toEqual(
-      expect.objectContaining({ url: 'https://media.phuquochub.com/phuquochub-prod/media/abc.jpg' }),
+    expect(toMedia(m, resolveFileUrl)).toEqual(
+      expect.objectContaining({ url: 'https://phuquochub.com/api/media/m2/file' }),
     );
-    expect(resolvePublicUrl).toHaveBeenCalledWith('media/abc.jpg');
+    // SECURITY: resolver nhận id, nên object_key KHÔNG BAO GIỜ có đường rời khỏi server qua mapper.
+    expect(resolveFileUrl).toHaveBeenCalledWith('m2');
+    expect(resolveFileUrl).not.toHaveBeenCalledWith('media/abc.jpg');
   });
 
-  it('media pending (chưa duyệt) → url luôn null, KHÔNG gọi resolvePublicUrl dù có object_key', () => {
+  it('media pending (chưa duyệt) → url luôn null, KHÔNG gọi resolveFileUrl dù có object_key', () => {
     const m = {
       id: 'm3',
       type: MediaType.IMAGE,
@@ -68,7 +71,7 @@ describe('toMedia', () => {
     expect(toMedia(m, noResolve).url).toBeNull();
   });
 
-  it('media hidden/rejected → url luôn null, KHÔNG gọi resolvePublicUrl', () => {
+  it('media hidden/rejected → url luôn null, KHÔNG gọi resolveFileUrl', () => {
     const base = {
       id: 'm4',
       type: MediaType.IMAGE,

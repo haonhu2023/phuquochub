@@ -7,6 +7,7 @@ import { AuthRevocationModule } from './core/auth-revocation/auth-revocation.mod
 import { DatabaseModule } from './core/database/database.module';
 import { RedisModule } from './core/redis/redis.module';
 import { StorageModule } from './core/storage/storage.module';
+import { MediaUrlModule } from './core/media-url/media-url.module';
 import { RateLimitModule } from './core/rate-limit/rate-limit.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -55,6 +56,7 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
     DatabaseModule,
     RedisModule,
     StorageModule,
+    MediaUrlModule,
     RateLimitModule,
     HealthModule,
     AuthModule,

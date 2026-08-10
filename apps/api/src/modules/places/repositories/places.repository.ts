@@ -94,9 +94,16 @@ export interface CreatePlaceRow {
 // (ST_MakePoint/ST_DWithin/FTS) — geo tập trung một chỗ (coding-standard §7).
 // cover_image_url: resolve URL của media cover (openapi PlaceCard.cover_image_url, format uri).
 // Subquery scalar → dùng chung mọi truy vấn card mà không cần đổi FROM.
+//
+// `AND m.status = 'published'` (Secure Private Media, 2026-08-10): trước đây subquery này KHÔNG lọc
+// status — bất biến "chỉ media published mới lộ URL" được thực thi ở `toMedia()` nhưng cover đi
+// đường raw SQL riêng, KHÔNG qua mapper đó. Trên thực tế chưa từng rò rỉ (đường upload luôn ghi
+// `url = NULL`, và không có luồng nào ghi `cover_image_id`), nên đây là bịt lỗ hổng theo chiều sâu
+// TRƯỚC khi có luồng đặt cover, không phải vá một sự cố. Cùng vị từ được lặp lại y hệt ở 6
+// repository chuyên biệt khác (attractions/beaches/hotels/restaurants/tours/transports).
 const CARD_COLS = `
   p.id, p.name, p.slug, p.category_id, p.short_description, p.price_range,
-  (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+  (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
   p.rating_avg, p.rating_count, p.verification_status, p.status,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
 `;

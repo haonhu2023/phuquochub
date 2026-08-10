@@ -49,7 +49,7 @@ export class HotelsRepository {
     const offsetIdx = args.length + 2;
     return this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
               hd.star_rating, hd.hotel_type,
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM places p JOIN place_hotel_details hd ON hd.place_id = p.id

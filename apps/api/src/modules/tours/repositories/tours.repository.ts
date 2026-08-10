@@ -70,7 +70,7 @@ export class ToursRepository {
     return this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count,
               p.price_range, p.ward,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
               td.tour_type, td.duration_minutes, td.difficulty,
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM places p JOIN place_tour_details td ON td.place_id = p.id

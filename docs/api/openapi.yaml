@@ -2291,6 +2291,45 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /media/{id}/file:
+    get:
+      tags: [Media]
+      summary: Tải file media đã published (redirect tới signed URL)
+      operationId: getMediaFile
+      security: []
+      description: >-
+        Secure Private Media (2026-08-10). Điểm phát media DUY NHẤT ra công chúng — thay cho việc
+        trả URL object storage trực tiếp, vốn đòi bucket mở anonymous read cho TOÀN BỘ object (kèm
+        cả quyền liệt kê bucket), làm lộ media `pending`/`hidden`/`rejected` cho bất kỳ ai đọc được
+        một object key. Bucket nay HOÀN TOÀN riêng tư.
+
+
+        Công khai có chủ ý (không cần đăng nhập) — khách vãng lai phải xem được ảnh review/gallery.
+        Trả `302` tới một presigned GET URL ngắn hạn (mặc định 300s, `S3_PRESIGN_GET_TTL`); KHÔNG
+        stream bytes qua API. Trạng thái publish được kiểm tra LẠI ở MỖI request, nên ẩn/từ chối một
+        media sẽ thu hồi quyền truy cập ngay ở lần tải kế tiếp.
+
+
+        `404` cho MỌI trường hợp không phục vụ được — không tồn tại, `pending`, `hidden`,
+        `rejected`, đã xoá mềm, hoặc dòng legacy không có `object_key`. Cố ý KHÔNG phân biệt các
+        trường hợp này để endpoint công khai không trở thành oracle dò trạng thái kiểm duyệt.
+
+
+        `Cache-Control: private, max-age=<nửa TTL>` — cho trình duyệt tái dùng redirect trong khi
+        signed URL chắc chắn còn hiệu lực, nhưng không cho proxy/CDN dùng chung (signed URL là
+        capability dạng bearer).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '302':
+          description: Redirect tới presigned GET URL của object storage.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+              description: Presigned GET URL ngắn hạn (mang chữ ký SigV4).
+            Cache-Control:
+              schema: { type: string, example: 'private, max-age=150' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /media/{id}:
     delete:
       tags: [Media]
@@ -3250,6 +3289,12 @@ components:
         không bao giờ là URL tuyệt đối/signed — xem docs/data/modules/media.md §Persistence). Chỉ
         media `published` hợp pháp (embed YouTube/Vimeo, hoặc một luồng kiểm duyệt tương lai) mới
         có `url` thật.
+
+
+        Secure Private Media (2026-08-10): với media upload đã `published`, `url` là endpoint API
+        ỔN ĐỊNH `{API_PUBLIC_URL}/api/media/{id}/file` — KHÔNG phải URL object storage, KHÔNG mang
+        chữ ký, KHÔNG hết hạn. Nó redirect (302) tới một signed URL ngắn hạn ở mỗi lần tải, sau khi
+        kiểm tra lại trạng thái publish. `object_key`/`bucket` không bao giờ rời server.
       properties:
         id: { type: string, format: uuid }
         type: { type: string, enum: [image, video] }

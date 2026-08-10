@@ -144,7 +144,7 @@ describe('ReviewsSection', () => {
               {
                 id: 'media-1',
                 type: 'image',
-                url: 'https://media.phuquochub.com/phuquochub-prod/media/a.jpg',
+                url: 'https://phuquochub.com/api/media/m1/file',
                 thumbnail_url: null,
                 caption: null,
                 alt_text: 'Bãi biển lúc hoàng hôn',
@@ -157,7 +157,7 @@ describe('ReviewsSection', () => {
     );
 
     const img = screen.getByRole('img', { name: 'Bãi biển lúc hoàng hôn' });
-    expect(img).toHaveAttribute('src', 'https://media.phuquochub.com/phuquochub-prod/media/a.jpg');
+    expect(img).toHaveAttribute('src', 'https://phuquochub.com/api/media/m1/file');
   });
 
   it('renders multiple images, preferring thumbnail_url when present, and falls back to a default alt', () => {
@@ -170,8 +170,8 @@ describe('ReviewsSection', () => {
               {
                 id: 'media-1',
                 type: 'image',
-                url: 'https://media.phuquochub.com/full-1.jpg',
-                thumbnail_url: 'https://media.phuquochub.com/thumb-1.jpg',
+                url: 'https://phuquochub.com/api/media/m1/file',
+                thumbnail_url: 'https://phuquochub.com/api/media/m1/file',
                 caption: null,
                 alt_text: null,
                 status: 'published',
@@ -179,7 +179,7 @@ describe('ReviewsSection', () => {
               {
                 id: 'media-2',
                 type: 'image',
-                url: 'https://media.phuquochub.com/full-2.jpg',
+                url: 'https://phuquochub.com/api/media/m2/file',
                 thumbnail_url: null,
                 caption: 'Món ăn ngon',
                 alt_text: null,
@@ -192,9 +192,9 @@ describe('ReviewsSection', () => {
     );
 
     const first = screen.getByRole('img', { name: 'Ảnh đánh giá' });
-    expect(first).toHaveAttribute('src', 'https://media.phuquochub.com/thumb-1.jpg');
+    expect(first).toHaveAttribute('src', 'https://phuquochub.com/api/media/m1/file');
     const second = screen.getByRole('img', { name: 'Món ăn ngon' });
-    expect(second).toHaveAttribute('src', 'https://media.phuquochub.com/full-2.jpg');
+    expect(second).toHaveAttribute('src', 'https://phuquochub.com/api/media/m2/file');
   });
 
   it('skips a media item whose url and thumbnail_url are both empty instead of rendering a broken <img src="">', () => {

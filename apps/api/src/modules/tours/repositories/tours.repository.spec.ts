@@ -141,7 +141,7 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
       await sut.listTours(20, 0);
 
       expect(sql(ds.query.mock.calls[0][0])).toContain(
-        '(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url',
+        "(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url",
       );
     });
   });

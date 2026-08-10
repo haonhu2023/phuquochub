@@ -59,15 +59,13 @@ export class StorageService implements OnModuleInit {
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly nodeEnv: string;
-  private readonly publicUrl: string;
-  private readonly forcePathStyle: boolean;
+  private readonly presignGetTtlSeconds: number;
 
   constructor(config: ConfigService) {
     const s3 = config.get<AppConfig['s3']>('s3')!;
     this.nodeEnv = config.get<string>('nodeEnv') ?? 'development';
     this.bucket = s3.bucket;
-    this.forcePathStyle = s3.forcePathStyle;
-    this.publicUrl = s3.publicUrl.replace(/\/+$/, '');
+    this.presignGetTtlSeconds = s3.presignGetTtlSeconds;
     this.client = new S3Client({
       endpoint: s3.endpoint,
       region: s3.region,
@@ -94,14 +92,37 @@ export class StorageService implements OnModuleInit {
     return this.bucket;
   }
 
-  // Builds a stable, publicly reachable URL for an uploaded object — always S3_PUBLIC_URL (design
-  // review follow-up, 2026-08-09), never the docker-internal endpoint used above for signing/
-  // verification. Path-style (bucket segment in the URL) mirrors forcePathStyle so the public URL
-  // addresses the object the same way the S3 client itself does.
-  getPublicUrl(objectKey: string): string {
-    return this.forcePathStyle
-      ? `${this.publicUrl}/${this.bucket}/${objectKey}`
-      : `${this.publicUrl}/${objectKey}`;
+  /**
+   * Short-lived, signed GET URL for ONE object (Secure Private Media, 2026-08-10).
+   *
+   * REPLACES the deleted `getPublicUrl()`, which built an unauthenticated `S3_PUBLIC_URL/bucket/key`
+   * URL. That URL only resolved because the production bucket carried a bucket-WIDE anonymous read
+   * policy (`mc anonymous set download`), which grants `s3:ListBucket` as well as `s3:GetObject` —
+   * i.e. anyone could enumerate every key in the bucket and fetch pending/hidden/rejected objects
+   * that the API deliberately never links to. A signed URL needs no anonymous policy at all, so the
+   * bucket can be fully private.
+   *
+   * Signed with the SAME `this.client` (and therefore the same endpoint) as
+   * `createPresignedPutUrl()` below. That is deliberate and is what makes this safe to ship: SigV4
+   * signs the Host header, so a presigned URL is only valid when fetched at the endpoint it was
+   * signed for. Browser-side presigned PUT already works in production against that exact endpoint,
+   * which is direct evidence the same endpoint is browser-reachable and signature-preserving for
+   * GET too — rather than introducing a second, unproven signing origin.
+   *
+   * Provider-agnostic: `GetObjectCommand` + `getSignedUrl` behave identically on MinIO, AWS S3 and
+   * Cloudflare R2, so the R2 migration path is unchanged. Credentials never appear in the result —
+   * a presigned URL carries only a derived signature, never the secret key. Callers must still treat
+   * the returned URL as sensitive (it is a bearer capability for its TTL) and never log it.
+   */
+  async createPresignedGetUrl(key: string, expiresInSeconds?: number): Promise<string> {
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    return getSignedUrl(this.client, command, {
+      expiresIn: expiresInSeconds ?? this.presignGetTtlSeconds,
+    });
+  }
+
+  get presignGetTtl(): number {
+    return this.presignGetTtlSeconds;
   }
 
   // Presigned PUT deliberately does NOT request a checksum trailer (ChecksumAlgorithm) — doing so

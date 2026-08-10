@@ -2,7 +2,7 @@ import { ConflictException, Inject, Injectable, Logger, NotFoundException } from
 import { ReviewsRepository } from './repositories/reviews.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuditService } from '../../core/audit/audit.service';
-import { StorageService } from '../../core/storage/storage.service';
+import { MediaUrlService } from '../../core/media-url/media-url.service';
 import {
   MODERATION_EVENT_PUBLISHER,
   MediaAutoPublishedEvent,
@@ -26,12 +26,12 @@ export class ReviewsService {
     @Inject(MODERATION_EVENT_PUBLISHER)
     private readonly events: ModerationEventPublisher,
     private readonly moderationReports: ModerationReportsService,
-    private readonly storage: StorageService,
+    private readonly mediaUrl: MediaUrlService,
   ) {}
 
   async listByPlace(placeId: string) {
     const rows = await this.reviewsRepo.listPublishedByPlace(placeId);
-    return rows.map((row) => toReview(row, (key) => this.storage.getPublicUrl(key)));
+    return rows.map((row) => toReview(row, (id) => this.mediaUrl.fileUrl(id)));
   }
 
   /**

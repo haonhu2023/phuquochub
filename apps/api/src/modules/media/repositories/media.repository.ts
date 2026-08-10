@@ -123,6 +123,32 @@ export class MediaRepository {
   }
 
   /**
+   * Secure Private Media (2026-08-10) — nạp `object_key` để PHỤC VỤ file cho `GET /media/{id}/file`.
+   *
+   * Bốn điều kiện nằm TRONG SQL, không phải ở service, để không có đường nào gọi được hàm này rồi
+   * quên kiểm tra một điều kiện: `published` (INV-1 — chỉ nội dung công khai), `deleted_at IS NULL`
+   * (đã xoá mềm coi như không tồn tại), và `object_key IS NOT NULL` (dòng legacy/embed YouTube-Vimeo
+   * không có object nào để ký URL — trả null để controller ra 404 thay vì ném lỗi khi ký).
+   *
+   * Trả về `null` cho MỌI trường hợp không phục vụ được (không tồn tại / pending / hidden /
+   * rejected / đã xoá mềm / không có object_key) — CÙNG một kết quả, nên controller chỉ có đúng
+   * một nhánh 404 và không thể vô tình rò rỉ trạng thái kiểm duyệt qua việc phân biệt lỗi, cùng
+   * nguyên tắc `existsPublished()` ở trên.
+   */
+  async findPublishedObjectKey(id: string): Promise<string | null> {
+    const rows: Array<{ object_key: string }> = await this.repo.query(
+      `SELECT object_key FROM media
+        WHERE id = $1
+          AND status = 'published'
+          AND deleted_at IS NULL
+          AND object_key IS NOT NULL
+        LIMIT 1`,
+      [id],
+    );
+    return rows[0]?.object_key ?? null;
+  }
+
+  /**
    * Tạo media row mới cho một upload đã xác thực. Luôn `status=pending`, `provider=upload`,
    * `url=null` (Design review §A — không bao giờ lưu URL tuyệt đối/signed; sinh động lúc đọc).
    * Nhận `manager` trực tiếp (không dùng `this.repo`) để caller kiểm soát transaction.

@@ -3,7 +3,12 @@
 
 export interface AppConfig {
   nodeEnv: string;
-  api: { port: number; globalPrefix: string };
+  // `publicUrl` — origin (scheme+host[+port], no trailing slash, no path) at which THIS API is
+  // reachable by a browser. Distinct from `port`/`globalPrefix`, which describe how the process
+  // binds locally. Needed because MediaUrlService now hands clients absolute `<img src>` URLs
+  // pointing back at this API (Secure Private Media, 2026-08-10) — a relative path would break
+  // local dev, where web (:3000) and api (:4000) are different origins.
+  api: { port: number; globalPrefix: string; publicUrl: string };
   database: {
     host: string;
     port: number;
@@ -40,6 +45,7 @@ export interface AppConfig {
     bucket: string;
     forcePathStyle: boolean;
     publicUrl: string;
+    presignGetTtlSeconds: number;
   };
   verificationExpiry: {
     scheduleEnabled: boolean;
@@ -62,6 +68,10 @@ export default (): AppConfig => ({
   api: {
     port: parseInt(process.env.API_PORT ?? '4000', 10),
     globalPrefix: process.env.API_GLOBAL_PREFIX ?? 'api',
+    // Trailing slashes stripped here (once) so every consumer can concatenate without re-checking.
+    // Production MUST set API_PUBLIC_URL (e.g. https://phuquochub.com) — the localhost default is
+    // only correct for local dev/test.
+    publicUrl: (process.env.API_PUBLIC_URL?.trim() || 'http://localhost:4000').replace(/\/+$/, ''),
   },
   database: {
     host: process.env.DB_HOST ?? 'localhost',
@@ -105,12 +115,18 @@ export default (): AppConfig => ({
     secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
     bucket: process.env.S3_BUCKET?.trim() || defaultS3Bucket(process.env.NODE_ENV ?? 'development'),
     forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
-    // Public read origin for URLs handed back to clients — separate from S3_ENDPOINT, which stays
-    // the internal address used for signing/verifying uploads (docker-internal MinIO in dev,
-    // never exposed to clients). Falls back to S3_ENDPOINT when unset so local dev/test (single
-    // MinIO endpoint for both) needs no extra config; production sets S3_PUBLIC_URL explicitly to
-    // the real public media origin.
+    // RETAINED BUT NO LONGER USED FOR MEDIA URLs (Secure Private Media, 2026-08-10). Previously fed
+    // `StorageService.getPublicUrl()`, which handed clients a DIRECT, unauthenticated object-storage
+    // URL — that method is deleted, because serving it required a bucket-wide anonymous-read policy
+    // that also exposed pending/hidden/rejected objects (see docs/data/modules/media.md §13).
+    // Clients now receive an API URL (MediaUrlService) that 302s to a short-lived SIGNED URL, so no
+    // code path depends on this origin being anonymously readable. Kept only so a future CDN/custom
+    // -domain setup has a home; safe to leave unset.
     publicUrl: process.env.S3_PUBLIC_URL?.trim() || process.env.S3_ENDPOINT || 'http://localhost:9000',
+    // Lifetime of a presigned GET URL. Deliberately SHORT — it is the only credential standing
+    // between a leaked URL and the object bytes. Long enough to survive a slow image load plus
+    // clock skew, short enough that a URL copied out of devtools/logs dies quickly.
+    presignGetTtlSeconds: parseInt(process.env.S3_PRESIGN_GET_TTL ?? '300', 10),
   },
   // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Mặc định TẮT
   // (`scheduleEnabled=false`) ở MỌI môi trường, kể cả production — bật lịch chạy là một hành vi

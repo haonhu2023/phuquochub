@@ -303,6 +303,88 @@ Migration `AddMediaOrphanCleanupIndex1720003100000` — partial index trên `cre
 điều kiện §12.1, cùng khuôn `idx_media_uploaded_by`/`idx_media_uploader_checksum`. Không cột mới,
 không backfill, `down()` chỉ DROP index.
 
+## 13. Secure Private Media — phát media qua signed URL (2026-08-10)
+
+Thay thế HOÀN TOÀN mô hình "URL object storage công khai" trước đó. Đây là phần bổ sung cho §2.1
+(chỉ lưu metadata, không lưu URL) — nay khép kín cả đường ĐỌC, không chỉ đường GHI.
+
+### 13.1 Vấn đề đã tồn tại
+
+Để ảnh review hiển thị được, production đã chạy `mc anonymous set download local/phuquochub-prod`.
+Canned policy `download` của MinIO cấp cho principal ẩn danh **cả `s3:GetObject` LẪN
+`s3:ListBucket`** — nghĩa là bất kỳ ai cũng có thể **liệt kê toàn bộ bucket** rồi tải về **mọi**
+object, bất kể `media.status`. Object key là UUIDv4 (không đoán được) nhưng điều đó không cứu được
+gì khi khoá có thể được liệt kê thẳng.
+
+Hệ quả: media `pending` (chưa kiểm duyệt), `hidden` (đã bị ẩn) và `rejected` (đã bị từ chối) đều
+tải về được, dù tầng ứng dụng CHƯA BAO GIỜ phát URL cho chúng (`toMedia()` chỉ resolve URL khi
+`status === published`). Nghiêm trọng hơn: `hide`/`reject` chỉ đổi `media.status` trong DB —
+**object KHÔNG bị xoá** (cố ý, vì `restore` phải khôi phục được, xem `media-moderation.transition.ts`),
+nên object bị từ chối nằm lại trong bucket vô thời hạn và vẫn đọc được ẩn danh. Job dọn dẹp (§12)
+chỉ xoá media **mồ côi + pending + quá 24h**, không đụng tới hidden/rejected.
+
+### 13.2 Thiết kế đã chọn
+
+```
+client  ──GET {API_PUBLIC_URL}/api/media/{id}/file──►  API
+                                                        │ kiểm tra published + chưa xoá + có object_key
+                                                        │ ký GET URL ngắn hạn (mặc định 300s)
+        ◄──────────── 302 Location: signed URL ─────────┘
+        ──────────GET signed URL──────────►  object storage (bucket RIÊNG TƯ)
+```
+
+- **Bucket hoàn toàn riêng tư** — không anonymous read, không list. Presigned URL (cả PUT lúc upload
+  lẫn GET lúc đọc) mang chữ ký SigV4 nên hoạt động bình thường trên bucket private; đây là lý do
+  việc gỡ anonymous policy KHÔNG phá luồng upload đang chạy.
+- **URL trong response là URL API ỔN ĐỊNH**, không mang chữ ký, không hết hạn:
+  `{API_PUBLIC_URL}/{API_GLOBAL_PREFIX}/media/{id}/file`. `object_key`/`bucket` không bao giờ rời
+  server. So với việc nhúng thẳng signed URL vào response: URL ổn định **thu hồi được** — ẩn một
+  media sẽ chặn ngay ở lần tải kế tiếp, còn signed URL đã phát thì không rút lại được cho tới khi
+  hết hạn.
+- **302, KHÔNG stream bytes qua NestJS** — API chỉ cấp phép rồi đứng ngoài đường truyền dữ liệu.
+  Giữ nguyên khả năng đặt CDN trước object storage sau này.
+- **Kiểm tra publish ở MỖI request**, không phải một lần lúc render trang.
+
+### 13.3 Bất biến 404
+
+`GET /media/{id}/file` trả **cùng một 404** cho: không tồn tại, `pending`, `hidden`, `rejected`, đã
+xoá mềm, và dòng legacy không có `object_key`. Cố ý không phân biệt — nếu phân biệt, endpoint công
+khai này thành oracle cho phép dò trạng thái kiểm duyệt của một media id bất kỳ (cùng nguyên tắc
+`existsPublished()` đã áp cho `POST /media/{id}/report`).
+
+Bất biến này được thực thi **hai lớp độc lập**: `toMedia()` (không phát URL nếu chưa published) và
+`MediaRepository.findPublishedObjectKey()` (4 vị từ nằm trong SQL). Một lỗi ở lớp trên không tự động
+thành lỗ hổng.
+
+### 13.4 Cover image
+
+`cover_image_url` đi qua raw SQL riêng ở 7 repository (places + 6 module chuyên biệt), **không** qua
+`toMedia()`. Đã bổ sung `AND m.status = 'published'` vào cả 7 subquery. Trên thực tế chưa từng rò rỉ
+(đường upload luôn ghi `url = NULL`, và không luồng nào ghi `cover_image_id`), nên đây là phòng vệ
+chiều sâu TRƯỚC khi có luồng đặt cover — không phải vá một sự cố.
+
+### 13.5 Cấu hình
+
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `API_PUBLIC_URL` | `http://localhost:4000` | Origin trình duyệt gọi được tới API. Production PHẢI đặt `https://phuquochub.com`. |
+| `S3_PRESIGN_GET_TTL` | `300` | Tuổi thọ signed GET URL (giây), hợp lệ 30..3600. |
+| `S3_PUBLIC_URL` | — | **Không còn ảnh hưởng tới URL media.** Giữ lại cho tương thích deployment. |
+
+`StorageService.getPublicUrl()` đã bị **xoá** — đó chính là phương thức duy nhất từng dựng URL object
+storage trực tiếp. Xoá nó là bằng chứng cấu trúc rằng không code path nào còn phụ thuộc vào việc
+bucket đọc được ẩn danh.
+
+### 13.6 Việc CHƯA làm
+
+- Chưa gỡ anonymous policy trên bucket production (`mc anonymous set none`) — hành động vận hành,
+  tách khỏi milestone code này.
+- `media.phuquochub.com` vẫn tồn tại trên production nhưng **không có trong repo** (không có site
+  block nào trong `infrastructure/caddy/Caddyfile`) — drift hạ tầng cần xử lý riêng, xem báo cáo
+  kèm milestone này.
+- Cover image từ media upload vẫn chưa hiển thị được (subquery đọc `m.url`, luôn NULL cho upload
+  row) — khoảng trống CHỨC NĂNG có sẵn từ trước, không phải do thay đổi này.
+
 ## Related
 
 - [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md) (đa hình `entity_type`/`entity_id` —

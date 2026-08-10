@@ -10,7 +10,7 @@ import { toMedia } from '../media/media.mapper';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
-import { StorageService } from '../../core/storage/storage.service';
+import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { PlaceStatus } from './place.enums';
 import { CreatePlaceDto, GeoPointDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
 import { toPlaceCard, toPlaceDetail } from './places.mapper';
@@ -46,7 +46,7 @@ export class PlacesService {
     private readonly mediaRepo: MediaRepository,
     private readonly revisionsService: RevisionsService,
     private readonly audit: AuditService,
-    private readonly storage: StorageService,
+    private readonly mediaUrl: MediaUrlService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -98,7 +98,7 @@ export class PlacesService {
         valid_to: p.validTo,
         verification_status: p.verificationStatus,
       })),
-      media: media.map((m) => toMedia(m, (key) => this.storage.getPublicUrl(key))),
+      media: media.map((m) => toMedia(m, (id) => this.mediaUrl.fileUrl(id))),
       faqs,
     };
   }

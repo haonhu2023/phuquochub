@@ -1,6 +1,14 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 
-jest.mock('./reviews.mapper', () => ({ toReview: (r: { id?: string }) => ({ id: r?.id, mapped: true }) }));
+// Ghi lại resolver mà service truyền xuống toReview (Secure Private Media, 2026-08-10) — hình dạng
+// trả về giữ NGUYÊN như trước để các assertion cũ không đổi.
+const toReviewCalls: Array<(mediaId: string) => string> = [];
+jest.mock('./reviews.mapper', () => ({
+  toReview: (r: { id?: string }, resolve: (mediaId: string) => string) => {
+    toReviewCalls.push(resolve);
+    return { id: r?.id, mapped: true };
+  },
+}));
 
 import { ReviewsService } from './reviews.service';
 import { ReviewsRepository } from './repositories/reviews.repository';
@@ -9,7 +17,7 @@ import { AuditService } from '../../core/audit/audit.service';
 import type { ModerationEventPublisher } from '../moderation/events/moderation-events';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
 import { ModerationTargetType } from '../moderation/moderation.enums';
-import type { StorageService } from '../../core/storage/storage.service';
+import type { MediaUrlService } from '../../core/media-url/media-url.service';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('ReviewsService', () => {
@@ -18,7 +26,7 @@ describe('ReviewsService', () => {
   let audit: LooseMock<AuditService>;
   let events: LooseMock<ModerationEventPublisher>;
   let moderationReports: LooseMock<ModerationReportsService>;
-  let storage: LooseMock<StorageService>;
+  let mediaUrl: LooseMock<MediaUrlService>;
   let service: ReviewsService;
 
   beforeEach(() => {
@@ -32,11 +40,23 @@ describe('ReviewsService', () => {
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
-    storage = createMock<StorageService>({ getPublicUrl: jest.fn() });
-    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports, storage);
+    mediaUrl = createMock<MediaUrlService>({ fileUrl: jest.fn() });
+    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports, mediaUrl);
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  it('listByPlace: resolver truyền xuống toReview là mediaUrl.fileUrl (URL API ổn định, không phải URL object storage)', async () => {
+    toReviewCalls.length = 0;
+    reviewsRepo.listPublishedByPlace.mockResolvedValue([{ id: 'r1' }]);
+    mediaUrl.fileUrl.mockReturnValue('https://phuquochub.com/api/media/m1/file');
+
+    await service.listByPlace('p1');
+
+    expect(toReviewCalls).toHaveLength(1);
+    expect(toReviewCalls[0]('m1')).toBe('https://phuquochub.com/api/media/m1/file');
+    expect(mediaUrl.fileUrl).toHaveBeenCalledWith('m1');
+  });
 
   it('listByPlace: map rows qua toReview', async () => {
     reviewsRepo.listPublishedByPlace.mockResolvedValue([{ id: 'r1' }]);

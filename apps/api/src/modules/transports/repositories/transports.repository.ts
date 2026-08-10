@@ -91,7 +91,7 @@ export class TransportsRepository {
     return this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.ward, p.rating_avg, p.rating_count,
               p.verification_status,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL) AS cover_image_url,
+              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
               tt.code AS transport_type_code, tt.label_vi AS transport_type_label_vi, tt.label_en AS transport_type_label_en,
               ptd.pricing_model, ptd.price_ref, ptd.price_currency, ptd.price_unit,
               ptd.capacity_passengers, ptd.booking_required, ptd.airport_transfer,
