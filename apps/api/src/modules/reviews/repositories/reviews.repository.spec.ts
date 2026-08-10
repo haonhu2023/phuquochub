@@ -26,7 +26,7 @@ describe('ReviewsRepository', () => {
     ds = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
-    mediaRepo = createMock<MediaRepository>({ attachAndPublish: jest.fn() });
+    mediaRepo = createMock<MediaRepository>({ attachAndPublish: jest.fn(), listPublishedByReviewIds: jest.fn() });
     placesRepo = createMock<PlacesRepository>({ recalculateRating: jest.fn() });
     sut = new ReviewsRepository(repo, ds, mediaRepo, placesRepo);
   });
@@ -42,6 +42,71 @@ describe('ReviewsRepository', () => {
     it('tra đúng id + status=published', async () => {
       await sut.existsPublished('r1');
       expect(repo.exists).toHaveBeenCalledWith({ where: { id: 'r1', status: ReviewStatus.PUBLISHED } });
+    });
+  });
+
+  describe('listPublishedByPlace', () => {
+    it('không review nào → mảng rỗng, KHÔNG gọi mediaRepo (không có id nào để batch)', async () => {
+      repo.query.mockResolvedValue([]);
+      const result = await sut.listPublishedByPlace('p1');
+      expect(result).toEqual([]);
+      expect(mediaRepo.listPublishedByReviewIds).not.toHaveBeenCalled();
+    });
+
+    it('review không có media → media: []', async () => {
+      repo.query.mockResolvedValue([
+        { id: 'r1', rating: 5, content: 'Đẹp', status: ReviewStatus.PUBLISHED, created_at: new Date(), user_id: 'u1', author_name: 'A', author_avatar_url: null },
+      ]);
+      mediaRepo.listPublishedByReviewIds.mockResolvedValue([]);
+
+      const result = await sut.listPublishedByPlace('p1');
+
+      expect(mediaRepo.listPublishedByReviewIds).toHaveBeenCalledWith(['r1']);
+      expect(result).toEqual([
+        expect.objectContaining({ id: 'r1', media: [] }),
+      ]);
+    });
+
+    it('review có một media published → gắn đúng vào review đó', async () => {
+      repo.query.mockResolvedValue([
+        { id: 'r1', rating: 5, content: null, status: ReviewStatus.PUBLISHED, created_at: new Date(), user_id: 'u1', author_name: 'A', author_avatar_url: null },
+      ]);
+      const m1 = { id: 'm1', reviewId: 'r1' };
+      mediaRepo.listPublishedByReviewIds.mockResolvedValue([m1]);
+
+      const result = await sut.listPublishedByPlace('p1');
+
+      expect(result[0].media).toEqual([m1]);
+    });
+
+    it('nhiều review, mỗi review nhiều media → phân nhóm ĐÚNG theo review_id, không lẫn lộn', async () => {
+      repo.query.mockResolvedValue([
+        { id: 'r1', rating: 5, content: null, status: ReviewStatus.PUBLISHED, created_at: new Date(), user_id: 'u1', author_name: 'A', author_avatar_url: null },
+        { id: 'r2', rating: 4, content: null, status: ReviewStatus.PUBLISHED, created_at: new Date(), user_id: 'u2', author_name: 'B', author_avatar_url: null },
+      ]);
+      const m1 = { id: 'm1', reviewId: 'r1' };
+      const m2 = { id: 'm2', reviewId: 'r1' };
+      const m3 = { id: 'm3', reviewId: 'r2' };
+      mediaRepo.listPublishedByReviewIds.mockResolvedValue([m1, m2, m3]);
+
+      const result = await sut.listPublishedByPlace('p1');
+
+      expect(mediaRepo.listPublishedByReviewIds).toHaveBeenCalledWith(['r1', 'r2']);
+      expect(result.find((r) => r.id === 'r1')?.media).toEqual([m1, m2]);
+      expect(result.find((r) => r.id === 'r2')?.media).toEqual([m3]);
+    });
+
+    it('lọc pending/hidden/deleted media không phải trách nhiệm của tầng này — uỷ quyền hoàn toàn cho MediaRepository.listPublishedByReviewIds', async () => {
+      repo.query.mockResolvedValue([
+        { id: 'r1', rating: 5, content: null, status: ReviewStatus.PUBLISHED, created_at: new Date(), user_id: 'u1', author_name: 'A', author_avatar_url: null },
+      ]);
+      // MediaRepository.listPublishedByReviewIds tự lọc status=published/deleted_at IS NULL — repo
+      // trả về đúng những gì mediaRepo cho, không lọc lại lần hai ở đây.
+      mediaRepo.listPublishedByReviewIds.mockResolvedValue([]);
+
+      const result = await sut.listPublishedByPlace('p1');
+
+      expect(result[0].media).toEqual([]);
     });
   });
 

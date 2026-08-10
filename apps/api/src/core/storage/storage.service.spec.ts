@@ -28,6 +28,7 @@ function makeConfig(overrides: Partial<Record<string, unknown>> = {}): ConfigSer
       secretAccessKey: 'minioadmin',
       bucket: 'phuquochub-test',
       forcePathStyle: true,
+      publicUrl: 'http://localhost:9000',
     },
     ...overrides,
   };
@@ -217,6 +218,49 @@ describe('StorageService', () => {
       });
       expect(res).toEqual({ ok: false, reason: 'too_large' });
       expect(destroySpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('getPublicUrl', () => {
+    it('forcePathStyle=true → publicUrl/bucket/objectKey', () => {
+      const sut = new StorageService(makeConfig());
+      expect(sut.getPublicUrl('media/abc.jpg')).toBe('http://localhost:9000/phuquochub-test/media/abc.jpg');
+    });
+
+    it('forcePathStyle=false → publicUrl/objectKey (không chèn bucket vào path)', () => {
+      const sut = new StorageService(
+        makeConfig({
+          s3: {
+            endpoint: 'http://localhost:9000',
+            region: 'us-east-1',
+            accessKeyId: 'minioadmin',
+            secretAccessKey: 'minioadmin',
+            bucket: 'phuquochub-test',
+            forcePathStyle: false,
+            publicUrl: 'https://media.phuquochub.com',
+          },
+        }),
+      );
+      expect(sut.getPublicUrl('media/abc.jpg')).toBe('https://media.phuquochub.com/media/abc.jpg');
+    });
+
+    it('production origin (S3_PUBLIC_URL=https://media.phuquochub.com) — trailing slash bị bỏ, không lộ endpoint nội bộ', () => {
+      const sut = new StorageService(
+        makeConfig({
+          s3: {
+            endpoint: 'http://minio:9000', // docker-internal — KHÔNG được xuất hiện trong kết quả
+            region: 'us-east-1',
+            accessKeyId: 'minioadmin',
+            secretAccessKey: 'minioadmin',
+            bucket: 'phuquochub-prod',
+            forcePathStyle: true,
+            publicUrl: 'https://media.phuquochub.com/',
+          },
+        }),
+      );
+      const url = sut.getPublicUrl('media/43ac8a28-a2ed-4076-995c-8536f365f13e.jpg');
+      expect(url).toBe('https://media.phuquochub.com/phuquochub-prod/media/43ac8a28-a2ed-4076-995c-8536f365f13e.jpg');
+      expect(url).not.toContain('minio:9000');
     });
   });
 

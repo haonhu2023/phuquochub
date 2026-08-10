@@ -59,11 +59,15 @@ export class StorageService implements OnModuleInit {
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly nodeEnv: string;
+  private readonly publicUrl: string;
+  private readonly forcePathStyle: boolean;
 
   constructor(config: ConfigService) {
     const s3 = config.get<AppConfig['s3']>('s3')!;
     this.nodeEnv = config.get<string>('nodeEnv') ?? 'development';
     this.bucket = s3.bucket;
+    this.forcePathStyle = s3.forcePathStyle;
+    this.publicUrl = s3.publicUrl.replace(/\/+$/, '');
     this.client = new S3Client({
       endpoint: s3.endpoint,
       region: s3.region,
@@ -88,6 +92,16 @@ export class StorageService implements OnModuleInit {
 
   get bucketName(): string {
     return this.bucket;
+  }
+
+  // Builds a stable, publicly reachable URL for an uploaded object — always S3_PUBLIC_URL (design
+  // review follow-up, 2026-08-09), never the docker-internal endpoint used above for signing/
+  // verification. Path-style (bucket segment in the URL) mirrors forcePathStyle so the public URL
+  // addresses the object the same way the S3 client itself does.
+  getPublicUrl(objectKey: string): string {
+    return this.forcePathStyle
+      ? `${this.publicUrl}/${this.bucket}/${objectKey}`
+      : `${this.publicUrl}/${objectKey}`;
   }
 
   // Presigned PUT deliberately does NOT request a checksum trailer (ChecksumAlgorithm) — doing so

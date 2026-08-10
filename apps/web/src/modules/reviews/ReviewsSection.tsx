@@ -58,6 +58,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
           content: trimmed || null,
           status: 'published',
           created_at: new Date().toISOString(),
+          media: [],
         },
         ...prev,
       ]);

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import { Media } from '../entities/media.entity';
 import { MediaProvider, MediaStatus, MediaType } from '../media.enums';
 
@@ -72,6 +72,19 @@ export class MediaRepository {
     return this.repo.find({
       where: { placeId, status: MediaStatus.PUBLISHED, deletedAt: IsNull() },
       order: { sortOrder: 'ASC' },
+    });
+  }
+
+  /**
+   * Media đã published của một TẬP review (batch theo review_id, GET /places/{id}/reviews) — theo
+   * sort_order rồi created_at/id để thứ tự ổn định khi sort_order bằng nhau/null (cùng quy ước
+   * listPublishedByPlace ở trên, chỉ khác cột lọc và có thêm tie-break xác định).
+   */
+  listPublishedByReviewIds(reviewIds: string[]): Promise<Media[]> {
+    if (reviewIds.length === 0) return Promise.resolve([]);
+    return this.repo.find({
+      where: { reviewId: In(reviewIds), status: MediaStatus.PUBLISHED, deletedAt: IsNull() },
+      order: { sortOrder: 'ASC', createdAt: 'ASC', id: 'ASC' },
     });
   }
 

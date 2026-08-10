@@ -23,6 +23,7 @@ describe('MediaService', () => {
       createPresignedPutUrl: jest.fn(),
       verifyUploadedObject: jest.fn(),
       deleteObject: jest.fn(),
+      getPublicUrl: jest.fn(),
       bucketName: 'phuquochub-test' as unknown as never,
     });
     redis = createMock<import('../../core/redis/redis.service').RedisService>({

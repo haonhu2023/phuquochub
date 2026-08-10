@@ -134,9 +134,9 @@ export class MediaService {
     await this.redis.getClient().del(sessionKey);
 
     // media.status is always 'pending' here (createUploaded never sets anything else) — toMedia()
-    // reads url straight from the row, which createUploaded always inserts as NULL for these rows,
-    // so no public URL is ever exposed for pending, unmoderated media (design review §A/§8).
-    return toMedia(media);
+    // only resolves a public URL for status=published, so no public URL is ever exposed for
+    // pending, unmoderated media (design review §A/§8).
+    return toMedia(media, (key) => this.storage.getPublicUrl(key));
   }
 
   /**

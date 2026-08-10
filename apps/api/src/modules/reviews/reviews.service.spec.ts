@@ -9,6 +9,7 @@ import { AuditService } from '../../core/audit/audit.service';
 import type { ModerationEventPublisher } from '../moderation/events/moderation-events';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
 import { ModerationTargetType } from '../moderation/moderation.enums';
+import type { StorageService } from '../../core/storage/storage.service';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 describe('ReviewsService', () => {
@@ -17,6 +18,7 @@ describe('ReviewsService', () => {
   let audit: LooseMock<AuditService>;
   let events: LooseMock<ModerationEventPublisher>;
   let moderationReports: LooseMock<ModerationReportsService>;
+  let storage: LooseMock<StorageService>;
   let service: ReviewsService;
 
   beforeEach(() => {
@@ -30,7 +32,8 @@ describe('ReviewsService', () => {
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
-    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports);
+    storage = createMock<StorageService>({ getPublicUrl: jest.fn() });
+    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports, storage);
   });
 
   afterEach(() => jest.clearAllMocks());

@@ -82,6 +82,10 @@ export const envValidationSchema = Joi.object({
   S3_BUCKET: Joi.string().allow('').optional(),
   S3_REGION: Joi.string().default('us-east-1'),
   S3_FORCE_PATH_STYLE: Joi.boolean().truthy('true').falsy('false').default(true),
+  // Public read origin for media URLs served back to clients (e.g. https://media.phuquochub.com
+  // in production). Intentionally no static default — code-level default falls back to
+  // S3_ENDPOINT (see configuration.ts), which Joi's static default cannot express.
+  S3_PUBLIC_URL: Joi.string().allow('').optional(),
 
   // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Intentionally NO
   // production-required rule and NO NODE_ENV-conditional default — see configuration.ts's

@@ -27,6 +27,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let mediaRepo: LooseMock<Ctor[4]>;
   let revisions: LooseMock<Ctor[5]>;
   let audit: LooseMock<Ctor[6]>;
+  let storage: LooseMock<Ctor[7]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -48,6 +49,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     mediaRepo = createMock<Ctor[4]>({ listPublishedByPlace: jest.fn() });
     revisions = createMock<Ctor[5]>({ recordPlaceRevision: jest.fn() });
     audit = createMock<Ctor[6]>({ record: jest.fn() });
+    storage = createMock<Ctor[7]>({ getPublicUrl: jest.fn() });
 
     service = new PlacesService(
       placesRepo,
@@ -57,6 +59,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       mediaRepo,
       revisions,
       audit,
+      storage,
     );
   });
 
@@ -318,6 +321,24 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       // Satellite phải tra theo discriminator đa hình lowercase 'place' (B-3).
       expect(contactsRepo.listByOwner).toHaveBeenCalledWith('place', 'p1');
       expect(pricesRepo.current).toHaveBeenCalledWith('place', 'p1');
+    });
+
+    it('media published có object_key → dựng URL công khai qua storage.getPublicUrl (toMedia resolver)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([
+        { id: 'm1', type: 'image', url: null, status: 'published', objectKey: 'media/m1.jpg' },
+      ]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      storage.getPublicUrl.mockReturnValue('https://media.phuquochub.com/phuquochub-prod/media/m1.jpg');
+
+      const res = await service.getBySlug('bai-sao');
+
+      expect(storage.getPublicUrl).toHaveBeenCalledWith('media/m1.jpg');
+      expect(res.media).toEqual([
+        expect.objectContaining({ id: 'm1', url: 'https://media.phuquochub.com/phuquochub-prod/media/m1.jpg' }),
+      ]);
     });
   });
 

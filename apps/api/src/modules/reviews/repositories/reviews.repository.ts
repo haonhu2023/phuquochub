@@ -3,6 +3,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Review } from '../entities/review.entity';
 import { ReviewStatus } from '../review.enums';
+import { Media } from '../../media/entities/media.entity';
 import { MediaRepository } from '../../media/repositories/media.repository';
 import { PlacesRepository } from '../../places/repositories/places.repository';
 
@@ -15,6 +16,10 @@ export interface ReviewRow {
   user_id: string;
   author_name: string;
   author_avatar_url: string | null;
+  /** Media đã published, non-deleted của review này, theo sort_order rồi created_at/id — nạp
+   * bằng một truy vấn batch riêng (MediaRepository.listPublishedByReviewIds), KHÔNG phải từ SQL
+   * SELECT phía trên (join reviews+users) nên không camelCase lẫn snake_case trong CÙNG câu SQL. */
+  media: Media[];
 }
 
 export interface NewReviewWithMedia {
@@ -58,9 +63,14 @@ export class ReviewsRepository {
     return this.repo.exists({ where: { id, status: ReviewStatus.PUBLISHED } });
   }
 
-  /** Đánh giá đã published của một Place, mới nhất trước — kèm tên/avatar người viết. */
-  listPublishedByPlace(placeId: string): Promise<ReviewRow[]> {
-    return this.repo.query(
+  /**
+   * Đánh giá đã published của một Place, mới nhất trước — kèm tên/avatar người viết, kèm media
+   * đã published/non-deleted của MỖI review (batch một truy vấn riêng qua MediaRepository, KHÔNG
+   * N+1 — xem `listPublishedByReviewIds`). Media pending/hidden/rejected/xoá mềm KHÔNG BAO GIỜ lọt
+   * vào đây (lọc ở chính truy vấn đó, không lọc lại ở tầng này).
+   */
+  async listPublishedByPlace(placeId: string): Promise<ReviewRow[]> {
+    const rows: Array<Omit<ReviewRow, 'media'>> = await this.repo.query(
       `SELECT r.id, r.rating, r.content, r.status, r.created_at,
               r.user_id, u.display_name AS author_name, u.avatar_url AS author_avatar_url
        FROM reviews r
@@ -69,6 +79,16 @@ export class ReviewsRepository {
        ORDER BY r.created_at DESC, r.id ASC`,
       [placeId, ReviewStatus.PUBLISHED],
     );
+    if (rows.length === 0) return [];
+
+    const media = await this.mediaRepo.listPublishedByReviewIds(rows.map((r) => r.id));
+    const mediaByReview = new Map<string, Media[]>();
+    for (const m of media) {
+      const list = mediaByReview.get(m.reviewId!) ?? [];
+      list.push(m);
+      mediaByReview.set(m.reviewId!, list);
+    }
+    return rows.map((row) => ({ ...row, media: mediaByReview.get(row.id) ?? [] }));
   }
 
   /**

@@ -1,4 +1,4 @@
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Repository } from 'typeorm';
 import { MediaRepository } from './media.repository';
 import { Media } from '../entities/media.entity';
 import { MediaProvider, MediaStatus, MediaType } from '../media.enums';
@@ -7,6 +7,38 @@ import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 function sql(query: string): string {
   return query.replace(/\s+/g, ' ').trim();
 }
+
+describe('MediaRepository.listPublishedByReviewIds', () => {
+  let repo: LooseMock<Repository<Media>>;
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Media>>({ find: jest.fn() });
+    sut = new MediaRepository(repo);
+  });
+
+  it('reviewIds rỗng → không gọi DB, trả về mảng rỗng', async () => {
+    const result = await sut.listPublishedByReviewIds([]);
+    expect(repo.find).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+  });
+
+  it('lọc đúng status=published, deleted_at IS NULL, review_id IN (...), sắp theo sort_order rồi created_at/id', async () => {
+    repo.find.mockResolvedValue([]);
+    await sut.listPublishedByReviewIds(['r1', 'r2']);
+
+    expect(repo.find).toHaveBeenCalledWith({
+      where: { reviewId: In(['r1', 'r2']), status: MediaStatus.PUBLISHED, deletedAt: IsNull() },
+      order: { sortOrder: 'ASC', createdAt: 'ASC', id: 'ASC' },
+    });
+  });
+
+  it('trả về đúng danh sách media từ repo.find', async () => {
+    const media = [{ id: 'm1' }, { id: 'm2' }] as Media[];
+    repo.find.mockResolvedValue(media);
+    await expect(sut.listPublishedByReviewIds(['r1'])).resolves.toEqual(media);
+  });
+});
 
 describe('MediaRepository.attachAndPublish', () => {
   let sut: MediaRepository;

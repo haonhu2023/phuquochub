@@ -3507,6 +3507,13 @@ components:
         content: { type: [string, 'null'] }
         status: { type: string, enum: [pending, published, hidden] }
         created_at: { type: string, format: date-time }
+        media:
+          type: array
+          description: >-
+            Ảnh/video đã published, non-deleted gắn với review này (ADR-018 auto-publish-on-attach),
+            theo sort_order rồi created_at/id. Media pending/hidden/rejected/xoá mềm không bao giờ
+            xuất hiện ở đây.
+          items: { $ref: '#/components/schemas/Media' }
     BookingItem:
       type: object
       properties:

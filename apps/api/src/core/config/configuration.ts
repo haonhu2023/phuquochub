@@ -39,6 +39,7 @@ export interface AppConfig {
     secretAccessKey: string;
     bucket: string;
     forcePathStyle: boolean;
+    publicUrl: string;
   };
   verificationExpiry: {
     scheduleEnabled: boolean;
@@ -104,6 +105,12 @@ export default (): AppConfig => ({
     secretAccessKey: process.env.S3_SECRET_KEY ?? 'minioadmin',
     bucket: process.env.S3_BUCKET?.trim() || defaultS3Bucket(process.env.NODE_ENV ?? 'development'),
     forcePathStyle: (process.env.S3_FORCE_PATH_STYLE ?? 'true') === 'true',
+    // Public read origin for URLs handed back to clients — separate from S3_ENDPOINT, which stays
+    // the internal address used for signing/verifying uploads (docker-internal MinIO in dev,
+    // never exposed to clients). Falls back to S3_ENDPOINT when unset so local dev/test (single
+    // MinIO endpoint for both) needs no extra config; production sets S3_PUBLIC_URL explicitly to
+    // the real public media origin.
+    publicUrl: process.env.S3_PUBLIC_URL?.trim() || process.env.S3_ENDPOINT || 'http://localhost:9000',
   },
   // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Mặc định TẮT
   // (`scheduleEnabled=false`) ở MỌI môi trường, kể cả production — bật lịch chạy là một hành vi
