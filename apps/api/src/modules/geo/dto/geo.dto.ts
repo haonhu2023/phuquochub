@@ -44,6 +44,14 @@ export class BboxQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt()
   zoom?: number;
+
+  // Search Filters (category/ward) — cùng convention ListPlacesQueryDto/SearchQueryDto: category
+  // là category_id (uuid) nhưng chỉ @IsString() để khớp kiểu lỏng đã dùng ở hai endpoint kia.
+  @IsOptional() @IsString()
+  category?: string;
+
+  @IsOptional() @IsString()
+  ward?: string;
 }
 
 export class GeocodeQueryDto {

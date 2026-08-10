@@ -12,6 +12,8 @@ export interface BboxParams {
   maxLng: number;
   maxLat: number;
   zoom: number;
+  category?: string;
+  ward?: string;
 }
 
 export async function nearby(
@@ -34,5 +36,7 @@ export async function bbox(p: BboxParams): Promise<BboxMarker[]> {
     maxLat: String(p.maxLat),
     zoom: String(p.zoom),
   });
+  if (p.category) qs.set('category', p.category);
+  if (p.ward) qs.set('ward', p.ward);
   return apiGet<BboxMarker[]>(`/geo/bbox?${qs.toString()}`);
 }

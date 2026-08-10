@@ -44,6 +44,8 @@ export class GeoService {
       maxLat: dto.maxLat,
       cellDeg,
       limit: BBOX_MAX,
+      category: dto.category,
+      ward: dto.ward,
     });
     return rows.map((r) =>
       r.cnt > 1

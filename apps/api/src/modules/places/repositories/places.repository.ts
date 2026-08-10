@@ -396,6 +396,9 @@ export class PlacesRepository {
    * và p.id là PK bất biến — đúng khoá `p.id ASC` mà list()/nearby()/searchFullText() đã dùng. Chỉ
    * đổi THỨ TỰ: grouping, cell size, tổng hợp và WHERE giữ nguyên; schema trả về không đổi.
    */
+  // Search Filters (category/ward) — cùng cột/điều kiện list()/searchFullText() đã dùng
+  // (searchFilterConds), tham số hoá giống hệt. Chèn TRƯỚC cellDeg/limit nên hai chỉ số đó phải
+  // tính động theo args.length thay vì hằng số $5/$6 như cũ.
   async bboxClusters(params: {
     minLng: number;
     minLat: number;
@@ -403,7 +406,14 @@ export class PlacesRepository {
     maxLat: number;
     cellDeg: number;
     limit: number;
+    category?: string;
+    ward?: string;
   }): Promise<GeoClusterRow[]> {
+    const args: unknown[] = [params.minLng, params.minLat, params.maxLng, params.maxLat];
+    const filterConds = this.searchFilterConds({ category: params.category, ward: params.ward }, args);
+    const cellIdx = args.length + 1;
+    const limitIdx = args.length + 2;
+    args.push(params.cellDeg, params.limit);
     return this.repo.query(
       `SELECT count(*)::int AS cnt,
               avg(ST_X(p.location::geometry)) AS lng,
@@ -414,10 +424,11 @@ export class PlacesRepository {
        FROM places p
        WHERE p.deleted_at IS NULL AND p.status = 'published'
          AND ST_Intersects(p.location::geometry, ST_MakeEnvelope($1,$2,$3,$4,4326))
-       GROUP BY floor(ST_X(p.location::geometry) / $5), floor(ST_Y(p.location::geometry) / $5)
+         ${filterConds}
+       GROUP BY floor(ST_X(p.location::geometry) / $${cellIdx}), floor(ST_Y(p.location::geometry) / $${cellIdx})
        ORDER BY cnt DESC, sample_id ASC
-       LIMIT $6`,
-      [params.minLng, params.minLat, params.maxLng, params.maxLat, params.cellDeg, params.limit],
+       LIMIT $${limitIdx}`,
+      args,
     );
   }
 

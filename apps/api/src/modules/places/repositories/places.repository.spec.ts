@@ -501,3 +501,51 @@ describe('PlacesRepository.bboxClusters — cắt LIMIT xác định (F-34)', ()
     expect(sorted).toEqual(['z', 'a', 'b', 'c']);
   });
 });
+
+// Search Filters trên bản đồ — category/ward đi qua cùng searchFilterConds() với list()/
+// searchFullText(), tham số hoá y hệt. cellDeg/limit phải dịch chỉ số theo số filter thêm vào.
+describe('PlacesRepository.bboxClusters — Search Filters (category/ward)', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo);
+  });
+
+  const BASE = { minLng: 103.4, minLat: 9.8, maxLng: 104.2, maxLat: 10.5, cellDeg: 0.01, limit: 500 };
+
+  it('không truyền filter → không thêm điều kiện, cellDeg/limit vẫn ở $5/$6', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.bboxClusters(BASE);
+
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).not.toContain('p.category_id =');
+    expect(sql(query)).not.toContain('p.ward =');
+    expect(sql(query)).toContain('GROUP BY floor(ST_X(p.location::geometry) / $5), floor(ST_Y(p.location::geometry) / $5)');
+    expect(sql(query)).toContain('LIMIT $6');
+    expect(params).toEqual([103.4, 9.8, 104.2, 10.5, 0.01, 500]);
+  });
+
+  it('lọc category+ward → điều kiện tham số hoá ở $5/$6, cellDeg/limit dịch xuống $7/$8', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.bboxClusters({ ...BASE, category: 'c1', ward: 'An Thới' });
+
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('p.category_id = $5');
+    expect(sql(query)).toContain('p.ward = $6');
+    expect(sql(query)).toContain('GROUP BY floor(ST_X(p.location::geometry) / $7), floor(ST_Y(p.location::geometry) / $7)');
+    expect(sql(query)).toContain('LIMIT $8');
+    expect(params).toEqual([103.4, 9.8, 104.2, 10.5, 'c1', 'An Thới', 0.01, 500]);
+  });
+
+  it('chỉ category → một điều kiện lọc, không chạm ward', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.bboxClusters({ ...BASE, category: 'c1' });
+
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('p.category_id = $5');
+    expect(sql(query)).not.toContain('p.ward =');
+    expect(params).toEqual([103.4, 9.8, 104.2, 10.5, 'c1', 0.01, 500]);
+  });
+});

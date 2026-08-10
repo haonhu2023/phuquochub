@@ -83,4 +83,17 @@ describe('BboxQueryDto — validation biên Phú Quốc (GAP-07)', () => {
       }),
     ).toHaveLength(0);
   });
+
+  // Search Filters trên bản đồ — category/ward optional, cùng convention ListPlacesQueryDto.
+  it('chấp nhận category/ward tuỳ chọn', async () => {
+    expect(
+      await validateDto(BboxQueryDto, { ...validBbox, category: 'c1', ward: 'An Thới' }),
+    ).toHaveLength(0);
+  });
+
+  it('bỏ trống category/ward vẫn hợp lệ (mặc định service không lọc)', async () => {
+    const errors = await validateDto(BboxQueryDto, { ...validBbox });
+    expect(errors.map((e) => e.property)).not.toContain('category');
+    expect(errors.map((e) => e.property)).not.toContain('ward');
+  });
 });
