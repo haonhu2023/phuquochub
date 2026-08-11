@@ -1,0 +1,95 @@
+/* Business Claim submission (PLACE-042) — chỉ phần CHƯA có ở place-management.module.css
+   (dùng chung .form/.fieldGrid/.section/.input/.textarea/.alert/.success/.actions/.submitBtn/
+   .cancelLink từ đó, tái dùng nguyên vẹn thay vì lặp lại). File này chỉ thêm danh sách bằng
+   chứng (dynamic list) + banner CTA trên trang chi tiết Place công khai. */
+
+.evidenceItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.evidenceItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.evidenceItemTitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.removeBtn {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.removeBtn:hover {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 45%, transparent);
+}
+
+.addBtn {
+  align-self: flex-start;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.addBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.addBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- CTA trên trang chi tiết Place công khai ---------- */
+.claimBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.claimBannerText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.claimBannerLink {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.claimBannerLink:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}

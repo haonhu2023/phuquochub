@@ -10,6 +10,7 @@ import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
 import type { Review } from '@/modules/reviews/types';
+import { ClaimCta } from '@/modules/business-claims/ClaimCta';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -136,6 +137,8 @@ export default async function PlaceDetailPage({ params }: Params) {
           )}
         </p>
       </header>
+
+      <ClaimCta placeId={place.id} placeName={place.name} />
 
       {place.media.length > 0 && (
         <div className={styles.gallery}>

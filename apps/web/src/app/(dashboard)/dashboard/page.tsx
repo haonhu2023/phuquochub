@@ -3,11 +3,12 @@
 // Trang bảng điều khiển tối thiểu — minh chứng phiên đăng nhập + route guard hoạt động.
 // Nội dung tính năng dashboard đầy đủ thuộc các Sprint sau (ngoài phạm vi Sprint 1).
 //
-// Liên kết tới /dashboard/places (PLACE-041): KHÔNG ẩn như liên kết tới /dashboard/moderation —
-// đó ẩn vì FE session chưa lộ permission và Moderation.Queue.View chỉ một số role có; "Địa điểm
-// của tôi" thì khác, GET /places/mine mở cho MỌI người dùng đã đăng nhập (tự lọc theo userId gọi,
-// xem places.controller.ts) nên không có rủi ro hiển thị một liên kết mà phần lớn người dùng sẽ
-// bị 403 khi bấm vào.
+// Liên kết tới /dashboard/places (PLACE-041) và /dashboard/business-claims/new (PLACE-042):
+// KHÔNG ẩn như liên kết tới /dashboard/moderation — đó ẩn vì FE session chưa lộ permission và
+// Moderation.Queue.View chỉ một số role có; hai liên kết này thì khác, GET /places/mine và
+// POST /business-claims đều mở cho MỌI người dùng đã đăng nhập (Business.Claim là permission nền
+// mọi `member` có — xem SeedRbac1720000300000) nên không có rủi ro hiển thị liên kết mà phần lớn
+// người dùng sẽ bị 403 khi bấm vào.
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -34,6 +35,11 @@ export default function DashboardPage() {
       <p style={{ marginTop: '1rem' }}>
         <Link href="/dashboard/places" style={{ color: 'var(--accent)' }}>
           Địa điểm của tôi →
+        </Link>
+      </p>
+      <p style={{ marginTop: '0.5rem' }}>
+        <Link href="/dashboard/business-claims/new" style={{ color: 'var(--accent)' }}>
+          Yêu cầu xác nhận quyền quản lý →
         </Link>
       </p>
       <button
