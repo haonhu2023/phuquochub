@@ -184,9 +184,23 @@ export class PlacesRepository {
   //   • KHÔNG "sửa" bằng cách thêm lọc status: thêm lọc là đoán ý định mà repository không xác
   //     định được và sẽ phá luồng kiểm duyệt. Cần đọc card công khai: dùng `getDetailBySlug`
   //     (đã lọc `status = published`) hoặc viết truy vấn mới có lọc status ngay tại đó.
-  async getCardByIdIncludingInactive(id: string): Promise<PlaceCardRow | null> {
-    const rows: PlaceCardRow[] = await this.repo.query(
-      `SELECT ${CARD_COLS} FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
+  //
+  // Place Content Management MVP (2026-08-11): hàng trả về được MỞ RỘNG từ shape card sang shape
+  // chi tiết (address/ward/description/opening_hours/category_slug/osm_id/timestamps — CÙNG cột
+  // với `getDetailBySlug`, chỉ khác WHERE không lọc `status`). Đây là mở rộng THÊM cột (superset
+  // của `PlaceCardRow`), không đổi bất kỳ cột nào đã có — bốn caller hiện tại (create/update/
+  // archive/approve, đều chỉ đọc `toPlaceCard(row)`) không bị ảnh hưởng. Lý do mở rộng: PLACE-041
+  // (`PlacesService.listMine()`) cần đọc chi tiết đầy đủ của place mà CHÍNH người gọi quản lý (kể
+  // cả khi `pending`/`draft`) để dựng form Edit — không có route công khai nào làm được việc đó
+  // (`getDetailBySlug` chỉ trả `published`), và thêm một phương thức đặc quyền THỨ HAI sẽ phải mở
+  // rộng guard kiến trúc ở trên sang nhiều phương thức, phức tạp hơn cần thiết cho MVP này.
+  async getCardByIdIncludingInactive(id: string): Promise<PlaceDetailRow | null> {
+    const rows: PlaceDetailRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS},
+              (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
+              p.address, p.ward, p.description, p.opening_hours, p.osm_id,
+              p.created_at, p.updated_at
+       FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
       [id],
     );
     return rows[0] ?? null;

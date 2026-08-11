@@ -12,6 +12,7 @@ import { ContactsModule } from '../contacts/contacts.module';
 import { PricesModule } from '../prices/prices.module';
 import { MediaModule } from '../media/media.module';
 import { RevisionsModule } from '../revisions/revisions.module';
+import { RbacModule } from '../rbac/rbac.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { RevisionsModule } from '../revisions/revisions.module';
     PricesModule,
     MediaModule,
     RevisionsModule,
+    RbacModule,
   ],
   controllers: [PlacesController],
   providers: [PlacesRepository, PlacesService],

@@ -28,7 +28,14 @@ const PRIVILEGED_METHOD = 'getCardByIdIncludingInactive';
 // Approved privileged callers (PlacesService methods). Each is wired to a permission-gated,
 // non-@Public controller route (create→Place.Create, update→Place.Edit.Managed,
 // archive→Place.Archive, approve→Place.Approve). Adding a caller must be a deliberate edit here.
-const APPROVED_SERVICE_CALLERS = ['create', 'update', 'archive', 'approve'].sort();
+//
+// PLACE-041 (Place Content Management MVP, 2026-08-11): `listMine` added. Wired to `GET
+// /places/mine` — non-@Public (JwtAuthGuard requires auth; see controller comment for why no
+// static @RequirePermissions applies), and the row returned per id is only fetched for
+// `business_id`s the CALLING user already holds an effective `Place.Edit.Managed` grant for
+// (PlacesService.listMine, verified via the same AuthorizationService PDP the guard uses) — same
+// privilege boundary as `update`, just re-derived per row instead of taken from a route param.
+const APPROVED_SERVICE_CALLERS = ['archive', 'approve', 'create', 'listMine', 'update'].sort();
 
 const PLACES_DIR = __dirname;
 const serviceSrc = readFileSync(join(PLACES_DIR, 'places.service.ts'), 'utf8');

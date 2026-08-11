@@ -33,6 +33,18 @@ export class PlacesController {
     return this.placesService.list(query);
   }
 
+  // PLACE-041 (Place Content Management MVP) — "địa điểm tôi quản lý" (business_id nào user có
+  // grant Place.Edit.Managed hiệu lực). KHÔNG @Public — chỉ cần đã đăng nhập (JwtAuthGuard chặn
+  // trước), KHÔNG khai @RequirePermissions: nội dung trả về đã TỰ lọc theo đúng userId của người
+  // gọi (PlacesService.listMine), không có tài nguyên chung nào để đặt permission tĩnh lên — cùng
+  // nhánh "endpoint không khai báo permission → chỉ cần đã xác thực" mà PermissionsGuard đã tài
+  // liệu hoá sẵn (permissions.guard.ts). Đặt TRƯỚC ':id/revisions'/':slug' — nếu không, hai route
+  // đoạn-đơn phía dưới sẽ nuốt mất '/places/mine' (khớp như thể 'mine' là slug/id).
+  @Get('mine')
+  listMine(@CurrentUser() user: AuthPrincipal) {
+    return this.placesService.listMine(user.sub);
+  }
+
   // openapi listPlaceRevisions — lịch sử wiki_revisions (entity_type='place').
   // Đặt trước ':slug' để route 2 đoạn không bị nuốt bởi param 1 đoạn.
   @Public()

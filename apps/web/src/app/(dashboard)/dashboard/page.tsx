@@ -2,9 +2,16 @@
 
 // Trang bảng điều khiển tối thiểu — minh chứng phiên đăng nhập + route guard hoạt động.
 // Nội dung tính năng dashboard đầy đủ thuộc các Sprint sau (ngoài phạm vi Sprint 1).
+//
+// Liên kết tới /dashboard/places (PLACE-041): KHÔNG ẩn như liên kết tới /dashboard/moderation —
+// đó ẩn vì FE session chưa lộ permission và Moderation.Queue.View chỉ một số role có; "Địa điểm
+// của tôi" thì khác, GET /places/mine mở cho MỌI người dùng đã đăng nhập (tự lọc theo userId gọi,
+// xem places.controller.ts) nên không có rủi ro hiển thị một liên kết mà phần lớn người dùng sẽ
+// bị 403 khi bấm vào.
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/modules/auth/AuthProvider';
 
 export default function DashboardPage() {
@@ -23,6 +30,11 @@ export default function DashboardPage() {
       <h1>Bảng điều khiển</h1>
       <p style={{ color: 'var(--muted)' }}>
         Xin chào, <strong style={{ color: 'var(--fg)' }}>{user?.displayName}</strong> ({user?.email})
+      </p>
+      <p style={{ marginTop: '1rem' }}>
+        <Link href="/dashboard/places" style={{ color: 'var(--accent)' }}>
+          Địa điểm của tôi →
+        </Link>
       </p>
       <button
         type="button"

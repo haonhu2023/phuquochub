@@ -1,4 +1,4 @@
-import { ApiError, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPost } from './http';
+import { ApiError, apiDeleteAuth, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost } from './http';
 
 const realFetch = global.fetch;
 
@@ -103,5 +103,45 @@ describe('apiGetPaginatedAuth', () => {
     mockFetchOnce(401, { success: false, error: { code: 'UNAUTHORIZED', message: 'Chưa đăng nhập' } });
 
     await expect(apiGetPaginatedAuth('/moderation/cases', 'tok')).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe('apiPatchAuth', () => {
+  it('gửi Bearer + JSON body bằng method PATCH, bóc data từ envelope thành công', async () => {
+    mockFetchOnce(200, { success: true, data: { id: 'p1', name: 'Tên mới' }, meta: {} });
+
+    const result = await apiPatchAuth<{ id: string }>('/places/p1', 'tok123', { name: 'Tên mới' });
+
+    expect(result).toEqual({ id: 'p1', name: 'Tên mới' });
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.method).toBe('PATCH');
+    expect(init.headers.Authorization).toBe('Bearer tok123');
+    expect(JSON.parse(init.body)).toEqual({ name: 'Tên mới' });
+  });
+
+  it('envelope lỗi 403 → ApiError với status đúng', async () => {
+    mockFetchOnce(403, { success: false, error: { code: 'FORBIDDEN', message: 'Thiếu quyền' } });
+
+    await expect(apiPatchAuth('/places/p1', 'tok', {})).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('apiDeleteAuth', () => {
+  it('gửi Bearer bằng method DELETE, không có body, bóc data từ envelope (EmptySuccess null)', async () => {
+    mockFetchOnce(200, { success: true, data: null, meta: {} });
+
+    const result = await apiDeleteAuth<null>('/places/p1', 'tok123');
+
+    expect(result).toBeNull();
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.method).toBe('DELETE');
+    expect(init.headers.Authorization).toBe('Bearer tok123');
+    expect(init.body).toBeUndefined();
+  });
+
+  it('envelope lỗi 404 → ApiError.isNotFound', async () => {
+    mockFetchOnce(404, { success: false, error: { code: 'NOT_FOUND', message: 'Không tìm thấy' } });
+
+    await expect(apiDeleteAuth('/places/p1', 'tok')).rejects.toMatchObject({ status: 404, isNotFound: true });
   });
 });

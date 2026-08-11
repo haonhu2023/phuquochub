@@ -28,6 +28,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let revisions: LooseMock<Ctor[5]>;
   let audit: LooseMock<Ctor[6]>;
   let mediaUrl: LooseMock<Ctor[7]>;
+  let userRolesRepo: LooseMock<Ctor[8]>;
+  let authz: LooseMock<Ctor[9]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -50,6 +52,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     revisions = createMock<Ctor[5]>({ recordPlaceRevision: jest.fn() });
     audit = createMock<Ctor[6]>({ record: jest.fn() });
     mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
+    userRolesRepo = createMock<Ctor[8]>({ getScopedGrants: jest.fn() });
+    authz = createMock<Ctor[9]>({ canWithGrants: jest.fn() });
 
     service = new PlacesService(
       placesRepo,
@@ -60,6 +64,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       revisions,
       audit,
       mediaUrl,
+      userRolesRepo,
+      authz,
     );
   });
 
@@ -462,6 +468,103 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       await service.update('p1', { name: 'Tên mới' } as UpdatePlaceDto, 'u2');
 
       expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listMine — PLACE-041 (Place Content Management MVP): "địa điểm tôi quản lý" = business_id
+  // nào user có grant Place.Edit.Managed hiệu lực, CÙNG định nghĩa PATCH /places/:id đang dùng.
+  // -------------------------------------------------------------------------
+  describe('listMine', () => {
+    it('không có grant nào → mảng rỗng, không đọc place nào', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([]);
+
+      const result = await service.listMine('u1');
+
+      expect(result).toEqual([]);
+      expect(placesRepo.getCardByIdIncludingInactive).not.toHaveBeenCalled();
+    });
+
+    it('có grant Managed hiệu lực trên một business_id → trả place đó (mapped qua toPlaceDetail)', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+
+      const result = await service.listMine('u1');
+
+      expect(result).toEqual([{ id: 'p1', mappedDetail: true }]);
+      expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledWith('p1');
+      // PDP thật (canWithGrants) được gọi lại để xác nhận — không tự suy ra "quản lý được" từ
+      // riêng bước liệt kê ứng viên.
+      expect(authz.canWithGrants).toHaveBeenCalledWith(
+        expect.any(Array),
+        'u1',
+        'Place.Edit.Managed',
+        expect.any(Function),
+      );
+      const ctx = await authz.canWithGrants.mock.calls[0][3]();
+      expect(ctx).toEqual({ resourceType: 'place', resourceId: 'p1', businessId: 'p1', ownerId: null });
+    });
+
+    it('grant Any/global (businessId null, vd Place.Edit.Any) → KHÔNG phải ứng viên, không gọi PDP', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Place.Edit.Any', effect: 'allow', scopeType: 'global', businessId: null },
+      ]);
+
+      const result = await service.listMine('u1');
+
+      expect(result).toEqual([]);
+      expect(authz.canWithGrants).not.toHaveBeenCalled();
+      expect(placesRepo.getCardByIdIncludingInactive).not.toHaveBeenCalled();
+    });
+
+    it('PDP xác nhận KHÔNG cho quản lý (vd deny) → loại khỏi kết quả dù có grant candidate', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(false);
+
+      const result = await service.listMine('u1');
+
+      expect(result).toEqual([]);
+      expect(placesRepo.getCardByIdIncludingInactive).not.toHaveBeenCalled();
+    });
+
+    it('place đã bị archive/xoá mềm giữa lúc kiểm quyền và lúc đọc (row null) → bỏ qua an toàn', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+
+      const result = await service.listMine('u1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('nhiều business_id quản lý được → trả đủ, mỗi id một lần dù grant trùng lặp', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+        { code: 'Contact.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+        { code: 'Place.Edit.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p2' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockImplementation(async (id: string) => ({
+        id,
+        status: PlaceStatus.PUBLISHED,
+      }));
+
+      const result = await service.listMine('u1');
+
+      expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledTimes(2);
+      expect(result).toEqual(
+        expect.arrayContaining([
+          { id: 'p1', mappedDetail: true },
+          { id: 'p2', mappedDetail: true },
+        ]),
+      );
     });
   });
 });

@@ -29,6 +29,11 @@ function permissionsOf(name: Handler): string[] | undefined {
 
 const READ_ROUTES: Handler[] = ['list', 'listRevisions', 'getBySlug'];
 const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve'];
+// PLACE-041: `mine` là route THỨ BA — không @Public (đòi hỏi đăng nhập, JwtAuthGuard chặn), nhưng
+// cũng không mang @RequirePermissions tĩnh (nội dung tự lọc theo userId gọi, xem controller +
+// permissions.guard.ts). Tách riêng khỏi READ_ROUTES/WRITE_ROUTES để không âm thầm nới lỏng ý
+// nghĩa "route đọc là công khai" của READ_ROUTES.
+const AUTHENTICATED_NO_STATIC_PERMISSION_ROUTES: Handler[] = ['listMine'];
 
 describe('PlacesController — ranh giới công khai / đặc quyền', () => {
   describe('@Public()', () => {
@@ -39,6 +44,13 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
     it.each(WRITE_ROUTES)('route ghi `%s` KHÔNG công khai', (name) => {
       expect(isPublic(name)).toBe(false);
     });
+
+    it.each(AUTHENTICATED_NO_STATIC_PERMISSION_ROUTES)(
+      '`%s` KHÔNG công khai (đòi hỏi đăng nhập qua JwtAuthGuard)',
+      (name) => {
+        expect(isPublic(name)).toBe(false);
+      },
+    );
   });
 
   describe('@RequirePermissions()', () => {
@@ -58,6 +70,13 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
     it.each(READ_ROUTES)('route đọc `%s` không khai báo permission nào', (name) => {
       expect(permissionsOf(name)).toBeUndefined();
     });
+
+    it.each(AUTHENTICATED_NO_STATIC_PERMISSION_ROUTES)(
+      '`%s` không khai báo permission tĩnh nào (tự lọc theo userId gọi)',
+      (name) => {
+        expect(permissionsOf(name)).toBeUndefined();
+      },
+    );
   });
 
   describe('mã trạng thái & pipe', () => {
@@ -79,6 +98,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       expect(Reflect.getMetadata(PATH_METADATA, handlerOf('listRevisions'))).toBe(':id/revisions');
       expect(Reflect.getMetadata(PATH_METADATA, handlerOf('getBySlug'))).toBe(':slug');
     });
+
+    it("'mine' được khai báo TRƯỚC ':slug' (PLACE-041 — nếu không, ':slug' sẽ nuốt '/places/mine')", () => {
+      const methods = Object.getOwnPropertyNames(PlacesController.prototype);
+      expect(methods.indexOf('listMine')).toBeLessThan(methods.indexOf('getBySlug'));
+      expect(Reflect.getMetadata(PATH_METADATA, handlerOf('listMine'))).toBe('mine');
+    });
   });
 
   describe('uỷ quyền xuống service', () => {
@@ -90,6 +115,7 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
     beforeEach(() => {
       placesService = createMock<Ctor[0]>({
         list: jest.fn(),
+        listMine: jest.fn(),
         getBySlug: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
@@ -106,6 +132,11 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       const query = { page: 2 } as never;
       controller.list(query);
       expect(placesService.list).toHaveBeenCalledWith(query);
+    });
+
+    it('mine → placesService.listMine(user.sub)', () => {
+      controller.listMine(user);
+      expect(placesService.listMine).toHaveBeenCalledWith('u1');
     });
 
     it('listRevisions → revisionsService.listByPlace(id)', () => {

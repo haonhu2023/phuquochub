@@ -11,11 +11,20 @@ import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
 import { MediaUrlService } from '../../core/media-url/media-url.service';
+import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
+import { AuthorizationService } from '../authz/authorization.service';
+import { grantSatisfies } from '../authz/authorization.util';
+import type { AuthorizationContext } from '../authz/authorization-context';
 import { PlaceStatus } from './place.enums';
 import { CreatePlaceDto, GeoPointDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
 import { toPlaceCard, toPlaceDetail } from './places.mapper';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 import { outOfProvisionalBounds } from '../../common/geo-bounds';
+
+// Permission edit-managed dùng để enumerate "địa điểm tôi quản lý" (listMine, PLACE-041) —
+// CÙNG chuỗi permission mà route PATCH /places/:id đã yêu cầu (places.controller.ts), nên
+// "quản lý được" ở danh sách này với "sửa được" ở route PATCH luôn là ĐÚNG MỘT định nghĩa.
+const PLACE_EDIT_MANAGED = 'Place.Edit.Managed';
 
 // Discriminator đa hình lowercase (B-3) cho contacts.owner_type / price_history.entity_type.
 const PLACE_DISCRIMINATOR = 'place';
@@ -47,6 +56,8 @@ export class PlacesService {
     private readonly revisionsService: RevisionsService,
     private readonly audit: AuditService,
     private readonly mediaUrl: MediaUrlService,
+    private readonly userRolesRepo: UserRolesRepository,
+    private readonly authz: AuthorizationService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -254,6 +265,64 @@ export class PlacesService {
       context: { from: existing.status, to: PlaceStatus.PUBLISHED },
     });
     return null;
+  }
+
+  /**
+   * PLACE-041 (Place Content Management MVP) — GET /places/mine. "Địa điểm tôi quản lý" = tập
+   * `business_id` (ADR-015 Model A: business_id === places.id) mà chính user đang có grant
+   * `Place.Edit.Managed` hiệu lực — CÙNG ĐỊNH NGHĨA mà `PATCH /places/:id` đã dùng để cho phép
+   * sửa (places.controller.ts, `@RequirePermissions('Place.Edit.Managed')` +
+   * `@AuthorizationContext` qua `IDENTITY_PLACE_RESOLVER`). Không có khái niệm sở hữu nào khác
+   * (vd `created_by`) được dùng ở đây: tạo một place (`Place.Create`, mở cho mọi `member`) KHÔNG
+   * tự cấp quyền quản lý nó — quyền quản lý chỉ đến qua luồng Business Claim được duyệt
+   * (`BusinessClaimsService.decide()` gán role scope `managed` trên đúng `business_id` đó). Đây
+   * là chủ đích chống giả mạo của ADR-015, KHÔNG phải một lỗ hổng cần vá ở đây.
+   *
+   * Hai bước:
+   *  1. Liệt kê ỨNG VIÊN: `businessId` (khác null) trên MỌI grant `allow`, `scope_type='managed'`
+   *     mà mã permission của CHÍNH grant đó thoả `Place.Edit.Managed` (`grantSatisfies`, y hệt PDP).
+   *  2. XÁC NHẬN từng ứng viên qua ĐÚNG PDP đang sống (`AuthorizationService.canWithGrants`, cùng
+   *     `grants` đã nạp — không truy vấn DB lần hai) thay vì tự suy luận riêng deny/rank ở đây —
+   *     "một PDP duy nhất" (authorization.service.ts). Với dữ liệu hôm nay (không role nào từng bị
+   *     gán deny trên `Place.Edit.Managed`) bước 2 luôn khớp bước 1, nhưng giữ bước 2 để không có
+   *     hai nguồn sự thật về "quản lý được" nếu sau này có deny grant.
+   *
+   * Đọc chi tiết từng place qua CHÍNH `getCardByIdIncludingInactive` mà create/update/archive/
+   * approve đã dùng (privileged, xem places-privileged-access.arch.spec.ts — `listMine` nằm
+   * trong allowlist đã duyệt của guard đó) — hàng đã bị archive (soft-delete, `deleted_at` được
+   * set bởi `archive()`) tự động biến mất khỏi danh sách này, không cần lọc thêm.
+   */
+  async listMine(userId: string) {
+    const grants = await this.userRolesRepo.getScopedGrants(userId);
+    const candidateIds = [
+      ...new Set(
+        grants
+          .filter((g) => g.effect === 'allow' && g.scopeType === 'managed' && g.businessId !== null)
+          .filter((g) => grantSatisfies(g.code, PLACE_EDIT_MANAGED))
+          .map((g) => g.businessId as string),
+      ),
+    ];
+
+    const confirmed = await Promise.all(
+      candidateIds.map(async (placeId) => {
+        const context: AuthorizationContext = {
+          resourceType: 'place',
+          resourceId: placeId,
+          businessId: placeId,
+          ownerId: null,
+        };
+        const canManage = await this.authz.canWithGrants(grants, userId, PLACE_EDIT_MANAGED, () =>
+          Promise.resolve(context),
+        );
+        return canManage ? placeId : null;
+      }),
+    );
+    const manageableIds = confirmed.filter((id): id is string => id !== null);
+
+    const rows = await Promise.all(
+      manageableIds.map((id) => this.placesRepo.getCardByIdIncludingInactive(id)),
+    );
+    return rows.filter((row): row is NonNullable<typeof row> => row !== null).map(toPlaceDetail);
   }
 
   private async uniqueSlug(name: string): Promise<string> {

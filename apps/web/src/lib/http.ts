@@ -114,3 +114,29 @@ export async function apiGetPaginatedAuth<T>(
   });
   return { data: body.data, meta: body.meta as PaginationMeta };
 }
+
+// PATCH có xác thực (Bearer) — Place Content Management MVP (PLACE-041), luồng ghi đầu tiên cần
+// PATCH thay vì chỉ POST (reviews/moderation trước đó chỉ cần apiPost). Cùng envelope/lỗi với
+// apiPost, chỉ khác method.
+export async function apiPatchAuth<T>(path: string, accessToken: string, payload?: unknown): Promise<T> {
+  const body = await fetchEnvelope<T>(path, {
+    method: 'PATCH',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  });
+  return body.data;
+}
+
+// DELETE có xác thực (Bearer) — Place Content Management MVP (PLACE-041), dùng cho archive
+// (DELETE /places/:id, trả EmptySuccess `null` giống decideModerationCase).
+export async function apiDeleteAuth<T>(path: string, accessToken: string): Promise<T> {
+  const body = await fetchEnvelope<T>(path, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}` },
+  });
+  return body.data;
+}
