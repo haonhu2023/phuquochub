@@ -1,10 +1,10 @@
-import type { GeoPoint, PlaceDetail, PriceRangeValue } from '@phuquochub/shared-types';
+import type { GeoPoint, OpeningHours, PlaceDetail, PriceRangeValue } from '@phuquochub/shared-types';
 
 // GET /places/mine trả PlaceDetail SCALAR — không kèm contacts/prices/media/faqs (những mảng đó
-// là quan hệ vệ tinh, PlacesService.listMine() không ghép, khác getBySlug()). `opening_hours` cố
-// tình bị bỏ khỏi form quản lý ở MVP này (cấu trúc lịch mở cửa hàng tuần + ngoại lệ quá phức tạp
-// cho phạm vi "smallest coherent MVP" — xem báo cáo cuối task).
-export type ManagedPlace = Omit<PlaceDetail, 'contacts' | 'prices' | 'media' | 'faqs' | 'opening_hours'>;
+// là quan hệ vệ tinh, PlacesService.listMine() không ghép, khác getBySlug()). `opening_hours` CÓ
+// MẶT — GET /places/mine đã trả field này từ trước (toPlaceDetail), trước đây bị Omit khỏi kiểu
+// dù dữ liệu vẫn về tới client và bị bỏ qua (đã sửa, xem PlaceForm.tsx/openingHours.ts).
+export type ManagedPlace = Omit<PlaceDetail, 'contacts' | 'prices' | 'media' | 'faqs'>;
 
 // Payload gửi lên POST/PATCH /places — khớp CreatePlaceDto/UpdatePlaceDto (apps/api/src/modules/
 // places/dto/places.dto.ts) từng trường một, KHÔNG thêm trường nào backend không nhận (contact/
@@ -24,4 +24,8 @@ export interface PlaceFormInput {
   description: string | null;
   short_description: string | null;
   price_range: PriceRangeValue | null;
+  // KHÔNG nullable (khác các trường trên) — UpdatePlaceDto.opening_hours không nhận null,
+  // `{}`/regular rỗng mới là "trống" hợp lệ theo IsOpeningHours. Luôn gửi một object hợp lệ, xem
+  // openingHours.ts formStateToOpeningHours().
+  opening_hours: OpeningHours;
 }

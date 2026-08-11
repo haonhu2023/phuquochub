@@ -7,6 +7,15 @@ import { listCategories, type Category } from '@/modules/categories/api/categori
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
 import uiStyles from '@/components/ui/ui.module.css';
 import styles from './place-management.module.css';
+import {
+  WEEKDAYS,
+  WEEKDAY_LABELS,
+  formStateToOpeningHours,
+  openingHoursToFormState,
+  validateOpeningHoursForm,
+  type OpeningHoursFormState,
+  type Weekday,
+} from './openingHours';
 import type { ManagedPlace, PlaceFormInput } from './types';
 
 interface Props {
@@ -43,10 +52,45 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   const [lat, setLat] = useState(initial ? String(initial.location.lat) : '');
   const [lng, setLng] = useState(initial ? String(initial.location.lng) : '');
   const [priceRange, setPriceRange] = useState<PlaceFormInput['price_range']>(initial?.price_range ?? null);
+  const [openingHours, setOpeningHours] = useState<OpeningHoursFormState>(() =>
+    openingHoursToFormState(initial?.opening_hours),
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  function toggleIs24h() {
+    setOpeningHours((prev) => ({ ...prev, is24h: !prev.is24h }));
+  }
+
+  function setOpeningHoursNote(value: string) {
+    setOpeningHours((prev) => ({ ...prev, note: value }));
+  }
+
+  function addRange(day: Weekday) {
+    setOpeningHours((prev) => ({
+      ...prev,
+      regular: { ...prev.regular, [day]: [...prev.regular[day], { open: '', close: '' }] },
+    }));
+  }
+
+  function removeRange(day: Weekday, index: number) {
+    setOpeningHours((prev) => ({
+      ...prev,
+      regular: { ...prev.regular, [day]: prev.regular[day].filter((_, i) => i !== index) },
+    }));
+  }
+
+  function updateRange(day: Weekday, index: number, field: 'open' | 'close', value: string) {
+    setOpeningHours((prev) => ({
+      ...prev,
+      regular: {
+        ...prev.regular,
+        [day]: prev.regular[day].map((r, i) => (i === index ? { ...r, [field]: value } : r)),
+      },
+    }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +119,15 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
       return;
     }
 
+    const openingHoursErrors = validateOpeningHoursForm(openingHours);
+    if (openingHoursErrors.length > 0) {
+      const first = openingHoursErrors[0];
+      setError(
+        `Khung giờ mở cửa ${WEEKDAY_LABELS[first.day]} còn thiếu giờ mở hoặc giờ đóng. Vui lòng điền đủ hoặc xoá khung giờ đó.`,
+      );
+      return;
+    }
+
     const input: PlaceFormInput = {
       name: name.trim(),
       category_id: categoryId,
@@ -84,6 +137,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
       description: description.trim() || null,
       short_description: shortDescription.trim() || null,
       price_range: priceRange,
+      opening_hours: formStateToOpeningHours(openingHours, initial?.opening_hours ?? null),
     };
 
     setSubmitting(true);
@@ -278,6 +332,90 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
               </option>
             ))}
           </select>
+        </div>
+      </fieldset>
+
+      <fieldset className={styles.section}>
+        <legend className={styles.sectionTitle}>Giờ mở cửa</legend>
+
+        <div className={styles.checkboxField}>
+          <input
+            id="pf-oh-24h"
+            type="checkbox"
+            checked={openingHours.is24h}
+            onChange={toggleIs24h}
+            disabled={submitting}
+          />
+          <label htmlFor="pf-oh-24h">Mở cửa 24 giờ mỗi ngày</label>
+        </div>
+
+        <div>
+          {WEEKDAYS.map((day) => (
+            <div key={day} className={styles.dayRow}>
+              <span className={styles.dayLabel}>{WEEKDAY_LABELS[day]}</span>
+              <div className={styles.dayRanges}>
+                {openingHours.regular[day].length === 0 && (
+                  <span className={styles.closedLabel}>Đóng cửa</span>
+                )}
+                {openingHours.regular[day].map((range, index) => (
+                  <div key={index} className={styles.rangeRow}>
+                    <input
+                      type="time"
+                      className={styles.timeInput}
+                      value={range.open}
+                      onChange={(e) => updateRange(day, index, 'open', e.target.value)}
+                      aria-label={`Giờ mở cửa ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
+                      disabled={submitting}
+                    />
+                    <span className={styles.rangeSep}>–</span>
+                    <input
+                      type="time"
+                      className={styles.timeInput}
+                      value={range.close}
+                      onChange={(e) => updateRange(day, index, 'close', e.target.value)}
+                      aria-label={`Giờ đóng cửa ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
+                      disabled={submitting}
+                    />
+                    <button
+                      type="button"
+                      className={styles.removeRangeBtn}
+                      onClick={() => removeRange(day, index)}
+                      aria-label={`Xoá khung giờ ${index + 1} của ${WEEKDAY_LABELS[day]}`}
+                      disabled={submitting}
+                    >
+                      Xoá
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className={styles.addRangeBtn}
+                  onClick={() => addRange(day)}
+                  aria-label={`Thêm khung giờ cho ${WEEKDAY_LABELS[day]}`}
+                  disabled={submitting}
+                >
+                  + Thêm khung giờ
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className={styles.fieldHint}>
+          Có thể qua đêm (vd 22:00–02:00). Nhiều khung/ngày nếu nghỉ trưa. Không thêm khung giờ nào = đóng cửa cả ngày.
+        </p>
+
+        <div className={uiStyles.field}>
+          <label className={uiStyles.fieldLabel} htmlFor="pf-oh-note">
+            Ghi chú giờ mở cửa (không bắt buộc)
+          </label>
+          <input
+            id="pf-oh-note"
+            className={styles.input}
+            value={openingHours.note}
+            onChange={(e) => setOpeningHoursNote(e.target.value)}
+            maxLength={300}
+            disabled={submitting}
+          />
         </div>
       </fieldset>
 

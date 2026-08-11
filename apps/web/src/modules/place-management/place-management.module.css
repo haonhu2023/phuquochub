@@ -206,3 +206,93 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---------- Giờ mở cửa ---------- */
+.dayRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.dayRow:last-child {
+  border-bottom: none;
+}
+.dayLabel {
+  flex: 0 0 88px;
+  font-weight: 600;
+  padding-top: 0.5rem;
+}
+.dayRanges {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+.rangeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.timeInput {
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+}
+.rangeSep {
+  color: var(--muted);
+}
+.closedLabel {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding-top: 0.4rem;
+}
+.removeRangeBtn {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.removeRangeBtn:hover {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 45%, transparent);
+}
+.addRangeBtn {
+  align-self: flex-start;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.addRangeBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.addRangeBtn:disabled,
+.removeRangeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.checkboxField {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.checkboxField input[type='checkbox'] {
+  width: 1.05rem;
+  height: 1.05rem;
+}

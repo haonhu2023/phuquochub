@@ -30,6 +30,7 @@ const PAYLOAD: PlaceFormInput = {
   description: null,
   short_description: null,
   price_range: null,
+  opening_hours: { is_24h: false, regular: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } },
 };
 
 describe('listMyPlaces', () => {
