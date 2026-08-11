@@ -1,5 +1,6 @@
 import { BusinessClaim } from './entities/business-claim.entity';
 import type { BusinessClaimEvidenceItem } from './business-claim-evidence';
+import type { OwnBusinessClaimRow } from './repositories/business-claims.repository';
 
 // Khớp data-dictionary snake_case, cùng quy ước `moderation.mapper.ts`. Summary (hàng đợi + phản
 // hồi submit/withdraw) CỐ Ý KHÔNG có `evidence` — business.md §2 "riêng tư, chỉ Moderator"; chỉ
@@ -42,5 +43,37 @@ export function toBusinessClaimDetail(c: BusinessClaim): BusinessClaimDetailResp
   return {
     ...toBusinessClaimSummary(c),
     evidence: c.evidence,
+  };
+}
+
+// GET /business-claims/mine (requester tự xem claim của mình) — hình dạng HẸP HƠN
+// BusinessClaimSummaryResponse: KHÔNG `requester_id` (luôn là "chính người gọi", thừa thông tin),
+// KHÔNG `reviewer_id` (danh tính moderator, riêng tư), KHÔNG `decision_note` (ghi chú tự do của
+// moderator — business.md §2 không xác nhận an toàn cho requester đọc). `reason_code` là enum có
+// kiểm soát nên đủ an toàn để requester hiểu lý do bị từ chối — xem business-claims.repository.ts
+// `listByRequester()` (evidence/reviewer_id/decision_note không hề được nạp từ CSDL ở đường này).
+export interface OwnBusinessClaimSummaryResponse {
+  id: string;
+  place_id: string;
+  place_name: string;
+  place_slug: string;
+  status: string;
+  reason_code: string | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function toOwnBusinessClaimSummary(row: OwnBusinessClaimRow): OwnBusinessClaimSummaryResponse {
+  return {
+    id: row.id,
+    place_id: row.placeId,
+    place_name: row.placeName,
+    place_slug: row.placeSlug,
+    status: row.status,
+    reason_code: row.reasonCode,
+    decided_at: row.decidedAt ? row.decidedAt.toISOString() : null,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
   };
 }

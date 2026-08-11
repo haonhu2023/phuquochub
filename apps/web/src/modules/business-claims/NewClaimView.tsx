@@ -48,11 +48,14 @@ export function NewClaimView() {
         <div className={placeStyles.state} role="status">
           <p className={placeStyles.stateTitle}>Đã gửi yêu cầu</p>
           <p>
-            Yêu cầu xác nhận quyền quản lý cho <strong>{placeName}</strong> đang chờ kiểm duyệt
-            viên xem xét. Việc phê duyệt không diễn ra tức thì — sau khi được duyệt, địa điểm sẽ
-            xuất hiện ở &quot;Địa điểm của tôi&quot; và bạn có thể chỉnh sửa nó ở đó.
+            Yêu cầu của bạn đã được gửi và đang chờ xét duyệt. Việc phê duyệt không diễn ra tức
+            thì — sau khi được duyệt, <strong>{placeName}</strong> sẽ xuất hiện ở &quot;Địa điểm của
+            tôi&quot; và bạn có thể chỉnh sửa nó ở đó.
           </p>
           <div className={placeMgmtStyles.actions} style={{ justifyContent: 'center', marginTop: '1rem' }}>
+            <Link href="/dashboard/business-claims" className={placeStyles.btn}>
+              Xem trạng thái yêu cầu
+            </Link>
             <Link href="/dashboard/places" className={placeStyles.btn}>
               Về Địa điểm của tôi
             </Link>

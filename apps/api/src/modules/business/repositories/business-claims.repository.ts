@@ -26,6 +26,30 @@ export interface DecideBusinessClaim {
   decidedAt: Date;
 }
 
+export interface ListByRequesterParams {
+  requesterId: string;
+  limit: number;
+}
+
+/**
+ * Hàng requester-safe cho GET /business-claims/mine — CỐ Ý không có `evidence`/`reviewerId`/
+ * `decisionNote` (business.md §2 "riêng tư, chỉ Moderator" cho evidence; `decisionNote` là ghi chú
+ * tự do của moderator, không có bảo đảm nào trong schema hiện tại rằng nó an toàn cho requester đọc
+ * — xem business-claims.service.ts `listMine()`). `reasonCode` là enum có kiểm soát (KHÔNG phải văn
+ * bản tự do), đủ an toàn để giải thích lý do rejected cho chính requester.
+ */
+export interface OwnBusinessClaimRow {
+  id: string;
+  placeId: string;
+  placeName: string;
+  placeSlug: string;
+  status: ClaimStatus;
+  reasonCode: ClaimReasonCode | null;
+  decidedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Repository `business_claims` (ADR-015 §2, business.md §2/§6). Cùng nguyên tắc
 // `ModerationCasesRepository`/`BookingsRepository`: repository KHÔNG tự suy luận nghiệp vụ (FSM,
 // xung đột owner) — chỉ primitive lưu trữ. Service (BusinessClaimsService) quyết định transition
@@ -122,5 +146,50 @@ export class BusinessClaimsRepository {
   /** Requester tự rút claim `pending` — không có reviewer/reason (business.md §4: actor=requester). */
   async updateWithdrawn(manager: EntityManager, id: string): Promise<void> {
     await manager.getRepository(BusinessClaim).update({ id }, { status: ClaimStatus.WITHDRAWN });
+  }
+
+  /**
+   * GET /business-claims/mine — claim CỦA CHÍNH requester đang gọi. `requesterId` LUÔN đến từ JWT
+   * (service/controller), KHÔNG bao giờ từ query/path/body — lọc CSDL trực tiếp trên cột
+   * `requester_id`, không tái dùng `list()` (hàng đợi moderator) rồi lọc ở tầng ứng dụng.
+   *
+   * `.select([...])` liệt kê CHÍNH XÁC các cột an toàn — `evidence`/`reviewer_id`/`decision_note`
+   * KHÔNG bao giờ được nạp vào bộ nhớ ở đường này, kể cả khi mapper phía service có lỗi bỏ sót
+   * field nào đó sau này (chốt chặn kép ở tầng CSDL, không chỉ ở response mapper).
+   *
+   * `innerJoin` (không phải leftJoin): `place_id` NOT NULL + FK CASCADE — mọi claim LUÔN có đúng
+   * một place. `.withDeleted()` giữ tên/slug hiển thị được ngay cả khi place đã bị archive (soft
+   * delete, `deleted_at`) SAU khi claim được approve — lịch sử claim của requester không nên biến
+   * mất chỉ vì place sau đó bị lưu trữ.
+   *
+   * Không phân trang (page/limit) như `list()` moderator — cùng tiền lệ `PlacesService.listMine()`
+   * (GET /places/mine, mảng phẳng không phân trang): khối lượng claim/một requester luôn nhỏ (tối đa
+   * một `pending` mỗi place tại một thời điểm, `uq_claim_pending`). `take(limit)` là CHẶN TRÊN
+   * phòng thủ (chống phình dữ liệu bất thường), không phải UI phân trang thật.
+   */
+  async listByRequester(params: ListByRequesterParams): Promise<OwnBusinessClaimRow[]> {
+    const rows = await this.repo
+      .createQueryBuilder('c')
+      .innerJoin('c.place', 'place')
+      .withDeleted()
+      .where('c.requesterId = :requesterId', { requesterId: params.requesterId })
+      .select(['c.id', 'c.placeId', 'c.status', 'c.reasonCode', 'c.decidedAt', 'c.createdAt', 'c.updatedAt'])
+      .addSelect(['place.id', 'place.name', 'place.slug'])
+      .orderBy('c.createdAt', 'DESC')
+      .addOrderBy('c.id', 'DESC')
+      .take(params.limit)
+      .getMany();
+
+    return rows.map((r) => ({
+      id: r.id,
+      placeId: r.placeId,
+      placeName: r.place.name,
+      placeSlug: r.place.slug,
+      status: r.status,
+      reasonCode: r.reasonCode,
+      decidedAt: r.decidedAt,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
   }
 }

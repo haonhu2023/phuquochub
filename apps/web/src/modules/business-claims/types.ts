@@ -60,3 +60,28 @@ export interface BusinessClaimSummary {
   created_at: string;
   updated_at: string;
 }
+
+// Bốn trạng thái claim thật (business.enums.ts ClaimStatus) — không phát minh thêm.
+export const BUSINESS_CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'disputed', 'withdrawn'] as const;
+export type BusinessClaimStatusValue = (typeof BUSINESS_CLAIM_STATUSES)[number];
+
+// Khớp ClaimReasonCode (business.enums.ts) — chỉ có mặt khi status=rejected/disputed.
+export type BusinessClaimReasonCodeValue = 'insufficient_evidence' | 'duplicate' | 'fraud' | 'wrong_target' | 'other';
+
+// Khớp OwnBusinessClaimSummaryResponse (business.mapper.ts) — response của GET /business-claims/mine.
+// HẸP HƠN BusinessClaimSummary CÓ CHỦ Ý: không `requester_id` (luôn là chính người gọi), không
+// `reviewer_id` (danh tính moderator, riêng tư), không `decision_note` (ghi chú tự do của moderator,
+// không có bảo đảm an toàn cho requester đọc) — xem business.mapper.ts để biết lý do đầy đủ. Có
+// `place_name`/`place_slug` (join từ Place — dữ liệu công khai của một place đã published) để hiển
+// thị danh sách không cần gọi thêm API nào khác.
+export interface OwnBusinessClaim {
+  id: string;
+  place_id: string;
+  place_name: string;
+  place_slug: string;
+  status: BusinessClaimStatusValue;
+  reason_code: BusinessClaimReasonCodeValue | null;
+  decided_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

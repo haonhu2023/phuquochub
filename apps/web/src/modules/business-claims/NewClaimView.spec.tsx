@@ -62,6 +62,10 @@ describe('NewClaimView — có place_id', () => {
 
     expect(screen.getByText('Đã gửi yêu cầu')).toBeInTheDocument();
     expect(screen.getByText(/Bãi Sao/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Xem trạng thái yêu cầu' })).toHaveAttribute(
+      'href',
+      '/dashboard/business-claims',
+    );
     expect(screen.getByRole('link', { name: 'Về Địa điểm của tôi' })).toHaveAttribute(
       'href',
       '/dashboard/places',

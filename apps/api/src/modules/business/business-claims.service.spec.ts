@@ -93,6 +93,7 @@ describe('BusinessClaimsService', () => {
       findByIdForUpdate: jest.fn(),
       createPending: jest.fn(),
       list: jest.fn(),
+      listByRequester: jest.fn(),
       updateDecision: jest.fn(),
       updateWithdrawn: jest.fn(),
     });
@@ -188,6 +189,79 @@ describe('BusinessClaimsService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'business.claim_requested', entityType: 'business_claim', actorId: 'requester-1' }),
       );
+    });
+  });
+
+  describe('listMine', () => {
+    it('truyền ĐÚNG requesterId của actor xuống repository (self-scope) — không truyền id nào khác', async () => {
+      claimsRepo.listByRequester.mockResolvedValue([]);
+      await service.listMine('caller-1');
+      expect(claimsRepo.listByRequester).toHaveBeenCalledWith(
+        expect.objectContaining({ requesterId: 'caller-1' }),
+      );
+      expect(claimsRepo.listByRequester).toHaveBeenCalledTimes(1);
+    });
+
+    it('kết quả KHÔNG có evidence/reviewer_id/decision_note (chỉ narrow requester-safe fields)', async () => {
+      claimsRepo.listByRequester.mockResolvedValue([
+        {
+          id: 'claim-1',
+          placeId: 'place-1',
+          placeName: 'Test Place',
+          placeSlug: 'test-place',
+          status: ClaimStatus.PENDING,
+          reasonCode: null,
+          decidedAt: null,
+          createdAt: new Date('2026-08-10T00:00:00Z'),
+          updatedAt: new Date('2026-08-10T00:00:00Z'),
+        },
+      ]);
+
+      const result = await service.listMine('caller-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).not.toHaveProperty('evidence');
+      expect(result[0]).not.toHaveProperty('reviewer_id');
+      expect(result[0]).not.toHaveProperty('decision_note');
+      expect(result[0]).not.toHaveProperty('requester_id');
+      expect(result[0]).toEqual({
+        id: 'claim-1',
+        place_id: 'place-1',
+        place_name: 'Test Place',
+        place_slug: 'test-place',
+        status: ClaimStatus.PENDING,
+        reason_code: null,
+        decided_at: null,
+        created_at: '2026-08-10T00:00:00.000Z',
+        updated_at: '2026-08-10T00:00:00.000Z',
+      });
+    });
+
+    it('rejected -> reason_code có mặt, dịch được thành lý do cho requester', async () => {
+      claimsRepo.listByRequester.mockResolvedValue([
+        {
+          id: 'claim-2',
+          placeId: 'place-2',
+          placeName: 'Nhà hàng XYZ',
+          placeSlug: 'nha-hang-xyz',
+          status: ClaimStatus.REJECTED,
+          reasonCode: ClaimReasonCode.DUPLICATE,
+          decidedAt: new Date('2026-08-11T00:00:00Z'),
+          createdAt: new Date('2026-08-10T00:00:00Z'),
+          updatedAt: new Date('2026-08-11T00:00:00Z'),
+        },
+      ]);
+
+      const result = await service.listMine('caller-1');
+      expect(result[0].status).toBe(ClaimStatus.REJECTED);
+      expect(result[0].reason_code).toBe(ClaimReasonCode.DUPLICATE);
+      expect(result[0].decided_at).toBe('2026-08-11T00:00:00.000Z');
+    });
+
+    it('không có claim nào -> mảng rỗng', async () => {
+      claimsRepo.listByRequester.mockResolvedValue([]);
+      const result = await service.listMine('caller-1');
+      expect(result).toEqual([]);
     });
   });
 

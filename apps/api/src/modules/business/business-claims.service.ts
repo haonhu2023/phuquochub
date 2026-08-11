@@ -28,11 +28,19 @@ import { SubmitBusinessClaimDto, DecideBusinessClaimDto, ListBusinessClaimsQuery
 import {
   toBusinessClaimDetail,
   toBusinessClaimSummary,
+  toOwnBusinessClaimSummary,
   type BusinessClaimSummaryResponse,
   type BusinessClaimDetailResponse,
+  type OwnBusinessClaimSummaryResponse,
 } from './business.mapper';
 
 const BUSINESS_OWNER_ROLE_CODE = 'business_owner';
+
+// Chặn trên phòng thủ cho GET /business-claims/mine (không phân trang, xem
+// BusinessClaimsRepository.listByRequester()) — khối lượng claim/một requester luôn nhỏ trong vận
+// hành bình thường (uq_claim_pending: tối đa một pending/place); đây chỉ là giới hạn chống phình
+// dữ liệu bất thường, không phải kích thước trang UI thật.
+const OWN_CLAIMS_LIMIT = 100;
 
 // BusinessClaimsService — ADR-015 Claim Decision Workflow (M3, không có M1/M2 trước đó trong repo
 // này). submit() = WF-05 UC-B1 (Member, Business.Claim). decide() = UC-B2 (Moderator,
@@ -100,6 +108,20 @@ export class BusinessClaimsService {
     });
 
     return toBusinessClaimSummary(claim);
+  }
+
+  /**
+   * GET /business-claims/mine — claim CỦA CHÍNH requester đang gọi (KHÔNG cần `Business.Verify`,
+   * KHÔNG khai `@RequirePermissions` ở controller — cùng nhánh "endpoint không khai báo permission
+   * → chỉ cần đã xác thực" mà `PlacesController.listMine` (GET /places/mine) đã đặt tiền lệ).
+   * `requesterId` LUÔN từ JWT (controller `@CurrentUser()`), KHÔNG bao giờ từ query/path/body —
+   * self-scope enforce bằng lọc CSDL trực tiếp trên `requester_id`
+   * (`BusinessClaimsRepository.listByRequester`), KHÔNG tái dùng `list()` (hàng đợi moderator) rồi
+   * lọc ở tầng ứng dụng.
+   */
+  async listMine(requesterId: string): Promise<OwnBusinessClaimSummaryResponse[]> {
+    const rows = await this.claimsRepo.listByRequester({ requesterId, limit: OWN_CLAIMS_LIMIT });
+    return rows.map(toOwnBusinessClaimSummary);
   }
 
   /** GET /business-claims (moderator queue, Business.Verify — PEP ở controller). */

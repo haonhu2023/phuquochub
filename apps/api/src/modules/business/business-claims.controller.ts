@@ -36,6 +36,16 @@ export class BusinessClaimsController {
     return this.service.list(query);
   }
 
+  // Claim của CHÍNH requester đang gọi. KHÔNG @RequirePermissions — self-scope enforce ở
+  // service/repository (lọc requesterId từ JWT), cùng tiền lệ 'places/mine' (PlacesController).
+  // PHẢI đặt TRƯỚC ':id' — nếu không, ':id' (ParseUUIDPipe) sẽ nuốt '/business-claims/mine' trước
+  // (khớp như thể 'mine' là một UUID, ném 400 thay vì tới đúng route này).
+  @Get('mine')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  listMine(@CurrentUser() user: AuthPrincipal) {
+    return this.service.listMine(user.sub);
+  }
+
   @Get(':id')
   @RequirePermissions('Business.Verify')
   @Throttle({ default: { limit: 120, ttl: 60_000 } })

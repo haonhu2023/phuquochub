@@ -3,12 +3,14 @@
 // Trang bảng điều khiển tối thiểu — minh chứng phiên đăng nhập + route guard hoạt động.
 // Nội dung tính năng dashboard đầy đủ thuộc các Sprint sau (ngoài phạm vi Sprint 1).
 //
-// Liên kết tới /dashboard/places (PLACE-041) và /dashboard/business-claims/new (PLACE-042):
-// KHÔNG ẩn như liên kết tới /dashboard/moderation — đó ẩn vì FE session chưa lộ permission và
-// Moderation.Queue.View chỉ một số role có; hai liên kết này thì khác, GET /places/mine và
-// POST /business-claims đều mở cho MỌI người dùng đã đăng nhập (Business.Claim là permission nền
-// mọi `member` có — xem SeedRbac1720000300000) nên không có rủi ro hiển thị liên kết mà phần lớn
-// người dùng sẽ bị 403 khi bấm vào.
+// Liên kết tới /dashboard/places (PLACE-041), /dashboard/business-claims/new (PLACE-042) và
+// /dashboard/business-claims ("My Claims" MVP): KHÔNG ẩn như liên kết tới /dashboard/moderation —
+// đó ẩn vì FE session chưa lộ permission và Moderation.Queue.View chỉ một số role có; ba liên kết
+// này thì khác, GET /places/mine, POST /business-claims và GET /business-claims/mine đều mở cho
+// MỌI người dùng đã đăng nhập (Business.Claim là permission nền mọi `member` có — xem
+// SeedRbac1720000300000; GET /business-claims/mine không khai permission nào, chỉ cần đã xác thực,
+// cùng nhánh với GET /places/mine) nên không có rủi ro hiển thị liên kết mà phần lớn người dùng sẽ
+// bị 403 khi bấm vào.
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -40,6 +42,11 @@ export default function DashboardPage() {
       <p style={{ marginTop: '0.5rem' }}>
         <Link href="/dashboard/business-claims/new" style={{ color: 'var(--accent)' }}>
           Yêu cầu xác nhận quyền quản lý →
+        </Link>
+      </p>
+      <p style={{ marginTop: '0.5rem' }}>
+        <Link href="/dashboard/business-claims" style={{ color: 'var(--accent)' }}>
+          Trạng thái yêu cầu của tôi →
         </Link>
       </p>
       <button
