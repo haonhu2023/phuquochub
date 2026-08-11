@@ -321,26 +321,45 @@ describe('Verification Scheduler — Operational Enablement (live Postgres)', ()
   it('manual runner (CLI THẬT, tiến trình con): --dry-run báo cáo đúng cấu trúc, KHÔNG ghi gì lên dòng CỦA TEST NÀY; chạy thật sau đó expire đúng dòng, exit code 0', async () => {
     // LƯU Ý cô lập: `expireOverdue()` quét TOÀN CỤC theo thiết kế (không, và KHÔNG NÊN, lọc theo
     // dữ liệu riêng của một test suite — nó là một job nền THẬT). Khi Jest chạy nhiều FILE e2e
-    // song song, một lần chạy thật ở `verifications.e2e-spec.ts` (file KHÁC) có thể xử lý CÙNG lúc
-    // với CLI subprocess ở đây — nên các assertion dưới đây cố tình KHÔNG dựa vào con số tổng hợp
-    // toàn cục (`eligible`/`expired` trong stdout CLI, vốn phản ánh MỌI dòng trong DB, không riêng
-    // gì test này) mà đối chiếu TRỰC TIẾP qua SQL trên ĐÚNG MỘT dòng do CHÍNH test này tạo ra —
-    // xác định, không phụ thuộc việc file khác có đang chạy song song hay không.
+    // song song, một lần chạy thật ở `verifications.e2e-spec.ts` (file KHÁC, gọi trực tiếp
+    // `expireOverdue()` 3 lần trong chính test của nó) có thể xử lý CÙNG lúc với CLI subprocess ở
+    // đây — nên các assertion dưới đây cố tình KHÔNG dựa vào con số tổng hợp toàn cục
+    // (`eligible`/`expired` trong stdout CLI, vốn phản ánh MỌI dòng trong DB, không riêng gì test
+    // này) mà đối chiếu TRỰC TIẾP qua SQL trên ĐÚNG MỘT dòng do CHÍNH test này tạo ra.
+    //
+    // RACE ĐÃ XÁC NHẬN + SỬA (2026-08-11): bản trước đặt `expires_at` ĐÃ quá hạn NGAY từ lúc
+    // insert — dòng vì vậy "đủ điều kiện" cho MỌI lần quét toàn cục (dry-run hay real, của test
+    // này hay file khác) TỪ THỜI ĐIỂM ĐÓ, mở ra đúng khoảng hở giữa insert và assertion dry-run
+    // bên dưới mà một real run ở `verifications.e2e-spec.ts` chạy song song có thể xử lý dòng
+    // TRƯỚC — làm assertion "còn 'official'" fail dù dry-run của CHÍNH test này không hề ghi gì
+    // (đã chứng minh bằng code: `VerificationsService.expireOverdue()`'s `if (!dryRun)` bọc TOÀN
+    // BỘ bước ghi, dry-run tuyệt đối không mở transaction nào). SỬA: dòng bắt đầu CHƯA đủ điều
+    // kiện (`expires_at` ở TƯƠNG LAI) — `WHERE expires_at < now` của `findOverdueTrustedBatch()`
+    // loại nó khỏi MỌI lần quét (bất kể dry-run/real, của test này hay file khác) cho tới khi
+    // CHÍNH test này chủ động đưa nó vào quá hạn NGAY TRƯỚC real run. Invariant "dry-run không ghi
+    // gì" giờ được kiểm XÁC ĐỊNH — không còn phụ thuộc việc file khác có đang chạy song song hay
+    // không, KHÔNG cần sleep/skip/nới lỏng assertion nào.
     const sourceId = await mkSource('government');
     const placeId = await mkPlace('cli_runner');
     const past = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const verifId = await mkOverdueOfficialVerification(placeId, sourceId, past);
+    const notYetDue = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const verifId = await mkOverdueOfficialVerification(placeId, sourceId, notYetDue);
 
     const dryRunOutput = runScriptSync(['--dry-run']);
     expect(dryRunOutput).toContain('dryRun:              true');
     expect(dryRunOutput).toMatch(/eligible:\s+\d+/); // cấu trúc đúng — KHÔNG giả định con số cụ thể (toàn cục, có thể bị file khác chạy song song ảnh hưởng)
 
     const beforeDryRun = await ds.query(`SELECT status, updated_at FROM verifications WHERE id=$1`, [verifId]);
-    // Dòng CỦA TEST NÀY cụ thể: dry-run không ghi gì lên NÓ. (Nếu status đã đổi, đó PHẢI là do một
-    // real run ở file khác chạy song song đụng vào — cực hiếm trong đúng khung thời gian hẹp giữa
-    // insert và dry-run — không phải do chính dry-run vừa chạy, vì dry-run tuyệt đối không mở
-    // transaction nào, xem VerificationsService.expireOverdue()'s `if (!dryRun)` gate.)
+    // Dòng CỦA TEST NÀY CHƯA đủ điều kiện (expires_at tương lai) — KHÔNG lần quét toàn cục nào
+    // (dry-run hay real, của test này hay file khác) có thể chạm tới nó ở đây, nên assertion này
+    // giờ xác định TUYỆT ĐỐI (không còn "cực hiếm mới fail" như trước khi sửa).
     expect(beforeDryRun[0].status).toBe('official');
+
+    // Đưa dòng vào quá hạn NGAY TRƯỚC real run — real run CẦN một dòng THẬT SỰ đủ điều kiện để có
+    // gì mà expire. Từ đây dòng CÓ THỂ bị một real run khác (file song song) xử lý trước CLI của
+    // chính test này — KHÔNG sao, assertion sau real run (dưới) chỉ cần dòng đã 'expired', không
+    // quan tâm AI làm việc đó (đã race-safe từ bản gốc, không đổi).
+    await ds.query(`UPDATE verifications SET expires_at=$1 WHERE id=$2`, [past, verifId]);
 
     const realRunOutput = runScriptSync([]);
     expect(realRunOutput).toContain('dryRun:              false');
