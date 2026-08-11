@@ -1955,7 +1955,7 @@ paths:
                 allOf:
                   - $ref: '#/components/schemas/SuccessEnvelope'
                   - properties:
-                      data: { type: array, items: { $ref: '#/components/schemas/BusinessClaimSummary' } }
+                      data: { type: array, items: { $ref: '#/components/schemas/ModeratorBusinessClaimSummary' } }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
@@ -3052,9 +3052,24 @@ components:
         decided_at: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-    BusinessClaimDetail:
+    ModeratorBusinessClaimSummary:
       allOf:
         - $ref: '#/components/schemas/BusinessClaimSummary'
+        - type: object
+          description: >-
+            GET /business-claims (hàng đợi Business.Verify) — BusinessClaimSummary + ba trường định
+            danh đọc-được. Cần thiết vì không có route tra place theo UUID (`GET /places/{slug}`
+            nhận slug), nên hàng đợi không thể tự phân giải tên cơ sở từ `place_id`.
+            CỐ Ý KHÔNG có email người yêu cầu — hẹp hơn BusinessManagerListItem: moderator cần
+            NHẬN DIỆN (phân biệt hai người cùng đòi một cơ sở → nhánh `disputed`), không cần liên
+            hệ trực tiếp; thông tin liên hệ nếu có nằm trong chính `evidence` của Detail.
+          properties:
+            place_name: { type: string }
+            place_slug: { type: string }
+            requester_display_name: { type: string }
+    BusinessClaimDetail:
+      allOf:
+        - $ref: '#/components/schemas/ModeratorBusinessClaimSummary'
         - type: object
           properties:
             evidence: { type: array, items: { $ref: '#/components/schemas/BusinessClaimEvidenceItem' } }

@@ -61,6 +61,101 @@
   cursor: not-allowed;
 }
 
+/* ---------- Duyệt claim (moderator, Business.Verify) ----------
+   Chỉ những class CHƯA có ở place-management.module.css/places.module.css — form/section/
+   statusBadge/list/row đều tái dùng nguyên vẹn từ đó. */
+
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem 0;
+}
+
+.filterLink {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.filterLink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.filterLinkActive {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+
+.decisionOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.decisionLegend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.decisionOption {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.decisionOption:hover {
+  border-color: var(--accent);
+}
+.optApprove:has(input:checked) {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+.optReject:has(input:checked) {
+  border-color: var(--err);
+  background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.reviewMuted {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.evidenceList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Tham chiếu bằng chứng là CHUỖI TỰ DO do người dùng nhập — hiển thị nguyên văn (React tự escape),
+   KHÔNG bao giờ dựng thành liên kết có thể bấm: một `reference` dạng URL do người lạ nhập mà
+   moderator bấm vào là bề mặt phishing/SSRF ngay trong công cụ duyệt. `word-break` để chuỗi dài
+   không phá vỡ layout trên màn hình hẹp. */
+.evidenceReference {
+  color: var(--fg);
+  font-size: 0.92rem;
+  word-break: break-word;
+}
+
 /* ---------- CTA trên trang chi tiết Place công khai ---------- */
 .claimBanner {
   display: flex;

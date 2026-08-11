@@ -173,3 +173,178 @@ describe('BusinessClaimsRepository.listByRequester', () => {
     expect(result).toEqual([]);
   });
 });
+
+// GET /business-claims (list) — hàng đợi moderator. Hai tính chất quan trọng ở tầng CSDL:
+// (1) `evidence` KHÔNG được nạp cho MỖI dòng hàng đợi (riêng tư + JSONB nặng, chỉ lộ ở detail);
+// (2) place/requester được join THẬT để hàng đợi có tên đọc được — không có route tra place theo
+// UUID nên thiếu join này thì màn hình duyệt chỉ còn UUID trần.
+describe('BusinessClaimsRepository.list (hàng đợi moderator)', () => {
+  let repo: LooseMock<Repository<BusinessClaim>>;
+  let sut: BusinessClaimsRepository;
+
+  function fakeQb(rows: unknown[], total = rows.length) {
+    const calls: {
+      andWhere: Array<[string, unknown]>;
+      select: unknown[][];
+      addSelect: unknown[][];
+      orderBy: Array<[string, string]>;
+    } = { andWhere: [], select: [], addSelect: [], orderBy: [] };
+    const qb: Record<string, jest.Mock> = {};
+    qb.innerJoin = jest.fn().mockReturnValue(qb);
+    qb.withDeleted = jest.fn().mockReturnValue(qb);
+    qb.andWhere = jest.fn((cond: string, params: unknown) => {
+      calls.andWhere.push([cond, params]);
+      return qb;
+    });
+    qb.select = jest.fn((cols: unknown[]) => {
+      calls.select.push(cols);
+      return qb;
+    });
+    qb.addSelect = jest.fn((cols: unknown[]) => {
+      calls.addSelect.push(cols);
+      return qb;
+    });
+    qb.orderBy = jest.fn((col: string, dir: string) => {
+      calls.orderBy.push([col, dir]);
+      return qb;
+    });
+    qb.addOrderBy = jest.fn((col: string, dir: string) => {
+      calls.orderBy.push([col, dir]);
+      return qb;
+    });
+    qb.skip = jest.fn().mockReturnValue(qb);
+    qb.take = jest.fn().mockReturnValue(qb);
+    qb.getCount = jest.fn().mockResolvedValue(total);
+    qb.getMany = jest.fn().mockResolvedValue(rows);
+    return { qb, calls };
+  }
+
+  function fakeRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'claim-1',
+      placeId: 'place-1',
+      requesterId: 'user-1',
+      status: ClaimStatus.PENDING,
+      reviewerId: null,
+      reasonCode: null,
+      decisionNote: null,
+      decidedAt: null,
+      createdAt: new Date('2026-08-10T00:00:00Z'),
+      updatedAt: new Date('2026-08-10T00:00:00Z'),
+      place: { id: 'place-1', name: 'Test Place', slug: 'test-place' },
+      requester: { id: 'user-1', displayName: 'Người Yêu Cầu' },
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    repo = createMock<Repository<BusinessClaim>>();
+    sut = new BusinessClaimsRepository(repo);
+  });
+
+  it('innerJoin place + requester + withDeleted (place đã lưu trữ vẫn hiển thị được)', async () => {
+    const { qb } = fakeQb([]);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await sut.list({ status: ClaimStatus.PENDING, limit: 20, offset: 0 });
+
+    expect(qb.innerJoin).toHaveBeenCalledWith('c.place', 'place');
+    expect(qb.innerJoin).toHaveBeenCalledWith('c.requester', 'requester');
+    expect(qb.withDeleted).toHaveBeenCalled();
+  });
+
+  it('select() KHÔNG nạp evidence (riêng tư — chỉ lộ ở GET /business-claims/{id})', async () => {
+    const { qb, calls } = fakeQb([]);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await sut.list({ status: ClaimStatus.PENDING, limit: 20, offset: 0 });
+
+    const selected = [...calls.select.flat(), ...calls.addSelect.flat()];
+    expect(selected).not.toContain('c.evidence');
+    expect(selected).toEqual(
+      expect.arrayContaining(['c.id', 'c.placeId', 'c.requesterId', 'place.name', 'place.slug', 'requester.displayName']),
+    );
+  });
+
+  it('KHÔNG nạp email người yêu cầu (chỉ displayName)', async () => {
+    const { qb, calls } = fakeQb([]);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await sut.list({ status: ClaimStatus.PENDING, limit: 20, offset: 0 });
+
+    const selected = [...calls.select.flat(), ...calls.addSelect.flat()];
+    expect(selected).not.toContain('requester.email');
+  });
+
+  it('lọc theo status và place_id khi được truyền', async () => {
+    const { qb, calls } = fakeQb([]);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await sut.list({ status: ClaimStatus.APPROVED, placeId: 'place-9', limit: 20, offset: 0 });
+
+    expect(calls.andWhere).toEqual([
+      ['c.status = :status', { status: ClaimStatus.APPROVED }],
+      ['c.placeId = :placeId', { placeId: 'place-9' }],
+    ]);
+  });
+
+  it('sắp xếp CỐ ĐỊNH createdAt ASC, id ASC (hàng đợi cũ nhất trước, tie-break xác định)', async () => {
+    const { qb, calls } = fakeQb([]);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    await sut.list({ status: ClaimStatus.PENDING, limit: 20, offset: 0 });
+
+    expect(calls.orderBy).toEqual([
+      ['c.createdAt', 'ASC'],
+      ['c.id', 'ASC'],
+    ]);
+  });
+
+  it('map place/requester đã join thành field phẳng, KHÔNG kèm evidence', async () => {
+    const { qb } = fakeQb([fakeRow()], 1);
+    repo.createQueryBuilder = jest.fn().mockReturnValue(qb);
+
+    const result = await sut.list({ status: ClaimStatus.PENDING, limit: 20, offset: 0 });
+
+    expect(result.total).toBe(1);
+    expect(result.items[0]).toEqual({
+      id: 'claim-1',
+      placeId: 'place-1',
+      placeName: 'Test Place',
+      placeSlug: 'test-place',
+      requesterId: 'user-1',
+      requesterDisplayName: 'Người Yêu Cầu',
+      status: ClaimStatus.PENDING,
+      reviewerId: null,
+      reasonCode: null,
+      decisionNote: null,
+      decidedAt: null,
+      createdAt: new Date('2026-08-10T00:00:00Z'),
+      updatedAt: new Date('2026-08-10T00:00:00Z'),
+    });
+    expect(result.items[0]).not.toHaveProperty('evidence');
+  });
+});
+
+// GET /business-claims/{id} — detail PHẢI nạp place/requester (mapper đọc thẳng hai quan hệ này).
+describe('BusinessClaimsRepository.findByIdWithRelations', () => {
+  let repo: LooseMock<Repository<BusinessClaim>>;
+  let sut: BusinessClaimsRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<BusinessClaim>>();
+    sut = new BusinessClaimsRepository(repo);
+  });
+
+  it('findOne kèm relations place+requester và withDeleted', async () => {
+    repo.findOne = jest.fn().mockResolvedValue(null);
+
+    await sut.findByIdWithRelations('claim-1');
+
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { id: 'claim-1' },
+      relations: { place: true, requester: true },
+      withDeleted: true,
+    });
+  });
+});

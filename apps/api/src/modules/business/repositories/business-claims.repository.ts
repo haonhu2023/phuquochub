@@ -32,6 +32,41 @@ export interface ListByRequesterParams {
 }
 
 /**
+ * Hàng moderator-facing cho GET /business-claims (hàng đợi duyệt claim). Bổ sung ĐÚNG ba trường
+ * định danh người-đọc-được so với cột thô của `business_claims`: `placeName`/`placeSlug` (join
+ * `places`) và `requesterDisplayName` (join `users`).
+ *
+ * LÝ DO cần join, không phải tiện nghi: hàng đợi chỉ có `place_id`/`requester_id` dạng UUID, mà API
+ * công khai KHÔNG có route tra place theo UUID (`PlacesController` chỉ có `@Get(':slug')`) — không
+ * có join này thì màn hình duyệt claim không thể hiển thị "đang duyệt cơ sở NÀO, do AI yêu cầu".
+ * Cùng kỹ thuật `listByRequester()` bên dưới đã dùng (innerJoin + `.withDeleted()`).
+ *
+ * `evidence` CỐ Ý KHÔNG được nạp ở đường này (`.select()` không liệt kê): hàng đợi không hiển thị
+ * bằng chứng — nó chỉ lộ ở `GET /business-claims/{id}` (business.md §2 "riêng tư, chỉ Moderator").
+ * Không nạp JSONB evidence cho mỗi dòng cũng tránh kéo dữ liệu nặng không dùng tới.
+ *
+ * `requesterDisplayName` là danh tính TỐI THIỂU đủ để moderator phân biệt hai người cùng đòi một cơ
+ * sở (nhánh `disputed`). Email KHÔNG có ở đây — hẹp hơn cả tiền lệ `BusinessManagerListItem`
+ * (lộ cả display_name lẫn email cho CHỦ cơ sở); moderator cần nhận diện, không cần liên hệ trực
+ * tiếp (thông tin liên hệ, nếu có, nằm trong chính `evidence`).
+ */
+export interface ModeratorBusinessClaimRow {
+  id: string;
+  placeId: string;
+  placeName: string;
+  placeSlug: string;
+  requesterId: string;
+  requesterDisplayName: string;
+  status: ClaimStatus;
+  reviewerId: string | null;
+  reasonCode: ClaimReasonCode | null;
+  decisionNote: string | null;
+  decidedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
  * Hàng requester-safe cho GET /business-claims/mine — CỐ Ý không có `evidence`/`reviewerId`/
  * `decisionNote` (business.md §2 "riêng tư, chỉ Moderator" cho evidence; `decisionNote` là ghi chú
  * tự do của moderator, không có bảo đảm nào trong schema hiện tại rằng nó an toàn cho requester đọc
@@ -104,8 +139,16 @@ export class BusinessClaimsRepository {
    * này — repository không tự chọn, cùng nguyên tắc `ModerationCasesRepository.list()`).
    * `id ASC` tie-break cho phân trang xác định (GAP-12).
    */
-  async list(params: ListBusinessClaimsParams): Promise<{ items: BusinessClaim[]; total: number }> {
-    const qb = this.repo.createQueryBuilder('c');
+  async list(params: ListBusinessClaimsParams): Promise<{ items: ModeratorBusinessClaimRow[]; total: number }> {
+    // innerJoin + `.withDeleted()`: `place_id`/`requester_id` đều NOT NULL nên mọi claim LUÔN có đủ
+    // hai đầu; `withDeleted()` giữ claim hiển thị được cả khi place đã bị lưu trữ (soft delete) SAU
+    // khi claim được tạo — hàng đợi/lịch sử duyệt không nên biến mất vì lý do đó. `users` không có
+    // soft delete nên join requester không chịu ảnh hưởng của cờ này.
+    const qb = this.repo
+      .createQueryBuilder('c')
+      .innerJoin('c.place', 'place')
+      .innerJoin('c.requester', 'requester')
+      .withDeleted();
     if (params.status) {
       qb.andWhere('c.status = :status', { status: params.status });
     }
@@ -114,14 +157,60 @@ export class BusinessClaimsRepository {
     }
 
     const total = await qb.getCount();
-    const items = await qb
+    const rows = await qb
+      .select([
+        'c.id',
+        'c.placeId',
+        'c.requesterId',
+        'c.status',
+        'c.reviewerId',
+        'c.reasonCode',
+        'c.decisionNote',
+        'c.decidedAt',
+        'c.createdAt',
+        'c.updatedAt',
+      ])
+      .addSelect(['place.id', 'place.name', 'place.slug', 'requester.id', 'requester.displayName'])
       .orderBy('c.createdAt', 'ASC')
       .addOrderBy('c.id', 'ASC')
       .skip(params.offset)
       .take(params.limit)
       .getMany();
 
-    return { items, total };
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        placeId: r.placeId,
+        placeName: r.place.name,
+        placeSlug: r.place.slug,
+        requesterId: r.requesterId,
+        requesterDisplayName: r.requester.displayName,
+        status: r.status,
+        reviewerId: r.reviewerId,
+        reasonCode: r.reasonCode,
+        decisionNote: r.decisionNote,
+        decidedAt: r.decidedAt,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+      })),
+      total,
+    };
+  }
+
+  /**
+   * GET /business-claims/{id} (moderator detail) — CÙNG claim như `findById()` nhưng kèm `place` và
+   * `requester` để response detail hiển thị tên cơ sở/người yêu cầu thay vì UUID trần.
+   *
+   * TÁCH RIÊNG khỏi `findById()` có chủ đích: `findById()` phục vụ đường ghi (`submit()` đọc lại
+   * dòng vừa tạo) — thêm hai join vào đó là trả giá truy vấn cho mọi caller chỉ cần cột thô.
+   * `withDeleted()` cùng lý do như `list()` (place có thể đã bị lưu trữ sau khi claim được tạo).
+   */
+  findByIdWithRelations(id: string): Promise<BusinessClaim | null> {
+    return this.repo.findOne({
+      where: { id },
+      relations: { place: true, requester: true },
+      withDeleted: true,
+    });
   }
 
   /**

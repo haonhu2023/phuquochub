@@ -1,7 +1,10 @@
 import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { BusinessClaimsService } from './business-claims.service';
-import { BusinessClaimsRepository } from './repositories/business-claims.repository';
+import {
+  BusinessClaimsRepository,
+  type ModeratorBusinessClaimRow,
+} from './repositories/business-claims.repository';
 import { BusinessMembersRepository } from './repositories/business-members.repository';
 import { PlacesRepository, PlaceCardRow } from '../places/repositories/places.repository';
 import { RolesRepository } from '../rbac/repositories/roles.repository';
@@ -35,6 +38,34 @@ function makeClaim(overrides: Partial<BusinessClaim> = {}): BusinessClaim {
   c.createdAt = new Date('2026-08-05T00:00:00Z');
   c.updatedAt = new Date('2026-08-05T00:00:00Z');
   return Object.assign(c, overrides);
+}
+
+/** Hàng đợi moderator (GET /business-claims) — hình dạng ModeratorBusinessClaimRow, không phải entity. */
+function makeModeratorRow(overrides: Partial<ModeratorBusinessClaimRow> = {}): ModeratorBusinessClaimRow {
+  return {
+    id: 'claim-1',
+    placeId: 'place-1',
+    placeName: 'Test Place',
+    placeSlug: 'test-place',
+    requesterId: 'requester-1',
+    requesterDisplayName: 'Người Yêu Cầu',
+    status: ClaimStatus.PENDING,
+    reviewerId: null,
+    reasonCode: null,
+    decisionNote: null,
+    decidedAt: null,
+    createdAt: new Date('2026-08-05T00:00:00Z'),
+    updatedAt: new Date('2026-08-05T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/** Claim ĐÃ nạp `place`/`requester` — đúng thứ `findByIdWithRelations()` trả về cho detail. */
+function makeClaimWithRelations(overrides: Partial<BusinessClaim> = {}): BusinessClaim {
+  const claim = makeClaim(overrides);
+  claim.place = { id: 'place-1', name: 'Test Place', slug: 'test-place' } as BusinessClaim['place'];
+  claim.requester = { id: 'requester-1', displayName: 'Người Yêu Cầu' } as BusinessClaim['requester'];
+  return claim;
 }
 
 function makePlace(overrides: Partial<PlaceCardRow> = {}): PlaceCardRow {
@@ -90,6 +121,7 @@ describe('BusinessClaimsService', () => {
     manager = createMock<EntityManager>();
     claimsRepo = createMock<BusinessClaimsRepository>({
       findById: jest.fn(),
+      findByIdWithRelations: jest.fn(),
       findByIdForUpdate: jest.fn(),
       createPending: jest.fn(),
       list: jest.fn(),
@@ -273,22 +305,61 @@ describe('BusinessClaimsService', () => {
     });
 
     it('kết quả list KHÔNG có evidence (privacy)', async () => {
-      claimsRepo.list.mockResolvedValue({ items: [makeClaim()], total: 1 });
+      claimsRepo.list.mockResolvedValue({ items: [makeModeratorRow()], total: 1 });
       const result = await service.list({});
       expect(result.data[0]).not.toHaveProperty('evidence');
+    });
+
+    it('hàng đợi kèm tên cơ sở/người yêu cầu (UUID trần không đủ để duyệt)', async () => {
+      claimsRepo.list.mockResolvedValue({ items: [makeModeratorRow()], total: 1 });
+      const result = await service.list({});
+      expect(result.data[0]).toMatchObject({
+        place_id: 'place-1',
+        place_name: 'Test Place',
+        place_slug: 'test-place',
+        requester_id: 'requester-1',
+        requester_display_name: 'Người Yêu Cầu',
+      });
+    });
+
+    it('hàng đợi KHÔNG lộ email người yêu cầu (hẹp hơn BusinessManagerListItem có chủ đích)', async () => {
+      claimsRepo.list.mockResolvedValue({ items: [makeModeratorRow()], total: 1 });
+      const result = await service.list({});
+      expect(JSON.stringify(result.data[0])).not.toContain('@');
+      expect(result.data[0]).not.toHaveProperty('requester_email');
     });
   });
 
   describe('getById', () => {
     it('không tồn tại -> NotFoundException', async () => {
-      claimsRepo.findById.mockResolvedValue(null);
+      claimsRepo.findByIdWithRelations.mockResolvedValue(null);
       await expect(service.getById('missing')).rejects.toThrow(NotFoundException);
     });
 
     it('tồn tại -> detail CÓ evidence', async () => {
-      claimsRepo.findById.mockResolvedValue(makeClaim());
+      claimsRepo.findByIdWithRelations.mockResolvedValue(makeClaimWithRelations());
       const result = await service.getById('claim-1');
       expect(result.evidence).toEqual([{ type: BusinessClaimEvidenceType.BUSINESS_LICENSE, reference: 'media-1' }]);
+    });
+
+    it('detail kèm tên cơ sở/người yêu cầu, KHÔNG email', async () => {
+      claimsRepo.findByIdWithRelations.mockResolvedValue(makeClaimWithRelations());
+      const result = await service.getById('claim-1');
+      expect(result).toMatchObject({
+        place_name: 'Test Place',
+        place_slug: 'test-place',
+        requester_display_name: 'Người Yêu Cầu',
+      });
+      expect(result).not.toHaveProperty('requester_email');
+    });
+
+    // Detail đọc thẳng `claim.place`/`claim.requester` -> PHẢI đi qua finder có nạp quan hệ,
+    // không phải `findById()` (cột thô) — nếu lẫn, detail sẽ ném TypeError trên đường thật.
+    it('dùng finder CÓ nạp quan hệ, không dùng findById()', async () => {
+      claimsRepo.findByIdWithRelations.mockResolvedValue(makeClaimWithRelations());
+      await service.getById('claim-1');
+      expect(claimsRepo.findByIdWithRelations).toHaveBeenCalledWith('claim-1');
+      expect(claimsRepo.findById).not.toHaveBeenCalled();
     });
   });
 

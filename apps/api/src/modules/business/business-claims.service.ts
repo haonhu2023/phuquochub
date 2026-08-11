@@ -28,6 +28,7 @@ import { SubmitBusinessClaimDto, DecideBusinessClaimDto, ListBusinessClaimsQuery
 import {
   toBusinessClaimDetail,
   toBusinessClaimSummary,
+  toModeratorBusinessClaimSummary,
   toOwnBusinessClaimSummary,
   type BusinessClaimSummaryResponse,
   type BusinessClaimDetailResponse,
@@ -137,12 +138,16 @@ export class BusinessClaimsService {
       offset: (page - 1) * limit,
     });
 
-    return paginate(items.map(toBusinessClaimSummary), page, limit, total);
+    return paginate(items.map(toModeratorBusinessClaimSummary), page, limit, total);
   }
 
-  /** GET /business-claims/{id} (moderator detail, Business.Verify — PEP ở controller). */
+  /**
+   * GET /business-claims/{id} (moderator detail, Business.Verify — PEP ở controller).
+   * `findByIdWithRelations` (không phải `findById`): detail hiển thị tên cơ sở/người yêu cầu, nên
+   * `place`/`requester` PHẢI được nạp — `toBusinessClaimDetail` đọc thẳng từ hai quan hệ đó.
+   */
   async getById(id: string): Promise<BusinessClaimDetailResponse> {
-    const claim = await this.claimsRepo.findById(id);
+    const claim = await this.claimsRepo.findByIdWithRelations(id);
     if (!claim) {
       throw new NotFoundException('Không tìm thấy claim');
     }

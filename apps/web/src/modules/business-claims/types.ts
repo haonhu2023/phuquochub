@@ -61,6 +61,45 @@ export interface BusinessClaimSummary {
   updated_at: string;
 }
 
+// Khớp ModeratorBusinessClaimSummaryResponse (business.mapper.ts) — GET /business-claims (hàng đợi
+// Business.Verify). BusinessClaimSummary + ba trường định danh đọc-được: không có route tra place
+// theo UUID nên hàng đợi KHÔNG thể tự phân giải tên cơ sở từ place_id. Vẫn KHÔNG có `evidence`
+// (riêng tư — chỉ GET /business-claims/{id}) và KHÔNG có email người yêu cầu.
+export interface ModeratorBusinessClaim extends Omit<BusinessClaimSummary, 'status' | 'reason_code'> {
+  status: BusinessClaimStatusValue;
+  reason_code: BusinessClaimReasonCodeValue | null;
+  place_name: string;
+  place_slug: string;
+  requester_display_name: string;
+}
+
+// Khớp BusinessClaimDetailResponse — CHỈ đường đã qua Business.Verify mới thấy `evidence`.
+export interface ModeratorBusinessClaimDetail extends ModeratorBusinessClaim {
+  evidence: BusinessClaimEvidenceInput[];
+}
+
+// Khớp ListBusinessClaimsQueryDto (business.dto.ts) — chỉ status/place_id/page/limit; KHÔNG có
+// tham số sort nào ở backend (thứ tự CỐ ĐỊNH created_at ASC, id ASC).
+export interface ListBusinessClaimsParams {
+  status?: BusinessClaimStatusValue;
+  place_id?: string;
+  page?: number;
+  limit?: number;
+}
+
+// Khớp BusinessClaimDecision (business.enums.ts) — CHỈ approve|reject. `dispute` là kết quả TỰ
+// ĐỘNG phía backend khi approve gặp owner hiệu lực đã tồn tại, KHÔNG phải lựa chọn của moderator;
+// `withdraw` là endpoint riêng của chính requester.
+export const BUSINESS_CLAIM_DECISIONS = ['approve', 'reject'] as const;
+export type BusinessClaimDecisionValue = (typeof BUSINESS_CLAIM_DECISIONS)[number];
+
+// Khớp DecideBusinessClaimDto — reason_code BẮT BUỘC khi decision=reject (422 nếu thiếu).
+export interface DecideBusinessClaimRequest {
+  decision: BusinessClaimDecisionValue;
+  reason_code?: BusinessClaimReasonCodeValue;
+  decision_note?: string;
+}
+
 // Năm trạng thái claim thật (business.enums.ts ClaimStatus) — không phát minh thêm.
 export const BUSINESS_CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'disputed', 'withdrawn'] as const;
 export type BusinessClaimStatusValue = (typeof BUSINESS_CLAIM_STATUSES)[number];

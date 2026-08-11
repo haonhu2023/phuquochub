@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
@@ -107,6 +108,15 @@ export function ModerationQueueView() {
         <h1 className={placeStyles.pageTitle}>Hàng chờ kiểm duyệt</h1>
         <p className={placeStyles.pageLede}>
           Danh sách case cần xử lý, sắp xếp cố định theo ưu tiên và số báo cáo.
+        </p>
+        {/* Điểm vào DUY NHẤT tới hàng đợi duyệt claim: bảng điều khiển chung KHÔNG hiện liên kết
+            nào cần permission (session FE chưa lộ permission, xem dashboard/page.tsx), nhưng ai đã
+            đứng được ở màn hình này thì cũng là đối tượng của `Business.Verify` — đặt liên kết ở
+            đây giúp moderator tìm thấy tính năng mà không phơi liên kết 403 cho người dùng thường. */}
+        <p>
+          <Link href="/dashboard/business-claims/review" style={{ color: 'var(--accent)' }}>
+            Duyệt yêu cầu xác nhận quyền quản lý →
+          </Link>
         </p>
       </header>
 
