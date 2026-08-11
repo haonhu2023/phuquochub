@@ -61,7 +61,7 @@ export interface BusinessClaimSummary {
   updated_at: string;
 }
 
-// Bốn trạng thái claim thật (business.enums.ts ClaimStatus) — không phát minh thêm.
+// Năm trạng thái claim thật (business.enums.ts ClaimStatus) — không phát minh thêm.
 export const BUSINESS_CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'disputed', 'withdrawn'] as const;
 export type BusinessClaimStatusValue = (typeof BUSINESS_CLAIM_STATUSES)[number];
 
