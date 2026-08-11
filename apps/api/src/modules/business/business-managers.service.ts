@@ -10,7 +10,12 @@ import { MemberRole } from './business.enums';
 import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import { BusinessMember } from './entities/business-member.entity';
-import { toBusinessMemberResponse, type BusinessMemberResponse } from './business-member.mapper';
+import {
+  toBusinessMemberResponse,
+  toBusinessManagerListItem,
+  type BusinessMemberResponse,
+  type BusinessManagerListItem,
+} from './business-member.mapper';
 
 const BUSINESS_MANAGER_ROLE_CODE = 'business_manager';
 
@@ -83,6 +88,34 @@ export class BusinessManagersService {
     });
 
     return toBusinessMemberResponse(result);
+  }
+
+  /**
+   * GET /business/{placeId}/managers. Actor authorization ĐÃ được PermissionsGuard +
+   * `@AuthorizationContext` xác nhận TRƯỚC (cùng `Business.Manager.Assign.Managed` — chỉ
+   * `business_owner` giữ, xem chú thích đầu class) — service chỉ đọc, KHÔNG kiểm tra owner lần hai.
+   * CHỈ manager hiệu lực (không owner, không revoked) — xem
+   * `BusinessMembersRepository.listActiveManagers()`.
+   */
+  async listManagers(placeId: string): Promise<BusinessManagerListItem[]> {
+    const rows = await this.membersRepo.listActiveManagers(placeId);
+    return rows.map(toBusinessManagerListItem);
+  }
+
+  /**
+   * GET /business/{placeId}/managers/lookup?email=... — tra `user_id` từ email CHÍNH XÁC để điền
+   * vào form gán manager (Phase 4 quyết định B, xem `dto/business-manager.dto.ts`
+   * `LookupBusinessUserQueryDto`). `placeId` KHÔNG lọc dữ liệu ở đây (tra cứu user vốn không có
+   * khái niệm "thuộc về một cơ sở") — nó chỉ tồn tại trên route để tái dùng ĐÚNG
+   * `@AuthorizationContext` mà assign/revoke đã có, giữ CÙNG một cổng phân quyền (chỉ owner hiệu
+   * lực của ĐÚNG cơ sở `id` mới gọi được).
+   */
+  async lookupUserByEmail(email: string): Promise<{ user_id: string; display_name: string }> {
+    const user = await this.usersRepo.findByEmail(email);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng với email này.');
+    }
+    return { user_id: user.id, display_name: user.displayName };
   }
 
   /** DELETE /business/{placeId}/managers/{userId}. */

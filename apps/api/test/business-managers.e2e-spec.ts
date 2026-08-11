@@ -364,4 +364,124 @@ describe('Business Manager Assignment/Revocation (live Postgres)', () => {
       .send({ name: 'Place B — still managed after revoke at A' });
     expect(stillWorksAtB.status).toBe(200);
   });
+
+  // GET /business/{id}/managers + GET /business/{id}/managers/lookup — Manager Management
+  // prerequisite gap. Cùng cổng phân quyền `Business.Manager.Assign.Managed` (chỉ business_owner)
+  // đã được chứng minh ở các test assign/revoke phía trên — trọng tâm ở đây là: field an toàn,
+  // không rò password_hash/email của người lạ, cách ly cross-business, owner/revoked không lọt vào
+  // danh sách, và toàn bộ luồng lookup->assign->list->revoke->list hoạt động đầu-cuối.
+  describe('GET /business/{id}/managers + lookup', () => {
+    it('anonymous -> 401 trên cả list và lookup', async () => {
+      const placeId = await mkPlace('list_anon');
+      const list = await request(app.getHttpServer()).get(`/api/business/${placeId}/managers`);
+      expect(list.status).toBe(401);
+      const lookup = await request(app.getHttpServer()).get(
+        `/api/business/${placeId}/managers/lookup?email=nobody@phuquochub.test`,
+      );
+      expect(lookup.status).toBe(401);
+    });
+
+    it('plain member (không Business.Manager.Assign.Managed) -> 403 trên cả list và lookup', async () => {
+      const { placeId } = await mkPlaceWithOwner('list_member');
+      const { accessToken: memberToken, userId: memberId } = await createUser('list_member');
+      await assignRole(memberId, 'member', 'global', null);
+
+      const list = await request(app.getHttpServer())
+        .get(`/api/business/${placeId}/managers`)
+        .set('Authorization', `Bearer ${memberToken}`);
+      expect(list.status).toBe(403);
+
+      const lookup = await request(app.getHttpServer())
+        .get(`/api/business/${placeId}/managers/lookup?email=nobody@phuquochub.test`)
+        .set('Authorization', `Bearer ${memberToken}`);
+      expect(lookup.status).toBe(403);
+    });
+
+    it('owner của MỘT cơ sở khác -> 403 khi list cơ sở này (cross-business isolation, ADR-019)', async () => {
+      const { placeId } = await mkPlaceWithOwner('list_target');
+      const otherOwner = await mkPlaceWithOwner('list_cross');
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/business/${placeId}/managers`)
+        .set('Authorization', `Bearer ${otherOwner.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('cơ sở chưa có manager nào -> 200 mảng rỗng', async () => {
+      const owner = await mkPlaceWithOwner('list_empty');
+      const res = await request(app.getHttpServer())
+        .get(`/api/business/${owner.placeId}/managers`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('lookup email không tồn tại -> 404', async () => {
+      const owner = await mkPlaceWithOwner('lookup_404');
+      const res = await request(app.getHttpServer())
+        .get(`/api/business/${owner.placeId}/managers/lookup?email=khong-ton-tai-${Date.now()}@phuquochub.test`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('luồng đầy đủ: lookup email -> assign bằng user_id trả về -> xuất hiện trong list (field an toàn, KHÔNG owner/revoked) -> revoke -> biến mất khỏi list', async () => {
+      const owner = await mkPlaceWithOwner('full_flow');
+      const target = await createUser('full_flow_target');
+      await assignRole(target.userId, 'member', 'global', null);
+      const targetEmail = `e2e_bizmgr_full_flow_target_${Date.now()}@phuquochub.test`;
+      // createUser() ở trên tự sinh email random khác targetEmail — ghi đè lại ĐÚNG email đã biết để
+      // lookup theo email hoạt động (không có API nào set email theo ý test khác).
+      await ds.query(`UPDATE users SET email=$1, display_name=$2 WHERE id=$3`, [
+        targetEmail,
+        'Full Flow Target',
+        target.userId,
+      ]);
+
+      const lookup = await request(app.getHttpServer())
+        .get(`/api/business/${owner.placeId}/managers/lookup?email=${encodeURIComponent(targetEmail)}`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(lookup.status).toBe(200);
+      expect(lookup.body.data).toEqual({ user_id: target.userId, display_name: 'Full Flow Target' });
+      expect(lookup.body.data).not.toHaveProperty('email');
+
+      const assignRes = await request(app.getHttpServer())
+        .post(`/api/business/${owner.placeId}/managers`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ user_id: lookup.body.data.user_id });
+      expect(assignRes.status).toBe(201);
+
+      const listAfterAssign = await request(app.getHttpServer())
+        .get(`/api/business/${owner.placeId}/managers`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(listAfterAssign.status).toBe(200);
+      expect(listAfterAssign.body.data).toEqual([
+        {
+          user_id: target.userId,
+          display_name: 'Full Flow Target',
+          email: targetEmail,
+          role: 'manager',
+          granted_at: expect.any(String),
+        },
+      ]);
+      // Owner của chính cơ sở này KHÔNG xuất hiện trong danh sách "managers" (chỉ role=manager).
+      const ownerIds = listAfterAssign.body.data.map((m: { user_id: string }) => m.user_id);
+      expect(ownerIds).not.toContain(owner.userId);
+      // Không field nội bộ/nhạy cảm nào lọt ra.
+      expect(JSON.stringify(listAfterAssign.body)).not.toContain('password');
+      expect(listAfterAssign.body.data[0]).not.toHaveProperty('revoked_at');
+      expect(listAfterAssign.body.data[0]).not.toHaveProperty('granted_by');
+      expect(listAfterAssign.body.data[0]).not.toHaveProperty('place_id');
+
+      const revokeRes = await request(app.getHttpServer())
+        .delete(`/api/business/${owner.placeId}/managers/${target.userId}`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(revokeRes.status).toBe(200);
+
+      const listAfterRevoke = await request(app.getHttpServer())
+        .get(`/api/business/${owner.placeId}/managers`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(listAfterRevoke.status).toBe(200);
+      expect(listAfterRevoke.body.data).toEqual([]);
+    });
+  });
 });

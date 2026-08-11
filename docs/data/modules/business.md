@@ -18,6 +18,14 @@
 > `Business.Verify`), enforcement HOÀN TOÀN qua đường Managed sẵn có của ADR-019, không kiểm tra
 > ownership thủ công nào khác.
 >
+> **Manager Management prerequisite gap: ĐÃ TRIỂN KHAI (2026-08-11).** Bổ sung `GET
+> /business/{id}/managers` (danh sách manager hiệu lực, join tối thiểu `users` để hiển thị
+> `display_name`/`email` — KHÔNG owner, KHÔNG revoked) và `GET /business/{id}/managers/lookup`
+> (tra `user_id` từ email CHÍNH XÁC, phục vụ form gán manager phía dashboard — KHÔNG có tìm kiếm
+> mờ/liệt kê danh bạ nào). Cả hai dùng LẠI ĐÚNG permission `Business.Manager.Assign.Managed` +
+> `@AuthorizationContext` của assign — KHÔNG permission mới, KHÔNG migration mới. Dashboard:
+> `/dashboard/places/{id}/managers`.
+>
 > **Business Ownership Transfer (UC-B7): ĐÃ TRIỂN KHAI (2026-08-06).** §7 mục 5 "Chuyển nhượng" —
 > câu hỏi mở đã chốt: **KHÔNG** bảng `business_transfers` mới. Owner hiện tại tự chuyển nhượng
 > (`POST /business/{id}/transfer`) — revoke owner cũ + insert owner mới trên `business_members`

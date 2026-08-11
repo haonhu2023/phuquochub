@@ -118,6 +118,11 @@ export function EditPlaceView({ placeId }: Props) {
     <main>
       <header className={placeStyles.pageHeader}>
         <h1 className={placeStyles.pageTitle}>Sửa: {state.place.name}</h1>
+        <p style={{ marginTop: '0.5rem' }}>
+          <Link href={`/dashboard/places/${placeId}/managers`} style={{ color: 'var(--accent)' }}>
+            Quản lý người quản lý →
+          </Link>
+        </p>
       </header>
       <PlaceForm
         initial={state.place}

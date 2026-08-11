@@ -2138,6 +2138,58 @@ paths:
         '403': { description: Thiếu Business.Manager.Assign.Managed, hoặc không phải owner hiệu lực của cơ sở này }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Target đã có vai trò hiệu lực (owner hoặc manager) tại cơ sở này }
+    get:
+      tags: [Business]
+      summary: Danh sách manager hiệu lực (Business.Manager.Assign.Managed, owner của ĐÚNG cơ sở này)
+      operationId: listBusinessManagers
+      description: >-
+        Prerequisite gap task (2026-08-11) — CHỈ role=manager hiệu lực (không owner, không revoked).
+        Cùng permission/@AuthorizationContext với assign (KHÔNG phải permission mới) — manager
+        không giữ permission này nên không tự xem/quản lý manager khác được (BR-B6). Không phân
+        biệt "cơ sở không tồn tại" với "bạn không phải owner" — cả hai đều 403
+        (IDENTITY_PLACE_RESOLVER không tra tồn tại place trước khi kiểm permission).
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/BusinessManagerListItem' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Manager.Assign.Managed, hoặc không phải owner hiệu lực của cơ sở này }
+  /business/{id}/managers/lookup:
+    get:
+      tags: [Business]
+      summary: Tra user_id từ email chính xác (Business.Manager.Assign.Managed, owner của ĐÚNG cơ sở này)
+      operationId: lookupBusinessUser
+      description: >-
+        Prerequisite gap task (2026-08-11), Phase 4 quyết định B — KHÔNG có API tìm-user-theo-email
+        an toàn nào sẵn có trước task này (GET /users/{id} chỉ nhận id). Endpoint HẸP CÓ CHỦ Ý: đúng
+        MỘT email chính xác, KHÔNG tìm kiếm mờ/liệt kê danh bạ. Cùng cổng phân quyền với assign/list
+        — chỉ owner hiệu lực của một cơ sở bất kỳ gọi được (tra cứu KHÔNG lọc theo cơ sở, `id` trên
+        route chỉ dùng để tái sử dụng ĐÚNG AuthorizationContext đã có).
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - name: email
+          in: query
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties: { data: { $ref: '#/components/schemas/LookupBusinessUserResult' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: Thiếu Business.Manager.Assign.Managed, hoặc không phải owner hiệu lực của cơ sở này }
+        '404': { description: Không tìm thấy user với email này }
   /business/{id}/managers/{userId}:
     delete:
       tags: [Business]
@@ -3017,6 +3069,25 @@ components:
         granted_by: { type: [string, 'null'], format: uuid }
         granted_at: { type: string, format: date-time }
         revoked_at: { type: [string, 'null'], format: date-time }
+    BusinessManagerListItem:
+      type: object
+      description: >-
+        GET /business/{id}/managers — hình dạng RIÊNG, HẸP HƠN BusinessManager có chủ đích (owner-
+        facing, không id/place_id/granted_by/revoked_at — vô nghĩa khi danh sách đã lọc hiệu lực).
+        Có display_name/email (join từ users) để owner nhận ra đúng người.
+      properties:
+        user_id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [manager] }
+        granted_at: { type: string, format: date-time }
+    LookupBusinessUserResult:
+      type: object
+      description: >-
+        GET /business/{id}/managers/lookup — CỐ Ý không có email (client đã biết, không echo lại).
+      properties:
+        user_id: { type: string, format: uuid }
+        display_name: { type: string }
     ScopeType: { type: string, enum: [global, managed, own] }
     RolePermEffect: { type: string, enum: [allow, deny] }
     AuditResult: { type: string, enum: [success, failure, allow, deny] }

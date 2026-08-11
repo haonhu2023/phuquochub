@@ -58,8 +58,9 @@ describe('BusinessManagersService', () => {
       findActiveMembershipForUpdate: jest.fn(),
       createManager: jest.fn(),
       revokeMembership: jest.fn(),
+      listActiveManagers: jest.fn(),
     });
-    usersRepo = createMock<UsersRepository>({ findById: jest.fn() });
+    usersRepo = createMock<UsersRepository>({ findById: jest.fn(), findByEmail: jest.fn() });
     rolesRepo = createMock<RolesRepository>({ findByCode: jest.fn().mockResolvedValue(makeRole()) });
     userRolesRepo = createMock<UserRolesRepository>({ assign: jest.fn(), revoke: jest.fn() });
     audit = createMock<AuditService>({ record: jest.fn() });
@@ -131,6 +132,56 @@ describe('BusinessManagersService', () => {
 
       await service.assign('place-1', 'target-1', 'owner-1');
       expect(order).toEqual(['userRolesRepo.assign', 'audit']);
+    });
+  });
+
+  describe('listManagers', () => {
+    it('truyền ĐÚNG placeId xuống repository, không biến đổi thêm', async () => {
+      membersRepo.listActiveManagers.mockResolvedValue([]);
+      await service.listManagers('place-1');
+      expect(membersRepo.listActiveManagers).toHaveBeenCalledWith('place-1');
+    });
+
+    it('map sang response snake_case, role luôn "manager", KHÔNG email/password nào khác lộ ra ngoài field đã join', async () => {
+      membersRepo.listActiveManagers.mockResolvedValue([
+        { userId: 'u1', displayName: 'Manager One', email: 'm1@phuquochub.test', grantedAt: new Date('2026-08-10T00:00:00Z') },
+      ]);
+
+      const result = await service.listManagers('place-1');
+
+      expect(result).toEqual([
+        {
+          user_id: 'u1',
+          display_name: 'Manager One',
+          email: 'm1@phuquochub.test',
+          role: MemberRole.MANAGER,
+          granted_at: '2026-08-10T00:00:00.000Z',
+        },
+      ]);
+    });
+
+    it('cơ sở chưa có manager nào -> mảng rỗng', async () => {
+      membersRepo.listActiveManagers.mockResolvedValue([]);
+      const result = await service.listManagers('place-1');
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('lookupUserByEmail', () => {
+    it('không tìm thấy user -> NotFoundException', async () => {
+      usersRepo.findByEmail.mockResolvedValue(null);
+      await expect(service.lookupUserByEmail('missing@phuquochub.test')).rejects.toThrow(NotFoundException);
+    });
+
+    it('tìm thấy -> trả ĐÚNG user_id + display_name, KHÔNG echo email/password/field khác', async () => {
+      usersRepo.findByEmail.mockResolvedValue(makeUser({ id: 'target-9', displayName: 'Target Nine', email: 'nine@phuquochub.test' }));
+
+      const result = await service.lookupUserByEmail('nine@phuquochub.test');
+
+      expect(usersRepo.findByEmail).toHaveBeenCalledWith('nine@phuquochub.test');
+      expect(result).toEqual({ user_id: 'target-9', display_name: 'Target Nine' });
+      expect(result).not.toHaveProperty('email');
+      expect(result).not.toHaveProperty('password_hash');
     });
   });
 

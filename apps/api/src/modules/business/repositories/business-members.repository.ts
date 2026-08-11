@@ -18,6 +18,13 @@ export interface NewManagerMembership {
   grantedBy: string;
 }
 
+export interface ActiveManagerRow {
+  userId: string;
+  displayName: string;
+  email: string;
+  grantedAt: Date;
+}
+
 // Repository `business_members` (ADR-015 §3, business.md §3). Business Manager Assignment/
 // Revocation milestone bổ sung: đọc/khoá MỘT thành viên hiệu lực (owner HOẶC manager) của
 // (place,user) — dùng để chặn gán trùng (uq_member_active) và để xác nhận đúng dòng cần thu hồi —
@@ -112,5 +119,37 @@ export class BusinessMembersRepository {
   /** Thu hồi (soft) một dòng membership theo id — ĐÃ được caller xác nhận đúng dòng/đúng role. */
   async revokeMembership(manager: EntityManager, id: string): Promise<void> {
     await manager.getRepository(BusinessMember).update({ id }, { revokedAt: new Date() });
+  }
+
+  /**
+   * GET /business/{id}/managers — manager HIỆU LỰC (role='manager', revoked_at IS NULL) của một
+   * cơ sở, kèm thông tin hiển thị tối thiểu từ `users` (join). CHỈ manager, KHÔNG owner — trang
+   * "Quản lý người quản lý" không cần liệt chính owner đang xem nó (business-managers.controller.ts
+   * đã tách bạch: DELETE ở đây từ chối target=owner, BR-B6).
+   *
+   * `.select([...])` liệt kê CHÍNH XÁC cột an toàn — `users.password_hash` KHÔNG bao giờ được nạp
+   * ở đường này (cùng nguyên tắc chốt chặn kép đã dùng cho `BusinessClaimsRepository.
+   * listByRequester()`). `m.id` có trong select CHỈ để làm tie-break `ORDER BY` xác định, KHÔNG lộ
+   * ra response (mapper không dùng field này).
+   */
+  async listActiveManagers(placeId: string): Promise<ActiveManagerRow[]> {
+    const rows = await this.repo
+      .createQueryBuilder('m')
+      .innerJoin('m.user', 'u')
+      .where('m.placeId = :placeId', { placeId })
+      .andWhere('m.role = :role', { role: MemberRole.MANAGER })
+      .andWhere('m.revokedAt IS NULL')
+      .select(['m.id', 'm.userId', 'm.grantedAt'])
+      .addSelect(['u.id', 'u.email', 'u.displayName'])
+      .orderBy('m.grantedAt', 'ASC')
+      .addOrderBy('m.id', 'ASC')
+      .getMany();
+
+    return rows.map((r) => ({
+      userId: r.userId,
+      displayName: r.user.displayName,
+      email: r.user.email,
+      grantedAt: r.grantedAt,
+    }));
   }
 }
