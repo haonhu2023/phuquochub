@@ -86,6 +86,12 @@ export type ModerationTargetPreviewResponse =
       status: string;
       uploaded_by: string | null;
       created_at: string;
+      // Owner Place Photos — `null` với ảnh review/mồ côi (không gắn cơ sở nào).
+      place_id: string | null;
+      place_name: string | null;
+      // URL xem ảnh CHO MODERATOR (`/media/{id}/moderation-file`, gác `Media.Moderate`). KHÔNG
+      // phải URL công khai và KHÔNG phải địa chỉ object storage — không rò rỉ object_key/bucket.
+      preview_url: string | null;
     }
   | {
       found: true;
@@ -112,6 +118,9 @@ export function toModerationTargetPreview(p: ModerationTargetPreview): Moderatio
       status: p.status,
       uploaded_by: p.uploadedBy,
       created_at: p.createdAt.toISOString(),
+      place_id: p.placeId,
+      place_name: p.placeName,
+      preview_url: p.previewUrl,
     };
   }
   return {

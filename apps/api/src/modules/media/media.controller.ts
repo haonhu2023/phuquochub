@@ -74,6 +74,27 @@ export class MediaController {
     res.redirect(HttpStatus.FOUND, signedUrl);
   }
 
+  /**
+   * Owner Place Photos — kênh xem ảnh CHO MODERATOR, ở BẤT KỲ trạng thái nào (302 tới signed URL
+   * ngắn hạn, không stream bytes qua API).
+   *
+   * KHÔNG `@Public()` (khác hẳn `:id/file`): gác bằng `Media.Moderate` — đúng quyền mà
+   * `ModerationService.decide()` đòi cho một quyết định trên media, nên ai duyệt được ảnh thì mới
+   * xem được ảnh. Đây là thứ đóng lại giới hạn từng ghi ở `moderation-target-preview.ts` ("không
+   * có URL xem trước cho media chờ duyệt"): trước đây moderator phải quyết định mà không nhìn thấy
+   * bức ảnh, điều vô nghĩa với kiểm duyệt ảnh.
+   *
+   * Endpoint công khai `:id/file` KHÔNG bị nới lỏng một chút nào — nó vẫn chỉ phục vụ `published`.
+   */
+  @Get(':id/moderation-file')
+  @RequirePermissions('Media.Moderate')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  async moderationFile(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response): Promise<void> {
+    const signedUrl = await this.mediaService.resolveInternalFileUrl(id);
+    res.setHeader('Cache-Control', `private, max-age=${Math.floor(this.mediaService.fileUrlTtl / 2)}`);
+    res.redirect(HttpStatus.FOUND, signedUrl);
+  }
+
   @Post(':id/report')
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Report.Create')

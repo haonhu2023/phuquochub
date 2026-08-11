@@ -120,9 +120,22 @@ function TargetPreview({ preview }: { preview: ModerationTargetPreview }) {
           <Info label="Loại" value={preview.media_type === 'video' ? 'Video' : 'Hình ảnh'} />
           <Info label="Trạng thái" value={labelOf(MEDIA_STATUS_LABELS, preview.status)} />
           <Info label="Tạo lúc" value={formatDateTime(preview.created_at)} />
+          {preview.place_name && <Info label="Cơ sở" value={preview.place_name} />}
         </dl>
-        {/* Thiết kế hoãn signed-URL → API không trả URL xem trước cho media chờ duyệt. */}
-        <p className={modStyles.previewEmpty}>Không có ảnh xem trước.</p>
+        {/* Ảnh xem trước đi qua `/media/{id}/moderation-file` (gác `Media.Moderate`) — kênh này
+            phân giải ảnh ở MỌI trạng thái, nên kiểm duyệt viên thấy được ảnh CHỜ DUYỆT. Endpoint
+            công khai `/media/{id}/file` không hề bị nới lỏng. */}
+        {preview.preview_url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- ảnh phục vụ qua redirect có ký; next/image cần remotePatterns (ngoài phạm vi).
+          <img
+            className={modStyles.previewImage}
+            src={preview.preview_url}
+            alt="Ảnh đang chờ kiểm duyệt"
+            loading="lazy"
+          />
+        ) : (
+          <p className={modStyles.previewEmpty}>Không có ảnh xem trước.</p>
+        )}
       </div>
     );
   }

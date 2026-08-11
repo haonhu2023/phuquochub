@@ -1,0 +1,270 @@
+import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { MediaService } from './media.service';
+import { MediaStatus } from './media.enums';
+import type { ModerationReportsService } from '../moderation/moderation-reports.service';
+import type { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
+import type { AuditService } from '../../core/audit/audit.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
+import { createMock, LooseMock } from '../../../test/helpers/create-mock';
+
+// Owner Place Photos (2026-08-11) — ảnh do chủ/quản lý cơ sở đăng.
+// Quyết định sản phẩm (chốt, MVP): KHÔNG BAO GIỜ tự công khai. upload -> pending -> moderator
+// duyệt/từ chối. File này canh phần nghiệp vụ của MediaService; ranh giới PHÂN QUYỀN thật được
+// chứng minh ở place-media.e2e-spec.ts (Postgres thật, đi qua guard thật).
+describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
+  const USER_ID = 'user-1';
+  const PLACE_ID = 'place-1';
+  const VALID_CHECKSUM = 'a'.repeat(64);
+
+  let storage: LooseMock<import('../../core/storage/storage.service').StorageService>;
+  let mediaUrl: LooseMock<import('../../core/media-url/media-url.service').MediaUrlService>;
+  let redisClient: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
+  let redis: LooseMock<import('../../core/redis/redis.service').RedisService>;
+  let mediaRepo: LooseMock<import('./repositories/media.repository').MediaRepository>;
+  let ds: LooseMock<import('typeorm').DataSource>;
+  let moderationReports: LooseMock<ModerationReportsService>;
+  let moderationCases: LooseMock<ModerationCasesRepository>;
+  let audit: LooseMock<AuditService>;
+  let service: MediaService;
+
+  const placeSession = {
+    userId: USER_ID,
+    contentType: 'image/jpeg',
+    size: 1000,
+    checksumSha256: VALID_CHECKSUM,
+    placeId: PLACE_ID,
+  };
+
+  function createdMedia(id: string) {
+    return {
+      id,
+      status: MediaStatus.PENDING,
+      objectKey: 'media/abc.jpg',
+      url: null,
+      thumbnailUrl: null,
+      caption: null,
+      altText: null,
+      type: 'image',
+    };
+  }
+
+  beforeEach(() => {
+    storage = createMock<import('../../core/storage/storage.service').StorageService>({
+      createPresignedPutUrl: jest.fn().mockResolvedValue({
+        key: 'media/abc.jpg',
+        uploadUrl: 'https://storage/put',
+        expiresIn: 600,
+      }),
+      createPresignedGetUrl: jest.fn().mockResolvedValue('https://signed.example/obj'),
+      verifyUploadedObject: jest.fn().mockResolvedValue({ ok: true }),
+      deleteObject: jest.fn(),
+    });
+    Object.defineProperty(storage, 'bucketName', { value: 'bucket', configurable: true });
+    Object.defineProperty(storage, 'presignGetTtl', { value: 300, configurable: true });
+
+    mediaUrl = createMock<import('../../core/media-url/media-url.service').MediaUrlService>({
+      fileUrl: jest.fn((id: string) => `https://api/media/${id}/file`),
+      placeMediaFileUrl: jest.fn((p: string, id: string) => `https://api/places/${p}/media/${id}/file`),
+      moderationFileUrl: jest.fn((id: string) => `https://api/media/${id}/moderation-file`),
+    });
+
+    redisClient = { get: jest.fn(), set: jest.fn(), del: jest.fn() };
+    redis = createMock<import('../../core/redis/redis.service').RedisService>({
+      getClient: jest.fn().mockReturnValue(redisClient),
+    });
+
+    mediaRepo = createMock<import('./repositories/media.repository').MediaRepository>({
+      placeExists: jest.fn().mockResolvedValue(true),
+      findByUploaderAndChecksum: jest.fn().mockResolvedValue(null),
+      createUploaded: jest.fn(),
+      findAnyStatusObjectKey: jest.fn(),
+      listAllByPlace: jest.fn(),
+      existsForPlace: jest.fn(),
+      softDeletePlaceMedia: jest.fn(),
+    });
+
+    ds = createMock<import('typeorm').DataSource>({
+      transaction: jest.fn((cb: (m: unknown) => unknown) => cb({ fakeManager: true })),
+    });
+    moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
+    moderationCases = createMock<ModerationCasesRepository>({ createOpenCase: jest.fn() });
+    audit = createMock<AuditService>({ record: jest.fn() });
+
+    service = new MediaService(
+      storage,
+      mediaUrl,
+      redis,
+      mediaRepo,
+      ds,
+      moderationReports,
+      moderationCases,
+      audit,
+    );
+  });
+
+  describe('presignForPlace', () => {
+    const dto = { content_type: 'image/jpeg' as const, size: 1000, checksum_sha256: VALID_CHECKSUM };
+
+    it('cơ sở không tồn tại -> 422, KHÔNG tạo presigned URL', async () => {
+      mediaRepo.placeExists.mockResolvedValue(false);
+      await expect(service.presignForPlace(dto, USER_ID, PLACE_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(storage.createPresignedPutUrl).not.toHaveBeenCalled();
+    });
+
+    // placeId bị KHOÁ vào phiên presign ngay tại thời điểm quyền vừa được guard kiểm tra — đây là
+    // lý do register() không cần (và không được) tin bất cứ place id nào client gửi sau đó.
+    it('ghi placeId ĐÃ ĐƯỢC CẤP QUYỀN vào phiên presign', async () => {
+      await service.presignForPlace(dto, USER_ID, PLACE_ID);
+      const session = JSON.parse(redisClient.set.mock.calls[0][1] as string);
+      expect(session).toMatchObject({ userId: USER_ID, placeId: PLACE_ID });
+    });
+
+    it('không trả object key nội bộ nào ngoài key đã sinh + upload_url', async () => {
+      const res = await service.presignForPlace(dto, USER_ID, PLACE_ID);
+      expect(Object.keys(res).sort()).toEqual(['expires_in', 'key', 'upload_url']);
+    });
+  });
+
+  describe('register — ảnh gắn cơ sở', () => {
+    beforeEach(() => {
+      redisClient.get.mockResolvedValue(JSON.stringify(placeSession));
+      mediaRepo.createUploaded.mockResolvedValue(createdMedia('m1') as never);
+    });
+
+    it('ảnh vào PENDING và KHÔNG phát url công khai', async () => {
+      const res = await service.register({ key: 'media/abc.jpg' }, USER_ID);
+      expect(res.status).toBe(MediaStatus.PENDING);
+      expect(res.url).toBeNull();
+    });
+
+    it('gắn placeId TỪ SESSION (không phải từ body của client)', async () => {
+      await service.register({ key: 'media/abc.jpg' }, USER_ID);
+      expect(mediaRepo.createUploaded.mock.calls[0][1]).toMatchObject({ placeId: PLACE_ID });
+    });
+
+    // Nếu case được tạo NGOÀI transaction, một sự cố giữa chừng để lại ảnh pending mà không có
+    // case nào — tức ảnh mắc kẹt vĩnh viễn, đúng lỗ hổng ADR-018 §Context từng mô tả với ảnh review.
+    it('tạo case new_content TRONG CÙNG transaction với dòng media', async () => {
+      await service.register({ key: 'media/abc.jpg' }, USER_ID);
+
+      expect(moderationCases.createOpenCase).toHaveBeenCalledTimes(1);
+      const [manager, data] = moderationCases.createOpenCase.mock.calls[0];
+      expect(manager).toEqual({ fakeManager: true });
+      expect(mediaRepo.createUploaded.mock.calls[0][0]).toEqual(manager);
+      expect(data).toEqual({
+        targetType: ModerationTargetType.MEDIA,
+        targetId: 'm1',
+        source: 'new_content',
+        severity: 'low',
+        priority: 0,
+      });
+    });
+
+    it('ghi audit media.place_submitted sau commit', async () => {
+      await service.register({ key: 'media/abc.jpg' }, USER_ID);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'media.place_submitted',
+          entityType: 'media',
+          entityId: 'm1',
+          actorId: USER_ID,
+        }),
+      );
+    });
+  });
+
+  describe('register — ảnh mồ côi (review) giữ NGUYÊN hành vi cũ', () => {
+    it('placeId null -> KHÔNG tạo case, KHÔNG ghi audit place_submitted', async () => {
+      redisClient.get.mockResolvedValue(JSON.stringify({ ...placeSession, placeId: null }));
+      mediaRepo.createUploaded.mockResolvedValue(createdMedia('m2') as never);
+
+      await service.register({ key: 'media/abc.jpg' }, USER_ID);
+
+      expect(moderationCases.createOpenCase).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listForPlaceOwner', () => {
+    it('trả MỌI trạng thái + URL nội bộ theo cơ sở', async () => {
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        {
+          id: 'm1',
+          status: MediaStatus.PENDING,
+          caption: null,
+          altText: null,
+          createdAt: new Date('2026-08-11T00:00:00Z'),
+        },
+        {
+          id: 'm2',
+          status: MediaStatus.REJECTED,
+          caption: 'x',
+          altText: null,
+          createdAt: new Date('2026-08-10T00:00:00Z'),
+        },
+      ] as never);
+
+      const res = await service.listForPlaceOwner(PLACE_ID);
+
+      expect(res.map((r) => r.status)).toEqual([MediaStatus.PENDING, MediaStatus.REJECTED]);
+      expect(res[0].url).toBe(`https://api/places/${PLACE_ID}/media/m1/file`);
+    });
+
+    it('không rò object_key/bucket/checksum ra response', async () => {
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        {
+          id: 'm1',
+          status: MediaStatus.PENDING,
+          caption: null,
+          altText: null,
+          createdAt: new Date('2026-08-11T00:00:00Z'),
+          objectKey: 'media/secret.jpg',
+          bucket: 'private-bucket',
+          checksumSha256: VALID_CHECKSUM,
+        },
+      ] as never);
+
+      const res = await service.listForPlaceOwner(PLACE_ID);
+
+      const serialized = JSON.stringify(res);
+      expect(serialized).not.toContain('media/secret.jpg');
+      expect(serialized).not.toContain('private-bucket');
+      expect(serialized).not.toContain(VALID_CHECKSUM);
+    });
+  });
+
+  describe('removeFromPlace', () => {
+    it('ảnh không thuộc cơ sở này -> 404, KHÔNG ghi audit', async () => {
+      mediaRepo.softDeletePlaceMedia.mockResolvedValue(false);
+      await expect(service.removeFromPlace(PLACE_ID, 'm-other', USER_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    // (placeId, mediaId) đi THẲNG vào WHERE của UPDATE — không có khe TOCTOU giữa kiểm tra và ghi.
+    it('gỡ thành công -> xoá mềm theo (placeId, mediaId) + audit', async () => {
+      mediaRepo.softDeletePlaceMedia.mockResolvedValue(true);
+      await service.removeFromPlace(PLACE_ID, 'm1', USER_ID);
+      expect(mediaRepo.softDeletePlaceMedia).toHaveBeenCalledWith(PLACE_ID, 'm1');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'media.place_removed', entityId: 'm1' }),
+      );
+    });
+  });
+
+  describe('resolveInternalFileUrl', () => {
+    it('phân giải ảnh ở BẤT KỲ trạng thái nào (kênh nội bộ, quyền đã gác ở controller)', async () => {
+      mediaRepo.findAnyStatusObjectKey.mockResolvedValue('media/abc.jpg');
+      await expect(service.resolveInternalFileUrl('m1')).resolves.toBe('https://signed.example/obj');
+      expect(storage.createPresignedGetUrl).toHaveBeenCalledWith('media/abc.jpg');
+    });
+
+    it('không có object (đã xoá mềm / dòng nhúng) -> 404', async () => {
+      mediaRepo.findAnyStatusObjectKey.mockResolvedValue(null);
+      await expect(service.resolveInternalFileUrl('m1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+});

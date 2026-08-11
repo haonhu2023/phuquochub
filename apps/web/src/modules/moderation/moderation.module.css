@@ -296,3 +296,16 @@
     transition: none;
   }
 }
+
+/* Ảnh xem trước cho kiểm duyệt viên (Owner Place Photos). max-height để một ảnh dọc rất cao không
+   đẩy nút quyết định ra khỏi màn hình; aspect ổn định nhờ object-fit contain. */
+.previewImage {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  margin-top: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  object-fit: contain;
+}

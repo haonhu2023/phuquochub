@@ -70,8 +70,11 @@ export interface ModerationReportSummary {
 }
 
 // Union theo target_type — CHỈ field thật của loại đó (media không có rating/content; review không
-// có media_type/uploaded_by). Media KHÔNG có URL xem trước (thiết kế hoãn signed-URL) → khi found
-// vẫn không có ảnh để hiển thị.
+// có media_type/uploaded_by).
+//
+// Owner Place Photos (2026-08-11): media NAY CÓ `preview_url` (kênh `/media/{id}/moderation-file`,
+// gác `Media.Moderate`) và `place_id`/`place_name`. Trước đây khối này chỉ hiện "Không có ảnh xem
+// trước" — không thể kiểm duyệt một bức ảnh mà không nhìn thấy nó.
 export type ModerationTargetPreview =
   | { found: false; target_type: string; target_id: string }
   | {
@@ -82,6 +85,9 @@ export type ModerationTargetPreview =
       status: string;
       uploaded_by: string | null;
       created_at: string;
+      place_id: string | null;
+      place_name: string | null;
+      preview_url: string | null;
     }
   | {
       found: true;

@@ -98,14 +98,19 @@ describe('Media Upload Foundation (e2e, live MinIO round-trip)', () => {
       expect(res.status).toBe(400);
     });
 
-    it('place_id không tồn tại → 422', async () => {
+    // TRƯỚC (Media Upload Foundation): `place_id` được chấp nhận, chỉ kiểm tra place tồn tại →
+    // 422 nếu không. NAY (Owner Place Photos): trường này bị gỡ hẳn khỏi DTO, nên bất kỳ giá trị
+    // nào — tồn tại hay không — đều là 400 `forbidNonWhitelisted`. Đây là điểm mấu chốt: việc
+    // "place có tồn tại không" chưa bao giờ là một phép kiểm tra QUYỀN, nên nó bị thay bằng route
+    // /places/{id}/media/presign nơi guard cưỡng chế Media.Upload.Managed trên chính cơ sở đó.
+    it('place_id (dù tồn tại hay không) → 400, không còn nhánh 422 nào cho trường này', async () => {
       const res = await presign(accessToken, {
         content_type: CONTENT_TYPE,
         size: 100,
         checksum_sha256: 'a'.repeat(64),
         place_id: '00000000-0000-4000-8000-000000000000',
       });
-      expect(res.status).toBe(422);
+      expect(res.status).toBe(400);
     });
 
     it('payload hợp lệ → 201, key server-sinh dạng media/{uuid}.jpg, KHÔNG lộ presigned URL nội bộ storage nào ngoài upload_url', async () => {
@@ -127,11 +132,12 @@ describe('Media Upload Foundation (e2e, live MinIO round-trip)', () => {
     it('luồng thành công: presign → PUT thật lên MinIO → register → 201, status=pending, url=null (không lộ media pending)', async () => {
       const content = fakeJpegBytes('roundtrip-success');
       const checksum = sha256(content);
+      // Luồng MỒ CÔI (ảnh review) — KHÔNG gắn cơ sở. `place_id` đã bị gỡ khỏi DTO này
+      // (Owner Place Photos, 2026-08-11); ảnh của cơ sở đi qua /places/{id}/media/presign.
       const presignRes = await presign(accessToken, {
         content_type: CONTENT_TYPE,
         size: content.length,
         checksum_sha256: checksum,
-        ...(placeId ? { place_id: placeId } : {}),
       });
       expect(presignRes.status).toBe(201);
       const { key, upload_url: uploadUrl } = presignRes.body.data;
@@ -149,6 +155,19 @@ describe('Media Upload Foundation (e2e, live MinIO round-trip)', () => {
       });
       expect(registerRes.body.data.id).toBeTruthy();
       expect(registerRes.body.data.thumbnail_url).toBeNull();
+    });
+
+    // Chốt chặn hồi quy cho lỗ hổng đã đóng: presign mồ côi KHÔNG được nhận trường owner nào.
+    // Nếu ai đó thêm lại `place_id` vào DTO, test này đỏ ngay.
+    it('presign KÈM place_id → 400 (không có đường gắn ảnh vào cơ sở mà không qua kiểm tra quyền)', async () => {
+      const content = fakeJpegBytes('spoof-place-id');
+      const res = await presign(accessToken, {
+        content_type: CONTENT_TYPE,
+        size: content.length,
+        checksum_sha256: sha256(content),
+        place_id: placeId ?? '00000000-0000-4000-8000-000000000000',
+      });
+      expect(res.status).toBe(400);
     });
 
     it('key chưa từng presign (bịa ra) → 422, không tạo row', async () => {

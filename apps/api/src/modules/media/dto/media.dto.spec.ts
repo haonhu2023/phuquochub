@@ -20,14 +20,20 @@ describe('PresignMediaDto', () => {
     expect(errors).toHaveLength(0);
   });
 
-  it('chấp nhận kèm place_id hợp lệ', async () => {
+  // Owner Place Photos (2026-08-11): `place_id` ĐÃ BỊ GỠ khỏi DTO này. Nó từng được chấp nhận
+  // nhưng CHỈ được kiểm tra "place có tồn tại không" — không hề kiểm tra người gọi có quyền quản
+  // lý cơ sở đó, trong khi permission của route (`Media.Upload.Own`) gắn với chính người gọi. Gắn
+  // ảnh vào cơ sở giờ BẮT BUỘC đi qua `POST /places/{id}/media/presign`, nơi place id là route
+  // param nên `@AuthorizationContext` cưỡng chế được quyền trên đúng cơ sở đó.
+  it('TỪ CHỐI place_id trong body (không còn đường gắn ảnh vào cơ sở mà không qua kiểm tra quyền)', async () => {
     const errors = await validatePresign({
       content_type: 'image/png',
       size: 1000,
       checksum_sha256: VALID_CHECKSUM,
       place_id: '11111111-1111-4111-8111-111111111111',
     });
-    expect(errors).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('place_id');
   });
 
   it.each(['image/gif', 'application/pdf', 'video/mp4', ''])(

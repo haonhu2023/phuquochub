@@ -1,0 +1,78 @@
+/* Ảnh của cơ sở — chỉ những class CHƯA có ở place-management.module.css/places.module.css
+   (form/section/alert/success/statusBadge/archiveBtn đều tái dùng nguyên vẹn từ đó). */
+
+.uploadHint {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.fileInput {
+  display: block;
+  max-width: 100%;
+  font: inherit;
+  color: var(--fg);
+}
+.fileInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.fileInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.uploadStatus {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* auto-fill + minmax: 1 cột trên điện thoại hẹp, nhiều hơn khi rộng — không media query, không
+   bao giờ tràn ngang. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* aspect-ratio cố định: ảnh chưa tải xong KHÔNG làm nhảy layout. */
+.thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.tileBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.tileHint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.skeletonTile {
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}

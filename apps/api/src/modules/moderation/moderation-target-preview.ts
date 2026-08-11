@@ -21,6 +21,19 @@ export type ModerationTargetPreview =
       status: MediaStatus;
       uploadedBy: string | null;
       createdAt: Date;
+      /**
+       * Owner Place Photos (2026-08-11) — cơ sở mà ảnh này thuộc về, `null` với ảnh review/mồ côi.
+       * Có tên cơ sở thì moderator mới biết mình đang duyệt ảnh CHO AI, thay vì một UUID trần.
+       */
+      placeId: string | null;
+      placeName: string | null;
+      /**
+       * URL xem ảnh dành cho moderator (`GET /media/{id}/moderation-file`, gác bằng
+       * `Media.Moderate`). ĐÂY LÀ THỨ ĐÓNG LẠI giới hạn ghi ở đầu file trước đây ("không có URL
+       * xem trước… hoãn tới milestone sau"): duyệt một bức ảnh mà không nhìn thấy nó là vô nghĩa.
+       * `null` khi media không có object nào để ký (dòng legacy/nhúng YouTube-Vimeo).
+       */
+      previewUrl: string | null;
     }
   | {
       found: true;

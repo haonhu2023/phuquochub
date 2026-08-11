@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { sha256Hex } from '@/lib/sha256';
 import { readSession } from '@/modules/auth/session';
-import { presignMedia, putToPresignedUrl, registerMedia } from './api/media.api';
-import { ALLOWED_IMAGE_MIME_TYPES, MAX_UPLOAD_SIZE_BYTES } from './types';
+import { presignMedia, registerMedia } from './api/media.api';
+import { runImageUpload, UploadValidationError, validateImageFile } from './uploadPipeline';
 
 interface UseSingleImageUploadResult {
   preview: string | null;
@@ -53,13 +52,12 @@ export function useSingleImageUpload(): UseSingleImageUploadResult {
       previewUrlRef.current = null;
     }
 
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
-      setError('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.');
-      setPreview(null);
-      return;
-    }
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      setError('Ảnh vượt quá dung lượng tối đa 10MB.');
+    // Tiền kiểm tra ĐỒNG BỘ trước khi dựng preview — dùng chung `validateImageFile` với luồng ảnh
+    // cơ sở, nên hai nơi không thể lệch nhau về MIME/kích thước cho phép.
+    try {
+      validateImageFile(file);
+    } catch (err) {
+      setError(err instanceof UploadValidationError ? err.message : 'Ảnh không hợp lệ.');
       setPreview(null);
       return;
     }
@@ -77,13 +75,11 @@ export function useSingleImageUpload(): UseSingleImageUploadResult {
 
       setUploading(true);
       try {
-        const checksum = await sha256Hex(file);
-        const presigned = await presignMedia(
-          { content_type: file.type, size: file.size, checksum_sha256: checksum },
-          session.accessToken,
-        );
-        await putToPresignedUrl(presigned.upload_url, file, file.type);
-        const media = await registerMedia(presigned.key, session.accessToken);
+        // Ảnh review đi đường MỒ CÔI (không gắn cơ sở) — gắn + auto-publish khi tạo review.
+        const media = await runImageUpload(file, {
+          presign: (input) => presignMedia(input, session.accessToken),
+          register: (key) => registerMedia(key, session.accessToken),
+        });
         setMediaId(media.id);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Không tải được ảnh lên.');

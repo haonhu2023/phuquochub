@@ -44,6 +44,9 @@ const mediaPreview = (status: string): ModerationTargetPreview => ({
   status,
   uploaded_by: 'u1',
   created_at: 't',
+  place_id: null,
+  place_name: null,
+  preview_url: null,
 });
 const reviewPreview = (status: string): ModerationTargetPreview => ({
   found: true,

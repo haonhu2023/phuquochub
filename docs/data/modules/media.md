@@ -115,14 +115,55 @@ Dùng `RedisService` sẵn có (`core/redis/`), cùng khuôn `TokenService`'s re
 
 ## 4. Phạm vi ownership được hỗ trợ
 
-Chỉ **`place_id`** hoặc **không owner nào** (mồ côi, `pending`) được chấp nhận ở `POST
-/media/presign` — `business_id`/`post_id`/`event_id`/`review_id` bị từ chối `400`
-(`forbidNonWhitelisted`), không âm thầm bỏ qua. Gắn vào review vẫn qua luồng
-`MediaRepository.attachToReview()` đã có sẵn (`uploaded_by` + mồ côi hoàn toàn).
+**`POST /media/presign` KHÔNG nhận trường owner nào** — kể cả `place_id`. Đây là luồng **mồ côi**
+duy nhất (ảnh review, gắn + auto-publish khi tạo review). Mọi trường owner
+(`place_id`/`business_id`/`post_id`/`event_id`/`review_id`) bị từ chối `400`
+(`forbidNonWhitelisted`), không âm thầm bỏ qua.
 
-Với `place_id`: chỉ xác nhận Place tồn tại (chưa xoá mềm) — **không** claim quyền sở hữu doanh
-nghiệp chính thức. Ảnh luôn tạo `status=pending` — một ảnh cộng đồng đóng góp chờ kiểm duyệt, không
-phải nội dung chính thức của cơ sở.
+> **Thay đổi (Owner Place Photos, 2026-08-11).** `place_id` TỪNG được chấp nhận ở endpoint này và
+> đã bị **gỡ bỏ**. Nó chỉ xác nhận "Place có tồn tại", trong khi permission của route
+> (`Media.Upload.Own`) gắn với CHÍNH người gọi — nghĩa là bất kỳ `member` nào cũng gắn được ảnh vào
+> cơ sở của người khác. Hệ quả trước đây còn tiềm ẩn (ảnh `pending` không hiển thị công khai và
+> không có gì đưa nó vào hàng chờ duyệt); nhưng milestone này ĐƯA ảnh `pending` của cơ sở vào hàng
+> chờ kiểm duyệt, nên nếu giữ nguyên, kẻ tấn công có thể bơm ảnh vào cơ sở bất kỳ rồi chờ moderator
+> vô tình duyệt. Không consumer nào từng gửi trường này.
+
+### 4.1 Ảnh của cơ sở — vòng đời (Owner Place Photos)
+
+Chủ cơ sở / người quản lý được gán đăng ảnh qua **`POST /places/{placeId}/media/presign`** rồi
+**`POST /places/{placeId}/media`**. Place id nằm trên **path**, không phải trong body: đó là điều
+kiện để `PermissionsGuard` phân giải `@AuthorizationContext(place)` và cưỡng chế
+`Media.Upload.Managed` trên đúng cơ sở đó (guard chỉ đọc resource id từ `param`/`principal`, không
+đọc từ body). Giá trị guard đã kiểm tra CHÍNH LÀ giá trị được khoá vào phiên presign, nên
+`place_id` không thể bị tráo giữa hai bước.
+
+```
+chủ cơ sở tải ảnh lên
+  -> media.status = pending           (KHÔNG BAO GIỜ tự công khai — quyết định sản phẩm, MVP)
+  -> moderation_cases (source=new_content)   ← tạo TRONG CÙNG transaction với dòng media
+  -> kiểm duyệt viên quyết định (Media.Moderate):
+       approve -> published   -> hiện ở gallery công khai
+       reject  -> rejected    -> vẫn ẩn vĩnh viễn
+```
+
+Case được tạo trong **cùng transaction** với dòng media một cách có chủ đích: nếu tách ra sau
+commit, một sự cố giữa chừng sẽ để lại ảnh `pending` mà không có case nào — tức ảnh mắc kẹt vĩnh
+viễn không ai duyệt (đúng lỗ hổng ADR-018 §Context từng mô tả với ảnh review).
+
+FSM `assertValidMediaTransition` đã có sẵn từ M3 và **không đổi**: `approve` chỉ hợp lệ từ
+`pending`, `reject` chỉ hợp lệ từ `pending`; mọi transition khác trả `422`.
+
+### 4.2 Xem ảnh chưa duyệt
+
+Ảnh `pending`/`rejected` **không có URL công khai nào**. Hai kênh nội bộ, mỗi kênh gác một quyền
+riêng, đều trả `302` tới signed URL ngắn hạn với `Cache-Control: private`:
+
+| Kênh | Quyền | Dành cho |
+|---|---|---|
+| `GET /places/{placeId}/media/{mediaId}/file` | `Media.Upload.Managed` trên cơ sở **+** ảnh phải thuộc đúng cơ sở đó | chủ cơ sở |
+| `GET /media/{id}/moderation-file` | `Media.Moderate` | kiểm duyệt viên |
+
+`GET /media/{id}/file` (công khai) **không bị nới lỏng** — vẫn chỉ phục vụ `published`.
 
 ## 5. CHECK nới lỏng — từ đúng-một sang tối-đa-một chủ sở hữu
 
@@ -160,10 +201,27 @@ dung — đó không phải trùng lặp cần chặn (ảnh giống nhau do hai
 |---|---|---|---|
 | POST | `/media/presign` | `Media.Upload.Own` (role `member`), 10/phút | Trả `{key, upload_url, expires_in}`. `upload_url` KHÔNG BAO GIỜ được log. |
 | POST | `/media` | `Media.Upload.Own` (role `member`) | Yêu cầu phiên presign-session hợp lệ, đúng người. Trả `Media` (`url=null` vì luôn `pending`). |
+| GET | `/places/{placeId}/media` | `Media.Upload.Managed` trên cơ sở | Ảnh của cơ sở cho màn hình quản lý — MỌI trạng thái. Không trả `object_key`/`bucket`/`checksum`. |
+| POST | `/places/{placeId}/media/presign` | `Media.Upload.Managed` trên cơ sở, 10/phút | Khoá `placeId` vào phiên presign ngay lúc quyền được kiểm tra. |
+| POST | `/places/{placeId}/media` | `Media.Upload.Managed` trên cơ sở, 10/phút | Tạo media `pending` + case `new_content` trong CÙNG transaction. |
+| DELETE | `/places/{placeId}/media/{mediaId}` | `Media.Upload.Managed` trên cơ sở | Xoá **mềm**; `place_id` nằm trong WHERE nên ảnh của cơ sở khác trả `404`. |
+| GET | `/places/{placeId}/media/{mediaId}/file` | `Media.Upload.Managed` trên cơ sở | `302` signed URL, mọi trạng thái. |
+| GET | `/media/{id}/moderation-file` | `Media.Moderate` | `302` signed URL, mọi trạng thái — kiểm duyệt viên xem ảnh chờ duyệt. |
 
-Không có endpoint đọc/liệt kê media pending, không có endpoint xoá/kiểm duyệt trong milestone
-này — `/media/{id}` (DELETE) và `/media/{id}/moderate` vẫn PROPOSED trong `openapi.yaml`, chưa có
-handler nào.
+`Media.Upload.Managed` đã tồn tại từ `SeedPlacePermissions1720000600000` (cấp cho
+`business_manager`; `business_owner` kế thừa qua DAG vai trò) — milestone này **không tạo quyền
+mới nào**.
+
+`/media/{id}/moderate` (stub cũ) vẫn chưa có handler: quyết định kiểm duyệt đi qua
+`POST /moderation/cases/{id}/decide` đã có sẵn.
+
+### 8.1 Audit
+
+| Sự kiện | Khi nào |
+|---|---|
+| `media.place_submitted` | chủ cơ sở đăng ký một ảnh cho cơ sở (sau commit) |
+| `media.place_removed` | chủ cơ sở gỡ ảnh khỏi cơ sở |
+| `moderation.decided` | kiểm duyệt viên duyệt/từ chối (đã có sẵn, `ModerationService.decide()`) |
 
 ## 9. Permission mới (`SeedMediaPermissions1720003000000`)
 

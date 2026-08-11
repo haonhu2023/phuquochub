@@ -37,4 +37,23 @@ export class MediaUrlService {
   fileUrl(mediaId: string): string {
     return `${this.base}/media/${mediaId}/file`;
   }
+
+  /**
+   * Absolute URL for `GET /places/{placeId}/media/{mediaId}/file` — the OWNER-facing channel
+   * (Owner Place Photos). Unlike `fileUrl()` this one resolves media in ANY status, so it is
+   * permission-gated on the place; it carries no credential either, so the caller still has to
+   * authenticate on every hit.
+   */
+  placeMediaFileUrl(placeId: string, mediaId: string): string {
+    return `${this.base}/places/${placeId}/media/${mediaId}/file`;
+  }
+
+  /**
+   * Absolute URL for `GET /media/{id}/moderation-file` — the MODERATOR-facing channel. Same
+   * any-status resolution, gated on `Media.Moderate`. Kept separate from the owner URL so the two
+   * audiences never share a route (and neither shares one with the public `fileUrl()`).
+   */
+  moderationFileUrl(mediaId: string): string {
+    return `${this.base}/media/${mediaId}/moderation-file`;
+  }
 }

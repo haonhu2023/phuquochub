@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
 // Media Upload Foundation (design review, 2026-07-30). Backend-only, no resize/thumbnail/EXIF/AI —
 // see docs/data/modules/media.md.
@@ -19,12 +19,21 @@ export class PresignMediaDto {
   @Matches(/^[a-f0-9]{64}$/, { message: 'checksum_sha256 phải là 64 ký tự hex viết thường' })
   checksum_sha256!: string;
 
-  // Supported ownership scope (design review §7): ONLY place_id or no owner (orphan, attached
-  // later via the existing attachToReview() flow). business_id/post_id/event_id/review_id are
-  // deliberately NOT accepted here — whitelist+forbidNonWhitelisted (main.ts) rejects them 400 if
-  // sent, rather than silently ignoring.
-  @IsOptional() @IsUUID('4')
-  place_id?: string;
+  // KHÔNG có trường chủ sở hữu nào ở đây (place_id/business_id/post_id/event_id/review_id) —
+  // `whitelist`+`forbidNonWhitelisted` (main.ts) trả 400 nếu client cố gửi.
+  //
+  // `place_id` TỪNG tồn tại ở DTO này và bị GỠ BỎ (Owner Place Photos, 2026-08-11). Nó chỉ được
+  // kiểm tra "place có tồn tại không", KHÔNG hề kiểm tra người gọi có quyền quản lý place đó —
+  // permission của route là `Media.Upload.Own` gắn với CHÍNH người gọi (PRINCIPAL_RESOLVER), nên
+  // bất kỳ member nào cũng gắn được media vào cơ sở của người khác. Trước đây hệ quả còn tiềm ẩn
+  // (media `pending` không hiển thị công khai và không có gì đưa nó vào hàng chờ duyệt), nhưng
+  // milestone này ĐƯA media pending của place vào hàng chờ kiểm duyệt — nếu giữ nguyên, kẻ tấn
+  // công có thể bơm ảnh vào cơ sở bất kỳ và chờ moderator vô tình duyệt. Không có consumer nào
+  // từng gửi trường này (media.api.ts nói rõ "Không gửi place_id — luồng mồ côi").
+  //
+  // Đường HỢP LỆ để gắn ảnh vào một cơ sở là `POST /places/{id}/media/presign` — ở đó place id là
+  // ROUTE PARAM nên `@AuthorizationContext` phân giải và cưỡng chế được quyền trên CHÍNH place đó
+  // (PermissionsGuard chỉ đọc được resource id từ `param`/`principal`, không đọc từ body).
 }
 
 export class CreateMediaDto {

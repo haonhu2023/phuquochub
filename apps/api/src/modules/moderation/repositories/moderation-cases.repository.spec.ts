@@ -20,7 +20,9 @@ describe('ModerationCasesRepository', () => {
 
   beforeEach(() => {
     repo = createMock<Repository<ModerationCase>>({ findOne: jest.fn() });
-    sut = new ModerationCasesRepository(repo);
+    sut = new ModerationCasesRepository(repo, {
+      moderationFileUrl: (id: string) => `https://api.example/api/media/${id}/moderation-file`,
+    } as never);
   });
 
   describe('findById', () => {
@@ -219,19 +221,31 @@ describe('ModerationCasesRepository', () => {
   });
 
   describe('findTargetPreview', () => {
-    it('media tồn tại (chưa xoá mềm) -> found=true, KHÔNG có object_key/bucket/checksum (loại trừ nội bộ storage)', async () => {
+    // Owner Place Photos: truy vấn NAY có đọc `object_key` — nhưng CHỈ để biết có object nào để
+    // ký URL xem trước hay không. Bất biến bảo mật thật (và là điều test này canh) không phải "SQL
+    // không được nhắc tới object_key", mà là "object_key/bucket/checksum KHÔNG BAO GIỜ nằm trong
+    // KẾT QUẢ trả ra" — client chỉ nhận một URL API đã gác quyền, không nhận địa chỉ lưu trữ.
+    it('media tồn tại -> found=true kèm place/preview_url, KHÔNG rò object_key/bucket/checksum trong kết quả', async () => {
       repo.query = jest.fn().mockResolvedValue([
-        { type: 'image', status: 'pending', uploaded_by: 'u1', created_at: new Date('2026-08-02T00:00:00Z') },
+        {
+          type: 'image',
+          status: 'pending',
+          uploaded_by: 'u1',
+          created_at: new Date('2026-08-02T00:00:00Z'),
+          place_id: 'place-1',
+          place_name: 'Bãi Sao',
+          object_key: 'media/abc.jpg',
+        },
       ]);
 
       const result = await sut.findTargetPreview(ModerationTargetType.MEDIA, 'm1');
 
       const [query, params] = repo.query.mock.calls[0];
-      expect(sql(query)).toContain('FROM media WHERE id = $1 AND deleted_at IS NULL');
-      expect(sql(query)).not.toContain('object_key');
-      expect(sql(query)).not.toContain('bucket');
-      expect(sql(query)).not.toContain('checksum');
+      expect(sql(query)).toContain('FROM media m');
+      expect(sql(query)).toContain('LEFT JOIN places p ON p.id = m.place_id');
+      expect(sql(query)).toContain('m.deleted_at IS NULL');
       expect(params).toEqual(['m1']);
+
       expect(result).toEqual({
         found: true,
         targetType: ModerationTargetType.MEDIA,
@@ -240,7 +254,52 @@ describe('ModerationCasesRepository', () => {
         status: 'pending',
         uploadedBy: 'u1',
         createdAt: new Date('2026-08-02T00:00:00Z'),
+        placeId: 'place-1',
+        placeName: 'Bãi Sao',
+        previewUrl: 'https://api.example/api/media/m1/moderation-file',
       });
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain('media/abc.jpg');
+      expect(serialized).not.toContain('bucket');
+      expect(serialized).not.toContain('checksum');
+    });
+
+    // Ảnh review/mồ côi không gắn cơ sở nào — LEFT JOIN giữ chúng found=true với place null.
+    it('media KHÔNG gắn cơ sở -> place_id/place_name null, vẫn found=true', async () => {
+      repo.query = jest.fn().mockResolvedValue([
+        {
+          type: 'image',
+          status: 'published',
+          uploaded_by: 'u1',
+          created_at: new Date('2026-08-02T00:00:00Z'),
+          place_id: null,
+          place_name: null,
+          object_key: 'media/x.jpg',
+        },
+      ]);
+
+      const result = await sut.findTargetPreview(ModerationTargetType.MEDIA, 'm1');
+
+      expect(result).toMatchObject({ found: true, placeId: null, placeName: null });
+    });
+
+    // Dòng legacy/nhúng (YouTube/Vimeo) không có object nào để ký -> không có URL xem trước.
+    it('media không có object_key -> previewUrl null (không bịa URL)', async () => {
+      repo.query = jest.fn().mockResolvedValue([
+        {
+          type: 'video',
+          status: 'published',
+          uploaded_by: null,
+          created_at: new Date('2026-08-02T00:00:00Z'),
+          place_id: null,
+          place_name: null,
+          object_key: null,
+        },
+      ]);
+
+      const result = await sut.findTargetPreview(ModerationTargetType.MEDIA, 'm1');
+
+      expect(result).toMatchObject({ found: true, previewUrl: null });
     });
 
     it('media không tồn tại/đã xoá mềm -> found=false, KHÔNG throw', async () => {

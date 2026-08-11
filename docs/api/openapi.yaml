@@ -2262,10 +2262,15 @@ paths:
       operationId: presignMedia
       security: [{ bearerAuth: [] }]
       description: >-
-        Chỉ hỗ trợ TỐI ĐA một owner ở bước presign: `place_id`, hoặc không owner nào (mồ côi —
-        gắn sau qua luồng review hiện có, `attachToReview`). `business_id`/`post_id`/`event_id`/
-        `review_id` KHÔNG được chấp nhận ở đây — whitelist + forbidNonWhitelisted (main.ts) từ
-        chối 400 nếu gửi, không âm thầm bỏ qua. `key` do SERVER sinh (`media/{uuid-v4}.{ext}`),
+        Luồng MỒ CÔI — KHÔNG gắn chủ sở hữu nào (ảnh review, gắn + auto-publish khi tạo review).
+        KHÔNG trường owner nào được chấp nhận ở đây (`place_id`/`business_id`/`post_id`/`event_id`/
+        `review_id`) — whitelist + forbidNonWhitelisted (main.ts) từ chối 400 nếu gửi.
+        `place_id` TỪNG được chấp nhận và đã bị GỠ BỎ (Owner Place Photos, 2026-08-11): nó chỉ
+        được kiểm tra "place có tồn tại", KHÔNG kiểm tra người gọi có quyền quản lý cơ sở đó, nên
+        bất kỳ member nào cũng gắn được ảnh vào cơ sở của người khác. Ảnh của cơ sở nay đi qua
+        `POST /places/{placeId}/media/presign`, nơi place id là route param nên quyền
+        `Media.Upload.Managed` được cưỡng chế trên đúng cơ sở đó.
+        `key` do SERVER sinh (`media/{uuid-v4}.{ext}`),
         client không tự đặt được. `upload_url` hết hạn sau 600 giây, chỉ dùng được cho `PUT` với
         đúng `Content-Type` đã khai. Đăng ký kết quả qua `POST /media` bên dưới trong vòng phiên
         presign-session (Redis, TTL 900s) — xem docs/data/modules/media.md §Presign-session.
@@ -2283,7 +2288,6 @@ paths:
                   type: string
                   pattern: '^[a-f0-9]{64}$'
                   description: SHA-256 của nội dung file, hex viết thường (64 ký tự) — client tự tính trước khi presign.
-                place_id: { type: [string, 'null'], format: uuid }
       responses:
         '201':
           description: Đã tạo presigned URL
@@ -2343,6 +2347,143 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  # ---- Ảnh của cơ sở (Owner Place Photos, 2026-08-11) ----
+  # Vòng đời: chủ/quản lý cơ sở tải lên -> `pending` -> kiểm duyệt viên duyệt (`published`) hoặc
+  # từ chối (`rejected`). KHÔNG có nhánh nào tự công khai. Chỉ `published` xuất hiện ở kênh công
+  # khai (gallery của GET /places/{slug} và GET /media/{id}/file).
+  #
+  # Place id nằm trên PATH (không phải trong body) vì đó là điều kiện để PermissionsGuard phân giải
+  # `@AuthorizationContext(place)` và cưỡng chế `Media.Upload.Managed` trên đúng cơ sở đó — nhờ vậy
+  # place_id không thể bị tráo.
+  /places/{placeId}/media:
+    get:
+      tags: [Media]
+      summary: Ảnh của cơ sở cho màn hình quản lý (MỌI trạng thái)
+      operationId: listPlaceMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Khác gallery công khai: trả CẢ `pending`/`rejected`/`hidden` để chủ cơ sở biết ảnh mình gửi
+        đang ở đâu trong quy trình. `url` trỏ tới kênh nội bộ `/places/{placeId}/media/{mediaId}/file`
+        (ảnh chưa duyệt không có URL công khai nào). KHÔNG trả `object_key`/`bucket`/`checksum`.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceOwnerMedia' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Media]
+      summary: Đăng ký ảnh của cơ sở sau khi PUT (luôn vào pending + hàng chờ kiểm duyệt)
+      operationId: registerPlaceMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Cơ sở đích lấy từ PHIÊN PRESIGN (đã khoá `placeId` lúc quyền được kiểm tra), không lấy từ
+        body. Tạo dòng media `pending` VÀ một `moderation_cases` (`source=new_content`) trong CÙNG
+        một transaction — không bao giờ có ảnh pending mà không ai duyệt.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string }
+                caption: { type: string, maxLength: 300 }
+                alt: { type: string, maxLength: 200 }
+      responses:
+        '201': { description: 'Đã đăng ký — status luôn `pending`, `url` null.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /places/{placeId}/media/presign:
+    post:
+      tags: [Media]
+      summary: Xin presigned PUT URL cho ảnh của cơ sở
+      operationId: presignPlaceMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu `Media.Upload.Managed` trên CHÍNH cơ sở ở path (chủ cơ sở hoặc người quản lý được
+        gán). Body giống `POST /media/presign` và cũng KHÔNG nhận trường owner nào.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_type, size, checksum_sha256]
+              properties:
+                content_type: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                size: { type: integer, minimum: 1, maximum: 10485760 }
+                checksum_sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '201': { description: Đã tạo presigned URL }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /places/{placeId}/media/{mediaId}:
+    delete:
+      tags: [Media]
+      summary: Gỡ một ảnh khỏi cơ sở (xoá mềm)
+      operationId: deletePlaceMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        `place_id` nằm trong WHERE của chính câu UPDATE — ảnh thuộc cơ sở khác khớp 0 dòng và trả
+        404 (không phân biệt "không tồn tại" với "của người khác").
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { $ref: '#/components/responses/EmptySuccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /places/{placeId}/media/{mediaId}/file:
+    get:
+      tags: [Media]
+      summary: Tải ảnh của cơ sở ở MỌI trạng thái (kênh của chủ cơ sở, redirect tới signed URL)
+      operationId: getPlaceMediaFile
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Hai lớp: quyền trên cơ sở (guard) VÀ ảnh phải thuộc đúng cơ sở đó. Trả 302 tới signed URL
+        ngắn hạn, `Cache-Control: private`.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '302': { description: Redirect tới signed URL ngắn hạn }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /media/{id}/moderation-file:
+    get:
+      tags: [Media]
+      summary: Tải ảnh ở MỌI trạng thái cho kiểm duyệt viên (redirect tới signed URL)
+      operationId: getMediaModerationFile
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu `Media.Moderate` — đúng quyền mà quyết định kiểm duyệt media đòi hỏi, nên ai duyệt
+        được ảnh thì mới xem được ảnh. Cần thiết vì không thể kiểm duyệt một bức ảnh chờ duyệt mà
+        không nhìn thấy nó. Endpoint công khai `/media/{id}/file` KHÔNG bị nới lỏng.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '302': { description: Redirect tới signed URL ngắn hạn }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /media/{id}/file:
     get:
       tags: [Media]
@@ -3367,6 +3508,21 @@ components:
         valid_from: { type: string, format: date-time }
         valid_to: { type: string, format: date-time }
         display_order: { type: integer }
+    PlaceOwnerMedia:
+      type: object
+      description: >-
+        Ảnh của cơ sở như CHỦ CƠ SỞ nhìn thấy (Owner Place Photos). Khác `Media` công khai: có MỌI
+        trạng thái, và `url` trỏ tới kênh nội bộ theo cơ sở vì ảnh chưa duyệt không có URL công
+        khai. KHÔNG có `object_key`/`bucket`/`checksum_sha256` — chi tiết lưu trữ không rời server.
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, published, rejected, hidden] }
+        caption: { type: [string, 'null'] }
+        alt_text: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        url:
+          type: string
+          description: '`/places/{placeId}/media/{id}/file` — kiểm tra quyền lại mỗi lần tải.'
     Media:
       type: object
       description: >-

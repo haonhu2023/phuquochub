@@ -12,6 +12,7 @@ import {
 import type { ModerationTargetPreview } from '../moderation-target-preview';
 import { MediaStatus, MediaType } from '../../media/media.enums';
 import { ReviewStatus } from '../../reviews/review.enums';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
 
 export interface NewModerationCase {
   targetType: ModerationTargetType;
@@ -84,6 +85,9 @@ export class ModerationCasesRepository {
   constructor(
     @InjectRepository(ModerationCase)
     private readonly repo: Repository<ModerationCase>,
+    // @Global (core/media-url) — dựng URL API cho ảnh xem trước của moderator. Repository KHÔNG tự
+    // ghép chuỗi URL: prefix/publicUrl chỉ có một nguồn sự thật là MediaUrlService.
+    private readonly mediaUrl: MediaUrlService,
   ) {}
 
   findById(id: string): Promise<ModerationCase | null> {
@@ -274,13 +278,22 @@ export class ModerationCasesRepository {
     targetId: string,
   ): Promise<ModerationTargetPreview> {
     if (targetType === ModerationTargetType.MEDIA) {
+      // LEFT JOIN places: ảnh review/mồ côi không có place_id — join trái giữ chúng hiển thị bình
+      // thường với place_name = null, thay vì biến chúng thành `found:false`.
       const rows: Array<{
         type: string;
         status: string;
         uploaded_by: string | null;
         created_at: Date;
+        place_id: string | null;
+        place_name: string | null;
+        object_key: string | null;
       }> = await this.repo.query(
-        `SELECT type, status, uploaded_by, created_at FROM media WHERE id = $1 AND deleted_at IS NULL`,
+        `SELECT m.type, m.status, m.uploaded_by, m.created_at, m.place_id, m.object_key,
+                p.name AS place_name
+           FROM media m
+           LEFT JOIN places p ON p.id = m.place_id
+          WHERE m.id = $1 AND m.deleted_at IS NULL`,
         [targetId],
       );
       if (rows.length === 0) return { found: false, targetType, targetId };
@@ -293,6 +306,11 @@ export class ModerationCasesRepository {
         status: r.status as MediaStatus,
         uploadedBy: r.uploaded_by,
         createdAt: r.created_at,
+        placeId: r.place_id,
+        placeName: r.place_name,
+        // Chỉ có URL xem trước khi thực sự có object để ký. KHÔNG trả object_key ra ngoài — nó là
+        // chi tiết lưu trữ nội bộ; client chỉ nhận một URL API đã được gác quyền.
+        previewUrl: r.object_key ? this.mediaUrl.moderationFileUrl(targetId) : null,
       };
     }
 

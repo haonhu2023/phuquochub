@@ -149,6 +149,61 @@ export class MediaRepository {
   }
 
   /**
+   * Owner Place Photos — TẤT CẢ ảnh của một cơ sở cho màn hình quản lý của CHỦ cơ sở (mọi trạng
+   * thái, kể cả `pending`/`rejected`). Đối lập có chủ đích với `listPublishedByPlace()` ở trên,
+   * vốn là đường CÔNG KHAI và chỉ trả `published` — hai hàm tách bạch để không bao giờ có chuyện
+   * nới lỏng bộ lọc của đường công khai chỉ vì màn hình nội bộ cần thêm dữ liệu.
+   * `deleted_at IS NULL`: ảnh đã gỡ không hiện lại ở đâu cả.
+   */
+  listAllByPlace(placeId: string): Promise<Media[]> {
+    return this.repo.find({
+      where: { placeId, deletedAt: IsNull() },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+  }
+
+  /**
+   * `object_key` KHÔNG kèm điều kiện `status` — dành cho hai kênh NỘI BỘ đã qua kiểm tra quyền ở
+   * controller (moderator xem ảnh chờ duyệt; chủ cơ sở xem ảnh của chính cơ sở mình). Tách khỏi
+   * `findPublishedObjectKey()` thay vì thêm cờ vào nó: đường công khai phải KHÔNG THỂ vô tình gọi
+   * biến thể nới lỏng này.
+   */
+  async findAnyStatusObjectKey(id: string): Promise<string | null> {
+    const rows: Array<{ object_key: string }> = await this.repo.query(
+      `SELECT object_key FROM media
+        WHERE id = $1 AND deleted_at IS NULL AND object_key IS NOT NULL
+        LIMIT 1`,
+      [id],
+    );
+    return rows[0]?.object_key ?? null;
+  }
+
+  /** Ảnh có thuộc ĐÚNG cơ sở này không (chưa xoá mềm) — chốt chặn cho route file nội bộ. */
+  async existsForPlace(placeId: string, mediaId: string): Promise<boolean> {
+    const rows: unknown[] = await this.repo.query(
+      `SELECT 1 FROM media WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [mediaId, placeId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Xoá MỀM một ảnh CỦA ĐÚNG cơ sở được chỉ định. `place_id` nằm TRONG WHERE (không phải kiểm tra
+   * ở service rồi mới update) — nên một mediaId thuộc cơ sở khác khớp 0 dòng và trả `false`, không
+   * có khe hở TOCTOU giữa "kiểm tra" và "ghi". Trả `true` chỉ khi CHÍNH lần gọi này đổi dữ liệu
+   * (idempotent: gỡ hai lần → lần sau `false`), cùng khuôn `softDeleteOrphanCandidate()`.
+   */
+  async softDeletePlaceMedia(placeId: string, mediaId: string): Promise<boolean> {
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
+      `UPDATE media SET deleted_at = now()
+        WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL
+        RETURNING id`,
+      [mediaId, placeId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Tạo media row mới cho một upload đã xác thực. Luôn `status=pending`, `provider=upload`,
    * `url=null` (Design review §A — không bao giờ lưu URL tuyệt đối/signed; sinh động lúc đọc).
    * Nhận `manager` trực tiếp (không dùng `this.repo`) để caller kiểm soát transaction.

@@ -2,6 +2,8 @@ import { ConflictException, ForbiddenException, NotFoundException, Unprocessable
 import { MediaService } from './media.service';
 import { MediaStatus } from './media.enums';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
+import type { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
+import type { AuditService } from '../../core/audit/audit.service';
 import { ModerationTargetType } from '../moderation/moderation.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
@@ -12,6 +14,8 @@ describe('MediaService', () => {
   let mediaRepo: LooseMock<import('./repositories/media.repository').MediaRepository>;
   let ds: LooseMock<import('typeorm').DataSource>;
   let moderationReports: LooseMock<ModerationReportsService>;
+  let moderationCases: LooseMock<ModerationCasesRepository>;
+  let audit: LooseMock<AuditService>;
   let redisClient: { set: jest.Mock; get: jest.Mock; del: jest.Mock };
   let service: MediaService;
 
@@ -40,10 +44,25 @@ describe('MediaService', () => {
       createUploaded: jest.fn(),
       existsPublished: jest.fn(),
       findPublishedObjectKey: jest.fn(),
+      findAnyStatusObjectKey: jest.fn(),
+      listAllByPlace: jest.fn(),
+      existsForPlace: jest.fn(),
+      softDeletePlaceMedia: jest.fn(),
     });
     ds = createMock<import('typeorm').DataSource>({ transaction: jest.fn() });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
-    service = new MediaService(storage, mediaUrl, redis, mediaRepo, ds, moderationReports);
+    moderationCases = createMock<ModerationCasesRepository>({ createOpenCase: jest.fn() });
+    audit = createMock<AuditService>({ record: jest.fn() });
+    service = new MediaService(
+      storage,
+      mediaUrl,
+      redis,
+      mediaRepo,
+      ds,
+      moderationReports,
+      moderationCases,
+      audit,
+    );
   });
 
   describe('presign', () => {
@@ -58,19 +77,42 @@ describe('MediaService', () => {
       expect(contentType).toBe('image/jpeg');
     });
 
-    it('có place_id nhưng không tồn tại → UnprocessableEntityException, không tạo presigned URL', async () => {
+    // `place_id` trong body ĐÃ BỊ GỠ khỏi PresignMediaDto (Owner Place Photos): nó chỉ kiểm tra
+    // "place có tồn tại" chứ không kiểm tra quyền. Ảnh của cơ sở giờ đi qua presignForPlace(),
+    // nơi placeId đến từ route param đã qua PermissionsGuard.
+    it('presign mồ côi KHÔNG BAO GIỜ gắn place — session lưu placeId null', async () => {
+      storage.createPresignedPutUrl.mockResolvedValue({ key: 'media/abc.jpg', uploadUrl: 'https://x', expiresIn: 600 });
+      await service.presign(dto, USER_ID);
+
+      const session = JSON.parse(redisClient.set.mock.calls[0][1] as string);
+      expect(session.placeId).toBeNull();
+      expect(mediaRepo.placeExists).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('presignForPlace (ảnh của cơ sở)', () => {
+    const dto = { content_type: 'image/jpeg' as const, size: 1000, checksum_sha256: VALID_CHECKSUM };
+
+    it('cơ sở không tồn tại → UnprocessableEntityException, KHÔNG tạo presigned URL', async () => {
       mediaRepo.placeExists.mockResolvedValue(false);
-      await expect(service.presign({ ...dto, place_id: 'p1' }, USER_ID)).rejects.toBeInstanceOf(
+      await expect(service.presignForPlace(dto, USER_ID, 'p1')).rejects.toBeInstanceOf(
         UnprocessableEntityException,
       );
       expect(storage.createPresignedPutUrl).not.toHaveBeenCalled();
     });
 
-    it('có place_id tồn tại → tiếp tục tạo presigned URL bình thường', async () => {
+    // placeId được KHOÁ vào phiên presign ngay lúc quyền vừa được kiểm tra — register() sau đó chỉ
+    // đọc từ session, nên không có khe hở để tráo sang cơ sở khác giữa hai bước.
+    it('cơ sở tồn tại → session ghi ĐÚNG placeId đã được cấp quyền', async () => {
       mediaRepo.placeExists.mockResolvedValue(true);
       storage.createPresignedPutUrl.mockResolvedValue({ key: 'media/x.jpg', uploadUrl: 'https://x', expiresIn: 600 });
-      const res = await service.presign({ ...dto, place_id: 'p1' }, USER_ID);
+
+      const res = await service.presignForPlace(dto, USER_ID, 'place-1');
+
       expect(res).toEqual({ key: 'media/x.jpg', upload_url: 'https://x', expires_in: 600 });
+      const session = JSON.parse(redisClient.set.mock.calls[0][1] as string);
+      expect(session.placeId).toBe('place-1');
+      expect(session.userId).toBe(USER_ID);
     });
 
     it('lưu presign-session vào Redis, key theo ĐÚNG presigned.key trả về (không phải key nội bộ), TTL 900s', async () => {

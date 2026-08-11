@@ -4,6 +4,7 @@ import { Media } from './entities/media.entity';
 import { MediaRepository } from './repositories/media.repository';
 import { MediaService } from './media.service';
 import { MediaController } from './media.controller';
+import { PlaceMediaController } from './place-media.controller';
 import { MediaCleanupService } from './media-cleanup.service';
 import { ModerationCoreModule } from '../moderation/moderation-core.module';
 
@@ -20,7 +21,7 @@ import { ModerationCoreModule } from '../moderation/moderation-core.module';
 // dependency-free split specifically built to avoid this (see its own file comment).
 @Module({
   imports: [TypeOrmModule.forFeature([Media]), ModerationCoreModule],
-  controllers: [MediaController],
+  controllers: [MediaController, PlaceMediaController],
   providers: [MediaRepository, MediaService, MediaCleanupService],
   exports: [TypeOrmModule, MediaRepository, MediaCleanupService],
 })

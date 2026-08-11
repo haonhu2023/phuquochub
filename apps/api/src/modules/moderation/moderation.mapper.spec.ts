@@ -125,6 +125,9 @@ describe('toModerationTargetPreview', () => {
       status: MediaStatus.PENDING,
       uploadedBy: 'u1',
       createdAt: new Date('2026-08-02T00:00:00Z'),
+      placeId: 'place-1',
+      placeName: 'Bãi Sao',
+      previewUrl: 'https://api.example/api/media/m1/moderation-file',
     };
     const result = toModerationTargetPreview(preview);
     expect(result).toEqual({
@@ -135,6 +138,9 @@ describe('toModerationTargetPreview', () => {
       status: 'pending',
       uploaded_by: 'u1',
       created_at: '2026-08-02T00:00:00.000Z',
+      place_id: 'place-1',
+      place_name: 'Bãi Sao',
+      preview_url: 'https://api.example/api/media/m1/moderation-file',
     });
     expect(Object.keys(result)).not.toContain('object_key');
     expect(Object.keys(result)).not.toContain('url');

@@ -128,6 +128,11 @@ export function EditPlaceView({ placeId }: Props) {
             Quản lý liên hệ →
           </Link>
         </p>
+        <p style={{ marginTop: '0.5rem' }}>
+          <Link href={`/dashboard/places/${placeId}/photos`} style={{ color: 'var(--accent)' }}>
+            Quản lý ảnh →
+          </Link>
+        </p>
       </header>
       <PlaceForm
         initial={state.place}
