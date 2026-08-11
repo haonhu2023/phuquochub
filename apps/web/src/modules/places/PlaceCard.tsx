@@ -4,7 +4,17 @@ import { formatPriceRange } from './format';
 import styles from './places.module.css';
 
 // Thẻ địa điểm (presentational). Dùng ở danh sách + kết quả tìm kiếm.
-export function PlaceCard({ place }: { place: PlaceCardType }) {
+//
+// `titleAs` cho phép nơi gọi đặt tên địa điểm ĐÚNG bậc trong cây tiêu đề của trang đó. Mặc định
+// `h2` — giữ NGUYÊN hành vi cũ cho mọi nơi gọi hiện có (trang danh sách: h1 trang + h2 thẻ). Trang
+// chủ gom thẻ dưới một tiêu đề khối `h2` nên truyền `h3` để không làm phẳng cấu trúc tiêu đề.
+export function PlaceCard({
+  place,
+  titleAs: TitleTag = 'h2',
+}: {
+  place: PlaceCardType;
+  titleAs?: 'h2' | 'h3';
+}) {
   const priceLabel = formatPriceRange(place.price_range);
   return (
     <Link href={`/places/${place.slug}`} className={styles.card}>
@@ -23,7 +33,7 @@ export function PlaceCard({ place }: { place: PlaceCardType }) {
       )}
 
       <div className={styles.cardBody}>
-        <h2 className={styles.cardTitle}>{place.name}</h2>
+        <TitleTag className={styles.cardTitle}>{place.name}</TitleTag>
         {place.short_description && <p className={styles.cardDesc}>{place.short_description}</p>}
 
         <div className={styles.cardMeta}>

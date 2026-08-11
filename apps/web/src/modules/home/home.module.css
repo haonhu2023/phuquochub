@@ -1,0 +1,160 @@
+/* Trang chủ công khai. CHỈ những style CHƯA có ở places.module.css/search.module.css — lưới thẻ
+   (.grid), thẻ địa điểm (.card), trạng thái rỗng (.state), nút (.btn) và ô tìm kiếm
+   (search.module.css) đều tái dùng nguyên vẹn, không dựng lại. */
+
+/* Hero CỐ Ý gọn: đây là trang khám phá, không phải landing page quảng cáo — người dùng phải thấy
+   ngay ô tìm kiếm và các lối vào danh mục mà không phải cuộn hết một màn hình. */
+.hero {
+  padding: 1.75rem 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, var(--surface-2), var(--surface));
+}
+
+.heroTitle {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  line-height: 1.15;
+}
+
+.heroLede {
+  margin: 0 0 1.25rem;
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: clamp(0.95rem, 2.5vw, 1.05rem);
+}
+
+/* Ô tìm kiếm dùng lại SearchBox (search.module.css) — chỉ bỏ margin-bottom mặc định của nó khi
+   nằm trong hero, không ghi đè gì khác. */
+.heroSearch > form {
+  margin-bottom: 0;
+}
+
+.section {
+  margin-bottom: 2.5rem;
+}
+
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: clamp(1.15rem, 3vw, 1.4rem);
+}
+
+.sectionLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.sectionLink:hover {
+  text-decoration: underline;
+}
+
+/* auto-fit + minmax: 2 cột trên điện thoại hẹp, nhiều hơn khi rộng — không cần media query nào,
+   và không bao giờ tràn ngang. */
+.categoryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.categoryTile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+.categoryTile:hover {
+  border-color: var(--accent);
+}
+/* Focus nhìn thấy rõ cho điều hướng bằng bàn phím (thẻ là <a>, không phải nút giả). */
+.categoryTile:focus-visible,
+.ctaLink:focus-visible,
+.sectionLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.categoryName {
+  font-weight: 600;
+}
+
+.categoryHint {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* ---------- Dải CTA (bản đồ / chủ cơ sở) ---------- */
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+/* CTA chủ cơ sở là mục PHỤ trên một trang dành cho khách tham quan — nền chìm, không viền nhấn,
+   đặt cuối trang; cố ý không cạnh tranh với nội dung khám phá. */
+.ctaSecondary {
+  background: transparent;
+  border-style: dashed;
+}
+
+.ctaText {
+  margin: 0;
+  min-width: 0;
+}
+
+.ctaTitle {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.ctaDesc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ctaLink {
+  flex-shrink: 0;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ctaLink:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+/* Lỗi tải một khối KHÔNG được làm hỏng cả trang — khối hỏng thu lại thành một dòng nhẹ nhàng,
+   phần còn lại của trang chủ vẫn dùng được bình thường. */
+.sectionError {
+  padding: 1.25rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.92rem;
+}

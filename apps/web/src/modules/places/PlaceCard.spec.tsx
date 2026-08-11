@@ -65,3 +65,18 @@ describe('PlaceCard', () => {
     expect(screen.getByText('★ 4.3')).toBeInTheDocument();
   });
 });
+
+// `titleAs` — nơi gọi đặt tên địa điểm đúng bậc tiêu đề của trang đó (trang chủ gom thẻ dưới một
+// h2 nên cần h3). Mặc định phải GIỮ NGUYÊN h2 để không đổi hành vi các trang danh sách hiện có.
+describe('PlaceCard — bậc tiêu đề', () => {
+  it('mặc định render h2 (hành vi cũ của mọi nơi gọi hiện có)', () => {
+    render(<PlaceCard place={BASE_PLACE} />);
+    expect(screen.getByRole('heading', { level: 2, name: 'Dinh Cậu' })).toBeInTheDocument();
+  });
+
+  it('titleAs="h3" render h3', () => {
+    render(<PlaceCard place={BASE_PLACE} titleAs="h3" />);
+    expect(screen.getByRole('heading', { level: 3, name: 'Dinh Cậu' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
+  });
+});

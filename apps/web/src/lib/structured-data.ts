@@ -19,6 +19,35 @@ export function serializeJsonLd(data: JsonLd): string {
   return JSON.stringify(data).replace(/</g, '\\u003c');
 }
 
+/**
+ * JSON-LD trang chủ. CHỈ `WebSite` — CỐ Ý KHÔNG phát `Organization`/`LocalBusiness`: những kiểu đó
+ * đòi các dữ kiện pháp nhân (logo, địa chỉ, mạng xã hội, số đăng ký) mà repo này không có nguồn
+ * nào xác thực được, và bịa ra chúng là đúng thứ mà kỷ luật "không suy diễn khi không có bằng
+ * chứng" của file này cấm.
+ *
+ * `potentialAction` trỏ tới `/search?q=` — đây là endpoint tìm kiếm CÓ THẬT của ứng dụng
+ * (`app/(public)/search/page.tsx` đọc đúng tham số `q`), không phải một khai báo lấy lệ.
+ */
+export function buildWebSiteJsonLd(name: string, description: string): JsonLd {
+  const site = getSiteUrl();
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name,
+    description,
+    url: site,
+    inLanguage: 'vi-VN',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: {
+        '@type': 'EntryPoint',
+        urlTemplate: `${site}/search?q={search_term_string}`,
+      },
+      'query-input': 'required name=search_term_string',
+    },
+  };
+}
+
 function baseLocationFields(place: PlaceDetail, path: string): JsonLd {
   const site = getSiteUrl();
   const fields: JsonLd = {
