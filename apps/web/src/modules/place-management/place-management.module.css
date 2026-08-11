@@ -189,6 +189,25 @@
   color: var(--fg);
 }
 
+/* Cùng hình dạng .cancelLink nhưng cho <button> thật (huỷ chỉnh sửa inline — không phải điều
+   hướng, KHÔNG dùng <Link>) — reset chrome mặc định của trình duyệt. */
+.linkBtn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.linkBtn:hover {
+  color: var(--fg);
+}
+.linkBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .archiveBtn {
   padding: 0.4rem 0.8rem;
   border-radius: 8px;
