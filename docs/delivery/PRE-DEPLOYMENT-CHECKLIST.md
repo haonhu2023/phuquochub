@@ -144,6 +144,50 @@ explicit Owner statement quoted in a future task's evidence index).
 
 ---
 
+## 3a. First operator bootstrap (post-deploy, before the site can be operated)
+
+**Added 2026-08-12 (Operator Bootstrap & Editorial Place Content).** A freshly migrated database
+has roles but **no privileged user**: `SeedRbac` creates no `user_roles` row, and the only
+role-granting endpoint (`POST /users/{id}/roles`) itself requires `Role.Assign`. Until this
+sequence is run, nobody can approve business claims, moderate media, or publish photos — every
+owner upload stays `pending` forever. **No hand-written production SQL is required.**
+
+Run this **after** `migrate` succeeds and the API container is healthy:
+
+| # | Step | Command / action |
+|---|---|---|
+| 1 | Deploy + migrate as usual | `scripts/deploy.sh` (unchanged) |
+| 2 | The intended operator registers **through the normal signup form** on the live site | web UI — they choose their own password; nothing here ever sees, sets, or transmits it |
+| 3 | Set the bootstrap target in the deploy-time environment (never committed) | `BOOTSTRAP_OPERATOR_EMAIL=<the address used in step 2>` |
+| 4 | Run the bootstrap command inside the API container | `npm run operator:bootstrap` |
+| 5 | Verify the output | expect `role: administrator` and `outcome: granted` |
+| 6 | Unset `BOOTSTRAP_OPERATOR_EMAIL` | it has no standing purpose after step 5 |
+| 7 | The operator logs out and logs back in | the new role is only reflected in a fresh session |
+| 8 | Verify access | the dashboard now shows **Biên tập nội dung địa điểm** and **Hàng chờ kiểm duyệt** |
+
+Notes that matter operationally:
+
+- **Idempotent.** Re-running step 4 is safe and expected (retry after a network blip, re-running the
+  whole deploy script). It reports `outcome: already_assigned` and writes nothing.
+- **Fails loudly, never silently.** Unknown email → error telling you to register first; unknown
+  role → error naming `SeedRbac`; disallowed role → error listing the allowed set.
+- **`administrator` is the default and the right choice.** It is the least-privileged role that
+  breaks the deadlock: it holds `Role.Assign` (so every *subsequent* teammate is granted through
+  the application, with an audit trail and a named actor — not by re-running this script) and
+  inherits `moderator` → `contributor`. **`super_administrator` cannot be bootstrapped by this
+  command at all** — its `*` wildcard is never granted from a shell; grant it in-app from an
+  existing administrator if it is ever genuinely needed.
+- **Two accounts are required to publish editorial photos.** The self-moderation invariant (INV-12,
+  `ModerationService.decideMedia`) forbids anyone approving media they uploaded themselves, and
+  this milestone deliberately does **not** carve out an exception. Bootstrap a second account for
+  the editor — `BOOTSTRAP_OPERATOR_EMAIL=<editor address> BOOTSTRAP_OPERATOR_ROLE=contributor
+  npm run operator:bootstrap` — so that operator A uploads and operator B approves.
+- Every grant made by this command is written to `audit_logs` as `role.assigned` with
+  `context.source = 'operator-bootstrap-script'`, so a shell-issued privilege change is never
+  invisible.
+
+---
+
 ## 4. Staging — MVP decision, explicitly revisitable
 
 Recorded here for visibility, not as a new decision: no staging environment exists for the first
