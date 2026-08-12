@@ -12,8 +12,10 @@ import {
   listPlacePhotos,
   presignPlacePhoto,
   registerPlacePhoto,
+  reorderPlacePhotos,
+  setPlacePhotoCover,
 } from './api/place-photos.api';
-import { placePhotoStatusLabel, type PlacePhoto } from './types';
+import { canBeCover, placePhotoStatusLabel, type PlacePhoto } from './types';
 import styles from './place-photos.module.css';
 
 interface Props {
@@ -51,6 +53,36 @@ function uploadErrorMessage(err: unknown): string {
 }
 
 /**
+ * Lỗi của hai thao tác quản lý gallery. Tách khỏi `uploadErrorMessage` vì cùng một mã trạng thái
+ * mang ý nghĩa khác hẳn ở đây (vd 422 = "ảnh chưa được duyệt", không phải lỗi tệp tải lên).
+ */
+function galleryErrorMessage(err: unknown, action: 'order' | 'cover'): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) return 'Bạn không có quyền quản lý ảnh của cơ sở này.';
+    if (err.status === 404) return 'Không tìm thấy ảnh này. Vui lòng tải lại trang.';
+    if (err.status === 422) {
+      return action === 'cover'
+        ? 'Chỉ ảnh đã được kiểm duyệt viên duyệt mới đặt được làm ảnh bìa.'
+        : 'Danh sách ảnh đã thay đổi. Vui lòng tải lại trang rồi thử lại.';
+    }
+    if (err.status === 429) return 'Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.';
+    if (err.status < 500) return err.message;
+  }
+  return action === 'cover'
+    ? 'Không đặt được ảnh bìa. Vui lòng thử lại.'
+    : 'Không lưu được thứ tự ảnh. Vui lòng thử lại.';
+}
+
+/** Đổi chỗ ảnh ở `index` với ảnh liền kề. Trả về `null` nếu đã ở biên (không có gì để đổi). */
+function swapped(photos: PlacePhoto[], index: number, direction: -1 | 1): PlacePhoto[] | null {
+  const target = index + direction;
+  if (target < 0 || target >= photos.length) return null;
+  const next = [...photos];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
+/**
  * Quản lý ảnh của cơ sở (chủ/quản lý cơ sở).
  *
  * Ảnh KHÔNG BAO GIỜ tự hiển thị công khai: mỗi ảnh vừa tải lên ở trạng thái "Đang chờ duyệt" cho
@@ -67,6 +99,10 @@ export function PhotosView({ placeId }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Một cờ DUY NHẤT cho cả sắp xếp lẫn đặt bìa: hai thao tác cùng ghi lên một tài nguyên (thứ tự
+  // gallery), nên cho chạy song song sẽ khiến hai response ghi đè nhau và giao diện nhấp nháy về
+  // trạng thái cũ. Trong lúc chờ, MỌI nút của gallery bị vô hiệu hoá.
+  const [busy, setBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
@@ -139,8 +175,62 @@ export function PhotosView({ placeId }: Props) {
     }
   }
 
+  /**
+   * Lưu NGAY mỗi lần bấm Lên/Xuống thay vì gom lại chờ nút "Lưu": không có trạng thái "đã đổi
+   * nhưng chưa lưu" để người dùng mất khi rời trang, và server luôn là nguồn sự thật của thứ tự.
+   * Danh sách gửi đi là TOÀN BỘ ảnh đang hiển thị (đúng hợp đồng của endpoint).
+   */
+  async function onMove(index: number, direction: -1 | 1) {
+    if (state.kind !== 'ready' || busy) return;
+    const next = swapped(state.photos, index, direction);
+    if (!next) return;
+
+    const session = readSession();
+    if (!session) {
+      setUploadError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    setUploadError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const photos = await reorderPlacePhotos(placeId, next.map((p) => p.id), session.accessToken);
+      setState({ kind: 'ready', photos });
+      setNotice('Đã lưu thứ tự ảnh.');
+    } catch (err) {
+      // KHÔNG áp thứ tự mới vào giao diện khi lưu thất bại — hiển thị đúng thứ tự server đang giữ.
+      setUploadError(galleryErrorMessage(err, 'order'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSetCover(photo: PlacePhoto) {
+    if (busy) return;
+
+    const session = readSession();
+    if (!session) {
+      setUploadError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    setUploadError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const photos = await setPlacePhotoCover(placeId, photo.id, session.accessToken);
+      setState({ kind: 'ready', photos });
+      setNotice('Đã đặt ảnh bìa.');
+    } catch (err) {
+      setUploadError(galleryErrorMessage(err, 'cover'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onDelete(photo: PlacePhoto) {
-    if (deletingId) return;
+    if (deletingId || busy) return;
     if (!window.confirm('Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.')) return;
 
     const session = readSession();
@@ -262,38 +352,95 @@ export function PhotosView({ placeId }: Props) {
       )}
 
       {state.kind === 'ready' && state.photos.length > 0 && (
-        <ul className={styles.grid}>
-          {state.photos.map((photo) => (
-            <li key={photo.id} className={styles.tile}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh phục vụ qua redirect có ký từ object storage; next/image cần remotePatterns (ngoài phạm vi). */}
-              <img
-                className={styles.thumb}
-                src={photo.url}
-                alt={photo.alt_text ?? photo.caption ?? 'Ảnh của cơ sở'}
-                loading="lazy"
-              />
-              <div className={styles.tileBody}>
-                <span className={`${placeMgmtStyles.statusBadge} ${statusClass(photo.status)}`}>
-                  {placePhotoStatusLabel(photo.status)}
-                </span>
-                {photo.status === 'pending' && (
-                  <span className={styles.tileHint}>Chưa hiển thị công khai.</span>
-                )}
-                {photo.status === 'rejected' && (
-                  <span className={styles.tileHint}>Kiểm duyệt viên đã từ chối ảnh này.</span>
-                )}
-                <button
-                  type="button"
-                  className={placeMgmtStyles.archiveBtn}
-                  onClick={() => onDelete(photo)}
-                  disabled={deletingId === photo.id}
-                >
-                  {deletingId === photo.id ? 'Đang gỡ…' : 'Gỡ ảnh'}
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className={styles.orderHint}>
+            Ảnh hiển thị trên trang cơ sở theo đúng thứ tự dưới đây. Dùng nút “Lên”/“Xuống” để sắp
+            lại — thay đổi được lưu ngay.
+          </p>
+          {busy && (
+            <p className={styles.uploadStatus} role="status">
+              Đang lưu…
+            </p>
+          )}
+          <ul className={styles.grid}>
+            {state.photos.map((photo, index) => (
+              <li key={photo.id} className={`${styles.tile} ${photo.is_cover ? styles.tileCover : ''}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- ảnh phục vụ qua redirect có ký từ object storage; next/image cần remotePatterns (ngoài phạm vi). */}
+                <img
+                  className={styles.thumb}
+                  src={photo.url}
+                  alt={photo.alt_text ?? photo.caption ?? 'Ảnh của cơ sở'}
+                  loading="lazy"
+                />
+                <div className={styles.tileBody}>
+                  <span className={`${placeMgmtStyles.statusBadge} ${statusClass(photo.status)}`}>
+                    {placePhotoStatusLabel(photo.status)}
+                  </span>
+                  {photo.is_cover && <span className={styles.coverBadge}>Ảnh bìa</span>}
+                  {photo.status === 'pending' && (
+                    <span className={styles.tileHint}>
+                      Chưa hiển thị công khai. Ảnh phải được duyệt trước khi làm ảnh bìa.
+                    </span>
+                  )}
+                  {photo.status === 'rejected' && (
+                    <span className={styles.tileHint}>
+                      Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và không làm
+                      ảnh bìa được.
+                    </span>
+                  )}
+                  {photo.status === 'hidden' && (
+                    <span className={styles.tileHint}>
+                      Ảnh đang bị ẩn nên không hiển thị công khai và không làm ảnh bìa được.
+                    </span>
+                  )}
+
+                  {/* `aria-label` nêu rõ vị trí để người dùng trình đọc màn hình biết mình đang di
+                      chuyển ảnh nào — chỉ nhãn "Lên"/"Xuống" thì mọi nút nghe giống hệt nhau. */}
+                  <div className={styles.tileActions}>
+                    <button
+                      type="button"
+                      className={styles.orderBtn}
+                      onClick={() => onMove(index, -1)}
+                      disabled={busy || index === 0}
+                      aria-label={`Di chuyển ảnh ${index + 1} lên trước`}
+                    >
+                      ↑ Lên
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.orderBtn}
+                      onClick={() => onMove(index, 1)}
+                      disabled={busy || index === state.photos.length - 1}
+                      aria-label={`Di chuyển ảnh ${index + 1} xuống sau`}
+                    >
+                      ↓ Xuống
+                    </button>
+                  </div>
+
+                  {canBeCover(photo) && (
+                    <button
+                      type="button"
+                      className={styles.coverBtn}
+                      onClick={() => onSetCover(photo)}
+                      disabled={busy}
+                    >
+                      Đặt làm ảnh bìa
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className={placeMgmtStyles.archiveBtn}
+                    onClick={() => onDelete(photo)}
+                    disabled={busy || deletingId === photo.id}
+                  >
+                    {deletingId === photo.id ? 'Đang gỡ…' : 'Gỡ ảnh'}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </main>
   );

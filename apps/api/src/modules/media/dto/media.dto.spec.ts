@@ -1,10 +1,19 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreateMediaDto, MAX_UPLOAD_SIZE_BYTES, PresignMediaDto } from './media.dto';
+import {
+  CreateMediaDto,
+  MAX_REORDER_MEDIA_IDS,
+  MAX_UPLOAD_SIZE_BYTES,
+  PresignMediaDto,
+  ReorderPlaceMediaDto,
+  SetPlaceCoverDto,
+} from './media.dto';
 
 const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
 const VALID_CHECKSUM = 'a'.repeat(64);
 const VALID_KEY = 'media/11111111-1111-4111-8111-111111111111.jpg';
+const UUID_A = '11111111-1111-4111-8111-111111111111';
+const UUID_B = '22222222-2222-4222-8222-222222222222';
 
 function validatePresign(raw: Record<string, unknown>) {
   return validate(plainToInstance(PresignMediaDto, raw), PIPE_OPTIONS);
@@ -132,5 +141,60 @@ describe('CreateMediaDto', () => {
   ])('từ chối key sai định dạng: %s', async (key) => {
     const errors = await validateCreate({ key });
     expect(errors.some((e) => e.property === 'key')).toBe(true);
+  });
+});
+
+// Owner Cover & Photo Ordering (2026-08-12).
+describe('ReorderPlaceMediaDto', () => {
+  const run = (raw: Record<string, unknown>) =>
+    validate(plainToInstance(ReorderPlaceMediaDto, raw), PIPE_OPTIONS);
+
+  it('chấp nhận danh sách UUID hợp lệ', async () => {
+    await expect(run({ media_ids: [UUID_A, UUID_B] })).resolves.toHaveLength(0);
+  });
+
+  it('từ chối mảng rỗng (không có gì để sắp)', async () => {
+    const errors = await run({ media_ids: [] });
+    expect(errors.some((e) => e.property === 'media_ids')).toBe(true);
+  });
+
+  it.each([['not-a-uuid'], [123], [null]])('từ chối phần tử không phải UUID v4: %s', async (bad) => {
+    const errors = await run({ media_ids: [UUID_A, bad] });
+    expect(errors.some((e) => e.property === 'media_ids')).toBe(true);
+  });
+
+  it('từ chối media_ids không phải mảng', async () => {
+    const errors = await run({ media_ids: UUID_A });
+    expect(errors.some((e) => e.property === 'media_ids')).toBe(true);
+  });
+
+  it('từ chối mảng vượt trần payload', async () => {
+    const errors = await run({ media_ids: Array.from({ length: MAX_REORDER_MEDIA_IDS + 1 }, () => UUID_A) });
+    expect(errors.some((e) => e.property === 'media_ids')).toBe(true);
+  });
+
+  // Cơ sở đích LUÔN là route param đã qua guard — không có đường nào khai nó trong body.
+  it('từ chối place_id trong body (whitelist + forbidNonWhitelisted)', async () => {
+    const errors = await run({ media_ids: [UUID_A], place_id: UUID_B });
+    expect(errors.some((e) => e.property === 'place_id')).toBe(true);
+  });
+});
+
+describe('SetPlaceCoverDto', () => {
+  const run = (raw: Record<string, unknown>) => validate(plainToInstance(SetPlaceCoverDto, raw), PIPE_OPTIONS);
+
+  it('chấp nhận media_id là UUID v4', async () => {
+    await expect(run({ media_id: UUID_A })).resolves.toHaveLength(0);
+  });
+
+  it.each(['not-a-uuid', '', '../../etc/passwd'])('từ chối media_id sai định dạng: %s', async (bad) => {
+    const errors = await run({ media_id: bad });
+    expect(errors.some((e) => e.property === 'media_id')).toBe(true);
+  });
+
+  // Chốt chặn "không nhận URL tuỳ ý làm ảnh bìa": hợp đồng CHỈ có media id.
+  it.each(['cover_image_url', 'url', 'place_id'])('từ chối trường lạ %s trong body', async (field) => {
+    const errors = await run({ media_id: UUID_A, [field]: 'https://evil.example/x.jpg' });
+    expect(errors.some((e) => e.property === field)).toBe(true);
   });
 });

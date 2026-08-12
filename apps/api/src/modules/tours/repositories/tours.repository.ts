@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PriceRange } from '../../places/place.enums';
 import { TourDifficultyDto, TourSort, TourTypeDto } from '../dto/tours.dto';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
+
+/** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
+type CardRow = Record<string, unknown> & CoverImageColumns;
 
 export interface TourListFilters {
   type?: TourTypeDto;
@@ -52,25 +57,29 @@ function tourWhere(filters: TourListFilters, args: unknown[]): string {
 
 @Injectable()
 export class ToursRepository {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly mediaUrl: MediaUrlService,
+  ) {}
 
   async tourCategoryId(): Promise<string | null> {
     const rows = await this.ds.query(`SELECT id FROM categories WHERE slug = 'tour' LIMIT 1`);
     return rows[0]?.id ?? null;
   }
 
-  listTours(limit: number, offset: number, filters: TourListFilters = {}) {
+  async listTours(limit: number, offset: number, filters: TourListFilters = {}): Promise<CardRow[]> {
     const args: unknown[] = [];
     const where = tourWhere(filters, args);
     const orderBy = TOUR_ORDER_BY[filters.sort ?? 'rating_desc'];
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    // Một correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có query riêng theo từng hàng ở
-    // tầng application; toàn bộ chạy trong một round-trip SQL).
-    return this.ds.query(
+    // Correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có query riêng theo từng hàng ở tầng
+    // application; toàn bộ chạy trong một round-trip SQL). `withCoverImageUrl` chỉ dựng URL từ dữ
+    // liệu ĐÃ có trong row, cũng không truy vấn thêm.
+    const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count,
               p.price_range, p.ward,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+              ${COVER_IMAGE_COLS},
               td.tour_type, td.duration_minutes, td.difficulty,
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM places p JOIN place_tour_details td ON td.place_id = p.id
@@ -79,6 +88,7 @@ export class ToursRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   countTours(filters: TourListFilters = {}): Promise<number> {

@@ -3,11 +3,15 @@ import { PlacesRepository, PlaceDetailRow } from './places.repository';
 import { Place } from '../entities/place.entity';
 import { PlaceStatus, PriceRange } from '../place.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
+import type { MediaUrlService } from '../../../core/media-url/media-url.service';
 
 // Chuẩn hoá khoảng trắng để assert nội dung SQL không phụ thuộc cách xuống dòng/thụt lề.
 function sql(query: string): string {
   return query.replace(/\s+/g, ' ').trim();
 }
+
+// Chỉ dùng để dựng URL API của ảnh bìa đã upload (xem core/media-url/cover-image.ts).
+const MEDIA_URL = { fileUrl: (id: string) => `https://api.test/api/media/${id}/file` } as MediaUrlService;
 
 function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
   return {
@@ -42,7 +46,7 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
 
   beforeEach(() => {
     repo = createMock<Repository<Place>>({ query: jest.fn(), exists: jest.fn(), update: jest.fn() });
-    sut = new PlacesRepository(repo);
+    sut = new PlacesRepository(repo, MEDIA_URL);
   });
 
   describe('existsById', () => {
@@ -228,7 +232,7 @@ describe('PlacesRepository.list — thứ tự phân trang xác định (GAP-12)
 
   beforeEach(() => {
     repo = createMock<Repository<Place>>({ query: jest.fn() });
-    sut = new PlacesRepository(repo);
+    sut = new PlacesRepository(repo, MEDIA_URL);
   });
 
   async function capturedItemsQuery(): Promise<string> {
@@ -427,7 +431,7 @@ describe('PlacesRepository.bboxClusters — cắt LIMIT xác định (F-34)', ()
 
   beforeEach(() => {
     repo = createMock<Repository<Place>>({ query: jest.fn() });
-    sut = new PlacesRepository(repo);
+    sut = new PlacesRepository(repo, MEDIA_URL);
   });
 
   async function capturedQuery(): Promise<string> {
@@ -510,7 +514,7 @@ describe('PlacesRepository.bboxClusters — Search Filters (category/ward)', () 
 
   beforeEach(() => {
     repo = createMock<Repository<Place>>({ query: jest.fn() });
-    sut = new PlacesRepository(repo);
+    sut = new PlacesRepository(repo, MEDIA_URL);
   });
 
   const BASE = { minLng: 103.4, minLat: 9.8, maxLng: 104.2, maxLat: 10.5, cellDeg: 0.01, limit: 500 };

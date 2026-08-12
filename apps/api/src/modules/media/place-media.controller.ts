@@ -8,6 +8,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Res,
 } from '@nestjs/common';
@@ -17,7 +18,12 @@ import { RequirePermissions } from '../authz/decorators/require-permissions.deco
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { MediaService } from './media.service';
-import { CreateMediaDto, PresignMediaDto } from './dto/media.dto';
+import {
+  CreateMediaDto,
+  PresignMediaDto,
+  ReorderPlaceMediaDto,
+  SetPlaceCoverDto,
+} from './dto/media.dto';
 
 /**
  * Ảnh CỦA CƠ SỞ do chủ/quản lý cơ sở tự đăng (Owner Place Photos, 2026-08-11).
@@ -81,6 +87,46 @@ export class PlaceMediaController {
     @CurrentUser() user: AuthPrincipal,
   ) {
     return this.mediaService.register(dto, user.sub);
+  }
+
+  /**
+   * Sắp xếp lại ảnh của cơ sở (Owner Cover & Photo Ordering, 2026-08-12).
+   *
+   * `order` là một đoạn path CỐ ĐỊNH nên không đụng route nào theo `:mediaId` (và hai route đó
+   * dùng phương thức HTTP khác hẳn). Body CHỈ có `media_ids` — cơ sở đích vẫn là route param đã
+   * qua guard, đúng nguyên tắc "id mà guard cho phép chính là id service dùng".
+   *
+   * Trả về danh sách ảnh SAU KHI sắp (cùng hình dạng `GET`), để client không phải gọi thêm một
+   * vòng và luôn nhìn thấy đúng thứ tự chuẩn do server quyết định.
+   */
+  @Patch('order')
+  @RequirePermissions('Media.Upload.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'placeId' } })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  reorder(
+    @Param('placeId', ParseUUIDPipe) placeId: string,
+    @Body() dto: ReorderPlaceMediaDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.mediaService.reorderPlaceMedia(placeId, dto.media_ids, user.sub);
+  }
+
+  /**
+   * Chọn ảnh bìa cho cơ sở. Client gửi MEDIA ID, KHÔNG BAO GIỜ gửi URL: một URL do client cung cấp
+   * là dữ liệu không kiểm chứng được (có thể trỏ ra ngoài, có thể là presigned URL sắp hết hạn),
+   * còn media id thì kiểm được đầy đủ tư cách (thuộc đúng cơ sở, đã duyệt) ngay trong câu UPDATE.
+   * Giá trị lưu là `places.cover_image_id`; URL công khai được SINH lúc đọc, không lưu.
+   */
+  @Patch('cover')
+  @RequirePermissions('Media.Upload.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'placeId' } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  setCover(
+    @Param('placeId', ParseUUIDPipe) placeId: string,
+    @Body() dto: SetPlaceCoverDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.mediaService.setPlaceCover(placeId, dto.media_id, user.sub);
   }
 
   /**

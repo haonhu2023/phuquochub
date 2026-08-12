@@ -390,3 +390,156 @@ describe('MediaRepository — Media Orphan Cleanup', () => {
     });
   });
 });
+
+// Owner Cover & Photo Ordering (2026-08-12) — thứ tự ảnh + ảnh bìa.
+describe('MediaRepository — thứ tự gallery của cơ sở', () => {
+  let repo: LooseMock<Repository<Media>>;
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Media>>({ find: jest.fn().mockResolvedValue([]) });
+    sut = new MediaRepository(repo);
+  });
+
+  // Trước milestone này câu công khai chỉ có `sort_order ASC`; khi tất cả cùng NULL (đúng thực tế
+  // dữ liệu hiện có) thứ tự hoàn toàn do planner quyết định.
+  it('gallery CÔNG KHAI: sort_order ASC NULLS LAST + khoá phụ xác định tới tận PK', async () => {
+    await sut.listPublishedByPlace('p1');
+    expect(repo.find).toHaveBeenCalledWith({
+      where: { placeId: 'p1', status: MediaStatus.PUBLISHED, deletedAt: IsNull() },
+      order: { sortOrder: { direction: 'ASC', nulls: 'LAST' }, createdAt: 'DESC', id: 'DESC' },
+    });
+  });
+
+  // Hai danh sách PHẢI cùng thứ tự, nếu không "Lên/Xuống" của chủ cơ sở không phản ánh đúng thứ tự
+  // khách nhìn thấy.
+  it('danh sách của CHỦ CƠ SỞ dùng ĐÚNG cùng khoá sắp xếp với gallery công khai', async () => {
+    await sut.listAllByPlace('p1');
+    expect(repo.find).toHaveBeenCalledWith({
+      where: { placeId: 'p1', deletedAt: IsNull() },
+      order: { sortOrder: { direction: 'ASC', nulls: 'LAST' }, createdAt: 'DESC', id: 'DESC' },
+    });
+  });
+});
+
+describe('MediaRepository.reorderPlaceMedia', () => {
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    sut = new MediaRepository(createMock<Repository<Media>>({ query: jest.fn() }));
+  });
+
+  it('mảng rỗng → không gọi DB', async () => {
+    const manager = createMock<EntityManager>({ query: jest.fn() });
+    await expect(sut.reorderPlaceMedia(manager, 'p1', [])).resolves.toEqual([]);
+    expect(manager.query).not.toHaveBeenCalled();
+  });
+
+  it('MỘT câu UPDATE set-based cho cả danh sách (không N+1), sort_order đánh số từ 0 theo vị trí', async () => {
+    const manager = createMock<EntityManager>({
+      query: jest.fn().mockResolvedValue([[{ id: 'm2' }, { id: 'm1' }], 2]),
+    });
+
+    const result = await sut.reorderPlaceMedia(manager, 'p1', ['m2', 'm1']);
+
+    expect(manager.query).toHaveBeenCalledTimes(1);
+    const [query, params] = manager.query.mock.calls[0];
+    const q = sql(query);
+    expect(q).toContain('SET sort_order = v.ord - 1');
+    expect(q).toContain('unnest($1::uuid[]) WITH ORDINALITY AS v(id, ord)');
+    expect(params).toEqual([['m2', 'm1'], 'p1']);
+    expect(result).toEqual(['m2', 'm1']);
+  });
+
+  // Không có kiểm tra ở service nào có thể thay thế điều này: place_id nằm TRONG WHERE nên một id
+  // của cơ sở khác khớp 0 dòng, không có khe TOCTOU giữa "kiểm tra" và "ghi".
+  it('place_id + deleted_at nằm TRONG WHERE — id của cơ sở khác không thể bị chạm tới', async () => {
+    const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue([[], 0]) });
+    await sut.reorderPlaceMedia(manager, 'p1', ['m-other']);
+    const q = sql(manager.query.mock.calls[0][0]);
+    expect(q).toContain('m.place_id = $2');
+    expect(q).toContain('m.deleted_at IS NULL');
+  });
+
+  // UPDATE + RETURNING trả TUPLE [rows, rowCount] — quên destructure là bug đã từng xảy ra hai lần
+  // trong repository này (attachAndPublish, softDeleteOrphanCandidate).
+  it('đọc đúng hình dạng tuple [rows, rowCount] của UPDATE…RETURNING', async () => {
+    const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue([[{ id: 'm1' }], 1]) });
+    await expect(sut.reorderPlaceMedia(manager, 'p1', ['m1'])).resolves.toEqual(['m1']);
+  });
+});
+
+describe('MediaRepository — ảnh bìa', () => {
+  let repo: LooseMock<Repository<Media>>;
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Media>>({ query: jest.fn() });
+    sut = new MediaRepository(repo);
+  });
+
+  describe('setPlaceCoverImage', () => {
+    it('mọi điều kiện đủ tư cách nằm TRONG EXISTS của chính câu UPDATE (không TOCTOU)', async () => {
+      repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
+
+      await expect(sut.setPlaceCoverImage('p1', 'm1')).resolves.toBe(true);
+
+      const [query, params] = repo.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain('UPDATE places p SET cover_image_id = $2');
+      expect(q).toContain('EXISTS (SELECT 1 FROM media m');
+      expect(q).toContain('m.place_id = $1'); // chặn tráo media id sang cơ sở khác
+      expect(q).toContain("m.status = 'published'"); // pending/rejected/hidden không thể thành bìa
+      expect(q).toContain('m.object_key IS NOT NULL');
+      expect(q).toContain('m.deleted_at IS NULL');
+      expect(params).toEqual(['p1', 'm1']);
+    });
+
+    it('không dòng nào khớp (ảnh chưa duyệt / khác cơ sở / đã gỡ) → false', async () => {
+      repo.query.mockResolvedValue([[], 0]);
+      await expect(sut.setPlaceCoverImage('p1', 'm1')).resolves.toBe(false);
+    });
+  });
+
+  describe('clearCoverImageByMedia', () => {
+    it('dọn con trỏ theo media id, chạy được trong transaction của caller', async () => {
+      const manager = createMock<EntityManager>({ query: jest.fn().mockResolvedValue([[], 0]) });
+      await sut.clearCoverImageByMedia('m1', manager);
+
+      const [query, params] = manager.query.mock.calls[0];
+      expect(sql(query)).toContain('UPDATE places SET cover_image_id = NULL, updated_at = now() WHERE cover_image_id = $1');
+      expect(params).toEqual(['m1']);
+      expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('không có manager → dùng repository mặc định (idempotent, 0 dòng không phải lỗi)', async () => {
+      repo.query.mockResolvedValue([[], 0]);
+      await expect(sut.clearCoverImageByMedia('m1')).resolves.toBeUndefined();
+      expect(repo.query).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('listIdsForPlaceForUpdate', () => {
+    it('KHOÁ hàng (FOR UPDATE) để hai lần sắp xếp đồng thời không lồng vào nhau', async () => {
+      const manager = createMock<EntityManager>({
+        query: jest.fn().mockResolvedValue([{ id: 'm1' }, { id: 'm2' }]),
+      });
+
+      await expect(sut.listIdsForPlaceForUpdate(manager, 'p1')).resolves.toEqual(['m1', 'm2']);
+
+      const q = sql(manager.query.mock.calls[0][0]);
+      expect(q).toContain('FOR UPDATE');
+      expect(q).toContain('place_id = $1 AND deleted_at IS NULL');
+    });
+  });
+
+  describe('getCoverImageId', () => {
+    it('trả cover_image_id của cơ sở chưa xoá mềm; không có → null', async () => {
+      repo.query.mockResolvedValueOnce([{ cover_image_id: 'm9' }]);
+      await expect(sut.getCoverImageId('p1')).resolves.toBe('m9');
+
+      repo.query.mockResolvedValueOnce([]);
+      await expect(sut.getCoverImageId('p2')).resolves.toBeNull();
+    });
+  });
+});

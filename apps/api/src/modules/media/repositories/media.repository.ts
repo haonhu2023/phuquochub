@@ -67,11 +67,29 @@ export class MediaRepository {
     private readonly repo: Repository<Media>,
   ) {}
 
-  /** Gallery đã duyệt của một Place, theo sort_order (dùng partial index idx_media_place). */
+  /**
+   * Thứ tự CHUẨN của gallery một cơ sở — dùng CHUNG cho cả đường công khai
+   * (`listPublishedByPlace`) lẫn màn hình quản lý của chủ cơ sở (`listAllByPlace`). Hai danh sách
+   * PHẢI cùng một thứ tự, nếu không thao tác "Lên/Xuống" của chủ cơ sở sẽ không phản ánh đúng thứ
+   * tự mà khách nhìn thấy (Owner Cover & Photo Ordering, 2026-08-12).
+   *
+   * `sort_order ASC NULLS LAST`: ảnh CHƯA từng được sắp (sort_order NULL — mọi ảnh trước milestone
+   * này) nằm SAU ảnh đã sắp, thay vì đứng đầu. `created_at DESC, id DESC` là khoá phụ XÁC ĐỊNH:
+   * trước đây câu này chỉ có `sort_order ASC` nên khi tất cả cùng NULL (đúng thực tế hôm nay) thứ
+   * tự hoàn toàn do planner quyết định — hai lần gọi giống hệt nhau có thể trả khác thứ tự. `id`
+   * là PK nên khoá cuối là DUY NHẤT (cùng nguyên tắc GAP-12 ở PlacesRepository).
+   */
+  private static readonly PLACE_GALLERY_ORDER = {
+    sortOrder: { direction: 'ASC', nulls: 'LAST' },
+    createdAt: 'DESC',
+    id: 'DESC',
+  } as const;
+
+  /** Gallery đã duyệt của một Place, theo thứ tự chuẩn (dùng partial index idx_media_place). */
   listPublishedByPlace(placeId: string): Promise<Media[]> {
     return this.repo.find({
       where: { placeId, status: MediaStatus.PUBLISHED, deletedAt: IsNull() },
-      order: { sortOrder: 'ASC' },
+      order: MediaRepository.PLACE_GALLERY_ORDER,
     });
   }
 
@@ -154,11 +172,14 @@ export class MediaRepository {
    * vốn là đường CÔNG KHAI và chỉ trả `published` — hai hàm tách bạch để không bao giờ có chuyện
    * nới lỏng bộ lọc của đường công khai chỉ vì màn hình nội bộ cần thêm dữ liệu.
    * `deleted_at IS NULL`: ảnh đã gỡ không hiện lại ở đâu cả.
+   *
+   * Thứ tự: CHÍNH XÁC cùng khoá với `listPublishedByPlace()` (`PLACE_GALLERY_ORDER`) — màn hình
+   * sắp xếp của chủ cơ sở phải hiển thị đúng thứ tự mà khách sẽ thấy.
    */
   listAllByPlace(placeId: string): Promise<Media[]> {
     return this.repo.find({
       where: { placeId, deletedAt: IsNull() },
-      order: { createdAt: 'DESC', id: 'DESC' },
+      order: MediaRepository.PLACE_GALLERY_ORDER,
     });
   }
 
@@ -192,15 +213,130 @@ export class MediaRepository {
    * ở service rồi mới update) — nên một mediaId thuộc cơ sở khác khớp 0 dòng và trả `false`, không
    * có khe hở TOCTOU giữa "kiểm tra" và "ghi". Trả `true` chỉ khi CHÍNH lần gọi này đổi dữ liệu
    * (idempotent: gỡ hai lần → lần sau `false`), cùng khuôn `softDeleteOrphanCandidate()`.
+   *
+   * `manager` TUỲ CHỌN — truyền vào để chạy trong transaction của caller (gỡ ảnh + dọn con trỏ
+   * `cover_image_id` phải là MỘT đơn vị nguyên tử, xem `MediaService.removeFromPlace`).
    */
-  async softDeletePlaceMedia(placeId: string, mediaId: string): Promise<boolean> {
-    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
+  async softDeletePlaceMedia(placeId: string, mediaId: string, manager?: EntityManager): Promise<boolean> {
+    const runner = manager ?? this.repo;
+    const [rows]: [Array<{ id: string }>, number] = await runner.query(
       `UPDATE media SET deleted_at = now()
         WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL
         RETURNING id`,
       [mediaId, placeId],
     );
     return rows.length > 0;
+  }
+
+  /**
+   * Ghi lại THỨ TỰ ảnh của một cơ sở — Owner Cover & Photo Ordering (2026-08-12).
+   *
+   * MỘT câu UPDATE set-based cho TOÀN BỘ danh sách (`unnest … WITH ORDINALITY`), KHÔNG phải vòng
+   * lặp N câu update: giữ đúng chủ trương của `attachAndPublish()` và làm cho thao tác này nguyên
+   * tử ở mức câu lệnh, không có trạng thái "sắp được một nửa".
+   *
+   * `place_id = $2 AND deleted_at IS NULL` nằm TRONG WHERE: một mediaId của cơ sở KHÁC (hoặc đã
+   * gỡ) đơn giản khớp 0 dòng — không có đường nào sắp xếp/chạm tới ảnh của cơ sở khác kể cả khi
+   * client cố nhét id lạ vào mảng. Caller so số dòng trả về với độ dài mảng để phát hiện chính
+   * tình huống đó (`MediaService.reorderPlaceMedia`).
+   *
+   * `sort_order` = vị trí trong mảng, ĐÁNH SỐ TỪ 0 và liên tục (`ord - 1`) — xác định, không phụ
+   * thuộc giá trị cũ, nên sắp lại nhiều lần không làm số trôi dần.
+   */
+  async reorderPlaceMedia(
+    manager: EntityManager,
+    placeId: string,
+    mediaIds: string[],
+  ): Promise<string[]> {
+    if (mediaIds.length === 0) return [];
+    // UPDATE + RETURNING qua driver Postgres của TypeORM trả TUPLE `[rows, rowCount]` — PHẢI
+    // destructure (xem ghi chú dài ở `attachAndPublish()`/`softDeleteOrphanCandidate()`).
+    const [rows]: [Array<{ id: string }>, number] = await manager.query(
+      `UPDATE media AS m
+          SET sort_order = v.ord - 1
+         FROM unnest($1::uuid[]) WITH ORDINALITY AS v(id, ord)
+        WHERE m.id = v.id
+          AND m.place_id = $2
+          AND m.deleted_at IS NULL
+        RETURNING m.id`,
+      [mediaIds, placeId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /** Id ảnh (chưa xoá mềm) của một cơ sở, KHOÁ hàng để một lần sắp xếp không đè lên lần khác. */
+  async listIdsForPlaceForUpdate(manager: EntityManager, placeId: string): Promise<string[]> {
+    const rows: Array<{ id: string }> = await manager.query(
+      `SELECT id FROM media WHERE place_id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [placeId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /** `places.cover_image_id` hiện tại — chỉ để đánh dấu ảnh nào đang là bìa trên màn hình quản lý. */
+  async getCoverImageId(placeId: string): Promise<string | null> {
+    const rows: Array<{ cover_image_id: string | null }> = await this.repo.query(
+      `SELECT cover_image_id FROM places WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [placeId],
+    );
+    return rows[0]?.cover_image_id ?? null;
+  }
+
+  /**
+   * Đặt ảnh bìa cho một cơ sở. TOÀN BỘ điều kiện đủ tư cách nằm TRONG `EXISTS` của chính câu
+   * UPDATE — không phải "SELECT kiểm tra rồi UPDATE" (không có khe TOCTOU: một ảnh vừa bị từ chối
+   * hay vừa bị gỡ giữa hai bước sẽ làm UPDATE khớp 0 dòng, không lọt qua):
+   *
+   *  • `m.place_id = $1` — ảnh phải thuộc CHÍNH cơ sở này (chặn tráo media id sang cơ sở khác);
+   *  • `m.status = 'published'` — ảnh `pending`/`rejected`/`hidden` KHÔNG BAO GIỜ thành bìa công
+   *    khai. Đây là chốt chặn Ở ĐƯỜNG GHI; đường đọc (`COVER_IMAGE_COLS`) lặp lại vị từ này một
+   *    lần nữa, độc lập;
+   *  • `m.object_key IS NOT NULL` — phải có object thật để dựng được URL;
+   *  • `m.deleted_at IS NULL` — ảnh đã gỡ không thể là bìa.
+   *
+   * Trả `false` cho MỌI trường hợp không đủ điều kiện; service chọn thông điệp lỗi sau đó, nhưng
+   * quyết định CÓ/KHÔNG ghi là của riêng câu lệnh này.
+   *
+   * Ghi vào bảng `places` từ MediaRepository (không qua PlacesRepository) là CÓ CHỦ ĐÍCH, cùng lý
+   * do `placeExists()` ở trên: PlacesModule đã import MediaModule, tiêm ngược lại sẽ tạo circular
+   * dependency. Mọi truy vấn ở đây tham số hoá đầy đủ.
+   */
+  async setPlaceCoverImage(placeId: string, mediaId: string): Promise<boolean> {
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
+      `UPDATE places p
+          SET cover_image_id = $2, updated_at = now()
+        WHERE p.id = $1
+          AND p.deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM media m
+                       WHERE m.id = $2
+                         AND m.place_id = $1
+                         AND m.deleted_at IS NULL
+                         AND m.status = 'published'
+                         AND m.object_key IS NOT NULL)
+        RETURNING p.id`,
+      [placeId, mediaId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Gỡ con trỏ ảnh bìa đang trỏ tới media này (nếu có) — gọi khi ảnh KHÔNG CÒN đủ tư cách làm bìa:
+   * chủ cơ sở gỡ ảnh, hoặc kiểm duyệt viên đưa ảnh ra khỏi `published` (ẩn/từ chối).
+   *
+   * Đường ĐỌC đã an toàn sẵn (`COVER_IMAGE_COLS` lọc published/chưa xoá nên bìa hỏng hiển thị ra
+   * `null`); dọn con trỏ ở đây là để trạng thái LƯU TRỮ không bị "treo": không có bìa nào âm thầm
+   * sống lại khi một ảnh bị ẩn rồi được khôi phục — chủ cơ sở chọn lại một cách tường minh.
+   * KHÔNG tự chọn ảnh thay thế: một "bìa mới" mà chủ cơ sở không chọn là hành vi bất ngờ.
+   *
+   * Idempotent (không có bìa nào trỏ tới → 0 dòng, không phải lỗi). Nhận `manager` để chạy trong
+   * CÙNG transaction với thay đổi gây ra nó.
+   */
+  async clearCoverImageByMedia(mediaId: string, manager?: EntityManager): Promise<void> {
+    const runner = manager ?? this.repo;
+    await runner.query(
+      `UPDATE places SET cover_image_id = NULL, updated_at = now() WHERE cover_image_id = $1`,
+      [mediaId],
+    );
   }
 
   /**

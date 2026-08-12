@@ -6,6 +6,8 @@ import {
   listPlacePhotos,
   presignPlacePhoto,
   registerPlacePhoto,
+  reorderPlacePhotos,
+  setPlacePhotoCover,
 } from './api/place-photos.api';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
@@ -16,6 +18,8 @@ jest.mock('./api/place-photos.api', () => ({
   presignPlacePhoto: jest.fn(),
   registerPlacePhoto: jest.fn(),
   deletePlacePhoto: jest.fn(),
+  reorderPlacePhotos: jest.fn(),
+  setPlacePhotoCover: jest.fn(),
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/lib/sha256', () => ({ sha256Hex: jest.fn().mockResolvedValue('a'.repeat(64)) }));
@@ -32,6 +36,8 @@ const mockList = listPlacePhotos as jest.Mock;
 const mockPresign = presignPlacePhoto as jest.Mock;
 const mockRegister = registerPlacePhoto as jest.Mock;
 const mockDelete = deletePlacePhoto as jest.Mock;
+const mockReorder = reorderPlacePhotos as jest.Mock;
+const mockSetCover = setPlacePhotoCover as jest.Mock;
 const mockSession = readSession as jest.Mock;
 
 const PLACE_ID = 'place-1';
@@ -43,13 +49,16 @@ const SESSION = {
 };
 
 function photo(overrides: Partial<PlacePhoto> = {}): PlacePhoto {
+  const id = overrides.id ?? 'm1';
   return {
-    id: 'm1',
+    id,
     status: 'pending',
     caption: null,
     alt_text: null,
     created_at: '2026-08-11T00:00:00.000Z',
-    url: `/api/places/${PLACE_ID}/media/m1/file`,
+    url: `/api/places/${PLACE_ID}/media/${id}/file`,
+    sort_order: null,
+    is_cover: false,
     ...overrides,
   };
 }
@@ -68,6 +77,8 @@ beforeEach(() => {
   mockPresign.mockReset().mockResolvedValue({ key: 'media/x.jpg', upload_url: 'https://s/put', expires_in: 600 });
   mockRegister.mockReset().mockResolvedValue(photo());
   mockDelete.mockReset().mockResolvedValue(null);
+  mockReorder.mockReset().mockResolvedValue([]);
+  mockSetCover.mockReset().mockResolvedValue([]);
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
   window.confirm = jest.fn().mockReturnValue(true);
 });
@@ -112,7 +123,9 @@ describe('PhotosView — hiển thị trạng thái', () => {
     render(<PhotosView placeId={PLACE_ID} />);
 
     await waitFor(() => expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument());
-    expect(screen.getByText('Chưa hiển thị công khai.')).toBeInTheDocument();
+    // Regex, không phải chuỗi khớp tuyệt đối: ghi chú này nay còn nói thêm về điều kiện làm ảnh bìa
+    // (Owner Cover & Photo Ordering). Điều PHẢI đúng vẫn y nguyên — ảnh chưa lên trang.
+    expect(screen.getByText(/Chưa hiển thị công khai\./)).toBeInTheDocument();
   });
 
   it('ảnh rejected → nhãn "Bị từ chối" + giải thích', async () => {
@@ -120,7 +133,7 @@ describe('PhotosView — hiển thị trạng thái', () => {
     render(<PhotosView placeId={PLACE_ID} />);
 
     await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
-    expect(screen.getByText('Kiểm duyệt viên đã từ chối ảnh này.')).toBeInTheDocument();
+    expect(screen.getByText(/Kiểm duyệt viên đã từ chối ảnh này\./)).toBeInTheDocument();
   });
 
   it('ảnh published → nhãn "Đã hiển thị", KHÔNG có ghi chú cảnh báo', async () => {
@@ -285,5 +298,230 @@ describe('PhotosView — gỡ ảnh', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('img')).toBeInTheDocument();
+  });
+});
+
+// Owner Cover & Photo Ordering (2026-08-12).
+function published(id: string, overrides: Partial<PlacePhoto> = {}): PlacePhoto {
+  return photo({ id, status: 'published', ...overrides });
+}
+
+const upButtons = () => screen.getAllByRole('button', { name: /Di chuyển ảnh \d+ lên trước/ });
+const downButtons = () => screen.getAllByRole('button', { name: /Di chuyển ảnh \d+ xuống sau/ });
+
+describe('PhotosView — ảnh bìa', () => {
+  it('ảnh đang là bìa → nhãn "Ảnh bìa", KHÔNG mời đặt lại làm bìa', async () => {
+    mockList.mockResolvedValueOnce([published('m1', { is_cover: true })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Ảnh bìa')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Đặt làm ảnh bìa' })).not.toBeInTheDocument();
+  });
+
+  it('ảnh đã duyệt, chưa phải bìa → có nút đặt bìa; bấm → gọi API rồi hiện trạng thái mới', async () => {
+    mockList.mockResolvedValueOnce([published('m1'), published('m2')]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Đặt làm ảnh bìa' })).toHaveLength(2));
+
+    mockSetCover.mockResolvedValueOnce([published('m1'), published('m2', { is_cover: true })]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Đặt làm ảnh bìa' })[1]);
+
+    await waitFor(() => expect(mockSetCover).toHaveBeenCalledWith(PLACE_ID, 'm2', 'tok'));
+    await waitFor(() => expect(screen.getByText('Đã đặt ảnh bìa.')).toBeInTheDocument());
+    expect(screen.getByText('Ảnh bìa')).toBeInTheDocument();
+    // Danh sách render lại từ response của server, không phải đoán phía client.
+    expect(screen.getAllByRole('button', { name: 'Đặt làm ảnh bìa' })).toHaveLength(1);
+  });
+
+  // Chốt chặn thật nằm ở backend; giao diện chỉ không mời gọi thao tác chắc chắn bị từ chối.
+  it('ảnh PENDING → không có nút đặt bìa, nói rõ phải được duyệt trước', async () => {
+    mockList.mockResolvedValueOnce([photo({ id: 'm1', status: 'pending' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Đặt làm ảnh bìa' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Ảnh phải được duyệt trước khi làm ảnh bìa/)).toBeInTheDocument();
+  });
+
+  it('ảnh REJECTED → không có nút đặt bìa', async () => {
+    mockList.mockResolvedValueOnce([photo({ id: 'm1', status: 'rejected' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Đặt làm ảnh bìa' })).not.toBeInTheDocument();
+  });
+
+  it('ảnh HIDDEN → không có nút đặt bìa', async () => {
+    mockList.mockResolvedValueOnce([photo({ id: 'm1', status: 'hidden' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Đã bị ẩn')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Đặt làm ảnh bìa' })).not.toBeInTheDocument();
+  });
+
+  it('API trả 422 → giải thích đúng lý do, danh sách KHÔNG đổi', async () => {
+    mockList.mockResolvedValue([published('m1')]);
+    mockSetCover.mockRejectedValueOnce(new ApiError('không đủ điều kiện', 422));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Đặt làm ảnh bìa' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt làm ảnh bìa' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Chỉ ảnh đã được kiểm duyệt viên duyệt mới đặt được làm ảnh bìa.',
+      ),
+    );
+    expect(screen.queryByText('Ảnh bìa')).not.toBeInTheDocument();
+  });
+
+  it('API trả 403 → thông điệp về quyền', async () => {
+    mockList.mockResolvedValue([published('m1')]);
+    mockSetCover.mockRejectedValueOnce(new ApiError('Thiếu quyền', 403));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Đặt làm ảnh bìa' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đặt làm ảnh bìa' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền quản lý ảnh của cơ sở này.'),
+    );
+  });
+});
+
+describe('PhotosView — sắp xếp ảnh', () => {
+  const three = () => [published('m1'), published('m2'), published('m3')];
+  const srcs = () => screen.getAllByRole('img').map((img) => img.getAttribute('src'));
+  const src = (id: string) => `/api/places/${PLACE_ID}/media/${id}/file`;
+
+  it('bấm "Xuống" → gửi TOÀN BỘ danh sách theo thứ tự mới', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(3));
+
+    mockReorder.mockResolvedValueOnce([published('m2'), published('m1'), published('m3')]);
+    fireEvent.click(downButtons()[0]);
+
+    await waitFor(() => expect(mockReorder).toHaveBeenCalledWith(PLACE_ID, ['m2', 'm1', 'm3'], 'tok'));
+    await waitFor(() => expect(screen.getByText('Đã lưu thứ tự ảnh.')).toBeInTheDocument());
+  });
+
+  it('bấm "Lên" → đổi chỗ với ảnh liền trước', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(upButtons()).toHaveLength(3));
+
+    fireEvent.click(upButtons()[2]);
+
+    await waitFor(() => expect(mockReorder).toHaveBeenCalledWith(PLACE_ID, ['m1', 'm3', 'm2'], 'tok'));
+  });
+
+  // Ở biên không có gì để đổi chỗ — nút phải VÔ HIỆU HOÁ, không phải im lặng không làm gì.
+  it('ảnh đầu không "Lên" được, ảnh cuối không "Xuống" được', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(upButtons()).toHaveLength(3));
+
+    expect(upButtons()[0]).toBeDisabled();
+    expect(downButtons()[2]).toBeDisabled();
+    expect(upButtons()[1]).toBeEnabled();
+    expect(downButtons()[1]).toBeEnabled();
+  });
+
+  it('chỉ có MỘT ảnh → cả hai nút đều vô hiệu hoá', async () => {
+    mockList.mockResolvedValueOnce([published('m1')]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(upButtons()).toHaveLength(1));
+
+    expect(upButtons()[0]).toBeDisabled();
+    expect(downButtons()[0]).toBeDisabled();
+  });
+
+  it('danh sách render lại theo ĐÚNG thứ tự server trả về', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(3));
+
+    mockReorder.mockResolvedValueOnce([published('m3'), published('m2'), published('m1')]);
+    fireEvent.click(downButtons()[0]);
+
+    await waitFor(() => expect(srcs()).toEqual([src('m3'), src('m2'), src('m1')]));
+  });
+
+  it('lưu thất bại → báo lỗi và GIỮ NGUYÊN thứ tự cũ (không hiện thứ tự chưa được lưu)', async () => {
+    mockList.mockResolvedValue(three());
+    mockReorder.mockRejectedValueOnce(new ApiError('lệch danh sách', 422));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(3));
+
+    fireEvent.click(downButtons()[0]);
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Danh sách ảnh đã thay đổi. Vui lòng tải lại trang rồi thử lại.',
+      ),
+    );
+    expect(srcs()).toEqual([src('m1'), src('m2'), src('m3')]);
+  });
+
+  it('lỗi 5xx → thông điệp chung, không lộ chi tiết kỹ thuật', async () => {
+    mockList.mockResolvedValue(three());
+    mockReorder.mockRejectedValueOnce(new ApiError('ECONNREFUSED internal', 500));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(3));
+
+    fireEvent.click(downButtons()[0]);
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Không lưu được thứ tự ảnh. Vui lòng thử lại.'),
+    );
+    expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
+  });
+
+  // Hai thao tác cùng ghi lên một tài nguyên — chạy song song thì hai response ghi đè nhau.
+  it('đang lưu → vô hiệu hoá MỌI nút của gallery và báo trạng thái', async () => {
+    let resolveReorder: (v: unknown) => void = () => {};
+    mockList.mockResolvedValueOnce([published('m1'), published('m2')]);
+    mockReorder.mockReturnValueOnce(new Promise((r) => { resolveReorder = r; }));
+
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(2));
+
+    fireEvent.click(downButtons()[0]);
+
+    await waitFor(() => expect(downButtons()[0]).toBeDisabled());
+    expect(upButtons()[1]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Đặt làm ảnh bìa' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Gỡ ảnh' })[0]).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Đang lưu…');
+
+    resolveReorder([published('m2'), published('m1')]);
+    await waitFor(() => expect(screen.getByText('Đã lưu thứ tự ảnh.')).toBeInTheDocument());
+  });
+
+  // Sắp xếp phải dùng được bằng bàn phím: <button> thật nên nhận focus và Enter tự phát click.
+  it('dùng được bằng BÀN PHÍM: nút nhận focus và kích hoạt được', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(downButtons()).toHaveLength(3));
+
+    const btn = downButtons()[0];
+    btn.focus();
+    expect(btn).toHaveFocus();
+    expect(btn.tagName).toBe('BUTTON');
+    expect(btn).not.toHaveAttribute('tabindex', '-1');
+
+    fireEvent.click(btn);
+    await waitFor(() => expect(mockReorder).toHaveBeenCalledWith(PLACE_ID, ['m2', 'm1', 'm3'], 'tok'));
+  });
+
+  it('nhãn nút nêu rõ vị trí ảnh (người dùng trình đọc màn hình phân biệt được)', async () => {
+    mockList.mockResolvedValueOnce(three());
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Di chuyển ảnh 2 lên trước' })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Di chuyển ảnh 2 xuống sau' })).toBeInTheDocument();
   });
 });

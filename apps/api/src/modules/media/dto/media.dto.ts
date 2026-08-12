@@ -1,5 +1,18 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 // Media Upload Foundation (design review, 2026-07-30). Backend-only, no resize/thumbnail/EXIF/AI —
 // see docs/data/modules/media.md.
@@ -49,4 +62,36 @@ export class CreateMediaDto {
 
   @IsOptional() @IsString() @MaxLength(200)
   alt?: string;
+}
+
+/**
+ * Trần số ảnh trong MỘT yêu cầu sắp xếp. Không phải quy tắc nghiệp vụ "một cơ sở tối đa 200 ảnh"
+ * — chỉ là chặn trên cho payload, để một mảng khổng lồ không thành `unnest()` khổng lồ. Vượt trần
+ * này nghĩa là cơ sở đã có nhiều ảnh hơn màn hình quản lý dự kiến, cần thiết kế phân trang riêng.
+ */
+export const MAX_REORDER_MEDIA_IDS = 200;
+
+/**
+ * Sắp xếp lại ảnh của cơ sở (`PATCH /places/{placeId}/media/order`).
+ *
+ * KHÔNG có `place_id` ở đây — cơ sở đích LUÔN là route param đã qua `PermissionsGuard`
+ * (`@AuthorizationContext(place)`), cùng lý do đã gỡ `place_id` khỏi `PresignMediaDto` ở trên.
+ *
+ * `media_ids` phải là DANH SÁCH ĐẦY ĐỦ ảnh (chưa gỡ, MỌI trạng thái) của cơ sở, mỗi id đúng MỘT
+ * lần — hợp đồng "toàn bộ hay không có gì". Kiểm tra tập đầy đủ nằm ở service
+ * (`MediaService.reorderPlaceMedia`); ở đây chỉ chặn những thứ kiểm được mà không cần chạm DB:
+ * mảng rỗng, phần tử không phải UUID, mảng quá dài.
+ */
+export class ReorderPlaceMediaDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(MAX_REORDER_MEDIA_IDS)
+  @IsUUID('4', { each: true })
+  media_ids!: string[];
+}
+
+/** Đặt ảnh bìa cho cơ sở (`PATCH /places/{placeId}/media/cover`). Cơ sở đích là route param. */
+export class SetPlaceCoverDto {
+  @IsUUID('4')
+  media_id!: string;
 }

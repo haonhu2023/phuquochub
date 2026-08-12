@@ -1,6 +1,11 @@
-import { DataSource } from 'typeorm';
+﻿import { DataSource } from 'typeorm';
 import { RestaurantsRepository } from './restaurants.repository';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
+
+import type { MediaUrlService } from '../../../core/media-url/media-url.service';
+
+// Chỉ dùng để dựng URL API của ảnh bìa đã upload (xem core/media-url/cover-image.ts).
+const MEDIA_URL = { fileUrl: (id: string) => `https://api.test/api/media/${id}/file` } as MediaUrlService;
 
 function sql(query: string): string {
   return query.replace(/\s+/g, ' ').trim();
@@ -12,7 +17,7 @@ describe('RestaurantsRepository — browse (price_range/cuisine filter, sort, pa
 
   beforeEach(() => {
     ds = createMock<DataSource>({ query: jest.fn() });
-    sut = new RestaurantsRepository(ds);
+    sut = new RestaurantsRepository(ds, MEDIA_URL);
   });
 
   describe('listRestaurants', () => {

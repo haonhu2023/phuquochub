@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PricingModel, TransportSort } from '../dto/transports.dto';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
+
+/** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
+type CardRow = Record<string, unknown> & CoverImageColumns;
 
 export interface TransportListFilters {
   transportType?: string;
@@ -25,7 +30,10 @@ export interface TransportListFilters {
  */
 @Injectable()
 export class TransportsRepository {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly mediaUrl: MediaUrlService,
+  ) {}
 
   // Cùng chủ trương mọi repository browse khác: ORDER BY cố định phía server, `p.id ASC` là
   // khoá phụ chốt cuối cho MỌI nhánh — tránh LIMIT/OFFSET cắt trang không xác định (GAP-12).
@@ -75,23 +83,24 @@ export class TransportsRepository {
     return extra;
   }
 
-  listTransports(
+  async listTransports(
     limit: number,
     offset: number,
     sort: TransportSort = 'rating_desc',
     filters: TransportListFilters = {},
-  ) {
+  ): Promise<CardRow[]> {
     const orderBy = TransportsRepository.ORDER_BY[sort];
     const args: unknown[] = [];
     const filterConds = TransportsRepository.filterConds(filters, args);
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    // Một correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng
-    // hàng ở tầng application; tất cả nằm trong một round-trip SQL).
-    return this.ds.query(
+    // Correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng hàng ở
+    // tầng application; tất cả nằm trong một round-trip SQL). `withCoverImageUrl` chỉ dựng URL từ
+    // dữ liệu ĐÃ có trong row, cũng không truy vấn thêm.
+    const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.ward, p.rating_avg, p.rating_count,
               p.verification_status,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+              ${COVER_IMAGE_COLS},
               tt.code AS transport_type_code, tt.label_vi AS transport_type_label_vi, tt.label_en AS transport_type_label_en,
               ptd.pricing_model, ptd.price_ref, ptd.price_currency, ptd.price_unit,
               ptd.capacity_passengers, ptd.booking_required, ptd.airport_transfer,
@@ -103,6 +112,7 @@ export class TransportsRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   countTransports(filters: TransportListFilters = {}): Promise<number> {

@@ -421,6 +421,8 @@ thành lỗ hổng.
 (đường upload luôn ghi `url = NULL`, và không luồng nào ghi `cover_image_id`), nên đây là phòng vệ
 chiều sâu TRƯỚC khi có luồng đặt cover — không phải vá một sự cố.
 
+**Cập nhật 2026-08-12 (Owner Cover & Photo Ordering)** — luồng đặt cover nay đã tồn tại; xem §14.
+
 ### 13.5 Cấu hình
 
 | Biến | Mặc định | Ghi chú |
@@ -440,8 +442,9 @@ bucket đọc được ẩn danh.
 
 ### 13.6 Việc CHƯA làm
 
-- Cover image từ media upload vẫn chưa hiển thị được (subquery đọc `m.url`, luôn NULL cho upload
-  row) — khoảng trống CHỨC NĂNG có sẵn từ trước, không phải do thay đổi này.
+- ~~Cover image từ media upload vẫn chưa hiển thị được (subquery đọc `m.url`, luôn NULL cho upload
+  row) — khoảng trống CHỨC NĂNG có sẵn từ trước, không phải do thay đổi này.~~
+  **ĐÃ ĐÓNG 2026-08-12** (Owner Cover & Photo Ordering) — xem §14.
 
 ### 13.7 Caddy/topology reconciliation (2026-08-10, sau khi 87d010e lên production)
 
@@ -598,6 +601,128 @@ credential/bucket policy, không chỉ một lần) — đồng thời là bằn
 **Trạng thái milestone: HOÀN TẤT / ĐÃ XÁC MINH (COMPLETED/VERIFIED).** Không phát hiện tồn đọng
 chức năng nào ở milestone này. Báo cáo đóng đầy đủ:
 [`MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md`](../../delivery/reports/MINIO-IAM-CREDENTIAL-HARDENING-2026-08-10.md).
+
+## 14. Ảnh bìa & thứ tự ảnh của cơ sở (Owner Cover & Photo Ordering, 2026-08-12)
+
+Nối tiếp Owner Place Photos (§13 + `place-media.controller.ts`): chủ/quản lý cơ sở nay **sắp xếp
+được** ảnh của mình và **chọn được ảnh bìa**. Không có bảng mới, không có migration, không có
+permission mới — dùng đúng `media.sort_order` và `places.cover_image_id` đã có sẵn trong schema.
+
+### 14.1 Hai endpoint mới
+
+| Endpoint | Body | Quyền |
+|---|---|---|
+| `PATCH /places/{placeId}/media/order` | `{ media_ids: uuid[] }` | `Media.Upload.Managed` trên `placeId` (route param) |
+| `PATCH /places/{placeId}/media/cover` | `{ media_id: uuid }` | `Media.Upload.Managed` trên `placeId` (route param) |
+
+Cả hai trả về **danh sách ảnh của cơ sở sau thay đổi** (`PlaceOwnerMedia[]`, nay có thêm
+`sort_order` và `is_cover`) nên client không cần gọi thêm vòng nào và luôn thấy đúng thứ tự chuẩn
+do server quyết định.
+
+Phân quyền đi **đúng đường cũ**: place id là ROUTE PARAM, `@AuthorizationContext(place)` phân giải
+từ param/principal chứ không bao giờ từ body — id mà guard đã cho phép CHÍNH LÀ id service dùng.
+Không có trường `place_id` nào trong body của hai DTO này (`whitelist` + `forbidNonWhitelisted` trả
+400 nếu client cố gửi). Manager và owner có **cùng** năng lực ở đây, y hệt upload/xoá ảnh:
+`business_manager` được cấp `Media.Upload.Managed`, `business_owner` kế thừa qua DAG vai trò.
+
+### 14.2 `media.sort_order` — ngữ nghĩa
+
+- `INT NULL`, **không** default, **không** unique; phạm vi theo cơ sở qua partial index
+  `idx_media_place (place_id, sort_order) WHERE place_id IS NOT NULL`.
+- Ghi thành **0..n-1 liên tục** theo đúng vị trí trong `media_ids` — xác định, không phụ thuộc giá
+  trị cũ, nên sắp lại nhiều lần không làm số trôi dần.
+- `NULL` = **chưa từng được sắp** (mọi ảnh trước milestone này) → xếp **SAU** ảnh đã sắp.
+- **Thứ tự chuẩn của gallery cơ sở** (`MediaRepository.PLACE_GALLERY_ORDER`, dùng chung cho CẢ
+  `listPublishedByPlace()` công khai lẫn `listAllByPlace()` của chủ cơ sở):
+  `sort_order ASC NULLS LAST, created_at DESC, id DESC`.
+  Trước đây câu công khai chỉ có `sort_order ASC`: khi tất cả cùng NULL (đúng thực tế dữ liệu hiện
+  có) thứ tự hoàn toàn do planner quyết định. Khoá phụ tới tận PK làm kết quả **xác định**. Hai
+  danh sách PHẢI cùng thứ tự, nếu không thao tác "Lên/Xuống" của chủ cơ sở không phản ánh đúng thứ
+  tự khách nhìn thấy.
+
+**Hợp đồng "toàn bộ hay không có gì":** `media_ids` phải là ĐÚNG tập ảnh chưa gỡ của cơ sở (MỌI
+trạng thái), mỗi id một lần. Thiếu / trùng / lẫn id cơ sở khác → **422**. Không có ngữ nghĩa "sắp
+một phần": vị trí của ảnh bị bỏ qua là câu hỏi không có câu trả lời đúng duy nhất (giữ số cũ? đẩy
+xuống cuối? xen kẽ?), mọi lựa chọn đều làm chủ cơ sở bất ngờ.
+
+Ảnh `pending`/`rejected` **cũng được sắp** (chúng hiện trên cùng màn hình quản lý, và một ảnh chờ
+duyệt phải đáp xuống đúng vị trí đã chọn ngay khi được duyệt). Việc này **không** nới lỏng gì ở
+kênh công khai — `listPublishedByPlace()` vẫn chỉ trả `published`.
+
+Toàn bộ chạy trong MỘT transaction: đọc tập hiện tại có `FOR UPDATE` (hai lần sắp đồng thời bị tuần
+tự hoá), rồi MỘT câu UPDATE set-based `unnest(...) WITH ORDINALITY` cho cả danh sách — không N+1,
+không có trạng thái "sắp được một nửa". `place_id` + `deleted_at IS NULL` nằm TRONG `WHERE` của
+chính câu UPDATE, nên id của cơ sở khác khớp 0 dòng: không có khe TOCTOU giữa kiểm tra và ghi.
+
+### 14.3 `places.cover_image_id` — ngữ nghĩa
+
+Cột **đã có sẵn** từ `InitPlaces1720000400000` (`uuid`, FK → `media`, `ON DELETE SET NULL`) nhưng
+**chưa luồng nào ghi** trước milestone này (xác nhận trên DB dev: 0/68 place có cover). **Không có
+cột `places.cover_image_url`** — `cover_image_url` là trường của *hợp đồng API*, được **suy ra ở
+tầng đọc**, không bao giờ được lưu.
+
+Đặt bìa bằng **MEDIA ID**, không bao giờ bằng URL: URL do client cung cấp không kiểm chứng được (có
+thể trỏ ra ngoài, có thể là presigned URL sắp hết hạn), còn media id thì kiểm được đầy đủ tư cách.
+
+**Điều kiện đủ tư cách** nằm trong `EXISTS` của **chính câu UPDATE** (`setPlaceCoverImage`), không
+phải "SELECT kiểm tra rồi UPDATE":
+
+| Điều kiện | Chặn điều gì |
+|---|---|
+| `m.place_id = $placeId` | tráo media id sang cơ sở khác |
+| `m.status = 'published'` | ảnh `pending`/`rejected`/`hidden` thành bìa công khai |
+| `m.object_key IS NOT NULL` | dòng không có object thật (không ký được URL) |
+| `m.deleted_at IS NULL` | ảnh đã gỡ |
+
+Mã lỗi: **404** khi ảnh không thuộc cơ sở này (không phân biệt "không tồn tại" với "của người
+khác" — cùng khuôn `removeFromPlace`); **422** khi ảnh CÓ thuộc cơ sở nhưng chưa đủ tư cách (chủ cơ
+sở vốn đã thấy trạng thái đó trên màn hình của mình nên nói thẳng là hữu ích và không rò rỉ gì).
+
+### 14.4 Đường ĐỌC: `cover_image_url` được sinh, không được lưu
+
+`core/media-url/cover-image.ts` là **một** định nghĩa dùng chung cho cả 7 repository đọc card
+(`places` + attractions/beaches/hotels/restaurants/tours/transports) — trước đây chuỗi SQL này bị
+chép 7 lần nên có thể lệch nhau theo thời gian.
+
+Nó **đóng khoảng trống §13.6**: subquery cũ đọc thẳng `m.url`, mà đường upload luôn ghi
+`url = NULL`, nên mọi ảnh bìa chọn từ ảnh đã upload đều ra `NULL`. Nay subquery trả về **hai** cột:
+
+- `cover_image_url` — `media.url` đã lưu; chỉ dòng LEGACY/nhúng ngoài (`youtube`/`vimeo`) mới có;
+- `cover_image_media_id` — id của ảnh đã upload, để tầng ứng dụng dựng URL API rồi **xoá** cột này
+  khỏi row (nó không thuộc hợp đồng công khai nào).
+
+Việc dựng URL **không** làm trong SQL: `MediaUrlService` là nơi duy nhất biết `API_PUBLIC_URL` +
+global prefix, và một câu SQL không nên biết gì về HTTP routing (đúng ranh giới mà §13.2 đã dựng).
+Kết quả luôn là URL API **ổn định** `{API_PUBLIC_URL}/{prefix}/media/{id}/file` — không presigned,
+không địa chỉ object storage, thu hồi được ngay ở lần tải kế tiếp.
+
+Đường đọc lặp lại đủ ba vị từ (`published`, đúng cơ sở, chưa xoá mềm) **độc lập** với đường ghi:
+kể cả khi `cover_image_id` bị đặt thẳng bằng SQL tay hay bởi import dữ liệu, công khai vẫn ra
+`null`. Hai bài E2E ghim đúng tình huống đó.
+
+Thêm `m.place_id = p.id` vào đường đọc cũng cưỡng chế quy tắc toàn vẹn đã ghi ở
+[place.md](../../product/modules/place.md) ("`cover_image_id` phải trỏ ảnh thuộc cùng place & đã
+`published`") — trước đây chỉ là quy tắc trên giấy.
+
+### 14.5 Vòng đời: ảnh bìa không bao giờ bị treo
+
+| Sự kiện | Xử lý | Ở đâu |
+|---|---|---|
+| Chủ cơ sở gỡ ảnh đang là bìa | `cover_image_id = NULL` trong CÙNG transaction với xoá mềm | `MediaService.removeFromPlace` |
+| Kiểm duyệt đưa ảnh ra khỏi `published` (hide/reject) | `cover_image_id = NULL` trong CÙNG transaction với quyết định | `ModerationService.decideMedia` |
+| Ảnh bị ẩn rồi được khôi phục | **KHÔNG** tự trở lại làm bìa | (hệ quả của hai dòng trên) |
+
+**KHÔNG tự chọn ảnh thay thế.** Một "bìa mới" mà chủ cơ sở không chọn là hành vi bất ngờ; và vì
+đường đọc đã an toàn sẵn, việc dọn con trỏ chỉ để **trạng thái lưu trữ nói đúng sự thật**, không
+phải để bịt một lỗ hổng. Không có xử lý nền, không có job nào được thêm.
+
+### 14.6 Bất biến được giữ nguyên
+
+- `pending`/`rejected`/`hidden` **không bao giờ** ra kênh công khai — qua gallery lẫn qua ảnh bìa.
+- `object_key`/`bucket`/`checksum_sha256` **không rời server** (`PlaceOwnerMedia` liệt kê trường
+  tường minh, không spread entity).
+- **Không** URL presigned nào được lưu vào DB ở bất kỳ đường nào.
+- Không có bảng/cột/migration/permission mới.
 
 ## Related
 

@@ -30,6 +30,22 @@ describe('PlaceCard', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
+  // Owner Cover & Photo Ordering (2026-08-12): ảnh bìa do chủ cơ sở chọn được API phát ra dưới
+  // dạng URL API ỔN ĐỊNH `/media/{id}/file` (không phải presigned URL, không phải địa chỉ MinIO —
+  // xem core/media-url/cover-image.ts). Thẻ chỉ việc render đúng giá trị đó.
+  it('renders the canonical cover image URL served by the API', () => {
+    const coverUrl = 'https://api.example/api/media/11111111-1111-4111-8111-111111111111/file';
+    render(<PlaceCard place={{ ...BASE_PLACE, cover_image_url: coverUrl }} />);
+
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', coverUrl);
+    expect(img).toHaveAttribute('alt', 'Dinh Cậu');
+    expect(img.getAttribute('src')).not.toContain('X-Amz-Signature');
+    expect(img.getAttribute('src')).not.toContain(':9000');
+    // Có ảnh bìa thì KHÔNG hiện chữ cái dự phòng nữa.
+    expect(screen.queryByText('D')).not.toBeInTheDocument();
+  });
+
   it('omits price, distance, verified badge, and rating when absent', () => {
     render(<PlaceCard place={BASE_PLACE} />);
     expect(screen.queryByText(/★/)).not.toBeInTheDocument();

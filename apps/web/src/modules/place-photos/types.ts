@@ -9,6 +9,38 @@ export interface PlacePhoto {
   alt_text: string | null;
   created_at: string;
   url: string;
+  /** Vị trí trong gallery (0 = đầu tiên). `null` = chưa từng được sắp — xếp sau ảnh đã sắp. */
+  sort_order: number | null;
+  /** Ảnh này có đang là ảnh bìa của cơ sở không (`places.cover_image_id`). */
+  is_cover: boolean;
+}
+
+/**
+ * Chỉ ảnh ĐÃ ĐƯỢC DUYỆT mới đặt được làm ảnh bìa — backend cưỡng chế điều này ngay trong câu UPDATE
+ * (`MediaRepository.setPlaceCoverImage`); hàm này chỉ để giao diện không mời gọi một thao tác chắc
+ * chắn bị từ chối. KHÔNG phải lớp bảo mật.
+ */
+export function canBeCover(photo: PlacePhoto): boolean {
+  return photo.status === 'published' && !photo.is_cover;
+}
+
+/**
+ * Thứ `POST /places/{placeId}/media` thực sự trả về: schema `Media` công khai (qua `toMedia()`),
+ * KHÁC `PlacePhoto` của màn hình quản lý — không có `created_at`/`sort_order`/`is_cover`, và `url`
+ * luôn `null` ở đây vì ảnh vừa đăng ký luôn ở `pending` (chưa có URL công khai nào).
+ *
+ * Khai riêng thay vì tái dùng `PlacePhoto`: hình dạng cũ nói dối về các trường không hề tồn tại
+ * trong response. Không nơi gọi nào đọc giá trị trả về (PhotosView nạp lại danh sách sau khi đăng
+ * ký), nên đây là sửa tính đúng đắn của hợp đồng, không đổi hành vi.
+ */
+export interface RegisteredPlacePhoto {
+  id: string;
+  type: string;
+  url: string | null;
+  thumbnail_url: string | null;
+  caption: string | null;
+  alt_text: string | null;
+  status: PlacePhotoStatus;
 }
 
 // Bốn giá trị THẬT của media_status (apps/api/src/modules/media/media.enums.ts).

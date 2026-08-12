@@ -70,6 +70,70 @@
   font-size: 0.8rem;
 }
 
+.orderHint {
+  margin: 1.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* Ảnh bìa phải nhận ra được NGAY, không phải đọc từng nhãn: viền nhấn quanh cả ô. */
+.tileCover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.coverBadge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* wrap: trên màn hình hẹp hai nút xuống dòng thay vì tràn ngang khỏi ô. */
+.tileActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.orderBtn,
+.coverBtn {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.coverBtn {
+  align-self: stretch;
+  text-align: center;
+}
+
+.orderBtn:hover:not(:disabled),
+.coverBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+/* Vô hiệu hoá phải NHÌN THẤY được: ở biên trên/dưới, và trong lúc đang lưu. */
+.orderBtn:disabled,
+.coverBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.orderBtn:focus-visible,
+.coverBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .skeletonTile {
   aspect-ratio: 4 / 3;
   border: 1px solid var(--border);

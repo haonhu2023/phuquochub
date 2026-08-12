@@ -2434,6 +2434,110 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /places/{placeId}/media/order:
+    patch:
+      tags: [Media]
+      summary: Sắp xếp lại ảnh của cơ sở
+      operationId: reorderPlaceMedia
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu `Media.Upload.Managed` trên CHÍNH cơ sở ở path (chủ cơ sở hoặc người quản lý được
+        gán) — cùng đường phân quyền với mọi endpoint ảnh cơ sở khác.
+
+
+        **Hợp đồng "toàn bộ hay không có gì":** `media_ids` phải là ĐÚNG tập ảnh chưa gỡ của cơ sở
+        (MỌI trạng thái, kể cả `pending`/`rejected`), mỗi id đúng MỘT lần. Danh sách thiếu, có id
+        trùng, hoặc lẫn id của cơ sở khác đều trả 422 — không có ngữ nghĩa "sắp một phần", vì vị trí
+        của ảnh bị bỏ qua sẽ là một câu hỏi không có câu trả lời đúng duy nhất.
+
+
+        `sort_order` được ghi lại thành 0..n-1 theo đúng thứ tự mảng, trong MỘT câu UPDATE
+        set-based, bên trong một transaction có khoá hàng — sắp nhiều lần không làm số trôi dần và
+        hai lần sắp đồng thời không lồng vào nhau.
+
+
+        Sắp ảnh `pending` KHÔNG hề nới lỏng gì ở kênh công khai: gallery công khai vẫn chỉ trả
+        `published`; ảnh chờ duyệt chỉ đơn giản đáp xuống đúng vị trí đã chọn khi được duyệt.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [media_ids]
+              properties:
+                media_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 'Danh sách ảnh SAU khi sắp, theo thứ tự chuẩn của server.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceOwnerMedia' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /places/{placeId}/media/cover:
+    patch:
+      tags: [Media]
+      summary: Chọn ảnh bìa cho cơ sở
+      operationId: setPlaceCoverImage
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu `Media.Upload.Managed` trên CHÍNH cơ sở ở path. Client gửi MEDIA ID, KHÔNG BAO GIỜ
+        gửi URL: một URL do client cung cấp không kiểm chứng được, còn media id thì kiểm được đầy đủ
+        tư cách. Giá trị lưu là `places.cover_image_id`; URL công khai được SINH lúc đọc nên không
+        có presigned URL nào bị lưu lại.
+
+
+        **Điều kiện đủ tư cách** (nằm trong `EXISTS` của chính câu UPDATE, không phải "kiểm tra rồi
+        ghi"): ảnh thuộc ĐÚNG cơ sở này, `status = published`, có `object_key`, chưa xoá mềm.
+
+
+        `404` khi ảnh không thuộc cơ sở này (không phân biệt "không tồn tại" với "của người khác");
+        `422` khi ảnh CÓ thuộc cơ sở nhưng chưa được duyệt/đã bị từ chối/đang bị ẩn.
+
+
+        **Vòng đời:** con trỏ được DỌN tự động khi ảnh bìa bị gỡ (`DELETE .../media/{mediaId}`) hoặc
+        bị kiểm duyệt đưa ra khỏi `published` (hide/reject) — cùng transaction với thay đổi gây ra
+        nó. KHÔNG tự chọn ảnh thay thế: bìa mới phải do chủ cơ sở chọn tường minh, kể cả sau khi ảnh
+        cũ được khôi phục.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [media_id]
+              properties:
+                media_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 'Danh sách ảnh của cơ sở, ảnh bìa mới có `is_cover: true`.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceOwnerMedia' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /places/{placeId}/media/{mediaId}:
     delete:
       tags: [Media]
@@ -3326,6 +3430,12 @@ components:
         location: { $ref: '#/components/schemas/GeoPoint' }
         short_description: { type: [string, 'null'] }
         price_range: { $ref: '#/components/schemas/PriceRange' }
+        # Ảnh bìa do chủ cơ sở chọn (`places.cover_image_id` → media), phân giải Ở TẦNG ĐỌC thành
+        # URL API ỔN ĐỊNH `{API_PUBLIC_URL}/{prefix}/media/{id}/file` — KHÔNG BAO GIỜ là presigned
+        # URL hay địa chỉ object storage, và không có URL nào được lưu sẵn trong DB. `null` khi cơ
+        # sở chưa chọn bìa HOẶC khi ảnh bìa không (còn) đủ điều kiện: đường đọc lọc lại
+        # `published` + đúng cơ sở + chưa xoá mềm một cách độc lập với đường ghi, nên ảnh
+        # pending/rejected/hidden không bao giờ lộ ra đây. Xem core/media-url/cover-image.ts.
         cover_image_url: { type: [string, 'null'], format: uri }
         rating_avg: { type: [number, 'null'] }
         rating_count: { type: integer }
@@ -3407,6 +3517,12 @@ components:
         name: { type: string }
         slug: { type: string }
         short_description: { type: [string, 'null'] }
+        # Ảnh bìa do chủ cơ sở chọn (`places.cover_image_id` → media), phân giải Ở TẦNG ĐỌC thành
+        # URL API ỔN ĐỊNH `{API_PUBLIC_URL}/{prefix}/media/{id}/file` — KHÔNG BAO GIỜ là presigned
+        # URL hay địa chỉ object storage, và không có URL nào được lưu sẵn trong DB. `null` khi cơ
+        # sở chưa chọn bìa HOẶC khi ảnh bìa không (còn) đủ điều kiện: đường đọc lọc lại
+        # `published` + đúng cơ sở + chưa xoá mềm một cách độc lập với đường ghi, nên ảnh
+        # pending/rejected/hidden không bao giờ lộ ra đây. Xem core/media-url/cover-image.ts.
         cover_image_url: { type: [string, 'null'], format: uri }
         ward: { type: [string, 'null'] }
         rating_avg: { type: [number, 'null'] }
@@ -3523,6 +3639,16 @@ components:
         url:
           type: string
           description: '`/places/{placeId}/media/{id}/file` — kiểm tra quyền lại mỗi lần tải.'
+        sort_order:
+          type: [integer, 'null']
+          description: >-
+            Vị trí trong gallery, 0 = đầu tiên (Owner Cover & Photo Ordering). `null` = chưa từng
+            được sắp — xếp SAU mọi ảnh đã sắp. Ghi qua `PATCH /places/{placeId}/media/order`.
+        is_cover:
+          type: boolean
+          description: >-
+            Ảnh này có đang là `places.cover_image_id` không. Chỉ ĐÚNG MỘT ảnh mỗi cơ sở; suy ra từ
+            `places`, không phải cột riêng trên media.
     Media:
       type: object
       description: >-

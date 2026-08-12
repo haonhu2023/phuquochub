@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PriceRange } from '../../places/place.enums';
 import { RestaurantSort } from '../dto/restaurants.dto';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
+
+/** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
+type CardRow = Record<string, unknown> & CoverImageColumns;
 
 export interface MenuSectionInput {
   name: string;
@@ -41,19 +46,26 @@ function restaurantWhere(filters: RestaurantListFilters, args: unknown[]): strin
 
 @Injectable()
 export class RestaurantsRepository {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly mediaUrl: MediaUrlService,
+  ) {}
 
-  listRestaurants(limit: number, offset: number, filters: RestaurantListFilters = {}) {
+  async listRestaurants(
+    limit: number,
+    offset: number,
+    filters: RestaurantListFilters = {},
+  ): Promise<CardRow[]> {
     const args: unknown[] = [];
     const where = restaurantWhere(filters, args);
     const orderBy = RESTAURANT_ORDER_BY[filters.sort ?? 'rating_desc'];
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    // Một correlated subquery/place cho ảnh bìa + mảng ẩm thực — KHÔNG phải N+1 (không có query
-    // riêng theo từng hàng ở tầng application, toàn bộ chạy trong một round-trip SQL).
-    return this.ds.query(
+    // Correlated subquery/place cho ảnh bìa + mảng ẩm thực — KHÔNG phải N+1 (không có query riêng
+    // theo từng hàng ở tầng application, toàn bộ chạy trong một round-trip SQL).
+    const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count, p.price_range,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+              ${COVER_IMAGE_COLS},
               rd.is_local_specialty,
               (SELECT array_agg(c.label_vi ORDER BY c.code) FROM place_cuisines pc
                  JOIN cuisines c ON c.id = pc.cuisine_id WHERE pc.place_id = p.id) AS cuisines,
@@ -64,6 +76,7 @@ export class RestaurantsRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   countRestaurants(filters: RestaurantListFilters = {}): Promise<number> {

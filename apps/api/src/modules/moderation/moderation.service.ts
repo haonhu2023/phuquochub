@@ -222,6 +222,15 @@ export class ModerationService {
     const newStatus = assertValidMediaTransition(previousStatus, action, dto.target_status);
 
     await this.mediaRepo.updateStatus(manager, media.id, newStatus);
+    // Ảnh RỜI khỏi `published` (ẩn/từ chối) thì không còn tư cách làm ảnh bìa — dọn con trỏ
+    // `places.cover_image_id` trong CÙNG transaction với quyết định (Owner Cover & Photo Ordering,
+    // 2026-08-12). Kênh công khai vốn đã an toàn dù không dọn (`COVER_IMAGE_COLS` lọc
+    // `status = 'published'` một cách độc lập); dọn ở đây để một ảnh bị ẩn rồi khôi phục KHÔNG âm
+    // thầm trở lại làm bìa — chủ cơ sở phải chọn lại tường minh. Idempotent: không có bìa nào trỏ
+    // tới ảnh này thì UPDATE khớp 0 dòng, không phải lỗi.
+    if (newStatus !== MediaStatus.PUBLISHED) {
+      await this.mediaRepo.clearCoverImageByMedia(media.id, manager);
+    }
     await this.casesRepo.resolve(manager, caseId, {
       status: ModerationCaseStatus.RESOLVED,
       decision: dto.decision,

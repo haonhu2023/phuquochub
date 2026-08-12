@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PriceRange } from '../../places/place.enums';
 import { BeachSort } from '../dto/beaches.dto';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
+
+/** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
+type CardRow = Record<string, unknown> & CoverImageColumns;
 
 export interface BeachListFilters {
   ward?: string;
@@ -59,20 +64,24 @@ function beachWhere(filters: BeachListFilters, args: unknown[]): string {
  */
 @Injectable()
 export class BeachesRepository {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly mediaUrl: MediaUrlService,
+  ) {}
 
-  listBeaches(limit: number, offset: number, filters: BeachListFilters = {}) {
+  async listBeaches(limit: number, offset: number, filters: BeachListFilters = {}): Promise<CardRow[]> {
     const args: unknown[] = [];
     const where = beachWhere(filters, args);
     const orderBy = BEACH_ORDER_BY[filters.sort ?? 'rating_desc'];
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    // Một correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng
-    // hàng ở tầng application; tất cả nằm trong một round-trip SQL).
-    return this.ds.query(
+    // Correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng hàng ở
+    // tầng application; tất cả nằm trong một round-trip SQL). `withCoverImageUrl` chỉ dựng URL từ
+    // dữ liệu ĐÃ có trong row, cũng không truy vấn thêm.
+    const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.price_range, p.ward,
               p.rating_avg, p.rating_count, p.verification_status,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+              ${COVER_IMAGE_COLS},
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM ${beachFrom()}
        WHERE ${where}
@@ -80,6 +89,7 @@ export class BeachesRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   countBeaches(filters: BeachListFilters = {}): Promise<number> {

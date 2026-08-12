@@ -1,7 +1,12 @@
-import { DataSource } from 'typeorm';
+﻿import { DataSource } from 'typeorm';
 import { ToursRepository } from './tours.repository';
 import { TourDifficultyDto, TourTypeDto } from '../dto/tours.dto';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
+
+import type { MediaUrlService } from '../../../core/media-url/media-url.service';
+
+// Chỉ dùng để dựng URL API của ảnh bìa đã upload (xem core/media-url/cover-image.ts).
+const MEDIA_URL = { fileUrl: (id: string) => `https://api.test/api/media/${id}/file` } as MediaUrlService;
 
 function sql(query: string): string {
   return query.replace(/\s+/g, ' ').trim();
@@ -13,7 +18,7 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
 
   beforeEach(() => {
     ds = createMock<DataSource>({ query: jest.fn() });
-    sut = new ToursRepository(ds);
+    sut = new ToursRepository(ds, MEDIA_URL);
   });
 
   describe('listTours', () => {
@@ -140,9 +145,15 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
 
       await sut.listTours(20, 0);
 
-      expect(sql(ds.query.mock.calls[0][0])).toContain(
-        "(SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url",
-      );
+      // Ảnh bìa dùng mảnh SQL CHUNG (core/media-url/cover-image.ts). Ghim các vị từ BẢO MẬT ngay
+      // tại truy vấn này thay vì chép nguyên chuỗi: chỉ ảnh đã duyệt, thuộc đúng cơ sở, chưa xoá
+      // mềm mới ra được ảnh bìa; kèm cột id để tầng ứng dụng dựng URL API cho ảnh đã upload.
+      const coverQ = sql(ds.query.mock.calls[0][0]);
+      expect(coverQ).toContain('AS cover_image_url');
+      expect(coverQ).toContain('AS cover_image_media_id');
+      expect(coverQ).toContain("m.status = 'published'");
+      expect(coverQ).toContain('m.place_id = p.id');
+      expect(coverQ).toContain('m.deleted_at IS NULL');
     });
   });
 

@@ -1,6 +1,6 @@
-import { apiDeleteAuth, apiGetAuth, apiPost } from '@/lib/http';
+import { apiDeleteAuth, apiGetAuth, apiPatchAuth, apiPost } from '@/lib/http';
 import type { PresignResult } from '@/modules/media/uploadPipeline';
-import type { PlacePhoto } from '../types';
+import type { PlacePhoto, RegisteredPlacePhoto } from '../types';
 
 // Ảnh của cơ sở (Owner Place Photos). MỌI endpoint đều nằm dưới `/places/{placeId}/…` — place id
 // là ROUTE PARAM chứ không phải trường trong body, vì đó là điều kiện để backend cưỡng chế được
@@ -26,8 +26,36 @@ export async function registerPlacePhoto(
   placeId: string,
   key: string,
   accessToken: string,
-): Promise<PlacePhoto> {
-  return apiPost<PlacePhoto>(`/places/${encodeURIComponent(placeId)}/media`, accessToken, { key });
+): Promise<RegisteredPlacePhoto> {
+  return apiPost<RegisteredPlacePhoto>(`/places/${encodeURIComponent(placeId)}/media`, accessToken, {
+    key,
+  });
+}
+
+/**
+ * Sắp xếp lại ảnh của cơ sở. `mediaIds` phải là DANH SÁCH ĐẦY ĐỦ ảnh hiện có (mọi trạng thái),
+ * đúng thứ tự mong muốn — backend từ chối danh sách thiếu/trùng/lẫn ảnh cơ sở khác. Trả về danh
+ * sách SAU KHI sắp, nên gọi xong là có ngay trạng thái chuẩn của server, không cần tải lại.
+ */
+export async function reorderPlacePhotos(
+  placeId: string,
+  mediaIds: string[],
+  accessToken: string,
+): Promise<PlacePhoto[]> {
+  return apiPatchAuth<PlacePhoto[]>(`/places/${encodeURIComponent(placeId)}/media/order`, accessToken, {
+    media_ids: mediaIds,
+  });
+}
+
+/** Đặt ảnh bìa. Gửi MEDIA ID (không bao giờ gửi URL) — xem place-media.controller.ts. */
+export async function setPlacePhotoCover(
+  placeId: string,
+  mediaId: string,
+  accessToken: string,
+): Promise<PlacePhoto[]> {
+  return apiPatchAuth<PlacePhoto[]>(`/places/${encodeURIComponent(placeId)}/media/cover`, accessToken, {
+    media_id: mediaId,
+  });
 }
 
 /** Gỡ ảnh khỏi cơ sở (xoá mềm phía backend). */

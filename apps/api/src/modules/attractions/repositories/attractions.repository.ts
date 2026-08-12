@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PriceRange } from '../../places/place.enums';
 import { AttractionSort } from '../dto/attractions.dto';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
+
+/** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
+type CardRow = Record<string, unknown> & CoverImageColumns;
 
 export interface AttractionListFilters {
   ward?: string;
@@ -57,20 +62,28 @@ function attractionWhere(filters: AttractionListFilters, args: unknown[]): strin
  */
 @Injectable()
 export class AttractionsRepository {
-  constructor(@InjectDataSource() private readonly ds: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly ds: DataSource,
+    private readonly mediaUrl: MediaUrlService,
+  ) {}
 
-  listAttractions(limit: number, offset: number, filters: AttractionListFilters = {}) {
+  async listAttractions(
+    limit: number,
+    offset: number,
+    filters: AttractionListFilters = {},
+  ): Promise<CardRow[]> {
     const args: unknown[] = [];
     const where = attractionWhere(filters, args);
     const orderBy = ATTRACTION_ORDER_BY[filters.sort ?? 'rating_desc'];
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    // Một correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng
-    // hàng ở tầng application; tất cả nằm trong một round-trip SQL).
-    return this.ds.query(
+    // Correlated subquery cho ảnh bìa — KHÔNG phải N+1 (không có truy vấn riêng theo từng hàng ở
+    // tầng application; tất cả nằm trong một round-trip SQL). `withCoverImageUrl` chỉ dựng URL từ
+    // dữ liệu ĐÃ có trong row, cũng không truy vấn thêm.
+    const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.price_range, p.ward,
               p.rating_avg, p.rating_count, p.verification_status,
-              (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+              ${COVER_IMAGE_COLS},
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
        FROM ${attractionFrom()}
        WHERE ${where}
@@ -78,6 +91,7 @@ export class AttractionsRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   countAttractions(filters: AttractionListFilters = {}): Promise<number> {

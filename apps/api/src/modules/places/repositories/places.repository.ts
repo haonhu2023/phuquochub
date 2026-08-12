@@ -4,16 +4,26 @@ import { EntityManager, Repository } from 'typeorm';
 import type { VerificationStatusValue } from '@phuquochub/shared-types';
 import { Place } from '../entities/place.entity';
 import { PlaceStatus, PriceRange } from '../place.enums';
+import { MediaUrlService } from '../../../core/media-url/media-url.service';
+import {
+  COVER_IMAGE_COLS,
+  CoverImageColumns,
+  withCoverImageUrl,
+  withCoverImageUrlOne,
+} from '../../../core/media-url/cover-image';
 
 // Row phẳng cho card (đã trích lng/lat từ geography).
-export interface PlaceCardRow {
+//
+// `cover_image_url` (+ cột nội bộ `cover_image_media_id`) đến từ `CoverImageColumns`. Mọi phương
+// thức trả row ở đây đều đã chạy qua `withCoverImageUrl()` TRƯỚC KHI trả, nên với caller
+// `cover_image_url` là URL cuối cùng và `cover_image_media_id` không còn tồn tại.
+export interface PlaceCardRow extends CoverImageColumns {
   id: string;
   name: string;
   slug: string;
   category_id: string;
   short_description: string | null;
   price_range: PriceRange | null;
-  cover_image_url: string | null;
   rating_avg: string | null;
   rating_count: number;
   // Cột là ENUM "verification_status" NOT NULL ở DB (InitPlaces1720000400000:47), nên tập giá
@@ -92,18 +102,16 @@ export interface CreatePlaceRow {
 
 // Repository Pattern cho `places`. Ghi + đọc không gian đi qua raw SQL tham số hóa
 // (ST_MakePoint/ST_DWithin/FTS) — geo tập trung một chỗ (coding-standard §7).
-// cover_image_url: resolve URL của media cover (openapi PlaceCard.cover_image_url, format uri).
-// Subquery scalar → dùng chung mọi truy vấn card mà không cần đổi FROM.
 //
-// `AND m.status = 'published'` (Secure Private Media, 2026-08-10): trước đây subquery này KHÔNG lọc
-// status — bất biến "chỉ media published mới lộ URL" được thực thi ở `toMedia()` nhưng cover đi
-// đường raw SQL riêng, KHÔNG qua mapper đó. Trên thực tế chưa từng rò rỉ (đường upload luôn ghi
-// `url = NULL`, và không có luồng nào ghi `cover_image_id`), nên đây là bịt lỗ hổng theo chiều sâu
-// TRƯỚC khi có luồng đặt cover, không phải vá một sự cố. Cùng vị từ được lặp lại y hệt ở 6
-// repository chuyên biệt khác (attractions/beaches/hotels/restaurants/tours/transports).
+// cover_image_url (openapi PlaceCard.cover_image_url, format uri) đến từ `COVER_IMAGE_COLS` —
+// MỘT định nghĩa dùng chung với 6 repository chuyên biệt (attractions/beaches/hotels/restaurants/
+// tours/transports), xem core/media-url/cover-image.ts để biết đủ ba bất biến nó cưỡng chế
+// (published-only, đúng cơ sở, chưa xoá mềm) và vì sao URL cuối cùng phải được phân giải ở tầng
+// ứng dụng (`withCoverImageUrl`) thay vì trong SQL. Subquery scalar → dùng chung mọi truy vấn card
+// mà không cần đổi FROM; một correlated subquery/cột, KHÔNG phải N+1.
 const CARD_COLS = `
   p.id, p.name, p.slug, p.category_id, p.short_description, p.price_range,
-  (SELECT m.url FROM media m WHERE m.id = p.cover_image_id AND m.deleted_at IS NULL AND m.status = 'published') AS cover_image_url,
+  ${COVER_IMAGE_COLS},
   p.rating_avg, p.rating_count, p.verification_status, p.status,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
 `;
@@ -113,6 +121,9 @@ export class PlacesRepository {
   constructor(
     @InjectRepository(Place)
     private readonly repo: Repository<Place>,
+    // MediaUrlService là @Global (core/media-url) — chỉ để dựng URL API ổn định cho ảnh bìa đã
+    // upload; repository KHÔNG chạm tới object storage ở bất kỳ đâu.
+    private readonly mediaUrl: MediaUrlService,
   ) {}
 
   async existsBySlug(slug: string): Promise<boolean> {
@@ -203,7 +214,7 @@ export class PlacesRepository {
        FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
       [id],
     );
-    return rows[0] ?? null;
+    return rows[0] ? withCoverImageUrlOne(rows[0], this.mediaUrl) : null;
   }
 
   /**
@@ -223,7 +234,7 @@ export class PlacesRepository {
        LIMIT 1`,
       [slug, PlaceStatus.PUBLISHED],
     );
-    return rows[0] ?? null;
+    return rows[0] ? withCoverImageUrlOne(rows[0], this.mediaUrl) : null;
   }
 
   /** FAQ đã duyệt của Place (place_faqs — satellite của places). */
@@ -351,7 +362,7 @@ export class PlacesRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, params.limit, params.offset],
     );
-    return { items, total };
+    return { items: withCoverImageUrl(items, this.mediaUrl), total };
   }
 
   /**
@@ -377,7 +388,7 @@ export class PlacesRepository {
       categoryCond = `AND p.category_id = $${args.length}`;
     }
     args.push(params.limit);
-    return this.repo.query(
+    const rows: PlaceCardRow[] = await this.repo.query(
       `SELECT ${CARD_COLS},
               ST_Distance(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography) AS distance_m
        FROM places p
@@ -388,6 +399,7 @@ export class PlacesRepository {
        LIMIT $${args.length}`,
       args,
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   // F-33 (PLACE-019, 2026-07-23): `bbox()` REMOVED — it had no consumer. GeoService.bbox() calls
@@ -510,7 +522,7 @@ export class PlacesRepository {
     const filterConds = this.searchFilterConds(filters, args);
     const limitIdx = args.length + 1;
     const offsetIdx = args.length + 2;
-    return this.repo.query(
+    const rows: PlaceCardRow[] = await this.repo.query(
       `SELECT ${CARD_COLS},
               ts_rank(
                 to_tsvector('simple', immutable_unaccent(coalesce(p.name,'') || ' ' || coalesce(p.description,''))),
@@ -525,5 +537,6 @@ export class PlacesRepository {
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       [...args, limit, offset],
     );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 }

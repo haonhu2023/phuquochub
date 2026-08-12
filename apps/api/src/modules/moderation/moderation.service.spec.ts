@@ -121,7 +121,11 @@ describe('ModerationService', () => {
       resolve: jest.fn(),
     });
     reportsRepo = createMock<ReportsRepository>({ findByCaseId: jest.fn(), resolveByCaseId: jest.fn() });
-    mediaRepo = createMock<MediaRepository>({ findByIdForUpdate: jest.fn(), updateStatus: jest.fn() });
+    mediaRepo = createMock<MediaRepository>({
+      findByIdForUpdate: jest.fn(),
+      updateStatus: jest.fn(),
+      clearCoverImageByMedia: jest.fn(),
+    });
     placesRepo = createMock<PlacesRepository>({ recalculateRating: jest.fn() });
     // Mặc định CHO PHÉP mọi permission — các test về phân quyền (M4) tự override `can` khi cần
     // kiểm tra đúng nhánh 403, giữ mọi test decide() hiện có (M3) không phải sửa gì thêm.
@@ -428,6 +432,47 @@ describe('ModerationService', () => {
       await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm chính sách' }, ACTOR);
 
       expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.HIDDEN);
+    });
+
+    // Owner Cover & Photo Ordering (2026-08-12) — ảnh rời khỏi `published` thì không còn tư cách
+    // làm ảnh bìa. Dọn con trỏ trong CÙNG transaction với quyết định, không phải sau commit.
+    describe('ảnh bìa khi media rời khỏi published', () => {
+      it('hide -> dọn places.cover_image_id trong cùng transaction', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PUBLISHED }));
+
+        await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm' }, ACTOR);
+
+        expect(mediaRepo.clearCoverImageByMedia).toHaveBeenCalledWith('m1', manager);
+      });
+
+      it('reject -> dọn places.cover_image_id', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'không liên quan' }, ACTOR);
+
+        expect(mediaRepo.clearCoverImageByMedia).toHaveBeenCalledWith('m1', manager);
+      });
+
+      it('approve -> KHÔNG đụng tới ảnh bìa (ảnh vừa đủ điều kiện, không phải mất)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+        expect(mediaRepo.clearCoverImageByMedia).not.toHaveBeenCalled();
+      });
+
+      // dismiss KHÔNG đổi trạng thái nội dung ⇒ tư cách ảnh bìa cũng không đổi.
+      it('dismiss -> KHÔNG đụng tới ảnh bìa', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PUBLISHED }));
+
+        await service.decide('c1', { decision: ModerationDecision.DISMISS }, ACTOR);
+
+        expect(mediaRepo.clearCoverImageByMedia).not.toHaveBeenCalled();
+      });
     });
 
     it('hidden + restore KHÔNG kèm target_status -> 422 (INV-10, không đoán)', async () => {

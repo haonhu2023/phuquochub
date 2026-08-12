@@ -78,9 +78,14 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       findByUploaderAndChecksum: jest.fn().mockResolvedValue(null),
       createUploaded: jest.fn(),
       findAnyStatusObjectKey: jest.fn(),
-      listAllByPlace: jest.fn(),
+      listAllByPlace: jest.fn().mockResolvedValue([]),
       existsForPlace: jest.fn(),
       softDeletePlaceMedia: jest.fn(),
+      getCoverImageId: jest.fn().mockResolvedValue(null),
+      clearCoverImageByMedia: jest.fn(),
+      listIdsForPlaceForUpdate: jest.fn().mockResolvedValue([]),
+      reorderPlaceMedia: jest.fn().mockResolvedValue([]),
+      setPlaceCoverImage: jest.fn(),
     });
 
     ds = createMock<import('typeorm').DataSource>({
@@ -212,6 +217,31 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       expect(res[0].url).toBe(`https://api/places/${PLACE_ID}/media/m1/file`);
     });
 
+    it('đánh dấu ĐÚNG một ảnh là bìa, theo places.cover_image_id', async () => {
+      mediaRepo.getCoverImageId.mockResolvedValue('m2');
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        { id: 'm1', status: MediaStatus.PUBLISHED, caption: null, altText: null, createdAt: new Date(), sortOrder: 0 },
+        { id: 'm2', status: MediaStatus.PUBLISHED, caption: null, altText: null, createdAt: new Date(), sortOrder: 1 },
+      ] as never);
+
+      const res = await service.listForPlaceOwner(PLACE_ID);
+
+      expect(res.map((r) => r.is_cover)).toEqual([false, true]);
+      expect(res.map((r) => r.sort_order)).toEqual([0, 1]);
+    });
+
+    it('cơ sở chưa chọn bìa -> không ảnh nào is_cover', async () => {
+      mediaRepo.getCoverImageId.mockResolvedValue(null);
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        { id: 'm1', status: MediaStatus.PENDING, caption: null, altText: null, createdAt: new Date(), sortOrder: null },
+      ] as never);
+
+      const res = await service.listForPlaceOwner(PLACE_ID);
+
+      expect(res[0].is_cover).toBe(false);
+      expect(res[0].sort_order).toBeNull();
+    });
+
     it('không rò object_key/bucket/checksum ra response', async () => {
       mediaRepo.listAllByPlace.mockResolvedValue([
         {
@@ -248,10 +278,129 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
     it('gỡ thành công -> xoá mềm theo (placeId, mediaId) + audit', async () => {
       mediaRepo.softDeletePlaceMedia.mockResolvedValue(true);
       await service.removeFromPlace(PLACE_ID, 'm1', USER_ID);
-      expect(mediaRepo.softDeletePlaceMedia).toHaveBeenCalledWith(PLACE_ID, 'm1');
+      expect(mediaRepo.softDeletePlaceMedia).toHaveBeenCalledWith(PLACE_ID, 'm1', { fakeManager: true });
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'media.place_removed', entityId: 'm1' }),
       );
+    });
+
+    // Gỡ ảnh + dọn con trỏ ảnh bìa phải là MỘT đơn vị nguyên tử: nếu tách ra, một sự cố giữa chừng
+    // để lại `places.cover_image_id` trỏ vào ảnh đã xoá.
+    it('gỡ ảnh -> dọn con trỏ ảnh bìa trong CÙNG transaction', async () => {
+      mediaRepo.softDeletePlaceMedia.mockResolvedValue(true);
+      await service.removeFromPlace(PLACE_ID, 'm1', USER_ID);
+      expect(mediaRepo.clearCoverImageByMedia).toHaveBeenCalledWith('m1', { fakeManager: true });
+    });
+
+    it('không gỡ được gì -> KHÔNG đụng tới ảnh bìa', async () => {
+      mediaRepo.softDeletePlaceMedia.mockResolvedValue(false);
+      await expect(service.removeFromPlace(PLACE_ID, 'm-other', USER_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(mediaRepo.clearCoverImageByMedia).not.toHaveBeenCalled();
+    });
+  });
+
+  // Owner Cover & Photo Ordering (2026-08-12). Ranh giới PHÂN QUYỀN của hai luồng này được chứng
+  // minh ở place-media-cover-order.e2e-spec.ts (Postgres thật, guard thật); ở đây là phần nghiệp vụ.
+  describe('reorderPlaceMedia', () => {
+    beforeEach(() => {
+      mediaRepo.listIdsForPlaceForUpdate.mockResolvedValue(['m1', 'm2', 'm3']);
+      mediaRepo.reorderPlaceMedia.mockResolvedValue(['m3', 'm1', 'm2']);
+    });
+
+    it('tập ĐẦY ĐỦ, không trùng -> ghi thứ tự trong transaction, giữ nguyên thứ tự client gửi', async () => {
+      await service.reorderPlaceMedia(PLACE_ID, ['m3', 'm1', 'm2'], USER_ID);
+
+      expect(ds.transaction).toHaveBeenCalledTimes(1);
+      expect(mediaRepo.reorderPlaceMedia).toHaveBeenCalledWith({ fakeManager: true }, PLACE_ID, [
+        'm3',
+        'm1',
+        'm2',
+      ]);
+      // Đọc tập hiện tại phải KHOÁ hàng, nếu không hai lần sắp đồng thời có thể lồng vào nhau.
+      expect(mediaRepo.listIdsForPlaceForUpdate).toHaveBeenCalledWith({ fakeManager: true }, PLACE_ID);
+    });
+
+    it('id trùng lặp -> 422, KHÔNG ghi gì', async () => {
+      await expect(service.reorderPlaceMedia(PLACE_ID, ['m1', 'm1', 'm2'], USER_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(mediaRepo.reorderPlaceMedia).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('danh sách THIẾU ảnh -> 422, KHÔNG ghi gì', async () => {
+      await expect(service.reorderPlaceMedia(PLACE_ID, ['m1', 'm2'], USER_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(mediaRepo.reorderPlaceMedia).not.toHaveBeenCalled();
+    });
+
+    // Id của cơ sở khác không bao giờ nằm trong tập hiện tại của cơ sở này ⇒ lệch tập ⇒ 422.
+    // (Lớp thứ hai: `place_id` nằm trong WHERE của chính câu UPDATE, xem media.repository.ts.)
+    it('chèn id ảnh của cơ sở KHÁC -> 422, KHÔNG ghi gì', async () => {
+      await expect(
+        service.reorderPlaceMedia(PLACE_ID, ['m1', 'm2', 'foreign-media'], USER_ID),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(mediaRepo.reorderPlaceMedia).not.toHaveBeenCalled();
+    });
+
+    it('UPDATE không chạm hết số ảnh -> ném lỗi TRONG transaction (rollback), không audit', async () => {
+      mediaRepo.reorderPlaceMedia.mockResolvedValue(['m3', 'm1']);
+      await expect(service.reorderPlaceMedia(PLACE_ID, ['m3', 'm1', 'm2'], USER_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('ghi audit media.place_reordered sau khi ghi xong', async () => {
+      await service.reorderPlaceMedia(PLACE_ID, ['m3', 'm1', 'm2'], USER_ID);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'media.place_reordered', entityType: 'place', entityId: PLACE_ID }),
+      );
+    });
+  });
+
+  describe('setPlaceCover', () => {
+    it('ảnh đủ điều kiện -> ghi cover + audit, trả lại danh sách đã đánh dấu', async () => {
+      mediaRepo.setPlaceCoverImage.mockResolvedValue(true);
+      mediaRepo.getCoverImageId.mockResolvedValue('m1');
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        { id: 'm1', status: MediaStatus.PUBLISHED, caption: null, altText: null, createdAt: new Date(), sortOrder: 0 },
+        { id: 'm2', status: MediaStatus.PUBLISHED, caption: null, altText: null, createdAt: new Date(), sortOrder: 1 },
+      ] as never);
+
+      const res = await service.setPlaceCover(PLACE_ID, 'm1', USER_ID);
+
+      expect(mediaRepo.setPlaceCoverImage).toHaveBeenCalledWith(PLACE_ID, 'm1');
+      expect(res.map((p) => p.is_cover)).toEqual([true, false]);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.cover_image_set', entityId: PLACE_ID }),
+      );
+    });
+
+    // Không tiết lộ ảnh của cơ sở khác có tồn tại hay không — cùng khuôn `removeFromPlace`.
+    it('ảnh không thuộc cơ sở này -> 404, KHÔNG audit', async () => {
+      mediaRepo.setPlaceCoverImage.mockResolvedValue(false);
+      mediaRepo.existsForPlace.mockResolvedValue(false);
+
+      await expect(service.setPlaceCover(PLACE_ID, 'm-other', USER_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    // Ảnh CÓ thuộc cơ sở nhưng chưa duyệt/đã bị từ chối: chủ cơ sở đã thấy trạng thái đó trên màn
+    // hình của mình, nên nói thẳng là hữu ích và không rò rỉ gì.
+    it('ảnh thuộc cơ sở nhưng chưa published -> 422, KHÔNG audit', async () => {
+      mediaRepo.setPlaceCoverImage.mockResolvedValue(false);
+      mediaRepo.existsForPlace.mockResolvedValue(true);
+
+      await expect(service.setPlaceCover(PLACE_ID, 'm-pending', USER_ID)).rejects.toBeInstanceOf(
+        UnprocessableEntityException,
+      );
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 

@@ -24,6 +24,7 @@ import {
 } from '../moderation/moderation.enums';
 import { CreateReportDto } from '../moderation/dto/moderation.dto';
 import { AllowedMediaMimeType, CreateMediaDto, PresignMediaDto } from './dto/media.dto';
+import { MediaStatus } from './media.enums';
 import { toMedia } from './media.mapper';
 
 const MIME_TO_EXTENSION: Record<AllowedMediaMimeType, string> = {
@@ -54,6 +55,23 @@ interface PresignSession {
   size: number;
   checksumSha256: string;
   placeId: string | null;
+}
+
+/**
+ * Một ảnh như MÀN HÌNH QUẢN LÝ của chủ cơ sở nhìn thấy. KHÔNG có `object_key`/`bucket`/`checksum`
+ * — hình dạng này được liệt kê tường minh (không spread entity) chính là để những cột đó không thể
+ * vô tình lọt ra ngoài khi entity `Media` có thêm trường mới.
+ */
+export interface OwnerPlacePhoto {
+  id: string;
+  status: MediaStatus;
+  caption: string | null;
+  alt_text: string | null;
+  created_at: string;
+  /** Kênh NỘI BỘ theo cơ sở — ảnh chưa duyệt không có URL công khai nào. */
+  url: string;
+  sort_order: number | null;
+  is_cover: boolean;
 }
 
 @Injectable()
@@ -264,8 +282,11 @@ export class MediaService {
    * `url` trỏ tới endpoint NỘI BỘ (`/places/{placeId}/media/{id}/file`) chứ không phải endpoint
    * công khai: ảnh chưa duyệt không có URL công khai nào, theo đúng mô hình private media.
    */
-  async listForPlaceOwner(placeId: string) {
-    const rows = await this.mediaRepo.listAllByPlace(placeId);
+  async listForPlaceOwner(placeId: string): Promise<OwnerPlacePhoto[]> {
+    const [rows, coverImageId] = await Promise.all([
+      this.mediaRepo.listAllByPlace(placeId),
+      this.mediaRepo.getCoverImageId(placeId),
+    ]);
     return rows.map((m) => ({
       id: m.id,
       status: m.status,
@@ -273,7 +294,103 @@ export class MediaService {
       alt_text: m.altText,
       created_at: m.createdAt.toISOString(),
       url: `${this.mediaUrl.placeMediaFileUrl(placeId, m.id)}`,
+      sort_order: m.sortOrder,
+      // `is_cover` tính từ `places.cover_image_id` — MỘT nguồn sự thật, không phải cờ nhân bản trên
+      // media. Một ảnh vẫn có thể `is_cover: true` khi đang chờ kiểm duyệt lại (ví dụ bị ẩn rồi
+      // khôi phục): giao diện dựa vào `status` để nói ảnh đã lên trang hay chưa, còn đường ĐỌC công
+      // khai vẫn lọc `published` độc lập nên không có gì rò ra ngoài.
+      is_cover: coverImageId !== null && coverImageId === m.id,
     }));
+  }
+
+  /**
+   * Sắp xếp lại ảnh của cơ sở (Owner Cover & Photo Ordering, 2026-08-12).
+   *
+   * `placeId` đến từ ROUTE PARAM đã qua `Media.Upload.Managed` + `@AuthorizationContext(place)` —
+   * service nhận nó như một giá trị ĐÃ được phép (PDP là nơi duy nhất quyết định, ADR-019 D1).
+   *
+   * Hợp đồng "TOÀN BỘ hay không có gì": `mediaIds` phải là ĐÚNG tập ảnh chưa gỡ của cơ sở (mọi
+   * trạng thái), mỗi id một lần. Vì sao không chấp nhận danh sách một phần: với danh sách thiếu,
+   * "ảnh bị bỏ qua nằm ở đâu" là một câu hỏi không có câu trả lời đúng duy nhất (giữ số cũ? đẩy
+   * xuống cuối? xen kẽ?) — mọi lựa chọn đều làm chủ cơ sở bất ngờ. Màn hình quản lý luôn có sẵn
+   * danh sách đầy đủ nên gửi đủ là chuyện tự nhiên, và nếu tập lệch (ảnh vừa bị gỡ ở tab khác,
+   * hoặc client cố chèn id của cơ sở khác) thì 422 kèm yêu cầu tải lại là phản hồi đúng.
+   *
+   * Ảnh `pending`/`rejected` CŨNG được sắp: chủ cơ sở nhìn thấy chúng trên cùng màn hình, và một
+   * ảnh chờ duyệt phải đáp xuống đúng vị trí đã chọn NGAY khi được duyệt. Việc này không nới lỏng
+   * gì ở kênh công khai — `listPublishedByPlace()` vẫn chỉ trả `published`.
+   *
+   * Toàn bộ chạy trong MỘT transaction: đọc tập hiện tại có `FOR UPDATE` (hai lần sắp xếp đồng
+   * thời bị tuần tự hoá, không lồng vào nhau), rồi một câu UPDATE set-based duy nhất.
+   */
+  async reorderPlaceMedia(placeId: string, mediaIds: string[], actorId: string): Promise<OwnerPlacePhoto[]> {
+    const unique = new Set(mediaIds);
+    if (unique.size !== mediaIds.length) {
+      throw new UnprocessableEntityException('Danh sách ảnh có id trùng lặp');
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      const currentIds = await this.mediaRepo.listIdsForPlaceForUpdate(manager, placeId);
+      // So SÁNH TẬP, không chỉ so số lượng: chặn cả "thiếu ảnh" lẫn "chèn id lạ/của cơ sở khác"
+      // với cùng một thông điệp không tiết lộ gì về tài nguyên của người khác.
+      const sameSet = currentIds.length === mediaIds.length && currentIds.every((id) => unique.has(id));
+      if (!sameSet) {
+        throw new UnprocessableEntityException(
+          'Danh sách ảnh không khớp với ảnh hiện có của cơ sở. Vui lòng tải lại trang rồi thử lại.',
+        );
+      }
+
+      const updated = await this.mediaRepo.reorderPlaceMedia(manager, placeId, mediaIds);
+      if (updated.length !== mediaIds.length) {
+        // Không thể xảy ra sau kiểm tra tập ở trên (các hàng đã bị khoá) — nhưng nếu xảy ra thì
+        // ném lỗi TRONG transaction để rollback, tuyệt đối không commit một thứ tự sắp dở dang.
+        throw new UnprocessableEntityException('Không sắp xếp được toàn bộ ảnh. Vui lòng thử lại.');
+      }
+    });
+
+    await this.audit.record({
+      event: 'media.place_reordered',
+      entityType: 'place',
+      entityId: placeId,
+      actorId,
+      result: AuditResult.SUCCESS,
+      after: { media_count: mediaIds.length },
+    });
+
+    return this.listForPlaceOwner(placeId);
+  }
+
+  /**
+   * Đặt ảnh bìa cho cơ sở. Điều kiện đủ tư cách (thuộc đúng cơ sở, `published`, có object, chưa
+   * gỡ) nằm TRONG câu UPDATE — xem `MediaRepository.setPlaceCoverImage`.
+   *
+   * Phân biệt 404 và 422 CHỈ để báo lỗi cho đúng, không phải để quyết định cho phép hay không:
+   * quyết định đã do câu UPDATE đưa ra. 404 khi ảnh không thuộc cơ sở này (không tiết lộ ảnh của
+   * cơ sở khác có tồn tại hay không — cùng khuôn `removeFromPlace`); 422 khi ảnh CÓ thuộc cơ sở
+   * nhưng chưa được duyệt/đã bị từ chối — chủ cơ sở vốn đã nhìn thấy trạng thái đó trên màn hình
+   * của mình nên nói thẳng ra là hữu ích và không rò rỉ gì.
+   */
+  async setPlaceCover(placeId: string, mediaId: string, actorId: string): Promise<OwnerPlacePhoto[]> {
+    const applied = await this.mediaRepo.setPlaceCoverImage(placeId, mediaId);
+    if (!applied) {
+      if (!(await this.mediaRepo.existsForPlace(placeId, mediaId))) {
+        throw new NotFoundException('Không tìm thấy ảnh của cơ sở này');
+      }
+      throw new UnprocessableEntityException(
+        'Chỉ ảnh đã được kiểm duyệt viên duyệt mới đặt được làm ảnh bìa.',
+      );
+    }
+
+    await this.audit.record({
+      event: 'place.cover_image_set',
+      entityType: 'place',
+      entityId: placeId,
+      actorId,
+      result: AuditResult.SUCCESS,
+      after: { cover_image_id: mediaId },
+    });
+
+    return this.listForPlaceOwner(placeId);
   }
 
   /**
@@ -284,9 +401,20 @@ export class MediaService {
    * `placeId` đến từ ROUTE PARAM đã qua kiểm tra quyền, và được đưa THẲNG vào điều kiện WHERE —
    * nên một mediaId của cơ sở KHÁC sẽ khớp 0 dòng và trả 404, không phải 403 "đúng ảnh nhưng sai
    * người" (không rò rỉ sự tồn tại của ảnh thuộc cơ sở khác).
+   *
+   * Nếu ảnh vừa gỡ ĐANG là ảnh bìa, con trỏ `places.cover_image_id` được dọn trong CÙNG transaction
+   * (Owner Cover & Photo Ordering, 2026-08-12) — không để lại bìa treo trỏ vào ảnh đã xoá. Kênh
+   * công khai vốn đã an toàn kể cả khi không dọn (`COVER_IMAGE_COLS` lọc `deleted_at IS NULL`);
+   * dọn ở đây là để trạng thái lưu trữ nói đúng sự thật.
    */
   async removeFromPlace(placeId: string, mediaId: string, actorId: string): Promise<void> {
-    const removed = await this.mediaRepo.softDeletePlaceMedia(placeId, mediaId);
+    const removed = await this.dataSource.transaction(async (manager) => {
+      const ok = await this.mediaRepo.softDeletePlaceMedia(placeId, mediaId, manager);
+      if (ok) {
+        await this.mediaRepo.clearCoverImageByMedia(mediaId, manager);
+      }
+      return ok;
+    });
     if (!removed) {
       throw new NotFoundException('Không tìm thấy ảnh của cơ sở này');
     }
