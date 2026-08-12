@@ -1,0 +1,106 @@
+#!/bin/bash
+# Backup-Restore Hardening (2026-08-12) — rehearse restoring a MinIO media snapshot into an
+# ISOLATED test bucket, then verify object-for-object that the restore is byte-identical.
+#
+# This automates the verification half of the procedure operators ran by hand on 2026-08-12. It is
+# deliberately SEPARATE from scripts/backup-media.sh: the nightly job must not create and delete a
+# bucket every single night.
+#
+# ############################################################################################
+# ## NEVER point this at the production bucket. It WRITES objects into its target bucket.     ##
+# ## The target must be a scratch bucket, and this script refuses to run against the          ##
+# ## configured production bucket name.                                                       ##
+# ############################################################################################
+#
+# What it does NOT do: it never reads from, writes to, or deletes anything in the production
+# bucket. It works purely from a local snapshot directory produced by backup-media.sh.
+#
+# Usage:
+#   scripts/restore-media-rehearsal.sh <snapshot-dir> [test-bucket-name]
+# e.g.
+#   scripts/restore-media-rehearsal.sh backups/media/media-20260812T030000Z
+#
+# Cleanup is automatic unless KEEP_TEST_BUCKET=1.
+set -euo pipefail
+
+SNAPSHOT_DIR="${1:?Usage: scripts/restore-media-rehearsal.sh <snapshot-dir> [test-bucket-name]}"
+MC_ALIAS="${MC_ALIAS:-phuquoc-prod}"
+MEDIA_BUCKET="${MEDIA_BUCKET:-phuquochub-prod}"
+MC_BIN="${MC_BIN:-mc}"
+TEST_BUCKET="${2:-phuquochub-restore-test-$(date -u +%Y%m%dT%H%M%SZ)}"
+
+if [ ! -d "$SNAPSHOT_DIR" ]; then
+  echo "[media-rehearsal] ERROR: snapshot directory $SNAPSHOT_DIR does not exist." >&2
+  exit 1
+fi
+if [ ! -f "$SNAPSHOT_DIR/SHA256SUMS" ]; then
+  echo "[media-rehearsal] ERROR: $SNAPSHOT_DIR has no SHA256SUMS manifest -- refusing to rehearse" >&2
+  echo "[media-rehearsal]        against an unverifiable snapshot." >&2
+  exit 1
+fi
+
+# Hard guard: never write into production, whatever was passed in.
+if [ "$TEST_BUCKET" = "$MEDIA_BUCKET" ]; then
+  echo "[media-rehearsal] ERROR: refusing to use the production bucket ('$MEDIA_BUCKET') as the" >&2
+  echo "[media-rehearsal]        restore target. Pass a scratch bucket name." >&2
+  exit 1
+fi
+
+if ! command -v "$MC_BIN" >/dev/null 2>&1; then
+  echo "[media-rehearsal] ERROR: MinIO client '$MC_BIN' not found on PATH." >&2
+  exit 1
+fi
+
+echo "[media-rehearsal] Step 1/4 — verifying the local snapshot manifest ..."
+if ! ( cd "$SNAPSHOT_DIR" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then
+  echo "[media-rehearsal] ERROR: snapshot manifest does not verify. This backup is damaged." >&2
+  exit 1
+fi
+echo "[media-rehearsal]   local manifest: OK"
+
+cleanup() {
+  if [ "${KEEP_TEST_BUCKET:-0}" = "1" ]; then
+    echo "[media-rehearsal] KEEP_TEST_BUCKET=1 -- leaving $MC_ALIAS/$TEST_BUCKET in place."
+    return
+  fi
+  echo "[media-rehearsal] Cleaning up test bucket $MC_ALIAS/$TEST_BUCKET ..."
+  "$MC_BIN" rb --force "$MC_ALIAS/$TEST_BUCKET" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+echo "[media-rehearsal] Step 2/4 — creating isolated test bucket $TEST_BUCKET ..."
+if ! "$MC_BIN" mb "$MC_ALIAS/$TEST_BUCKET" >/dev/null 2>&1; then
+  echo "[media-rehearsal] ERROR: could not create test bucket." >&2
+  exit 1
+fi
+
+echo "[media-rehearsal] Step 3/4 — restoring snapshot into the test bucket ..."
+# Manifest is snapshot metadata, not a media object; keep it out of the restored bucket.
+if ! "$MC_BIN" mirror --quiet --exclude 'SHA256SUMS' "$SNAPSHOT_DIR" "$MC_ALIAS/$TEST_BUCKET" >/dev/null 2>&1; then
+  echo "[media-rehearsal] ERROR: restore into test bucket failed." >&2
+  exit 1
+fi
+
+echo "[media-rehearsal] Step 4/4 — verifying restored objects are byte-identical ..."
+VERIFY_DIR=$(mktemp -d)
+trap 'rm -rf "$VERIFY_DIR"; cleanup' EXIT INT TERM
+if ! "$MC_BIN" mirror --quiet "$MC_ALIAS/$TEST_BUCKET" "$VERIFY_DIR" >/dev/null 2>&1; then
+  echo "[media-rehearsal] ERROR: could not read back the restored objects." >&2
+  exit 1
+fi
+
+# Re-verify the ORIGINAL manifest against what came back out of the test bucket: snapshot -> bucket
+# -> download must reproduce every checksum exactly.
+cp "$SNAPSHOT_DIR/SHA256SUMS" "$VERIFY_DIR/SHA256SUMS"
+if ( cd "$VERIFY_DIR" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then
+  OBJECTS=$(grep -c . "$SNAPSHOT_DIR/SHA256SUMS" || echo 0)
+  echo "[media-rehearsal]   round-trip checksums: OK ($OBJECTS object(s))"
+  echo
+  echo "[media-rehearsal] MINIO_RESTORE_TEST=PASS"
+else
+  echo "[media-rehearsal] ERROR: restored objects do NOT match the snapshot checksums." >&2
+  echo "[media-rehearsal] MINIO_RESTORE_TEST=FAIL" >&2
+  exit 1
+fi
+
+echo "[media-rehearsal] Production bucket '$MEDIA_BUCKET' was never accessed by this script."

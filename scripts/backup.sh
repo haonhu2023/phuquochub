@@ -1,69 +1,103 @@
-#!/bin/sh
-# PLACE-038 — nightly PostgreSQL logical backup for the production compose stack.
+#!/bin/bash
+# PLACE-038 / Backup-Restore Hardening (2026-08-12) — nightly PostgreSQL logical backup for the
+# production compose stack.
 #
-# Intended to run ON THE PRODUCTION VPS via cron (e.g. `0 2 * * * /path/to/scripts/backup.sh`),
-# against a real `docker-compose.prod.yml` deployment. NOT executed against any real
-# infrastructure by PLACE-038 itself -- this repository has no provisioned VPS.
+# Runs ON THE PRODUCTION VPS via cron against a real `docker-compose.prod.yml` deployment.
+# Produces a timestamped, checksummed pg_dump and applies the Owner-approved retention policy
+# (daily 7 / weekly 4 / monthly 6 — PLACE-037 §11). It never uploads anything; offsite is
+# scripts/sync-offsite.sh.
 #
-# Produces a timestamped pg_dump, applies the Owner-approved retention policy
-# (daily 7 / weekly 4 / monthly 6 -- PLACE-037 §11), and -- if scripts/sync-offsite.sh's own
-# R2 environment variables are configured -- hands off to it for the offsite copy. This script
-# never uploads anything itself; it only produces and rotates local backup files.
+# WHY bash and not sh: this script needs `set -o pipefail`. The previous `#!/bin/sh` version piped
+# `pg_dump | gzip > file` with no pipefail, so a pg_dump failure was masked by gzip's exit 0 and
+# produced a valid-looking .sql.gz containing a truncated or empty dump. That is the single most
+# dangerous failure mode a backup script can have, and it is not fixable in portable POSIX sh.
+#
+# Format stays PLAIN SQL + gzip (unchanged, deliberately): every existing backup remains restorable,
+# and the sectioned custom-format restore that the 2026-08-12 production rehearsal needed was only
+# a workaround for the immutable_unaccent search_path bug — fixed properly at the source by
+# migration 1720004400000, so a single-pass plain restore now works.
 #
 # Usage: scripts/backup.sh [compose-project-dir]
-#   compose-project-dir defaults to the directory this script's parent lives in.
-set -eu
+set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR="${1:-$(dirname "$SCRIPT_DIR")}"
 COMPOSE="docker compose -f $PROJECT_DIR/docker-compose.prod.yml"
 BACKUP_DIR="${BACKUP_DIR:-$PROJECT_DIR/backups}"
+PG_USER="${PG_USER:-phuquoc}"
+PG_DB="${PG_DB:-phuquochub}"
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-DUMP_FILE="$BACKUP_DIR/phuquochub-$TIMESTAMP.sql.gz"
+BASENAME="phuquochub-$TIMESTAMP"
+FINAL_FILE="$BACKUP_DIR/$BASENAME.sql.gz"
+# Staging name deliberately does NOT match the phuquochub-*.sql.gz glob: an interrupted run can
+# never leave behind a file that retention, restore, or the offsite sync would treat as a backup.
+TMP_FILE="$BACKUP_DIR/.$BASENAME.sql.gz.partial"
 
 mkdir -p "$BACKUP_DIR"
 
+cleanup() {
+  rm -f "$TMP_FILE"
+}
+trap cleanup EXIT INT TERM
+
 echo "[backup] Confirming postgres is healthy before dumping..."
-if ! $COMPOSE ps postgres --format '{{.Health}}' 2>/dev/null | grep -q healthy; then
+# `grep -qx`, NOT `grep -q`: Docker reports "unhealthy" for a failing container, and the substring
+# "healthy" is contained in "unhealthy" — so the original `grep -q healthy` happily accepted an
+# UNHEALTHY database, defeating the exact check it was written to perform. Anchoring to the whole
+# line is the fix. (Found by scripts/tests/scripts.test.sh.)
+if ! $COMPOSE ps postgres --format '{{.Health}}' 2>/dev/null | grep -qx healthy; then
   echo "[backup] ERROR: postgres service is not reporting healthy. Aborting -- a backup from an" >&2
   echo "[backup]        unhealthy database is not trustworthy." >&2
   exit 1
 fi
 
-echo "[backup] Dumping to $DUMP_FILE ..."
-$COMPOSE exec -T postgres pg_dump -U phuquoc -d phuquochub --format=plain | gzip > "$DUMP_FILE"
-echo "[backup] Dump complete: $(du -h "$DUMP_FILE" | cut -f1)"
+echo "[backup] Dumping to $FINAL_FILE ..."
+# pipefail makes a pg_dump failure fail the whole pipeline even though gzip succeeds.
+$COMPOSE exec -T postgres pg_dump -U "$PG_USER" -d "$PG_DB" --format=plain | gzip > "$TMP_FILE"
 
-# --- Retention: daily 7 / weekly 4 / monthly 6 (PLACE-037 §11, Owner-approved unchanged) ---
-# Simple, auditable rule: keep the 7 most recent dumps unconditionally (covers "daily"); beyond
-# that, keep the newest dump from each of the last 4 distinct ISO weeks and the last 6 distinct
-# calendar months, delete everything else. This is a deliberately simple retention scheme, not a
-# general-purpose backup-rotation library -- appropriate for this project's current scale.
+# --- Validate BEFORE the file is allowed to become a real backup ------------------------------
+echo "[backup] Validating archive integrity..."
+if ! gzip -t "$TMP_FILE" 2>/dev/null; then
+  echo "[backup] ERROR: gzip integrity check failed. Discarding partial dump." >&2
+  exit 1
+fi
+
+# A dump that decompresses cleanly can still be empty or truncated. Require the structural markers
+# pg_dump always emits, and a plausible size floor.
+UNCOMPRESSED_BYTES=$(gzip -dc "$TMP_FILE" | wc -c | tr -d ' ')
+if [ "$UNCOMPRESSED_BYTES" -lt 1024 ]; then
+  echo "[backup] ERROR: dump is only ${UNCOMPRESSED_BYTES} bytes uncompressed -- refusing to publish" >&2
+  echo "[backup]        an implausibly small backup." >&2
+  exit 1
+fi
+if ! gzip -dc "$TMP_FILE" | grep -q 'PostgreSQL database dump complete'; then
+  echo "[backup] ERROR: dump is missing pg_dump's completion marker -- it is truncated. Discarding." >&2
+  exit 1
+fi
+
+# --- Publish atomically -------------------------------------------------------------------------
+# mv within one filesystem is atomic: consumers see either no file or a fully validated one.
+mv "$TMP_FILE" "$FINAL_FILE"
+trap - EXIT INT TERM
+
+# --- Integrity evidence -------------------------------------------------------------------------
+# One .sha256 sidecar per backup, in `sha256sum -c` format, holding a BARE filename so the manifest
+# verifies correctly regardless of the directory it is checked from (or restored into from R2).
+( cd "$BACKUP_DIR" && sha256sum "$BASENAME.sql.gz" > "$BASENAME.sql.gz.sha256" )
+echo "[backup] Dump complete: $(du -h "$FINAL_FILE" | cut -f1) ($UNCOMPRESSED_BYTES bytes uncompressed)"
+echo "[backup] SHA256: $(cut -d' ' -f1 < "$BACKUP_DIR/$BASENAME.sql.gz.sha256")"
+
+# --- Retention: daily 7 / weekly 4 / monthly 6 --------------------------------------------------
+# Delegated to a shared, independently testable helper. The previous inline implementation was
+# INVERTED: it kept a file when a NEWER file shared its week/month, so it deleted exactly the
+# newest-per-week and newest-per-month files the policy exists to preserve, and enforced no caps at
+# all. Verified against 20 dated fixtures: it destroyed every weekly and monthly backup, leaving a
+# ~10-day recovery window instead of ~6 months.
+# shellcheck source=scripts/lib/retention.sh
+. "$SCRIPT_DIR/lib/retention.sh"
 echo "[backup] Applying retention (daily 7 / weekly 4 / monthly 6)..."
-ls -1t "$BACKUP_DIR"/phuquochub-*.sql.gz 2>/dev/null | tail -n +8 | while read -r old; do
-  # Beyond the newest 7: only keep it if it's the newest dump in its ISO-week or its month.
-  base=$(basename "$old" .sql.gz)
-  file_date=$(echo "$base" | sed -E 's/phuquochub-([0-9]{8})T.*/\1/')
-  week_key=$(date -u -d "$file_date" +%G-W%V 2>/dev/null || date -u -j -f %Y%m%d "$file_date" +%G-W%V 2>/dev/null || echo "")
-  month_key=$(echo "$file_date" | cut -c1-6)
-  keep=0
-  # Newest-in-week / newest-in-month check: is there any NEWER file sharing the same key?
-  for other in $(ls -1t "$BACKUP_DIR"/phuquochub-*.sql.gz 2>/dev/null); do
-    [ "$other" = "$old" ] && break
-    other_base=$(basename "$other" .sql.gz)
-    other_date=$(echo "$other_base" | sed -E 's/phuquochub-([0-9]{8})T.*/\1/')
-    other_week=$(date -u -d "$other_date" +%G-W%V 2>/dev/null || date -u -j -f %Y%m%d "$other_date" +%G-W%V 2>/dev/null || echo "")
-    other_month=$(echo "$other_date" | cut -c1-6)
-    if [ "$other_week" = "$week_key" ] || [ "$other_month" = "$month_key" ]; then
-      keep=1
-    fi
-  done
-  if [ "$keep" -eq 0 ]; then
-    echo "[backup]   removing $old (outside daily/weekly/monthly retention)"
-    rm -f "$old"
-  fi
-done
+apply_retention "$BACKUP_DIR" 'phuquochub-*.sql.gz' '.sql.gz'
 
 echo "[backup] Local backup + retention complete."
-echo "[backup] Offsite sync (R2) is a SEPARATE step -- run scripts/sync-offsite.sh, or schedule"
-echo "[backup] it via cron immediately after this script. See that script's own header."
+echo "[backup] Offsite copy (R2) is a SEPARATE step -- run scripts/sync-offsite.sh, or schedule it"
+echo "[backup] via cron after this script AND scripts/backup-media.sh. See that script's header."
