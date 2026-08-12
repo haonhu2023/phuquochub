@@ -198,7 +198,9 @@ describe('Moderation M7 — AI Shadow Mode (e2e)', () => {
       const moderatorDecision =
         aiDecision === 'reject' ? 'reject' : aiDecision === 'dismiss' ? 'dismiss' : 'approve';
       const decideBody =
-        moderatorDecision === 'reject' ? { decision: 'reject', reason: 'vi phạm chính sách' } : { decision: moderatorDecision };
+        moderatorDecision === 'reject'
+          ? { decision: 'reject', reason: 'vi phạm chính sách', reason_code: 'other' }
+          : { decision: moderatorDecision };
       // Chỉ chạy so khớp nếu AI thực sự đề nghị approve/reject/dismiss (3/4 giá trị có thể) — nếu
       // AI đề nghị "hide" (không hợp lệ trên pending), bỏ qua nhánh matched=true cho case này và
       // decide bằng approve (sẽ tự nhiên matched=false, phủ nhánh còn lại).
@@ -227,7 +229,9 @@ describe('Moderation M7 — AI Shadow Mode (e2e)', () => {
       // không phải approve, ngược lại reject (kèm reason bắt buộc).
       const moderatorDecision = aiDecision === 'approve' ? 'reject' : 'approve';
       const decideBody =
-        moderatorDecision === 'reject' ? { decision: 'reject', reason: 'vi phạm chính sách' } : { decision: 'approve' };
+        moderatorDecision === 'reject'
+          ? { decision: 'reject', reason: 'vi phạm chính sách', reason_code: 'other' }
+          : { decision: 'approve' };
 
       await decide(moderatorToken, caseId, decideBody);
 
@@ -254,7 +258,10 @@ describe('Moderation M7 — AI Shadow Mode (e2e)', () => {
       const { caseId: caseA } = await insertPendingMediaCase();
       const genA = await generateRecommendation(aiAgentToken, caseA);
       const decisionA: string = genA.body.data.decision;
-      const matchDecisionA = decisionA === 'reject' ? { decision: 'reject', reason: 'x' } : { decision: decisionA === 'hide' ? 'approve' : decisionA };
+      const matchDecisionA =
+        decisionA === 'reject'
+          ? { decision: 'reject', reason: 'x', reason_code: 'other' }
+          : { decision: decisionA === 'hide' ? 'approve' : decisionA };
       await decide(moderatorToken, caseA, matchDecisionA as Record<string, unknown>);
 
       const { caseId: caseB } = await insertPendingMediaCase();
@@ -263,7 +270,10 @@ describe('Moderation M7 — AI Shadow Mode (e2e)', () => {
       // coi là mismatch nếu AI KHÔNG phải approve; nếu AI đề nghị approve, decide bằng reject để giữ
       // chắc chắn mismatch bất kể AI đề nghị gì.
       const genBDecision: string = (await getRecommendation(moderatorToken, caseB)).body.data.decision;
-      const mismatchDecision = genBDecision === 'approve' ? { decision: 'reject', reason: 'x' } : { decision: 'approve' };
+      const mismatchDecision =
+        genBDecision === 'approve'
+          ? { decision: 'reject', reason: 'x', reason_code: 'other' }
+          : { decision: 'approve' };
       await decide(moderatorToken, caseB, mismatchDecision);
 
       const after = await service.getStatistics();

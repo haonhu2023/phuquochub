@@ -20,7 +20,15 @@ export interface ModerationCaseSummaryResponse {
   assigned_to: string | null;
   claimed_at: string | null;
   decision: string | null;
+  /** NỘI BỘ — chỉ ra tới đây vì endpoint này đã bị gác `Moderation.Queue.View`. */
   reason: string | null;
+  /**
+   * Mã lý do có kiểm soát (Controlled Media Rejection Reason, 2026-08-12) — `null` cho case
+   * review, cho quyết định khác `reject`, và cho MỌI case lịch sử trước milestone này. Ở kênh
+   * moderator nó chỉ là thông tin; kênh chủ nội dung (`GET /places/{id}/media`) mới là nơi giá trị
+   * này thực sự được đọc, và đi qua một đường hoàn toàn riêng (`MediaService.listForPlaceOwner`).
+   */
+  reason_code: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
   created_at: string;
@@ -41,6 +49,7 @@ export function toModerationCaseSummary(c: ModerationCase): ModerationCaseSummar
     claimed_at: c.claimedAt ? c.claimedAt.toISOString() : null,
     decision: c.decision,
     reason: c.reason,
+    reason_code: c.reasonCode,
     resolved_by: c.resolvedBy,
     resolved_at: c.resolvedAt ? c.resolvedAt.toISOString() : null,
     created_at: c.createdAt.toISOString(),

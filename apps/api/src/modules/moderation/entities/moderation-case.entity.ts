@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import {
+  MediaModerationReasonCode,
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
@@ -75,8 +76,29 @@ export class ModerationCase {
 
   // Bắt buộc khác rỗng khi decision = reject|hide (INV-11) — cưỡng chế ở tầng service (M3/M4),
   // KHÔNG ở entity/migration (cùng lý do reviews.content không NOT NULL dù có ràng buộc nghiệp vụ).
+  //
+  // NỘI BỘ, KHÔNG BAO GIỜ lộ cho chủ nội dung (media.md §16) — text tự do moderator gõ, có thể
+  // nhắc tới case khác/nghi vấn gian lận/phán đoán nội bộ. Muốn nói gì với chủ nội dung thì dùng
+  // `reasonCode` bên dưới. Hai trường KHÁC MỤC ĐÍCH, không thay thế nhau.
   @Column({ type: 'text', nullable: true })
   reason!: string | null;
+
+  // Mã lý do CÓ KIỂM SOÁT — phần DUY NHẤT của quyết định được phép lộ cho chủ nội dung (Controlled
+  // Media Rejection Reason, 2026-08-12; cùng khuôn `business_claims.reason_code` vs
+  // `decision_note`). Bắt buộc khi decision = `reject` trên target MEDIA — cưỡng chế ở tầng
+  // service, KHÔNG bằng CHECK ở CSDL: hàng LỊCH SỬ (mọi case đã resolved trước milestone này) có
+  // `reason != null` nhưng `reason_code = null`, và một CHECK sẽ biến chúng thành dữ liệu không
+  // hợp lệ. Cùng lý do INV-11 cũng chỉ sống ở service.
+  //
+  // `null` với: case của target REVIEW (taxonomy này mô tả thuộc tính của một BỨC ẢNH, không áp
+  // được cho bài đánh giá), quyết định approve/hide/restore/dismiss, và mọi case lịch sử.
+  @Column({
+    type: 'enum',
+    enum: MediaModerationReasonCode,
+    enumName: 'media_moderation_reason_code',
+    nullable: true,
+  })
+  reasonCode!: MediaModerationReasonCode | null;
 
   @Column({ type: 'uuid', nullable: true })
   resolvedBy!: string | null;

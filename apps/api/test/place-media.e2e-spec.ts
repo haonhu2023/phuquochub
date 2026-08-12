@@ -491,7 +491,7 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
       const decide = await request(app.getHttpServer())
         .post(`/api/moderation/cases/${caseId}/decide`)
         .set('Authorization', `Bearer ${moderator.accessToken}`)
-        .send({ decision: 'reject', reason: 'Ảnh không liên quan tới cơ sở' });
+        .send({ decision: 'reject', reason: 'Ảnh không liên quan tới cơ sở', reason_code: 'unrelated_to_place' });
       expect(decide.status).toBe(200);
 
       const [row] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
@@ -514,7 +514,7 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
     // đóng vai trò NHƯ `decision_note`/`internal_note` — giữ nguyên tắc, không lộ. Test này ghim
     // lại bảo đảm đó ở tầng HTTP thật, không chỉ ở mức đơn vị: chủ cơ sở KHÔNG BAO GIỜ nhìn thấy
     // `reason` mà moderator đã gõ, dù ảnh CHÍNH LÀ ảnh của họ.
-    it('chủ cơ sở KHÔNG thấy lý do từ chối của moderator (free text, không phải reason_code an toàn)', async () => {
+    it('chủ cơ sở KHÔNG thấy lý do từ chối của moderator (free text), CHỈ thấy reason_code an toàn', async () => {
       const owner = await mkPlaceWithOwner('reject_privacy');
       const moderator = await createModerator('reject_privacy_mod');
       const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
@@ -524,7 +524,7 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
       const decide = await request(app.getHttpServer())
         .post(`/api/moderation/cases/${caseId}/decide`)
         .set('Authorization', `Bearer ${moderator.accessToken}`)
-        .send({ decision: 'reject', reason: SECRET_REASON });
+        .send({ decision: 'reject', reason: SECRET_REASON, reason_code: 'inappropriate_content' });
       expect(decide.status).toBe(200);
 
       const ownerList = await request(app.getHttpServer())
@@ -534,20 +534,108 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
 
       const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
       expect(item.status).toBe('rejected');
+      // Mã CÓ KIỂM SOÁT lộ ra — đây chính là tính năng.
+      expect(item.rejection_reason_code).toBe('inappropriate_content');
 
       const serialized = JSON.stringify(ownerList.body);
       // Nội dung reason (free text moderator gõ) không được xuất hiện dưới BẤT KỲ hình thức nào.
       expect(serialized).not.toContain(SECRET_REASON);
       expect(serialized).not.toContain('4821');
-      // Không có trường nào mang tên gợi ý "đây là lý do" — hợp đồng response chỉ đúng 8 khoá đã
-      // biết (id/status/caption/alt_text/created_at/url/sort_order/is_cover).
+      // Hợp đồng response chỉ đúng 9 khoá đã biết (8 khoá gốc + rejection_reason_code).
       expect(Object.keys(item).sort()).toEqual(
-        ['alt_text', 'caption', 'created_at', 'id', 'is_cover', 'sort_order', 'status', 'url'].sort(),
+        [
+          'alt_text',
+          'caption',
+          'created_at',
+          'id',
+          'is_cover',
+          'rejection_reason_code',
+          'sort_order',
+          'status',
+          'url',
+        ].sort(),
       );
       // Danh tính moderator (resolved_by/reviewer) không bao giờ lộ ra kênh chủ cơ sở.
       expect(serialized).not.toContain(moderator.userId);
       expect(serialized).not.toContain('resolved_by');
       expect(serialized).not.toContain('reviewer');
+    });
+
+    it('reject KHÔNG kèm reason_code -> 422, ảnh vẫn pending, chủ cơ sở không thấy gì thay đổi', async () => {
+      const owner = await mkPlaceWithOwner('reject_missing_code');
+      const moderator = await createModerator('reject_missing_code_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
+      const caseId = await seedCase(mediaId);
+
+      const decide = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'thiếu mã lý do' });
+      expect(decide.status).toBe(422);
+
+      const [row] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(row.status).toBe('pending');
+    });
+
+    it('reject kèm reason_code KHÔNG hợp lệ -> 400, ảnh vẫn pending', async () => {
+      const owner = await mkPlaceWithOwner('reject_bad_code');
+      const moderator = await createModerator('reject_bad_code_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
+      const caseId = await seedCase(mediaId);
+
+      const decide = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'x', reason_code: 'account_flagged_internally' });
+      expect(decide.status).toBe(400);
+
+      const [row] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(row.status).toBe('pending');
+    });
+
+    // Case LỊCH SỬ: seed thẳng một case đã resolved (reject) KHÔNG có reason_code, đúng hình dạng
+    // dữ liệu trước migration AddModerationReasonCode. Không suy đoán mã — chủ cơ sở nhận `null`,
+    // giao diện tự lùi về thông điệp chung.
+    it('case lịch sử đã rejected trước khi có reason_code -> chủ cơ sở nhận null, không suy đoán', async () => {
+      const owner = await mkPlaceWithOwner('reject_historical');
+      const moderatorUser = await createModerator('reject_historical_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'rejected');
+      await ds.query(
+        `INSERT INTO moderation_cases (target_type, target_id, status, source, severity, priority,
+                                        decision, reason, reason_code, resolved_by, resolved_at)
+         VALUES ('media', $1, 'resolved', 'new_content', 'low', 0, 'reject', 'lý do cũ trước milestone này', NULL, $2, now())`,
+        [mediaId, moderatorUser.userId],
+      );
+
+      const ownerList = await request(app.getHttpServer())
+        .get(`/api/places/${owner.placeId}/media`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
+
+      expect(item.status).toBe('rejected');
+      expect(item.rejection_reason_code).toBeNull();
+      expect(JSON.stringify(ownerList.body)).not.toContain('lý do cũ trước milestone này');
+    });
+
+    // Cross-place: ảnh bị từ chối của cơ sở KHÁC không được lộ reason_code (hay bất cứ gì) qua
+    // gallery của cơ sở mình — chốt chặn IDOR ở đúng đường owner-safe reason mới thêm.
+    it('ảnh rejected của cơ sở KHÁC không lộ qua gallery của cơ sở mình (IDOR)', async () => {
+      const mine = await mkPlaceWithOwner('reason_leak_mine');
+      const other = await mkPlaceWithOwner('reason_leak_other');
+      const moderator = await createModerator('reason_leak_mod');
+      const otherMediaId = await seedPlaceMedia(other.placeId, other.userId, 'pending');
+      const caseId = await seedCase(otherMediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'x', reason_code: 'copyright' })
+        .expect(200);
+
+      const myList = await request(app.getHttpServer())
+        .get(`/api/places/${mine.placeId}/media`)
+        .set('Authorization', `Bearer ${mine.accessToken}`);
+      expect(myList.status).toBe(200);
+      expect(myList.body.data.find((m: { id: string }) => m.id === otherMediaId)).toBeUndefined();
     });
 
     // Nhiều quyết định lịch sử trên CÙNG một media (từ chối rồi khôi phục) — trạng thái chủ cơ sở
@@ -563,11 +651,20 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
       await request(app.getHttpServer())
         .post(`/api/moderation/cases/${rejectCase}/decide`)
         .set('Authorization', `Bearer ${moderator.accessToken}`)
-        .send({ decision: 'reject', reason: 'Lần đầu bị từ chối vì lý do nội bộ X' })
+        .send({ decision: 'reject', reason: 'Lần đầu bị từ chối vì lý do nội bộ X', reason_code: 'low_quality' })
         .expect(200);
 
       const [afterReject] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
       expect(afterReject.status).toBe('rejected');
+
+      // Trước khi khôi phục: chủ cơ sở PHẢI thấy mã lý do — nếu không, bước sau ("mã biến mất sau
+      // khi khôi phục") không chứng minh được gì (có thể nó chưa từng xuất hiện).
+      const beforeRestore = await request(app.getHttpServer())
+        .get(`/api/places/${owner.placeId}/media`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(beforeRestore.body.data.find((m: { id: string }) => m.id === mediaId).rejection_reason_code).toBe(
+        'low_quality',
+      );
 
       // Từ `rejected`, FSM chỉ cho `restore` (không có `approve` trực tiếp) — xem
       // media-moderation.transition.ts. Mở case MỚI rồi khôi phục về `published`.
@@ -586,9 +683,59 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
         .set('Authorization', `Bearer ${owner.accessToken}`);
       const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
       expect(item.status).toBe('published'); // KHÔNG còn "rejected" — trạng thái hiện hành, xác định
+      // Mã lý do biến mất NGAY cùng lúc với trạng thái cũ, dù CSDL vẫn còn nguyên case reject cũ.
+      expect(item.rejection_reason_code).toBeNull();
 
       const serialized = JSON.stringify(ownerList.body);
       expect(serialized).not.toContain('Lần đầu bị từ chối vì lý do nội bộ X');
+    });
+
+    // CHỌN XÁC ĐỊNH khi có NHIỀU quyết định: từ chối (mã A) -> khôi phục về pending -> từ chối lại
+    // (mã B). Chủ cơ sở phải thấy B — quyết định từ chối HIỆN HÀNH — chứ không phải A, và không
+    // phải "một dòng bất kỳ" do planner chọn. Đây là bằng chứng sống cho `DISTINCT ON` +
+    // `ORDER BY resolved_at DESC, id DESC` ở `findOwnerSafeReasonCodesForMedia()`.
+    it('nhiều lần từ chối -> chủ cơ sở thấy mã của lần từ chối MỚI NHẤT, không phải lần cũ', async () => {
+      const owner = await mkPlaceWithOwner('reject_twice');
+      const moderator = await createModerator('reject_twice_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
+
+      const firstCase = await seedCase(mediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${firstCase}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'lần 1', reason_code: 'copyright' })
+        .expect(200);
+
+      const restoreCase = await seedCase(mediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${restoreCase}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'restore', target_status: 'pending' })
+        .expect(200);
+
+      const secondCase = await seedCase(mediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${secondCase}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'lần 2', reason_code: 'low_quality' })
+        .expect(200);
+
+      const ownerList = await request(app.getHttpServer())
+        .get(`/api/places/${owner.placeId}/media`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
+
+      expect(item.status).toBe('rejected');
+      expect(item.rejection_reason_code).toBe('low_quality');
+      expect(item.rejection_reason_code).not.toBe('copyright');
+
+      // Cả ba case vẫn còn nguyên trong CSDL (lịch sử không bị xoá) — điều thay đổi chỉ là dòng
+      // NÀO được chọn để trả lời chủ cơ sở.
+      const [{ count }] = await ds.query(
+        `SELECT count(*)::int AS count FROM moderation_cases WHERE target_id = $1 AND status = 'resolved'`,
+        [mediaId],
+      );
+      expect(count).toBe(3);
     });
 
     it('người thường KHÔNG quyết định được ảnh chờ duyệt -> 403, trạng thái không đổi', async () => {

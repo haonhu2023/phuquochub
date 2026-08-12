@@ -184,6 +184,17 @@ export class ModerationService {
 
     const resolvedAt = new Date();
 
+    // Controlled Media Rejection Reason (2026-08-12) — `reason_code` CHỈ có nghĩa với `reject`.
+    // Gửi kèm approve/hide/restore/dismiss là hiểu sai hợp đồng: nó sẽ ghi một "lý do TỪ CHỐI" lên
+    // một case không từ chối gì cả, và đường đọc của chủ cơ sở (chọn quyết định gỡ mới nhất) sẽ
+    // phải đoán xem mã đó còn đúng không. Từ chối tường minh, không âm thầm bỏ qua — client gửi
+    // sai phải biết mình gửi sai, và không mã nào lọt vào CSDL ở một vị trí vô nghĩa.
+    if (dto.reason_code !== undefined && dto.decision !== ModerationDecision.REJECT) {
+      throw new UnprocessableEntityException(
+        `reason_code chỉ dùng cho quyết định "reject" — không áp dụng cho "${dto.decision}".`,
+      );
+    }
+
     // decision=dismiss: hành động Ở CẤP CASE, KHÔNG đổi trạng thái nội dung (moderation-design.md
     // §5.1) — report vô căn cứ hoặc case mở nhầm.
     if (dto.decision === ModerationDecision.DISMISS) {
@@ -191,6 +202,7 @@ export class ModerationService {
         status: ModerationCaseStatus.DISMISSED,
         decision: ModerationDecision.DISMISS,
         reason: dto.reason ?? null,
+        reasonCode: null,
         resolvedBy: actorId,
         resolvedAt,
       });
@@ -207,12 +219,24 @@ export class ModerationService {
       };
     }
 
-    // INV-11: reject/hide bắt buộc có reason khác rỗng.
+    // INV-11: reject/hide bắt buộc có reason khác rỗng (ghi chú NỘI BỘ của moderator).
     if (
       (dto.decision === ModerationDecision.REJECT || dto.decision === ModerationDecision.HIDE) &&
       !dto.reason?.trim()
     ) {
       throw new UnprocessableEntityException(`Quyết định "${dto.decision}" bắt buộc có lý do.`);
+    }
+
+    // Controlled Media Rejection Reason (2026-08-12) — một quyết định TỪ CHỐI ảnh phải mang CẢ
+    // HAI: mã lý do có kiểm soát (thứ chủ cơ sở sẽ đọc) VÀ ghi chú tự do (thứ chỉ moderator đọc).
+    // Bắt buộc chứ không tuỳ chọn: để trống được thì phần lớn ảnh bị từ chối sẽ không có lý do nào
+    // cho chủ cơ sở và tính năng này chỉ tồn tại trên giấy. Cùng khuôn `business_claims`
+    // (`reason_code` bắt buộc khi reject). Chỉ áp cho quyết định MỚI — case LỊCH SỬ đã resolved
+    // không bị đụng tới, `reason_code` NULL của chúng vẫn hợp lệ (xem AddModerationReasonCode).
+    if (dto.decision === ModerationDecision.REJECT && !dto.reason_code) {
+      throw new UnprocessableEntityException(
+        'Quyết định "reject" bắt buộc có reason_code (mã lý do hiển thị cho chủ nội dung).',
+      );
     }
 
     // dismiss đã loại ở nhánh trên — 4 giá trị còn lại của ModerationDecision khớp 1:1 giá trị
@@ -235,6 +259,9 @@ export class ModerationService {
       status: ModerationCaseStatus.RESOLVED,
       decision: dto.decision,
       reason: dto.reason ?? null,
+      // Chỉ `reject` mới ghi mã (đã cưỡng chế ở trên) — approve/hide/restore luôn ghi `null`, nên
+      // một ảnh được khôi phục KHÔNG BAO GIỜ mang mã lý do trên case khôi phục của nó.
+      reasonCode: dto.decision === ModerationDecision.REJECT ? (dto.reason_code ?? null) : null,
       resolvedBy: actorId,
       resolvedAt,
     });
@@ -281,6 +308,18 @@ export class ModerationService {
       throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
     }
 
+    // Controlled Media Rejection Reason (2026-08-12) — taxonomy `MediaModerationReasonCode` mô tả
+    // THUỘC TÍNH CỦA MỘT BỨC ẢNH (chất lượng ảnh, ảnh không đúng địa điểm, bản quyền ảnh); không
+    // mã nào nói được điều gì đúng về một bài đánh giá. Từ chối tường minh thay vì ghi một mã vô
+    // nghĩa vào case review — mã đó sẽ nằm sẵn ở đó chờ một màn hình "lý do ẩn đánh giá" tương lai
+    // đọc phải và hiển thị sai cho người viết. Review muốn có phản hồi cho tác giả thì cần
+    // taxonomy RIÊNG của nó, một milestone khác.
+    if (dto.reason_code !== undefined) {
+      throw new UnprocessableEntityException(
+        'reason_code chỉ áp dụng cho kiểm duyệt media — case này có target_type="review".',
+      );
+    }
+
     const resolvedAt = new Date();
 
     // decision=dismiss: hành động Ở CẤP CASE, KHÔNG đổi trạng thái nội dung — review.status
@@ -290,6 +329,7 @@ export class ModerationService {
         status: ModerationCaseStatus.DISMISSED,
         decision: ModerationDecision.DISMISS,
         reason: dto.reason ?? null,
+        reasonCode: null,
         resolvedBy: actorId,
         resolvedAt,
       });
@@ -338,6 +378,8 @@ export class ModerationService {
       status: ModerationCaseStatus.RESOLVED,
       decision: dto.decision,
       reason: dto.reason ?? null,
+      // Luôn `null` cho review — nhánh này đã từ chối mọi request mang reason_code ở trên.
+      reasonCode: null,
       resolvedBy: actorId,
       resolvedAt,
     });

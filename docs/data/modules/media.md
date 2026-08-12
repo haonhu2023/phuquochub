@@ -796,12 +796,20 @@ markdown/HTML ở bất kỳ đâu (React tự escape khi render vào JSX/thuộ
 
 ## 16. Phản hồi kiểm duyệt cho chủ cơ sở (Owner-facing Moderation Feedback, 2026-08-12)
 
-**Quyết định sản phẩm, đã điều tra kỹ — KHÔNG lộ lý do từ chối của moderator cho chủ cơ sở.**
-`status: 'rejected'` là toàn bộ tín hiệu chủ cơ sở nhận được khi một ảnh bị từ chối; không có
-trường lý do nào (`reason`/`rejection_reason`/`rejection_reason_code`) được thêm vào
+**Quyết định sản phẩm gốc của milestone này (đã điều tra kỹ) — KHÔNG lộ lý do từ chối của moderator
+cho chủ cơ sở.** `status: 'rejected'` là toàn bộ tín hiệu chủ cơ sở nhận được khi một ảnh bị từ
+chối; không có trường lý do nào (`reason`/`rejection_reason`/`rejection_reason_code`) được thêm vào
 `PlaceOwnerMedia`. Giao diện `/dashboard/places/[id]/photos` giữ nguyên thông điệp chung đã có từ
 Owner Place Photos (§13): *"Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và
 không làm ảnh bìa được."*
+
+> **SUPERSEDED (2026-08-12, cùng ngày, milestone kế tiếp) — xem §17.** §16.3 dưới đây đã liệt kê
+> đúng bốn bước cần làm để cho chủ cơ sở một lý do thật sự hữu ích và an toàn; milestone
+> **Controlled Media Rejection Reason** đã thực hiện đủ bốn bước đó. §16.1/§16.2 vẫn đúng và vẫn là
+> lý do `moderation_cases.reason` (free text) không bao giờ lộ — chỉ phần "không lộ BẤT KỲ lý do
+> nào" ở trên đã lỗi thời: nay có MỘT mã lý do có kiểm soát (`rejection_reason_code`) lộ ra, đúng
+> nguyên tắc "enum có kiểm soát thì lộ được, free text thì không" mà §16.2 đã chứng minh bằng tiền
+> lệ `business_claims.reason_code`.
 
 ### 16.1 Vì sao — dữ liệu duy nhất tồn tại không an toàn để lộ
 
@@ -828,35 +836,121 @@ MỘT người dùng cụ thể — có nên lộ lại cho chính người đó
 case khác, nghi vấn gian lận, hoặc bất cứ gì moderator thấy cần ghi lại — không có cách nào lọc an
 toàn bằng máy khỏi một chuỗi tự do 2000 ký tự.
 
-### 16.3 Điều kiện để làm ĐÚNG trong tương lai (ngoài phạm vi milestone này)
+### 16.3 Điều kiện để làm ĐÚNG trong tương lai — ĐÃ TRIỂN KHAI, xem §17
 
 Muốn cho chủ cơ sở một lý do THẬT SỰ hữu ích và an toàn, cần lặp lại đúng mô hình `business_claims`:
 
 1. Thêm cột `reason_code` (enum có kiểm soát, ví dụ `inappropriate_content`/`low_quality`/
    `unrelated_to_place`/`copyright`/`other`) vào `moderation_cases` hoặc một bảng vệ tinh —
-   **cần migration**.
+   **cần migration**. ✅ `1720004200000-AddModerationReasonCode` — xem §17.1.
 2. Đổi `DecideModerationCaseDto`/`ModerationDecisionForm.tsx` để moderator CHỌN mã lý do (dropdown)
-   thay vì chỉ gõ tự do — **đổi giao diện quyết định của moderator**.
+   thay vì chỉ gõ tự do — **đổi giao diện quyết định của moderator**. ✅ §17.3.
 3. Ánh xạ mỗi mã sang nhãn tiếng Việt an toàn, KHÔNG lộ tên enum thô (`INAPPROPRIATE_CONTENT`) ra
-   giao diện — cùng khuôn `PLACE_PHOTO_STATUS_LABELS` đã có.
-4. `reason` (free text) VẪN giữ nguyên vai trò nội bộ, không đổi.
+   giao diện — cùng khuôn `PLACE_PHOTO_STATUS_LABELS` đã có. ✅ §17.5.
+4. `reason` (free text) VẪN giữ nguyên vai trò nội bộ, không đổi. ✅ không đổi.
 
-Cả bốn bước đều **cố ý ngoài phạm vi** milestone này (không migration, không đổi luồng quyết định
-của moderator — chỉ đạo rõ ràng). Đây là khuyến nghị cho milestone kế tiếp nếu sản phẩm muốn phản
-hồi chi tiết hơn.
+(Danh sách trên giữ nguyên như bản gốc — làm tài liệu lịch sử cho quyết định ban đầu. Chi tiết
+triển khai thật ở §17.)
 
-### 16.4 Bảo đảm được ghim lại bằng test
+### 16.4 Bảo đảm được ghim lại bằng test (bản gốc milestone này — vẫn đúng, được MỞ RỘNG ở §17.6)
 
-- `MediaService.listForPlaceOwner()` không bao giờ gọi bất kỳ phương thức nào của
-  `ModerationCasesRepository` (unit test) và không bao giờ đọc bảng `moderation_cases` (repository
-  không có join nào tới bảng đó ở đường này).
-- Response cho một ảnh `rejected` chỉ đúng 8 khoá đã biết (`id/status/caption/alt_text/created_at/
-  url/sort_order/is_cover`) — unit test + E2E trên Postgres thật.
+- `MediaService.listForPlaceOwner()` không bao giờ gọi `ModerationCasesRepository.createOpenCase`/
+  các phương thức ghi khác (unit test) — riêng đọc `reason_code` qua
+  `findOwnerSafeReasonCodesForMedia()` giờ CÓ xảy ra, có chủ đích, xem §17.4.
+- Response cho một ảnh `rejected` không có `reason`/`resolved_by`/`case_id` — unit test + E2E trên
+  Postgres thật (bộ khoá đã biết nay là 9, thêm `rejection_reason_code`, xem §17.2).
 - E2E: moderator từ chối một ảnh kèm `reason` cụ thể (chứa dữ liệu "nhạy cảm" giả lập) → `GET
   /places/{placeId}/media` của CHÍNH chủ cơ sở đó không chứa nội dung `reason`, không chứa
   `resolved_by`/danh tính moderator, dù ảnh CHÍNH LÀ ảnh của họ.
 - E2E: ảnh bị từ chối rồi được khôi phục (`restore` → `published`) qua MỘT case thứ hai — chủ cơ sở
-  thấy đúng trạng thái hiện hành (`published`), không còn dấu vết gì của case từ chối cũ.
+  thấy đúng trạng thái hiện hành (`published`), không còn dấu vết gì của case từ chối cũ (kể cả
+  `rejection_reason_code` — về `null` ngay khi status đổi, không có độ trễ).
+
+## 17. Controlled Media Rejection Reason (2026-08-12, milestone kế tiếp §16.3)
+
+Triển khai đầy đủ mã lý do CÓ KIỂM SOÁT cho quyết định từ chối ảnh, lặp lại đúng mô hình
+`business_claims.reason_code` (§16.2) mà không đụng tới nguyên tắc "free text không bao giờ lộ" đã
+chốt ở §16.1.
+
+### 17.1 Schema
+
+Migration `1720004200000-AddModerationReasonCode` thêm **một cột duy nhất**:
+`moderation_cases.reason_code` (enum CSDL thật `media_moderation_reason_code`, nullable, KHÔNG
+CHECK). Không đụng `media`/`reviews`/`reports`/cột `reason` sẵn có. Taxonomy 5 giá trị (audit từ
+thực tế, không tái dùng `report_reason`/`ClaimReasonCode` — hai khái niệm khác hẳn, xem
+`MediaModerationReasonCode` ở `moderation.enums.ts`):
+
+`inappropriate_content` · `low_quality` · `unrelated_to_place` · `copyright` · `other`
+
+**NULLABLE và KHÔNG CHECK ở CSDL — cố ý**, cùng quy ước đã có sẵn của CHÍNH cột `reason` trên bảng
+này (INV-11 cũng chỉ cưỡng chế ở service, không ở entity/migration — xem chú thích trên
+`ModerationCase.reason`), KHÔNG theo quy ước `ck_business_claims_rejected_reason` của
+`business_claims` (một bảng khác, quy ước riêng của nó). Lý do: mọi case đã `resolved` **trước**
+migration này có `reason != null` nhưng `reason_code = null` — dữ liệu HỢP LỆ, không phải hỏng.
+KHÔNG backfill, KHÔNG suy đoán mã từ `reason` cũ (free text không suy ngược an toàn thành enum).
+
+### 17.2 Hợp đồng quyết định (`POST /moderation/cases/{id}/decide`)
+
+`reason_code` (optional trên DTO, `@IsEnum(MediaModerationReasonCode)`):
+
+- **Bắt buộc** khi `decision=reject` trên `target_type=media` — thiếu → `422`.
+- **Cấm** ở mọi decision/target_type khác (`hide`/`approve`/`restore`/`dismiss`, hoặc bất kỳ
+  decision nào trên `target_type=review`) — gửi kèm → `422` tường minh (không âm thầm bỏ qua).
+- **KHÔNG áp dụng cho `hide`** dù `hide` cũng gỡ nội dung khỏi công khai (cùng INV-11 với `reject`
+  cho `reason` tự do) — `hide` gỡ nội dung ĐÃ từng qua duyệt, một sự kiện khác "ảnh vừa gửi không
+  đạt yêu cầu ngay từ đầu"; mở rộng sang `hide` là quyết định sản phẩm riêng, ngoài phạm vi.
+- Chỉ ghi vào `moderation_cases.reason_code` khi quyết định thực sự là `reject` — mọi nhánh khác
+  (kể cả `dismiss`) ghi `null`, nên một case KHÔNG BAO GIỜ mang mã lý do sai mục đích.
+
+`reason` (free text nội bộ) và `reason_code` là **hai trường, hai mục đích khác hẳn nhau** — không
+gộp, không thay thế nhau (xem `DecideModerationCaseDto`).
+
+### 17.3 UX moderator
+
+`ModerationDecisionForm.tsx` thêm một `<select>` (bắt buộc khi `decision=reject` trên media, phân
+biệt rõ với textarea `reason` cạnh nó bằng nhãn "Mã lý do cho chủ cơ sở" vs "Ghi chú nội bộ") —
+KHÔNG thay thế textarea free text, cả hai cùng tồn tại cho đúng hai mục đích ở §17.2. Danh sách mã +
+nhãn hiển thị lấy từ nguồn canonical DUY NHẤT `apps/web/src/modules/media/moderationReasonCodes.ts`.
+
+### 17.4 Hợp đồng owner API (`PlaceOwnerMedia.rejection_reason_code`)
+
+`GET /places/{placeId}/media` (`MediaService.listForPlaceOwner`) thêm **một trường**:
+`rejection_reason_code: string | null`. Bốn quy tắc chi phối, mỗi quy tắc có test hồi quy riêng:
+
+1. **KHÔNG BAO GIỜ** `reason`, `resolved_by`/danh tính moderator, `case_id`, hay lịch sử case —
+   `findOwnerSafeReasonCodesForMedia()` (repository) không SELECT những cột đó, nên không có đường
+   nào chúng vô tình lọt ra.
+2. **CHỈ khi `status='rejected'`** — mọi trạng thái khác (kể cả `hidden`, kể cả ảnh từng bị từ chối
+   rồi được khôi phục) → `null`, KHÔNG có độ trễ (điều kiện tính lúc ĐỌC, không phải cột lưu trên
+   `media`).
+3. **Hai nguồn phải khớp**: `media.status` (nguồn sự thật hiển thị, INV-1) và `decision` của quyết
+   định gỡ MỚI NHẤT của target đó phải cùng là `reject`. Lệch nhau (ví dụ `hidden` nhưng quyết định
+   cuối là `reject` từ một vòng đời cũ) → không hiện gì, thà im lặng còn hơn nói sai.
+4. Case LỊCH SỬ (`reason_code=null`, mọi quyết định trước migration §17.1) → `null`, giao diện tự
+   lùi về thông điệp chung sẵn có — KHÔNG suy đoán.
+
+**Chống N+1**: một truy vấn phụ DUY NHẤT cho cả gallery (`target_id = ANY($1)`, `DISTINCT ON` lấy
+đúng quyết định gỡ mới nhất mỗi media), chỉ chạy khi gallery có ít nhất một ảnh `rejected`. Gallery
+toàn ảnh khác trạng thái không tốn thêm truy vấn nào so với trước milestone này.
+
+### 17.5 Nhãn hiển thị — không đóng cứng ngôn ngữ vào API/CSDL
+
+Backend LUÔN trả mã máy đọc thô (`rejection_reason_code: "low_quality"`), KHÔNG BAO GIỜ một câu chữ
+đã dịch sẵn — cùng nguyên tắc `business_claims.reason_code` (§16.2: BE trả enum, FE dịch). Dịch
+sang tiếng Việt (và tiếng Anh khi PhuQuocHub song ngữ) là việc của FE, tại nguồn canonical DUY NHẤT
+`apps/web/src/modules/media/moderationReasonCodes.ts` — dùng CHUNG bởi `ModerationDecisionForm`
+(moderator chọn) và `PhotosView` (chủ cơ sở đọc), tránh lặp nhãn độc lập ở hai module.
+`PhotosView` không bao giờ render mã enum thô: có `rejection_reason_code` → chèn nhãn đã dịch vào
+đúng câu thông báo hiện có; không có → giữ nguyên câu thông báo chung gốc.
+
+### 17.6 Bảo đảm bổ sung, ghim bằng test
+
+- Reject thiếu `reason_code` → `422`; các decision khác kèm `reason_code` → `422`; `hide` không
+  đòi/không nhận `reason_code`.
+- Case lịch sử (`reason_code=null`, seed trực tiếp SQL) vẫn hợp lệ, không throw.
+- `reason_code` không xuất hiện trong response `GET /moderation/cases` khi target là review.
+- Ảnh của cơ sở A không làm lộ `rejection_reason_code` của ảnh cơ sở B (IDOR) — truy vấn owner-safe
+  luôn nhận đúng tập id đã lọc theo `placeId`.
 
 ## Related
 

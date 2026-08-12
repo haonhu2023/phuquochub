@@ -54,6 +54,9 @@ export interface ModerationCaseSummary {
   claimed_at: string | null;
   decision: string | null;
   reason: string | null;
+  /** Mã lý do có kiểm soát (Controlled Media Rejection Reason, 2026-08-12) — `null` cho case
+   * review, quyết định khác `reject`, và mọi case lịch sử. */
+  reason_code: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
   created_at: string;
@@ -118,11 +121,14 @@ export interface ListModerationCasesParams {
   limit?: number;
 }
 
-// POST /moderation/cases/{id}/decide — đúng 3 trường hợp đồng (moderation.dto.ts). `target_status`
+// POST /moderation/cases/{id}/decide — đúng 4 trường hợp đồng (moderation.dto.ts). `target_status`
 // chỉ dùng khi decision=restore (media bắt buộc; review chỉ nhận 'published'); `reason` bắt buộc
 // khi reject|hide (backend cưỡng chế — client validate để cải thiện UX, backend vẫn quyết định).
+// `reason_code` (Controlled Media Rejection Reason, 2026-08-12) chỉ hợp lệ khi decision='reject'
+// trên media — mã CÓ KIỂM SOÁT sẽ hiện cho chủ cơ sở, khác hẳn `reason` (ghi chú tự do nội bộ).
 export interface DecideModerationCaseRequest {
   decision: ModerationDecision;
   target_status?: MediaStatus;
   reason?: string;
+  reason_code?: string;
 }

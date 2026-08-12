@@ -1,6 +1,14 @@
 import type { MediaStatus, ModerationTargetPreview } from './types';
 import { DECISION_LABELS, labelOf } from './labels';
 
+// Controlled Media Rejection Reason (2026-08-12). Re-export duy nhất từ nguồn canonical
+// (modules/media) — decisions.ts/ModerationDecisionForm không tự định nghĩa taxonomy/nhãn riêng.
+export {
+  MEDIA_MODERATION_REASON_CODES,
+  mediaModerationReasonCodeLabel,
+  type MediaModerationReasonCode,
+} from '@/modules/media/moderationReasonCodes';
+
 // Suy ra CHÍNH XÁC các quyết định hợp lệ từ target_type + trạng thái nội dung hiện tại — phản chiếu
 // FSM backend (media-moderation.transition.ts / review-moderation.transition.ts). M6 chỉ hiển thị
 // các quyết định NỘI DUNG (approve/reject/hide/restore); `dismiss` (cấp case) do backend hỗ trợ
@@ -17,6 +25,12 @@ export interface DecisionOption {
   requiresReason: boolean;
   /** restore media bắt buộc chọn target_status (published|pending) — INV-10. */
   requiresMediaTargetStatus: boolean;
+  /**
+   * `reject` trên media bắt buộc chọn `reason_code` (Controlled Media Rejection Reason,
+   * 2026-08-12) — mã lý do CÓ KIỂM SOÁT sẽ hiện cho chủ cơ sở, khác hẳn ô "Lý do" tự do bên cạnh
+   * (thuần nội bộ). KHÔNG áp dụng cho `hide`/`approve`/`restore` — backend từ chối 422 nếu gửi kèm.
+   */
+  requiresReasonCode: boolean;
   /** Gợi ý sắc thái nút (approve/restore = tích cực; reject/hide = gỡ nội dung). */
   tone: 'approve' | 'remove';
 }
@@ -33,6 +47,7 @@ function makeOption(decision: ContentDecision, targetType: 'media' | 'review'): 
     label: labelOf(DECISION_LABELS, decision),
     requiresReason: decision === 'reject' || decision === 'hide',
     requiresMediaTargetStatus: targetType === 'media' && decision === 'restore',
+    requiresReasonCode: targetType === 'media' && decision === 'reject',
     tone: decision === 'approve' || decision === 'restore' ? 'approve' : 'remove',
   };
 }

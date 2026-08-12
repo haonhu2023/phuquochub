@@ -32,6 +32,7 @@ function makeCase(overrides: Partial<ModerationCase> = {}): ModerationCase {
   c.claimedAt = null;
   c.decision = null;
   c.reason = null;
+  c.reasonCode = null;
   c.resolvedBy = null;
   c.resolvedAt = null;
   c.aiScore = '0.900';
@@ -57,11 +58,23 @@ describe('toModerationCaseSummary', () => {
       claimed_at: null,
       decision: null,
       reason: null,
+      reason_code: null,
       resolved_by: null,
       resolved_at: null,
       created_at: '2026-08-02T00:00:00.000Z',
       updated_at: '2026-08-02T00:00:00.000Z',
     });
+  });
+
+  // Controlled Media Rejection Reason (2026-08-12) — kênh moderator (GET /moderation/cases/{id})
+  // thấy CẢ HAI: reason_code (mã có kiểm soát) VÀ reason (free text nội bộ) — khác hẳn kênh chủ cơ
+  // sở, vốn chỉ thấy reason_code qua một đường hoàn toàn riêng (MediaService.listForPlaceOwner).
+  it('map reason_code cùng reason — cả hai đều lộ ở kênh moderator-only này', () => {
+    const summary = toModerationCaseSummary(
+      makeCase({ decision: 'reject' as never, reason: 'ghi chú nội bộ', reasonCode: 'low_quality' as never }),
+    );
+    expect(summary.reason).toBe('ghi chú nội bộ');
+    expect(summary.reason_code).toBe('low_quality');
   });
 
   it('KHÔNG lộ ai_score/ai_labels — ngoài phạm vi AI của M2 dù entity có cột này (ADR-009)', () => {

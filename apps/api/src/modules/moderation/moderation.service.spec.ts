@@ -17,6 +17,7 @@ import type { ModerationEventPublisher } from './events/moderation-events';
 import { ModerationCase } from './entities/moderation-case.entity';
 import { Media } from '../media/entities/media.entity';
 import {
+  MediaModerationReasonCode,
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
@@ -42,6 +43,7 @@ function makeCase(overrides: Partial<ModerationCase> = {}): ModerationCase {
   c.claimedAt = null;
   c.decision = null;
   c.reason = null;
+  c.reasonCode = null;
   c.resolvedBy = null;
   c.resolvedAt = null;
   c.aiScore = null;
@@ -410,10 +412,123 @@ describe('ModerationService', () => {
       casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
       mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
 
-      await service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'nội dung không liên quan' }, ACTOR);
+      await service.decide('c1', {
+          decision: ModerationDecision.REJECT,
+          reason: 'nội dung không liên quan',
+          reason_code: MediaModerationReasonCode.UNRELATED_TO_PLACE,
+        }, ACTOR);
 
       expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.REJECTED);
       expect(reportsRepo.resolveByCaseId).toHaveBeenCalledWith(manager, 'c1', ReportStatus.UPHELD);
+    });
+
+    // Controlled Media Rejection Reason (2026-08-12) — hợp đồng quyết định. `reason_code` là thứ
+    // DUY NHẤT của một quyết định sẽ tới tay chủ cơ sở, nên nó phải: bắt buộc đúng chỗ, bị cấm ở
+    // mọi chỗ khác, và KHÔNG BAO GIỜ thay thế/lẫn với `reason` (ghi chú nội bộ).
+    describe('reason_code có kiểm soát (Controlled Media Rejection Reason)', () => {
+      it('reject kèm reason nhưng THIẾU reason_code -> 422, KHÔNG đổi status', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'ghi chú nội bộ' }, ACTOR),
+        ).rejects.toThrow(/reason_code/);
+        expect(mediaRepo.updateStatus).not.toHaveBeenCalled();
+        expect(casesRepo.resolve).not.toHaveBeenCalled();
+      });
+
+      it('reject hợp lệ -> ghi CẢ HAI trường vào case: reason_code có kiểm soát VÀ reason free text, tách bạch', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide(
+          'c1',
+          {
+            decision: ModerationDecision.REJECT,
+            reason: 'trùng case #4821 — theo dõi tài khoản này',
+            reason_code: MediaModerationReasonCode.LOW_QUALITY,
+          },
+          ACTOR,
+        );
+
+        expect(casesRepo.resolve).toHaveBeenCalledWith(
+          manager,
+          'c1',
+          expect.objectContaining({
+            decision: ModerationDecision.REJECT,
+            reason: 'trùng case #4821 — theo dõi tài khoản này',
+            reasonCode: MediaModerationReasonCode.LOW_QUALITY,
+          }),
+        );
+      });
+
+      it.each([
+        [ModerationDecision.APPROVE, MediaStatus.PENDING],
+        [ModerationDecision.HIDE, MediaStatus.PUBLISHED],
+        [ModerationDecision.RESTORE, MediaStatus.REJECTED],
+        [ModerationDecision.DISMISS, MediaStatus.PENDING],
+      ])('reason_code gửi kèm decision=%s -> 422 (chỉ reject mới nhận mã)', async (decision, status) => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status }));
+
+        await expect(
+          service.decide(
+            'c1',
+            {
+              decision,
+              reason: 'lý do nội bộ',
+              target_status: MediaStatus.PUBLISHED,
+              reason_code: MediaModerationReasonCode.OTHER,
+            },
+            ACTOR,
+          ),
+        ).rejects.toThrow(/reason_code/);
+        expect(casesRepo.resolve).not.toHaveBeenCalled();
+      });
+
+      it('approve KHÔNG đòi reason_code (không có gì để giải thích cho chủ cơ sở) và ghi reasonCode=null', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
+
+        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
+      });
+
+      it('hide KHÔNG đòi reason_code (ngoài phạm vi taxonomy) và ghi reasonCode=null', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PUBLISHED }));
+
+        await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm' }, ACTOR);
+
+        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.HIDDEN);
+        expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
+      });
+
+      // Khôi phục KHÔNG được mang theo mã lý do — case khôi phục ghi `null`, nên không có mã nào
+      // "sống sót" trên quyết định mới để đường đọc của chủ cơ sở nhặt lại.
+      it('restore ghi reasonCode=null trên case của chính nó', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.REJECTED }));
+
+        await service.decide(
+          'c1',
+          { decision: ModerationDecision.RESTORE, target_status: MediaStatus.PUBLISHED },
+          ACTOR,
+        );
+
+        expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
+      });
+
+      it('dismiss ghi reasonCode=null (hành động cấp case, không phán xét nội dung)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+
+        await service.decide('c1', { decision: ModerationDecision.DISMISS, reason: 'report vô căn cứ' }, ACTOR);
+
+        expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
+      });
     });
 
     it('published + hide KHÔNG kèm reason -> 422', async () => {
@@ -450,7 +565,11 @@ describe('ModerationService', () => {
         casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
         mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
 
-        await service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'không liên quan' }, ACTOR);
+        await service.decide('c1', {
+            decision: ModerationDecision.REJECT,
+            reason: 'không liên quan',
+            reason_code: MediaModerationReasonCode.UNRELATED_TO_PLACE,
+          }, ACTOR);
 
         expect(mediaRepo.clearCoverImageByMedia).toHaveBeenCalledWith('m1', manager);
       });
@@ -521,7 +640,7 @@ describe('ModerationService', () => {
       mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PUBLISHED }));
 
       await expect(
-        service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'lý do' }, ACTOR),
+        service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'lý do', reason_code: MediaModerationReasonCode.OTHER }, ACTOR),
       ).rejects.toThrow(UnprocessableEntityException);
       expect(mediaRepo.updateStatus).not.toHaveBeenCalled();
     });
@@ -608,7 +727,7 @@ describe('ModerationService', () => {
       casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
       mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
 
-      await service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'lý do' }, ACTOR);
+      await service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'lý do', reason_code: MediaModerationReasonCode.OTHER }, ACTOR);
 
       expect(events.publish).toHaveBeenCalledTimes(1);
       expect(events.publish).toHaveBeenCalledWith(expect.objectContaining({ type: 'CaseResolved' }));
@@ -798,6 +917,33 @@ describe('ModerationService', () => {
         service.decide('c1', { decision: ModerationDecision.REJECT, reason: 'x' }, ACTOR),
       ).rejects.toThrow(UnprocessableEntityException);
       expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+    });
+
+    // Controlled Media Rejection Reason (2026-08-12) — taxonomy mô tả thuộc tính của một BỨC ẢNH.
+    // Không mã nào nói được điều gì đúng về một bài đánh giá, nên case review từ chối thẳng thay
+    // vì âm thầm bỏ qua và để một mã vô nghĩa nằm sẵn trong CSDL.
+    it('reason_code trên case review -> 422, KHÔNG ghi gì (taxonomy chỉ dành cho media)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await expect(
+        service.decide(
+          'c1',
+          { decision: ModerationDecision.HIDE, reason: 'vi phạm', reason_code: MediaModerationReasonCode.OTHER },
+          ACTOR,
+        ),
+      ).rejects.toThrow(/reason_code/);
+      expect(casesRepo.updateReviewStatus).not.toHaveBeenCalled();
+      expect(casesRepo.resolve).not.toHaveBeenCalled();
+    });
+
+    it('hide review hợp lệ -> case ghi reasonCode=null (review không bao giờ mang mã)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(reviewCase());
+      casesRepo.findReviewForUpdate.mockResolvedValue(makeReview({ status: ReviewStatus.PUBLISHED }));
+
+      await service.decide('c1', { decision: ModerationDecision.HIDE, reason: 'vi phạm' }, ACTOR);
+
+      expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
     });
 
     it('decision=dismiss -> case dismissed, KHÔNG đổi review.status, KHÔNG tính lại rating, reports dismissed', async () => {

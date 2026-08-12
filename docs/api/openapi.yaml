@@ -2826,10 +2826,13 @@ paths:
         sau commit không hoàn tác quyết định — chỉ log. `target_type=place` chưa được hỗ trợ (chưa
         đăng ký FSM, MR-4) → `422`. `reason` bắt buộc khi `decision=hide` (cả media và review) hoặc
         `decision=reject` (media only — review không có trạng thái rejected, ADR-018 D5); `reject`
-        trên review target → `422`. `target_status` bắt buộc khi `decision=restore` trên media
-        (INV-10, hai đích khả dĩ: `published`/`pending`); tuỳ chọn trên review (chỉ MỘT đích hợp lệ,
-        `published` — gửi giá trị khác sẽ `422`). Không cho tự kiểm duyệt nội dung chính mình
-        (INV-12).
+        trên review target → `422`. `reason_code` (Controlled Media Rejection Reason, 2026-08-12)
+        bắt buộc khi `decision=reject` trên media (mã CÓ KIỂM SOÁT hiển thị cho chủ cơ sở qua
+        `PlaceOwnerMedia.rejection_reason_code`; KHÔNG thay thế `reason`, hai trường khác mục đích)
+        — cấm ở mọi decision/target_type khác, `422` nếu gửi kèm. `target_status` bắt buộc khi
+        `decision=restore` trên media (INV-10, hai đích khả dĩ: `published`/`pending`); tuỳ chọn
+        trên review (chỉ MỘT đích hợp lệ, `published` — gửi giá trị khác sẽ `422`). Không cho tự
+        kiểm duyệt nội dung chính mình (INV-12).
       parameters: [{ $ref: '#/components/parameters/IdPath' }]
       requestBody:
         required: true
@@ -2854,6 +2857,12 @@ paths:
                   type: string
                   maxLength: 2000
                   description: Bắt buộc khi decision=reject|hide trên media, hoặc decision=hide trên review (INV-11).
+                reason_code:
+                  allOf: [{ $ref: '#/components/schemas/MediaModerationReasonCode' }]
+                  description: >-
+                    Bắt buộc khi decision=reject trên media; cấm ở mọi trường hợp khác (422 nếu vi
+                    phạm). Mã CÓ KIỂM SOÁT, an toàn để lộ cho chủ cơ sở — khác `reason` (text tự do,
+                    thuần nội bộ, không bao giờ lộ).
       responses:
         '200': { $ref: '#/components/responses/EmptySuccess' }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -3329,6 +3338,15 @@ components:
     VerificationStatus: { type: string, enum: [pending, verified, official, community_verified, expired, rejected] }
     VerificationReasonCode: { type: string, enum: [duplicate, fabricated, outdated, insufficient_evidence, policy_violation, wrong_target, other] }
     ClaimReasonCode: { type: string, enum: [insufficient_evidence, duplicate, fraud, wrong_target, other] }
+    MediaModerationReasonCode:
+      type: string
+      enum: [inappropriate_content, low_quality, unrelated_to_place, copyright, other]
+      description: >-
+        Controlled Media Rejection Reason (2026-08-12). Mã lý do CÓ KIỂM SOÁT — an toàn để lộ cho
+        chủ cơ sở — khi moderator từ chối một ảnh (`decision=reject` trên `target_type=media`).
+        KHÁC hẳn `reason` (text tự do, thuần nội bộ) và `report_reason` (lý do NGƯỜI DÙNG báo cáo
+        nội dung, một khái niệm khác). KHÔNG áp dụng cho `hide`/`approve`/`restore`/`dismiss`,
+        KHÔNG áp dụng cho `target_type=review` — gửi kèm ở những trường hợp đó bị từ chối `422`.
     BusinessClaimEvidenceItem:
       type: object
       description: business.md §2 "giấy phép/hóa đơn/ảnh mặt tiền/xác minh SĐT" — riêng tư, chỉ Moderator.
@@ -3694,12 +3712,22 @@ components:
           type: string
           enum: [pending, published, rejected, hidden]
           description: >-
-            Tín hiệu kiểm duyệt DUY NHẤT trả về cho chủ cơ sở. `status: rejected` KHÔNG kèm lý do —
-            đã xem xét và chủ đích không lộ `moderation_cases.reason` (free text moderator gõ,
-            không có `reason_code` an toàn/có kiểm soát nào cho quyết định media), cùng nguyên tắc
-            `business_claims.decision_note`/`bookings.internal_note` trong hệ thống này: chỉ một
-            mã lý do có kiểm soát mới được lộ ra cho bên bị ảnh hưởng, không bao giờ là text tự do
-            của nhân viên. Xem `docs/data/modules/media.md` §16.
+            Tín hiệu hiển thị DUY NHẤT trả về cho chủ cơ sở. `status: rejected` có thể kèm
+            `rejection_reason_code` (xem field bên dưới) — vẫn KHÔNG BAO GIỜ kèm
+            `moderation_cases.reason` (free text moderator gõ), danh tính moderator, hay bất kỳ
+            phần nào khác của lịch sử case, cùng nguyên tắc `business_claims.decision_note`/
+            `bookings.internal_note` trong hệ thống này: chỉ một mã lý do CÓ KIỂM SOÁT mới được lộ
+            ra cho bên bị ảnh hưởng, không bao giờ là text tự do của nhân viên. Xem
+            `docs/data/modules/media.md` §16 (nguyên tắc) và §17 (triển khai).
+        rejection_reason_code:
+          oneOf: [{ $ref: '#/components/schemas/MediaModerationReasonCode' }, { type: 'null' }]
+          description: >-
+            Controlled Media Rejection Reason (2026-08-12). Khác `null` CHỈ khi `status=rejected`
+            VÀ quyết định từ chối hiện hành có mã (case lịch sử trước milestone này -> `null`, giao
+            diện lùi về thông điệp chung). `null` cho MỌI trạng thái khác — kể cả ảnh từng bị từ
+            chối rồi được khôi phục (`published`/`pending`), không còn dấu vết lý do cũ nào. Đây là
+            mã máy đọc (`low_quality`…), KHÔNG phải câu chữ hiển thị — dịch sang tiếng Việt/Anh ở
+            client (PhuQuocHub song ngữ, không đóng cứng ngôn ngữ vào API/CSDL).
         caption: { type: [string, 'null'] }
         alt_text: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }
@@ -3896,6 +3924,13 @@ components:
         claimed_at: { type: [string, 'null'], format: date-time }
         decision: { type: [string, 'null'], enum: [approve, reject, hide, restore, dismiss, null] }
         reason: { type: [string, 'null'] }
+        reason_code:
+          oneOf: [{ $ref: '#/components/schemas/MediaModerationReasonCode' }, { type: 'null' }]
+          description: >-
+            Controlled Media Rejection Reason (2026-08-12) — `null` cho case review, quyết định
+            khác `reject`, và mọi case lịch sử trước milestone này. Kênh moderator-only; kênh chủ
+            cơ sở đọc giá trị này qua `PlaceOwnerMedia.rejection_reason_code`, một đường hoàn toàn
+            riêng (`GET /places/{placeId}/media`).
         resolved_by: { type: [string, 'null'], format: uuid }
         resolved_at: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }

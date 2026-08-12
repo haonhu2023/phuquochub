@@ -166,6 +166,22 @@ describe('Moderation Media Decision Workflow (e2e)', () => {
       );
       expect(auditRows.length).toBeGreaterThanOrEqual(1);
     });
+
+    // Controlled Media Rejection Reason (2026-08-12) — approve không đòi hỏi reason_code (khác
+    // reject), và KHÔNG được âm thầm chấp nhận reason_code nếu ai đó gửi kèm nhầm.
+    it('approve kèm reason_code -> 422 (reason_code chỉ áp dụng cho reject)', async () => {
+      const mediaId = await insertMedia('pending');
+      const caseId = await insertOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderatorToken}`)
+        .send({ decision: 'approve', reason_code: 'low_quality' });
+
+      expect(res.status).toBe(422);
+      const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
+      expect(media.status).toBe('pending');
+    });
   });
 
   describe('pending -> rejected (reject)', () => {
@@ -190,16 +206,46 @@ describe('Moderation Media Decision Workflow (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post(`/api/moderation/cases/${caseId}/decide`)
         .set('Authorization', `Bearer ${moderatorToken}`)
-        .send({ decision: 'reject', reason: 'nội dung không liên quan' });
+        .send({ decision: 'reject', reason: 'nội dung không liên quan', reason_code: 'unrelated_to_place' });
 
       expect(res.status).toBe(200);
       const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
       expect(media.status).toBe('rejected');
     });
+
+    // Controlled Media Rejection Reason (2026-08-12) — reject bắt buộc reason_code, tách khỏi
+    // kiểm tra reason (INV-11) ở test phía trên.
+    it('kèm reason nhưng THIẾU reason_code -> 422, KHÔNG đổi status', async () => {
+      const mediaId = await insertMedia('pending');
+      const caseId = await insertOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderatorToken}`)
+        .send({ decision: 'reject', reason: 'nội dung không liên quan' });
+
+      expect(res.status).toBe(422);
+      const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
+      expect(media.status).toBe('pending');
+    });
+
+    it('reason_code không thuộc media_moderation_reason_code -> 400 (DTO validation)', async () => {
+      const mediaId = await insertMedia('pending');
+      const caseId = await insertOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderatorToken}`)
+        .send({ decision: 'reject', reason: 'x', reason_code: 'not_a_real_code' });
+
+      expect(res.status).toBe(400);
+      const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
+      expect(media.status).toBe('pending');
+    });
   });
 
   describe('published -> hidden (hide)', () => {
-    it('moderator hide kèm reason -> 200, media hidden', async () => {
+    it('moderator hide kèm reason -> 200, media hidden (KHÔNG cần reason_code)', async () => {
       const mediaId = await insertMedia('published');
       const caseId = await insertOpenCase(mediaId);
 
@@ -211,6 +257,22 @@ describe('Moderation Media Decision Workflow (e2e)', () => {
       expect(res.status).toBe(200);
       const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
       expect(media.status).toBe('hidden');
+    });
+
+    // Controlled Media Rejection Reason (2026-08-12) — reason_code CHỈ có nghĩa với reject; gửi
+    // kèm hide (dù hide cũng gỡ nội dung khỏi công khai) bị từ chối tường minh, không âm thầm bỏ qua.
+    it('hide kèm reason_code -> 422 (reason_code chỉ áp dụng cho reject)', async () => {
+      const mediaId = await insertMedia('published');
+      const caseId = await insertOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderatorToken}`)
+        .send({ decision: 'hide', reason: 'vi phạm chính sách', reason_code: 'low_quality' });
+
+      expect(res.status).toBe(422);
+      const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);
+      expect(media.status).toBe('published');
     });
   });
 
@@ -247,10 +309,12 @@ describe('Moderation Media Decision Workflow (e2e)', () => {
       const mediaId = await insertMedia('published');
       const caseId = await insertOpenCase(mediaId);
 
+      // reason + reason_code ĐẦY ĐỦ ở đây để 422 chắc chắn đến từ FSM (INV-13), không bị nhầm với
+      // 422 "thiếu reason_code" (một quy tắc khác, đã có test riêng ở trên).
       const res = await request(app.getHttpServer())
         .post(`/api/moderation/cases/${caseId}/decide`)
         .set('Authorization', `Bearer ${moderatorToken}`)
-        .send({ decision: 'reject', reason: 'lý do' });
+        .send({ decision: 'reject', reason: 'lý do', reason_code: 'other' });
 
       expect(res.status).toBe(422);
       const [media]: Array<{ status: string }> = await ds.query('SELECT status FROM media WHERE id = $1', [mediaId]);

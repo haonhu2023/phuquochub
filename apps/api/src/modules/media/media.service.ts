@@ -19,8 +19,10 @@ import { computePriority } from '../moderation/moderation-severity';
 import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import {
+  MediaModerationReasonCode,
   ModerationCaseSeverity,
   ModerationCaseSource,
+  ModerationDecision,
   ModerationTargetType,
 } from '../moderation/moderation.enums';
 import { CreateReportDto } from '../moderation/dto/moderation.dto';
@@ -58,6 +60,28 @@ function normalizeMetadataField(value: string | null | undefined): string | null
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Mã lý do owner-safe cho MỘT ảnh, hoặc `null` (Controlled Media Rejection Reason, 2026-08-12).
+ * Trả `null` — không ném lỗi — ở MỌI trường hợp không chắc chắn: im lặng luôn an toàn hơn hiển thị
+ * một lý do có thể đã cũ hoặc không khớp. `null` trong bốn tình huống:
+ *
+ *  • ảnh KHÔNG đang ở `rejected` (pending/published/hidden) — chốt chống RÒ RỈ LÝ DO CŨ: một ảnh
+ *    từng bị từ chối rồi được khôi phục không còn kèm lý do nào, tức thì, vì đây là điều kiện tính
+ *    lúc ĐỌC chứ không phải cột lưu trên media;
+ *  • ảnh không có quyết định gỡ nào đã resolved;
+ *  • quyết định gỡ MỚI NHẤT không phải `reject` (vd ảnh bị ẩn sau đó) — `media.status` và quyết
+ *    định kiểm duyệt phải KHỚP nhau, hai nguồn độc lập cùng xác nhận thì mới nói;
+ *  • quyết định từ chối hiện hành là case LỊCH SỬ chưa có mã (`reason_code = null`).
+ */
+function ownerSafeRejectionReasonCode(
+  status: MediaStatus,
+  latestRemoval: { decision: ModerationDecision; reasonCode: MediaModerationReasonCode | null } | undefined,
+): MediaModerationReasonCode | null {
+  if (status !== MediaStatus.REJECTED) return null;
+  if (!latestRemoval || latestRemoval.decision !== ModerationDecision.REJECT) return null;
+  return latestRemoval.reasonCode;
+}
+
 const PRESIGN_SESSION_PREFIX = 'media-presign:';
 // Slightly longer than the signed PUT URL's own 600s expiry (design review §6) — a client that
 // uploads right at the edge of the signed URL's validity still has time to call POST /media.
@@ -87,10 +111,10 @@ interface PresignSession {
  * — hình dạng này được liệt kê tường minh (không spread entity) chính là để những cột đó không thể
  * vô tình lọt ra ngoài khi entity `Media` có thêm trường mới.
  *
- * CỐ Ý không có `reason`/`rejection_reason`/bất kỳ trường nào phản ánh lý do kiểm duyệt (Owner-
- * facing Moderation Feedback, 2026-08-12 — điều tra kỹ, không phải thiếu sót). `status: 'rejected'`
- * là TOÀN BỘ tín hiệu chủ cơ sở nhận được. Xem ghi chú đầy đủ tại `listForPlaceOwner()` bên dưới
- * trước khi thêm bất kỳ trường lý do nào vào đây.
+ * ĐÚNG MỘT trường phản ánh quyết định kiểm duyệt: `rejection_reason_code` (Controlled Media
+ * Rejection Reason, 2026-08-12) — một enum CÓ KIỂM SOÁT. KHÔNG BAO GIỜ thêm `reason` (text tự do
+ * của moderator), `resolved_by`/danh tính người duyệt, `case_id`, hay bất cứ mảnh nào của lịch sử
+ * kiểm duyệt vào đây; xem `listForPlaceOwner()` và media.md §16 trước khi mở rộng hình dạng này.
  */
 export interface OwnerPlacePhoto {
   id: string;
@@ -102,6 +126,16 @@ export interface OwnerPlacePhoto {
   url: string;
   sort_order: number | null;
   is_cover: boolean;
+  /**
+   * Vì sao ảnh BỊ TỪ CHỐI — mã máy đọc được (`low_quality`, `unrelated_to_place`…), KHÔNG phải câu
+   * chữ hiển thị: nhãn tiếng Việt/tiếng Anh do frontend ánh xạ (PhuQuocHub song ngữ; ngôn ngữ hiển
+   * thị không được đóng cứng vào CSDL hay API).
+   *
+   * `null` khi `status !== 'rejected'`, hoặc khi quyết định từ chối hiện hành là case LỊCH SỬ chưa
+   * có mã. `null` KHÔNG BAO GIỜ có nghĩa "ảnh vẫn ổn" — `status` mới là nguồn sự thật về việc ảnh
+   * có hiển thị công khai hay không.
+   */
+  rejection_reason_code: MediaModerationReasonCode | null;
 }
 
 @Injectable()
@@ -312,32 +346,38 @@ export class MediaService {
    * `url` trỏ tới endpoint NỘI BỘ (`/places/{placeId}/media/{id}/file`) chứ không phải endpoint
    * công khai: ảnh chưa duyệt không có URL công khai nào, theo đúng mô hình private media.
    *
-   * KHÔNG đọc `moderation_cases` — CỐ Ý, đã điều tra (Owner-facing Moderation Feedback,
-   * 2026-08-12). Chủ cơ sở chỉ nhận `status`, KHÔNG nhận `moderation_cases.reason`:
+   * ĐỌC `moderation_cases` — nhưng CHỈ MỘT CỘT: `reason_code` (Controlled Media Rejection Reason,
+   * 2026-08-12). Bốn quy tắc chi phối đường này, và cả bốn đều có test hồi quy:
    *
-   *  • `reason` là TEXT TỰ DO moderator gõ khi reject/hide (INV-11) — không có `reason_code` an
-   *    toàn/có kiểm soát nào tồn tại cho quyết định media (khác `report_reason` — đó là lý do
-   *    NGƯỜI DÙNG báo cáo, một khái niệm khác hoàn toàn, không phải lý do MODERATOR từ chối).
-   *  • Repo này ĐÃ CÓ tiền lệ cho đúng tình huống "text nhân viên gõ về một yêu cầu của MỘT người
-   *    dùng cụ thể, có nên lộ lại cho chính người đó không" — và tiền lệ đó trả lời KHÔNG cả hai
-   *    lần: `business_claims.decision_note` không bao giờ lộ qua `GET /business-claims/mine`
-   *    (chỉ `reason_code` — enum có kiểm soát — mới lộ, xem `business.mapper.ts`
-   *    `toOwnBusinessClaimSummary`); `bookings.internal_note` được tài liệu hoá tường minh là
-   *    "KHÔNG BAO GIỜ lộ qua API" dù nói về đúng booking của khách (docs/data/modules/booking.md).
-   *    `moderation_cases.reason` giữ đúng vai trò như hai trường đó — free text nội bộ, không phải
-   *    một khái niệm mới.
-   *  • Lộ nó sẽ mở một kênh rò rỉ không kiểm soát được: reason có thể nhắc tới case khác, nghi vấn
-   *    gian lận, hoặc bất cứ gì moderator thấy cần ghi — không có cách nào lọc an toàn bằng máy.
+   *  1. KHÔNG BAO GIỜ `reason` (text tự do moderator gõ), `resolved_by`/danh tính người duyệt,
+   *     `case_id`, `report`, hay lịch sử case. Cùng nguyên tắc `business_claims.decision_note` và
+   *     `bookings.internal_note`: chỉ MỘT MÃ CÓ KIỂM SOÁT mới được lộ ra cho bên bị ảnh hưởng,
+   *     không bao giờ là câu chữ tự do của nhân viên. Câu SQL ở
+   *     `findOwnerSafeReasonCodesForMedia()` thậm chí không SELECT những cột đó.
+   *  2. CHỈ khi ảnh ĐANG ở `rejected`. `pending`/`published`/`hidden` không bao giờ kèm lý do — kể
+   *     cả khi ảnh TỪNG bị từ chối rồi được khôi phục. Lý do cũ biến mất cùng lúc với trạng thái
+   *     cũ, không có độ trễ, vì đây là điều kiện tính lúc ĐỌC chứ không phải cột lưu trên media.
+   *  3. HAI NGUỒN PHẢI KHỚP: `media.status` (nguồn sự thật hiển thị, INV-1) và `decision` của
+   *     quyết định gỡ MỚI NHẤT phải cùng nói "ảnh này bị từ chối". Lệch nhau -> không hiện gì (thà
+   *     im lặng còn hơn nói sai).
+   *  4. Case LỊCH SỬ (`reason_code = null`, mọi quyết định trước milestone này) -> `null`, giao
+   *     diện tự lùi về thông điệp chung. KHÔNG suy đoán mã từ `reason` cũ.
    *
-   * Muốn cho chủ cơ sở một lý do THẬT SỰ hữu ích và an toàn cần một `reason_code` có kiểm soát
-   * (cùng khuôn `business_claims`) — đòi hỏi migration + đổi giao diện quyết định của moderator,
-   * cố ý NGOÀI PHẠM VI milestone này. `status: 'rejected'` là toàn bộ tín hiệu hiện có.
+   * MỘT truy vấn phụ cho CẢ gallery, và chỉ khi thực sự có ảnh bị từ chối — không phải một truy
+   * vấn mỗi ảnh (N+1). Gallery không có ảnh bị từ chối giữ nguyên đúng 2 truy vấn như trước.
    */
   async listForPlaceOwner(placeId: string): Promise<OwnerPlacePhoto[]> {
     const [rows, coverImageId] = await Promise.all([
       this.mediaRepo.listAllByPlace(placeId),
       this.mediaRepo.getCoverImageId(placeId),
     ]);
+
+    // Chỉ hỏi lý do cho những ảnh ĐANG bị từ chối. `placeId` đã lọc ở `listAllByPlace` nên tập id
+    // này luôn thuộc đúng cơ sở người gọi được phép quản lý — không có đường nào hỏi lý do của ảnh
+    // thuộc cơ sở khác (chống IDOR/rò rỉ chéo ngay ở tầng dữ liệu vào).
+    const rejectedIds = rows.filter((m) => m.status === MediaStatus.REJECTED).map((m) => m.id);
+    const reasons = await this.moderationCases.findOwnerSafeReasonCodesForMedia(rejectedIds);
+
     return rows.map((m) => ({
       id: m.id,
       status: m.status,
@@ -346,6 +386,7 @@ export class MediaService {
       created_at: m.createdAt.toISOString(),
       url: `${this.mediaUrl.placeMediaFileUrl(placeId, m.id)}`,
       sort_order: m.sortOrder,
+      rejection_reason_code: ownerSafeRejectionReasonCode(m.status, reasons.get(m.id)),
       // `is_cover` tính từ `places.cover_image_id` — MỘT nguồn sự thật, không phải cờ nhân bản trên
       // media. Một ảnh vẫn có thể `is_cover: true` khi đang chờ kiểm duyệt lại (ví dụ bị ẩn rồi
       // khôi phục): giao diện dựa vào `status` để nói ảnh đã lên trang hay chưa, còn đường ĐỌC công

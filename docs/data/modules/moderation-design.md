@@ -212,15 +212,20 @@ Một case `new_content` sau đó nhận report vẫn là **một** case; `repor
 
 ### 2.1 Bảng transition media (đặc tả chính xác)
 
-| Action | Từ | Đến | Quyền | `reason` | `target_status` | Audit | Recalc rating |
-|---|---|---|---|---|---|---|---|
-| *(auto)* | `pending` | `published` | — (hệ thống, trong transaction tạo review) | — | — | `media.auto_published` | không |
-| `approve` | `pending` | `published` | `Media.Moderate` | tuỳ chọn | — | `moderation.decided` | không |
-| `reject` | `pending` | `rejected` | `Media.Moderate` | **bắt buộc** | — | `moderation.decided` | không |
-| `hide` | `published` | `hidden` | `Media.Moderate` | **bắt buộc** | — | `moderation.decided` | không |
-| `restore` | `hidden` | `published` \| `pending` | `Media.Moderate` | tuỳ chọn | **bắt buộc** | `moderation.decided` | không |
-| `restore` | `rejected` | `published` \| `pending` | `Media.Moderate` | tuỳ chọn | **bắt buộc** | `moderation.decided` | không |
-| `dismiss` | *(không đổi status)* | — | `Report.Resolve` | tuỳ chọn | — | `moderation.report_resolved` | không |
+| Action | Từ | Đến | Quyền | `reason` | `reason_code` | `target_status` | Audit | Recalc rating |
+|---|---|---|---|---|---|---|---|---|
+| *(auto)* | `pending` | `published` | — (hệ thống, trong transaction tạo review) | — | — | — | `media.auto_published` | không |
+| `approve` | `pending` | `published` | `Media.Moderate` | tuỳ chọn | **cấm** (422) | — | `moderation.decided` | không |
+| `reject` | `pending` | `rejected` | `Media.Moderate` | **bắt buộc** | **bắt buộc** | — | `moderation.decided` | không |
+| `hide` | `published` | `hidden` | `Media.Moderate` | **bắt buộc** | **cấm** (422) | — | `moderation.decided` | không |
+| `restore` | `hidden` | `published` \| `pending` | `Media.Moderate` | tuỳ chọn | **cấm** (422) | **bắt buộc** | `moderation.decided` | không |
+| `restore` | `rejected` | `published` \| `pending` | `Media.Moderate` | tuỳ chọn | **cấm** (422) | **bắt buộc** | `moderation.decided` | không |
+| `dismiss` | *(không đổi status)* | — | `Report.Resolve` | tuỳ chọn | **cấm** (422) | — | `moderation.report_resolved` | không |
+
+`reason_code` **cấm** ở mọi hàng trừ `reject` (và cấm ở MỌI quyết định trên target `review` —
+taxonomy chỉ mô tả ảnh). Từ chối tường minh thay vì âm thầm bỏ qua: một mã ghi nhầm lên case
+`approve`/`restore` sẽ nằm sẵn trong CSDL chờ một đường đọc tương lai hiểu sai nó. Quan trọng hơn,
+case `restore` luôn ghi `reason_code = NULL`, nên **không mã nào sống sót qua một lần khôi phục**.
 
 ### 2.2 Lỗi khi transition không hợp lệ
 
@@ -228,6 +233,10 @@ Một case `new_content` sau đó nhận report vẫn là **một** case; `repor
 |---|---|---|
 | Transition không có trong bảng §2.1 | `422` | `Không thể {action}: media đang ở trạng thái {status}` |
 | `reject`/`hide` thiếu `reason` | `422` | `Quyết định {action} bắt buộc có lý do` |
+| `reject` thiếu `reason_code` | `422` | `Quyết định "reject" bắt buộc có reason_code (mã lý do hiển thị cho chủ nội dung)` |
+| `reason_code` gửi kèm quyết định khác `reject` | `422` | `reason_code chỉ dùng cho quyết định "reject"` |
+| `reason_code` gửi kèm case target `review` | `422` | `reason_code chỉ áp dụng cho kiểm duyệt media` |
+| `reason_code` không thuộc `media_moderation_reason_code` | `400` | (chuẩn `ValidationPipe`/`@IsEnum`) |
 | `restore` thiếu `target_status` | `422` | `Khôi phục phải chỉ định rõ target_status (published hoặc pending)` |
 | `restore` với `target_status` không thuộc {`published`,`pending`} | `422` | `target_status không hợp lệ` |
 | Case đã `resolved`/`dismissed` | `409` | `Case đã được xử lý bởi moderator khác` |
@@ -367,7 +376,19 @@ moderation_case_source  : new_content | report | ai_flag | manual
 moderation_case_severity: low | normal | high | critical
 moderation_decision     : approve | reject | hide | restore | dismiss
 moderation_target_type  : review | media | place
+
+-- Controlled Media Rejection Reason (2026-08-12, migration AddModerationReasonCode)
+media_moderation_reason_code
+                        : inappropriate_content | low_quality |
+                          unrelated_to_place | copyright | other
 ```
+
+`media_moderation_reason_code` là taxonomy **riêng**, KHÔNG tái dùng `report_reason` (lý do NGƯỜI
+DÙNG *báo cáo* — một cáo buộc chưa xác minh, không phải kết luận của moderator) và cũng không tái
+dùng `business_claim_reason_code` (nói về hồ sơ yêu cầu quyền quản lý, không nói gì được về một bức
+ảnh). Chỉ 5 giá trị, mỗi giá trị mô tả **thuộc tính của chính bức ảnh** — không mã nào phản ánh tín
+hiệu nội bộ (nghi ngờ gian lận, trùng tài khoản); những trường hợp đó dùng `other` + ghi chú nội bộ
+ở `reason`, để chủ nội dung không bao giờ đọc được rằng hệ thống đang nghi ngờ họ.
 
 `moderation_target_type` là **enum** (không phải text tự do) — khác có chủ đích với `audit_logs.entity_type`: audit phải nhận **mọi** thực thể tương lai mà không cần DDL, còn target kiểm duyệt **bắt buộc** phải có một FSM đã đăng ký. Một target chưa đăng ký là lỗi, và enum bắt lỗi đó ngay lúc INSERT (MR-4).
 
@@ -388,7 +409,8 @@ moderation_target_type  : review | media | place
 | `assigned_to` | `uuid` NULL → `users` ON DELETE SET NULL | |
 | `claimed_at` | `timestamptz` NULL | |
 | `decision` | `moderation_decision` NULL | Đặt khi resolve |
-| `reason` | `text` NULL | Bắt buộc khi `reject`/`hide` (INV-11) |
+| `reason` | `text` NULL | Bắt buộc khi `reject`/`hide` (INV-11). **NỘI BỘ — không bao giờ lộ cho chủ nội dung** ([media.md §16](./media.md)) |
+| `reason_code` | `media_moderation_reason_code` NULL | **Controlled Media Rejection Reason (2026-08-12)** — mã CÓ KIỂM SOÁT, owner-safe. Bắt buộc khi `reject` trên target **media**; cấm ở mọi quyết định/target khác (422). Nullable, KHÔNG CHECK: case lịch sử có `reason != null` + `reason_code = null` là **hợp lệ**, không backfill/suy đoán. Xem [media.md §17](./media.md) |
 | `resolved_by` | `uuid` NULL → `users` ON DELETE SET NULL | |
 | `resolved_at` | `timestamptz` NULL | |
 | `ai_score` | `numeric(4,3)` NULL | Ảnh chụp `media.ai_moderation_score` lúc gắn cờ |
@@ -688,11 +710,24 @@ Tôn trọng hai tên route đã đặt trước trong `openapi.yaml`, và thêm
 {
   "decision": "approve" | "reject" | "hide" | "restore" | "dismiss",
   "target_status": "published" | "pending",  // BẮT BUỘC khi decision = "restore" trên media (INV-10)
-  "reason": "string"                          // BẮT BUỘC khi decision = "reject" | "hide" (INV-11)
+  "reason": "string",                         // BẮT BUỘC khi decision = "reject" | "hide" (INV-11)
+                                              // NỘI BỘ — chỉ moderator đọc được
+  "reason_code": "low_quality"                // BẮT BUỘC khi decision = "reject" trên media;
+                                              // CẤM ở mọi trường hợp khác (422).
+                                              // OWNER-SAFE — chủ nội dung đọc được mã này
 }
 ```
 
-**Phản hồi:** `200` EmptySuccess · `403` tự kiểm duyệt hoặc thiếu quyền · `404` case không tồn tại · `409` case đã xử lý (moderator khác) · `422` transition không hợp lệ, thiếu `reason`, hoặc thiếu/sai `target_status`.
+**Hai trường lý do, hai mục đích — không thay thế nhau:**
+
+| | `reason_code` | `reason` |
+|---|---|---|
+| Kiểu | enum có kiểm soát (5 giá trị) | text tự do ≤ 2000 ký tự |
+| Ai đọc được | moderator **và chủ nội dung** | **chỉ moderator** (`Moderation.Queue.View`) |
+| Mục đích | phân loại để chủ nội dung hiểu và sửa | ghi lại ngữ cảnh/phán đoán nội bộ |
+| Lộ qua | `GET /places/{id}/media` (`PlaceOwnerMedia.rejection_reason_code`) | `GET /moderation/cases/{id}` |
+
+**Phản hồi:** `200` EmptySuccess · `400` `reason_code` không thuộc enum · `403` tự kiểm duyệt hoặc thiếu quyền · `404` case không tồn tại · `409` case đã xử lý (moderator khác) · `422` transition không hợp lệ, thiếu `reason`, thiếu `reason_code` khi reject, `reason_code` dùng sai chỗ, hoặc thiếu/sai `target_status`.
 
 ### 9.2 `POST /reviews/{id}/report` · `POST /media/{id}/report`
 

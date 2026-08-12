@@ -28,6 +28,7 @@ function caseDetail(preview: ModerationTargetPreview): CaseDetail {
     claimed_at: null,
     decision: null,
     reason: null,
+    reason_code: null,
     resolved_by: null,
     resolved_at: null,
     created_at: '2026-08-11T00:00:00.000Z',

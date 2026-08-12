@@ -119,6 +119,45 @@ describe('DecideModerationCaseDto', () => {
     const errors = await validateDecide({ decision: 'approve', status: 'resolved' });
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  // Controlled Media Rejection Reason (2026-08-12). DTO chỉ xác nhận reason_code LÀ một trong 5
+  // giá trị enum thật — "bắt buộc khi reject/cấm khi khác" là quy tắc phụ thuộc decision+target_type
+  // (chỉ biết sau khi đọc case), cưỡng chế ở ModerationService, không diễn đạt được bằng decorator
+  // ở đây (cùng nguyên tắc reason/target_status phía trên).
+  describe('reason_code (Controlled Media Rejection Reason)', () => {
+    it('chấp nhận reject kèm reason_code hợp lệ', async () => {
+      const errors = await validateDecide({ decision: 'reject', reason: 'x', reason_code: 'low_quality' });
+      expect(errors).toHaveLength(0);
+    });
+
+    it.each(['inappropriate_content', 'low_quality', 'unrelated_to_place', 'copyright', 'other'])(
+      'chấp nhận reason_code=%s (đủ 5 giá trị enum)',
+      async (reason_code) => {
+        const errors = await validateDecide({ decision: 'reject', reason_code });
+        expect(errors).toHaveLength(0);
+      },
+    );
+
+    it('từ chối reason_code không thuộc media_moderation_reason_code (chuỗi tuỳ ý)', async () => {
+      const errors = await validateDecide({ decision: 'reject', reason_code: 'fraud_suspected' });
+      expect(errors.some((e) => e.property === 'reason_code')).toBe(true);
+    });
+
+    it('từ chối reason_code là enum THẬT nhưng của khái niệm khác (report_reason)', async () => {
+      const errors = await validateDecide({ decision: 'reject', reason_code: 'spam' });
+      expect(errors.some((e) => e.property === 'reason_code')).toBe(true);
+    });
+
+    it('DTO KHÔNG tự chặn reason_code khi decision khác reject — quy tắc đó sống ở service', async () => {
+      const errors = await validateDecide({ decision: 'approve', reason_code: 'low_quality' });
+      expect(errors).toHaveLength(0);
+    });
+
+    it('vắng mặt reason_code -> hợp lệ ở tầng DTO (bắt buộc-khi-reject cưỡng chế ở service)', async () => {
+      const errors = await validateDecide({ decision: 'reject', reason: 'x' });
+      expect(errors).toHaveLength(0);
+    });
+  });
 });
 
 // M5 (WF-12, ADR-018/moderation-design.md §9.2) — request body ĐÚNG 2 trường đã đặc tả.

@@ -4,7 +4,14 @@ import { useState, type FormEvent } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { decideModerationCase } from './api/moderation.api';
-import { allowedDecisions, MEDIA_RESTORE_TARGETS, type ContentDecision } from './decisions';
+import {
+  allowedDecisions,
+  MEDIA_MODERATION_REASON_CODES,
+  MEDIA_RESTORE_TARGETS,
+  mediaModerationReasonCodeLabel,
+  type ContentDecision,
+  type MediaModerationReasonCode,
+} from './decisions';
 import type { DecideModerationCaseRequest, MediaStatus, ModerationCaseDetail } from './types';
 import styles from './moderation.module.css';
 
@@ -21,6 +28,7 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
   const options = allowedDecisions(detail.target_preview, detail.status);
   const [selected, setSelected] = useState<ContentDecision | null>(null);
   const [reason, setReason] = useState('');
+  const [reasonCode, setReasonCode] = useState<MediaModerationReasonCode | ''>('');
   const [mediaTarget, setMediaTarget] = useState<MediaStatus>('published');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +48,8 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
 
   const current = options.find((o) => o.decision === selected) ?? null;
   const reasonMissing = !!current?.requiresReason && !reason.trim();
-  const submitDisabled = !current || submitting || reasonMissing;
+  const reasonCodeMissing = !!current?.requiresReasonCode && !reasonCode;
+  const submitDisabled = !current || submitting || reasonMissing || reasonCodeMissing;
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -48,6 +57,10 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
     setError(null);
     if (current.requiresReason && !reason.trim()) {
       setError('Vui lòng nhập lý do cho quyết định này.');
+      return;
+    }
+    if (current.requiresReasonCode && !reasonCode) {
+      setError('Vui lòng chọn mã lý do sẽ hiển thị cho chủ cơ sở.');
       return;
     }
     const session = readSession();
@@ -58,6 +71,7 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
 
     const body: DecideModerationCaseRequest = { decision: current.decision };
     if (current.requiresReason) body.reason = reason.trim();
+    if (current.requiresReasonCode) body.reason_code = reasonCode;
     if (current.requiresMediaTargetStatus) body.target_status = mediaTarget;
 
     setSubmitting(true);
@@ -108,9 +122,34 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
         ))}
       </fieldset>
 
+      {current?.requiresReasonCode && (
+        <div className={styles.fieldBlock}>
+          <label htmlFor="mod-reason-code">Mã lý do cho chủ cơ sở (bắt buộc)</label>
+          <select
+            id="mod-reason-code"
+            className={styles.reason}
+            value={reasonCode}
+            onChange={(e) => setReasonCode(e.target.value as MediaModerationReasonCode)}
+            required
+            aria-required="true"
+          >
+            <option value="" disabled>
+              — Chọn một mã —
+            </option>
+            {MEDIA_MODERATION_REASON_CODES.map((code) => (
+              <option key={code} value={code}>
+                {mediaModerationReasonCodeLabel(code)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {current?.requiresReason && (
         <div className={styles.fieldBlock}>
-          <label htmlFor="mod-reason">Lý do (bắt buộc)</label>
+          <label htmlFor="mod-reason">
+            {current?.requiresReasonCode ? 'Ghi chú nội bộ (bắt buộc)' : 'Lý do (bắt buộc)'}
+          </label>
           <textarea
             id="mod-reason"
             className={styles.reason}
@@ -120,6 +159,11 @@ export function ModerationDecisionForm({ detail, onDecided }: Props) {
             aria-required="true"
             maxLength={2000}
           />
+          {current?.requiresReasonCode && (
+            <p className={styles.previewEmpty}>
+              Chỉ moderator xem được ghi chú này — chủ cơ sở chỉ thấy mã lý do đã chọn ở trên.
+            </p>
+          )}
         </div>
       )}
 

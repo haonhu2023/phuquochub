@@ -448,9 +448,23 @@ describe('Owner Place Photos — sửa caption/alt_text (live Postgres)', () => 
       expect(res.status).toBe(200);
       const item = res.body.data.find((p: { id: string }) => p.id === m);
       expect(item).toMatchObject({ caption: 'shaped caption', alt_text: 'shaped alt' });
+      // 9 khoá: 8 khoá gốc + `rejection_reason_code` (Controlled Media Rejection Reason,
+      // 2026-08-12). Ảnh này chưa bị từ chối nên giá trị là `null` — nhưng KHOÁ vẫn có mặt, đúng
+      // hợp đồng "cùng hình dạng GET" mà chính test này đang canh.
       expect(Object.keys(item).sort()).toEqual(
-        ['alt_text', 'caption', 'created_at', 'id', 'is_cover', 'sort_order', 'status', 'url'].sort(),
+        [
+          'alt_text',
+          'caption',
+          'created_at',
+          'id',
+          'is_cover',
+          'rejection_reason_code',
+          'sort_order',
+          'status',
+          'url',
+        ].sort(),
       );
+      expect(item.rejection_reason_code).toBeNull();
     });
   });
 });

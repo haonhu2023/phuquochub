@@ -36,17 +36,26 @@ describe('allowedDecisions — media', () => {
     expect(opts.find((o) => o.decision === 'approve')?.requiresReason).toBe(false);
   });
 
-  it('published → hide (cần lý do)', () => {
+  // Controlled Media Rejection Reason (2026-08-12) — CHỈ reject trên media đòi reason_code.
+  it('pending → reject đòi reason_code; approve thì KHÔNG', () => {
+    const opts = allowedDecisions(media('pending'), 'open');
+    expect(opts.find((o) => o.decision === 'reject')?.requiresReasonCode).toBe(true);
+    expect(opts.find((o) => o.decision === 'approve')?.requiresReasonCode).toBe(false);
+  });
+
+  it('published → hide (cần lý do, KHÔNG cần reason_code)', () => {
     const opts = allowedDecisions(media('published'), 'claimed');
     expect(opts.map((o) => o.decision)).toEqual(['hide']);
     expect(opts[0].requiresReason).toBe(true);
+    expect(opts[0].requiresReasonCode).toBe(false);
   });
 
-  it('hidden → restore, cần chọn target_status media', () => {
+  it('hidden → restore, cần chọn target_status media, KHÔNG cần reason_code', () => {
     const opts = allowedDecisions(media('hidden'), 'open');
     expect(opts.map((o) => o.decision)).toEqual(['restore']);
     expect(opts[0].requiresMediaTargetStatus).toBe(true);
     expect(opts[0].requiresReason).toBe(false);
+    expect(opts[0].requiresReasonCode).toBe(false);
   });
 
   it('rejected → restore', () => {
@@ -59,10 +68,11 @@ describe('allowedDecisions — review', () => {
     expect(decisions(review('pending'), 'open')).toEqual(['approve']);
   });
 
-  it('published → hide', () => {
+  it('published → hide (KHÔNG bao giờ cần reason_code — chỉ media/reject mới có khái niệm đó)', () => {
     const opts = allowedDecisions(review('published'), 'open');
     expect(opts.map((o) => o.decision)).toEqual(['hide']);
     expect(opts[0].requiresReason).toBe(true);
+    expect(opts[0].requiresReasonCode).toBe(false);
   });
 
   it('hidden → restore, KHÔNG cần target_status media', () => {

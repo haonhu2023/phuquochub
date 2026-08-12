@@ -26,6 +26,7 @@ function detail(preview: ModerationTargetPreview, over: Partial<ModerationCaseDe
     claimed_at: null,
     decision: null,
     reason: null,
+    reason_code: null,
     resolved_by: null,
     resolved_at: null,
     created_at: 't',
@@ -81,19 +82,80 @@ it('review pending: chỉ approve, không có reject', () => {
   expect(screen.queryByRole('radio', { name: 'Từ chối' })).not.toBeInTheDocument();
 });
 
-it('reject cần lý do: submit disabled tới khi nhập, rồi gửi đúng payload', async () => {
+it('reject cần CẢ lý do lẫn mã lý do: submit disabled tới khi nhập đủ, rồi gửi đúng payload', async () => {
   const onDecided = jest.fn();
   render(<ModerationDecisionForm detail={detail(mediaPreview('pending'))} onDecided={onDecided} />);
   fireEvent.click(screen.getByRole('radio', { name: 'Từ chối' }));
   const submit = screen.getByRole('button', { name: /Áp dụng: Từ chối/ });
   expect(submit).toBeDisabled();
-  fireEvent.change(screen.getByLabelText('Lý do (bắt buộc)'), { target: { value: 'spam rõ ràng' } });
+
+  fireEvent.change(screen.getByLabelText('Ghi chú nội bộ (bắt buộc)'), { target: { value: 'spam rõ ràng' } });
+  expect(submit).toBeDisabled(); // còn thiếu reason_code
+
+  fireEvent.change(screen.getByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)'), {
+    target: { value: 'unrelated_to_place' },
+  });
   expect(submit).toBeEnabled();
+
   fireEvent.click(submit);
   await waitFor(() =>
-    expect(mockDecide).toHaveBeenCalledWith('c1', { decision: 'reject', reason: 'spam rõ ràng' }, 'tok'),
+    expect(mockDecide).toHaveBeenCalledWith(
+      'c1',
+      { decision: 'reject', reason: 'spam rõ ràng', reason_code: 'unrelated_to_place' },
+      'tok',
+    ),
   );
   expect(onDecided).toHaveBeenCalled();
+});
+
+// Controlled Media Rejection Reason (2026-08-12) — picker CHỈ xuất hiện cho reject trên media.
+describe('mã lý do cho chủ cơ sở (Controlled Media Rejection Reason)', () => {
+  it('render đủ 5 lựa chọn taxonomy, không có lựa chọn thô/trùng', () => {
+    render(<ModerationDecisionForm detail={detail(mediaPreview('pending'))} onDecided={jest.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Từ chối' }));
+
+    const select = screen.getByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)') as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value).filter((v) => v !== '');
+    expect(values.sort()).toEqual(
+      ['copyright', 'inappropriate_content', 'low_quality', 'other', 'unrelated_to_place'].sort(),
+    );
+    expect(screen.getByText('Chất lượng ảnh không đạt')).toBeInTheDocument();
+  });
+
+  it('media approve: KHÔNG render picker mã lý do', () => {
+    render(<ModerationDecisionForm detail={detail(mediaPreview('pending'))} onDecided={jest.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Duyệt' }));
+    expect(screen.queryByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)')).not.toBeInTheDocument();
+  });
+
+  it('media hide (từ published): KHÔNG render picker mã lý do — chỉ reject mới có', async () => {
+    render(<ModerationDecisionForm detail={detail(mediaPreview('published'))} onDecided={jest.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ẩn' }));
+    expect(screen.queryByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)')).not.toBeInTheDocument();
+
+    // hide vẫn gửi được bình thường, không kèm reason_code.
+    fireEvent.change(screen.getByLabelText('Lý do (bắt buộc)'), { target: { value: 'vi phạm chính sách' } });
+    fireEvent.click(screen.getByRole('button', { name: /Áp dụng: Ẩn/ }));
+    await waitFor(() =>
+      expect(mockDecide).toHaveBeenCalledWith(
+        'c1',
+        { decision: 'hide', reason: 'vi phạm chính sách' },
+        'tok',
+      ),
+    );
+  });
+
+  it('media restore: KHÔNG render picker mã lý do', () => {
+    render(<ModerationDecisionForm detail={detail(mediaPreview('hidden'))} onDecided={jest.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Khôi phục' }));
+    expect(screen.queryByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)')).not.toBeInTheDocument();
+  });
+
+  it('review hide: KHÔNG render picker mã lý do (taxonomy chỉ mô tả ảnh)', () => {
+    render(<ModerationDecisionForm detail={detail(reviewPreview('published'))} onDecided={jest.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ẩn' }));
+    expect(screen.queryByLabelText('Mã lý do cho chủ cơ sở (bắt buộc)')).not.toBeInTheDocument();
+  });
 });
 
 it('media restore: chọn target_status và gửi kèm', async () => {

@@ -4,7 +4,11 @@ import { MediaStatus } from './media.enums';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
 import type { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
 import type { AuditService } from '../../core/audit/audit.service';
-import { ModerationTargetType } from '../moderation/moderation.enums';
+import {
+  MediaModerationReasonCode,
+  ModerationDecision,
+  ModerationTargetType,
+} from '../moderation/moderation.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 // Owner Place Photos (2026-08-11) — ảnh do chủ/quản lý cơ sở đăng.
@@ -93,7 +97,17 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       transaction: jest.fn((cb: (m: unknown) => unknown) => cb({ fakeManager: true })),
     });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
-    moderationCases = createMock<ModerationCasesRepository>({ createOpenCase: jest.fn() });
+    // `findById`/`findTargetPreview`/`findOpenCaseForTarget` được mock ở đây KHÔNG phải vì
+    // `MediaService` cần chúng, mà để test "chỉ chạm đúng một phương thức" bên dưới thực sự quan
+    // sát được chúng (một thuộc tính `undefined` sẽ khiến `not.toHaveBeenCalled()` báo lỗi matcher
+    // thay vì kiểm tra được điều cần kiểm tra).
+    moderationCases = createMock<ModerationCasesRepository>({
+      createOpenCase: jest.fn(),
+      findOwnerSafeReasonCodesForMedia: jest.fn().mockResolvedValue(new Map()),
+      findById: jest.fn(),
+      findTargetPreview: jest.fn(),
+      findOpenCaseForTarget: jest.fn(),
+    });
     audit = createMock<AuditService>({ record: jest.fn() });
 
     service = new MediaService(
@@ -265,46 +279,148 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       expect(serialized).not.toContain(VALID_CHECKSUM);
     });
 
-    // Owner-facing Moderation Feedback (2026-08-12) — QUYẾT ĐỊNH SẢN PHẨM đã điều tra kỹ (không
-    // phải thiếu sót): `moderation_cases.reason` là free text do moderator gõ, không có
-    // `reason_code` an toàn nào cho quyết định media (khác `business_claims` — nơi `reason_code`
-    // được lộ nhưng `decision_note` free text thì KHÔNG BAO GIỜ, xem business.mapper.ts
-    // `toOwnBusinessClaimSummary`; cùng nguyên tắc `bookings.internal_note` — "KHÔNG BAO GIỜ lộ
-    // qua API", docs/data/modules/booking.md). `listForPlaceOwner()` vì vậy KHÔNG BAO GIỜ đọc
-    // `moderation_cases` — hình dạng response chỉ đúng 8 khoá đã biết, dựng bằng liệt kê tường
-    // minh (không spread), nên một cột lạ trên `Media` (nếu sau này có ai thêm) không tự động lọt
-    // ra ngoài.
-    it('ảnh rejected -> response CHỈ đúng 8 khoá đã biết, KHÔNG có reason/reviewer/case nào', async () => {
-      mediaRepo.listAllByPlace.mockResolvedValue([
-        {
-          id: 'm1',
+    // Controlled Media Rejection Reason (2026-08-12) — kênh chủ cơ sở NAY có đúng MỘT trường
+    // phản ánh quyết định kiểm duyệt: `rejection_reason_code`, một enum CÓ KIỂM SOÁT. Tiền lệ đã
+    // chốt trong repo này (`business_claims`: `reason_code` lộ, `decision_note` free text KHÔNG
+    // BAO GIỜ — business.mapper.ts `toOwnBusinessClaimSummary`; `bookings.internal_note` — "KHÔNG
+    // BAO GIỜ lộ qua API", docs/data/modules/booking.md) vẫn nguyên vẹn: text tự do của moderator
+    // tuyệt đối không đi ra. Nhóm test dưới đây ghim lại toàn bộ ranh giới đó.
+    describe('lý do từ chối owner-safe (Controlled Media Rejection Reason)', () => {
+      function rejectedRow(id = 'm1') {
+        return {
+          id,
           status: MediaStatus.REJECTED,
           caption: null,
           altText: null,
           createdAt: new Date('2026-08-11T00:00:00Z'),
           sortOrder: null,
+        };
+      }
+
+      it('ảnh rejected -> response CHỈ đúng 9 khoá đã biết, KHÔNG có reason/reviewer/case nào', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+
+        const res = await service.listForPlaceOwner(PLACE_ID);
+
+        expect(Object.keys(res[0]).sort()).toEqual(
+          [
+            'alt_text',
+            'caption',
+            'created_at',
+            'id',
+            'is_cover',
+            'rejection_reason_code',
+            'sort_order',
+            'status',
+            'url',
+          ].sort(),
+        );
+      });
+
+      it('ảnh rejected có mã -> trả ĐÚNG mã máy đọc được (không phải câu chữ hiển thị)', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+        moderationCases.findOwnerSafeReasonCodesForMedia.mockResolvedValue(
+          new Map([['m1', { decision: ModerationDecision.REJECT, reasonCode: MediaModerationReasonCode.LOW_QUALITY }]]),
+        );
+
+        const res = await service.listForPlaceOwner(PLACE_ID);
+
+        expect(res[0].rejection_reason_code).toBe('low_quality');
+      });
+
+      // Case LỊCH SỬ: quyết định từ chối có thật, `reason` free text có thật, nhưng KHÔNG có mã.
+      // Không suy đoán từ text cũ — trả `null` để giao diện lùi về thông điệp chung.
+      it('case lịch sử (reason_code null) -> null, KHÔNG suy đoán từ reason free text', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+        moderationCases.findOwnerSafeReasonCodesForMedia.mockResolvedValue(
+          new Map([['m1', { decision: ModerationDecision.REJECT, reasonCode: null }]]),
+        );
+
+        const res = await service.listForPlaceOwner(PLACE_ID);
+
+        expect(res[0].rejection_reason_code).toBeNull();
+      });
+
+      it('ảnh rejected nhưng KHÔNG có case nào -> null (không bịa lý do)', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+        moderationCases.findOwnerSafeReasonCodesForMedia.mockResolvedValue(new Map());
+
+        const res = await service.listForPlaceOwner(PLACE_ID);
+
+        expect(res[0].rejection_reason_code).toBeNull();
+      });
+
+      // CHỐNG RÒ RỈ LÝ DO CŨ — trọng tâm an toàn của tính năng. Ảnh đã rời `rejected` thì lý do
+      // biến mất NGAY, kể cả khi bảng `moderation_cases` vẫn còn nguyên mã của lần từ chối cũ.
+      it.each([MediaStatus.PENDING, MediaStatus.PUBLISHED, MediaStatus.HIDDEN])(
+        'ảnh %s -> KHÔNG BAO GIỜ kèm lý do, dù case cũ vẫn còn mã trong CSDL',
+        async (status) => {
+          mediaRepo.listAllByPlace.mockResolvedValue([{ ...rejectedRow(), status }] as never);
+          moderationCases.findOwnerSafeReasonCodesForMedia.mockResolvedValue(
+            new Map([
+              ['m1', { decision: ModerationDecision.REJECT, reasonCode: MediaModerationReasonCode.COPYRIGHT }],
+            ]),
+          );
+
+          const res = await service.listForPlaceOwner(PLACE_ID);
+
+          expect(res[0].rejection_reason_code).toBeNull();
         },
-      ] as never);
-
-      const res = await service.listForPlaceOwner(PLACE_ID);
-
-      expect(Object.keys(res[0]).sort()).toEqual(
-        ['alt_text', 'caption', 'created_at', 'id', 'is_cover', 'sort_order', 'status', 'url'].sort(),
       );
-    });
 
-    // Chốt chặn cấu trúc: hàm này không được phép GỌI bất kỳ phương thức nào của
-    // ModerationCasesRepository — nếu ai đó sau này "tiện tay" nối `listForPlaceOwner` với dữ liệu
-    // case (vd để hiện reason), test này báo động NGAY ở review thay vì phải tự phát hiện qua audit
-    // thủ công.
-    it('KHÔNG bao giờ gọi ModerationCasesRepository khi liệt kê ảnh cho chủ cơ sở', async () => {
-      mediaRepo.listAllByPlace.mockResolvedValue([
-        { id: 'm1', status: MediaStatus.REJECTED, caption: null, altText: null, createdAt: new Date() },
-      ] as never);
+      // HAI NGUỒN PHẢI KHỚP: status nói "bị từ chối" nhưng quyết định mới nhất là `hide` -> dữ
+      // liệu không nhất quán, im lặng thay vì đoán.
+      it('quyết định gỡ mới nhất là hide (không phải reject) -> null dù status rejected', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+        moderationCases.findOwnerSafeReasonCodesForMedia.mockResolvedValue(
+          new Map([['m1', { decision: ModerationDecision.HIDE, reasonCode: MediaModerationReasonCode.OTHER }]]),
+        );
 
-      await service.listForPlaceOwner(PLACE_ID);
+        const res = await service.listForPlaceOwner(PLACE_ID);
 
-      expect(moderationCases.createOpenCase).not.toHaveBeenCalled();
+        expect(res[0].rejection_reason_code).toBeNull();
+      });
+
+      // CHỐNG N+1: MỘT lời gọi cho CẢ gallery, và chỉ kèm id của ảnh ĐANG bị từ chối — ảnh
+      // published/pending không bao giờ được hỏi lý do.
+      it('gọi ĐÚNG MỘT LẦN cho cả gallery, chỉ với id của ảnh rejected', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([
+          { ...rejectedRow('m1'), status: MediaStatus.PUBLISHED },
+          rejectedRow('m2'),
+          { ...rejectedRow('m3'), status: MediaStatus.PENDING },
+          rejectedRow('m4'),
+        ] as never);
+
+        await service.listForPlaceOwner(PLACE_ID);
+
+        expect(moderationCases.findOwnerSafeReasonCodesForMedia).toHaveBeenCalledTimes(1);
+        expect(moderationCases.findOwnerSafeReasonCodesForMedia).toHaveBeenCalledWith(['m2', 'm4']);
+      });
+
+      it('gallery không có ảnh rejected -> vẫn chỉ MỘT lời gọi, với danh sách rỗng (không truy vấn thật)', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([
+          { ...rejectedRow('m1'), status: MediaStatus.PUBLISHED },
+        ] as never);
+
+        await service.listForPlaceOwner(PLACE_ID);
+
+        expect(moderationCases.findOwnerSafeReasonCodesForMedia).toHaveBeenCalledWith([]);
+      });
+
+      // Chốt chặn cấu trúc: đường này chỉ được phép chạm ĐÚNG MỘT phương thức của
+      // ModerationCasesRepository — phương thức trả về duy nhất `decision`/`reason_code`. Nếu ai
+      // đó sau này nối nó với `findById`/`findTargetPreview` (những thứ mang theo `reason`,
+      // `resolved_by`, `report`), test này báo động ngay ở review.
+      it('KHÔNG gọi phương thức nào khác của ModerationCasesRepository (không đọc case đầy đủ)', async () => {
+        mediaRepo.listAllByPlace.mockResolvedValue([rejectedRow()] as never);
+
+        await service.listForPlaceOwner(PLACE_ID);
+
+        expect(moderationCases.createOpenCase).not.toHaveBeenCalled();
+        expect(moderationCases.findById).not.toHaveBeenCalled();
+        expect(moderationCases.findTargetPreview).not.toHaveBeenCalled();
+        expect(moderationCases.findOpenCaseForTarget).not.toHaveBeenCalled();
+      });
     });
   });
 

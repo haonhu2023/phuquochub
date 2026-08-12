@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 import { ModerationCase } from '../entities/moderation-case.entity';
 import {
+  MediaModerationReasonCode,
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
@@ -29,6 +30,8 @@ export interface ResolveModerationCase {
   status: ModerationCaseStatus.RESOLVED | ModerationCaseStatus.DISMISSED;
   decision: ModerationDecision;
   reason: string | null;
+  /** Mã lý do owner-safe — chỉ khác `null` khi `reject` trên media (service cưỡng chế). */
+  reasonCode: MediaModerationReasonCode | null;
   resolvedBy: string;
   resolvedAt: Date;
 }
@@ -67,6 +70,7 @@ interface ModerationCaseRow {
   claimed_at: Date | null;
   decision: string | null;
   reason: string | null;
+  reason_code: MediaModerationReasonCode | null;
   resolved_by: string | null;
   resolved_at: Date | null;
   ai_score: string | null;
@@ -197,10 +201,59 @@ export class ModerationCasesRepository {
         status: data.status,
         decision: data.decision,
         reason: data.reason,
+        reasonCode: data.reasonCode,
         resolvedBy: data.resolvedBy,
         resolvedAt: data.resolvedAt,
       },
     );
+  }
+
+  /**
+   * Lý do OWNER-SAFE của quyết định gỡ nội dung HIỆN HÀNH, cho một TẬP media (Controlled Media
+   * Rejection Reason, 2026-08-12). Trả về DUY NHẤT `decision` + `reason_code` — không `reason`,
+   * không `resolved_by`, không `id` của case: những cột đó không hề rời khỏi câu SQL này, nên
+   * không có đường nào để chúng vô tình lọt vào response chủ cơ sở.
+   *
+   * CHỐNG N+1: MỘT câu truy vấn cho CẢ gallery (`target_id = ANY($1)`), không phải một câu mỗi
+   * ảnh; caller chỉ truyền id của những ảnh ĐANG bị từ chối nên gallery không có ảnh nào bị từ
+   * chối thì không tốn truy vấn nào. Đi qua `idx_moderation_cases_target` (target_type, target_id).
+   *
+   * CHỌN XÁC ĐỊNH khi một media có NHIỀU case lịch sử (từ chối → khôi phục → ẩn…): `DISTINCT ON`
+   * lấy đúng MỘT dòng mỗi media — quyết định GỠ nội dung MỚI NHẤT (`resolved_at DESC`, tie-break
+   * `id DESC` để không bao giờ phụ thuộc planner). HAI lựa chọn cố ý ở đây, cả hai đều chống rò rỉ
+   * lý do cũ:
+   *
+   *  • xét CẢ `reject` LẪN `hide` rồi để caller loại, thay vì lọc sẵn `decision = 'reject'`: một
+   *    ảnh bị từ chối → khôi phục → ẩn phải trả về `hide` (quyết định thật sự mới nhất) để caller
+   *    thấy nó KHÔNG khớp `rejected` và im lặng. Lọc sẵn `reject` sẽ lôi lần từ chối CŨ lên.
+   *  • KHÔNG lọc `reason_code IS NOT NULL`: lọc như vậy sẽ chọn một quyết định CŨ có mã khi quyết
+   *    định MỚI NHẤT chưa có mã. Dòng mới nhất không có mã thì caller nhận `null` và hiển thị
+   *    thông điệp chung — đúng hành vi cho case lịch sử.
+   *
+   * KHÔNG tự kiểm tra media đang ở trạng thái nào — caller (MediaService) đối chiếu `decision` với
+   * `media.status` hiện hành trước khi lộ bất cứ thứ gì (hai nguồn phải khớp nhau).
+   */
+  async findOwnerSafeReasonCodesForMedia(
+    mediaIds: string[],
+  ): Promise<Map<string, { decision: ModerationDecision; reasonCode: MediaModerationReasonCode | null }>> {
+    if (mediaIds.length === 0) return new Map();
+
+    const rows: Array<{
+      target_id: string;
+      decision: ModerationDecision;
+      reason_code: MediaModerationReasonCode | null;
+    }> = await this.repo.query(
+      `SELECT DISTINCT ON (c.target_id) c.target_id, c.decision, c.reason_code
+         FROM moderation_cases c
+        WHERE c.target_type = 'media'
+          AND c.target_id = ANY($1)
+          AND c.status = 'resolved'
+          AND c.decision IN ('reject','hide')
+        ORDER BY c.target_id, c.resolved_at DESC NULLS LAST, c.id DESC`,
+      [mediaIds],
+    );
+
+    return new Map(rows.map((r) => [r.target_id, { decision: r.decision, reasonCode: r.reason_code }]));
   }
 
   /**
@@ -219,8 +272,8 @@ export class ModerationCasesRepository {
        VALUES ($1, $2, 'open', $3, $4, $5)
        ON CONFLICT (target_type, target_id) WHERE status IN ('open','claimed') DO NOTHING
        RETURNING id, target_type, target_id, status, source, severity, priority, report_count,
-                 assigned_to, claimed_at, decision, reason, resolved_by, resolved_at, ai_score,
-                 ai_labels, created_at, updated_at`,
+                 assigned_to, claimed_at, decision, reason, reason_code, resolved_by, resolved_at,
+                 ai_score, ai_labels, created_at, updated_at`,
       [data.targetType, data.targetId, data.source, data.severity, data.priority],
     );
     return rows.length > 0 ? this.mapRow(rows[0]) : null;
@@ -359,6 +412,7 @@ export class ModerationCasesRepository {
     c.claimedAt = row.claimed_at;
     c.decision = row.decision as ModerationCase['decision'];
     c.reason = row.reason;
+    c.reasonCode = row.reason_code;
     c.resolvedBy = row.resolved_by;
     c.resolvedAt = row.resolved_at;
     c.aiScore = row.ai_score;

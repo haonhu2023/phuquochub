@@ -62,6 +62,7 @@ function photo(overrides: Partial<PlacePhoto> = {}): PlacePhoto {
     url: `/api/places/${PLACE_ID}/media/${id}/file`,
     sort_order: null,
     is_cover: false,
+    rejection_reason_code: null,
     ...overrides,
   };
 }
@@ -776,6 +777,89 @@ describe('PhotosView — phản hồi kiểm duyệt (ảnh bị từ chối)', 
     await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
     const text = container.textContent ?? '';
     expect(text).not.toMatch(/INAPPROPRIATE_CONTENT|LOW_QUALITY|reason_code|rejection_reason/i);
+  });
+
+  // Controlled Media Rejection Reason (2026-08-12) — mã lý do CÓ KIỂM SOÁT nay có thể lộ ra, dịch
+  // sẵn sang tiếng Việt bằng mediaModerationReasonCodeLabel (modules/media). Nhóm test này mở rộng
+  // nhóm phía trên (vẫn giữ nguyên các test "không có mã -> thông điệp chung không đổi").
+  describe('PhotosView — mã lý do từ chối (Controlled Media Rejection Reason)', () => {
+    it('ảnh rejected có rejection_reason_code -> hiện nhãn tiếng Việt đã dịch, không phải token thô', async () => {
+      mockList.mockResolvedValueOnce([photo({ status: 'rejected', rejection_reason_code: 'low_quality' })]);
+      render(<PhotosView placeId={PLACE_ID} />);
+
+      await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+      expect(
+        screen.getByText(
+          'Kiểm duyệt viên đã từ chối ảnh này. Lý do: Chất lượng ảnh không đạt. Ảnh không hiển thị công khai và không làm ảnh bìa được.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/low_quality/i)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['inappropriate_content', 'Nội dung không phù hợp'],
+      ['low_quality', 'Chất lượng ảnh không đạt'],
+      ['unrelated_to_place', 'Ảnh không liên quan đến địa điểm'],
+      ['copyright', 'Vấn đề bản quyền'],
+      ['other', 'Lý do khác'],
+    ])('mã %s -> nhãn "%s" (đủ 5 giá trị taxonomy)', async (code, label) => {
+      mockList.mockResolvedValueOnce([photo({ status: 'rejected', rejection_reason_code: code })]);
+      render(<PhotosView placeId={PLACE_ID} />);
+
+      await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+      expect(screen.getByText(new RegExp(`Lý do: ${label}\\.`))).toBeInTheDocument();
+    });
+
+    // Mã lạ (server thêm giá trị mới mà FE chưa kịp cập nhật) -> lùi về thông điệp chung, KHÔNG
+    // hiện token thô — cùng hành vi với "không có mã nào" (case lịch sử).
+    it('rejection_reason_code lạ (chưa có trong bảng nhãn FE) -> lùi về thông điệp chung, không lộ token', async () => {
+      mockList.mockResolvedValueOnce([
+        photo({ status: 'rejected', rejection_reason_code: 'a_future_backend_only_code' }),
+      ]);
+      const { container } = render(<PhotosView placeId={PLACE_ID} />);
+
+      await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+      expect(
+        screen.getByText('Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và không làm ảnh bìa được.'),
+      ).toBeInTheDocument();
+      expect(container.textContent ?? '').not.toMatch(/a_future_backend_only_code/i);
+    });
+
+    it('ảnh pending KHÔNG hiện lý do dù có rejection_reason_code lạ trong dữ liệu (chỉ status mới quyết định hiển thị)', async () => {
+      mockList.mockResolvedValueOnce([
+        photo({ status: 'pending', rejection_reason_code: 'low_quality' as never }),
+      ]);
+      render(<PhotosView placeId={PLACE_ID} />);
+
+      await waitFor(() => expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument());
+      expect(screen.queryByText(/Lý do:/)).not.toBeInTheDocument();
+    });
+
+    it('ảnh published KHÔNG hiện lý do dù có rejection_reason_code cũ còn sót trong dữ liệu', async () => {
+      mockList.mockResolvedValueOnce([
+        photo({ status: 'published', rejection_reason_code: 'copyright' as never }),
+      ]);
+      render(<PhotosView placeId={PLACE_ID} />);
+
+      await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
+      expect(screen.queryByText(/Lý do:/)).not.toBeInTheDocument();
+    });
+
+    it('server trả rejected -> published (khôi phục) -> lý do biến mất theo ĐÚNG dữ liệu server, không giữ lại', async () => {
+      mockList.mockResolvedValueOnce([
+        photo({ id: 'm1', status: 'rejected', rejection_reason_code: 'other', caption: 'old' }),
+      ]);
+      mockUpdateMetadata.mockResolvedValueOnce([
+        photo({ id: 'm1', status: 'published', rejection_reason_code: null, caption: 'new' }),
+      ]);
+      render(<PhotosView placeId={PLACE_ID} />);
+      await waitFor(() => expect(screen.getByText(/Lý do: Lý do khác\./)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+      await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
+      expect(screen.queryByText(/Lý do:/)).not.toBeInTheDocument();
+    });
   });
 
   it('ảnh pending -> KHÔNG hiện thông điệp/nhãn của ảnh rejected', async () => {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { runImageUpload, UploadValidationError } from '@/modules/media/uploadPipeline';
+import { mediaModerationReasonCodeLabel } from '@/modules/media/moderationReasonCodes';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 import {
@@ -398,12 +399,21 @@ export function PhotosView({ placeId }: Props) {
                       Chưa hiển thị công khai. Ảnh phải được duyệt trước khi làm ảnh bìa.
                     </span>
                   )}
-                  {photo.status === 'rejected' && (
-                    <span className={styles.tileHint}>
-                      Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và không làm
-                      ảnh bìa được.
-                    </span>
-                  )}
+                  {photo.status === 'rejected' &&
+                    (() => {
+                      // `null` xảy ra cả khi backend không gửi mã (case lịch sử) LẪN khi backend gửi
+                      // một mã mà FE chưa kịp cập nhật nhãn — cả hai đều phải lùi về CÙNG thông điệp
+                      // chung, không bao giờ hiện token thô (`mediaModerationReasonCodeLabel` không
+                      // fallback về chính key, khác `labelOf` của modules/moderation).
+                      const label = mediaModerationReasonCodeLabel(photo.rejection_reason_code);
+                      return (
+                        <span className={styles.tileHint}>
+                          {label
+                            ? `Kiểm duyệt viên đã từ chối ảnh này. Lý do: ${label}. Ảnh không hiển thị công khai và không làm ảnh bìa được.`
+                            : 'Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và không làm ảnh bìa được.'}
+                        </span>
+                      );
+                    })()}
                   {photo.status === 'hidden' && (
                     <span className={styles.tileHint}>
                       Ảnh đang bị ẩn nên không hiển thị công khai và không làm ảnh bìa được.

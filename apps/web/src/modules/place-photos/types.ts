@@ -13,6 +13,14 @@ export interface PlacePhoto {
   sort_order: number | null;
   /** Ảnh này có đang là ảnh bìa của cơ sở không (`places.cover_image_id`). */
   is_cover: boolean;
+  /**
+   * Mã lý do CÓ KIỂM SOÁT vì sao ảnh bị từ chối (Controlled Media Rejection Reason, 2026-08-12) —
+   * `apps/web/src/modules/media/moderationReasonCodes.ts` là nơi DUY NHẤT dịch mã này sang tiếng
+   * Việt (không dịch/lặp lại nhãn ở đây). `null` khi `status !== 'rejected'`, hoặc khi quyết định
+   * từ chối hiện hành là case LỊCH SỬ chưa có mã — cả hai trường hợp PhotosView lùi về thông điệp
+   * chung sẵn có, KHÔNG BAO GIỜ hiện mã enum thô (`low_quality`) trực tiếp cho chủ cơ sở.
+   */
+  rejection_reason_code: string | null;
 }
 
 /**

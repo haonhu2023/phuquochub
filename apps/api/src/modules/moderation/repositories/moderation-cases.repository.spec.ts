@@ -2,6 +2,7 @@ import { EntityManager, In, Repository } from 'typeorm';
 import { ModerationCasesRepository } from './moderation-cases.repository';
 import { ModerationCase } from '../entities/moderation-case.entity';
 import {
+  MediaModerationReasonCode,
   ModerationCaseSeverity,
   ModerationCaseSource,
   ModerationCaseStatus,
@@ -483,7 +484,7 @@ describe('ModerationCasesRepository', () => {
   });
 
   describe('resolve (T2, M3)', () => {
-    it('ghi status/decision/reason/resolved_by/resolved_at qua manager, KHÔNG tự kiểm tra tính hợp lệ', async () => {
+    it('ghi status/decision/reason/reason_code/resolved_by/resolved_at qua manager, KHÔNG tự kiểm tra tính hợp lệ', async () => {
       const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });
       const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
       const resolvedAt = new Date('2026-08-02T00:00:00Z');
@@ -492,6 +493,7 @@ describe('ModerationCasesRepository', () => {
         status: ModerationCaseStatus.RESOLVED,
         decision: ModerationDecision.APPROVE,
         reason: null,
+        reasonCode: null,
         resolvedBy: 'mod-1',
         resolvedAt,
       });
@@ -502,9 +504,34 @@ describe('ModerationCasesRepository', () => {
           status: ModerationCaseStatus.RESOLVED,
           decision: ModerationDecision.APPROVE,
           reason: null,
+          reasonCode: null,
           resolvedBy: 'mod-1',
           resolvedAt,
         },
+      );
+    });
+
+    // Controlled Media Rejection Reason (2026-08-12) — repository ghi ĐÚNG hai trường lý do vào
+    // hai cột KHÁC NHAU, không trộn: `reason` (nội bộ) và `reason_code` (owner-safe).
+    it('ghi reason_code vào cột riêng, độc lập hoàn toàn với reason free text', async () => {
+      const inner = createMock<Repository<ModerationCase>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+
+      await sut.resolve(manager, 'c1', {
+        status: ModerationCaseStatus.RESOLVED,
+        decision: ModerationDecision.REJECT,
+        reason: 'ghi chú nội bộ: trùng case #4821',
+        reasonCode: MediaModerationReasonCode.LOW_QUALITY,
+        resolvedBy: 'mod-1',
+        resolvedAt: new Date(),
+      });
+
+      expect(inner.update).toHaveBeenCalledWith(
+        { id: 'c1' },
+        expect.objectContaining({
+          reason: 'ghi chú nội bộ: trùng case #4821',
+          reasonCode: MediaModerationReasonCode.LOW_QUALITY,
+        }),
       );
     });
 
@@ -516,6 +543,7 @@ describe('ModerationCasesRepository', () => {
         status: ModerationCaseStatus.DISMISSED,
         decision: ModerationDecision.DISMISS,
         reason: 'report vô căn cứ',
+        reasonCode: null,
         resolvedBy: 'mod-1',
         resolvedAt: new Date(),
       });
@@ -524,6 +552,101 @@ describe('ModerationCasesRepository', () => {
         { id: 'c1' },
         expect.objectContaining({ status: ModerationCaseStatus.DISMISSED, decision: ModerationDecision.DISMISS }),
       );
+    });
+  });
+
+  // Controlled Media Rejection Reason (2026-08-12) — đường ĐỌC duy nhất mà chủ cơ sở chạm tới.
+  // Mọi bảo đảm an toàn của tính năng này bắt đầu từ hình dạng CÂU SQL ở đây.
+  describe('findOwnerSafeReasonCodesForMedia (Controlled Media Rejection Reason)', () => {
+    function queryingRepo(rows: unknown[] = []) {
+      return createMock<Repository<ModerationCase>>({ query: jest.fn().mockResolvedValue(rows) });
+    }
+
+    it('tập rỗng -> KHÔNG truy vấn gì (gallery không có ảnh bị từ chối không tốn thêm query nào)', async () => {
+      repo = queryingRepo();
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await expect(sut.findOwnerSafeReasonCodesForMedia([])).resolves.toEqual(new Map());
+      expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('MỘT truy vấn cho CẢ tập id (chống N+1) — không phải một truy vấn mỗi ảnh', async () => {
+      repo = queryingRepo([]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await sut.findOwnerSafeReasonCodesForMedia(['m1', 'm2', 'm3']);
+
+      expect(repo.query).toHaveBeenCalledTimes(1);
+      const [, params] = repo.query.mock.calls[0];
+      expect(params).toEqual([['m1', 'm2', 'm3']]);
+      expect(sql(repo.query.mock.calls[0][0])).toContain('c.target_id = ANY($1)');
+    });
+
+    it('CHỈ SELECT target_id/decision/reason_code — không reason, không resolved_by, không id case', async () => {
+      repo = queryingRepo([]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await sut.findOwnerSafeReasonCodesForMedia(['m1']);
+      const query = sql(repo.query.mock.calls[0][0]);
+      const select = query.slice(0, query.indexOf('FROM'));
+
+      expect(select).toContain('c.target_id');
+      expect(select).toContain('c.decision');
+      expect(select).toContain('c.reason_code');
+      // Cột nội bộ KHÔNG được nhắc tới ở mệnh đề SELECT — không có đường nào để chúng lọt ra.
+      expect(select).not.toMatch(/c\.reason\b(?!_code)/);
+      expect(select).not.toContain('resolved_by');
+      expect(select).not.toContain('assigned_to');
+      expect(select).not.toContain('c.id');
+    });
+
+    it('chỉ case media ĐÃ resolved bằng một quyết định GỠ nội dung (reject|hide)', async () => {
+      repo = queryingRepo([]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await sut.findOwnerSafeReasonCodesForMedia(['m1']);
+      const query = sql(repo.query.mock.calls[0][0]);
+
+      expect(query).toContain("c.target_type = 'media'");
+      expect(query).toContain("c.status = 'resolved'");
+      expect(query).toContain("c.decision IN ('reject','hide')");
+    });
+
+    it('CHỌN XÁC ĐỊNH: DISTINCT ON + resolved_at DESC, tie-break id DESC (không phụ thuộc planner)', async () => {
+      repo = queryingRepo([]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await sut.findOwnerSafeReasonCodesForMedia(['m1']);
+      const query = sql(repo.query.mock.calls[0][0]);
+
+      expect(query).toContain('DISTINCT ON (c.target_id)');
+      expect(query).toContain('ORDER BY c.target_id, c.resolved_at DESC NULLS LAST, c.id DESC');
+    });
+
+    it('KHÔNG lọc reason_code IS NOT NULL — quyết định mới nhất chưa có mã phải trả về null, không tụt về mã CŨ', async () => {
+      repo = queryingRepo([]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      await sut.findOwnerSafeReasonCodesForMedia(['m1']);
+      expect(sql(repo.query.mock.calls[0][0])).not.toContain('reason_code IS NOT NULL');
+    });
+
+    it('trả Map theo media id, giữ nguyên decision + reason_code (kể cả null của case lịch sử)', async () => {
+      repo = queryingRepo([
+        { target_id: 'm1', decision: 'reject', reason_code: 'low_quality' },
+        { target_id: 'm2', decision: 'reject', reason_code: null },
+        { target_id: 'm3', decision: 'hide', reason_code: null },
+      ]);
+      sut = new ModerationCasesRepository(repo, {} as never);
+
+      const result = await sut.findOwnerSafeReasonCodesForMedia(['m1', 'm2', 'm3']);
+
+      expect(result.get('m1')).toEqual({
+        decision: ModerationDecision.REJECT,
+        reasonCode: MediaModerationReasonCode.LOW_QUALITY,
+      });
+      expect(result.get('m2')).toEqual({ decision: ModerationDecision.REJECT, reasonCode: null });
+      expect(result.get('m3')).toEqual({ decision: ModerationDecision.HIDE, reasonCode: null });
     });
   });
 });
