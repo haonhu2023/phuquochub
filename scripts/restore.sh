@@ -82,25 +82,59 @@ else
   echo "[restore]   sha256: no .sha256 sidecar (pre-2026-08-12 backup) -- gzip check only"
 fi
 
-if ! gzip -dc "$BACKUP_FILE" | grep -q 'PostgreSQL database dump complete'; then
+# --- 2. ANALYSIS PASS: completeness + legacy classification --------------------------------------
+# ONE full-consumption pass answers both questions, BEFORE anything destructive happens.
+#
+# The previous implementation asked them with two `gzip -dc … | grep -q …` pipelines. `grep -q`
+# exits at the first match; gzip then dies of SIGPIPE (141) and, under `set -o pipefail`, the
+# pipeline reads as FAILURE. For the legacy probe that inverted the answer on every real dump
+# (pg_dump emits this function ~line 689 of ~16,700), silently skipping the repair. Measured:
+# DETECTED=no, pipeline_status=141.
+#
+# `repair-legacy-unaccent.awk` never exits early -- it always reads stdin to EOF and decides in
+# END -- so gzip always completes and the pipeline status is awk's alone. No early-reader remains
+# in this script.
+ANALYSIS_COUNTS=$(mktemp)
+cleanup_analysis() { rm -f "$ANALYSIS_COUNTS"; }
+trap cleanup_analysis EXIT INT TERM
+
+echo "[restore] Analysing dump (completeness + immutable_unaccent form) ..."
+if ! gzip -dc "$BACKUP_FILE" | awk -v countfile="$ANALYSIS_COUNTS" -f "$SCRIPT_DIR/lib/repair-legacy-unaccent.awk" >/dev/null; then
+  echo "[restore] ERROR: dump analysis failed. Either the archive could not be decompressed, or it" >&2
+  echo "[restore]        contains more than one definition of public.immutable_unaccent(text) and" >&2
+  echo "[restore]        this script will not guess which one to repair. Refusing to restore." >&2
+  [ -s "$ANALYSIS_COUNTS" ] && echo "[restore]        analysis: $(cat "$ANALYSIS_COUNTS")" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC2046  # deliberate word-splitting of key=value pairs
+eval $(cat "$ANALYSIS_COUNTS")   # sets: legacy, postfix, repaired, complete
+
+if [ "${complete:-0}" != "1" ]; then
   echo "[restore] ERROR: archive lacks pg_dump's completion marker -- it is truncated. Refusing." >&2
   exit 1
 fi
 echo "[restore]   completeness marker: OK"
 
-# --- 2. LEGACY compatibility --------------------------------------------------------------------
-# Dumps taken before migration 1720004400000 contain the unqualified body
+# --- LEGACY compatibility -------------------------------------------------------------------------
+# Dumps taken before migration 1720004400000 carry the unqualified body
 #   SELECT unaccent('unaccent', $1)
-# which cannot resolve under the empty search_path pg_dump restores with, and fails when
-# CREATE INDEX idx_events_fts first evaluates it. This is exactly the production rehearsal failure.
-# Rather than refuse those backups, rewrite that one deterministic line in-stream. The pattern is
-# emitted verbatim by pg_dump, the substitution is semantically identical (proven: 251 real values,
-# 0 differences), and it is applied ONLY when the legacy pattern is actually present.
+# which cannot resolve under the empty search_path pg_dump restores with, so building
+# idx_events_fts fails -- exactly the production rehearsal failure.
+#
+# Classification comes from the analysis pass, which only counts definitions found INSIDE a
+# `CREATE FUNCTION public.immutable_unaccent(text) RETURNS text` statement that is itself outside
+# any COPY block. A user-data row containing the same literal is therefore invisible here and can
+# never mark a dump as legacy.
 NEEDS_LEGACY_FIX=0
-if gzip -dc "$BACKUP_FILE" | grep -q "SELECT unaccent('unaccent', \$1)"; then
+if [ "${legacy:-0}" = "1" ]; then
   NEEDS_LEGACY_FIX=1
   echo "[restore]   legacy: this backup predates migration 1720004400000; immutable_unaccent will"
   echo "[restore]           be schema-qualified in-stream so the FTS indexes can be built."
+elif [ "${postfix:-0}" = "1" ]; then
+  echo "[restore]   immutable_unaccent: already schema-qualified -- no repair needed"
+else
+  echo "[restore]   immutable_unaccent: not present in this dump -- no repair applicable"
 fi
 
 # --- 3. Confirm the destructive action -----------------------------------------------------------
@@ -141,9 +175,28 @@ done
 # --- 5. Load ---------------------------------------------------------------------------------------
 echo "[restore] Loading $BACKUP_FILE (single transaction, abort on first error)..."
 if [ "$NEEDS_LEGACY_FIX" -eq 1 ]; then
+  # Repair pass uses the SAME program as the analysis pass, with repair=1. Identical matching logic
+  # by construction, so the classification cannot drift between the two passes. The replacement is
+  # scoped to the one canonical function statement, uses literal index()/substr() (no regex, no
+  # sed `&` expansion), and COPY data is passed through without ever being examined.
+  REPAIR_COUNTS=$(mktemp)
   gzip -dc "$BACKUP_FILE" \
-    | sed "s|SELECT unaccent('unaccent', \$1)|SELECT public.unaccent('public.unaccent'::regdictionary, \$1)|g" \
+    | awk -v countfile="$REPAIR_COUNTS" -v repair=1 -f "$SCRIPT_DIR/lib/repair-legacy-unaccent.awk" \
     | $COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 --single-transaction -U "$PG_USER" -d "$TARGET_DB"
+
+  # Belt and braces: assert the repair did exactly what the analysis promised. The analysis pass
+  # already guaranteed this on the same bytes with the same program, so a mismatch here would mean
+  # something changed the file mid-restore. The load has already committed at this point, so this
+  # cannot roll back -- it refuses to REPORT SUCCESS, and says so plainly.
+  REPAIRED_COUNT=$(sed -n 's/.*repaired=\([0-9]*\).*/\1/p' "$REPAIR_COUNTS")
+  rm -f "$REPAIR_COUNTS"
+  if [ "${REPAIRED_COUNT:-0}" != "1" ]; then
+    echo "[restore] ERROR: legacy repair applied ${REPAIRED_COUNT:-0} replacement(s), expected exactly 1." >&2
+    echo "[restore]        The database has been loaded but MUST NOT be trusted. Investigate before" >&2
+    echo "[restore]        using it, and do not treat this restore as successful." >&2
+    exit 1
+  fi
+  echo "[restore]   legacy repair: 1 function body rewritten (COPY data untouched)"
 else
   gzip -dc "$BACKUP_FILE" \
     | $COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 --single-transaction -U "$PG_USER" -d "$TARGET_DB"

@@ -165,10 +165,26 @@ else
 fi
 del_env
 
+# Legacy classification now requires the CANONICAL function statement, not merely the body text
+# appearing somewhere in the stream. Full coverage of the scoping rules lives in
+# scripts/tests/legacy-repair.test.sh; these two cases keep restore.sh's own wiring honest.
 new_env; make_docker healthy ok
-( printf -- '-- dump\n'; printf "AS \$_\$ SELECT unaccent('unaccent', \$1) \$_\$;\n"; printf -- '-- PostgreSQL database dump complete\n' ) | gzip > "$ENVDIR/proj/backups/legacy.sql.gz"
+( printf -- '-- dump\n'
+  printf 'CREATE FUNCTION public.immutable_unaccent(text) RETURNS text\n'
+  printf '    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE\n'
+  printf "    AS \$_\$ SELECT unaccent('unaccent', \$1) \$_\$;\n"
+  printf -- '-- PostgreSQL database dump complete\n' ) | gzip > "$ENVDIR/proj/backups/legacy.sql.gz"
 OUT=$(run_restore "$ENVDIR/proj/backups/legacy.sql.gz")
-assert_contains "$OUT" "predates migration 1720004400000" "legacy dump is detected and announced"
+assert_contains "$OUT" "predates migration 1720004400000" "canonical legacy dump is detected and announced"
+del_env
+
+# The same body text WITHOUT the canonical function header must NOT be classified as legacy --
+# this is the blocker-2 property: a bare fragment (or user data) can never trigger a rewrite.
+new_env; make_docker healthy ok
+( printf -- '-- dump\n'; printf "AS \$_\$ SELECT unaccent('unaccent', \$1) \$_\$;\n"; printf -- '-- PostgreSQL database dump complete\n' ) | gzip > "$ENVDIR/proj/backups/fragment.sql.gz"
+OUT=$(run_restore "$ENVDIR/proj/backups/fragment.sql.gz")
+assert_not_contains "$OUT" "predates migration 1720004400000" "bare body fragment is NOT classified as legacy"
+assert_not_contains "$OUT" "function body rewritten" "no repair performed on a bare fragment"
 del_env
 
 new_env; make_docker healthy ok
