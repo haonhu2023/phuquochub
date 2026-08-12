@@ -92,6 +92,15 @@
   font-weight: 600;
 }
 
+/* Form sửa caption/alt_text — chiếm trọn chiều rộng ô, tách khỏi nút Lên/Xuống/Đặt bìa/Gỡ bằng
+   khoảng cách dọc để không bị hiểu nhầm là một hàng điều khiển. */
+.metadataForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 /* wrap: trên màn hình hẹp hai nút xuống dòng thay vì tràn ngang khỏi ô. */
 .tileActions {
   display: flex;

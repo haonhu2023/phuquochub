@@ -543,3 +543,90 @@ describe('MediaRepository — ảnh bìa', () => {
     });
   });
 });
+
+// Owner Photo Metadata (2026-08-12).
+describe('MediaRepository.updatePlaceMediaMetadata', () => {
+  let repo: LooseMock<Repository<Media>>;
+  let sut: MediaRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Media>>({ query: jest.fn() });
+    sut = new MediaRepository(repo);
+  });
+
+  it('cả hai trường có mặt -> UPDATE cả hai cột, WHERE ràng buộc id + place_id + deleted_at IS NULL', async () => {
+    repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
+
+    const result = await sut.updatePlaceMediaMetadata('p1', 'm1', { caption: 'new', altText: 'alt' });
+
+    expect(result).toBe(true);
+    const [query, params] = repo.query.mock.calls[0];
+    const q = sql(query);
+    expect(q).toContain('UPDATE media SET caption = $3, alt_text = $4');
+    expect(q).toContain('WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL');
+    expect(params).toEqual(['m1', 'p1', 'new', 'alt']);
+  });
+
+  it('chỉ caption có mặt -> SET chỉ có caption, KHÔNG đụng alt_text', async () => {
+    repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
+    await sut.updatePlaceMediaMetadata('p1', 'm1', { caption: 'only caption' });
+
+    const [query, params] = repo.query.mock.calls[0];
+    const q = sql(query);
+    expect(q).toContain('SET caption = $3');
+    expect(q).not.toContain('alt_text');
+    expect(params).toEqual(['m1', 'p1', 'only caption']);
+  });
+
+  it('chỉ alt_text có mặt -> SET chỉ có alt_text, KHÔNG đụng caption', async () => {
+    repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
+    await sut.updatePlaceMediaMetadata('p1', 'm1', { altText: 'only alt' });
+
+    const [query, params] = repo.query.mock.calls[0];
+    const q = sql(query);
+    expect(q).toContain('SET alt_text = $3');
+    expect(q).not.toContain('caption =');
+    expect(params).toEqual(['m1', 'p1', 'only alt']);
+  });
+
+  it('giá trị null (ý định xoá) được ghi thẳng, không bị lọc khỏi params', async () => {
+    repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
+    await sut.updatePlaceMediaMetadata('p1', 'm1', { caption: null });
+
+    const [, params] = repo.query.mock.calls[0];
+    expect(params).toEqual(['m1', 'p1', null]);
+  });
+
+  // Chốt chặn quan trọng nhất: id của cơ sở khác khớp 0 dòng vì place_id nằm TRONG WHERE.
+  it('media thuộc cơ sở KHÁC -> UPDATE khớp 0 dòng -> false (không có khe TOCTOU)', async () => {
+    repo.query.mockResolvedValue([[], 0]);
+    await expect(sut.updatePlaceMediaMetadata('p1', 'm-foreign', { caption: 'x' })).resolves.toBe(false);
+  });
+
+  it('media đã xoá mềm -> false', async () => {
+    repo.query.mockResolvedValue([[], 0]);
+    await expect(sut.updatePlaceMediaMetadata('p1', 'm-deleted', { caption: 'x' })).resolves.toBe(false);
+  });
+
+  it('patch rỗng (cả hai undefined) -> KHÔNG chạy UPDATE, fallback kiểm tra tồn tại', async () => {
+    repo.query.mockResolvedValue([{ '?column?': 1 }]); // existsForPlace: SELECT 1 ... (không RETURNING)
+    const result = await sut.updatePlaceMediaMetadata('p1', 'm1', {});
+
+    expect(result).toBe(true);
+    const q = sql(repo.query.mock.calls[0][0]);
+    expect(q).toContain('SELECT 1 FROM media WHERE id = $1 AND place_id = $2');
+    expect(q).not.toContain('UPDATE');
+  });
+
+  // Không có đường nào mass-assign: chỉ hai cột literal có thể xuất hiện trong SET.
+  it('mệnh đề SET không bao giờ chứa cột nào ngoài caption/alt_text (chỉ kiểm tra SET, WHERE hợp lệ có place_id)', async () => {
+    repo.query.mockResolvedValue([[{ id: 'm1' }], 1]);
+    await sut.updatePlaceMediaMetadata('p1', 'm1', { caption: 'x', altText: 'y' });
+
+    const q = sql(repo.query.mock.calls[0][0]);
+    const setClause = q.slice(q.indexOf('SET'), q.indexOf('WHERE'));
+    expect(setClause).not.toMatch(/status|sort_order|cover_image_id|object_key|bucket|checksum_sha256|review_id|place_id/);
+    expect(setClause).toContain('caption');
+    expect(setClause).toContain('alt_text');
+  });
+});

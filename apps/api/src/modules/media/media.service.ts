@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -23,7 +24,12 @@ import {
   ModerationTargetType,
 } from '../moderation/moderation.enums';
 import { CreateReportDto } from '../moderation/dto/moderation.dto';
-import { AllowedMediaMimeType, CreateMediaDto, PresignMediaDto } from './dto/media.dto';
+import {
+  AllowedMediaMimeType,
+  CreateMediaDto,
+  PresignMediaDto,
+  UpdatePlaceMediaMetadataDto,
+} from './dto/media.dto';
 import { MediaStatus } from './media.enums';
 import { toMedia } from './media.mapper';
 
@@ -32,6 +38,25 @@ const MIME_TO_EXTENSION: Record<AllowedMediaMimeType, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
 };
+
+/**
+ * Chuẩn hoá MỘT trường metadata (caption/alt_text) trước khi ghi — Owner Photo Metadata
+ * (2026-08-12), cùng ngữ nghĩa `dto.caption?.trim() || null` mà `register()` đã dùng, viết thành
+ * hàm riêng vì giờ phải phân biệt BA trạng thái thay vì hai:
+ *
+ *  • `undefined` (trường vắng mặt trong request) → `undefined` — KHÔNG đổi giá trị đang lưu.
+ *  • `null` — `@IsOptional()` cho phép `null` bỏ qua kiểm tra `@IsString()` của DTO (cùng hành vi
+ *    đã có ở `UpdateContactDto.label`, contacts.service.ts), nên phải xử lý tường minh ở đây thay
+ *    vì gọi `.trim()` trên `null` và ném lỗi 500. Coi `null` như ý định "xoá", cùng kết quả với
+ *    chuỗi rỗng.
+ *  • chuỗi bất kỳ (kể cả rỗng/toàn khoảng trắng) → trim; rỗng sau khi trim thành `null`.
+ */
+function normalizeMetadataField(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 const PRESIGN_SESSION_PREFIX = 'media-presign:';
 // Slightly longer than the signed PUT URL's own 600s expiry (design review §6) — a client that
@@ -388,6 +413,54 @@ export class MediaService {
       actorId,
       result: AuditResult.SUCCESS,
       after: { cover_image_id: mediaId },
+    });
+
+    return this.listForPlaceOwner(placeId);
+  }
+
+  /**
+   * Sửa `caption`/`alt_text` của MỘT ảnh cơ sở (Owner Photo Metadata, 2026-08-12).
+   *
+   * `placeId` đến từ ROUTE PARAM đã qua `Media.Upload.Managed` + `@AuthorizationContext(place)` —
+   * service nhận nó như một giá trị ĐÃ được phép (ADR-019 D1), cùng mọi thao tác khác trên place
+   * media. Điều kiện đủ tư cách ghi (đúng cơ sở, chưa xoá mềm) nằm TRONG câu UPDATE của repository
+   * — không có khe TOCTOU giữa kiểm tra và ghi.
+   *
+   * **KHÔNG chạm** `status`/`sort_order`/`cover_image_id`: sửa mô tả ảnh không phải một quyết định
+   * kiểm duyệt và không ảnh hưởng gì tới thứ tự hay ảnh bìa hiện tại. Ảnh `pending`/`rejected`/
+   * `hidden` sửa được y hệt `published` — chủ cơ sở vốn đã thấy MỌI trạng thái trên màn hình quản
+   * lý và không có lý do nghiệp vụ nào để khoá riêng trường mô tả theo trạng thái kiểm duyệt (FSM ở
+   * `media-moderation.transition.ts` chỉ định nghĩa transition cho `status`, không hề nhắc tới
+   * caption/alt_text). Không tạo case kiểm duyệt mới, không reset trạng thái.
+   *
+   * 400 khi CẢ HAI trường đều vắng mặt — một request không sửa gì là dấu hiệu lỗi client, không
+   * phải "no-op hợp lệ". 404 khi ảnh không thuộc cơ sở này (không tiết lộ ảnh của cơ sở khác có tồn
+   * tại hay không — cùng khuôn `removeFromPlace`/`setPlaceCover`).
+   */
+  async updatePlaceMediaMetadata(
+    placeId: string,
+    mediaId: string,
+    dto: UpdatePlaceMediaMetadataDto,
+    actorId: string,
+  ): Promise<OwnerPlacePhoto[]> {
+    const caption = normalizeMetadataField(dto.caption);
+    const altText = normalizeMetadataField(dto.alt_text);
+    if (caption === undefined && altText === undefined) {
+      throw new BadRequestException('Cần ít nhất một trong hai trường caption hoặc alt_text.');
+    }
+
+    const applied = await this.mediaRepo.updatePlaceMediaMetadata(placeId, mediaId, { caption, altText });
+    if (!applied) {
+      throw new NotFoundException('Không tìm thấy ảnh của cơ sở này');
+    }
+
+    await this.audit.record({
+      event: 'media.place_metadata_updated',
+      entityType: 'media',
+      entityId: mediaId,
+      actorId,
+      result: AuditResult.SUCCESS,
+      after: { place_id: placeId, caption_changed: caption !== undefined, alt_text_changed: altText !== undefined },
     });
 
     return this.listForPlaceOwner(placeId);

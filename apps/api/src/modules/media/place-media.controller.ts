@@ -23,6 +23,7 @@ import {
   PresignMediaDto,
   ReorderPlaceMediaDto,
   SetPlaceCoverDto,
+  UpdatePlaceMediaMetadataDto,
 } from './dto/media.dto';
 
 /**
@@ -127,6 +128,31 @@ export class PlaceMediaController {
     @CurrentUser() user: AuthPrincipal,
   ) {
     return this.mediaService.setPlaceCover(placeId, dto.media_id, user.sub);
+  }
+
+  /**
+   * Sửa caption/alt_text của MỘT ảnh (Owner Photo Metadata, 2026-08-12).
+   *
+   * ĐẶT SAU `PATCH 'order'`/`PATCH 'cover'` trong khai báo — Nest/Express khớp route THEO THỨ TỰ
+   * ĐĂNG KÝ cho cùng phương thức HTTP, nên nếu route `:mediaId` này đứng TRƯỚC hai route tĩnh kia,
+   * một request `PATCH /places/{id}/media/order` sẽ bị nuốt nhầm thành `mediaId="order"` (rồi
+   * `ParseUUIDPipe` mới chặn ở bước sau — sai tầng, sai mã lỗi). Thứ tự hiện tại (`order`, `cover`,
+   * rồi `:mediaId`) đảm bảo hai đoạn path cố định luôn được khớp trước.
+   *
+   * KHÔNG chạm status/sort_order/cover — chỉ hai trường DTO khai báo (caption/alt_text) được ghi,
+   * xem `MediaService.updatePlaceMediaMetadata`.
+   */
+  @Patch(':mediaId')
+  @RequirePermissions('Media.Upload.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'placeId' } })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  updateMetadata(
+    @Param('placeId', ParseUUIDPipe) placeId: string,
+    @Param('mediaId', ParseUUIDPipe) mediaId: string,
+    @Body() dto: UpdatePlaceMediaMetadataDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.mediaService.updatePlaceMediaMetadata(placeId, mediaId, dto, user.sub);
   }
 
   /**

@@ -340,6 +340,54 @@ export class MediaRepository {
   }
 
   /**
+   * Sửa `caption`/`alt_text` của MỘT ảnh CỦA ĐÚNG cơ sở (Owner Photo Metadata, 2026-08-12).
+   *
+   * `patch` dùng `undefined` để phân biệt "không đổi" — chỉ cột có mặt trong `patch` mới xuất hiện
+   * trong `SET`, nên một field bị bỏ qua ở client không bao giờ vô tình bị ghi đè thành `NULL`
+   * (khác các cột luôn ghi đủ như `sort_order`/`cover_image_id` ở hai hàm trên).
+   *
+   * `id = $1 AND place_id = $2 AND deleted_at IS NULL` nằm TRONG WHERE — CÙNG khuôn
+   * `softDeletePlaceMedia()`/`setPlaceCoverImage()`: một mediaId của cơ sở khác (hoặc đã xoá mềm)
+   * khớp 0 dòng, không có khe TOCTOU giữa kiểm tra và ghi. Trả `false` cho MỌI trường hợp không ghi
+   * được — service quyết định 404 dựa vào đó (không rò rỉ sự tồn tại của ảnh thuộc cơ sở khác, cùng
+   * `removeFromPlace`).
+   *
+   * Patch rỗng (cả hai trường đều `undefined`) — service chặn trước khi gọi tới đây
+   * (`MediaService.updatePlaceMediaMetadata`), nhưng repository vẫn xử lý an toàn: fallback về
+   * kiểm tra tồn tại thuần (không có câu UPDATE nào chạy nếu không có gì để ghi).
+   *
+   * KHÔNG đụng `status`/`sort_order`/`cover_image_id`/`object_key`/`bucket`/`checksum_sha256`/bất
+   * kỳ cột nào khác — câu SQL chỉ có thể SET đúng hai cột `caption`/`alt_text`, không có đường nào
+   * mass-assign một patch object tuỳ ý vào entity.
+   */
+  async updatePlaceMediaMetadata(
+    placeId: string,
+    mediaId: string,
+    patch: { caption?: string | null; altText?: string | null },
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const params: unknown[] = [mediaId, placeId];
+    if (patch.caption !== undefined) {
+      params.push(patch.caption);
+      sets.push(`caption = $${params.length}`);
+    }
+    if (patch.altText !== undefined) {
+      params.push(patch.altText);
+      sets.push(`alt_text = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      return this.existsForPlace(placeId, mediaId);
+    }
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
+      `UPDATE media SET ${sets.join(', ')}
+        WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL
+        RETURNING id`,
+      params,
+    );
+    return rows.length > 0;
+  }
+
+  /**
    * Tạo media row mới cho một upload đã xác thực. Luôn `status=pending`, `provider=upload`,
    * `url=null` (Design review §A — không bao giờ lưu URL tuyệt đối/signed; sinh động lúc đọc).
    * Nhận `manager` trực tiếp (không dùng `this.repo`) để caller kiểm soát transaction.

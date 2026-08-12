@@ -95,3 +95,32 @@ export class SetPlaceCoverDto {
   @IsUUID('4')
   media_id!: string;
 }
+
+// Cùng độ dài cột thật của `media` (media.entity.ts) — KHÔNG phát minh giới hạn riêng cho endpoint
+// này, và KHÔNG cần migration vì cột đã tồn tại từ Media Upload Foundation.
+export const MAX_CAPTION_LENGTH = 300;
+export const MAX_ALT_TEXT_LENGTH = 200;
+
+/**
+ * Sửa mô tả/alt text của MỘT ảnh cơ sở (`PATCH /places/{placeId}/media/{mediaId}`).
+ *
+ * KHÔNG có `place_id` ở đây — cùng lý do mọi DTO khác của route này: cơ sở đích LUÔN là route
+ * param đã qua `PermissionsGuard`. Cũng KHÔNG có `status`/`sort_order`/`cover`/`object_key`/
+ * `bucket`/`checksum`/`review_id`/bất kỳ trường lưu trữ hay kiểm duyệt nào — `whitelist` +
+ * `forbidNonWhitelisted` (main.ts) trả 400 nếu client cố gửi, và ngay cả khi lọt qua, service chỉ
+ * ĐỌC đúng hai trường `caption`/`alt_text` của DTO này (không spread, không mass-assign).
+ *
+ * Cả hai trường ĐỘC LẬP tuỳ chọn (PATCH bán phần — cùng khuôn `UpdateContactDto`): trường vắng mặt
+ * (`undefined`) giữ nguyên giá trị cũ; trường có mặt (kể cả chuỗi rỗng) GHI ĐÈ, rồi được
+ * trim/chuẩn hoá rỗng-thành-null ở service (`normalizeMetadataField`, cùng khuôn
+ * `MediaService.register()`: `dto.caption?.trim() || null`). `@IsOptional()` cho phép `null` lọt
+ * qua bỏ qua kiểm tra `@IsString()` (cùng hành vi đã có ở `UpdateContactDto.label`) — service xử
+ * lý `null` an toàn, không gọi `.trim()` trên nó.
+ */
+export class UpdatePlaceMediaMetadataDto {
+  @IsOptional() @IsString() @MaxLength(MAX_CAPTION_LENGTH)
+  caption?: string;
+
+  @IsOptional() @IsString() @MaxLength(MAX_ALT_TEXT_LENGTH)
+  alt_text?: string;
+}

@@ -2539,6 +2539,64 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /places/{placeId}/media/{mediaId}:
+    patch:
+      tags: [Media]
+      summary: Sửa mô tả (caption) / văn bản thay thế (alt_text) của một ảnh
+      operationId: updatePlaceMediaMetadata
+      security: [{ bearerAuth: [] }]
+      description: >-
+        Yêu cầu `Media.Upload.Managed` trên CHÍNH cơ sở ở path — cùng đường phân quyền với mọi
+        endpoint ảnh cơ sở khác. `mediaId` PHẢI thuộc CHÍNH cơ sở đó: điều kiện này nằm TRONG câu
+        UPDATE của repository (`id = mediaId AND place_id = placeId AND deleted_at IS NULL`),
+        không phải kiểm tra rồi ghi riêng — một `mediaId` của cơ sở khác trả 404 (không phân biệt
+        "không tồn tại" với "của người khác").
+
+
+        Hai trường ĐỘC LẬP tuỳ chọn (PATCH bán phần) — nhưng ÍT NHẤT MỘT trường phải có mặt, nếu
+        không trả 400 (một request không sửa gì là dấu hiệu lỗi client). Trường vắng mặt GIỮ
+        NGUYÊN giá trị cũ; trường có mặt (kể cả chuỗi rỗng) được TRIM rồi GHI ĐÈ — chuỗi rỗng/toàn
+        khoảng trắng sau khi trim lưu thành `null` (xoá mô tả).
+
+
+        Giới hạn độ dài khớp ĐÚNG cột DB hiện có (không có migration nào ở milestone này):
+        `caption` tối đa 300 ký tự, `alt_text` tối đa 200 ký tự.
+
+
+        **KHÔNG đổi status/sort_order/cover_image_id.** Sửa mô tả ảnh không phải một quyết định
+        kiểm duyệt: ảnh `pending`/`rejected`/`hidden` sửa được y hệt `published`, không tạo case
+        kiểm duyệt mới, không đổi vị trí trong gallery, không đổi ảnh bìa đang chọn (kể cả khi sửa
+        chính ảnh đang là bìa).
+
+
+        Trả về TOÀN BỘ danh sách ảnh của cơ sở sau khi sửa (cùng hình dạng `GET`), không chỉ ảnh
+        vừa đổi — client không cần gọi thêm vòng nào.
+      parameters:
+        - { name: placeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mediaId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Ít nhất một trong hai trường phải có mặt.
+              properties:
+                caption: { type: string, maxLength: 300 }
+                alt_text: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: 'Danh sách ảnh của cơ sở SAU khi sửa.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/PlaceOwnerMedia' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Media]
       summary: Gỡ một ảnh khỏi cơ sở (xoá mềm)

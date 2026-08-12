@@ -2,11 +2,14 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import {
   CreateMediaDto,
+  MAX_ALT_TEXT_LENGTH,
+  MAX_CAPTION_LENGTH,
   MAX_REORDER_MEDIA_IDS,
   MAX_UPLOAD_SIZE_BYTES,
   PresignMediaDto,
   ReorderPlaceMediaDto,
   SetPlaceCoverDto,
+  UpdatePlaceMediaMetadataDto,
 } from './media.dto';
 
 const PIPE_OPTIONS = { whitelist: true, forbidNonWhitelisted: true } as const;
@@ -197,4 +200,70 @@ describe('SetPlaceCoverDto', () => {
     const errors = await run({ media_id: UUID_A, [field]: 'https://evil.example/x.jpg' });
     expect(errors.some((e) => e.property === field)).toBe(true);
   });
+});
+
+// Owner Photo Metadata (2026-08-12).
+describe('UpdatePlaceMediaMetadataDto', () => {
+  const run = (raw: Record<string, unknown>) =>
+    validate(plainToInstance(UpdatePlaceMediaMetadataDto, raw), PIPE_OPTIONS);
+
+  it('chấp nhận caption và alt_text hợp lệ cùng nhau', async () => {
+    await expect(run({ caption: 'Hoàng hôn ở Dinh Cậu', alt_text: 'Tháp đèn biển màu trắng' })).resolves.toHaveLength(
+      0,
+    );
+  });
+
+  it('chấp nhận chỉ caption (alt_text vắng mặt)', async () => {
+    await expect(run({ caption: 'Chỉ có mô tả' })).resolves.toHaveLength(0);
+  });
+
+  it('chấp nhận chỉ alt_text (caption vắng mặt)', async () => {
+    await expect(run({ alt_text: 'Chỉ có alt' })).resolves.toHaveLength(0);
+  });
+
+  it('chấp nhận body rỗng ở tầng DTO (service tự chặn "cả hai đều vắng mặt")', async () => {
+    await expect(run({})).resolves.toHaveLength(0);
+  });
+
+  it('chấp nhận chuỗi rỗng (ý định xoá — chuẩn hoá ở service, không phải DTO)', async () => {
+    await expect(run({ caption: '', alt_text: '' })).resolves.toHaveLength(0);
+  });
+
+  // `@IsOptional()` cho phép null bỏ qua @IsString() — cùng hành vi UpdateContactDto.label. Không
+  // phải lỗ hổng mới; service phải xử lý an toàn (xem media.service.spec.ts).
+  it('chấp nhận null ở tầng DTO (class-validator: IsOptional bỏ qua kiểm tra IsString cho null)', async () => {
+    await expect(run({ caption: null, alt_text: null })).resolves.toHaveLength(0);
+  });
+
+  it('từ chối caption vượt quá MAX_CAPTION_LENGTH ký tự', async () => {
+    const errors = await run({ caption: 'a'.repeat(MAX_CAPTION_LENGTH + 1) });
+    expect(errors.some((e) => e.property === 'caption')).toBe(true);
+  });
+
+  it('chấp nhận caption dài đúng MAX_CAPTION_LENGTH (biên trên hợp lệ)', async () => {
+    await expect(run({ caption: 'a'.repeat(MAX_CAPTION_LENGTH) })).resolves.toHaveLength(0);
+  });
+
+  it('từ chối alt_text vượt quá MAX_ALT_TEXT_LENGTH ký tự', async () => {
+    const errors = await run({ alt_text: 'a'.repeat(MAX_ALT_TEXT_LENGTH + 1) });
+    expect(errors.some((e) => e.property === 'alt_text')).toBe(true);
+  });
+
+  it('chấp nhận alt_text dài đúng MAX_ALT_TEXT_LENGTH (biên trên hợp lệ)', async () => {
+    await expect(run({ alt_text: 'a'.repeat(MAX_ALT_TEXT_LENGTH) })).resolves.toHaveLength(0);
+  });
+
+  it('từ chối caption không phải chuỗi (số)', async () => {
+    const errors = await run({ caption: 12345 });
+    expect(errors.some((e) => e.property === 'caption')).toBe(true);
+  });
+
+  // Cơ sở đích LUÔN là route param — không có đường nào khai nó trong body.
+  it.each(['place_id', 'status', 'sort_order', 'cover_image_id', 'object_key', 'bucket', 'checksum_sha256', 'review_id'])(
+    'từ chối trường lạ %s trong body (mass-assignment guard)',
+    async (field) => {
+      const errors = await run({ caption: 'x', [field]: 'evil' });
+      expect(errors.some((e) => e.property === field)).toBe(true);
+    },
+  );
 });

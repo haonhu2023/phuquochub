@@ -724,6 +724,76 @@ phải để bịt một lỗ hổng. Không có xử lý nền, không có job 
 - **Không** URL presigned nào được lưu vào DB ở bất kỳ đường nào.
 - Không có bảng/cột/migration/permission mới.
 
+## 15. Sửa mô tả ảnh & alt text (Owner Photo Metadata, 2026-08-12)
+
+Nối tiếp §13/§14: chủ/quản lý cơ sở nay **sửa được** `caption`/`alt_text` của TỪNG ảnh sau khi đã
+đăng. Cả hai cột đã tồn tại từ Media Upload Foundation (`caption VARCHAR(300)`,
+`alt_text VARCHAR(200)`, cả hai nullable) — không có migration, không có permission mới.
+
+### 15.1 Endpoint
+
+`PATCH /places/{placeId}/media/{mediaId}` — `{ caption?: string; alt_text?: string }`, cùng quyền
+`Media.Upload.Managed` trên `placeId` (route param) như mọi endpoint place-media khác. Trả về TOÀN
+BỘ danh sách ảnh của cơ sở sau khi sửa (`PlaceOwnerMedia[]`, cùng hình dạng `GET`).
+
+Đặt SAU `PATCH 'order'`/`PATCH 'cover'` trong khai báo controller: Nest/Express khớp route theo
+THỨ TỰ ĐĂNG KÝ cho cùng phương thức HTTP, nên route `:mediaId` phải đứng CUỐI để không nuốt nhầm
+`order`/`cover` thành một giá trị `mediaId`.
+
+### 15.2 Ngữ nghĩa validation
+
+- Hai trường ĐỘC LẬP tuỳ chọn (PATCH bán phần, cùng khuôn `UpdateContactDto`): trường vắng mặt
+  (`undefined`) giữ nguyên giá trị cũ; trường có mặt (kể cả chuỗi rỗng) ghi đè.
+- **Ít nhất một trong hai phải có mặt** — 400 nếu cả hai đều vắng mặt (một request không sửa gì là
+  dấu hiệu lỗi client).
+- Giới hạn độ dài khớp ĐÚNG cột DB hiện có: `caption` ≤ 300, `alt_text` ≤ 200 — không phát minh
+  giới hạn riêng cho endpoint này.
+- Trim rồi rỗng-thành-`null`, thực hiện Ở SERVICE (`normalizeMetadataField`), cùng ngữ nghĩa
+  `dto.caption?.trim() || null` mà `MediaService.register()` đã dùng từ trước. `@IsOptional()` cho
+  phép `null` lọt qua bỏ qua kiểm tra `@IsString()` của DTO (cùng hành vi đã có ở
+  `UpdateContactDto.label`) — service xử lý `null` an toàn, KHÔNG gọi `.trim()` trên nó.
+
+### 15.3 Ghi — an toàn TOCTOU
+
+`MediaRepository.updatePlaceMediaMetadata()` dựng SET clause động (tối đa hai cột literal:
+`caption`, `alt_text` — không có đường nào mass-assign cột khác), nhưng WHERE LUÔN cố định:
+
+```sql
+UPDATE media SET ... WHERE id = $1 AND place_id = $2 AND deleted_at IS NULL RETURNING id
+```
+
+Cùng khuôn `softDeletePlaceMedia()`/`setPlaceCoverImage()`: điều kiện đủ tư cách nằm TRONG câu
+UPDATE, không phải "kiểm tra rồi ghi" — một `mediaId` của cơ sở khác (hoặc đã xoá mềm) khớp 0
+dòng, không có khe TOCTOU. Trả `false` → service ném 404 (không phân biệt "không tồn tại" với "của
+người khác", cùng khuôn `removeFromPlace`).
+
+### 15.4 KHÔNG đụng vòng đời kiểm duyệt/thứ tự/ảnh bìa
+
+Sửa mô tả ảnh **không phải** một quyết định kiểm duyệt: FSM ở `media-moderation.transition.ts` chỉ
+định nghĩa transition cho `status`, không hề nhắc tới caption/alt_text. Vì vậy:
+
+- `status` KHÔNG đổi — ảnh `pending`/`rejected`/`hidden` sửa được y hệt `published`;
+- KHÔNG tạo case kiểm duyệt mới, KHÔNG reset trạng thái;
+- `sort_order`/`cover_image_id` KHÔNG đụng — câu SQL chỉ có thể SET đúng hai cột `caption`/
+  `alt_text`.
+
+Chủ cơ sở vốn đã thấy MỌI trạng thái trên màn hình quản lý (`listForPlaceOwner`) và không có lý do
+nghiệp vụ nào để khoá riêng trường mô tả theo trạng thái kiểm duyệt.
+
+### 15.5 Hiển thị công khai — KHÔNG đổi (đã đúng từ trước)
+
+Kiểm tra lại (không sửa code): `toMedia()` đã phát `caption`/`alt_text` cho mọi ảnh `published`;
+trang chi tiết Place (`apps/web/src/app/(public)/places/[slug]/page.tsx`) đã dùng đúng thứ tự ưu
+tiên `alt_text ?? caption ?? place.name` cho thuộc tính `alt` của `<img>` — KHÔNG BAO GIỜ đưa
+filename/object_key/UUID vào alt. Caption chỉ tồn tại trong chuỗi fallback đó, KHÔNG được render
+thành text hiển thị riêng ở bất kỳ card/search/map nào — milestone này không mở rộng phạm vi hiển
+thị, chỉ thêm khả năng SỬA giá trị nguồn.
+
+### 15.6 An toàn văn bản
+
+`caption`/`alt_text` luôn là plain text — không `dangerouslySetInnerHTML`, không parse
+markdown/HTML ở bất kỳ đâu (React tự escape khi render vào JSX/thuộc tính `alt`).
+
 ## Related
 
 - [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md) (đa hình `entity_type`/`entity_id` —

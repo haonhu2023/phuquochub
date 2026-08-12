@@ -14,7 +14,9 @@ import {
   registerPlacePhoto,
   reorderPlacePhotos,
   setPlacePhotoCover,
+  updatePlacePhotoMetadata,
 } from './api/place-photos.api';
+import { PhotoMetadataForm, type PhotoMetadataInput } from './PhotoMetadataForm';
 import { canBeCover, placePhotoStatusLabel, type PlacePhoto } from './types';
 import styles from './place-photos.module.css';
 
@@ -229,6 +231,20 @@ export function PhotosView({ placeId }: Props) {
     }
   }
 
+  /**
+   * `throw` (không phải setUploadError+return) khi thiếu phiên: `PhotoMetadataForm` tự bắt lỗi
+   * trong `try/catch` của chính nó và hiển thị NGAY DƯỚI form đó — đúng vị trí người dùng đang
+   * thao tác, không phải banner chung ở đầu trang (cùng khuôn `ContactsView.handleUpdate`).
+   */
+  async function handleMetadataSave(photo: PlacePhoto, input: PhotoMetadataInput) {
+    const session = readSession();
+    if (!session) {
+      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    }
+    const photos = await updatePlacePhotoMetadata(placeId, photo.id, input, session.accessToken);
+    setState({ kind: 'ready', photos });
+  }
+
   async function onDelete(photo: PlacePhoto) {
     if (deletingId || busy) return;
     if (!window.confirm('Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.')) return;
@@ -393,6 +409,10 @@ export function PhotosView({ placeId }: Props) {
                       Ảnh đang bị ẩn nên không hiển thị công khai và không làm ảnh bìa được.
                     </span>
                   )}
+
+                  {/* Sửa mô tả/alt text KHÔNG làm ảnh xuất hiện công khai — trạng thái ở trên vẫn
+                      là nguồn sự thật duy nhất về việc ảnh đã lên trang hay chưa. */}
+                  <PhotoMetadataForm photo={photo} onSubmit={(input) => handleMetadataSave(photo, input)} />
 
                   {/* `aria-label` nêu rõ vị trí để người dùng trình đọc màn hình biết mình đang di
                       chuyển ảnh nào — chỉ nhãn "Lên"/"Xuống" thì mọi nút nghe giống hệt nhau. */}

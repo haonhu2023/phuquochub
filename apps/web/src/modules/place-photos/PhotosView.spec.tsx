@@ -8,6 +8,7 @@ import {
   registerPlacePhoto,
   reorderPlacePhotos,
   setPlacePhotoCover,
+  updatePlacePhotoMetadata,
 } from './api/place-photos.api';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
@@ -20,6 +21,7 @@ jest.mock('./api/place-photos.api', () => ({
   deletePlacePhoto: jest.fn(),
   reorderPlacePhotos: jest.fn(),
   setPlacePhotoCover: jest.fn(),
+  updatePlacePhotoMetadata: jest.fn(),
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/lib/sha256', () => ({ sha256Hex: jest.fn().mockResolvedValue('a'.repeat(64)) }));
@@ -38,6 +40,7 @@ const mockRegister = registerPlacePhoto as jest.Mock;
 const mockDelete = deletePlacePhoto as jest.Mock;
 const mockReorder = reorderPlacePhotos as jest.Mock;
 const mockSetCover = setPlacePhotoCover as jest.Mock;
+const mockUpdateMetadata = updatePlacePhotoMetadata as jest.Mock;
 const mockSession = readSession as jest.Mock;
 
 const PLACE_ID = 'place-1';
@@ -79,6 +82,7 @@ beforeEach(() => {
   mockDelete.mockReset().mockResolvedValue(null);
   mockReorder.mockReset().mockResolvedValue([]);
   mockSetCover.mockReset().mockResolvedValue([]);
+  mockUpdateMetadata.mockReset().mockResolvedValue([]);
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
   window.confirm = jest.fn().mockReturnValue(true);
 });
@@ -523,5 +527,226 @@ describe('PhotosView — sắp xếp ảnh', () => {
       expect(screen.getByRole('button', { name: 'Di chuyển ảnh 2 lên trước' })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: 'Di chuyển ảnh 2 xuống sau' })).toBeInTheDocument();
+  });
+});
+
+// Owner Photo Metadata (2026-08-12).
+describe('PhotosView — sửa mô tả ảnh (caption/alt_text)', () => {
+  function captionInput(photoId: string) {
+    return screen.getByLabelText('Mô tả ảnh', { selector: `#photo-caption-${photoId}` }) as HTMLInputElement;
+  }
+  function altInput(photoId: string) {
+    return screen.getByLabelText('Văn bản thay thế (Alt text)', {
+      selector: `#photo-alt-${photoId}`,
+    }) as HTMLInputElement;
+  }
+
+  it('caption và alt_text được ĐIỀN SẴN từ dữ liệu hiện có', async () => {
+    mockList.mockResolvedValueOnce([photo({ caption: 'Mô tả cũ', alt_text: 'Alt cũ' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(captionInput('m1')).toHaveValue('Mô tả cũ'));
+    expect(altInput('m1')).toHaveValue('Alt cũ');
+  });
+
+  it('caption/alt_text null -> input rỗng (không hiện "null" dạng chuỗi)', async () => {
+    mockList.mockResolvedValueOnce([photo({ caption: null, alt_text: null })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(captionInput('m1')).toHaveValue(''));
+    expect(altInput('m1')).toHaveValue('');
+  });
+
+  it('label liên kết ĐÚNG với input tương ứng (truy cập bằng getByLabelText)', async () => {
+    mockList.mockResolvedValueOnce([photo()]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+    expect(altInput('m1')).toBeInTheDocument();
+  });
+
+  it('sửa caption rồi lưu -> gọi API đúng place/media/nội dung mới', async () => {
+    mockList.mockResolvedValueOnce([photo({ caption: 'old', alt_text: 'old alt' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toHaveValue('old'));
+
+    fireEvent.change(captionInput('m1'), { target: { value: 'new caption' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() =>
+      expect(mockUpdateMetadata).toHaveBeenCalledWith(
+        PLACE_ID,
+        'm1',
+        { caption: 'new caption', alt_text: 'old alt' },
+        'tok',
+      ),
+    );
+  });
+
+  it('sửa alt_text rồi lưu -> gọi API với caption không đổi + alt mới', async () => {
+    mockList.mockResolvedValueOnce([photo({ caption: 'keep', alt_text: 'old alt' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(altInput('m1')).toHaveValue('old alt'));
+
+    fireEvent.change(altInput('m1'), { target: { value: 'new alt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() =>
+      expect(mockUpdateMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', { caption: 'keep', alt_text: 'new alt' }, 'tok'),
+    );
+  });
+
+  it('lưu thành công -> thông báo "Đã lưu thông tin ảnh."', async () => {
+    mockList.mockResolvedValueOnce([photo({ caption: 'x' })]);
+    // Danh sách sau khi lưu PHẢI còn chứa đúng ảnh đó, nếu không tile (và thông báo bên trong nó)
+    // biến mất cùng với nó khi PhotosView render lại theo response mới.
+    mockUpdateMetadata.mockResolvedValueOnce([photo({ caption: 'x' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    fireEvent.change(captionInput('m1'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(screen.getByText('Đã lưu thông tin ảnh.')).toBeInTheDocument());
+  });
+
+  it('API trả 403 -> thông điệp về quyền, hiện NGAY dưới form', async () => {
+    mockList.mockResolvedValueOnce([photo()]);
+    mockUpdateMetadata.mockRejectedValueOnce(new ApiError('Thiếu quyền', 403));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền sửa ảnh của cơ sở này.'),
+    );
+  });
+
+  it('API trả 400 (quá dài) -> hiện thông điệp lỗi từ server, KHÔNG báo thành công', async () => {
+    mockList.mockResolvedValueOnce([photo()]);
+    mockUpdateMetadata.mockRejectedValueOnce(new ApiError('caption vượt quá 300 ký tự', 400));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('caption vượt quá 300 ký tự'));
+    expect(screen.queryByText('Đã lưu thông tin ảnh.')).not.toBeInTheDocument();
+  });
+
+  it('đang lưu -> vô hiệu hoá input + nút, hiện "Đang lưu…"', async () => {
+    let resolveSave: (v: unknown) => void = () => {};
+    mockList.mockResolvedValueOnce([photo()]);
+    mockUpdateMetadata.mockReturnValueOnce(new Promise((r) => { resolveSave = r; }));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Đang lưu…' })).toBeDisabled());
+    expect(captionInput('m1')).toBeDisabled();
+    expect(altInput('m1')).toBeDisabled();
+
+    resolveSave([photo()]);
+    await waitFor(() => expect(screen.getByText('Đã lưu thông tin ảnh.')).toBeInTheDocument());
+  });
+
+  it('bấm Lưu nhiều lần liên tiếp trong lúc đang lưu -> CHỈ gọi API một lần', async () => {
+    let resolveSave: (v: unknown) => void = () => {};
+    mockList.mockResolvedValueOnce([photo()]);
+    mockUpdateMetadata.mockReturnValueOnce(new Promise((r) => { resolveSave = r; }));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    const btn = screen.getByRole('button', { name: 'Lưu thông tin' });
+    fireEvent.click(btn);
+    await waitFor(() => expect(btn).toBeDisabled());
+    fireEvent.click(btn); // bị chặn vì nút đã disabled/submitting=true
+
+    resolveSave([photo()]);
+    await waitFor(() => expect(mockUpdateMetadata).toHaveBeenCalledTimes(1));
+  });
+
+  // Sửa mô tả KHÔNG được ngụ ý ảnh đã lên trang — nhãn trạng thái vẫn là nguồn sự thật.
+  it('ảnh pending: nhãn trạng thái vẫn hiện ĐÚNG sau khi form metadata render', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'pending' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+    expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument();
+  });
+
+  it('ảnh rejected: nhãn trạng thái vẫn hiện đúng, form metadata vẫn dùng được', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+    expect(screen.getByText('Bị từ chối')).toBeInTheDocument();
+  });
+
+  // Regression: sửa metadata không được đụng tới trạng thái ảnh bìa hiển thị trên client.
+  it('ảnh đang là bìa: sửa metadata KHÔNG làm mất huy hiệu "Ảnh bìa"', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'published', is_cover: true })]);
+    mockUpdateMetadata.mockResolvedValueOnce([photo({ status: 'published', is_cover: true, caption: 'x' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+    expect(screen.getByText('Ảnh bìa')).toBeInTheDocument();
+
+    fireEvent.change(captionInput('m1'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(screen.getByText('Đã lưu thông tin ảnh.')).toBeInTheDocument());
+    expect(screen.getByText('Ảnh bìa')).toBeInTheDocument();
+  });
+
+  // Regression: nút Lên/Xuống của thao tác sắp xếp vẫn hoạt động bình thường trên cùng tile.
+  it('nút sắp xếp (Lên/Xuống) vẫn hoạt động bình thường cạnh form metadata', async () => {
+    mockList.mockResolvedValueOnce([
+      photo({ id: 'm1', status: 'published' }),
+      photo({ id: 'm2', status: 'published' }),
+    ]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Di chuyển ảnh 1 xuống sau' })).toBeInTheDocument(),
+    );
+
+    mockReorder.mockResolvedValueOnce([
+      photo({ id: 'm2', status: 'published' }),
+      photo({ id: 'm1', status: 'published' }),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Di chuyển ảnh 1 xuống sau' }));
+
+    await waitFor(() => expect(mockReorder).toHaveBeenCalledWith(PLACE_ID, ['m2', 'm1'], 'tok'));
+  });
+
+  // Bàn phím: input/button đều là phần tử gốc, Tab/focus/Enter hoạt động tự nhiên không cần xử lý gì thêm.
+  it('dùng được bằng bàn phím: input nhận focus, nút submit kích hoạt được qua form onSubmit', async () => {
+    mockList.mockResolvedValueOnce([photo()]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toBeInTheDocument());
+
+    captionInput('m1').focus();
+    expect(captionInput('m1')).toHaveFocus();
+
+    fireEvent.change(captionInput('m1'), { target: { value: 'via keyboard' } });
+    const form = screen.getByRole('button', { name: 'Lưu thông tin' }).closest('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() =>
+      expect(mockUpdateMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', { caption: 'via keyboard', alt_text: '' }, 'tok'),
+    );
+  });
+
+  it('mỗi ảnh có form ĐỘC LẬP — sửa ảnh này không đụng input của ảnh khác', async () => {
+    mockList.mockResolvedValueOnce([
+      photo({ id: 'm1', caption: 'first' }),
+      photo({ id: 'm2', caption: 'second' }),
+    ]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(captionInput('m1')).toHaveValue('first'));
+
+    fireEvent.change(captionInput('m1'), { target: { value: 'edited first' } });
+
+    expect(captionInput('m1')).toHaveValue('edited first');
+    expect(captionInput('m2')).toHaveValue('second'); // KHÔNG bị ảnh hưởng
   });
 });

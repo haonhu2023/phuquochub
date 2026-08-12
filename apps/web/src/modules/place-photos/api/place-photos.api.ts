@@ -58,6 +58,24 @@ export async function setPlacePhotoCover(
   });
 }
 
+/**
+ * Sửa mô tả (caption) / văn bản thay thế (alt_text) của MỘT ảnh. Cả hai trường độc lập tuỳ chọn —
+ * bỏ qua một trường (`undefined`) giữ nguyên giá trị cũ ở backend; gửi chuỗi rỗng xoá mô tả đó.
+ * Backend yêu cầu ÍT NHẤT MỘT trường có mặt. Trả về danh sách ảnh SAU khi sửa (cùng hình dạng GET).
+ */
+export async function updatePlacePhotoMetadata(
+  placeId: string,
+  mediaId: string,
+  input: { caption?: string; alt_text?: string },
+  accessToken: string,
+): Promise<PlacePhoto[]> {
+  return apiPatchAuth<PlacePhoto[]>(
+    `/places/${encodeURIComponent(placeId)}/media/${encodeURIComponent(mediaId)}`,
+    accessToken,
+    input,
+  );
+}
+
 /** Gỡ ảnh khỏi cơ sở (xoá mềm phía backend). */
 export async function deletePlacePhoto(
   placeId: string,

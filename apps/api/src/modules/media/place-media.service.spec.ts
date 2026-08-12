@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { MediaService } from './media.service';
 import { MediaStatus } from './media.enums';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
@@ -86,6 +86,7 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       listIdsForPlaceForUpdate: jest.fn().mockResolvedValue([]),
       reorderPlaceMedia: jest.fn().mockResolvedValue([]),
       setPlaceCoverImage: jest.fn(),
+      updatePlaceMediaMetadata: jest.fn(),
     });
 
     ds = createMock<import('typeorm').DataSource>({
@@ -401,6 +402,112 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
         UnprocessableEntityException,
       );
       expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  // Owner Photo Metadata (2026-08-12).
+  describe('updatePlaceMediaMetadata', () => {
+    beforeEach(() => {
+      mediaRepo.updatePlaceMediaMetadata.mockResolvedValue(true);
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        {
+          id: 'm1',
+          status: MediaStatus.PENDING,
+          caption: 'new caption',
+          altText: null,
+          createdAt: new Date('2026-08-12T00:00:00Z'),
+          sortOrder: null,
+        },
+      ] as never);
+    });
+
+    it('cập nhật CẢ HAI trường -> gọi repository với giá trị đã trim, trả danh sách mới', async () => {
+      const res = await service.updatePlaceMediaMetadata(
+        PLACE_ID,
+        'm1',
+        { caption: '  new caption  ', alt_text: '  new alt  ' },
+        USER_ID,
+      );
+      expect(mediaRepo.updatePlaceMediaMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', {
+        caption: 'new caption',
+        altText: 'new alt',
+      });
+      expect(res[0].caption).toBe('new caption');
+    });
+
+    it('chỉ gửi caption -> alt_text KHÔNG bị đụng (undefined, không phải null)', async () => {
+      await service.updatePlaceMediaMetadata(PLACE_ID, 'm1', { caption: 'only caption' }, USER_ID);
+      expect(mediaRepo.updatePlaceMediaMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', {
+        caption: 'only caption',
+        altText: undefined,
+      });
+    });
+
+    it('chỉ gửi alt_text -> caption KHÔNG bị đụng', async () => {
+      await service.updatePlaceMediaMetadata(PLACE_ID, 'm1', { alt_text: 'only alt' }, USER_ID);
+      expect(mediaRepo.updatePlaceMediaMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', {
+        caption: undefined,
+        altText: 'only alt',
+      });
+    });
+
+    it('chuỗi rỗng -> chuẩn hoá thành null (ý định xoá)', async () => {
+      await service.updatePlaceMediaMetadata(PLACE_ID, 'm1', { caption: '   ', alt_text: '' }, USER_ID);
+      expect(mediaRepo.updatePlaceMediaMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', {
+        caption: null,
+        altText: null,
+      });
+    });
+
+    // `@IsOptional()` cho phép null lọt qua DTO — service PHẢI xử lý an toàn, không ném lỗi khi gọi
+    // .trim() trên null.
+    it('null lọt qua DTO -> coi như ý định xoá, KHÔNG ném lỗi', async () => {
+      await service.updatePlaceMediaMetadata(
+        PLACE_ID,
+        'm1',
+        { caption: null as unknown as string, alt_text: null as unknown as string },
+        USER_ID,
+      );
+      expect(mediaRepo.updatePlaceMediaMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', {
+        caption: null,
+        altText: null,
+      });
+    });
+
+    it('cả hai trường đều vắng mặt -> 400, KHÔNG gọi repository', async () => {
+      await expect(service.updatePlaceMediaMetadata(PLACE_ID, 'm1', {}, USER_ID)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(mediaRepo.updatePlaceMediaMetadata).not.toHaveBeenCalled();
+    });
+
+    it('ảnh không thuộc cơ sở này (repository trả false) -> 404, KHÔNG audit', async () => {
+      mediaRepo.updatePlaceMediaMetadata.mockResolvedValue(false);
+      await expect(
+        service.updatePlaceMediaMetadata(PLACE_ID, 'm-other', { caption: 'x' }, USER_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('ghi audit media.place_metadata_updated sau khi ghi thành công', async () => {
+      await service.updatePlaceMediaMetadata(PLACE_ID, 'm1', { caption: 'x' }, USER_ID);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'media.place_metadata_updated',
+          entityType: 'media',
+          entityId: 'm1',
+          actorId: USER_ID,
+        }),
+      );
+    });
+
+    // Trạng thái/thứ tự/bìa KHÔNG phải trách nhiệm của hàm này — chỉ repository.updatePlaceMediaMetadata
+    // được gọi, không có lời gọi nào tới reorderPlaceMedia/setPlaceCoverImage/updateStatus.
+    it('KHÔNG gọi bất kỳ hàm nào khác ngoài updatePlaceMediaMetadata + listAllByPlace + getCoverImageId', async () => {
+      await service.updatePlaceMediaMetadata(PLACE_ID, 'm1', { caption: 'x' }, USER_ID);
+      expect(mediaRepo.reorderPlaceMedia).not.toHaveBeenCalled();
+      expect(mediaRepo.setPlaceCoverImage).not.toHaveBeenCalled();
+      expect(mediaRepo.clearCoverImageByMedia).not.toHaveBeenCalled();
     });
   });
 
