@@ -794,6 +794,70 @@ thị, chỉ thêm khả năng SỬA giá trị nguồn.
 `caption`/`alt_text` luôn là plain text — không `dangerouslySetInnerHTML`, không parse
 markdown/HTML ở bất kỳ đâu (React tự escape khi render vào JSX/thuộc tính `alt`).
 
+## 16. Phản hồi kiểm duyệt cho chủ cơ sở (Owner-facing Moderation Feedback, 2026-08-12)
+
+**Quyết định sản phẩm, đã điều tra kỹ — KHÔNG lộ lý do từ chối của moderator cho chủ cơ sở.**
+`status: 'rejected'` là toàn bộ tín hiệu chủ cơ sở nhận được khi một ảnh bị từ chối; không có
+trường lý do nào (`reason`/`rejection_reason`/`rejection_reason_code`) được thêm vào
+`PlaceOwnerMedia`. Giao diện `/dashboard/places/[id]/photos` giữ nguyên thông điệp chung đã có từ
+Owner Place Photos (§13): *"Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và
+không làm ảnh bìa được."*
+
+### 16.1 Vì sao — dữ liệu duy nhất tồn tại không an toàn để lộ
+
+`moderation_cases.reason` (`text`, nullable, bắt buộc khác rỗng khi `decision ∈ {reject, hide}` —
+INV-11, xem moderation-design.md) là **text tự do do moderator gõ** vào một `<textarea>` không có
+hướng dẫn về đối tượng đọc, hiện chỉ lộ qua `GET /moderation/cases/{id}` sau `Moderation.Queue.View`
+(moderator-only). **Không có `reason_code`** (enum có kiểm soát) cho quyết định media ở bất kỳ đâu
+trong schema — `report_reason` là một khái niệm KHÁC hẳn (lý do NGƯỜI DÙNG báo cáo nội dung, không
+phải lý do MODERATOR từ chối).
+
+### 16.2 Tiền lệ đã có trong repo — cùng câu hỏi, đã được trả lời hai lần
+
+Đây không phải câu hỏi mới. Repo đã có HAI trường hợp y hệt ("text nhân viên gõ về một yêu cầu của
+MỘT người dùng cụ thể — có nên lộ lại cho chính người đó không?") và cả hai đều trả lời **KHÔNG**:
+
+| Trường | Chủ đích | Có lộ cho người bị ảnh hưởng? |
+|---|---|---|
+| `business_claims.decision_note` (free text) | Ghi chú của moderator khi duyệt/từ chối claim sở hữu | **KHÔNG** — `GET /business-claims/mine` (`toOwnBusinessClaimSummary`) chỉ trả `reason_code` |
+| `business_claims.reason_code` (enum có kiểm soát) | Mã lý do từ chối claim | **CÓ** — đây chính là bằng chứng "enum có kiểm soát thì lộ được, free text thì không" |
+| `bookings.internal_note` (free text) | Ghi chú nội bộ về một booking | **KHÔNG BAO GIỜ**, tài liệu hoá tường minh ở booking.md: *"Chỉ nội bộ — KHÔNG BAO GIỜ lộ qua API (kể cả `GET /bookings/:bookingCode`)"* |
+| `moderation_cases.reason` (free text) | Lý do moderator từ chối/ẩn media hoặc review | **Milestone này: KHÔNG** — giữ đúng nguyên tắc trên |
+
+`moderation_cases.reason` có đúng hình dạng và rủi ro như hai trường free-text kia: có thể nhắc tới
+case khác, nghi vấn gian lận, hoặc bất cứ gì moderator thấy cần ghi lại — không có cách nào lọc an
+toàn bằng máy khỏi một chuỗi tự do 2000 ký tự.
+
+### 16.3 Điều kiện để làm ĐÚNG trong tương lai (ngoài phạm vi milestone này)
+
+Muốn cho chủ cơ sở một lý do THẬT SỰ hữu ích và an toàn, cần lặp lại đúng mô hình `business_claims`:
+
+1. Thêm cột `reason_code` (enum có kiểm soát, ví dụ `inappropriate_content`/`low_quality`/
+   `unrelated_to_place`/`copyright`/`other`) vào `moderation_cases` hoặc một bảng vệ tinh —
+   **cần migration**.
+2. Đổi `DecideModerationCaseDto`/`ModerationDecisionForm.tsx` để moderator CHỌN mã lý do (dropdown)
+   thay vì chỉ gõ tự do — **đổi giao diện quyết định của moderator**.
+3. Ánh xạ mỗi mã sang nhãn tiếng Việt an toàn, KHÔNG lộ tên enum thô (`INAPPROPRIATE_CONTENT`) ra
+   giao diện — cùng khuôn `PLACE_PHOTO_STATUS_LABELS` đã có.
+4. `reason` (free text) VẪN giữ nguyên vai trò nội bộ, không đổi.
+
+Cả bốn bước đều **cố ý ngoài phạm vi** milestone này (không migration, không đổi luồng quyết định
+của moderator — chỉ đạo rõ ràng). Đây là khuyến nghị cho milestone kế tiếp nếu sản phẩm muốn phản
+hồi chi tiết hơn.
+
+### 16.4 Bảo đảm được ghim lại bằng test
+
+- `MediaService.listForPlaceOwner()` không bao giờ gọi bất kỳ phương thức nào của
+  `ModerationCasesRepository` (unit test) và không bao giờ đọc bảng `moderation_cases` (repository
+  không có join nào tới bảng đó ở đường này).
+- Response cho một ảnh `rejected` chỉ đúng 8 khoá đã biết (`id/status/caption/alt_text/created_at/
+  url/sort_order/is_cover`) — unit test + E2E trên Postgres thật.
+- E2E: moderator từ chối một ảnh kèm `reason` cụ thể (chứa dữ liệu "nhạy cảm" giả lập) → `GET
+  /places/{placeId}/media` của CHÍNH chủ cơ sở đó không chứa nội dung `reason`, không chứa
+  `resolved_by`/danh tính moderator, dù ảnh CHÍNH LÀ ảnh của họ.
+- E2E: ảnh bị từ chối rồi được khôi phục (`restore` → `published`) qua MỘT case thứ hai — chủ cơ sở
+  thấy đúng trạng thái hiện hành (`published`), không còn dấu vết gì của case từ chối cũ.
+
 ## Related
 
 - [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md) (đa hình `entity_type`/`entity_id` —

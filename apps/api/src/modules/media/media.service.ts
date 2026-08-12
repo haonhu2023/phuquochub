@@ -86,6 +86,11 @@ interface PresignSession {
  * Một ảnh như MÀN HÌNH QUẢN LÝ của chủ cơ sở nhìn thấy. KHÔNG có `object_key`/`bucket`/`checksum`
  * — hình dạng này được liệt kê tường minh (không spread entity) chính là để những cột đó không thể
  * vô tình lọt ra ngoài khi entity `Media` có thêm trường mới.
+ *
+ * CỐ Ý không có `reason`/`rejection_reason`/bất kỳ trường nào phản ánh lý do kiểm duyệt (Owner-
+ * facing Moderation Feedback, 2026-08-12 — điều tra kỹ, không phải thiếu sót). `status: 'rejected'`
+ * là TOÀN BỘ tín hiệu chủ cơ sở nhận được. Xem ghi chú đầy đủ tại `listForPlaceOwner()` bên dưới
+ * trước khi thêm bất kỳ trường lý do nào vào đây.
  */
 export interface OwnerPlacePhoto {
   id: string;
@@ -306,6 +311,27 @@ export class MediaService {
    *
    * `url` trỏ tới endpoint NỘI BỘ (`/places/{placeId}/media/{id}/file`) chứ không phải endpoint
    * công khai: ảnh chưa duyệt không có URL công khai nào, theo đúng mô hình private media.
+   *
+   * KHÔNG đọc `moderation_cases` — CỐ Ý, đã điều tra (Owner-facing Moderation Feedback,
+   * 2026-08-12). Chủ cơ sở chỉ nhận `status`, KHÔNG nhận `moderation_cases.reason`:
+   *
+   *  • `reason` là TEXT TỰ DO moderator gõ khi reject/hide (INV-11) — không có `reason_code` an
+   *    toàn/có kiểm soát nào tồn tại cho quyết định media (khác `report_reason` — đó là lý do
+   *    NGƯỜI DÙNG báo cáo, một khái niệm khác hoàn toàn, không phải lý do MODERATOR từ chối).
+   *  • Repo này ĐÃ CÓ tiền lệ cho đúng tình huống "text nhân viên gõ về một yêu cầu của MỘT người
+   *    dùng cụ thể, có nên lộ lại cho chính người đó không" — và tiền lệ đó trả lời KHÔNG cả hai
+   *    lần: `business_claims.decision_note` không bao giờ lộ qua `GET /business-claims/mine`
+   *    (chỉ `reason_code` — enum có kiểm soát — mới lộ, xem `business.mapper.ts`
+   *    `toOwnBusinessClaimSummary`); `bookings.internal_note` được tài liệu hoá tường minh là
+   *    "KHÔNG BAO GIỜ lộ qua API" dù nói về đúng booking của khách (docs/data/modules/booking.md).
+   *    `moderation_cases.reason` giữ đúng vai trò như hai trường đó — free text nội bộ, không phải
+   *    một khái niệm mới.
+   *  • Lộ nó sẽ mở một kênh rò rỉ không kiểm soát được: reason có thể nhắc tới case khác, nghi vấn
+   *    gian lận, hoặc bất cứ gì moderator thấy cần ghi — không có cách nào lọc an toàn bằng máy.
+   *
+   * Muốn cho chủ cơ sở một lý do THẬT SỰ hữu ích và an toàn cần một `reason_code` có kiểm soát
+   * (cùng khuôn `business_claims`) — đòi hỏi migration + đổi giao diện quyết định của moderator,
+   * cố ý NGOÀI PHẠM VI milestone này. `status: 'rejected'` là toàn bộ tín hiệu hiện có.
    */
   async listForPlaceOwner(placeId: string): Promise<OwnerPlacePhoto[]> {
     const [rows, coverImageId] = await Promise.all([

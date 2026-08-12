@@ -264,6 +264,48 @@ describe('MediaService — ảnh của cơ sở (Owner Place Photos)', () => {
       expect(serialized).not.toContain('private-bucket');
       expect(serialized).not.toContain(VALID_CHECKSUM);
     });
+
+    // Owner-facing Moderation Feedback (2026-08-12) — QUYẾT ĐỊNH SẢN PHẨM đã điều tra kỹ (không
+    // phải thiếu sót): `moderation_cases.reason` là free text do moderator gõ, không có
+    // `reason_code` an toàn nào cho quyết định media (khác `business_claims` — nơi `reason_code`
+    // được lộ nhưng `decision_note` free text thì KHÔNG BAO GIỜ, xem business.mapper.ts
+    // `toOwnBusinessClaimSummary`; cùng nguyên tắc `bookings.internal_note` — "KHÔNG BAO GIỜ lộ
+    // qua API", docs/data/modules/booking.md). `listForPlaceOwner()` vì vậy KHÔNG BAO GIỜ đọc
+    // `moderation_cases` — hình dạng response chỉ đúng 8 khoá đã biết, dựng bằng liệt kê tường
+    // minh (không spread), nên một cột lạ trên `Media` (nếu sau này có ai thêm) không tự động lọt
+    // ra ngoài.
+    it('ảnh rejected -> response CHỈ đúng 8 khoá đã biết, KHÔNG có reason/reviewer/case nào', async () => {
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        {
+          id: 'm1',
+          status: MediaStatus.REJECTED,
+          caption: null,
+          altText: null,
+          createdAt: new Date('2026-08-11T00:00:00Z'),
+          sortOrder: null,
+        },
+      ] as never);
+
+      const res = await service.listForPlaceOwner(PLACE_ID);
+
+      expect(Object.keys(res[0]).sort()).toEqual(
+        ['alt_text', 'caption', 'created_at', 'id', 'is_cover', 'sort_order', 'status', 'url'].sort(),
+      );
+    });
+
+    // Chốt chặn cấu trúc: hàm này không được phép GỌI bất kỳ phương thức nào của
+    // ModerationCasesRepository — nếu ai đó sau này "tiện tay" nối `listForPlaceOwner` với dữ liệu
+    // case (vd để hiện reason), test này báo động NGAY ở review thay vì phải tự phát hiện qua audit
+    // thủ công.
+    it('KHÔNG bao giờ gọi ModerationCasesRepository khi liệt kê ảnh cho chủ cơ sở', async () => {
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        { id: 'm1', status: MediaStatus.REJECTED, caption: null, altText: null, createdAt: new Date() },
+      ] as never);
+
+      await service.listForPlaceOwner(PLACE_ID);
+
+      expect(moderationCases.createOpenCase).not.toHaveBeenCalled();
+    });
   });
 
   describe('removeFromPlace', () => {

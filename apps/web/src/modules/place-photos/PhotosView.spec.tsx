@@ -750,3 +750,132 @@ describe('PhotosView — sửa mô tả ảnh (caption/alt_text)', () => {
     expect(captionInput('m2')).toHaveValue('second'); // KHÔNG bị ảnh hưởng
   });
 });
+
+// Owner-facing Moderation Feedback (2026-08-12). QUYẾT ĐỊNH SẢN PHẨM đã điều tra kỹ: không có
+// `reason`/`rejection_reason` an toàn nào trong hợp đồng API (xem media.service.ts
+// `listForPlaceOwner()` để biết đầy đủ lý do — cùng tiền lệ `business_claims.decision_note`/
+// `bookings.internal_note`, chưa từng lộ qua API). PlacePhoto KHÔNG có trường lý do nào — nhóm
+// test này KHOÁ LẠI hành vi an toàn hiện có, không thêm hành vi mới.
+describe('PhotosView — phản hồi kiểm duyệt (ảnh bị từ chối)', () => {
+  it('ảnh rejected -> CHỈ hiện thông điệp chung, không có lý do động nào', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+    expect(
+      screen.getByText('Kiểm duyệt viên đã từ chối ảnh này. Ảnh không hiển thị công khai và không làm ảnh bìa được.'),
+    ).toBeInTheDocument();
+  });
+
+  // Vì PlacePhoto không có trường lý do nào, không có gì để hiển thị ngoài thông điệp chung —
+  // test này ghim lại rằng component không "phát minh" hay suy diễn thêm bất kỳ nội dung nào.
+  it('ảnh rejected -> KHÔNG render bất kỳ token enum thô nào (INAPPROPRIATE_CONTENT, LOW_QUALITY,…)', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected' })]);
+    const { container } = render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+    const text = container.textContent ?? '';
+    expect(text).not.toMatch(/INAPPROPRIATE_CONTENT|LOW_QUALITY|reason_code|rejection_reason/i);
+  });
+
+  it('ảnh pending -> KHÔNG hiện thông điệp/nhãn của ảnh rejected', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'pending' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument());
+    expect(screen.queryByText('Bị từ chối')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Kiểm duyệt viên đã từ chối/)).not.toBeInTheDocument();
+  });
+
+  it('ảnh published -> KHÔNG hiện thông điệp/nhãn của ảnh rejected (không có phản hồi cũ còn sót lại)', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'published' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+
+    await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
+    expect(screen.queryByText('Bị từ chối')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Kiểm duyệt viên đã từ chối/)).not.toBeInTheDocument();
+  });
+
+  // Ảnh bị từ chối rồi được khôi phục (server trả status mới qua response sau khi sửa metadata) ->
+  // nhãn/thông điệp CŨ không còn — component render THEO đúng dữ liệu HIỆN HÀNH server gửi xuống,
+  // không tự giữ trạng thái rejected cũ ở đâu khác.
+  it('server trả status MỚI (published) sau một thao tác -> thông điệp rejected biến mất', async () => {
+    mockList.mockResolvedValueOnce([photo({ id: 'm1', status: 'rejected', caption: 'old' })]);
+    mockUpdateMetadata.mockResolvedValueOnce([photo({ id: 'm1', status: 'published', caption: 'new' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
+    expect(screen.queryByText('Bị từ chối')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Kiểm duyệt viên đã từ chối/)).not.toBeInTheDocument();
+  });
+
+  // Rejected KHÔNG chặn các thao tác quản lý khác trên CÙNG ảnh đó.
+  it('ảnh rejected: sửa caption/alt_text vẫn hoạt động bình thường', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected', caption: 'old' })]);
+    mockUpdateMetadata.mockResolvedValueOnce([photo({ status: 'rejected', caption: 'new' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+
+    const captionField = screen.getByLabelText('Mô tả ảnh', { selector: '#photo-caption-m1' });
+    fireEvent.change(captionField, { target: { value: 'new' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }));
+
+    await waitFor(() => expect(mockUpdateMetadata).toHaveBeenCalledWith(PLACE_ID, 'm1', { caption: 'new', alt_text: '' }, 'tok'));
+  });
+
+  it('ảnh rejected: nút sắp xếp (Lên/Xuống) vẫn hoạt động', async () => {
+    mockList.mockResolvedValueOnce([
+      photo({ id: 'm1', status: 'rejected' }),
+      photo({ id: 'm2', status: 'published' }),
+    ]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Di chuyển ảnh 1 xuống sau' })).toBeInTheDocument(),
+    );
+
+    mockReorder.mockResolvedValueOnce([
+      photo({ id: 'm2', status: 'published' }),
+      photo({ id: 'm1', status: 'rejected' }),
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Di chuyển ảnh 1 xuống sau' }));
+
+    await waitFor(() => expect(mockReorder).toHaveBeenCalledWith(PLACE_ID, ['m2', 'm1'], 'tok'));
+  });
+
+  // Ảnh rejected KHÔNG BAO GIỜ đủ điều kiện làm bìa — nút "Đặt làm ảnh bìa" không được render.
+  it('ảnh rejected: KHÔNG có nút "Đặt làm ảnh bìa"', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Đặt làm ảnh bìa' })).not.toBeInTheDocument();
+  });
+
+  it('ảnh rejected: nút "Gỡ ảnh" vẫn hoạt động (chủ cơ sở có thể xoá ảnh bị từ chối)', async () => {
+    mockList.mockResolvedValueOnce([photo({ id: 'm1', status: 'rejected' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gỡ ảnh' })).toBeInTheDocument());
+
+    mockList.mockResolvedValueOnce([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh' }));
+
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(PLACE_ID, 'm1', 'tok'));
+  });
+
+  // HTML-looking caption vẫn phải render AN TOÀN dạng text thuần (React tự escape, không có
+  // dangerouslySetInnerHTML ở bất kỳ đâu trong PhotosView/PhotoMetadataForm).
+  it('caption trông giống HTML -> render như VĂN BẢN THUẦN, không thực thi/không lộ thẻ', async () => {
+    const dangerous = '<img src=x onerror=alert(1)>';
+    mockList.mockResolvedValueOnce([photo({ status: 'rejected', caption: dangerous })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Bị từ chối')).toBeInTheDocument());
+
+    const captionField = screen.getByLabelText('Mô tả ảnh', { selector: '#photo-caption-m1' }) as HTMLInputElement;
+    expect(captionField.value).toBe(dangerous); // hiển thị NGUYÊN VĂN trong input, không parse
+    // Không có phần tử <img> THỨ HAI nào được tạo ra từ caption (chỉ đúng 1 <img> = ảnh thật).
+    expect(screen.getAllByRole('img')).toHaveLength(1);
+  });
+});

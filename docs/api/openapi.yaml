@@ -3690,7 +3690,16 @@ components:
         khai. KHÔNG có `object_key`/`bucket`/`checksum_sha256` — chi tiết lưu trữ không rời server.
       properties:
         id: { type: string, format: uuid }
-        status: { type: string, enum: [pending, published, rejected, hidden] }
+        status:
+          type: string
+          enum: [pending, published, rejected, hidden]
+          description: >-
+            Tín hiệu kiểm duyệt DUY NHẤT trả về cho chủ cơ sở. `status: rejected` KHÔNG kèm lý do —
+            đã xem xét và chủ đích không lộ `moderation_cases.reason` (free text moderator gõ,
+            không có `reason_code` an toàn/có kiểm soát nào cho quyết định media), cùng nguyên tắc
+            `business_claims.decision_note`/`bookings.internal_note` trong hệ thống này: chỉ một
+            mã lý do có kiểm soát mới được lộ ra cho bên bị ảnh hưởng, không bao giờ là text tự do
+            của nhân viên. Xem `docs/data/modules/media.md` §16.
         caption: { type: [string, 'null'] }
         alt_text: { type: [string, 'null'] }
         created_at: { type: string, format: date-time }

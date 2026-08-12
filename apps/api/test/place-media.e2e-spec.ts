@@ -505,6 +505,92 @@ describe('Owner Place Photos — security boundary (live Postgres)', () => {
       expect(file.status).toBe(404);
     });
 
+    // Owner-facing Moderation Feedback (2026-08-12) — QUYẾT ĐỊNH SẢN PHẨM (đã điều tra, không phải
+    // thiếu sót): `moderation_cases.reason` là free text do MODERATOR gõ, không có `reason_code`
+    // an toàn nào tồn tại cho quyết định media. Tiền lệ ĐÃ CÓ trong chính repo này —
+    // `business_claims.decision_note` và `bookings.internal_note` — đều KHÔNG BAO GIỜ lộ ra cho
+    // bên bị ảnh hưởng dù nội dung nói riêng về chính họ; chỉ `reason_code` (enum có kiểm soát)
+    // mới lộ ra cho `business_claims`. `media` không có enum tương đương, nên `reason` ở đây vẫn
+    // đóng vai trò NHƯ `decision_note`/`internal_note` — giữ nguyên tắc, không lộ. Test này ghim
+    // lại bảo đảm đó ở tầng HTTP thật, không chỉ ở mức đơn vị: chủ cơ sở KHÔNG BAO GIỜ nhìn thấy
+    // `reason` mà moderator đã gõ, dù ảnh CHÍNH LÀ ảnh của họ.
+    it('chủ cơ sở KHÔNG thấy lý do từ chối của moderator (free text, không phải reason_code an toàn)', async () => {
+      const owner = await mkPlaceWithOwner('reject_privacy');
+      const moderator = await createModerator('reject_privacy_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
+      const caseId = await seedCase(mediaId);
+
+      const SECRET_REASON = 'Trùng lặp với case #4821 — nghi ngờ tài khoản này, theo dõi thêm';
+      const decide = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: SECRET_REASON });
+      expect(decide.status).toBe(200);
+
+      const ownerList = await request(app.getHttpServer())
+        .get(`/api/places/${owner.placeId}/media`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(ownerList.status).toBe(200);
+
+      const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
+      expect(item.status).toBe('rejected');
+
+      const serialized = JSON.stringify(ownerList.body);
+      // Nội dung reason (free text moderator gõ) không được xuất hiện dưới BẤT KỲ hình thức nào.
+      expect(serialized).not.toContain(SECRET_REASON);
+      expect(serialized).not.toContain('4821');
+      // Không có trường nào mang tên gợi ý "đây là lý do" — hợp đồng response chỉ đúng 8 khoá đã
+      // biết (id/status/caption/alt_text/created_at/url/sort_order/is_cover).
+      expect(Object.keys(item).sort()).toEqual(
+        ['alt_text', 'caption', 'created_at', 'id', 'is_cover', 'sort_order', 'status', 'url'].sort(),
+      );
+      // Danh tính moderator (resolved_by/reviewer) không bao giờ lộ ra kênh chủ cơ sở.
+      expect(serialized).not.toContain(moderator.userId);
+      expect(serialized).not.toContain('resolved_by');
+      expect(serialized).not.toContain('reviewer');
+    });
+
+    // Nhiều quyết định lịch sử trên CÙNG một media (từ chối rồi khôi phục) — trạng thái chủ cơ sở
+    // nhìn thấy PHẢI phản ánh đúng trạng thái HIỆN HÀNH (media.status là cột vô hướng DUY NHẤT,
+    // không suy ra từ lịch sử case), và case rejection CŨ không được rò rỉ qua bất kỳ đường nào
+    // sau khi ảnh đã được khôi phục.
+    it('ảnh bị từ chối RỒI được khôi phục -> chủ cơ sở thấy ĐÚNG trạng thái hiện hành, không còn dấu vết case cũ', async () => {
+      const owner = await mkPlaceWithOwner('reject_then_restore');
+      const moderator = await createModerator('reject_then_restore_mod');
+      const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
+
+      const rejectCase = await seedCase(mediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${rejectCase}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'reject', reason: 'Lần đầu bị từ chối vì lý do nội bộ X' })
+        .expect(200);
+
+      const [afterReject] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(afterReject.status).toBe('rejected');
+
+      // Từ `rejected`, FSM chỉ cho `restore` (không có `approve` trực tiếp) — xem
+      // media-moderation.transition.ts. Mở case MỚI rồi khôi phục về `published`.
+      const restoreCase = await seedCase(mediaId);
+      await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${restoreCase}/decide`)
+        .set('Authorization', `Bearer ${moderator.accessToken}`)
+        .send({ decision: 'restore', target_status: 'published' })
+        .expect(200);
+
+      const [afterRestore] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(afterRestore.status).toBe('published');
+
+      const ownerList = await request(app.getHttpServer())
+        .get(`/api/places/${owner.placeId}/media`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      const item = ownerList.body.data.find((m: { id: string }) => m.id === mediaId);
+      expect(item.status).toBe('published'); // KHÔNG còn "rejected" — trạng thái hiện hành, xác định
+
+      const serialized = JSON.stringify(ownerList.body);
+      expect(serialized).not.toContain('Lần đầu bị từ chối vì lý do nội bộ X');
+    });
+
     it('người thường KHÔNG quyết định được ảnh chờ duyệt -> 403, trạng thái không đổi', async () => {
       const owner = await mkPlaceWithOwner('decide_403');
       const mediaId = await seedPlaceMedia(owner.placeId, owner.userId, 'pending');
