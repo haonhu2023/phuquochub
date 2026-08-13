@@ -38,26 +38,84 @@ MC_ALIAS="${MC_ALIAS:-phuquoc-backup}"
 MEDIA_BUCKET="${MEDIA_BUCKET:-phuquochub-prod}"
 # Same Docker-internal client as backup-media.sh; the snapshot dir is bind-mounted by the wrapper.
 MC_BIN="${MC_BIN:-$SCRIPT_DIR/lib/mc-docker.sh}"
-# The wrapper bind-mounts MEDIA_BACKUP_DIR; the snapshot being restored lives under it, so point
-# the mount at the snapshot's parent unless the operator has already set it explicitly.
-MEDIA_BACKUP_DIR="${MEDIA_BACKUP_DIR:-$(CDPATH= cd -- "$(dirname -- "$SNAPSHOT_DIR")" && pwd)}"
-export MEDIA_BACKUP_DIR
-TEST_BUCKET="${2:-phuquochub-restore-test-$(date -u +%Y%m%dT%H%M%SZ)}"
+# Lowercase digits/hyphens only: `date -u +%Y%m%dT%H%M%SZ` produces an uppercase T/Z, which
+# S3/MinIO bucket names reject outright.
+TEST_BUCKET="${2:-phuquochub-restore-test-$(date -u +%Y%m%d-%H%M%S)}"
 
-if [ ! -d "$SNAPSHOT_DIR" ]; then
-  echo "[media-rehearsal] ERROR: snapshot directory $SNAPSHOT_DIR does not exist." >&2
-  exit 1
-fi
-if [ ! -f "$SNAPSHOT_DIR/SHA256SUMS" ]; then
-  echo "[media-rehearsal] ERROR: $SNAPSHOT_DIR has no SHA256SUMS manifest -- refusing to rehearse" >&2
-  echo "[media-rehearsal]        against an unverifiable snapshot." >&2
-  exit 1
-fi
+# Validate the bucket name (default or operator-supplied) BEFORE any MinIO operation. Invalid
+# input fails closed -- it is never silently lowercased or otherwise rewritten, because a script
+# that "fixes" a caller's typo could just as easily "fix" its way into a name the caller did not
+# intend.
+validate_bucket_name() {
+  local bucket="$1" len
+  len=${#bucket}
+  if [ "$len" -lt 3 ] || [ "$len" -gt 63 ]; then
+    echo "[media-rehearsal] ERROR: bucket name '$bucket' must be 3-63 characters (got $len)." >&2
+    exit 1
+  fi
+  case "$bucket" in
+    [a-z0-9]*[a-z0-9])
+      case "$bucket" in
+        *[!a-z0-9-]*)
+          echo "[media-rehearsal] ERROR: bucket name '$bucket' may only contain lowercase" >&2
+          echo "[media-rehearsal]        letters, digits, and hyphens." >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    *)
+      echo "[media-rehearsal] ERROR: bucket name '$bucket' must start and end with a lowercase" >&2
+      echo "[media-rehearsal]        letter or digit." >&2
+      exit 1
+      ;;
+  esac
+}
+validate_bucket_name "$TEST_BUCKET"
 
 # Hard guard: never write into production, whatever was passed in.
 if [ "$TEST_BUCKET" = "$MEDIA_BUCKET" ]; then
   echo "[media-rehearsal] ERROR: refusing to use the production bucket ('$MEDIA_BUCKET') as the" >&2
   echo "[media-rehearsal]        restore target. Pass a scratch bucket name." >&2
+  exit 1
+fi
+
+if [ ! -d "$SNAPSHOT_DIR" ]; then
+  echo "[media-rehearsal] ERROR: snapshot directory $SNAPSHOT_DIR does not exist." >&2
+  exit 1
+fi
+
+# Canonicalize to an absolute, symlink-resolved path BEFORE it is compared against the backup
+# root or handed to the containerized mc client. mc runs inside a container where only
+# MEDIA_BACKUP_DIR is bind-mounted at a matching absolute path; a relative SNAPSHOT_DIR would be
+# resolved against the CONTAINER's working directory, not the host's, and silently find nothing.
+SNAPSHOT_DIR=$(CDPATH= cd -P -- "$SNAPSHOT_DIR" && pwd -P)
+
+# The wrapper bind-mounts MEDIA_BACKUP_DIR; the snapshot being restored lives under it, so point
+# the mount at the snapshot's parent unless the operator has already set it explicitly. Canonicalize
+# either way so the containment check below compares two real, symlink-resolved paths.
+MEDIA_BACKUP_DIR="${MEDIA_BACKUP_DIR:-$(dirname -- "$SNAPSHOT_DIR")}"
+if [ ! -d "$MEDIA_BACKUP_DIR" ]; then
+  echo "[media-rehearsal] ERROR: MEDIA_BACKUP_DIR '$MEDIA_BACKUP_DIR' does not exist." >&2
+  exit 1
+fi
+MEDIA_BACKUP_DIR=$(CDPATH= cd -P -- "$MEDIA_BACKUP_DIR" && pwd -P)
+export MEDIA_BACKUP_DIR
+
+# Refuse a snapshot that resolves outside the bind-mounted backup root -- via `..` traversal or a
+# symlink -- since the containerized mc client can only ever see paths under MEDIA_BACKUP_DIR, and
+# a path that escapes it has no business being fed to a restore rehearsal in the first place.
+case "$SNAPSHOT_DIR" in
+  "$MEDIA_BACKUP_DIR" | "$MEDIA_BACKUP_DIR"/*) : ;;
+  *)
+    echo "[media-rehearsal] ERROR: snapshot directory $SNAPSHOT_DIR resolves outside the media" >&2
+    echo "[media-rehearsal]        backup root $MEDIA_BACKUP_DIR -- refusing." >&2
+    exit 1
+    ;;
+esac
+
+if [ ! -f "$SNAPSHOT_DIR/SHA256SUMS" ]; then
+  echo "[media-rehearsal] ERROR: $SNAPSHOT_DIR has no SHA256SUMS manifest -- refusing to rehearse" >&2
+  echo "[media-rehearsal]        against an unverifiable snapshot." >&2
   exit 1
 fi
 
