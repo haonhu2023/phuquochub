@@ -55,6 +55,8 @@ DST="$D/dst"
 mkdir -p "$SRC" "$MEDIA" "$DST"
 printf 'fixture-db' > "$SRC/phuquochub-20260813T000000Z.sql.gz"
 printf 'fixture-db' > "$SRC/phuquochub-20260813T000000Z.sql.gz.sha256"
+printf '' > "$SRC/.media-backup.lock"
+printf '' > "$SRC/.offsite-backup.lock"
 printf 'fixture-media' > "$MEDIA/some-object.jpg"
 printf 'fixture-sums' > "$MEDIA/SHA256SUMS"
 
@@ -82,6 +84,11 @@ if [ -e "$DST/backups/media" ]; then
   fail "media tree was ALSO duplicated under backups/media (double-upload bug)"
 else
   pass "media tree excluded from the backups/ copy (no duplication)"
+fi
+if [ -e "$DST/backups/.media-backup.lock" ] || [ -e "$DST/backups/.offsite-backup.lock" ]; then
+  fail "lock dotfile(s) leaked into the remote backups/ tree"
+else
+  pass "lock dotfiles excluded from the remote backups/ tree"
 fi
 
 echo "== --immutable: a changed local file after first copy is rejected, not silently overwritten =="

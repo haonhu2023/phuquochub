@@ -98,10 +98,11 @@ copy_tree() {
 }
 
 # The media snapshots live UNDER backups/ by default, so exclude them from the database tree to
-# avoid uploading the same bytes twice under two different remote prefixes.
+# avoid uploading the same bytes twice under two different remote prefixes. Also exclude dotfiles
+# (e.g. .media-backup.lock, .offsite-backup.lock) -- flock lock files, not completed backups.
 echo "[sync-offsite] Copying PostgreSQL logical backups ..."
 "$RCLONE_BIN" copy "$BACKUP_DIR" "$R2_REMOTE_NAME:$R2_BUCKET/backups" \
-  --checksum --immutable --exclude "media/**"
+  --checksum --immutable --exclude "media/**" --exclude ".*"
 
 copy_tree "$MEDIA_BACKUP_DIR" "media" "MinIO media snapshots"
 
