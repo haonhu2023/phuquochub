@@ -21,12 +21,27 @@
 #   scripts/restore-media-rehearsal.sh backups/media/media-20260812T030000Z
 #
 # Cleanup is automatic unless KEEP_TEST_BUCKET=1.
+#
+# CONNECTIVITY (Docker-Internal MinIO Backups, 2026-08-12): identical model to backup-media.sh --
+# `mc` runs as an ephemeral pinned container on the compose network, reaching MinIO over Docker DNS
+# at `minio:9000`. No host port, no public edge. See scripts/lib/mc-docker.sh.
+#
+# CREDENTIAL: this rehearsal CREATES and DELETES a scratch bucket, so it cannot use the read-only
+# backup service account that backup-media.sh uses. Point MC_CONFIG_DIR at a separate config
+# holding a credential permitted to manage scratch buckets -- and still never the root credential.
+# The production bucket remains refused as a target regardless of which credential is supplied.
 set -euo pipefail
 
 SNAPSHOT_DIR="${1:?Usage: scripts/restore-media-rehearsal.sh <snapshot-dir> [test-bucket-name]}"
-MC_ALIAS="${MC_ALIAS:-phuquoc-prod}"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+MC_ALIAS="${MC_ALIAS:-phuquoc-backup}"
 MEDIA_BUCKET="${MEDIA_BUCKET:-phuquochub-prod}"
-MC_BIN="${MC_BIN:-mc}"
+# Same Docker-internal client as backup-media.sh; the snapshot dir is bind-mounted by the wrapper.
+MC_BIN="${MC_BIN:-$SCRIPT_DIR/lib/mc-docker.sh}"
+# The wrapper bind-mounts MEDIA_BACKUP_DIR; the snapshot being restored lives under it, so point
+# the mount at the snapshot's parent unless the operator has already set it explicitly.
+MEDIA_BACKUP_DIR="${MEDIA_BACKUP_DIR:-$(CDPATH= cd -- "$(dirname -- "$SNAPSHOT_DIR")" && pwd)}"
+export MEDIA_BACKUP_DIR
 TEST_BUCKET="${2:-phuquochub-restore-test-$(date -u +%Y%m%dT%H%M%SZ)}"
 
 if [ ! -d "$SNAPSHOT_DIR" ]; then
@@ -82,7 +97,12 @@ if ! "$MC_BIN" mirror --quiet --exclude 'SHA256SUMS' "$SNAPSHOT_DIR" "$MC_ALIAS/
 fi
 
 echo "[media-rehearsal] Step 4/4 — verifying restored objects are byte-identical ..."
-VERIFY_DIR=$(mktemp -d)
+# MUST live under MEDIA_BACKUP_DIR, not /tmp: the mc client runs in a container and only
+# MEDIA_BACKUP_DIR is bind-mounted at a shared absolute path. A /tmp scratch dir would be written
+# INSIDE the container and the host would read back an empty directory -- the verification would
+# then be comparing nothing against nothing. Leading dot keeps it out of the `media-*` glob that
+# retention and the offsite sync walk.
+VERIFY_DIR=$(mktemp -d "$MEDIA_BACKUP_DIR/.restore-verify-XXXXXX")
 trap 'rm -rf "$VERIFY_DIR"; cleanup' EXIT INT TERM
 if ! "$MC_BIN" mirror --quiet "$MC_ALIAS/$TEST_BUCKET" "$VERIFY_DIR" >/dev/null 2>&1; then
   echo "[media-rehearsal] ERROR: could not read back the restored objects." >&2

@@ -213,7 +213,11 @@ exit 0
 EOF
   chmod +x "$ENVDIR/bin/mc"
 }
-run_media() { ( export PATH="$ENVDIR/bin:$PATH"; export MEDIA_BACKUP_DIR="$ENVDIR/proj/backups/media"; bash "$SCRIPTS/backup-media.sh" "$ENVDIR/proj" 2>&1 ); }
+# MC_BIN is set EXPLICITLY to the stub. Since Docker-Internal MinIO Backups (2026-08-12) the
+# default MC_BIN is scripts/lib/mc-docker.sh, which would try to talk to Docker -- these cases are
+# about backup-media.sh's OWN logic (empty guard, manifest, retention), so they pin the client to a
+# local stub via the documented override. The wrapper itself is covered by mc-docker.test.sh.
+run_media() { ( export PATH="$ENVDIR/bin:$PATH"; export MEDIA_BACKUP_DIR="$ENVDIR/proj/backups/media"; export MC_BIN="$ENVDIR/bin/mc"; bash "$SCRIPTS/backup-media.sh" "$ENVDIR/proj" 2>&1 ); }
 
 new_env
 OUT=$(run_media); ST=$?

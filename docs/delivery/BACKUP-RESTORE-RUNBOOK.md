@@ -269,13 +269,99 @@ None of these can be performed from the repository.
 | # | Item | Owner action |
 |---|---|---|
 | 1 | Deploy migration `1720004400000` to production | Runs with the next release; until then production still has the unportable function and a fresh restore needs `restore.sh`'s legacy path |
-| 2 | Add the media backup cron entry (§1.1) | VPS crontab |
-| 3 | Install `mc` and configure a **read-only** MinIO service account | VPS |
+| 2 | Add the media backup cron entry (§1.1) — **only after §7.1 is complete** | VPS crontab |
+| 3 | Create the read-only MinIO service account + credential file (§7.1) | VPS |
 | 4 | Provision Cloudflare R2 + credentials; install `rclone` | Owner (Cloudflare), then VPS |
 | 5 | Configure an R2 lifecycle rule for offsite retention | Cloudflare console |
 | 6 | Rehearse a real PITR and record the result | Operator |
 | 7 | Decide on MinIO bucket versioning | Owner (cost trade-off) |
 | 8 | Add monitoring/alerting on backup cron failure | Operator |
+
+### 7.1 Enabling MinIO media backups (future VPS steps — none performed yet)
+
+**Why there is no `mc` on the host.** `docker-compose.prod.yml` publishes no host port for `minio`;
+only Caddy binds 80/443. MinIO exists solely as `minio:9000` inside the compose network. So `mc`
+runs as an **ephemeral, pinned container joined to that network** (`scripts/lib/mc-docker.sh`),
+which `backup-media.sh` and `restore-media-rehearsal.sh` use by default. No port is opened, no
+container IP is hardcoded, and backup traffic never touches `media.phuquochub.com`.
+
+Perform these in order. Do not add the cron until step 6 passes.
+
+**1 — Create a dedicated read-only service account.** In the MinIO console (or `mc admin`, using an
+existing admin session — *not* from these scripts), create a service account whose policy is
+exactly:
+
+```json
+{ "Version": "2012-10-17", "Statement": [
+  { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::phuquochub-prod"] },
+  { "Effect": "Allow", "Action": ["s3:GetObject"], "Resource": ["arn:aws:s3:::phuquochub-prod/*"] }
+] }
+```
+
+No `s3:PutObject`, no `s3:DeleteObject`, no admin actions. Never reuse `MINIO_ROOT_USER`, the
+application's write credential, or the container's built-in `local` alias.
+
+**2 — Store the credential outside Git, readable only by the cron user.**
+
+```bash
+mkdir -p ~/.mc-backup && chmod 700 ~/.mc-backup
+# Create with an EDITOR, not an inline shell command — a heredoc with the key in it would land in
+# shell history. Paste the two key values in, then save.
+nano ~/.mc-backup/config.json
+chmod 600 ~/.mc-backup/config.json
+```
+
+File shape (`url` must be the Docker DNS name, not a host or public address):
+
+```json
+{ "version": "10", "aliases": { "phuquoc-backup": {
+  "url": "http://minio:9000", "accessKey": "<ACCESS_KEY>", "secretKey": "<SECRET_KEY>",
+  "api": "S3v4", "path": "on" } } }
+```
+
+The wrapper **refuses to run** if this file is missing or not mode `600`/`400`. Nothing is ever
+passed via `docker run -e`, so the key never appears in argv, in the process table, or in
+`docker inspect` output.
+
+**3 — Pin the client image by digest.** The default tag is a deliberate pin, but it has not been
+verified against a registry from the repository. Confirm it resolves, then pin the digest:
+
+```bash
+docker pull minio/mc:RELEASE.2024-11-21T17-21-54Z
+docker inspect --format '{{index .RepoDigests 0}}' minio/mc:RELEASE.2024-11-21T17-21-54Z
+# then export MC_IMAGE=minio/mc@sha256:<digest> in the cron environment
+```
+
+**4 — Manual backup test.**
+
+```bash
+cd /home/deploy/apps/PhuQuocHub && ./scripts/backup-media.sh /home/deploy/apps/PhuQuocHub
+```
+
+Expect a `backups/media/media-<timestamp>/` snapshot plus `SHA256SUMS`. A `.partial` directory left
+behind means the run failed and cleaned up incorrectly — investigate before continuing.
+
+**5 — Verify the manifest independently.**
+
+```bash
+cd backups/media/media-<timestamp> && sha256sum -c SHA256SUMS
+```
+
+**6 — Isolated restore rehearsal.** This step needs a credential that may create and delete scratch
+buckets, so it **cannot use the read-only account from step 1**. Point it at a separate config dir
+holding a suitably-scoped account (still never root):
+
+```bash
+MC_CONFIG_DIR=~/.mc-rehearsal \
+  ./scripts/restore-media-rehearsal.sh backups/media/media-<timestamp>
+```
+
+Expect `MINIO_RESTORE_TEST=PASS` and automatic deletion of the scratch bucket. The production
+bucket is refused as a target regardless of which credential is supplied. If the process is killed
+hard, a `phuquochub-restore-test-*` bucket may survive — remove it with
+`mc rb --force <alias>/phuquochub-restore-test-<ts>`.
+
+**7 — Only now add the cron** (§1.1), 02:30 UTC, after the 02:00 database job.
 
 ---
 

@@ -26,24 +26,32 @@
 # change — there is no in-bucket version history to fall back on. Enabling bucket versioning is an
 # Owner decision with storage-cost implications, tracked in the runbook's open items.
 #
+# HOW `mc` REACHES MINIO (Docker-Internal MinIO Backups, 2026-08-12). MinIO publishes NO host
+# port -- it exists only as `minio:9000` inside the compose network. So `mc` does NOT run on the
+# host; it runs as an ephemeral, pinned container joined to that same network, via the default
+# MC_BIN below. See scripts/lib/mc-docker.sh for the full rationale and the credential boundary.
+# Set MC_BIN=mc to force a native host client instead (only useful where a route actually exists).
+#
 # One-time VPS setup (documented, not automated — installing software is a deployment decision):
-#   1. Install MinIO client `mc`: https://min.io/docs/minio/linux/reference/minio-mc.html
-#   2. Configure a read-capable alias, e.g.:
-#        mc alias set phuquoc-prod https://<minio-endpoint> <ACCESS_KEY> <SECRET_KEY>
-#      Use a read-only service account, not the root credential.
+#   1. Create a READ-ONLY MinIO service account (ListBucket + GetObject on the media bucket only;
+#      never the root credential, never the app's write credential).
+#   2. Write its keys into $MC_CONFIG_DIR/config.json (default ~/.mc-backup), mode 0600, with the
+#      alias URL set to http://minio:9000. Full steps in docs/delivery/BACKUP-RESTORE-RUNBOOK.md.
 #
 # Usage: scripts/backup-media.sh [compose-project-dir]
-#   MC_ALIAS       (default: phuquoc-prod)   configured mc alias name
+#   MC_ALIAS       (default: phuquoc-backup)  alias name inside the mounted mc config
 #   MEDIA_BUCKET   (default: phuquochub-prod) source bucket
 #   MEDIA_BACKUP_DIR (default: <project>/backups/media)
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR="${1:-$(dirname "$SCRIPT_DIR")}"
-MC_ALIAS="${MC_ALIAS:-phuquoc-prod}"
+MC_ALIAS="${MC_ALIAS:-phuquoc-backup}"
 MEDIA_BUCKET="${MEDIA_BUCKET:-phuquochub-prod}"
 MEDIA_BACKUP_DIR="${MEDIA_BACKUP_DIR:-$PROJECT_DIR/backups/media}"
-MC_BIN="${MC_BIN:-mc}"
+# Default to the Docker-internal client: on this topology a host-installed `mc` has no route.
+MC_BIN="${MC_BIN:-$SCRIPT_DIR/lib/mc-docker.sh}"
+export MEDIA_BACKUP_DIR PROJECT_DIR
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 SNAPSHOT_NAME="media-$TIMESTAMP"
 FINAL_DIR="$MEDIA_BACKUP_DIR/$SNAPSHOT_NAME"
