@@ -82,10 +82,31 @@ services:
     # PLACE-038: mật khẩu Redis bắt buộc (deployment.md §6.5 khuyến nghị nhưng chưa triển khai
     # trước đây) — closes the gap PLACE-037 flagged. KHÔNG publish 6379 ra host.
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}"]
+    # Healthcheck credential exposure fix (2026-08-13): REDIS_PASSWORD is published to the
+    # container environment SOLELY so the healthcheck below can read it at runtime. redis-server
+    # itself still takes the password via `command:` above (unchanged on purpose -- Redis rewrites
+    # its own process title to "redis-server *:6379", so the server's argv does NOT leak it).
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}
     volumes:
       - redis_data_prod:/data
+    # The previous form was:
+    #   test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-...}", "--no-auth-warning", "ping"]
+    # Compose interpolates ${REDIS_PASSWORD} at PARSE time, so the resolved plaintext password was
+    # baked into the container's Healthcheck.Test metadata (readable via `docker inspect`) AND was
+    # re-exposed in redis-cli's argv every 10s -- ~8,600 process-table appearances per day.
+    #
+    # `$$` escapes the interpolation so Compose stores a literal `${REDIS_PASSWORD}` REFERENCE; the
+    # shell inside the container expands it at runtime instead. REDISCLI_AUTH (redis-cli >= 6.0;
+    # deployed image is redis:7-alpine / redis-cli 7.4.10) passes the password via the environment
+    # rather than argv, which is also why `--no-auth-warning` is no longer needed -- that warning
+    # exists specifically to flag the insecure `-a` form.
+    #
+    # `| grep -q PONG` is load-bearing: redis-cli exits 0 even when the server returns an auth
+    # error, so without it a WRONGPASS reply would be reported as healthy. Double-quoting the
+    # expansion keeps passwords containing spaces or shell metacharacters intact.
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-me-redis-password-min-16-chars}", "--no-auth-warning", "ping"]
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
       interval: 10s
       timeout: 5s
       retries: 5
