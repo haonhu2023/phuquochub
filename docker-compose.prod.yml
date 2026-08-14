@@ -153,13 +153,28 @@ services:
   # PLACE-038: migration runner -- reuses the SAME multi-stage Dockerfile's intermediate `build`
   # stage (which already has the full TypeScript source + ts-node/typeorm-ts-node-commonjs),
   # rather than the lean `runtime` stage the `api` service uses (which ships compiled dist/ only
-  # and intentionally excludes migration tooling). NOT started by `docker compose up` (no
-  # `restart:`, not a dependency of anything) -- invoked on demand: `docker compose -f
-  # docker-compose.prod.yml run --rm migrate`. Reached postgres/redis by service name on the
+  # and intentionally excludes migration tooling). Reached postgres/redis by service name on the
   # same internal network as every other service here, exactly like a real VPS deploy would --
   # this is also why migrations cannot simply run via bare `npm run migration:run` on the host
   # once postgres's port is no longer published (Topology A's own private-networking design).
+  #
+  # Migration profile guard (2026-08-14): this comment used to claim the service was "NOT started
+  # by `docker compose up` (no `restart:`, not a dependency of anything)". That was FALSE, and the
+  # claim itself is why the gap survived so long. Neither property excludes a service from `up`:
+  # Compose starts EVERY service in the default selection, and the only thing that removes a
+  # service from that selection is a profile. Proven on production with a non-mutating
+  # `docker compose --dry-run up -d`, which planned `phuquochub-prod-migrate-1 Created/Started` --
+  # i.e. a bare `docker compose up -d`, run for any unrelated reason, would have executed every
+  # pending TypeORM migration against the live database with no operator intent and no review.
+  #
+  # `profiles: [tools]` removes it from the default selection. It stays fully available on demand
+  # because `docker compose run` auto-enables a service's OWN profiles; scripts/deploy.sh Step 7
+  # nevertheless passes `--profile tools` explicitly so the intent is legible at the call site and
+  # does not depend on that convenience behaviour. This is the ONLY profiled service -- everything
+  # else must remain in the default selection so `up -d` still brings up the whole stack.
   migrate:
+    profiles:
+      - tools
     build:
       context: .
       dockerfile: apps/api/Dockerfile

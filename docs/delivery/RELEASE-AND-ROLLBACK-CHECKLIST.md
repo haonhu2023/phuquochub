@@ -42,6 +42,14 @@ Run `scripts/deploy.sh <tag>` (requires `DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_AC
 - [ ] Step 6 — tag retained (needed for `scripts/rollback.sh` later — do not delete it).
 - [ ] Step 7 — `migrate` compose service runs all pending migrations; **halts the whole deploy
       on failure** without touching the running stack.
+      Since 2026-08-14 `migrate` is gated behind `profiles: [tools]`, so it is **not** in the
+      default service selection and a bare `docker compose up -d` can no longer start it by
+      accident (before the guard, it would have — verified on production with
+      `docker compose --dry-run up -d`). `deploy.sh` passes `--profile tools` itself; the
+      canonical command for a **manual** migration run is therefore:
+      `docker compose -f docker-compose.prod.yml --profile tools run --rm migrate`.
+      If that ever appears to fail with "no such service", the profile flag is missing — **do not
+      remove the profile from the compose file** to work around it.
 - [ ] Step 8 — smoke test on the **new** image in isolation, before cutover; halts on failure.
 - [ ] Step 9 — cutover: `docker compose up -d` the new api/web/caddy.
 - [ ] Step 10 — `docker compose ps` reviewed; every service other than `caddy` should show

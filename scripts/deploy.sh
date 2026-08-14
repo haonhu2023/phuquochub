@@ -49,7 +49,14 @@ echo "[deploy]     database.module.ts's migrationsRun:false; see PLACE-037 §12)
 echo "[deploy]     Via the compose 'migrate' service (reuses the Dockerfile's intermediate build"
 echo "[deploy]     stage, reaches postgres by service name -- postgres's port is not published"
 echo "[deploy]     to the host under this topology, so a bare host-side npm run cannot reach it)."
-DB_PASSWORD="${DB_PASSWORD:?DB_PASSWORD required}" $COMPOSE run --rm migrate \
+# Migration profile guard (2026-08-14): `migrate` is now `profiles: [tools]` so that a bare
+# `docker compose up -d` can no longer start it by accident (it previously would have -- see the
+# service's own comment in docker-compose.prod.yml). `docker compose run` auto-enables the target
+# service's own profiles, so this line would work without the flag; `--profile tools` is passed
+# ANYWAY because this is the one place in the repo that intentionally runs migrations against a
+# real database, and that intent should be explicit in the command rather than implied by a
+# Compose convenience behaviour that a future version could narrow.
+DB_PASSWORD="${DB_PASSWORD:?DB_PASSWORD required}" $COMPOSE --profile tools run --rm migrate \
   || { echo "[deploy] ERROR: migration:run failed. Deploy HALTED -- the previous image is still" >&2; \
        echo "[deploy]        running (docker compose was never touched by this failed run)." >&2; exit 1; }
 
