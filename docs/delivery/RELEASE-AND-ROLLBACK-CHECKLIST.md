@@ -52,6 +52,18 @@ Run `scripts/deploy.sh <tag>` (requires `DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_AC
       remove the profile from the compose file** to work around it.
 - [ ] Step 8 — smoke test on the **new** image in isolation, before cutover; halts on failure.
 - [ ] Step 9 — cutover: `docker compose up -d` the new api/web/caddy.
+- [ ] Step 9b — **the released tag is persisted** to `API_IMAGE_TAG`/`WEB_IMAGE_TAG` in the
+      production `.env`, so a later plain `docker compose up -d` resolves to the release that is
+      actually running. Added 2026-08-14 after production drift: the web container was live on
+      `phuquochub-web:c9cf9e5` while `.env` still said `WEB_IMAGE_TAG=local`, and
+      `phuquochub-web:local` was an **older build missing the c9cf9e5 map fix** — so a routine
+      `up -d` would have silently rolled the site back a release. The cause was that every deploy
+      passed the tag as a one-shot `WEB_IMAGE_TAG=... docker compose ...` prefix, which leaves no
+      record on the host. Step 9b closes that. Only these two non-secret keys are ever written;
+      the helper (`scripts/lib/release-tag.sh`) rewrites nothing else in `.env` and preserves its
+      `0600` mode.
+      To read the current pinned release without dumping `.env`:
+      `grep -E '^(WEB|API)_IMAGE_TAG=' .env`
 - [ ] Step 10 — `docker compose ps` reviewed; every service other than `caddy` should show
       `healthy` (native `HEALTHCHECK`, PLACE-038).
 - [ ] Step 11 — `scripts/smoke-test.sh` (PLACE-040) runs against Caddy's local `:8080` address;
@@ -95,6 +107,9 @@ Run `scripts/rollback.sh <tag-to-roll-back-to> [api|web|both]`:
 - [ ] Confirms the target image tag actually exists locally/on-registry before doing anything
       (fails loudly if it was never retained — this is why Step 6 above matters).
 - [ ] Swaps the container(s) via `docker compose up -d --no-build`.
+- [ ] **Persists the rolled-back tag** to `.env` for the service(s) actually rolled back (a
+      `web`-only rollback does not touch `API_IMAGE_TAG`). Without this, the next plain
+      `docker compose up -d` would resurrect the bad release the rollback just removed.
 - [ ] Waits, then verifies `/api/health` directly — exits non-zero if it does not return `200`.
 - [ ] **Not scripted, do manually:** re-run `scripts/smoke-test.sh` against `:8080` for the full
       check set (rollback.sh only re-checks `/api/health`, not the whole smoke suite), and

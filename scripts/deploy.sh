@@ -21,6 +21,9 @@ TAG="${1:?Usage: scripts/deploy.sh <git-sha-or-tag> [compose-project-dir]}"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR="${2:-$(dirname "$SCRIPT_DIR")}"
 COMPOSE="docker compose -f $PROJECT_DIR/docker-compose.prod.yml"
+ENV_FILE="$PROJECT_DIR/.env"
+# shellcheck source=lib/release-tag.sh
+. "$SCRIPT_DIR/lib/release-tag.sh"
 
 echo "[deploy] === Step 5: build images tagged $TAG ==="
 docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR"
@@ -79,7 +82,27 @@ docker rm -f "phuquoc-api-smoketest-$TAG"
 echo "[deploy] Smoke test passed."
 
 echo "[deploy] === Step 9: cutover -- point the compose stack at the new tag and redeploy ==="
+# Record what is live BEFORE the swap, so Step 9b can tell the operator the exact tag to hand to
+# scripts/rollback.sh. These are plain image tags, never secrets.
+PREV_API_TAG=$(release_tag_get API_IMAGE_TAG "$ENV_FILE" 2>/dev/null || echo "local")
+PREV_WEB_TAG=$(release_tag_get WEB_IMAGE_TAG "$ENV_FILE" 2>/dev/null || echo "local")
 API_IMAGE_TAG="$TAG" WEB_IMAGE_TAG="$TAG" $COMPOSE up -d --no-build api web caddy
+
+echo "[deploy] === Step 9b: persist the released tag so plain Compose resolves to it ==="
+# Web/API release drift fix (2026-08-14). The `VAR=... docker compose` prefix above lives only for
+# the duration of that one command. Without this step the containers run the new images while
+# `.env` still names the OLD tag, so the NEXT plain `docker compose up -d` -- run for any unrelated
+# reason -- silently recreates api/web from the stale tag. That is exactly how production ended up
+# running `phuquochub-web:c9cf9e5` with `WEB_IMAGE_TAG=local` in `.env`, where `:local` was a build
+# from two releases earlier. Persisting here keeps `.env` describing what is ACTUALLY running.
+#
+# Deliberately placed immediately after the cutover and BEFORE the health/route checks below: the
+# containers are already live at this point, so `.env` must match reality even if the smoke test
+# then fails and the operator rolls back (rollback.sh rewrites these same keys).
+release_tag_set API_IMAGE_TAG "$TAG" "$ENV_FILE"
+release_tag_set WEB_IMAGE_TAG "$TAG" "$ENV_FILE"
+echo "[deploy]     Previous tags were api=$PREV_API_TAG web=$PREV_WEB_TAG"
+echo "[deploy]     To roll back: scripts/rollback.sh $PREV_WEB_TAG (retain those images!)"
 
 echo "[deploy] === Step 10: health checks ==="
 sleep 5

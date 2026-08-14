@@ -20,6 +20,9 @@ TARGET="${2:-both}"
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PROJECT_DIR="${3:-$(dirname "$SCRIPT_DIR")}"
 COMPOSE="docker compose -f $PROJECT_DIR/docker-compose.prod.yml"
+ENV_FILE="$PROJECT_DIR/.env"
+# shellcheck source=lib/release-tag.sh
+. "$SCRIPT_DIR/lib/release-tag.sh"
 
 for image in "phuquochub-api:$TAG" "phuquochub-web:$TAG"; do
   case "$TARGET" in
@@ -35,15 +38,24 @@ for image in "phuquochub-api:$TAG" "phuquochub-web:$TAG"; do
 done
 
 echo "[rollback] Rolling back ($TARGET) to tag: $TAG"
+# Web/API release drift fix (2026-08-14): each branch persists the tag it just rolled back to, for
+# the same reason deploy.sh Step 9b does. A rollback that swapped the container but left `.env`
+# naming the BAD release would be undone by the next plain `docker compose up -d` -- the failed
+# release would silently come back. Only the service(s) actually rolled back are persisted, so a
+# `web`-only rollback does not misreport the api tag.
 case "$TARGET" in
   api)
     API_IMAGE_TAG="$TAG" $COMPOSE up -d --no-build api
+    release_tag_set API_IMAGE_TAG "$TAG" "$ENV_FILE"
     ;;
   web)
     WEB_IMAGE_TAG="$TAG" $COMPOSE up -d --no-build web
+    release_tag_set WEB_IMAGE_TAG "$TAG" "$ENV_FILE"
     ;;
   both)
     API_IMAGE_TAG="$TAG" WEB_IMAGE_TAG="$TAG" $COMPOSE up -d --no-build api web
+    release_tag_set API_IMAGE_TAG "$TAG" "$ENV_FILE"
+    release_tag_set WEB_IMAGE_TAG "$TAG" "$ENV_FILE"
     ;;
   *)
     echo "[rollback] ERROR: target must be api, web, or both (got: $TARGET)" >&2
