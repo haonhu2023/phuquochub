@@ -22,6 +22,43 @@ matters, before trusting it unattended.
 - [ ] Real DNS `A`/`AAAA` record for `phuquochub.com` resolves to the VPS's public IPv4.
 - [ ] A fresh backup exists and is verified: run `scripts/backup.sh`, confirm the printed dump
       size is non-trivial (not 0 bytes), and confirm `gunzip -t` on the resulting file succeeds.
+- [ ] `scripts/verify-release-pins.sh` exits 0. Run this **before any `docker compose up -d`**,
+      release or not. It is read-only and proves the three things that must agree: the tag in
+      `.env`, the image that tag resolves to, and the image the container is actually running. A
+      non-zero exit means a plain `up -d` would silently swap a running release — do not run it.
+
+### Image-pin governance (added 2026-08-14)
+
+Two facts an operator needs before touching image tags:
+
+1. **Changing the tag *string* forces a container recreate, even to the same image.** Compose's
+   config hash includes the literal `image:` string, so pointing `API_IMAGE_TAG` at a different
+   tag that resolves to the *byte-identical* image ID still plans a `Recreate`. Verified on
+   production with `--dry-run`: the plan was indistinguishable from pointing at a genuinely
+   different image. There is therefore **no way to re-pin a running service to an immutable tag
+   without one container recreate.**
+2. **`API_IMAGE_TAG=local` is a known, tracked exception.** `phuquochub-api:local` is a *mutable*
+   tag: it currently resolves to the approved running API image, but any rebuild re-points it, and
+   the pin would then silently mean a different image. The approved image is protected by an
+   immutable anchor tag, `phuquochub-api:img-749e3791ac3f`, whose name asserts the image ID it
+   points at (self-verifying, and — unlike a commit-shaped tag — it does not imply a provenance
+   nobody can prove; that image carries no commit metadata, so its source commit is unknown).
+   `verify-release-pins.sh` reports this as a WARNING, not a failure, so the debt stays visible.
+
+   **Retiring the exception** costs exactly one API container recreate from the same image. Either
+   let the next real API deploy do it (it recreates anyway — preferred, no extra disruption), or
+   reconcile deliberately during a maintenance window:
+
+   ```
+   scripts/verify-release-pins.sh                     # expect 0, with the mutable-tag warning
+   # set API_IMAGE_TAG=img-749e3791ac3f in .env via scripts/lib/release-tag.sh
+   docker compose -f docker-compose.prod.yml --dry-run up -d   # expect: api Recreate, nothing else
+   docker compose -f docker-compose.prod.yml up -d --no-deps api
+   scripts/verify-release-pins.sh                     # expect 0, no warnings
+   ```
+
+   The recreate does **not** change the release: the anchor tag and `:local` point at the same
+   image ID. It is a restart, not a deployment.
 - [ ] `git log` reviewed since the last release — no destructive migration among the new
       commits (a migration whose `down()` cannot cleanly reverse, or which drops/renames a
       column/table with existing data). All 20 migrations as of PLACE-040 are additive; if a new
