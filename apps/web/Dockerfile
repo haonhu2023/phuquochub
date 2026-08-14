@@ -35,6 +35,17 @@ RUN npm run build --workspace=@phuquochub/web
 
 FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
+
+# Image provenance (2026-08-14) -- same reasoning as apps/api/Dockerfile's runtime stage. The web
+# image was luckier than the api one only by accident: it happened to carry an immutable
+# commit-shaped tag (`phuquochub-web:c9cf9e5`), but a tag is an external claim that can be
+# re-pointed, not something the image asserts about itself. These labels make the image
+# self-describing regardless of how it is tagged.
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.title="phuquochub-web" \
+      org.opencontainers.image.revision="$GIT_COMMIT" \
+      org.opencontainers.image.created="$BUILD_DATE"
 WORKDIR /app
 # PLACE-036: --chown=node:node (Next.js's own documented Docker pattern) -- Next.js 16's
 # runtime tries to write to .next/cache on request (a code path Next 14 never exercised

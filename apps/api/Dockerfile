@@ -31,6 +31,23 @@ RUN npm run build --workspace=@phuquochub/api
 FROM node:20-alpine AS runtime
 RUN apk add --no-cache dumb-init
 ENV NODE_ENV=production
+
+# Image provenance (2026-08-14). Production ran an API image whose source commit could NOT be
+# determined from the image at all: it carried no version metadata, and the only tag pointing at it
+# was the MUTABLE `phuquochub-api:local`. Recovering even an approximate answer took bracketing the
+# image against per-commit marker files in `dist/`. These labels make that unnecessary for every
+# future build -- `docker inspect` answers "which commit is this?" directly.
+#
+# Declared in the FINAL stage on purpose: labels are per-stage, so setting them on `build` would
+# not reach the shipped image. They carry no runtime cost and change no behaviour -- a label is
+# metadata only, which is why this is safe to add to an image-producing path.
+#
+# `unknown` defaults keep a bare `docker build` working; scripts/deploy.sh passes the real values.
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.title="phuquochub-api" \
+      org.opencontainers.image.revision="$GIT_COMMIT" \
+      org.opencontainers.image.created="$BUILD_DATE"
 WORKDIR /repo
 # PLACE-038: --chown=node:node applied defensively for consistency with the proven-necessary
 # fix in apps/web/Dockerfile (PLACE-036). No direct evidence the API writes to its own

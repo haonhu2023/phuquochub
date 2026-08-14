@@ -26,7 +26,14 @@ ENV_FILE="$PROJECT_DIR/.env"
 . "$SCRIPT_DIR/lib/release-tag.sh"
 
 echo "[deploy] === Step 5: build images tagged $TAG ==="
-docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR"
+# Image provenance (2026-08-14): stamp the commit and build time INTO the images as OCI labels, so
+# `docker inspect` can answer "which commit is this?" without bracketing dist/ against marker files
+# -- the forensic exercise that was required when the running api image turned out to be
+# unidentifiable. $TAG is the git sha/tag being released, which is exactly the revision to record.
+BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR" \
+  --build-arg "GIT_COMMIT=$TAG" \
+  --build-arg "BUILD_DATE=$BUILD_DATE"
 # Deploy reconciliation (fd224c1 rollout, 2026-08-10): NEXT_PUBLIC_MAP_TILE_URL's default contains
 # literal `{`/`}` (the MapLibre tile template). POSIX `${VAR:-default}` parameter expansion ends at
 # the FIRST unescaped `}` in `default` -- here that's the one closing `{z}` -- so embedding the
@@ -42,7 +49,9 @@ if [ -z "$TILE_URL" ]; then
 fi
 docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
   --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
-  --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL"
+  --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
+  --build-arg "GIT_COMMIT=$TAG" \
+  --build-arg "BUILD_DATE=$BUILD_DATE"
 
 echo "[deploy] === Step 6: tag recorded as phuquochub-api:$TAG / phuquochub-web:$TAG ==="
 echo "[deploy]     (retain this tag -- scripts/rollback.sh needs it to roll back TO)"
