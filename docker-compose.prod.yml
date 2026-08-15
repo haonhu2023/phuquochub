@@ -27,9 +27,37 @@ services:
     container_name: phuquoc-postgres-prod
     restart: unless-stopped
     environment:
+      # POSTGRES_USER / POSTGRES_DB are read ONLY by the official entrypoint's initialization
+      # branch. They are inert once PGDATA exists, and are kept here because they document the
+      # cluster's identity. Neither is a secret.
       POSTGRES_USER: phuquoc
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
       POSTGRES_DB: phuquochub
+      # POSTGRES_PASSWORD IS DELIBERATELY ABSENT (2026-08-15). It used to be
+      # `POSTGRES_PASSWORD: ${DB_PASSWORD:-...}`, which permanently coupled the long-running
+      # database container to the APPLICATION's runtime credential. That is a governance bug, not a
+      # cosmetic one: `POSTGRES_PASSWORD` is consumed only by initdb on an EMPTY data directory,
+      # yet because Compose hashes the rendered service config, every rotation of DB_PASSWORD
+      # changed the postgres service hash and made a bare `docker compose up -d` plan a RECREATE of
+      # the production database -- real downtime, triggered by an unrelated credential change.
+      #
+      # Proven against this exact image (postgis/postgis:16-3.4) by reading
+      # /usr/local/bin/docker-entrypoint.sh: `docker_verify_minimum_env` -- the ONLY thing that
+      # requires POSTGRES_PASSWORD -- is called exclusively inside `if [ -z "$DATABASE_ALREADY_
+      # EXISTS" ]`, and that flag is set from `[ -s "$PGDATA/PG_VERSION" ]`. Every other consumer
+      # (initdb --pwfile, docker_setup_db, pg_setup_hba_conf) lives in the same branch. An
+      # initialized cluster therefore never reads it, and pg_hba.conf is never rewritten.
+      #
+      # Rehearsed on an isolated throwaway volume: booting an initialized volume with the variable
+      # entirely omitted keeps the data, the cluster system_identifier and pg_hba.conf byte-identical,
+      # does NOT rerun /docker-entrypoint-initdb.d, and leaves SCRAM auth working with the password
+      # already stored in the cluster.
+      #
+      # FRESH CLUSTER BOOTSTRAP: an EMPTY volume now fails closed (entrypoint exits 1 with
+      # "Database is uninitialized and superuser password is not specified") instead of silently
+      # initializing. That is intentional. Use the explicit, bootstrap-only override:
+      #   docker compose -f docker-compose.prod.yml -f docker-compose.bootstrap.yml up -d postgres
+      # See docs/delivery/DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md "Fresh cluster bootstrap".
+      # Do NOT re-add POSTGRES_PASSWORD here, and do NOT use POSTGRES_HOST_AUTH_METHOD=trust.
       # OD2-4/OD2-5: đích lưu WAL cục bộ luôn bật (PITR tại chỗ); đồng bộ thêm sang Cloudflare R2
       # (Owner-approved offsite destination, PLACE-038) nếu đủ 4 biến R2_* — xem wal-archive.sh.
       WAL_ARCHIVE_DIR: /var/lib/postgresql/wal_archive

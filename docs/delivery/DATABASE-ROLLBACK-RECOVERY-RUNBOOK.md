@@ -98,3 +98,82 @@ to decide whether to retry, roll back the application, or restore from backup. T
 single operator today (no team, no on-call rotation, per `INCIDENT-RESPONSE-RUNBOOK.md` §7) — the
 Owner and the operator making this decision are expected to be the same person; this section
 exists to make the decision authority explicit for when that changes.
+
+## 7. Fresh cluster bootstrap (empty PostgreSQL volume)
+
+Added 2026-08-15, when the long-running `postgres` service was decoupled from the application
+credential. **Read this before any recovery that starts from an empty data volume.**
+
+### What changed, and why an empty volume now refuses to start
+
+`docker-compose.prod.yml`'s `postgres` service no longer declares `POSTGRES_PASSWORD`. It used to
+be `POSTGRES_PASSWORD: ${DB_PASSWORD:-…}`, which tied the database container's Compose config hash
+to the *application's* runtime credential: every application password rotation changed the postgres
+service hash, so a bare `docker compose up -d` planned a **recreate of the production database**.
+A credential rotation must never be able to schedule database downtime.
+
+This is safe because `POSTGRES_PASSWORD` is an *initialization-only* variable. In this exact image
+(`postgis/postgis:16-3.4`), `/usr/local/bin/docker-entrypoint.sh` calls `docker_verify_minimum_env`
+— the only thing that requires it — exclusively inside `if [ -z "$DATABASE_ALREADY_EXISTS" ]`, and
+that flag is set from `[ -s "$PGDATA/PG_VERSION" ]`. `initdb --pwfile`, `docker_setup_db` and
+`pg_setup_hba_conf` all live in the same branch.
+
+**Consequences you must internalize:**
+
+- **Normal startup on an existing volume needs no `POSTGRES_PASSWORD`.** The entrypoint prints
+  `Skipping initialization`, leaves `pg_hba.conf` and the cluster `system_identifier` untouched,
+  and does not rerun `/docker-entrypoint-initdb.d`.
+- **An empty volume now fails closed.** The entrypoint exits 1 with *"Database is uninitialized and
+  superuser password is not specified"* and writes nothing. This is deliberate: initializing a
+  production cluster must be a witnessed act, never a side effect of `up -d`.
+- **`DB_PASSWORD` does NOT initialize a fresh production volume any more.** Do not assume it will.
+- **Never** set `POSTGRES_HOST_AUTH_METHOD=trust` to get past the refusal, and never re-add
+  `POSTGRES_PASSWORD` to `docker-compose.prod.yml`.
+
+### The explicit bootstrap procedure
+
+Use the committed, bootstrap-only overlay `docker-compose.bootstrap.yml`. It supplies
+`POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD}` with **no default**, so a mistyped bootstrap
+fails rather than silently initializing.
+
+1. Generate a bootstrap secret on the host, into a protected file — never an inline shell word
+   (that would land in shell history and process argv):
+
+   ```
+   umask 077; mkdir -p /run/pg-bootstrap
+   printf 'POSTGRES_BOOTSTRAP_PASSWORD=%s\n' \
+     "$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 64)" > /run/pg-bootstrap/env
+   ```
+
+2. Initialize, overlay applied, postgres only:
+
+   ```
+   set -a; . /run/pg-bootstrap/env; set +a
+   docker compose -f docker-compose.prod.yml -f docker-compose.bootstrap.yml up -d --no-deps postgres
+   ```
+
+3. Restore the data. This runbook's restore path (`scripts/restore.sh`) and
+   `BACKUP-RESTORE-RUNBOOK.md` operate on the **existing/recreated cluster** over the container's
+   unix socket (`local all all trust` in the image's generated `pg_hba.conf`), so they need neither
+   the bootstrap secret nor `DB_PASSWORD`.
+
+4. Set the *application* role's password to the value already in `.env`'s `DB_PASSWORD`. This is a
+   separate concern from the bootstrap secret — the bootstrap secret only ever existed to satisfy
+   `initdb`. Use a SCRAM verifier computed on the host so the plaintext never crosses the wire or
+   reaches a server log.
+
+5. Drop the overlay back out by recreating postgres from the plain production file alone, so the
+   service hash returns to its decoupled form:
+
+   ```
+   docker compose -f docker-compose.prod.yml up -d --no-deps postgres
+   ```
+
+6. Destroy the bootstrap secret (`rm -f /run/pg-bootstrap/env`). It has no further purpose and must
+   not be stored, committed, or copied into `.env`.
+
+### Verifying the invariant afterwards
+
+A bare `docker compose up -d --dry-run` must report every service `Running`, with no `Recreate` and
+no `migrate`. Anything else means the coupling has returned or new drift exists. The static
+regression suite for this is `scripts/tests/postgres-init-decoupling.test.sh`.

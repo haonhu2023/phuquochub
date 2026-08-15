@@ -1,0 +1,53 @@
+# ============================================================================
+# BOOTSTRAP-ONLY overlay — initializes an EMPTY PostgreSQL data volume.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The long-running `postgres` service in docker-compose.prod.yml deliberately carries NO
+# POSTGRES_PASSWORD. That variable is consumed only by the official entrypoint's initdb branch
+# (`docker_verify_minimum_env` runs exclusively when `$PGDATA/PG_VERSION` is absent), so an
+# already-initialized cluster never reads it — while its presence permanently coupled the database
+# container's Compose config hash to the APPLICATION credential `DB_PASSWORD`. Every app-password
+# rotation then made a bare `docker compose up -d` plan a production database RECREATE.
+#
+# Removing it makes an empty volume fail closed, which is the safe default: initializing a
+# production cluster must be a deliberate, witnessed act, never a side effect of `up -d`.
+# This overlay is that deliberate act, and nothing else.
+#
+# USAGE (empty volume only)
+# -------------------------
+#   POSTGRES_BOOTSTRAP_PASSWORD='<generated on the host, never committed>' \
+#     docker compose -f docker-compose.prod.yml -f docker-compose.bootstrap.yml up -d postgres
+#
+# Prefer sourcing the value from a protected file rather than an inline shell word, so it never
+# lands in shell history or process argv:
+#   set -a; . /run/secrets/pg-bootstrap.env; set +a
+#
+# AFTER INITIALIZATION COMPLETES
+# ------------------------------
+#   1. Recreate postgres from the plain production file ALONE (drops this overlay back out):
+#        docker compose -f docker-compose.prod.yml up -d --no-deps postgres
+#   2. Set the application role's password to the value in `.env`'s DB_PASSWORD (they are NOT the
+#      same concern: this bootstrap secret only ever existed to satisfy initdb).
+#   3. Destroy the bootstrap secret. It has no further purpose and must not be stored.
+#
+# HARD RULES
+# ----------
+#   * NEVER add POSTGRES_PASSWORD back to docker-compose.prod.yml.
+#   * NEVER set POSTGRES_HOST_AUTH_METHOD=trust to work around the fail-closed behaviour.
+#   * NEVER hardcode a value in this file — it is committed; the variable has no default on
+#     purpose, so Compose errors out rather than silently initializing with an empty password.
+#   * This overlay is for an EMPTY volume. Applying it to an initialized cluster is a no-op on the
+#     data (the entrypoint skips initialization) but it re-couples the service hash for as long as
+#     it is applied, so do not leave it in the normal command line.
+#
+# See docs/delivery/DATABASE-ROLLBACK-RECOVERY-RUNBOOK.md "Fresh cluster bootstrap".
+# ============================================================================
+name: phuquochub-prod
+
+services:
+  postgres:
+    environment:
+      # No `:-default`. If POSTGRES_BOOTSTRAP_PASSWORD is unset, Compose renders an empty value and
+      # the entrypoint refuses to initialize — which is the correct outcome for a mistyped bootstrap.
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD}
