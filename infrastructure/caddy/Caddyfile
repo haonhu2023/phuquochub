@@ -1,4 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+# HTTP security headers (2026-08-15). Values are DERIVED FROM THIS APPLICATION, not a template.
+#
+# HSTS: `max-age=31536000` with NO includeSubDomains and NO preload, deliberately.
+# Every subdomain in use today is HTTPS (www + media, both verified serving TLS), but the set of
+# subdomains cannot be enumerated authoritatively from here, and includeSubDomains would break any
+# future plain-HTTP host (staging, an ACME challenge helper) for a full year with no client-side
+# remedy. Instead every host block below carries its OWN HSTS header, which gives the same coverage
+# for the hosts that actually exist without betting on the ones that do not. Preload is a
+# browser-baked, slow-to-reverse commitment and is a separate decision.
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+(hsts) {
+	Strict-Transport-Security "max-age=31536000"
+}
+
 www.phuquochub.com {
+	header {
+		import hsts
+	}
 	redir https://phuquochub.com{uri} permanent
 }
 
@@ -49,6 +67,15 @@ media.phuquochub.com, :8081 {
 	header {
 		X-Content-Type-Options nosniff
 		-Server
+		import hsts
+		# This host serves ONLY object bytes (image/jpeg|png|webp) and MinIO's XML error documents.
+		# `default-src 'none'` therefore forbids everything without forbidding anything real: an image
+		# rendered as its own document needs no subresources. It is inert for the two flows that
+		# matter -- a response CSP never governs the REQUEST, so presigned PUT uploads and
+		# cross-origin <img> loads from phuquochub.com are both unaffected (those are governed by the
+		# app host's connect-src/img-src below).
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		X-Frame-Options DENY
 	}
 
 	# No `encode gzip` here, unlike the app block below: JPEG/PNG/WebP are already compressed, so
@@ -77,11 +104,69 @@ phuquochub.com, :8080 {
 	# present or generates one -- Caddy's reverse_proxy forwards all request headers
 	# unmodified by default, so no extra directive is needed to preserve it.
 	handle /api/* {
+		# The API sets its OWN security headers (nosniff, X-Frame-Options: DENY,
+		# Referrer-Policy: no-referrer -- verified live on /api/health). Deliberately NOT repeated
+		# here: Caddy's `header` REPLACES, so restating them would silently override the app's
+		# stricter choices (its `no-referrer` is right for JSON; the web app wants a looser one).
+		# Only add what the API cannot know about itself -- transport security -- and strip the
+		# Express fingerprint.
+		header {
+			import hsts
+			-X-Powered-By
+			-Server
+		}
 		reverse_proxy api:4000
 	}
 
 	# Everything else: the Next.js web app.
 	handle {
+		header {
+			import hsts
+			X-Content-Type-Options nosniff
+			Referrer-Policy "strict-origin-when-cross-origin"
+			# Not `no-referrer`: tile.openstreetmap.org's usage policy expects requests to be
+			# attributable, and `strict-origin-when-cross-origin` sends the bare origin
+			# (https://phuquochub.com) cross-origin while never leaking a path or query string.
+			X-Frame-Options DENY
+			# Nothing in the app calls these APIs (audited: zero references to geolocation,
+			# getUserMedia, camera, microphone, payment, clipboard, Notification).
+			Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+
+			# ── Content-Security-Policy — every directive justified against THIS build ──────────
+			# script-src 'unsafe-inline': the shipped production HTML carries 7 inline <script>
+			#   blocks on / and 6 on /map (Next.js flight/hydration payloads) with NO nonce
+			#   attribute. Nonces would require an app-level middleware.ts, which is out of scope
+			#   for a header-only change, so 'unsafe-inline' is the honest, deployable choice.
+			#   NOTE this materially weakens CSP as an XSS control -- it is retained for
+			#   frame-ancestors/object-src/base-uri/form-action, not as XSS defence.
+			# NO 'unsafe-eval': maplibre-gl v4 was checked for eval( and new Function( -- zero
+			#   occurrences in its 803 KB dist bundle -- so the map runs without it.
+			# style-src 'unsafe-inline': 20 style="" attributes on / and 13 on /map (React
+			#   style={{}} props, 155 in source).
+			# img-src data:  -> maplibre marker/control SVG+WebP data URIs (observed in the live
+			#                   network log).
+			#         blob:  -> URL.createObjectURL(file) image preview in useSingleImageUpload.ts.
+			#         media.phuquochub.com -> <img src="/api/media/{id}/file"> 302-redirects there.
+			#         tile.openstreetmap.org -> raster map tiles.
+			# connect-src media.phuquochub.com is REQUIRED and easy to miss: uploadPipeline.ts PUTs
+			#   the file straight to the presigned object-storage URL from the browser. Omitting it
+			#   breaks every upload while leaving the rest of the site working.
+			# worker-src blob: -> maplibre-gl builds its worker via new Blob + createObjectURL;
+			#   a blob: worker URL was observed loading on /map.
+			# frame-ancestors/frame-src 'none': the app embeds no iframes and is not embeddable
+			#   anywhere (also matches community.md BR-C7, which forbids arbitrary script/iframe
+			#   embedding). Agrees with X-Frame-Options: DENY above.
+			# No COOP/COEP/CORP: none is needed here, and CORP in particular would break the
+			#   cross-origin media images this site depends on.
+			Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.phuquochub.com https://tile.openstreetmap.org; font-src 'self' data:; connect-src 'self' https://media.phuquochub.com https://tile.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'"
+
+			# Next.js emits `X-Powered-By: Next.js` by default. Stripping it at the proxy avoids an
+			# app rebuild (next.config poweredByHeader:false would need one). `Via: 1.1 Caddy` is
+			# deliberately KEPT -- it is a standard, useful proxy-hop marker, not a product
+			# fingerprint.
+			-X-Powered-By
+			-Server
+		}
 		reverse_proxy web:3000
 	}
 
