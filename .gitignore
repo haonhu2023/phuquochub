@@ -20,6 +20,7 @@ coverage/
 .env
 .env.local
 .env.*.local
+.env.bak-*
 !.env.example
 
 # Logs
