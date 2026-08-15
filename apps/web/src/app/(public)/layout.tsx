@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { SiteFooter } from '@/modules/legal/SiteFooter';
 
 // Layout công khai (Places · Map · Search) — nav tối giản, không cần đăng nhập.
 export default function PublicLayout({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
         </nav>
       </header>
       <main style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>{children}</main>
+      <SiteFooter />
     </div>
   );
 }

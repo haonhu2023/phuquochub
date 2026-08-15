@@ -9,6 +9,7 @@ import { useSingleImageUpload } from '@/modules/media/useSingleImageUpload';
 import { createReview } from './api/reviews.api';
 import { formatReviewDate, ratingStars, reviewMediaAlt, reviewMediaSrc } from './format';
 import type { Review } from './types';
+import legalStyles from '@/modules/legal/legal.module.css';
 import styles from './reviews.module.css';
 
 interface Props {
@@ -194,6 +195,11 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
           <button type="submit" className={styles.btn} disabled={submitting || image.uploading}>
             {submitting ? 'Đang gửi…' : 'Gửi đánh giá'}
           </button>
+          <p className={legalStyles.formDisclosure}>
+            Đánh giá và ảnh sẽ hiển thị công khai sau khi qua kiểm duyệt. Chỉ đăng ảnh bạn có quyền
+            sử dụng, và đừng đưa vào thông tin cá nhân bạn không muốn công khai — xem{' '}
+            <Link href="/terms">Điều khoản</Link>.
+          </p>
         </form>
       )}
     </section>

@@ -6,6 +6,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { runImageUpload, UploadValidationError } from '@/modules/media/uploadPipeline';
 import { mediaModerationReasonCodeLabel } from '@/modules/media/moderationReasonCodes';
+import legalStyles from '@/modules/legal/legal.module.css';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 import {
@@ -314,6 +315,10 @@ export function PhotosView({ placeId }: Props) {
         <section className={placeMgmtStyles.section}>
           <h2 className={placeMgmtStyles.sectionTitle}>Tải ảnh lên</h2>
           <p className={styles.uploadHint}>Định dạng JPEG, PNG hoặc WebP. Dung lượng tối đa 10MB.</p>
+          <p className={legalStyles.formDisclosure}>
+            Chỉ tải lên ảnh bạn có quyền sử dụng. Ảnh hiển thị công khai sau khi qua kiểm duyệt —
+            xem <Link href="/terms">Điều khoản</Link>.
+          </p>
 
           <input
             ref={fileInputRef}

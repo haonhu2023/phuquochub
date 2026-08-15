@@ -8,6 +8,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { AuthApiError } from '@/modules/auth/api/auth.api';
 import { useAuth } from '@/modules/auth/AuthProvider';
 import { AuthError, AuthField, authStyles } from '@/modules/auth/AuthForm';
+import legalStyles from '@/modules/legal/legal.module.css';
 
 export default function RegisterPage() {
   const { register, isAuthenticated, initializing } = useAuth();
@@ -80,6 +81,20 @@ export default function RegisterPage() {
         <button type="submit" style={authStyles.button} disabled={submitting}>
           {submitting ? 'Đang tạo tài khoản…' : 'Tạo tài khoản'}
         </button>
+        {/* Điểm đầu tiên người dùng giao dữ liệu cá nhân — điều khoản phải hiện diện ngay tại đây,
+            không chỉ nằm đâu đó ở footer. */}
+        <p className={legalStyles.formDisclosure}>
+          Khi tạo tài khoản, bạn đồng ý với{' '}
+          <Link href="/terms" style={{ color: 'var(--accent)' }}>
+            Điều khoản sử dụng
+          </Link>{' '}
+          và{' '}
+          <Link href="/privacy" style={{ color: 'var(--accent)' }}>
+            Chính sách bảo mật
+          </Link>
+          . Chúng tôi lưu email và tên hiển thị của bạn; không dùng cookie theo dõi và không có
+          quảng cáo.
+        </p>
       </form>
       <p style={{ color: 'var(--muted)', marginTop: '1.25rem', marginBottom: 0 }}>
         Đã có tài khoản?{' '}

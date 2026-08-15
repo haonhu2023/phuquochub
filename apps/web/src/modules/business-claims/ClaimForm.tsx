@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { ApiError } from '@/lib/http';
+import legalStyles from '@/modules/legal/legal.module.css';
 import { readSession } from '@/modules/auth/session';
 import { submitBusinessClaim } from './api/business-claims.api';
 import {
@@ -186,6 +188,12 @@ export function ClaimForm({ placeId, placeName, onSubmitted }: Props) {
           {submitting ? 'Đang gửi…' : 'Gửi yêu cầu xác nhận'}
         </button>
       </div>
+      <p className={legalStyles.formDisclosure}>
+        Bằng chứng bạn gửi được người kiểm duyệt xem để xác minh quyền quản lý. Chỉ gửi yêu cầu nếu
+        bạn là chủ sở hữu hoặc người được uỷ quyền — xem{' '}
+        <Link href="/terms">Điều khoản</Link> và{' '}
+        <Link href="/privacy">Chính sách bảo mật</Link>.
+      </p>
     </form>
   );
 }
