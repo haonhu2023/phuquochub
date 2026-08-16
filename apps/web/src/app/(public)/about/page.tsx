@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { operatorContact } from '@/lib/site-identity';
 import { LegalPage, LegalSection } from '@/modules/legal/LegalPage';
 import styles from '@/modules/legal/legal.module.css';
 
@@ -36,6 +37,25 @@ export default function AboutPage() {
         <p>
           Điều đó có nghĩa là thông tin bạn thấy có thể chưa đầy đủ. Hãy kiểm chứng lại với cơ sở
           trước khi dựa vào đó để đi lại hoặc chi tiền.
+        </p>
+      </LegalSection>
+
+      <LegalSection heading="Ai vận hành PhuQuocHub">
+        {operatorContact.legalName ? (
+          <p>
+            PhuQuocHub do <strong>{operatorContact.legalName}</strong> vận hành, tại Phú Quốc, Việt
+            Nam. Đây là một dự án cá nhân — không phải sản phẩm của cơ quan nhà nước, tổ chức du
+            lịch hay đơn vị nào khác, và không có quan hệ liên kết với các cơ sở được liệt kê trên
+            trang.
+          </p>
+        ) : (
+          <p className={styles.note}>
+            Thông tin về bên vận hành sẽ được công bố tại đây trước khi dịch vụ mở công khai.
+          </p>
+        )}
+        <p>
+          Vì là dự án cá nhân, mọi việc — biên tập nội dung, kiểm duyệt đánh giá, trả lời yêu cầu về
+          dữ liệu — đều do một người xử lý thủ công. Thời gian phản hồi vì vậy có thể không tức thì.
         </p>
       </LegalSection>
 

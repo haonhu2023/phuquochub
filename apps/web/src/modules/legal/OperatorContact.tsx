@@ -1,17 +1,24 @@
-import { hasPublishedContact, operatorContact } from '@/lib/site-identity';
+import { hasPublishedContact, operatorContact, type OperatorContact } from '@/lib/site-identity';
 import styles from './legal.module.css';
 
 /**
- * Hiển thị kênh liên hệ chính thức, hoặc — khi Owner chưa cung cấp — một thông báo TRUNG THỰC về
- * hiện trạng.
+ * Hiển thị kênh liên hệ chính thức, hoặc — khi chưa có dữ liệu — một thông báo TRUNG THỰC về hiện
+ * trạng.
  *
- * Đây có chủ đích KHÔNG phải placeholder: không có địa chỉ giả, không có "TODO". Khi chưa có dữ
- * liệu, trang nói đúng điều đang đúng ("chưa công bố") thay vì khẳng định một kênh liên hệ không
- * tồn tại — một chính sách bảo mật chỉ tới hộp thư không có thật còn tệ hơn là thừa nhận nó chưa
- * sẵn sàng.
+ * Nhánh "chưa công bố" có chủ đích KHÔNG phải placeholder: không có địa chỉ giả, không có "TODO".
+ * Khi thiếu dữ liệu, trang nói đúng điều đang đúng thay vì khẳng định một kênh liên hệ không tồn
+ * tại — một chính sách bảo mật trỏ tới hộp thư không có thật còn tệ hơn là thừa nhận nó chưa sẵn
+ * sàng. Owner đã điền `site-identity.ts` nên nhánh đó hiện không chạy ở production; nó được giữ
+ * lại vì nó là hành vi đúng nếu cấu hình bị xoá, và `contact` cho phép test ghim cả hai nhánh.
  */
-export function OperatorContactBlock({ purpose }: { purpose: string }) {
-  if (!hasPublishedContact()) {
+export function OperatorContactBlock({
+  purpose,
+  contact = operatorContact,
+}: {
+  purpose: string;
+  contact?: OperatorContact;
+}) {
+  if (!hasPublishedContact(contact)) {
     return (
       <div className={styles.pending} role="note">
         <p>
@@ -29,26 +36,26 @@ export function OperatorContactBlock({ purpose }: { purpose: string }) {
 
   return (
     <ul className={styles.contactList}>
-      {operatorContact.legalName ? (
+      {contact.legalName ? (
         <li>
           <span className={styles.contactLabel}>Bên vận hành:</span>
-          {operatorContact.legalName}
+          {contact.legalName}
         </li>
       ) : null}
       <li>
         <span className={styles.contactLabel}>Email:</span>
-        <a href={`mailto:${operatorContact.email}`}>{operatorContact.email}</a>
+        <a href={`mailto:${contact.email}`}>{contact.email}</a>
       </li>
-      {operatorContact.address ? (
+      {contact.address ? (
         <li>
           <span className={styles.contactLabel}>Địa chỉ:</span>
-          {operatorContact.address}
+          {contact.address}
         </li>
       ) : null}
-      {operatorContact.responseTime ? (
+      {contact.responseTime ? (
         <li>
           <span className={styles.contactLabel}>Thời gian phản hồi:</span>
-          {operatorContact.responseTime}
+          {contact.responseTime}
         </li>
       ) : null}
     </ul>

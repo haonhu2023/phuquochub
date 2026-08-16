@@ -108,6 +108,12 @@ export default function PrivacyPage() {
           Chúng tôi <strong>không bán</strong> dữ liệu cá nhân và không chia sẻ cho mục đích quảng
           cáo.
         </p>
+        <p className={styles.note}>
+          <strong>Chuyển dữ liệu ra nước ngoài:</strong> các nhà cung cấp nêu trên là tổ chức nước
+          ngoài và có thể lưu trữ hoặc xử lý dữ liệu bên ngoài lãnh thổ Việt Nam. Việc sử dụng dịch
+          vụ đồng nghĩa dữ liệu của bạn có thể được chuyển ra ngoài lãnh thổ Việt Nam trong phạm vi
+          vận hành nêu trên.
+        </p>
       </LegalSection>
 
       <LegalSection heading="4. Ảnh và đường dẫn có chữ ký">
@@ -133,11 +139,26 @@ export default function PrivacyPage() {
 
       <LegalSection heading="6. Quyền của bạn">
         <p>
-          Bạn có quyền yêu cầu xem, sửa hoặc xoá dữ liệu cá nhân của mình, và yêu cầu ngừng xử lý.
+          Theo pháp luật Việt Nam về bảo vệ dữ liệu cá nhân, bạn có các quyền sau đối với dữ liệu
+          của mình:
         </p>
+        <ul>
+          <li>Được biết dữ liệu nào đang được xử lý và xử lý để làm gì.</li>
+          <li>Đồng ý hoặc không đồng ý, và rút lại sự đồng ý đã đưa ra.</li>
+          <li>Truy cập, xem và yêu cầu chỉnh sửa dữ liệu của mình.</li>
+          <li>Yêu cầu xoá dữ liệu, trừ phần pháp luật yêu cầu phải lưu.</li>
+          <li>Yêu cầu hạn chế hoặc phản đối việc xử lý.</li>
+          <li>Khiếu nại, tố cáo hoặc khởi kiện khi cho rằng quyền của mình bị xâm phạm.</li>
+        </ul>
         <p>
           Hiện tại <strong>chưa có chức năng tự xoá tài khoản trong giao diện</strong>. Mọi yêu cầu
           phải gửi qua kênh liên hệ chính thức và sẽ được xử lý thủ công.
+        </p>
+        <p className={styles.note}>
+          Chúng tôi xử lý yêu cầu trong thời hạn mà pháp luật hiện hành quy định cho từng loại yêu
+          cầu. Chúng tôi <strong>không</strong> đặt ra một mốc cố định riêng, vì thời hạn luật định
+          là mốc ràng buộc và có thể ngắn hơn. Để xác minh yêu cầu đến từ đúng chủ tài khoản, chúng
+          tôi sẽ trả lời qua chính địa chỉ email đã đăng ký.
         </p>
         <OperatorContactBlock purpose="thực hiện các quyền nêu trên" />
       </LegalSection>
@@ -164,16 +185,50 @@ export default function PrivacyPage() {
         </p>
       </LegalSection>
 
-      <LegalSection heading="10. Phạm vi và giới hạn của tài liệu này">
+      <LegalSection heading="10. Khung pháp lý áp dụng">
+        <p>
+          Việc xử lý dữ liệu cá nhân mô tả ở trên chịu sự điều chỉnh của pháp luật Việt Nam, trong
+          đó khung quy định hiện hành gồm:
+        </p>
+        <ul>
+          <li>
+            <strong>Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15</strong>, có hiệu lực từ
+            01/01/2026.
+          </li>
+          <li>
+            <strong>Nghị định số 356/2025/NĐ-CP</strong> quy định chi tiết và biện pháp thi hành
+            Luật Bảo vệ dữ liệu cá nhân, có hiệu lực từ 01/01/2026 và thay thế Nghị định số
+            13/2023/NĐ-CP.
+          </li>
+          <li>
+            <strong>Luật Dữ liệu số 60/2024/QH15</strong> (hiệu lực từ 01/07/2025) và{' '}
+            <strong>Luật An ninh mạng số 116/2025/QH15</strong> (hiệu lực từ 01/07/2026), trong
+            phạm vi liên quan tới dữ liệu và an ninh hệ thống.
+          </li>
+        </ul>
+        <p>
+          Các quyền nêu tại mục 6 và thời hạn xử lý yêu cầu được xác định theo các văn bản này, chứ
+          không theo một chính sách nội bộ do chúng tôi tự đặt ra.
+        </p>
+      </LegalSection>
+
+      <LegalSection heading="11. Phạm vi và giới hạn của tài liệu này">
         <p className={styles.note}>
-          Tài liệu này mô tả trung thực cách hệ thống đang vận hành tại ngày cập nhật nêu trên.{' '}
+          Tài liệu này mô tả trung thực cách hệ thống đang vận hành tại ngày cập nhật nêu trên và
+          được soạn theo khung pháp lý tại mục 10.{' '}
           <strong>
-            Nó chưa được luật sư rà soát và không phải là cam kết tuân thủ đầy đủ pháp luật của bất
-            kỳ quốc gia nào.
-          </strong>{' '}
-          Trước khi PhuQuocHub mở công khai, nội dung này cần được rà soát pháp lý — đặc biệt là
-          phần nghĩa vụ theo quy định bảo vệ dữ liệu cá nhân áp dụng cho nơi đặt máy chủ và nơi cư
-          trú của người dùng.
+            Nó do bên vận hành tự soạn, chưa được luật sư hoặc đơn vị tư vấn pháp lý rà soát, và
+            không phải là cam kết đã tuân thủ đầy đủ mọi nghĩa vụ pháp lý.
+          </strong>
+        </p>
+        <p className={styles.note}>
+          Những nghĩa vụ sau đã được nhận diện nhưng còn cần rà soát trước khi PhuQuocHub mở rộng
+          quy mô: hồ sơ đánh giá tác động xử lý dữ liệu cá nhân và hồ sơ chuyển dữ liệu ra nước
+          ngoài theo Nghị định 356/2025/NĐ-CP (Luật số 91/2025/QH15 và Nghị định này cho phép doanh
+          nghiệp nhỏ, doanh nghiệp khởi nghiệp lựa chọn chưa lập hồ sơ đánh giá tác động trong 05
+          năm đầu, và không áp dụng với hộ kinh doanh, doanh nghiệp siêu nhỏ — việc PhuQuocHub thuộc
+          diện nào cần được xác định chính thức); cơ chế xác minh danh tính người yêu cầu; và quy
+          trình thông báo khi xảy ra sự cố lộ lọt dữ liệu.
         </p>
       </LegalSection>
     </LegalPage>

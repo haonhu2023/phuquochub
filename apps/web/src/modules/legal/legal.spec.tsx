@@ -12,9 +12,12 @@
  * 3. Footer thực sự trỏ tới cả 4 trang, ở CẢ khu vực công khai lẫn khu vực đăng nhập/đăng ký.
  *    Trang đăng ký là nơi người dùng lần đầu giao dữ liệu cá nhân; thiếu link ở đó là lỗi thật.
  * 4. Form đăng ký nêu rõ sự đồng ý với Điều khoản/Bảo mật.
+ * 5. Danh tính bên vận hành đã THỰC SỰ được công bố, và khung pháp lý được viện dẫn là khung đang
+ *    có hiệu lực (Luật 91/2025/QH15 + Nghị định 356/2025/NĐ-CP, từ 01/01/2026).
+ * 6. Không trang nào tuyên bố đã qua rà soát của luật sư — vì chưa.
  *
- * Khi Owner điền `operatorContact`, các assertion về trạng thái "chưa công bố" sẽ chuyển sang
- * kiểm tra kênh liên hệ thật — xem `describe('khi đã công bố liên hệ')`.
+ * Owner đã xác nhận và điền `operatorContact` (2026-08-16). Các assertion ở mục 5 khiến việc quay
+ * lại trạng thái "chưa công bố" trở thành lỗi CI, chứ không im lặng trôi qua.
  */
 import { render, screen } from '@testing-library/react';
 import fs from 'node:fs';
@@ -79,29 +82,76 @@ describe('site-identity là nguồn sự thật duy nhất', () => {
       if (typeof value === 'string') expect(value).not.toMatch(suspicious);
     }
   });
+
+  it('không còn dấu ngoặc vuông kiểu mẫu điền trong giá trị danh tính', () => {
+    // Owner gửi tên ở dạng "[ĐÀM VĂN HẢO]" — dấu ngoặc là ký hiệu phân cách của biểu mẫu, không
+    // phải một phần của tên. Nếu chúng lọt vào đây, trang sẽ hiển thị như bản mẫu chưa điền.
+    for (const value of Object.values(operatorContact)) {
+      if (typeof value === 'string') expect(value).not.toMatch(/[[\]]/);
+    }
+  });
+});
+
+/**
+ * Cổng chặn P0: danh tính bên vận hành phải THỰC SỰ được công bố.
+ *
+ * Đây là điểm khác biệt so với bản đầu tiên của bộ test. Trước đây các trang được phép nói "chưa
+ * công bố" — trung thực, nhưng chưa đủ để mở công khai. Sau khi Owner xác nhận thông tin, việc
+ * quay lại trạng thái `null` là một bước lùi và phải làm đỏ CI.
+ */
+describe('danh tính bên vận hành đã được công bố', () => {
+  it('có email liên hệ đúng định dạng', () => {
+    expect(operatorContact.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+  });
+
+  it('có tên bên chịu trách nhiệm vận hành', () => {
+    expect(operatorContact.legalName).toEqual(expect.any(String));
+    expect((operatorContact.legalName ?? '').trim().length).toBeGreaterThan(0);
+  });
+
+  it('có luật áp dụng cho Điều khoản', () => {
+    expect(operatorContact.governingLaw).toEqual(expect.any(String));
+  });
+
+  it('nêu thời hạn phản hồi mà KHÔNG hứa một mốc cố định 30 ngày', () => {
+    const responseTime = operatorContact.responseTime ?? '';
+    expect(responseTime.length).toBeGreaterThan(0);
+    // Owner yêu cầu rõ: không dùng mốc 30 ngày chung chung, mà trỏ về thời hạn luật định.
+    expect(responseTime).not.toMatch(/30\s*ngày/i);
+    expect(responseTime).toMatch(/luật định/i);
+  });
 });
 
 describe('OperatorContactBlock', () => {
   it('khi chưa có liên hệ: nói rõ là chưa công bố, không bịa kênh liên hệ', () => {
-    render(<OperatorContactBlock purpose="thực hiện quyền" />);
+    const unpublished: OperatorContact = {
+      email: null,
+      legalName: null,
+      address: null,
+      governingLaw: null,
+      responseTime: null,
+    };
+    render(<OperatorContactBlock purpose="thực hiện quyền" contact={unpublished} />);
     expect(screen.getByText(/chưa được công bố/i)).toBeInTheDocument();
     // Không được xuất hiện link mail giả.
     expect(document.querySelector('a[href^="mailto:"]')).toBeNull();
   });
 
-  describe('khi đã công bố liên hệ', () => {
-    // Chạy được ngay cả khi Owner chưa điền, bằng cách dựng một cấu hình đã hoàn chỉnh.
-    const published: OperatorContact = {
-      email: 'lienhe@phuquochub.com',
-      legalName: 'Bên vận hành PhuQuocHub',
-      address: null,
-      governingLaw: 'Việt Nam',
-      responseTime: 'trong vòng 30 ngày',
-    };
+  it('với cấu hình thật: hiển thị tên bên vận hành và link mailto trỏ đúng email', () => {
+    render(<OperatorContactBlock purpose="thực hiện quyền" />);
+    expect(screen.queryByText(/chưa được công bố/i)).toBeNull();
+    expect(screen.getByText(operatorContact.legalName as string)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: operatorContact.email as string })).toHaveAttribute(
+      'href',
+      `mailto:${operatorContact.email}`,
+    );
+    expect(screen.getByText(operatorContact.responseTime as string)).toBeInTheDocument();
+  });
 
-    it('hasPublishedContact chấp nhận cấu hình đầy đủ', () => {
-      expect(hasPublishedContact(published)).toBe(true);
-    });
+  it('bỏ qua dòng địa chỉ khi Owner chưa công bố địa chỉ', () => {
+    render(<OperatorContactBlock purpose="thực hiện quyền" />);
+    // `address` để null có chủ đích — không được hiển thị nhãn rỗng.
+    expect(screen.queryByText('Địa chỉ:')).toBeNull();
   });
 });
 
@@ -159,5 +209,57 @@ describe('không có banner cookie (sản phẩm không đặt cookie nào)', ()
     const src = readSrc('app/(public)/privacy/page.tsx');
     expect(src).toMatch(/không đặt cookie/i);
     expect(src).toMatch(/không hiển thị banner/i);
+  });
+});
+
+/**
+ * Khung pháp lý được viện dẫn phải là khung ĐANG có hiệu lực.
+ *
+ * Nghị định 13/2023/NĐ-CP đã bị Nghị định 356/2025/NĐ-CP thay thế từ 01/01/2026. Một chính sách
+ * viện dẫn văn bản đã hết hiệu lực trông có vẻ chỉn chu nhưng lại sai — nguy hiểm hơn là không
+ * viện dẫn gì. Test này ghim đúng bộ văn bản hiện hành.
+ */
+describe('viện dẫn khung pháp lý Việt Nam hiện hành', () => {
+  const src = () => readSrc('app/(public)/privacy/page.tsx');
+
+  it('nêu Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15 và mốc hiệu lực 01/01/2026', () => {
+    expect(src()).toMatch(/91\/2025\/QH15/);
+    expect(src()).toMatch(/01\/01\/2026/);
+  });
+
+  it('nêu Nghị định 356/2025/NĐ-CP là văn bản hướng dẫn hiện hành', () => {
+    expect(src()).toMatch(/356\/2025\/NĐ-CP/);
+  });
+
+  it('chỉ nhắc Nghị định 13/2023/NĐ-CP như văn bản ĐÃ BỊ THAY THẾ', () => {
+    const text = src();
+    if (text.includes('13/2023/NĐ-CP')) {
+      expect(text).toMatch(/thay thế Nghị định số\s*\n?\s*13\/2023\/NĐ-CP/);
+    }
+  });
+});
+
+/**
+ * Không được tuyên bố sai rằng tài liệu đã qua rà soát pháp lý — chưa hề có luật sư nào rà soát.
+ */
+describe('không tuyên bố đã qua rà soát pháp lý', () => {
+  it.each(['app/(public)/privacy/page.tsx', 'app/(public)/terms/page.tsx'])(
+    '%s nói rõ tài liệu CHƯA qua rà soát của luật sư',
+    (rel) => {
+      const text = readSrc(rel);
+      expect(text).toMatch(/chưa được luật sư|chưa qua rà soát của luật sư/i);
+      // Các cách nói ngược lại — "đã được luật sư rà soát", "đã thẩm định pháp lý" — là sai sự thật.
+      expect(text).not.toMatch(/đã (được|qua) (luật sư|rà soát pháp lý|thẩm định pháp lý)/i);
+    },
+  );
+});
+
+describe('câu luật áp dụng ở Điều khoản không lặp chữ "pháp luật"', () => {
+  it('không ghép tiền tố "pháp luật" vào trước governingLaw', () => {
+    // `governingLaw` đã là "Pháp luật Việt Nam"; mẫu cũ `pháp luật {governingLaw}` sẽ in ra
+    // "pháp luật Pháp luật Việt Nam".
+    expect(readSrc('app/(public)/terms/page.tsx')).not.toMatch(
+      /pháp luật \{operatorContact\.governingLaw\}/i,
+    );
   });
 });

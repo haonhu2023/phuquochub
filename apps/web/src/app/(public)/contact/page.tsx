@@ -42,8 +42,17 @@ export default function ContactPage() {
       <LegalSection heading="Yêu cầu về dữ liệu cá nhân">
         <p>
           Yêu cầu xem, sửa hoặc xoá dữ liệu được xử lý thủ công vì hiện chưa có chức năng tự phục vụ
-          trong giao diện. Xem phạm vi dữ liệu và thời gian lưu trữ tại{' '}
+          trong giao diện. Xem phạm vi dữ liệu, thời gian lưu trữ và đầy đủ các quyền của bạn tại{' '}
           <Link href="/privacy">Chính sách bảo mật</Link>.
+        </p>
+        <p>
+          Để chúng tôi xác minh được yêu cầu đến từ đúng chủ tài khoản, hãy gửi{' '}
+          <strong>từ chính địa chỉ email bạn đã dùng để đăng ký</strong> và nêu rõ bạn muốn làm gì
+          (xem, sửa, xoá, hoặc rút lại sự đồng ý). Chúng tôi sẽ chỉ trả lời qua địa chỉ email đó.
+        </p>
+        <p className={styles.note}>
+          Xin đừng gửi kèm giấy tờ tuỳ thân, ảnh chụp căn cước hay thông tin nhạy cảm khác — chúng
+          tôi không yêu cầu và không muốn lưu giữ những dữ liệu đó.
         </p>
       </LegalSection>
     </LegalPage>

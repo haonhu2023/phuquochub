@@ -5,26 +5,21 @@
  * -----------------------
  * Trang Chính sách bảo mật, Điều khoản sử dụng và Liên hệ đều cần MỘT nguồn sự thật duy nhất cho
  * danh tính bên vận hành. Những giá trị đó là dữ kiện pháp lý của Owner — chúng KHÔNG thể suy ra
- * từ mã nguồn, và tuyệt đối không được bịa. Vì vậy chúng được tập trung ở đây, mặc định `null`,
- * thay vì rải chuỗi giả (`example@example.com`, `[Company Name]`) khắp các trang.
+ * từ mã nguồn, và tuyệt đối không được bịa. Vì vậy chúng được tập trung ở đây thay vì rải chuỗi
+ * giả (`example@example.com`, `[Company Name]`) khắp các trang.
  *
- * Khi `operatorContact.email` còn `null`, các trang pháp lý sẽ hiển thị một thông báo trung thực
- * rằng kênh liên hệ chính thức chưa được công bố — đó là mô tả đúng hiện trạng, không phải
- * placeholder giả.
+ * TRẠNG THÁI: đã được Owner xác nhận và công bố (2026-08-16).
  *
- * CẦN OWNER CUNG CẤP TRƯỚC KHI MỞ CÔNG KHAI
- * -----------------------------------------
- * Điền các giá trị dưới đây rồi chạy lại `npm run test --workspace=@phuquochub/web`. Bộ test
- * `site-identity.spec.ts` sẽ tự động chuyển sang kiểm tra định dạng thật khi giá trị khác `null`.
+ * `address` vẫn để `null` một cách CÓ CHỦ ĐÍCH: Owner chưa đồng ý công bố địa chỉ. Đây không phải
+ * placeholder còn sót — các trang sẽ đơn giản là không hiển thị dòng địa chỉ. Nếu sau này cần công
+ * bố (ví dụ khi đăng ký hộ kinh doanh/doanh nghiệp), điền vào đây là đủ, không phải sửa trang nào.
  *
- *   1. email        — hộp thư nhận yêu cầu về dữ liệu cá nhân và khiếu nại nội dung (BẮT BUỘC)
- *   2. legalName    — tên cá nhân/tổ chức chịu trách nhiệm vận hành (BẮT BUỘC)
- *   3. address      — địa chỉ liên hệ được phép công bố (khuyến nghị)
- *   4. governingLaw — quốc gia/vùng luật áp dụng cho Điều khoản (BẮT BUỘC cho Điều khoản)
- *   5. responseTime — cam kết thời gian phản hồi, ví dụ "trong vòng 30 ngày" (khuyến nghị)
- *
+ * QUY TẮC KHI SỬA FILE NÀY
+ * ------------------------
  * KHÔNG điền dữ liệu phỏng đoán. Một chính sách bảo mật ghi sai bên chịu trách nhiệm còn tệ hơn
- * một chính sách chưa công bố kênh liên hệ.
+ * một chính sách chưa công bố kênh liên hệ. Sau khi sửa, chạy lại
+ * `npm run test --workspace=@phuquochub/web` — `legal.spec.tsx` kiểm tra cả định dạng lẫn việc
+ * không có giá trị "tạm" nào lọt vào.
  */
 export interface OperatorContact {
   /** Hộp thư công khai để người dùng thực hiện quyền với dữ liệu cá nhân. */
@@ -40,11 +35,16 @@ export interface OperatorContact {
 }
 
 export const operatorContact: OperatorContact = {
-  email: null,
-  legalName: null,
+  email: 'nhuhaophuquoc@gmail.com',
+  legalName: 'Đàm Văn Hảo',
+  // Owner chưa công bố địa chỉ — xem ghi chú ở đầu file.
   address: null,
-  governingLaw: null,
-  responseTime: null,
+  governingLaw: 'Pháp luật Việt Nam',
+  // KHÔNG hứa một mốc "30 ngày" chung chung. Pháp luật Việt Nam về bảo vệ dữ liệu cá nhân
+  // (Luật số 91/2025/QH15 và Nghị định 356/2025/NĐ-CP) tự đặt thời hạn cho từng loại yêu cầu, và
+  // thời hạn đó ngắn hơn mốc 30 ngày quen thuộc của GDPR. Câu chữ ở đây trỏ về thời hạn luật định
+  // thay vì tự đặt ra một con số có thể sai hoặc không thực hiện nổi.
+  responseTime: 'Trong thời hạn luật định theo pháp luật Việt Nam về bảo vệ dữ liệu cá nhân',
 };
 
 /**
@@ -56,4 +56,4 @@ export function hasPublishedContact(contact: OperatorContact = operatorContact):
 }
 
 /** Ngày cập nhật gần nhất của bộ tài liệu pháp lý — cập nhật thủ công khi sửa nội dung. */
-export const LEGAL_LAST_UPDATED = '2026-08-15';
+export const LEGAL_LAST_UPDATED = '2026-08-16';

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { operatorContact } from '@/lib/site-identity';
 import { LegalPage, LegalSection } from '@/modules/legal/LegalPage';
 import { OperatorContactBlock } from '@/modules/legal/OperatorContact';
@@ -122,7 +123,14 @@ export default function TermsPage() {
 
       <LegalSection heading="10. Luật áp dụng và liên hệ">
         {operatorContact.governingLaw ? (
-          <p>Điều khoản này được điều chỉnh bởi pháp luật {operatorContact.governingLaw}.</p>
+          <>
+            <p>Điều khoản này được điều chỉnh bởi {operatorContact.governingLaw}.</p>
+            <p>
+              Chúng tôi mong muốn giải quyết mọi vướng mắc qua trao đổi trực tiếp trước. Nếu không
+              đạt được thoả thuận, tranh chấp sẽ được giải quyết tại cơ quan có thẩm quyền theo quy
+              định của pháp luật Việt Nam.
+            </p>
+          </>
         ) : (
           <p className={styles.note}>
             Hệ thống pháp luật điều chỉnh điều khoản này sẽ được công bố cùng thông tin bên vận hành
@@ -134,9 +142,11 @@ export default function TermsPage() {
 
       <LegalSection heading="11. Giới hạn của tài liệu này">
         <p className={styles.note}>
-          Tài liệu này được soạn theo đúng cách dịch vụ đang vận hành, nhưng{' '}
-          <strong>chưa qua rà soát của luật sư</strong> và không phải là tư vấn pháp lý. Cần rà
-          soát pháp lý trước khi mở công khai.
+          Tài liệu này được soạn theo đúng cách dịch vụ đang vận hành và theo pháp luật Việt Nam
+          hiện hành, nhưng <strong>chưa qua rà soát của luật sư</strong> và không phải là tư vấn
+          pháp lý. Nội dung liên quan tới dữ liệu cá nhân được nêu tại{' '}
+          <Link href="/privacy">Chính sách bảo mật</Link>, trong đó có phần đối chiếu với khung pháp
+          lý áp dụng từ 01/01/2026.
         </p>
       </LegalSection>
     </LegalPage>
