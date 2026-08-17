@@ -226,9 +226,9 @@ export default function PrivacyPage() {
           quy mô: hồ sơ đánh giá tác động xử lý dữ liệu cá nhân và hồ sơ chuyển dữ liệu ra nước
           ngoài theo Nghị định 356/2025/NĐ-CP (Luật số 91/2025/QH15 và Nghị định này cho phép doanh
           nghiệp nhỏ, doanh nghiệp khởi nghiệp lựa chọn chưa lập hồ sơ đánh giá tác động trong 05
-          năm đầu, và không áp dụng với hộ kinh doanh, doanh nghiệp siêu nhỏ — việc PhuQuocHub thuộc
-          diện nào cần được xác định chính thức); cơ chế xác minh danh tính người yêu cầu; và quy
-          trình thông báo khi xảy ra sự cố lộ lọt dữ liệu.
+          năm đầu; riêng hộ kinh doanh và doanh nghiệp siêu nhỏ không phải lập hồ sơ này — việc
+          PhuQuocHub thuộc diện nào cần được xác định chính thức); cơ chế xác minh danh tính người
+          yêu cầu; và quy trình thông báo khi xảy ra sự cố lộ lọt dữ liệu.
         </p>
       </LegalSection>
     </LegalPage>
