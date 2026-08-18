@@ -19,12 +19,52 @@ import { AdministrativeBackfillService } from '../modules/admin-data/administrat
 // Usage:
 //   ADMIN_BACKFILL_ACTOR_ID=<uuid> npm run admin:backfill-administrative-data
 //   ADMIN_BACKFILL_ACTOR_ID=<uuid> npm run admin:backfill-administrative-data -- --dry-run
+//
+// PRODUCTION SAFETY (2026-08-18) — kiểm TRƯỚC KHI mở bất kỳ kết nối DB nào, không chỉ trước khi
+// ghi: `assertNotProduction()` đọc đúng biến `env.validation.ts` đã dùng để phân biệt môi trường
+// (`NODE_ENV`), cộng thêm dò chuỗi "prod" trong DATABASE_URL/DB_HOST/DB_NAME làm lớp phòng vệ thứ
+// hai (một `.env` sao chép nhầm từ production nhưng quên đổi NODE_ENV vẫn phải bị chặn). KHÔNG có
+// cờ bỏ qua — đúng yêu cầu "phát hiện dấu hiệu production thì ABORT, không hỏi lại rồi đoán".
+export interface ProductionSafetyCheck {
+  isSafe: boolean;
+  reasons: string[];
+}
+
+export function assertNotProduction(env: NodeJS.ProcessEnv = process.env): ProductionSafetyCheck {
+  const reasons: string[] = [];
+  if (env.NODE_ENV === 'production') {
+    reasons.push(`NODE_ENV=production`);
+  }
+  const suspects: Array<[string, string | undefined]> = [
+    ['DATABASE_URL', env.DATABASE_URL],
+    ['DB_HOST', env.DB_HOST],
+    ['DB_NAME', env.DB_NAME],
+  ];
+  for (const [key, value] of suspects) {
+    if (value && /prod/i.test(value)) {
+      reasons.push(`${key} chứa chuỗi "prod": ${value}`);
+    }
+  }
+  return { isSafe: reasons.length === 0, reasons };
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const actorId = process.env.ADMIN_BACKFILL_ACTOR_ID ?? '';
 
   const logger = new Logger('AdministrativeBackfillRunner');
+
+  const safety = assertNotProduction();
+  if (!safety.isSafe) {
+    logger.error('ABORT — môi trường có dấu hiệu production, script từ chối chạy:');
+    for (const reason of safety.reasons) {
+      logger.error(`  - ${reason}`);
+    }
+    logger.error('Không có cờ bỏ qua kiểm tra này. Chạy trên disposable/local DB, không phải production.');
+    process.exitCode = 1;
+    return;
+  }
 
   if (!actorId) {
     logger.error(

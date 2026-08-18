@@ -136,15 +136,89 @@ describe('AdministrativeBackfillService', () => {
   });
 
   describe('manifest', () => {
-    it('48 mục tiêu, KHÔNG có Grand World (loại trừ có chủ đích — chờ owner duyệt address)', () => {
-      expect(ADMINISTRATIVE_BACKFILL_TARGETS).toHaveLength(48);
-      expect(ADMINISTRATIVE_BACKFILL_TARGETS.some((t) => t.slug === 'grand-world-phu-quoc')).toBe(false);
+    // Owner Decision (2026-08-18): province/admin_area của Grand World được phê duyệt backfill
+    // cùng 48 place kia — CHỈ address của nó còn NEEDS_REVIEW (script không ghi address cho bất
+    // kỳ place nào, nên có mặt trong manifest này không đụng tới address theo cách nào cả).
+    it('49 mục tiêu — Grand World CÓ MẶT (chỉ province/admin_area, address vẫn ngoài phạm vi script)', () => {
+      expect(ADMINISTRATIVE_BACKFILL_TARGETS).toHaveLength(49);
+      expect(ADMINISTRATIVE_BACKFILL_TARGETS.some((t) => t.slug === 'grand-world-phu-quoc')).toBe(true);
     });
 
     it('mọi mục tiêu đều cùng 1 cặp giá trị (kết quả thật của việc luật nhập cả đảo thành 1 đơn vị)', () => {
       const distinct = new Set(ADMINISTRATIVE_BACKFILL_TARGETS.map((t) => `${t.province}|${t.adminArea}`));
       expect(distinct.size).toBe(1);
       expect([...distinct][0]).toBe('An Giang|Đặc khu Phú Quốc');
+    });
+  });
+
+  // Section 15 test matrix — "Grand World: test riêng". Không dùng ONE_TARGET/makeDetailRow mặc
+  // định (địa chỉ null) — dựng đúng dữ liệu THẬT của Grand World (address lẫn "TP. Phú Quốc" và
+  // "Kiên Giang", theo Phase 2B) để chứng minh address KHÔNG bị chạm, chỉ province/admin_area đổi.
+  describe('GRAND WORLD — trường hợp riêng (Owner Decision 2026-08-18)', () => {
+    const GRAND_WORLD_TARGET = [
+      { slug: 'grand-world-phu-quoc', province: 'An Giang', adminArea: 'Đặc khu Phú Quốc' },
+    ] as const;
+    const OLD_MALFORMED_ADDRESS = 'Grand World, Gành Dầu, TP. Phú Quốc, Kiên Giang';
+
+    beforeEach(() => {
+      placesRepo.getDetailBySlug.mockResolvedValue(
+        makeDetailRow({
+          id: 'place-grand-world',
+          slug: 'grand-world-phu-quoc',
+          name: 'Grand World Phú Quốc',
+          address: OLD_MALFORMED_ADDRESS,
+          ward: 'Gành Dầu',
+        }),
+      );
+    });
+
+    it('có mặt trong manifest thật (không phải fixture riêng của test)', () => {
+      const real = ADMINISTRATIVE_BACKFILL_TARGETS.find((t) => t.slug === 'grand-world-phu-quoc');
+      expect(real).toEqual({ slug: 'grand-world-phu-quoc', province: 'An Giang', adminArea: 'Đặc khu Phú Quốc' });
+    });
+
+    it('address CŨ (lẫn định dạng cũ+mới) giữ NGUYÊN VẸN — script không có cơ chế ghi address', async () => {
+      const summary = await service.backfill({ actorId: 'actor-1', targets: GRAND_WORLD_TARGET });
+
+      expect(summary.results[0].preservedSnapshot?.address).toBe(OLD_MALFORMED_ADDRESS);
+      // PATCH payload (nếu có) không được liệt kê address ở bất kỳ đâu.
+      if (placesService.update.mock.calls.length > 0) {
+        expect(Object.keys(placesService.update.mock.calls[0][1])).not.toContain('address');
+      }
+    });
+
+    it('province/admin_area được backfill giống hệt 48 place khác — cùng PATCH, cùng origin=IMPORT', async () => {
+      const summary = await service.backfill({ actorId: 'actor-1', targets: GRAND_WORLD_TARGET });
+
+      expect(summary.patched).toBe(1);
+      expect(placesService.update).toHaveBeenCalledWith(
+        'place-grand-world',
+        { province: 'An Giang', admin_area: 'Đặc khu Phú Quốc' },
+        'actor-1',
+        RevisionOrigin.IMPORT,
+      );
+    });
+
+    it('source attribution: 2 place_field (province, admin_area) + 1 wiki_revision — cùng nguồn với 48 place khác', async () => {
+      const summary = await service.backfill({ actorId: 'actor-1', targets: GRAND_WORLD_TARGET });
+
+      expect(summary.results[0].placeFieldAttributionsCreated).toBe(2);
+      expect(summary.results[0].wikiRevisionAttributionCreated).toBe(true);
+      expect(attributionsRepo.create.mock.calls.map((c) => c[0])).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ entityType: 'place_field', field: 'province', entityId: 'place-grand-world' }),
+          expect.objectContaining({ entityType: 'place_field', field: 'admin_area', entityId: 'place-grand-world' }),
+        ]),
+      );
+    });
+
+    it('verification → official qua ĐÚNG cơ chế ensureOfficialFromClaim, method=SOURCE_MATCH', async () => {
+      const summary = await service.backfill({ actorId: 'actor-1', targets: GRAND_WORLD_TARGET });
+
+      expect(summary.results[0].verificationOutcome).toBe('official_created');
+      const [placeId, input] = verificationsService.ensureOfficialFromClaim.mock.calls[0];
+      expect(placeId).toBe('place-grand-world');
+      expect(input.method).toBe(VerificationMethod.SOURCE_MATCH);
     });
   });
 

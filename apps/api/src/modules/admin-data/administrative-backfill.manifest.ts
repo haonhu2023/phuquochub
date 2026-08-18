@@ -13,17 +13,21 @@
  * xa đặc khu Thổ Châu (~9.28°N/103.47°E) — nên GIÁ TRỊ GIỐNG NHAU cho toàn bộ danh sách không phải
  * rút gọn, mà là kết quả thật của việc luật chỉ vừa nhập toàn đảo (trừ Thổ Châu) thành MỘT đơn vị.
  *
- * GRAND WORLD (slug `grand-world-phu-quoc`) CỐ Ý VẮNG MẶT khỏi danh sách này. Phân loại hành chính
- * của nó (province="An Giang", admin_area="Đặc khu Phú Quốc") tự thân cũng CONFIRMED như 48 place
- * dưới đây — nhưng `address` hiện tại của nó lẫn cả định dạng cũ ("TP. Phú Quốc") lẫn tỉnh cũ
- * ("Kiên Giang") theo cách không nơi nào khác trong 49 place mắc phải (Phase 2B/4), và toàn bộ dòng
- * đó đã được xếp NEEDS_REVIEW (không phải chỉ riêng address) ở bước audit trước khi backfill này bắt
- * đầu. Quyết định (ghi rõ vì đây là lựa chọn diễn giải, không phải sự kiện khách quan): loại Grand
- * World khỏi ĐỢT NÀY — kể cả phần province/admin_area vốn an toàn — để không có bất kỳ ghi nào chạm
- * vào place này trước khi Owner duyệt address riêng, đúng tinh thần "không được tự ý sửa Grand World
- * ngoài phần đã được owner phê duyệt". Thêm Grand World vào mảng dưới đây (cùng shape, KHÔNG đổi
- * address) là cách chạy lại đợt backfill này cho nó sau khi được duyệt — script không cần sửa gì
- * khác, script vốn đã idempotent.
+ * GRAND WORLD (slug `grand-world-phu-quoc`) — CÓ MẶT trong danh sách này (khác quyết định của đợt
+ * backfill trước, xem lịch sử file). Owner đã phê duyệt tường minh (2026-08-18): "đối với 49
+ * Places, province/admin_area phải được cập nhật theo administrative reality hiện hành" — không
+ * còn lý do giữ Grand World ngoài phạm vi CHO HAI FIELD NÀY, vì phân loại hành chính của nó suy ra
+ * từ CÙNG một lý lẽ như 48 place kia (toạ độ 10.328,103.855 nằm trong xã Gành Dầu cũ, nay thuộc
+ * đặc khu Phú Quốc) — không phụ thuộc gì vào chuỗi `address` lộn xộn của nó.
+ *
+ * `address` của Grand World VẪN KHÔNG được sửa trong danh sách này (script không có cơ chế nào
+ * ghi address cả — xem administrative-backfill.service.ts, PATCH chỉ chứa province/admin_area).
+ * Đã thử tìm nguồn xác minh cách viết đúng (2026-08-18): mọi kết quả tìm được đều là blog du
+ * lịch/trang thương mại (dulichvietnam.com.vn, vinwonders.com/wonderpedia, Klook blog, Facebook,
+ * grandworldphuquoc.vn…) — đúng loại nguồn Section 3 cấm dùng làm căn cứ pháp lý, và bản thân
+ * chúng còn dùng thuật ngữ CŨ ("Kiên Giang", "Gành Dầu ward") — nếu copy lại sẽ đưa dữ liệu sai
+ * MỚI vào thay vì sửa dữ liệu sai CŨ. Kết luận: không đủ căn cứ để viết lại address — giữ
+ * NEEDS_REVIEW cho riêng field này, đúng nhánh fallback ở Section 6 của brief.
  */
 
 export interface AdministrativeBackfillTarget {
@@ -45,7 +49,8 @@ export const ADMINISTRATIVE_BACKFILL_SOURCE = {
   retrievedAt: '2026-08-18T00:00:00.000Z',
 } as const;
 
-// 48/49 place — Grand World loại trừ có chủ đích, xem chú thích đầu file.
+// 49/49 place — Grand World CÓ MẶT (province/admin_area only; xem chú thích đầu file vì sao
+// address của nó không nằm trong phạm vi field mà script này ghi).
 export const ADMINISTRATIVE_BACKFILL_TARGETS: readonly AdministrativeBackfillTarget[] = [
   'dinh-cau',
   'cho-dem-phu-quoc',
@@ -74,7 +79,7 @@ export const ADMINISTRATIVE_BACKFILL_TARGETS: readonly AdministrativeBackfillTar
   'vinpearl-safari',
   'la-veranda-resort',
   'chuon-chuon-bistro',
-  // grand-world-phu-quoc — LOẠI TRỪ, xem chú thích đầu file.
+  'grand-world-phu-quoc',
   'nha-tu-phu-quoc',
   'muong-thanh-luxury-phu-quoc',
   'bai-truong',
