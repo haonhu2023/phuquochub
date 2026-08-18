@@ -87,6 +87,30 @@ describe('buildPlaceJsonLd — địa chỉ lấy từ dữ liệu canonical', (
     });
   });
 
+  // `location` là NOT NULL ở DB và non-nullable trong kiểu, nên đường này không tới được qua API —
+  // nhưng builder có sẵn guard `if (place.location)`. Test khoá guard đó lại: nếu ai gỡ nó, JSON-LD
+  // sẽ phát `GeoCoordinates` với latitude/longitude `undefined` thay vì bỏ khối geo đi.
+  it('không có toạ độ → bỏ hẳn khối geo, không phát GeoCoordinates rỗng', () => {
+    const noGeo = { ...basePlace, location: undefined as unknown as PlaceDetail['location'] };
+    const jsonLd = buildPlaceJsonLd(noGeo);
+    expect(jsonLd).not.toHaveProperty('geo');
+    expect(jsonLd.name).toBe('Bãi Sao'); // phần còn lại vẫn dựng bình thường
+  });
+
+  // "JSON-LD remains valid": chuỗi nhúng vào <script> phải parse lại được thành đúng object ban đầu.
+  it('chuỗi phát ra parse lại được và giữ nguyên @context/@type', () => {
+    const withAll: PlaceDetail = { ...basePlace, province: 'An Giang', admin_area: 'Đặc khu Phú Quốc' };
+    const parsed = JSON.parse(serializeJsonLd(buildPlaceJsonLd(withAll))) as Record<string, unknown>;
+    expect(parsed['@context']).toBe('https://schema.org');
+    expect(parsed['@type']).toBe('TouristAttraction');
+    expect(parsed.address).toMatchObject({
+      '@type': 'PostalAddress',
+      addressLocality: 'Đặc khu Phú Quốc',
+      addressRegion: 'An Giang',
+      addressCountry: 'VN',
+    });
+  });
+
   it('serializeJsonLd vẫn thoát `<` (chống thoát khỏi thẻ script)', () => {
     const out = serializeJsonLd(buildPlaceJsonLd({ ...basePlace, name: '</script><b>x' }));
     expect(out).not.toContain('</script>');
