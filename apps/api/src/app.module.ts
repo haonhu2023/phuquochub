@@ -34,6 +34,7 @@ import { AvailabilityModule } from './modules/availability/availability.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { BusinessModule } from './modules/business/business.module';
 import { VerificationsModule } from './modules/verifications/verifications.module';
+import { AdminDataModule } from './modules/admin-data/admin-data.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -83,6 +84,7 @@ import { VerificationsModule } from './modules/verifications/verifications.modul
     ModerationModule,
     BusinessModule,
     VerificationsModule,
+    AdminDataModule,
   ],
 })
 export class AppModule {}

@@ -195,7 +195,20 @@ export class PlacesService {
     return card;
   }
 
-  async update(id: string, dto: UpdatePlaceDto, userId: string) {
+  /**
+   * `origin` (Administrative Data Backfill, 2026-08-18) — kênh kỹ thuật ghi vào wiki_revisions.
+   * TÙY CHỌN, mặc định `COMMUNITY_EDIT` để giữ nguyên hành vi cho MỌI caller hiện có (route PATCH
+   * /places/:id, nơi người sửa luôn là chủ cơ sở/cộng tác viên qua UI thường).
+   *
+   * Trước đây tham số này không tồn tại — origin bị hard-code `COMMUNITY_EDIT` cho MỌI lần PATCH,
+   * kể cả những đợt sửa hàng loạt theo văn bản pháp luật (không phải "chỉnh sửa cộng đồng" theo
+   * đúng nghĩa của nhãn đó — source.md §6 định nghĩa `origin` là "kênh phát sinh", tách biệt với
+   * `source_attributions` là "bằng chứng nội dung"). Ghi sai kênh là nói dối về NGUỒN GỐC của một
+   * thay đổi, dù giá trị cuối cùng có đúng đến đâu. Không thêm giá trị enum mới: `revision_origin`
+   * (CSDL) đã sẵn có `import`, đúng ngữ nghĩa cho một đợt backfill có nguồn xác định, chạy hàng
+   * loạt, không phải quyết định biên tập của một cá nhân.
+   */
+  async update(id: string, dto: UpdatePlaceDto, userId: string, origin: RevisionOrigin = RevisionOrigin.COMMUNITY_EDIT) {
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
@@ -233,7 +246,7 @@ export class PlacesService {
         placeId: id,
         snapshot: card,
         diff: { fields: changedFields },
-        origin: RevisionOrigin.COMMUNITY_EDIT,
+        origin,
         changeNote: null,
         editorId: userId,
         status: RevisionStatus.APPROVED,

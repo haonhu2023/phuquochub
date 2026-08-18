@@ -241,6 +241,23 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(revision.editorId).toBe('u1');
     });
 
+    // Administrative Data Backfill (2026-08-18) — tham số hoá `origin`, KHÔNG được đổi hành vi mặc
+    // định của bất kỳ caller nào hiện có (route PATCH duy nhất gọi 3 tham số, không truyền origin).
+    it('KHÔNG truyền origin → mặc định COMMUNITY_EDIT (giữ nguyên hành vi cũ)', async () => {
+      await service.update('p1', { name: 'Tên mới' } as UpdatePlaceDto, 'u1');
+
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.origin).toBe(RevisionOrigin.COMMUNITY_EDIT);
+    });
+
+    it('truyền origin=IMPORT → revision ghi đúng kênh đó (đợt backfill hành chính)', async () => {
+      await service.update('p1', { province: 'An Giang' } as UpdatePlaceDto, 'u1', RevisionOrigin.IMPORT);
+
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.origin).toBe(RevisionOrigin.IMPORT);
+      expect(revision.diff).toEqual({ fields: ['province'] });
+    });
+
     it('KHÔNG ghi revision khi patch rỗng (không trường revisable nào đổi)', async () => {
       await service.update('p1', {} as UpdatePlaceDto, 'u1');
 

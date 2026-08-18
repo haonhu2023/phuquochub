@@ -356,9 +356,22 @@ export class VerificationsService {
       actorId: string;
       note?: string | null;
       createSource: (manager: EntityManager) => Promise<string>;
+      /**
+       * TÙY CHỌN (Administrative Data Backfill, 2026-08-18) — mặc định `OWNER_CLAIM` để giữ NGUYÊN
+       * hành vi cho caller duy nhất hiện có (`BusinessClaimsService.decide()`, chưa từng truyền
+       * tham số này). Tên hàm vẫn giữ "FromClaim" — đổi tên sẽ kéo theo một diff không liên quan ở
+       * business-claims.service.ts/docs/test cho một task chỉ cần tái dùng CƠ CHẾ, không phải đổi
+       * tên nó — nhưng cơ chế bên trong (no-op nếu đã official, tạo/gửi lại verification, transition
+       * sang official) không có gì đặc thù cho "claim": bất kỳ luồng nào cần "nguồn X xác nhận Y
+       * chính thức, có state machine, có audit" đều dùng lại được, chỉ khác NHÃN method để trung
+       * thực về việc AI/CÁI GÌ khiến place này thành official (khớp source.md §6: `method` cũng là
+       * "kênh phát sinh" giống hệt lý do `RevisionOrigin` cần tham số hoá ở PlacesService.update()).
+       */
+      method?: VerificationMethod;
     },
     manager: EntityManager,
   ): Promise<ClaimVerificationOutcome> {
+    const method = input.method ?? VerificationMethod.OWNER_CLAIM;
     const target: TargetRef = { placeId, contactId: null, priceHistoryId: null };
     const existing = await this.verificationsRepo.findActiveByTarget({ placeId }, manager);
 
@@ -371,21 +384,9 @@ export class VerificationsService {
 
     let current: Verification;
     if (!existing) {
-      current = await this.createPendingVerification(
-        target,
-        VerificationMethod.OWNER_CLAIM,
-        input.actorId,
-        input.note ?? null,
-        manager,
-      );
+      current = await this.createPendingVerification(target, method, input.actorId, input.note ?? null, manager);
     } else if (existing.status === VerificationStatus.EXPIRED || existing.status === VerificationStatus.REJECTED) {
-      current = await this.resubmitVerification(
-        existing,
-        VerificationMethod.OWNER_CLAIM,
-        input.actorId,
-        input.note ?? null,
-        manager,
-      );
+      current = await this.resubmitVerification(existing, method, input.actorId, input.note ?? null, manager);
     } else {
       current = existing;
     }
@@ -395,7 +396,7 @@ export class VerificationsService {
         curr,
         { source_id: sourceId, expires_at: null, note: input.note ?? undefined },
         input.actorId,
-        VerificationMethod.OWNER_CLAIM,
+        method,
         mgr,
       ),
     );

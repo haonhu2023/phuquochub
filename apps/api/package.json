@@ -20,6 +20,7 @@
     "media:cleanup": "ts-node src/scripts/clean-orphan-media.ts",
     "verification:expire": "ts-node src/scripts/expire-overdue-verifications.ts",
     "operator:bootstrap": "ts-node src/scripts/bootstrap-operator.ts",
+    "admin:backfill-administrative-data": "ts-node src/scripts/backfill-administrative-data.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {

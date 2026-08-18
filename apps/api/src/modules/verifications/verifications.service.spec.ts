@@ -484,6 +484,51 @@ describe('VerificationsService', () => {
       expect(result.status).toBe(VerificationStatus.OFFICIAL);
     });
 
+    // Administrative Data Backfill (2026-08-18) — `method` tham số hoá, tái dùng CHÍNH XÁC cơ chế
+    // này cho một luồng KHÔNG phải business claim (backfill hành chính, method=source_match).
+    it('KHÔNG truyền method → mặc định owner_claim (giữ nguyên hành vi cho BusinessClaimsService)', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING, lockVersion: 0 }));
+      sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.BUSINESS_OWNER }));
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      await service.ensureOfficialFromClaim('place-1', { actorId: 'mod-1', createSource }, manager);
+
+      expect(verificationsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ method: VerificationMethod.OWNER_CLAIM }),
+        manager,
+      );
+    });
+
+    it('truyền method=source_match → pending, event, và transition sang official ĐỀU ghi đúng method đó', async () => {
+      verificationsRepo.findActiveByTarget.mockResolvedValue(null);
+      verificationsRepo.create.mockResolvedValue(makeVerification({ status: VerificationStatus.PENDING, lockVersion: 0 }));
+      sourcesRepo.findById.mockResolvedValue(makeSource({ type: SourceType.GOVERNMENT }));
+      verificationsRepo.casUpdate.mockResolvedValue(true);
+
+      const { verification: result } = await service.ensureOfficialFromClaim(
+        'place-1',
+        { actorId: 'system', note: 'Nghị quyết 1654/NQ-UBTVQH15', createSource, method: VerificationMethod.SOURCE_MATCH },
+        manager,
+      );
+
+      expect(verificationsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ method: VerificationMethod.SOURCE_MATCH }),
+        manager,
+      );
+      expect(eventsRepo.append).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ toStatus: VerificationStatus.PENDING, method: VerificationMethod.SOURCE_MATCH }),
+        manager,
+      );
+      expect(eventsRepo.append).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ toStatus: VerificationStatus.OFFICIAL, method: VerificationMethod.SOURCE_MATCH }),
+        manager,
+      );
+      expect(result.status).toBe(VerificationStatus.OFFICIAL);
+    });
+
     // Owner Decision 3 (CORRECTION): claim-driven official KHÔNG có hạn — khác `official()` qua HTTP
     // (mặc định +12 tháng) vì chưa có luồng gia hạn nào cho chủ cơ sở.
     it('claim-driven official -> expires_at = null (KHÔNG áp hạn 12 tháng mặc định của official())', async () => {
