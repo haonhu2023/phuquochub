@@ -38,6 +38,8 @@ function place(overrides: Partial<ManagedPlace> = {}): ManagedPlace {
     location: { lat: 10.05, lng: 104.0 },
     address: null,
     ward: 'An Thới',
+    province: null,
+    admin_area: null,
     description: null,
     osm_id: null,
     opening_hours: null,

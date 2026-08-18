@@ -81,6 +81,19 @@ export interface PlacePrice {
   verification_status: VerificationStatusValue;
 }
 
+/**
+ * Cơ sở pháp lý để hiển thị một tệp media (khớp enum DB `media_license_type`).
+ * `null` ở `PlaceMedia.license_type` nghĩa là CHƯA AI XÉT — khác `'unknown'` (đã xét, không truy
+ * được nguồn gốc).
+ */
+export type MediaLicenseTypeValue =
+  | 'owner_provided'
+  | 'user_submitted'
+  | 'open_license'
+  | 'public_domain'
+  | 'stock_license'
+  | 'unknown';
+
 export interface PlaceMedia {
   id: string;
   type: string;
@@ -89,6 +102,16 @@ export interface PlaceMedia {
   caption: string | null;
   alt_text: string | null;
   status: string;
+  /**
+   * Dòng ghi công phải hiển thị cạnh ảnh khi giấy phép yêu cầu (CC BY/BY-SA).
+   *
+   * Ba trường licence này thuộc hợp đồng CÔNG KHAI có chủ ý — không phải dữ liệu nội bộ: với
+   * `license_type = 'open_license'` thì hiển thị credit + link giấy phép LÀ điều kiện để được
+   * dùng ảnh. Client không đọc được chúng thì không thể tuân thủ.
+   */
+  attribution: string | null;
+  license_type: MediaLicenseTypeValue | null;
+  license_url: string | null;
 }
 
 export interface PlaceFaq {
@@ -150,7 +173,12 @@ export interface PlaceDetail extends PlaceCard {
    */
   category_slug: string | null;
   address: string | null;
+  /** NHÃN KHU VỰC (vd `Dương Đông`), KHÔNG phải đơn vị hành chính — xem `admin_area`. */
   ward: string | null;
+  /** Tỉnh/thành hiện hành (vd `An Giang`) → schema.org `addressRegion`. `null` = chưa xác minh. */
+  province: string | null;
+  /** Đơn vị hành chính cấp xã hiện hành (vd `Đặc khu Phú Quốc`) → `addressLocality`. */
+  admin_area: string | null;
   description: string | null;
   opening_hours: OpeningHours | null;
   osm_id: number | null;

@@ -9,18 +9,20 @@ import type { OpeningHours, OpeningHoursRange } from '@phuquochub/shared-types';
 // (spread `...original` trước khi ghi đè), không phát minh ngữ nghĩa mới, không âm thầm xoá dữ
 // liệu mà form không hiển thị.
 
-export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
-export type Weekday = (typeof WEEKDAYS)[number];
+// Từ vựng thứ trong tuần khai MỘT lần ở `modules/places/openingHours.ts` (đường đọc) và dùng lại
+// ở đây (đường ghi) — cùng chiều phụ thuộc place-management → places đã có với `places/wards.ts`.
+// Hai bản sao của cùng bộ nhãn tiếng Việt chắc chắn sẽ lệch nhau; giữ đúng một bản.
+//
+// Tên `WEEKDAYS`/`Weekday` GIỮ NGUYÊN (re-export có đổi tên) để mọi import sẵn có của form —
+// PlaceForm.tsx và test của nó — không phải sửa gì.
+import {
+  WEEKDAY_KEYS as WEEKDAYS,
+  WEEKDAY_LABELS,
+  type WeekdayKey as Weekday,
+} from '@/modules/places/openingHours';
 
-export const WEEKDAY_LABELS: Record<Weekday, string> = {
-  mon: 'Thứ Hai',
-  tue: 'Thứ Ba',
-  wed: 'Thứ Tư',
-  thu: 'Thứ Năm',
-  fri: 'Thứ Sáu',
-  sat: 'Thứ Bảy',
-  sun: 'Chủ Nhật',
-};
+export { WEEKDAYS, WEEKDAY_LABELS };
+export type { Weekday };
 
 export type OpeningHoursRegularForm = Record<Weekday, OpeningHoursRange[]>;
 

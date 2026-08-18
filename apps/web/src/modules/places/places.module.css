@@ -118,6 +118,17 @@
   border-color: color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
+/* Trạng thái mở/đóng. `unknown` cố ý KHÔNG có biến thể riêng — dùng .badge trung tính, để
+   "chưa có thông tin" trông đúng như nó là: chưa biết, không phải một phán quyết. */
+.badgeOpen {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+.badgeClosed {
+  color: var(--muted);
+  border-color: var(--border);
+}
+
 /* ---------- Trạng thái rỗng / lỗi ---------- */
 .state {
   border: 1px dashed var(--border);
@@ -233,6 +244,47 @@
   object-fit: cover;
   border-radius: 8px;
   background: var(--surface-2);
+}
+
+/* Ghi công ảnh. Với giấy phép CC BY/BY-SA, hiển thị dòng này LÀ điều kiện được dùng ảnh — nên nó
+   phải luôn nhìn thấy được, không nằm trong tooltip/title hay chỉ hiện khi hover. Nhỏ và mờ thì
+   được; ẩn đi thì không. */
+.galleryFigure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.mediaCredit {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.mediaCredit a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Lịch tuần: bảng nhãn/giờ gọn, tô đậm dòng hôm nay. */
+.hoursWeek {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.hoursRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.hoursToday {
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .section {

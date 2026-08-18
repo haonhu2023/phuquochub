@@ -115,6 +115,8 @@ function detail(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     location: { lat: 10.05, lng: 104.0 },
     address: null,
     ward: null,
+    province: null,
+    admin_area: null,
     description: null,
     opening_hours: null,
     osm_id: null,

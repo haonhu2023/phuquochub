@@ -149,6 +149,9 @@ describe('ReviewsSection', () => {
                 caption: null,
                 alt_text: 'Bãi biển lúc hoàng hôn',
                 status: 'published',
+                attribution: null,
+                license_type: null,
+                license_url: null,
               },
             ],
           }),
@@ -175,6 +178,9 @@ describe('ReviewsSection', () => {
                 caption: null,
                 alt_text: null,
                 status: 'published',
+                attribution: null,
+                license_type: null,
+                license_url: null,
               },
               {
                 id: 'media-2',
@@ -184,6 +190,9 @@ describe('ReviewsSection', () => {
                 caption: 'Món ăn ngon',
                 alt_text: null,
                 status: 'published',
+                attribution: null,
+                license_type: null,
+                license_url: null,
               },
             ],
           }),
@@ -204,7 +213,7 @@ describe('ReviewsSection', () => {
         initialReviews={[
           baseReview({
             media: [
-              { id: 'media-1', type: 'image', url: '', thumbnail_url: null, caption: null, alt_text: null, status: 'published' },
+              { id: 'media-1', type: 'image', url: '', thumbnail_url: null, caption: null, alt_text: null, status: 'published', attribution: null, license_type: null, license_url: null },
             ],
           }),
         ]}

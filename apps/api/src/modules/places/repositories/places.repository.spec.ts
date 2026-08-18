@@ -31,6 +31,8 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     lng: 104.0,
     address: null,
     ward: null,
+    province: null,
+    admin_area: null,
     description: null,
     opening_hours: null,
     osm_id: null,

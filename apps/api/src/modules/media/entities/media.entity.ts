@@ -9,7 +9,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { MediaProvider, MediaStatus, MediaType } from '../media.enums';
+import { MediaLicenseType, MediaProvider, MediaStatus, MediaType } from '../media.enums';
 import { Place } from '../../places/entities/place.entity';
 
 // Bảng `media` — exclusive arc 5 nhánh (place/review/post/business/event), thay `place_media`
@@ -88,6 +88,29 @@ export class Media {
 
   @Column({ type: 'uuid', nullable: true })
   uploadedBy!: string | null;
+
+  // --- Place Information Foundation (2026-08-18) — QUYỀN sử dụng tệp, không phải NGUỒN thông tin.
+  // Nguồn đi qua `source_attributions` (entity_type='media') → `sources`; ba cột dưới đây trả lời
+  // câu khác: được phép hiển thị tệp này theo cơ sở nào, và phải ghi công thế nào.
+  //
+  // NULL = chưa ai xét quyền (mặc định cho mọi dòng có trước migration này). Xem MediaLicenseType.
+  @Column({ type: 'enum', enum: MediaLicenseType, enumName: 'media_license_type', nullable: true })
+  licenseType!: MediaLicenseType | null;
+
+  /**
+   * Dòng ghi công hiển thị công khai, vd `Trantuonglam / Wikimedia Commons`.
+   *
+   * Cố ý là MỘT chuỗi tự do chứ không phải FK tới `users` hay `sources`: tác giả ở đây thường là
+   * người NGOÀI nền tảng (không có tài khoản), và định dạng credit do chính giấy phép quy định
+   * chứ không do ta chuẩn hoá. `sources.publisher` là tên đơn vị phát hành DÙNG LẠI cho nhiều
+   * tệp — không thay thế được credit riêng của từng ảnh.
+   */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  attribution!: string | null;
+
+  /** Link tới nguyên văn giấy phép (vd `https://creativecommons.org/licenses/by-sa/4.0/`). */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  licenseUrl!: string | null;
 
   // --- Media Upload Foundation (design review, 2026-07-30) — object storage metadata ONLY.
   // Never an absolute or signed URL (that is generated dynamically at read time, never persisted).

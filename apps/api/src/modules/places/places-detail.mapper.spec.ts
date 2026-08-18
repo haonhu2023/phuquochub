@@ -20,6 +20,8 @@ describe('toPlaceDetail', () => {
     lng: 104.0281,
     address: 'An Thới',
     ward: 'An Thới',
+    province: 'An Giang',
+    admin_area: 'Đặc khu Phú Quốc',
     description: 'Cát trắng',
     opening_hours: null,
     osm_id: '123456789',
@@ -38,6 +40,32 @@ describe('toPlaceDetail', () => {
 
   it('category_slug được đưa ra hợp đồng chi tiết (điều hướng về đúng trang duyệt)', () => {
     expect(toPlaceDetail(baseRow).category_slug).toBe('beach');
+  });
+
+  // Place Information Foundation (2026-08-18) — ADDRESS_MODEL.
+  //
+  // `ward` và `admin_area` là HAI trường khác nhau và phải ra hợp đồng riêng biệt: `ward` là nhãn
+  // khu vực cho người đọc (`Dương Đông`), `admin_area` là đơn vị hành chính theo pháp luật
+  // (`Đặc khu Phú Quốc`). Gộp chúng lại chính là lỗi mà mô hình này sinh ra để chặn.
+  it('province/admin_area ra hợp đồng TÁCH BIỆT khỏi ward (nhãn khu vực ≠ đơn vị hành chính)', () => {
+    const d = toPlaceDetail(baseRow);
+    expect(d.ward).toBe('An Thới');
+    expect(d.province).toBe('An Giang');
+    expect(d.admin_area).toBe('Đặc khu Phú Quốc');
+  });
+
+  // Cùng lý do `category_slug`: cột mới nên row cũ/mock (dựng trước migration) không mang khoá.
+  // `undefined` lọt ra thì JSON.stringify nuốt mất khoá — client không phân biệt được "chưa xác
+  // minh đơn vị hành chính" với "API không có trường này".
+  it('province/admin_area vắng mặt → null, không rơi khỏi payload', () => {
+    const row = { ...baseRow } as Partial<PlaceDetailRow>;
+    delete row.province;
+    delete row.admin_area;
+
+    const d = toPlaceDetail(row as PlaceDetailRow);
+    expect(d.province).toBeNull();
+    expect(d.admin_area).toBeNull();
+    expect(Object.keys(d)).toEqual(expect.arrayContaining(['province', 'admin_area']));
   });
 
   it('category_slug vắng mặt/undefined → null, không rơi khỏi payload', () => {

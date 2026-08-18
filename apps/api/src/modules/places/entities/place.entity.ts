@@ -44,8 +44,42 @@ export class Place {
   @Column({ type: 'varchar', length: 300, nullable: true })
   address!: string | null;
 
+  /**
+   * NHÃN KHU VỰC hiển thị/lọc (vd `Dương Đông`, `Bãi Trường`) — KHÔNG phải đơn vị hành chính.
+   *
+   * Tên cột là di sản: khi seed, các giá trị này ĐANG là phường/xã. Từ 01/7/2025 (Nghị quyết
+   * 1654/NQ-UBTVQH15) 2 phường + 6 xã của Phú Quốc nhập thành MỘT `đặc khu Phú Quốc` thuộc tỉnh
+   * An Giang, nên chúng không còn là đơn vị hành chính — nhưng vẫn là địa danh có thật và vẫn là
+   * cách khách định vị ("ở Dương Đông"), nên vẫn dùng cho `?ward=` và ô lọc bản đồ/tìm kiếm.
+   *
+   * Cột KHÔNG đổi tên vì nó nằm trong hợp đồng công khai (PlaceCard/PlaceDetail + tham số lọc);
+   * đơn vị hành chính có cột riêng bên dưới. Đừng ghi `đặc khu Phú Quốc`/`An Giang` vào đây.
+   */
   @Column({ type: 'varchar', length: 120, nullable: true })
   ward!: string | null;
+
+  /**
+   * Tỉnh/thành phố trực thuộc trung ương (vd `An Giang`) → schema.org `addressRegion`.
+   *
+   * Tồn tại để tầng SEO không phải hard-code địa danh: trước đây `structured-data.ts` gắn cứng
+   * `addressRegion: 'Kiên Giang'` cho MỌI place, và giá trị đó đã sai kể từ 01/7/2025 mà không có
+   * cột nào sửa được. NULL = chưa xác minh → tầng SEO bỏ trường đó đi, không đoán.
+   */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  province!: string | null;
+
+  /**
+   * Đơn vị hành chính cấp xã hiện hành (vd `Đặc khu Phú Quốc`) → schema.org `addressLocality`.
+   *
+   * Tách khỏi `ward` có chủ đích: `ward` là nhãn khu vực cho người đọc, cột này là đơn vị hành
+   * chính theo pháp luật. Không gộp, vì đó chính là cách dữ liệu hành chính lẫn vào trường khu
+   * vực rồi phải sửa hàng loạt bằng thay-chuỗi mỗi lần địa giới thay đổi.
+   *
+   * Biến thiên thật, không phải hằng số: An Giang còn `đặc khu Thổ Châu` — cũng là đảo, cũng có
+   * thể vào phạm vi nội dung của site.
+   */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  adminArea!: string | null;
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;

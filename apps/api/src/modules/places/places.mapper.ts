@@ -42,6 +42,11 @@ export function toPlaceDetail(row: PlaceDetailRow) {
     category_slug: row.category_slug ?? null,
     address: row.address,
     ward: row.ward,
+    // `?? null` cùng lý do `category_slug`: cột mới (Place Information Foundation) nên row cũ/mock
+    // dựng trước migration không có khoá này — để `undefined` lọt ra thì JSON.stringify nuốt mất
+    // khoá thay vì phát `null`, và client không phân biệt được "chưa xác minh" với "thiếu trường".
+    province: row.province ?? null,
+    admin_area: row.admin_area ?? null,
     description: row.description,
     opening_hours: row.opening_hours ?? null,
     osm_id: row.osm_id !== null && row.osm_id !== undefined ? Number(row.osm_id) : null,

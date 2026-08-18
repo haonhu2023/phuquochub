@@ -56,7 +56,12 @@ export interface PlaceDetailRow extends PlaceCardRow {
    */
   category_slug: string | null;
   address: string | null;
+  /** Nhãn khu vực (vd `Dương Đông`) — KHÔNG phải đơn vị hành chính, xem `admin_area`. */
   ward: string | null;
+  /** Tỉnh/thành hiện hành → schema.org `addressRegion`. `null` = chưa xác minh (không đoán). */
+  province: string | null;
+  /** Đơn vị hành chính cấp xã hiện hành → `addressLocality`. */
+  admin_area: string | null;
   description: string | null;
   opening_hours: Record<string, unknown> | null;
   osm_id: string | null; // bigint → string qua driver
@@ -92,6 +97,8 @@ export interface CreatePlaceRow {
   lat: number;
   address?: string | null;
   ward?: string | null;
+  province?: string | null;
+  adminArea?: string | null;
   description?: string | null;
   shortDescription?: string | null;
   openingHours?: Record<string, unknown> | null;
@@ -114,6 +121,17 @@ const CARD_COLS = `
   ${COVER_IMAGE_COLS},
   p.rating_avg, p.rating_count, p.verification_status, p.status,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
+`;
+
+// Cột CHỈ có ở shape chi tiết (`PlaceDetailRow` = card + những cột này). Tách hằng số vì HAI truy
+// vấn dùng chung y hệt danh sách này — `getDetailBySlug` (công khai, lọc published) và
+// `getCardByIdIncludingInactive` (đặc quyền, không lọc status). Trước đây danh sách được viết lặp
+// hai lần, nên thêm một cột mà quên một chỗ thì trường đó lặng lẽ thành `undefined` ở đúng một
+// đường đọc — kiểu lỗi chỉ lộ ra ở production. Một định nghĩa, hai chỗ dùng, không lệch được.
+const DETAIL_EXTRA_COLS = `
+  (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
+  p.address, p.ward, p.province, p.admin_area, p.description, p.opening_hours, p.osm_id,
+  p.created_at, p.updated_at
 `;
 
 @Injectable()
@@ -156,10 +174,10 @@ export class PlacesRepository {
   async createPlace(input: CreatePlaceRow): Promise<string> {
     const rows: Array<{ id: string }> = await this.repo.query(
       `INSERT INTO places
-         (name, slug, category_id, location, address, ward, description, short_description,
-          opening_hours, price_range, status, created_by)
+         (name, slug, category_id, location, address, ward, province, admin_area, description,
+          short_description, opening_hours, price_range, status, created_by)
        VALUES ($1,$2,$3, ST_SetSRID(ST_MakePoint($4,$5),4326)::geography,
-               $6,$7,$8,$9,$10,$11,$12,$13)
+               $6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
         input.name,
@@ -169,6 +187,8 @@ export class PlacesRepository {
         input.lat,
         input.address ?? null,
         input.ward ?? null,
+        input.province ?? null,
+        input.adminArea ?? null,
         input.description ?? null,
         input.shortDescription ?? null,
         input.openingHours ?? null,
@@ -207,10 +227,7 @@ export class PlacesRepository {
   // rộng guard kiến trúc ở trên sang nhiều phương thức, phức tạp hơn cần thiết cho MVP này.
   async getCardByIdIncludingInactive(id: string): Promise<PlaceDetailRow | null> {
     const rows: PlaceDetailRow[] = await this.repo.query(
-      `SELECT ${CARD_COLS},
-              (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
-              p.address, p.ward, p.description, p.opening_hours, p.osm_id,
-              p.created_at, p.updated_at
+      `SELECT ${CARD_COLS}, ${DETAIL_EXTRA_COLS}
        FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1`,
       [id],
     );
@@ -225,10 +242,7 @@ export class PlacesRepository {
    */
   async getDetailBySlug(slug: string): Promise<PlaceDetailRow | null> {
     const rows: PlaceDetailRow[] = await this.repo.query(
-      `SELECT ${CARD_COLS},
-              (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
-              p.address, p.ward, p.description, p.opening_hours, p.osm_id,
-              p.created_at, p.updated_at
+      `SELECT ${CARD_COLS}, ${DETAIL_EXTRA_COLS}
        FROM places p
        WHERE p.slug = $1 AND p.deleted_at IS NULL AND p.status = $2
        LIMIT 1`,

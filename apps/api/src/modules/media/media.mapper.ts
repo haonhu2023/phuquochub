@@ -25,5 +25,14 @@ export function toMedia(m: Media, resolveFileUrl: (mediaId: string) => string) {
     caption: m.caption,
     alt_text: m.altText,
     status: m.status,
+    // Licence metadata is PUBLIC on purpose (Place Information Foundation, 2026-08-18). For
+    // `license_type = 'open_license'` (CC BY/BY-SA) displaying the credit and linking the licence
+    // is the *condition* of the grant — withholding these from the response would make every
+    // consumer non-compliant by construction. Nothing here is internal bookkeeping: the source
+    // catalogue (`sources`/`source_attributions`) stays internal, this is only the credit line the
+    // licence obliges us to show.
+    attribution: m.attribution,
+    license_type: m.licenseType,
+    license_url: m.licenseUrl,
   };
 }

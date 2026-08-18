@@ -3,8 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getPlace } from '@/modules/places/api/places.api';
 import { formatPriceRange } from '@/modules/places/format';
+import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { ApiError } from '@/lib/http';
-import type { PlaceContact, PlaceDetail } from '@/modules/places/types';
+import type { PlaceContact, PlaceDetail, PlaceMedia } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
 import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
@@ -96,10 +97,14 @@ export default async function PlaceDetailPage({ params }: Params) {
   const browseListing = place.category_slug
     ? BROWSE_LISTING_BY_CATEGORY[place.category_slug]
     : undefined;
-  const openingHours = openingHoursEntries(place.opening_hours);
+  // Giờ mở cửa tính ở máy chủ và QUY VỀ múi giờ của địa điểm (xem modules/places/openingHours.ts).
+  // An toàn vì `getPlace` fetch với `cache: 'no-store'` — Server Component chạy lại mỗi request,
+  // nên "đang mở cửa" không bị đóng băng theo cache trang.
+  const hasHours = hasOpeningHours(place.opening_hours);
+  const openingToday = getOpeningToday(place.opening_hours);
+  const openingWeek = getOpeningWeek(place.opening_hours);
   const priceLabel = formatPriceRange(place.price_range);
-  const hasInfo =
-    place.address || place.ward || priceLabel || openingHours.length > 0;
+  const hasInfo = place.address || place.ward || priceLabel || hasHours;
   const mapHref = `https://www.google.com/maps?q=${place.location.lat},${place.location.lng}`;
 
   return (
@@ -135,6 +140,18 @@ export default async function PlaceDetailPage({ params }: Params) {
           {place.verification_status === 'verified' && (
             <span className={`${styles.badge} ${styles.badgeVerified}`}>Đã xác minh</span>
           )}
+          {/* Đang mở / đã đóng đứng cạnh tên: đây là thứ quyết định "có đi bây giờ không". Khi
+              chưa có dữ liệu thì KHÔNG hiện gì — một badge "chưa có thông tin" cạnh tiêu đề chỉ
+              là tiếng ồn, phần giải thích đã nằm trong khối Thông tin bên dưới. */}
+          {openingToday.state !== 'unknown' && (
+            <span
+              className={`${styles.badge} ${
+                openingToday.state === 'open' ? styles.badgeOpen : styles.badgeClosed
+              }`}
+            >
+              {openingToday.label}
+            </span>
+          )}
         </p>
       </header>
 
@@ -143,14 +160,16 @@ export default async function PlaceDetailPage({ params }: Params) {
       {place.media.length > 0 && (
         <div className={styles.gallery}>
           {place.media.map((m) => (
-            // eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài; next/image cần remotePatterns (ngoài phạm vi).
-            <img
-              key={m.id}
-              className={styles.galleryImg}
-              src={m.thumbnail_url ?? m.url}
-              alt={m.alt_text ?? m.caption ?? place.name}
-              loading="lazy"
-            />
+            <figure key={m.id} className={styles.galleryFigure}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài; next/image cần remotePatterns (ngoài phạm vi). */}
+              <img
+                className={styles.galleryImg}
+                src={m.thumbnail_url ?? m.url}
+                alt={m.alt_text ?? m.caption ?? place.name}
+                loading="lazy"
+              />
+              <MediaCredit media={m} />
+            </figure>
           ))}
         </div>
       )}
@@ -184,13 +203,35 @@ export default async function PlaceDetailPage({ params }: Params) {
                 <dd className={styles.infoValue}>{priceLabel}</dd>
               </div>
             )}
-            {openingHours.map(([day, value]) => (
-              <div key={day} className={styles.infoItem}>
-                <dt className={styles.infoLabel}>{day}</dt>
-                <dd className={styles.infoValue}>{value}</dd>
+            {hasHours && (
+              <div className={styles.infoItem}>
+                <dt className={styles.infoLabel}>Giờ mở cửa</dt>
+                <dd className={styles.infoValue}>
+                  {openingToday.hours ?? 'Chưa có thông tin'}
+                  {openingToday.note && ` — ${openingToday.note}`}
+                </dd>
               </div>
-            ))}
+            )}
           </dl>
+
+          {/* Lịch tuần trong <details>: hôm nay đã hiện sẵn ở trên, cả tuần chỉ cần khi người đọc
+              đang lên kế hoạch cho ngày khác. Mặc định đóng để khối Thông tin không bị đẩy dài. */}
+          {openingWeek.length > 0 && (
+            <details className={styles.faq}>
+              <summary>Giờ mở cửa cả tuần</summary>
+              <ul className={styles.hoursWeek}>
+                {openingWeek.map((row) => (
+                  <li
+                    key={row.key}
+                    className={`${styles.hoursRow} ${row.isToday ? styles.hoursToday : ''}`}
+                  >
+                    <span>{row.label}</span>
+                    <span>{row.hours}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <a className={styles.mapLink} href={mapHref} target="_blank" rel="noopener noreferrer">
             Xem trên bản đồ →
           </a>
@@ -246,12 +287,32 @@ export default async function PlaceDetailPage({ params }: Params) {
   );
 }
 
-// opening_hours là JSON tự do (Record) — chỉ lấy các cặp key/value dạng chuỗi hiển thị được.
-function openingHoursEntries(oh: PlaceDetail['opening_hours']): Array<[string, string]> {
-  if (!oh || typeof oh !== 'object') return [];
-  return Object.entries(oh)
-    .filter(([, v]) => v != null && (typeof v === 'string' || typeof v === 'number'))
-    .map(([k, v]) => [k, String(v)] as [string, string]);
+/**
+ * Dòng ghi công ảnh.
+ *
+ * Với `license_type = 'open_license'` (CC BY/BY-SA), hiển thị credit + link giấy phép LÀ điều kiện
+ * được phép dùng ảnh — không phải chi tiết trang trí. Vì thế nó render ngay dưới ảnh, luôn nhìn
+ * thấy được, không giấu trong `title`/tooltip.
+ *
+ * Không có `attribution` thì không render gì: các cơ sở khác (ảnh do chủ cơ sở cung cấp, ảnh
+ * người dùng đăng, ảnh thuộc phạm vi công cộng) không đòi ghi công, và bịa ra một dòng credit
+ * trống chỉ làm nhiễu.
+ */
+function MediaCredit({ media }: { media: PlaceMedia }) {
+  if (!media.attribution) return null;
+  return (
+    <figcaption className={styles.mediaCredit}>
+      {media.attribution}
+      {media.license_url && (
+        <>
+          {' · '}
+          <a href={media.license_url} target="_blank" rel="noopener noreferrer nofollow">
+            Giấy phép
+          </a>
+        </>
+      )}
+    </figcaption>
+  );
 }
 
 function contactHref(type: string, value: string): string | null {

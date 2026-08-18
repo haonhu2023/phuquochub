@@ -10,6 +10,9 @@ function media(overrides: Partial<PlaceMedia> = {}): PlaceMedia {
     caption: null,
     alt_text: null,
     status: 'published',
+    attribution: null,
+    license_type: null,
+    license_url: null,
     ...overrides,
   };
 }

@@ -82,6 +82,8 @@ describe('PlaceForm — điền sẵn khi sửa', () => {
     location: { lat: 10.05, lng: 104.0 },
     address: '123 đường ABC',
     ward: 'An Thới',
+    province: null,
+    admin_area: null,
     description: 'Mô tả chi tiết',
     osm_id: null,
     opening_hours: {
@@ -200,6 +202,8 @@ describe('PlaceForm — giờ mở cửa', () => {
     location: { lat: 10.05, lng: 104.0 },
     address: null,
     ward: null,
+    province: null,
+    admin_area: null,
     description: null,
     osm_id: null,
     opening_hours: {

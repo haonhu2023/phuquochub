@@ -36,6 +36,12 @@ const REVISABLE_FIELDS = [
   'category_id',
   'address',
   'ward',
+  // Đơn vị hành chính đi vào wiki_revisions cùng `address`/`ward`: khi địa giới thay đổi (Nghị
+  // quyết 1654/NQ-UBTVQH15) sẽ có một đợt sửa hàng loạt, và mỗi lần sửa PHẢI truy được ai đổi,
+  // đổi từ giá trị nào — đó chính là thứ phân biệt "chuẩn hoá theo văn bản pháp luật" với "ai đó
+  // gõ nhầm tên tỉnh".
+  'province',
+  'admin_area',
   'description',
   'short_description',
   'opening_hours',
@@ -163,6 +169,8 @@ export class PlacesService {
       lat: dto.location.lat,
       address: dto.address ?? null,
       ward: dto.ward ?? null,
+      province: dto.province ?? null,
+      adminArea: dto.admin_area ?? null,
       description: dto.description ?? null,
       shortDescription: dto.short_description ?? null,
       openingHours: dto.opening_hours ?? null,
@@ -205,6 +213,8 @@ export class PlacesService {
     if (dto.category_id !== undefined) patch.categoryId = dto.category_id;
     if (dto.address !== undefined) patch.address = dto.address;
     if (dto.ward !== undefined) patch.ward = dto.ward;
+    if (dto.province !== undefined) patch.province = dto.province;
+    if (dto.admin_area !== undefined) patch.adminArea = dto.admin_area;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.short_description !== undefined) patch.shortDescription = dto.short_description;
     if (dto.opening_hours !== undefined) patch.openingHours = dto.opening_hours;
