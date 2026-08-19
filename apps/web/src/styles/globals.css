@@ -5,6 +5,9 @@
   --accent: #38bdf8;
   --ok: #22c55e;
   --err: #ef4444;
+  /* Trạng thái "từng tin cậy, nay cần xác minh lại" (verification_status = expired) — khác `--err`
+     (lỗi thật) và khác `--muted` (chưa từng xác minh): đây là cảnh báo nhẹ, không phải sự cố. */
+  --warn: #f59e0b;
   /* Bề mặt & viền (thẻ, panel) — bám nền tối, thêm để thay hex inline rời rạc. */
   --surface: #131c31;
   --surface-2: #1b2740;

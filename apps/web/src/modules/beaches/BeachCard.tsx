@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { BeachCard as BeachCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
+import { getTrustBadge, TRUST_BADGE_LABEL } from '@/modules/places/trust';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './beaches.module.css';
 
@@ -12,6 +13,7 @@ import styles from './beaches.module.css';
 // bày như dữ kiện là điều không được làm.
 export function BeachCard({ beach }: { beach: BeachCardType }) {
   const priceLabel = formatPriceRange(beach.price_range);
+  const isVerified = getTrustBadge(beach.verification_status) === 'verified';
 
   return (
     <Link href={`/places/${beach.slug}`} className={placesStyles.card}>
@@ -46,8 +48,8 @@ export function BeachCard({ beach }: { beach: BeachCardType }) {
           {/* price_range NULL nghĩa là CHƯA BIẾT, không phải "miễn phí" — chỉ hiện nhãn khi API
               thực sự trả giá trị, không suy ra "bãi biển thì luôn miễn phí". */}
           {priceLabel && <span className={placesStyles.price}>{priceLabel}</span>}
-          {beach.verification_status === 'verified' && (
-            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>Đã xác minh</span>
+          {isVerified && (
+            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
           )}
         </div>
       </div>

@@ -4,6 +4,12 @@ import { notFound } from 'next/navigation';
 import { getPlace } from '@/modules/places/api/places.api';
 import { formatPriceRange } from '@/modules/places/format';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
+import {
+  formatVerifiedAt,
+  getTrustBadge,
+  summarizeTrustSources,
+  TRUST_BADGE_LABEL,
+} from '@/modules/places/trust';
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, PlaceMedia } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
@@ -104,6 +110,14 @@ export default async function PlaceDetailPage({ params }: Params) {
   const openingToday = getOpeningToday(place.opening_hours);
   const openingWeek = getOpeningWeek(place.opening_hours);
   const priceLabel = formatPriceRange(place.price_range);
+  // Trust & Freshness Surface: badge suy từ verification_status theo CHÍNH SÁCH đã có ở backend
+  // (verified/official/community_verified = tin cậy; expired = đã lâu chưa xác minh lại — job
+  // expireOverdue() đã hạ nó xuống đây, không phải một ngưỡng ngày tự đặt ở web). 'unverified'
+  // KHÔNG hiện badge cạnh tiêu đề (cùng nguyên tắc opening-hours 'unknown' bên dưới) — chỉ hiện
+  // một dòng giải thích nhẹ trong trustNote.
+  const trustBadge = getTrustBadge(place.verification_status);
+  const trustSource = summarizeTrustSources(place.trust_sources);
+  const verifiedAtLabel = place.verified_at ? formatVerifiedAt(place.verified_at) : null;
   const hasInfo = place.address || place.ward || priceLabel || hasHours;
   const mapHref = `https://www.google.com/maps?q=${place.location.lat},${place.location.lng}`;
 
@@ -137,8 +151,16 @@ export default async function PlaceDetailPage({ params }: Params) {
               {place.rating_count > 0 ? ` (${place.rating_count})` : ''}
             </span>
           )}
-          {place.verification_status === 'verified' && (
-            <span className={`${styles.badge} ${styles.badgeVerified}`}>Đã xác minh</span>
+          {/* 'unverified' KHÔNG hiện badge cạnh tiêu đề — cùng nguyên tắc badge giờ mở cửa ngay
+              dưới: một badge trung tính ở đây chỉ là tiếng ồn, dòng trustNote bên dưới đã nói rõ. */}
+          {trustBadge !== 'unverified' && (
+            <span
+              className={`${styles.badge} ${
+                trustBadge === 'verified' ? styles.badgeVerified : styles.badgeStale
+              }`}
+            >
+              {TRUST_BADGE_LABEL[trustBadge]}
+            </span>
           )}
           {/* Đang mở / đã đóng đứng cạnh tên: đây là thứ quyết định "có đi bây giờ không". Khi
               chưa có dữ liệu thì KHÔNG hiện gì — một badge "chưa có thông tin" cạnh tiêu đề chỉ
@@ -153,6 +175,12 @@ export default async function PlaceDetailPage({ params }: Params) {
             </span>
           )}
         </p>
+        <TrustNote
+          badge={trustBadge}
+          verifiedAtLabel={verifiedAtLabel}
+          sourceLabel={trustSource.label}
+          sourceUrl={trustSource.url}
+        />
       </header>
 
       <ClaimCta placeId={place.id} placeName={place.name} />
@@ -313,6 +341,65 @@ function MediaCredit({ media }: { media: PlaceMedia }) {
       )}
     </figcaption>
   );
+}
+
+/**
+ * Dòng giải thích nhẹ dưới badge trạng thái xác minh (Place Trust & Freshness Surface).
+ *
+ * Ba nhánh khớp `TrustBadge` (places/trust.ts):
+ *  - `verified`: chỉ nói những gì CÓ BẰNG CHỨNG — nguồn (nếu có attribution) + ngày kiểm tra lần
+ *    cuối (nếu có `verified_at`). Không có gì trong hai thứ đó thì không render dòng nào (badge ở
+ *    header đã đủ nói "Đã xác minh"; không thêm một câu chung chung không có dữ kiện đứng sau).
+ *  - `stale`: đã từng tin cậy, nay `expired`. Nếu còn `verified_at` (job hết hạn KHÔNG xoá nó),
+ *    nói rõ đó là lần xác minh GẦN NHẤT, không phải hiện tại.
+ *  - `unverified`: KHÔNG có badge ở header (xem trang gọi) — đây là nơi DUY NHẤT người đọc thấy
+ *    "Chưa xác minh", như một dòng chữ trung tính, không phải một phán quyết tiêu cực.
+ */
+function TrustNote({
+  badge,
+  verifiedAtLabel,
+  sourceLabel,
+  sourceUrl,
+}: {
+  badge: 'verified' | 'stale' | 'unverified';
+  verifiedAtLabel: string | null;
+  sourceLabel: string | null;
+  sourceUrl: string | null;
+}) {
+  if (badge === 'verified') {
+    if (!sourceLabel && !verifiedAtLabel) return null;
+    return (
+      <p className={styles.trustNote}>
+        {sourceLabel && (
+          <>
+            {sourceLabel}
+            {sourceUrl && (
+              <>
+                {' '}
+                <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow">
+                  Xem nguồn
+                </a>
+              </>
+            )}
+          </>
+        )}
+        {sourceLabel && verifiedAtLabel && ' '}
+        {verifiedAtLabel && `Kiểm tra lần cuối: ${verifiedAtLabel}.`}
+      </p>
+    );
+  }
+
+  if (badge === 'stale') {
+    return (
+      <p className={styles.trustNote}>
+        {verifiedAtLabel
+          ? `Lần xác minh gần nhất: ${verifiedAtLabel} — thông tin có thể đã thay đổi từ đó.`
+          : 'Thông tin cần được kiểm tra lại.'}
+      </p>
+    );
+  }
+
+  return <p className={styles.trustNote}>Chưa xác minh — thông tin do cộng đồng đóng góp.</p>;
 }
 
 function contactHref(type: string, value: string): string | null {

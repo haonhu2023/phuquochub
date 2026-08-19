@@ -45,6 +45,7 @@ function makeDetailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow 
     osm_id: null,
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-01T00:00:00Z'),
+    verified_at: null,
     ...overrides,
   } as PlaceDetailRow;
 }

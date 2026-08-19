@@ -50,10 +50,26 @@ describe('BeachCard', () => {
     expect(screen.getByText('Đã xác minh')).toBeInTheDocument();
   });
 
-  it('does not render the verified badge for other verification statuses', () => {
-    render(<BeachCard beach={{ ...BASE_BEACH, verification_status: 'community_verified' }} />);
-    expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
-  });
+  // Place Trust & Freshness Surface (2026-08-19) — CORRECTION: bản trước của test này khẳng định
+  // 'community_verified' KHÔNG hiện badge, tức là gán cho cụm từ trạng thái BỊ BỎ SÓT thành hành
+  // vi "đúng". Đó chính là lỗi: 'official'/'community_verified' đều là trạng thái TIN CẬY
+  // (verification.transition.ts isTrustedStatus()), ngang hàng 'verified'. Sửa lại theo đúng
+  // định nghĩa của backend thay vì giữ hành vi cũ.
+  it.each(['official', 'community_verified'] as const)(
+    'renders the verified badge for the "%s" trusted status too',
+    (status) => {
+      render(<BeachCard beach={{ ...BASE_BEACH, verification_status: status }} />);
+      expect(screen.getByText('Đã xác minh')).toBeInTheDocument();
+    },
+  );
+
+  it.each(['expired', 'rejected', 'pending'] as const)(
+    'does NOT render a verified badge for "%s" (not currently trusted)',
+    (status) => {
+      render(<BeachCard beach={{ ...BASE_BEACH, verification_status: status }} />);
+      expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    },
+  );
 
   it('renders rating with a count suffix when rating_count > 0, without one when zero', () => {
     const { rerender } = render(<BeachCard beach={{ ...BASE_BEACH, rating_avg: 4.8, rating_count: 22 }} />);

@@ -7,6 +7,7 @@ import type { RestaurantDetail } from '@/modules/restaurants/api/restaurants.api
 import type { TourDetail } from '@/modules/tours/api/tours.api';
 import type { EventDetail } from '@/modules/events/api/events.api';
 import { getSiteUrl } from './site';
+import { hasOpeningHours, regularOf, validRanges, WEEKDAY_KEYS, type WeekdayKey } from '@/modules/places/openingHours';
 
 type JsonLd = Record<string, unknown>;
 
@@ -116,11 +117,84 @@ function baseLocationFields(place: PlaceDetail, path: string): JsonLd {
   return fields;
 }
 
+const SCHEMA_DAY: Record<WeekdayKey, string> = {
+  mon: 'https://schema.org/Monday',
+  tue: 'https://schema.org/Tuesday',
+  wed: 'https://schema.org/Wednesday',
+  thu: 'https://schema.org/Thursday',
+  fri: 'https://schema.org/Friday',
+  sat: 'https://schema.org/Saturday',
+  sun: 'https://schema.org/Sunday',
+};
+
+/**
+ * `openingHoursSpecification` — CHỈ lịch tuần thường (`regular`), dùng LẠI `validRanges()` từ
+ * `modules/places/openingHours.ts` (cùng định nghĩa "khung giờ hợp lệ" với phần hiển thị, xem chú
+ * thích ở đó). Ngoại lệ theo ngày (`exceptions`) CỐ Ý không đưa vào: schema.org có
+ * `specialOpeningHoursSpecification` cho việc đó nhưng đòi `validFrom`/`validThrough` — một mở
+ * rộng riêng, ngoài phạm vi lượt này (chỉ lịch tuần đều đặn).
+ *
+ * `undefined` khi không có gì để phát (is_24h không rõ ràng cần một dạng khác — 24/7 dùng
+ * `dayOfWeek` phủ cả 7 ngày, `opens: 00:00`, `closes: 23:59`, quy ước phổ biến cho rich results).
+ */
+function openingHoursSpecification(oh: PlaceDetail['opening_hours']): JsonLd[] | undefined {
+  if (!hasOpeningHours(oh)) return undefined;
+
+  if (oh!.is_24h === true) {
+    return [
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: WEEKDAY_KEYS.map((d) => SCHEMA_DAY[d]),
+        opens: '00:00',
+        closes: '23:59',
+      },
+    ];
+  }
+
+  const regular = regularOf(oh!);
+  if (!regular) return undefined;
+
+  const specs: JsonLd[] = [];
+  for (const day of WEEKDAY_KEYS) {
+    const ranges = validRanges(regular[day]);
+    for (const range of ranges) {
+      specs.push({
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: SCHEMA_DAY[day],
+        opens: range.open,
+        closes: range.close,
+      });
+    }
+  }
+  return specs.length > 0 ? specs : undefined;
+}
+
+/**
+ * Số điện thoại đầu tiên đọc được từ `contacts` — CÙNG bộ nhận dạng "đây là số điện thoại" mà
+ * trang chi tiết đã dùng để dựng link `tel:` (`contactHref`, `places/[slug]/page.tsx`), để
+ * `telephone` trong JSON-LD và số hiển thị cho người đọc luôn là MỘT nguồn, không lệch nhau.
+ */
+function telephoneOf(contacts: PlaceDetail['contacts']): string | undefined {
+  const phone = contacts.find(
+    (c) => /phone|hotline|mobile|tel|zalo/i.test(c.contact_type) && /^[+\d][\d\s().-]+$/.test(c.value),
+  );
+  return phone?.value;
+}
+
 export function buildPlaceJsonLd(place: PlaceDetail): JsonLd {
+  const fields = baseLocationFields(place, `/places/${place.slug}`);
+  const hours = openingHoursSpecification(place.opening_hours);
+  if (hours) {
+    fields.openingHoursSpecification = hours;
+  }
+  const telephone = telephoneOf(place.contacts);
+  if (telephone) {
+    fields.telephone = telephone;
+  }
   return {
     '@context': 'https://schema.org',
     '@type': 'TouristAttraction',
-    ...baseLocationFields(place, `/places/${place.slug}`),
+    ...fields,
   };
 }
 

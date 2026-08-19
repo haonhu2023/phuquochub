@@ -68,6 +68,25 @@ describe('PlaceCard', () => {
     expect(screen.getByText('Đã xác minh')).toBeInTheDocument();
   });
 
+  // Place Trust & Freshness Surface (2026-08-19): trước đó thẻ chỉ nhận diện đúng chuỗi
+  // 'verified', bỏ sót 'official'/'community_verified' — cả ba đều là trạng thái TIN CẬY
+  // (verification.transition.ts isTrustedStatus()) và phải cùng hiện badge.
+  it.each(['official', 'community_verified'] as const)(
+    'renders the verified badge for the "%s" trusted status too',
+    (status) => {
+      render(<PlaceCard place={{ ...BASE_PLACE, verification_status: status }} />);
+      expect(screen.getByText('Đã xác minh')).toBeInTheDocument();
+    },
+  );
+
+  it.each(['expired', 'rejected', 'pending'] as const)(
+    'does NOT render a verified badge for "%s" (not currently trusted)',
+    (status) => {
+      render(<PlaceCard place={{ ...BASE_PLACE, verification_status: status }} />);
+      expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    },
+  );
+
   it('renders a localized price label for a known price_range', () => {
     render(<PlaceCard place={{ ...BASE_PLACE, price_range: 'low' }} />);
     expect(screen.getByText('Bình dân')).toBeInTheDocument();

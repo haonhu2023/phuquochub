@@ -27,6 +27,7 @@ describe('toPlaceDetail', () => {
     osm_id: '123456789',
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-02T00:00:00Z'),
+    verified_at: null,
   };
 
   it('mở rộng card + scalar chi tiết; osm_id string → number', () => {
@@ -80,5 +81,29 @@ describe('toPlaceDetail', () => {
 
   it('osm_id null giữ null', () => {
     expect(toPlaceDetail({ ...baseRow, osm_id: null }).osm_id).toBeNull();
+  });
+
+  // Place Trust & Freshness Surface (2026-08-19) — cột đã có từ InitPlaces, lần đầu CHỌN ra ở đây.
+  describe('verified_at', () => {
+    it('có giá trị → chuyển ISO string (cùng quy ước created_at/updated_at)', () => {
+      const d = toPlaceDetail({ ...baseRow, verified_at: new Date('2026-08-12T03:00:00Z') });
+      expect(d.verified_at).toBe('2026-08-12T03:00:00.000Z');
+    });
+
+    it('null → giữ null (chưa từng đạt trạng thái tin cậy, KHÔNG bịa ngày)', () => {
+      expect(toPlaceDetail({ ...baseRow, verified_at: null }).verified_at).toBeNull();
+    });
+
+    // Cùng lý do category_slug/province: row cũ/mock dựng trước khi cột được CHỌN ra có thể
+    // không mang khoá này — `undefined` lọt ra thì JSON.stringify nuốt mất khoá, client không
+    // phân biệt được "chưa xác minh" với "API không có trường này".
+    it('vắng mặt trên row → null, không rơi khỏi payload', () => {
+      const row = { ...baseRow } as Partial<PlaceDetailRow>;
+      delete row.verified_at;
+
+      const d = toPlaceDetail(row as PlaceDetailRow);
+      expect(d.verified_at).toBeNull();
+      expect('verified_at' in d).toBe(true);
+    });
   });
 });

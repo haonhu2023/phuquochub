@@ -67,6 +67,14 @@ export interface PlaceDetailRow extends PlaceCardRow {
   osm_id: string | null; // bigint → string qua driver
   created_at: Date;
   updated_at: Date;
+  /**
+   * Lần cuối chuyển sang trạng thái tin cậy (`verified`/`official`/`community_verified`) — CHỈ
+   * `VerificationsService.syncTargetCache()` ghi cột này (xem chú thích `updateScalars` dưới),
+   * và chỉ ghi khi ĐẾN một trong ba trạng thái đó (`isTrustedStatus()`). `null` = chưa từng đạt
+   * trạng thái tin cậy. Cột tồn tại từ InitPlaces nhưng CHƯA từng lộ ra hợp đồng công khai trước
+   * Place Trust & Freshness Surface — không có gì phải backfill, chỉ cần đọc ra.
+   */
+  verified_at: Date | null;
 }
 
 // FAQ published của Place (đọc cho trang chi tiết).
@@ -131,7 +139,7 @@ const CARD_COLS = `
 const DETAIL_EXTRA_COLS = `
   (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
   p.address, p.ward, p.province, p.admin_area, p.description, p.opening_hours, p.osm_id,
-  p.created_at, p.updated_at
+  p.created_at, p.updated_at, p.verified_at
 `;
 
 @Injectable()

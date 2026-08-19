@@ -129,6 +129,26 @@
   border-color: var(--border);
 }
 
+/* Đã từng tin cậy, nay `expired` (chính sách hết hạn đã có sẵn ở backend — verification.md §7).
+   Cảnh báo NHẸ, không phải lỗi: dùng --warn, không dùng --err. */
+.badgeStale {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+
+/* Khối Trust & Freshness — dòng giải thích nhỏ dưới header, KHÔNG phải một badge. Giữ nhẹ: chỉ
+   chữ, không viền/nền, đúng vai trò phụ trợ cho badge ở header (xem places/trust.ts). */
+.trustNote {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.trustNote a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 /* ---------- Trạng thái rỗng / lỗi ---------- */
 .state {
   border: 1px dashed var(--border);

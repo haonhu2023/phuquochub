@@ -82,8 +82,14 @@ function toMinutes(hhmm: unknown): number | null {
   return Number(h) * 60 + Number(m);
 }
 
-/** Khung giờ hợp lệ = có `open`/`close` đúng định dạng HH:MM. Khung hỏng bị loại, không ném lỗi. */
-function validRanges(value: unknown): OpeningHoursRange[] {
+/**
+ * Khung giờ hợp lệ = có `open`/`close` đúng định dạng HH:MM. Khung hỏng bị loại, không ném lỗi.
+ *
+ * Export cho `lib/structured-data.ts` dùng lại (dựng `openingHoursSpecification` JSON-LD) — CÙNG
+ * MỘT định nghĩa "khung giờ hợp lệ" cho cả hiển thị và structured data, không viết lại lần hai
+ * (khác đi thì JSON-LD có thể phát một khung mà trang hiển thị coi là hỏng).
+ */
+export function validRanges(value: unknown): OpeningHoursRange[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (r): r is OpeningHoursRange =>
@@ -148,7 +154,8 @@ function formatRanges(ranges: OpeningHoursRange[]): string {
   return ranges.map((r) => `${r.open} – ${r.close}`).join(', ');
 }
 
-function regularOf(oh: OpeningHours): Record<string, unknown> | null {
+/** Export cho `lib/structured-data.ts` — cùng lý do `validRanges`. */
+export function regularOf(oh: OpeningHours): Record<string, unknown> | null {
   return isPlainObject(oh.regular) ? oh.regular : null;
 }
 

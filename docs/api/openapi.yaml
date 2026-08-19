@@ -3545,6 +3545,22 @@ components:
             faqs: { type: array, items: { type: object, additionalProperties: true } }
             created_at: { type: string, format: date-time }
             updated_at: { type: string, format: date-time }
+            # Place Trust & Freshness Surface (2026-08-19). `verified_at`: cột đã tồn tại từ
+            # InitPlaces, chỉ mới CHỌN ra ở đây — null nghĩa là chưa từng đạt trạng thái tin cậy
+            # (verified/official/community_verified), có thể vẫn mang ngày quá khứ dù status hiện
+            # tại đã expired (đó là lần xác minh gần nhất còn hiệu lực, không bị xoá khi hết hạn).
+            verified_at: { type: [string, 'null'], format: date-time }
+            # Nguồn đã đối chiếu cho các trường của place này (source_attributions + sources,
+            # ADR-008 §5) — mảng rỗng = chưa trường nào được đối chiếu, KHÔNG suy ra một nguồn mặc định.
+            trust_sources: { type: array, items: { $ref: '#/components/schemas/PlaceTrustSource' } }
+    PlaceTrustSource:
+      type: object
+      properties:
+        field: { type: [string, 'null'], description: 'Tên cột đã đối chiếu (vd province, admin_area); null nếu attribution không gắn field cụ thể.' }
+        publisher: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        url: { type: [string, 'null'], format: uri }
+        retrieved_at: { type: [string, 'null'], format: date-time }
     PlaceInput:
       type: object
       required: [name, category_id, location]

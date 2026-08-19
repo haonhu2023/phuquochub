@@ -38,6 +38,7 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     osm_id: null,
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-01T00:00:00Z'),
+    verified_at: null,
     ...overrides,
   };
 }
@@ -133,6 +134,15 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(sql(repo.query.mock.calls[0][0])).toContain(
         '(SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug',
       );
+    });
+
+    // Place Trust & Freshness Surface (2026-08-19) — cột đã có từ InitPlaces, lần đầu CHỌN ra.
+    it('kèm verified_at trong SELECT (Place Trust & Freshness Surface)', async () => {
+      repo.query.mockResolvedValue([detailRow()]);
+
+      await sut.getDetailBySlug('bai-sao');
+
+      expect(sql(repo.query.mock.calls[0][0])).toContain('p.verified_at');
     });
 
     it('truyền slug qua tham số (không nội suy chuỗi vào SQL)', async () => {

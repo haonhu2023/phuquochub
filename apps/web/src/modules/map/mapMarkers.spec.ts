@@ -122,10 +122,12 @@ function detail(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     osm_id: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
+    verified_at: null,
     contacts: [],
     prices: [],
     media: [],
     faqs: [],
+    trust_sources: [],
     ...overrides,
   };
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
+import { getTrustBadge, TRUST_BADGE_LABEL } from './trust';
 import styles from './places.module.css';
 
 // Thẻ địa điểm (presentational). Dùng ở danh sách + kết quả tìm kiếm.
@@ -16,6 +17,9 @@ export function PlaceCard({
   titleAs?: 'h2' | 'h3';
 }) {
   const priceLabel = formatPriceRange(place.price_range);
+  // Thẻ chỉ hiện tín hiệu TÍCH CỰC — không hiện gì cho 'stale'/'unverified': một badge trung tính
+  // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
+  const isVerified = getTrustBadge(place.verification_status) === 'verified';
   return (
     <Link href={`/places/${place.slug}`} className={styles.card}>
       {place.cover_image_url ? (
@@ -45,8 +49,8 @@ export function PlaceCard({
           )}
           {priceLabel && <span className={styles.price}>{priceLabel}</span>}
           {typeof place.distance_m === 'number' && <span>{formatDistance(place.distance_m)}</span>}
-          {place.verification_status === 'verified' && (
-            <span className={`${styles.badge} ${styles.badgeVerified}`}>Đã xác minh</span>
+          {isVerified && (
+            <span className={`${styles.badge} ${styles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
           )}
         </div>
       </div>

@@ -30,6 +30,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let mediaUrl: LooseMock<Ctor[7]>;
   let userRolesRepo: LooseMock<Ctor[8]>;
   let authz: LooseMock<Ctor[9]>;
+  let sourceAttributionsRepo: LooseMock<Ctor[10]>;
+  let sourcesRepo: LooseMock<Ctor[11]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -54,6 +56,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
     userRolesRepo = createMock<Ctor[8]>({ getScopedGrants: jest.fn() });
     authz = createMock<Ctor[9]>({ canWithGrants: jest.fn() });
+    sourceAttributionsRepo = createMock<Ctor[10]>({ listByEntity: jest.fn() });
+    sourcesRepo = createMock<Ctor[11]>({ findById: jest.fn() });
 
     service = new PlacesService(
       placesRepo,
@@ -66,6 +70,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       mediaUrl,
       userRolesRepo,
       authz,
+      sourceAttributionsRepo,
+      sourcesRepo,
     );
   });
 
@@ -337,13 +343,64 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       pricesRepo.current.mockResolvedValue([]);
       mediaRepo.listPublishedByPlace.mockResolvedValue([]);
       placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
 
       const res = await service.getBySlug('bai-sao');
 
-      expect(res).toMatchObject({ id: 'p1', contacts: [], prices: [], media: [], faqs: [] });
+      expect(res).toMatchObject({ id: 'p1', contacts: [], prices: [], media: [], faqs: [], trust_sources: [] });
       // Satellite phải tra theo discriminator đa hình lowercase 'place' (B-3).
       expect(contactsRepo.listByOwner).toHaveBeenCalledWith('place', 'p1');
       expect(pricesRepo.current).toHaveBeenCalledWith('place', 'p1');
+      // trust_sources đọc entity_type='place_field' (từng trường), KHÔNG 'place'.
+      expect(sourceAttributionsRepo.listByEntity).toHaveBeenCalledWith('place_field', 'p1');
+    });
+
+    // Place Trust & Freshness Surface (2026-08-19) — ghép trust_sources từ source_attributions + sources.
+    it('có attribution với source hợp lệ → trust_sources chứa publisher/title/url/retrieved_at', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([
+        { sourceId: 's1', field: 'province', entityType: 'place_field', entityId: 'p1' },
+      ]);
+      sourcesRepo.findById.mockResolvedValue({
+        id: 's1',
+        publisher: 'Ủy ban Thường vụ Quốc hội',
+        title: 'Nghị quyết 1654/NQ-UBTVQH15',
+        url: 'https://xaydungchinhsach.chinhphu.vn/...',
+        retrievedAt: new Date('2026-08-18T00:00:00.000Z'),
+      });
+
+      const res = await service.getBySlug('bai-sao');
+
+      expect(res.trust_sources).toEqual([
+        {
+          field: 'province',
+          publisher: 'Ủy ban Thường vụ Quốc hội',
+          title: 'Nghị quyết 1654/NQ-UBTVQH15',
+          url: 'https://xaydungchinhsach.chinhphu.vn/...',
+          retrieved_at: '2026-08-18T00:00:00.000Z',
+        },
+      ]);
+    });
+
+    // Không được để một tham chiếu gãy (source đã xoá mềm) hiện ra như một nguồn hợp lệ.
+    it('attribution trỏ tới source đã bị xoá mềm (findById trả null) → bị bỏ qua, không có nguồn giả', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([
+        { sourceId: 's-deleted', field: 'admin_area', entityType: 'place_field', entityId: 'p1' },
+      ]);
+      sourcesRepo.findById.mockResolvedValue(null);
+
+      const res = await service.getBySlug('bai-sao');
+
+      expect(res.trust_sources).toEqual([]);
     });
 
     // Secure Private Media (2026-08-10): gallery Place giờ phát URL API ỔN ĐỊNH theo media id, KHÔNG
@@ -356,6 +413,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         { id: 'm1', type: 'image', url: null, status: 'published', objectKey: 'media/m1.jpg' },
       ]);
       placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
       mediaUrl.fileUrl.mockReturnValue('https://phuquochub.com/api/media/m1/file');
 
       const res = await service.getBySlug('bai-sao');
@@ -374,6 +432,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         { id: 'm1', type: 'image', url: null, status: 'published', objectKey: 'media/secret-key.jpg' },
       ]);
       placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
       mediaUrl.fileUrl.mockReturnValue('https://phuquochub.com/api/media/m1/file');
 
       const res = await service.getBySlug('bai-sao');
@@ -391,6 +450,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         { id: 'm1', type: 'image', url: null, status: 'pending', objectKey: 'media/m1.jpg' },
       ]);
       placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
 
       const res = await service.getBySlug('bai-sao');
 

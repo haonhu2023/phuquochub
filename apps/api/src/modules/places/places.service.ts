@@ -7,6 +7,8 @@ import { ContactsRepository } from '../contacts/repositories/contacts.repository
 import { PricesRepository } from '../prices/repositories/prices.repository';
 import { MediaRepository } from '../media/repositories/media.repository';
 import { toMedia } from '../media/media.mapper';
+import { SourceAttributionsRepository } from '../sources/repositories/source-attributions.repository';
+import { SourcesRepository } from '../sources/repositories/sources.repository';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
@@ -28,6 +30,12 @@ const PLACE_EDIT_MANAGED = 'Place.Edit.Managed';
 
 // Discriminator đa hình lowercase (B-3) cho contacts.owner_type / price_history.entity_type.
 const PLACE_DISCRIMINATOR = 'place';
+
+// Discriminator đa hình cho source_attributions.entity_type — KHÔNG 'place' mà 'place_field':
+// đối chiếu nguồn diễn ra Ở CẤP TỪNG TRƯỜNG (vd `province`, `admin_area`), không phải một nguồn
+// đại diện cho toàn bộ place (administrative-backfill.service.ts dùng cùng giá trị này — không
+// export được từ đó vì file kia là script nội bộ, không phải module dùng chung).
+const PLACE_FIELD_ATTRIBUTION_ENTITY_TYPE = 'place_field';
 
 // Trường nội dung Place được ghi vết diff trong wiki_revisions (tên trường snake_case
 // khớp contract/DB — openapi PlaceInput).
@@ -64,6 +72,8 @@ export class PlacesService {
     private readonly mediaUrl: MediaUrlService,
     private readonly userRolesRepo: UserRolesRepository,
     private readonly authz: AuthorizationService,
+    private readonly sourceAttributionsRepo: SourceAttributionsRepository,
+    private readonly sourcesRepo: SourcesRepository,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -87,14 +97,16 @@ export class PlacesService {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
-    const [contacts, prices, media, faqs] = await Promise.all([
+    const [contacts, prices, media, faqs, trustSources] = await Promise.all([
       this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
       this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
       this.mediaRepo.listPublishedByPlace(row.id),
       this.placesRepo.listFaqs(row.id),
+      this.resolveTrustSources(row.id),
     ]);
     return {
       ...toPlaceDetail(row),
+      trust_sources: trustSources,
       contacts: contacts.map((c) => ({
         id: c.id,
         contact_type: c.contactType,
@@ -118,6 +130,57 @@ export class PlacesService {
       media: media.map((m) => toMedia(m, (id) => this.mediaUrl.fileUrl(id))),
       faqs,
     };
+  }
+
+  /**
+   * Place Trust & Freshness Surface (2026-08-19) — "nguồn thông tin" của trang chi tiết. Đọc từ
+   * `source_attributions`/`sources` (ADR-008/source.md §5) — subsystem ĐÃ CÓ, đây chỉ là một
+   * đường ĐỌC mới ghép vào response công khai, không có bảng/entity nào được tạo thêm.
+   *
+   * KHÔNG dùng bảng `verifications` (method/source_id ở đó) — `VerificationsModule` import ngược
+   * `PlacesModule` (đồng bộ cache verification_status/verified_at), nên import chiều ngược lại ở
+   * đây sẽ tạo vòng lặp module. `source_attributions` đạt cùng mục đích ("nguồn nào đứng sau
+   * thông tin này") mà không cần chạm tới `VerificationsModule`.
+   *
+   * Trả mảng RỖNG khi place chưa có attribution nào — KHÔNG bịa một nguồn mặc định (Phase 2C:
+   * "Nếu không có: không tạo nguồn giả"). Attribution trỏ tới source đã bị xoá mềm (`findById`
+   * lọc `deleted_at IS NULL`) bị bỏ qua lặng lẽ — một tham chiếu gãy không phải một nguồn hợp lệ.
+   */
+  private async resolveTrustSources(placeId: string): Promise<
+    Array<{ field: string | null; publisher: string | null; title: string | null; url: string | null; retrieved_at: string | null }>
+  > {
+    const attributions = await this.sourceAttributionsRepo.listByEntity(
+      PLACE_FIELD_ATTRIBUTION_ENTITY_TYPE,
+      placeId,
+    );
+    if (attributions.length === 0) {
+      return [];
+    }
+    const uniqueSourceIds = [...new Set(attributions.map((a) => a.sourceId))];
+    const sources = await Promise.all(uniqueSourceIds.map((id) => this.sourcesRepo.findById(id)));
+    const sourceById = new Map(sources.filter((s) => s !== null).map((s) => [s.id, s]));
+
+    const resolved: Array<{
+      field: string | null;
+      publisher: string | null;
+      title: string | null;
+      url: string | null;
+      retrieved_at: string | null;
+    }> = [];
+    for (const attribution of attributions) {
+      const source = sourceById.get(attribution.sourceId);
+      if (!source) {
+        continue;
+      }
+      resolved.push({
+        field: attribution.field,
+        publisher: source.publisher,
+        title: source.title,
+        url: source.url,
+        retrieved_at: source.retrievedAt ? source.retrievedAt.toISOString() : null,
+      });
+    }
+    return resolved;
   }
 
   /**

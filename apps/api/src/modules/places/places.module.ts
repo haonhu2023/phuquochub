@@ -13,7 +13,13 @@ import { PricesModule } from '../prices/prices.module';
 import { MediaModule } from '../media/media.module';
 import { RevisionsModule } from '../revisions/revisions.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { SourcesModule } from '../sources/sources.module';
 
+// Place Trust & Freshness Surface (2026-08-19): `SourcesModule` cấp SourceAttributionsRepository/
+// SourcesRepository để PlacesService.getBySlug() đọc `trust_sources` (source_attributions +
+// sources — subsystem đã có, chỉ thêm một đường ĐỌC mới). An toàn về chiều phụ thuộc:
+// SourcesModule KHÔNG import ngược PlacesModule (khác VerificationsModule, nơi import PlacesModule
+// để ghi cache verification_status/verified_at — import VerificationsModule ở đây sẽ tạo vòng lặp).
 @Module({
   imports: [
     TypeOrmModule.forFeature([Place, PlaceFaq, PlaceSeo, PlaceAiSummary]),
@@ -23,6 +29,7 @@ import { RbacModule } from '../rbac/rbac.module';
     MediaModule,
     RevisionsModule,
     RbacModule,
+    SourcesModule,
   ],
   controllers: [PlacesController],
   providers: [PlacesRepository, PlacesService],

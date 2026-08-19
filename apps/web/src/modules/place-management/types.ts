@@ -4,7 +4,14 @@ import type { GeoPoint, OpeningHours, PlaceDetail, PriceRangeValue } from '@phuq
 // là quan hệ vệ tinh, PlacesService.listMine() không ghép, khác getBySlug()). `opening_hours` CÓ
 // MẶT — GET /places/mine đã trả field này từ trước (toPlaceDetail), trước đây bị Omit khỏi kiểu
 // dù dữ liệu vẫn về tới client và bị bỏ qua (đã sửa, xem PlaceForm.tsx/openingHours.ts).
-export type ManagedPlace = Omit<PlaceDetail, 'contacts' | 'prices' | 'media' | 'faqs'>;
+//
+// `trust_sources` cũng bị Omit CÙNG lý do contacts/prices/media/faqs (Place Trust & Freshness
+// Surface, 2026-08-19): nó được ghép ở `PlacesService.getBySlug()` (đọc source_attributions/
+// sources), KHÔNG phải ở `toPlaceDetail()` — mà `listMine()` chỉ gọi `toPlaceDetail()` trực tiếp,
+// không đi qua getBySlug(). Giữ trường này trong kiểu sẽ nói dối: client tưởng field luôn có mặt
+// trong khi API không bao giờ gửi nó trên đường này. `verified_at` THÌ CÓ — nó nằm ngay trong
+// toPlaceDetail(), không cần ghép gì thêm.
+export type ManagedPlace = Omit<PlaceDetail, 'contacts' | 'prices' | 'media' | 'faqs' | 'trust_sources'>;
 
 // Payload gửi lên POST/PATCH /places — khớp CreatePlaceDto/UpdatePlaceDto (apps/api/src/modules/
 // places/dto/places.dto.ts) từng trường một, KHÔNG thêm trường nào backend không nhận (contact/

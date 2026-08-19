@@ -57,5 +57,9 @@ export function toPlaceDetail(row: PlaceDetailRow) {
     // còn ranh giới thì hết nói dối.
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    // Place Trust & Freshness Surface (2026-08-19): cột đã tồn tại từ InitPlaces, ghi bởi
+    // VerificationsService.syncTargetCache() — chỉ CHỌN ra ở đây lần đầu. `null` = chưa từng đạt
+    // trạng thái tin cậy; KHÔNG suy ra ngày nào khi thiếu (client không được tự bịa).
+    verified_at: row.verified_at ? row.verified_at.toISOString() : null,
   };
 }

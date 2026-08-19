@@ -28,10 +28,12 @@ const basePlace: PlaceDetail = {
   osm_id: null,
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
+  verified_at: null,
   contacts: [],
   prices: [],
   media: [],
   faqs: [],
+  trust_sources: [],
 };
 
 function addressOf(place: PlaceDetail): Record<string, unknown> | undefined {
@@ -115,6 +117,124 @@ describe('buildPlaceJsonLd — địa chỉ lấy từ dữ liệu canonical', (
     const out = serializeJsonLd(buildPlaceJsonLd({ ...basePlace, name: '</script><b>x' }));
     expect(out).not.toContain('</script>');
     expect(out).toContain('\\u003c');
+  });
+});
+
+// STRUCTURED_DATA — openingHoursSpecification/telephone (Place Trust & Freshness Surface, 2026-08-19).
+describe('buildPlaceJsonLd — openingHoursSpecification', () => {
+  it('opening_hours null → không phát openingHoursSpecification', () => {
+    expect(buildPlaceJsonLd(basePlace)).not.toHaveProperty('openingHoursSpecification');
+  });
+
+  it('chỉ timezone/note (không có lịch thật) → không phát openingHoursSpecification', () => {
+    const place = { ...basePlace, opening_hours: { timezone: 'Asia/Ho_Chi_Minh' } };
+    expect(buildPlaceJsonLd(place)).not.toHaveProperty('openingHoursSpecification');
+  });
+
+  it('lịch tuần hợp lệ → mỗi khung giờ một OpeningHoursSpecification, đúng dayOfWeek schema.org', () => {
+    const place = {
+      ...basePlace,
+      opening_hours: {
+        regular: {
+          mon: [{ open: '08:00', close: '22:00' }],
+          tue: [],
+        },
+      },
+    };
+    const jsonLd = buildPlaceJsonLd(place);
+    expect(jsonLd.openingHoursSpecification).toEqual([
+      {
+        '@type': 'OpeningHoursSpecification',
+        dayOfWeek: 'https://schema.org/Monday',
+        opens: '08:00',
+        closes: '22:00',
+      },
+    ]);
+  });
+
+  it('nhiều ca trong ngày → nhiều OpeningHoursSpecification cho cùng dayOfWeek', () => {
+    const place = {
+      ...basePlace,
+      opening_hours: {
+        regular: {
+          mon: [
+            { open: '08:00', close: '11:30' },
+            { open: '13:00', close: '22:00' },
+          ],
+        },
+      },
+    };
+    const specs = buildPlaceJsonLd(place).openingHoursSpecification as Array<Record<string, unknown>>;
+    expect(specs).toHaveLength(2);
+    expect(specs.every((s) => s.dayOfWeek === 'https://schema.org/Monday')).toBe(true);
+  });
+
+  // Dữ liệu hỏng không được biến thành một khẳng định sai trong JSON-LD (cùng nguyên tắc
+  // modules/places/openingHours.ts) — khung không đọc được thì BỎ QUA, không phát 'undefined'.
+  it('khung giờ hỏng (thiếu close) bị loại khỏi openingHoursSpecification, khung hợp lệ khác vẫn giữ', () => {
+    const place = {
+      ...basePlace,
+      opening_hours: {
+        regular: {
+          mon: [{ open: '08:00' } as never],
+          tue: [{ open: '08:00', close: '20:00' }],
+        },
+      },
+    };
+    const specs = buildPlaceJsonLd(place).openingHoursSpecification as Array<Record<string, unknown>>;
+    expect(specs).toHaveLength(1);
+    expect(specs[0].dayOfWeek).toBe('https://schema.org/Tuesday');
+  });
+
+  it('is_24h → một OpeningHoursSpecification phủ cả 7 ngày, 00:00–23:59', () => {
+    const place = { ...basePlace, opening_hours: { is_24h: true } };
+    const specs = buildPlaceJsonLd(place).openingHoursSpecification as Array<Record<string, unknown>>;
+    expect(specs).toHaveLength(1);
+    expect(specs[0].opens).toBe('00:00');
+    expect(specs[0].closes).toBe('23:59');
+    expect((specs[0].dayOfWeek as string[]).length).toBe(7);
+  });
+});
+
+describe('buildPlaceJsonLd — telephone', () => {
+  it('không có contact nào dạng điện thoại → không phát telephone', () => {
+    expect(buildPlaceJsonLd(basePlace)).not.toHaveProperty('telephone');
+  });
+
+  it('có contact contact_type=phone hợp lệ → phát telephone', () => {
+    const place = {
+      ...basePlace,
+      contacts: [
+        {
+          id: 'ct1',
+          contact_type: 'phone',
+          value: '+84987654321',
+          label: null,
+          is_primary: true,
+          verification_status: 'pending' as const,
+          display_order: 0,
+        },
+      ],
+    };
+    expect(buildPlaceJsonLd(place).telephone).toBe('+84987654321');
+  });
+
+  it('contact không phải dạng số điện thoại (vd email) → không phát telephone', () => {
+    const place = {
+      ...basePlace,
+      contacts: [
+        {
+          id: 'ct1',
+          contact_type: 'email',
+          value: 'contact@example.com',
+          label: null,
+          is_primary: true,
+          verification_status: 'pending' as const,
+          display_order: 0,
+        },
+      ],
+    };
+    expect(buildPlaceJsonLd(place)).not.toHaveProperty('telephone');
   });
 });
 

@@ -123,6 +123,23 @@ export interface PlaceFaq {
   status: FaqStatusValue;
 }
 
+/**
+ * Một nguồn đã được đối chiếu cho MỘT trường cụ thể của Place (Place Trust & Freshness Surface).
+ *
+ * Đọc từ `source_attributions(entity_type='place_field')` + `sources` — hai bảng đã tồn tại
+ * (ADR-008/source.md §5), KHÔNG phải subsystem mới. `field` là tên cột đã đối chiếu (vd
+ * `province`, `admin_area`); `null` nếu attribution không gắn field cụ thể. Mảng RỖNG (không phải
+ * field này vắng mặt trên `PlaceDetail`) nghĩa là "chưa trường nào của place này được đối chiếu
+ * nguồn" — client không được suy ra "đã kiểm tra nhưng không có nguồn".
+ */
+export interface PlaceTrustSource {
+  field: string | null;
+  publisher: string | null;
+  title: string | null;
+  url: string | null;
+  retrieved_at: string | null;
+}
+
 /** Một khung giờ trong ngày. Cho phép khung qua đêm (22:00–02:00) — KHÔNG ép open < close. */
 export interface OpeningHoursRange {
   open: string;
@@ -184,8 +201,17 @@ export interface PlaceDetail extends PlaceCard {
   osm_id: number | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Lần cuối chuyển sang trạng thái tin cậy (`verified`/`official`/`community_verified`).
+   * `null` = chưa từng đạt trạng thái tin cậy — KHÔNG suy ra ngày nào khi thiếu. Có thể vẫn mang
+   * một ngày trong quá khứ dù `verification_status` hiện tại đã `expired`: đó là ngày lần xác
+   * minh GẦN NHẤT còn hiệu lực, không bị xoá khi hết hạn (đúng ý nghĩa "kiểm tra lần cuối").
+   */
+  verified_at: string | null;
   contacts: PlaceContact[];
   prices: PlacePrice[];
   media: PlaceMedia[];
   faqs: PlaceFaq[];
+  /** Nguồn đã đối chiếu cho các trường của place này. Mảng rỗng = chưa trường nào được đối chiếu. */
+  trust_sources: PlaceTrustSource[];
 }
