@@ -41,5 +41,9 @@ Thumbs.db
 # PLACE-038: real database backups produced by scripts/backup.sh -- never committed
 backups/
 
+# Data Quality Audit (2026-08-20): generated JSON/Markdown reports change every run as real place
+# data changes — a work-queue snapshot for a human to review locally, not a source-controlled artifact.
+apps/api/reports/
+
 # Claude Code per-machine local settings (not shared)
 .claude/settings.local.json
