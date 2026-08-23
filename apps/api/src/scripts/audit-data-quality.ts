@@ -79,10 +79,14 @@ function renderMarkdown(report: AuditReport): string {
   lines.push('');
   lines.push('## Field coverage');
   lines.push('');
-  lines.push('| Field | Filled | Empty | Coverage |');
-  lines.push('|---|---:|---:|---:|');
+  lines.push('| Field | Filled | Empty | N/A | Coverage (of applicable) |');
+  lines.push('|---|---:|---:|---:|---:|');
   for (const row of report.field_coverage) {
-    lines.push(`| ${row.field} | ${row.filled} | ${row.empty} | ${row.coverage_pct}% |`);
+    // N/A: place mà trường KHÔNG áp dụng được (vd phone với bãi biển công cộng không có đơn vị vận
+    // hành). KHÔNG nằm trong `Empty`, KHÔNG nằm trong mẫu số của `Coverage`.
+    lines.push(
+      `| ${row.field} | ${row.filled} | ${row.empty} | ${row.not_applicable} | ${row.coverage_pct}% |`,
+    );
   }
   lines.push('');
   lines.push('## Administrative notes');

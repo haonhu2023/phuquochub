@@ -13,6 +13,7 @@ import { PlaceSeo } from '../places/entities/place-seo.entity';
 import { PlaceAiSummary } from '../places/entities/place-ai-summary.entity';
 import { AdministrativeBackfillService } from './administrative-backfill.service';
 import { DataQualityAuditService } from './data-quality-audit.service';
+import { VerifiedFactsIngestionService } from './verified-facts-ingestion.service';
 
 // Administrative Data Backfill (2026-08-18). KHÔNG có controller — chạy qua script CLI
 // (`src/scripts/backfill-administrative-data.ts`, cùng khuôn `verification:expire`/
@@ -44,7 +45,7 @@ import { DataQualityAuditService } from './data-quality-audit.service';
     BusinessModule,
     TypeOrmModule.forFeature([PlaceSeo, PlaceAiSummary]),
   ],
-  providers: [AdministrativeBackfillService, DataQualityAuditService],
-  exports: [AdministrativeBackfillService, DataQualityAuditService],
+  providers: [AdministrativeBackfillService, DataQualityAuditService, VerifiedFactsIngestionService],
+  exports: [AdministrativeBackfillService, DataQualityAuditService, VerifiedFactsIngestionService],
 })
 export class AdminDataModule {}

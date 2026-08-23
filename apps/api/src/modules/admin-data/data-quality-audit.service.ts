@@ -59,6 +59,52 @@ function isTrustedStatus(status: VerificationStatus): boolean {
  */
 export const AUDIT_TARGET_SLUGS: readonly string[] = ADMINISTRATIVE_BACKFILL_TARGETS.map((t) => t.slug);
 
+/**
+ * NOT_APPLICABLE — trường KHÔNG áp dụng được cho một place cụ thể (2026-08-23).
+ *
+ * LỖI ĐÃ SỬA: audit trước đây phát `MISSING_FIELD` cho `phone`/`opening_hours`/`website` với MỌI
+ * place, kể cả bãi biển công cộng — sinh ra việc KHÔNG BAO GIỜ hoàn thành được (một bãi biển công
+ * cộng không có đơn vị vận hành, nên không có số điện thoại, không có giờ mở cửa, không có website
+ * chính thức). Hai hệ quả thật: hàng đợi bị thổi phồng bằng việc bất khả thi, và `completeness`
+ * phạt oan (bãi biển bị chặn trần vì phần điểm nó KHÔNG THỂ kiếm được).
+ *
+ * RULE KHÔNG PHẢI "beach ⇒ luôn NOT_APPLICABLE". Repository ĐÃ CÓ ngữ nghĩa để biết một place có
+ * đơn vị vận hành hay chưa, và rule dựa vào ĐÓ:
+ *   • `business_claims` đã `approved` — ADR-015 Model A: business CHÍNH LÀ Place đã được claim.
+ *     Một bãi biển được doanh nghiệp nhận quản lý (beach club, bãi tắm có thu phí) sẽ có claim.
+ *   • hoặc đã tồn tại `contacts` — có người dựng kênh liên hệ thì có người vận hành.
+ * Có BẤT KỲ dấu hiệu nào ở trên ⇒ place CÓ operator ⇒ KHÔNG trường nào bị coi là N/A, và mọi
+ * thiếu sót vẫn được báo MISSING như thường. Nhờ vậy "managed beach" trong tương lai tự động thoát
+ * khỏi diện N/A mà không phải sửa code.
+ *
+ * PHẠM VI CATEGORY HẸP CÓ CHỦ Ý: chỉ `beach`. KHÔNG mở sang `attraction` — nhóm đó lẫn cả nơi có
+ * đơn vị vận hành bán vé (VinWonders, Sun World: có hotline và giờ mở cửa THẬT) lẫn nơi công cộng
+ * (Dinh Cậu, Suối Tranh); category một mình không phân biệt được, nên suy diễn sẽ che mất việc
+ * thiếu dữ liệu HỢP LỆ. `price_range` KHÔNG bao giờ bị chặn: 3/10 bãi biển thật đã có giá trị, nên
+ * hệ thống rõ ràng coi giá là áp dụng được (vé gửi xe, ghế…).
+ */
+const OPERATOR_DEPENDENT_FIELDS = ['phone', 'opening_hours', 'website'] as const;
+const OPERATOR_OPTIONAL_CATEGORIES: ReadonlySet<string> = new Set(['beach']);
+
+/** Dấu hiệu place có đơn vị vận hành — chỉ dùng dữ liệu đã có, không suy đoán từ tên/category. */
+export function hasOperator(input: {
+  businessClaimStatus: string | null;
+  contactCount: number;
+}): boolean {
+  return input.businessClaimStatus === 'approved' || input.contactCount > 0;
+}
+
+/** Trường KHÔNG áp dụng được cho place này. Rỗng nghĩa là mọi trường đều áp dụng. */
+export function notApplicableFieldsFor(input: {
+  categorySlug: string | null;
+  businessClaimStatus: string | null;
+  contactCount: number;
+}): string[] {
+  if (!input.categorySlug || !OPERATOR_OPTIONAL_CATEGORIES.has(input.categorySlug)) return [];
+  if (hasOperator(input)) return [];
+  return [...OPERATOR_DEPENDENT_FIELDS];
+}
+
 /** Khoảng cách xấp xỉ (mét) giữa hai toạ độ — công thức haversine, đủ chính xác cho việc phát hiện
  *  trùng lặp ở quy mô một hòn đảo (không cần độ chính xác trắc địa). */
 function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -327,7 +373,17 @@ export class DataQualityAuditService {
         ? null
         : claims.items.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
 
-    const completeness = this.computeCompleteness(row, contactInfo, allMedia, revisions);
+    const notApplicableFields = notApplicableFieldsFor({
+      categorySlug: row.category_slug,
+      businessClaimStatus: latestClaim?.status ?? null,
+      contactCount: contacts.length,
+    });
+    const placeHasOperator = hasOperator({
+      businessClaimStatus: latestClaim?.status ?? null,
+      contactCount: contacts.length,
+    });
+
+    const completeness = this.computeCompleteness(row, contactInfo, allMedia, revisions, notApplicableFields);
     const trust = this.computeTrust(row, contactInfo, attributions, licensedMedia, allMedia);
     const freshness = this.computeFreshness(row);
     const overall = Math.round((completeness + trust + freshness) / 3);
@@ -383,6 +439,8 @@ export class DataQualityAuditService {
         has_any: claims.total > 0,
         latest_status: latestClaim?.status ?? null,
       },
+      has_operator: placeHasOperator,
+      not_applicable_fields: notApplicableFields,
       created_at: row.created_at.toISOString(),
       updated_at: row.updated_at.toISOString(),
       last_revision_at: latestRevision ? latestRevision.created_at.toISOString() : null,
@@ -435,19 +493,39 @@ export class DataQualityAuditService {
     contactInfo: ContactInfo,
     media: readonly Media[],
     revisions: readonly RevisionListRow[],
+    notApplicableFields: readonly string[],
   ): number {
-    let score = 0;
-    if (row.address) score += 10;
-    if (row.province) score += 5;
-    if (row.admin_area) score += 5;
-    if (row.ward) score += 5;
-    if (row.price_range) score += 10;
-    if (row.opening_hours && Object.keys(row.opening_hours).length > 0) score += 15;
-    if (contactInfo.hasPhone) score += 15;
-    if (contactInfo.hasWebsite) score += 10;
-    if (media.length > 0) score += 15;
-    if (revisions.length > 0) score += 10;
-    return score;
+    const components: Array<{ field: string; weight: number; filled: boolean }> = [
+      { field: 'address', weight: 10, filled: !!row.address },
+      { field: 'province', weight: 5, filled: !!row.province },
+      { field: 'admin_area', weight: 5, filled: !!row.admin_area },
+      { field: 'ward', weight: 5, filled: !!row.ward },
+      { field: 'price_range', weight: 10, filled: !!row.price_range },
+      {
+        field: 'opening_hours',
+        weight: 15,
+        filled: !!row.opening_hours && Object.keys(row.opening_hours).length > 0,
+      },
+      { field: 'phone', weight: 15, filled: contactInfo.hasPhone },
+      { field: 'website', weight: 10, filled: contactInfo.hasWebsite },
+      { field: 'media', weight: 15, filled: media.length > 0 },
+      { field: 'revisions', weight: 10, filled: revisions.length > 0 },
+    ];
+
+    // Trường N/A bị loại khỏi CẢ tử số LẪN mẫu số rồi quy về thang 100. Không làm vậy thì bãi biển
+    // công cộng bị chặn trần ở 60/100 vì 40 điểm (phone 15 + website 10 + opening_hours 15) là điểm
+    // nó không bao giờ kiếm được — biến một đặc tính CỦA LOẠI ĐỊA ĐIỂM thành khuyết điểm dữ liệu.
+    // N/A KHÔNG được tính là "filled": nó thu hẹp mẫu số, KHÔNG cộng điểm (không tạo completeness ảo).
+    const na = new Set(notApplicableFields);
+    let earned = 0;
+    let applicableTotal = 0;
+    for (const c of components) {
+      if (na.has(c.field)) continue;
+      applicableTotal += c.weight;
+      if (c.filled) earned += c.weight;
+    }
+    if (applicableTotal === 0) return 0;
+    return Math.round((earned / applicableTotal) * 100);
   }
 
   /** Trọng số cộng dồn = 100. Mỗi thành phần đòi BẰNG CHỨNG cụ thể, không phải chỉ "có giá trị". */
@@ -496,6 +574,10 @@ export class DataQualityAuditService {
     currentPrices: readonly PriceHistory[],
   ): AuditIssue[] {
     const issues: AuditIssue[] = [];
+    // Trường N/A KHÔNG sinh work item — xem notApplicableFieldsFor(). Đây là chỗ DUY NHẤT chặn,
+    // nên mọi loại issue khác (MISSING_SOURCE/TRUST_GAP/SEO_GAP/CONFLICTING_DATA...) vẫn phát bình
+    // thường cho cùng place đó.
+    const naFields = new Set(record.not_applicable_fields);
     const push = (
       type: IssueType,
       priority: IssuePriority,
@@ -522,7 +604,7 @@ export class DataQualityAuditService {
     };
 
     // MISSING_FIELD — hữu dụng trực tiếp cho khách (Phase 18: "ở đâu / liên hệ thế nào / giờ nào / giá bao nhiêu")
-    if (!record.contacts.phone_count) {
+    if (!record.contacts.phone_count && !naFields.has('phone')) {
       push(
         IssueType.MISSING_FIELD,
         'P1',
@@ -532,7 +614,7 @@ export class DataQualityAuditService {
         'HIGH',
       );
     }
-    if (!record.opening_hours_present) {
+    if (!record.opening_hours_present && !naFields.has('opening_hours')) {
       push(
         IssueType.MISSING_FIELD,
         'P1',
@@ -552,7 +634,7 @@ export class DataQualityAuditService {
         'HIGH',
       );
     }
-    if (!record.contacts.website_count) {
+    if (!record.contacts.website_count && !naFields.has('website')) {
       push(IssueType.MISSING_FIELD, 'P2', 'website', null, 'Không có website/kênh chính thức.', 'HIGH');
     }
     if (!record.price_range) {
@@ -702,33 +784,47 @@ export class DataQualityAuditService {
   // -------------------------------------------------------------------------
 
   private buildFieldCoverage(records: PlaceAuditRecord[]): FieldCoverageRow[] {
-    const total = records.length;
-    const row = (field: string, filledCount: number): FieldCoverageRow => ({
-      field,
-      filled: filledCount,
-      empty: total - filledCount,
-      coverage_pct: total === 0 ? 0 : Math.round((filledCount / total) * 1000) / 10,
-    });
+    /**
+     * `applicabilityField` — tên trường để tra `not_applicable_fields` của từng place. Bỏ trống
+     * nghĩa là trường áp dụng cho MỌI place (name/ward/media/...), nên mẫu số là toàn bộ tập.
+     */
+    const row = (
+      field: string,
+      predicate: (r: PlaceAuditRecord) => boolean,
+      applicabilityField?: string,
+    ): FieldCoverageRow => {
+      const applicable = applicabilityField
+        ? records.filter((r) => !r.not_applicable_fields.includes(applicabilityField))
+        : records;
+      const filled = applicable.filter(predicate).length;
+      return {
+        field,
+        filled,
+        empty: applicable.length - filled,
+        not_applicable: records.length - applicable.length,
+        coverage_pct: applicable.length === 0 ? 0 : Math.round((filled / applicable.length) * 1000) / 10,
+      };
+    };
 
     return [
-      row('name', records.filter((r) => !!r.name).length),
-      row('address', records.filter((r) => !!r.address).length),
-      row('province', records.filter((r) => !!r.province).length),
-      row('admin_area', records.filter((r) => !!r.admin_area).length),
-      row('ward', records.filter((r) => !!r.ward).length),
-      row('phone', records.filter((r) => r.contacts.phone_count > 0).length),
-      row('website', records.filter((r) => r.contacts.website_count > 0).length),
-      row('opening_hours', records.filter((r) => r.opening_hours_present).length),
-      row('price_range', records.filter((r) => !!r.price_range).length),
-      row('photos', records.filter((r) => r.media.total > 0).length),
-      row('licensed_photos', records.filter((r) => r.media.licensed > 0).length),
-      row('source_attribution', records.filter((r) => r.sources.attribution_count > 0).length),
-      row('verification (trusted)', records.filter((r) => isTrustedStatus(r.verification_status as VerificationStatus)).length),
-      row('verified_at', records.filter((r) => !!r.verified_at).length),
-      row('reviews', records.filter((r) => r.reviews_count > 0).length),
-      row('faqs', records.filter((r) => r.faq_count > 0).length),
-      row('seo_meta_title', records.filter((r) => r.seo.has_meta_title).length),
-      row('ai_summary', records.filter((r) => r.ai_summary.exists).length),
+      row('name', (r) => !!r.name),
+      row('address', (r) => !!r.address),
+      row('province', (r) => !!r.province),
+      row('admin_area', (r) => !!r.admin_area),
+      row('ward', (r) => !!r.ward),
+      row('phone', (r) => r.contacts.phone_count > 0, 'phone'),
+      row('website', (r) => r.contacts.website_count > 0, 'website'),
+      row('opening_hours', (r) => r.opening_hours_present, 'opening_hours'),
+      row('price_range', (r) => !!r.price_range),
+      row('photos', (r) => r.media.total > 0),
+      row('licensed_photos', (r) => r.media.licensed > 0),
+      row('source_attribution', (r) => r.sources.attribution_count > 0),
+      row('verification (trusted)', (r) => isTrustedStatus(r.verification_status as VerificationStatus)),
+      row('verified_at', (r) => !!r.verified_at),
+      row('reviews', (r) => r.reviews_count > 0),
+      row('faqs', (r) => r.faq_count > 0),
+      row('seo_meta_title', (r) => r.seo.has_meta_title),
+      row('ai_summary', (r) => r.ai_summary.exists),
     ];
   }
 

@@ -545,7 +545,7 @@ describe('DataQualityAuditService', () => {
       const report = await service.audit(['a', 'b']);
 
       const addressRow = report.field_coverage.find((r) => r.field === 'address');
-      expect(addressRow).toEqual({ field: 'address', filled: 1, empty: 1, coverage_pct: 50 });
+      expect(addressRow).toEqual({ field: 'address', filled: 1, empty: 1, not_applicable: 0, coverage_pct: 50 });
     });
 
     it('khu_pho KHÔNG xuất hiện trong field_coverage (cột chưa tồn tại ở schema)', async () => {
@@ -554,6 +554,151 @@ describe('DataQualityAuditService', () => {
 
       expect(report.field_coverage.find((r) => r.field === 'khu_pho')).toBeUndefined();
       expect(report.places[0].khu_pho).toBeNull();
+    });
+
+    it('bãi biển công cộng vào cột not_applicable của phone, KHÔNG vào empty', async () => {
+      placesRepo.getDetailBySlug.mockImplementation((slug: string) =>
+        Promise.resolve(baseRow({ slug, id: slug, category_slug: slug === 'bai-x' ? 'beach' : 'restaurant' })),
+      );
+
+      const report = await service.audit(['bai-x', 'nha-hang-y']);
+
+      expect(report.field_coverage.find((r) => r.field === 'phone')).toEqual({
+        field: 'phone', filled: 0, empty: 1, not_applicable: 1, coverage_pct: 0,
+      });
+      // Trường áp dụng cho mọi loại → không có N/A nào.
+      expect(report.field_coverage.find((r) => r.field === 'address')?.not_applicable).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // NOT_APPLICABLE — regression (2026-08-23). Rule dựa trên OPERATOR, không phải category đơn thuần.
+  // -------------------------------------------------------------------------
+  describe('NOT_APPLICABLE — bãi biển công cộng vs bãi biển có operator', () => {
+    const publicBeach = (o = {}) => baseRow({ slug: 'bai-cong-cong', id: 'b1', category_slug: 'beach', ...o });
+
+    // (1) + (2) của §5
+    it.each(['phone', 'opening_hours'])(
+      'bãi biển KHÔNG có operator → "%s" là NOT_APPLICABLE, không sinh MISSING_FIELD',
+      async (field) => {
+        placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+        const report = await service.audit(['bai-cong-cong']);
+
+        expect(report.places[0].not_applicable_fields).toContain(field);
+        expect(report.places[0].has_operator).toBe(false);
+        expect(
+          report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === field),
+        ).toBeUndefined();
+      },
+    );
+
+    // Ranh giới cốt lõi: KHÔNG phải "beach ⇒ luôn N/A".
+    it('bãi biển CÓ business claim approved → có operator ⇒ VẪN báo MISSING phone/opening_hours', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+      businessClaimsRepo.list.mockResolvedValue({
+        items: [{ status: ClaimStatus.APPROVED, createdAt: new Date('2026-03-01T00:00:00Z') }] as never,
+        total: 1,
+      });
+
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].has_operator).toBe(true);
+      expect(report.places[0].not_applicable_fields).toEqual([]);
+      expect(report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'phone')).toBeDefined();
+      expect(
+        report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'opening_hours'),
+      ).toBeDefined();
+    });
+
+    it('bãi biển đã CÓ contacts → có operator ⇒ thoát diện NOT_APPLICABLE', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+      contactsRepo.listByOwner.mockResolvedValue([
+        { contactType: 'PHONE', value: '0900 000 000', verificationStatus: VerificationStatus.VERIFIED } as never,
+      ]);
+
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].has_operator).toBe(true);
+      expect(report.places[0].not_applicable_fields).toEqual([]);
+    });
+
+    // (3) + (4) của §5
+    it.each(['phone', 'opening_hours'])(
+      'business venue (restaurant) chưa có "%s" → VẪN báo MISSING (không bị che)',
+      async (field) => {
+        placesRepo.getDetailBySlug.mockResolvedValue(baseRow({ slug: 'r1', id: 'r1', category_slug: 'restaurant' }));
+        const report = await service.audit(['r1']);
+
+        expect(report.places[0].not_applicable_fields).toEqual([]);
+        expect(
+          report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === field),
+        ).toBeDefined();
+      },
+    );
+
+    it('KHÔNG mở rộng N/A ra ngoài beach — attraction công cộng vẫn báo MISSING phone', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(baseRow({ slug: 'dinh-cau', id: 'a1', category_slug: 'attraction' }));
+      const report = await service.audit(['dinh-cau']);
+
+      expect(report.places[0].not_applicable_fields).toEqual([]);
+      expect(report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'phone')).toBeDefined();
+    });
+
+    it('price_range KHÔNG bao giờ là N/A cho bãi biển (3/10 bãi thật đã có giá)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach({ price_range: null }));
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].not_applicable_fields).not.toContain('price_range');
+      expect(
+        report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'price_range'),
+      ).toBeDefined();
+    });
+
+    it('N/A KHÔNG làm tăng completeness giả — vẫn phải điền các trường áp dụng được', async () => {
+      // Bãi biển thiếu HẾT trường áp dụng được ⇒ completeness phải là 0, không phải "cao vì ít trường".
+      placesRepo.getDetailBySlug.mockResolvedValue(
+        publicBeach({ address: null, province: null, admin_area: null, ward: null, price_range: null }),
+      );
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].scores.completeness).toBe(0);
+    });
+
+    it('N/A chuẩn hoá mẫu số — bãi biển đủ trường áp dụng được đạt 100, không bị chặn trần 60', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(
+        publicBeach({ address: 'A', province: 'An Giang', admin_area: 'Đặc khu Phú Quốc', ward: 'W', price_range: 'free' }),
+      );
+      mediaRepo.listAllByPlace.mockResolvedValue([
+        { id: 'm1', status: MediaStatus.PUBLISHED, licenseType: MediaLicenseType.PUBLIC_DOMAIN } as never,
+      ]);
+      revisionsService.listByPlace.mockResolvedValue([{ id: 'r1', created_at: new Date() } as never]);
+
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].scores.completeness).toBe(100);
+    });
+
+    // (5) của §5 — CONFLICT không được biến thành thứ khác.
+    it('CONFLICT vẫn là CONFLICT cho bãi biển (không bị N/A nuốt mất)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(
+        publicBeach({ address: 'Bãi X, Phú Quốc, Kiên Giang', province: 'An Giang' }),
+      );
+      const report = await service.audit(['bai-cong-cong']);
+
+      const conflict = report.issues.find((i) => i.issue_type === 'CONFLICTING_DATA');
+      expect(conflict).toBeDefined();
+      expect(conflict?.field).toBe('address');
+    });
+
+    it('các issue hợp lệ khác của bãi biển vẫn được giữ (source/trust/SEO/media)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+      const report = await service.audit(['bai-cong-cong']);
+
+      const types = report.issues.map((i) => i.issue_type);
+      expect(types).toContain('MISSING_SOURCE');
+      expect(types).toContain('TRUST_GAP');
+      expect(types).toContain('SEO_GAP');
+      expect(types).toContain('MISSING_MEDIA');
     });
   });
 

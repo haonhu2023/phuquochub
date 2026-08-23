@@ -22,6 +22,7 @@
     "operator:bootstrap": "ts-node src/scripts/bootstrap-operator.ts",
     "admin:backfill-administrative-data": "ts-node src/scripts/backfill-administrative-data.ts",
     "audit:data-quality": "ts-node src/scripts/audit-data-quality.ts",
+    "admin:ingest-verified-facts": "ts-node src/scripts/ingest-verified-facts.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {

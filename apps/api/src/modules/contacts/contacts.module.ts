@@ -14,6 +14,10 @@ import { CONTACT_AUTHZ_RESOLVER, ContactAuthzResolver } from './resolvers/contac
     ContactsService,
     { provide: CONTACT_AUTHZ_RESOLVER, useClass: ContactAuthzResolver },
   ],
-  exports: [ContactsRepository, CONTACT_AUTHZ_RESOLVER],
+  // `ContactsService` export thêm (Verified Facts Ingestion, 2026-08-23) để
+  // `VerifiedFactsIngestionService` tạo liên hệ qua ĐÚNG service layer — nó xử lý `clearPrimary`
+  // khi `is_primary=true`, thứ mà ghi thẳng `ContactsRepository` sẽ bỏ qua và làm hỏng bất biến
+  // "tối đa một primary mỗi (owner, contact_type)".
+  exports: [ContactsRepository, ContactsService, CONTACT_AUTHZ_RESOLVER],
 })
 export class ContactsModule {}

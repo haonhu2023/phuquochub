@@ -102,6 +102,18 @@ export interface PlaceAuditRecord {
   seo: { has_meta_title: boolean; has_meta_description: boolean };
   ai_summary: { exists: boolean; status: string | null; is_approved: boolean };
   business_claim: { has_any: boolean; latest_status: string | null };
+  /**
+   * Place này CÓ đơn vị vận hành hay không — suy từ dữ liệu ĐÃ CÓ trong repository, không phải từ
+   * category: `business_claims` đã duyệt (ADR-015 Model A: business = Place đã claim) HOẶC đã có
+   * `contacts`. Đây là cơ sở để quyết định `not_applicable_fields`.
+   */
+  has_operator: boolean;
+  /**
+   * Các trường KHÔNG áp dụng được cho place này (vd bãi biển công cộng không có điện thoại/giờ mở
+   * cửa). KHÁC HẲN "thiếu": không sinh work item, không tính vào mẫu số completeness, và KHÔNG
+   * được coi là đã điền/đã xác minh.
+   */
+  not_applicable_fields: string[];
   created_at: string;
   updated_at: string;
   last_revision_at: string | null;
@@ -117,6 +129,15 @@ export interface FieldCoverageRow {
   field: string;
   filled: number;
   empty: number;
+  /**
+   * Số place mà trường này KHÔNG áp dụng được (vd `phone` với bãi biển công cộng không có đơn vị
+   * vận hành). Những place này bị loại khỏi CẢ `empty` LẪN mẫu số của `coverage_pct`: gộp vào
+   * `empty` là báo cáo một lỗ hổng dữ liệu không tồn tại.
+   *
+   * NOT_APPLICABLE ≠ VERIFIED và ≠ filled — nó KHÔNG làm tăng `filled`, chỉ thu hẹp mẫu số.
+   */
+  not_applicable: number;
+  /** Tính trên số place mà trường này ÁP DỤNG ĐƯỢC, không phải trên tổng số place. */
   coverage_pct: number;
 }
 

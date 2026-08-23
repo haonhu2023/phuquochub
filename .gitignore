@@ -47,3 +47,10 @@ apps/api/reports/
 
 # Claude Code per-machine local settings (not shared)
 .claude/settings.local.json
+# Deployment / release transfer artifacts
+.release-transfer/
+deploy-*.txt
+deploy-*.sha256
+release-*.txt
+release-*.sha256
+*.tar.gz
