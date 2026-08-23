@@ -3534,7 +3534,20 @@ components:
             # trang chi tiết điều hướng về đúng trang duyệt (vd 'attraction' → /attractions).
             category_slug: { type: [string, 'null'] }
             address: { type: [string, 'null'] }
+            # NHÃN KHU VỰC hiển thị/lọc (vd `Dương Đông`) — KHÔNG phải đơn vị hành chính. Tên cột là
+            # di sản: khi seed các giá trị này đang là phường/xã, nhưng từ 01/7/2025 (Nghị quyết
+            # 1654/NQ-UBTVQH15) toàn đảo nhập thành một đặc khu nên chúng không còn là ĐVHC — vẫn là
+            # địa danh có thật và vẫn là cách khách định vị ("ở Dương Đông"), nên giữ cho `?ward=`.
             ward: { type: [string, 'null'] }
+            # Đơn vị hành chính THẬT, tách khỏi `ward` có chủ đích (Place Information Foundation,
+            # 2026-08-18). Hai trường này ĐÃ được runtime trả về từ trước (places.mapper.ts →
+            # shared-types PlaceDetail); khai báo ở đây chỉ để tài liệu khớp hợp đồng thật, KHÔNG đổi
+            # hành vi. `null` = CHƯA XÁC MINH → tầng SEO bỏ hẳn trường tương ứng thay vì đoán: trước
+            # đây `structured-data.ts` gắn cứng `addressRegion: 'Kiên Giang'` cho MỌI place và giá trị
+            # đó đã sai kể từ 01/7/2025 mà không cột nào sửa được. Thiếu một trường tuỳ chọn của
+            # schema.org chỉ giảm mức rich-result; khai một tỉnh sai là phát tán dữ liệu sai.
+            province: { type: [string, 'null'], description: 'Tỉnh/thành hiện hành (vd An Giang) → schema.org addressRegion. null = chưa xác minh, KHÔNG suy ra giá trị mặc định.' }
+            admin_area: { type: [string, 'null'], description: 'ĐVHC cấp xã hiện hành (vd Đặc khu Phú Quốc) → schema.org addressLocality. Biến thiên thật: An Giang còn có đặc khu Thổ Châu.' }
             description: { type: [string, 'null'] }
             opening_hours: { type: [object, 'null'], additionalProperties: true }
             status: { $ref: '#/components/schemas/PlaceStatus' }
