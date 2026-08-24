@@ -191,10 +191,10 @@ describe('publish-manifest.contract', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 10. approvedAt không hợp lệ
+  // 10. approvedAt không hợp lệ — sai hình dạng
   // -------------------------------------------------------------------------
-  it.each(['2026-08-24', 'không phải ngày', '2026-13-45T00:00:00Z', ''])(
-    'approval.approvedAt="%s" (không phải ISO-8601 datetime hợp lệ) → bị từ chối',
+  it.each(['2026-08-24', 'không phải ngày', '2026-13-45T00:00:00Z', '2026-08-24T10:00:00Z', ''])(
+    'approval.approvedAt="%s" (sai hình dạng canonical) → bị từ chối',
     (bad) => {
       const manifest = buildManifest({ approval: { ...buildPayload().approval, approvedAt: bad } });
 
@@ -204,6 +204,64 @@ describe('publish-manifest.contract', () => {
       if (!result.ok) expect(result.errors.some((e) => e.includes('approvedAt'))).toBe(true);
     },
   );
+
+  // -------------------------------------------------------------------------
+  // Regression 2026-08-24: Date.parse() một mình KHÔNG bắt được ngày không tồn tại — nó ROLLOVER
+  // âm thầm ("2026-02-30" → "2026-03-02") thay vì từ chối. Bốn ca này xác nhận trực tiếp bằng
+  // Node runtime của máy chạy test (không đoán), xem comment isValidCanonicalTimestamp().
+  // -------------------------------------------------------------------------
+  it.each([
+    '2026-02-30T00:00:00.000Z', // tháng 2/2026 chỉ có 28 ngày — Date.parse rollover thành 2026-03-02
+    '2025-02-29T00:00:00.000Z', // 2025 KHÔNG nhuận — Date.parse rollover thành 2025-03-01
+    '2026-04-31T00:00:00.000Z', // tháng 4 chỉ có 30 ngày — Date.parse rollover thành 2026-05-01
+  ])('approval.approvedAt="%s" (ngày KHÔNG tồn tại trên lịch, Date.parse rollover) → bị từ chối', (bad) => {
+    const manifest = buildManifest({ approval: { ...buildPayload().approval, approvedAt: bad } });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('approvedAt'))).toBe(true);
+  });
+
+  it('approval.approvedAt="2024-02-29T00:00:00.000Z" (29/02 của năm NHUẬN THẬT) → được chấp nhận', () => {
+    const manifest = buildManifest({
+      approval: { ...buildPayload().approval, approvedAt: '2024-02-29T00:00:00.000Z' },
+    });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // source.retrievedAt phải chịu ĐÚNG mức kiểm như approval.approvedAt — trước bản sửa này,
+  // retrievedAt chỉ được kiểm "không rỗng", không kiểm lịch.
+  // -------------------------------------------------------------------------
+  it.each([
+    '2026-02-30T00:00:00.000Z',
+    '2026-13-01T00:00:00.000Z',
+    'không phải ngày',
+    '2026-08-24T10:00:00Z', // thiếu mili-giây — không đúng canonical
+  ])('source.retrievedAt="%s" (không hợp lệ) → bị từ chối', (bad) => {
+    const manifest = buildManifest({
+      targets: [buildTarget({ source: { ...buildTarget().source, retrievedAt: bad } })],
+    });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('retrievedAt'))).toBe(true);
+  });
+
+  it('source.retrievedAt="2024-02-29T00:00:00.000Z" (29/02 của năm NHUẬN THẬT) → được chấp nhận', () => {
+    const manifest = buildManifest({
+      targets: [buildTarget({ source: { ...buildTarget().source, retrievedAt: '2024-02-29T00:00:00.000Z' } })],
+    });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(true);
+  });
 
   // -------------------------------------------------------------------------
   // 11. Version không hỗ trợ
