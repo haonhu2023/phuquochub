@@ -3,7 +3,6 @@ import {
   RELIABILITY_BY_RETRIEVAL,
   VERIFIED_FACTS_ROUND1,
 } from './verified-facts.manifest';
-import { canonicalJson } from './verified-facts-ingestion.service';
 
 // Regression cho §5 mục 6–7: provenance của Sun World và evidence strength của VinWonders phải
 // đúng NHƯ research report, không được "làm tròn lên".
@@ -80,24 +79,6 @@ describe('VERIFIED_FACTS_ROUND1 — provenance & evidence strength', () => {
   });
 });
 
-// canonicalJson là thứ giữ cho ingestion idempotent — Postgres jsonb chuẩn hoá thứ tự khoá.
-describe('canonicalJson — nền tảng của tính idempotent', () => {
-  it('hai object khác thứ tự khoá cho ra CÙNG chuỗi', () => {
-    const manifestOrder = { timezone: 'Asia/Ho_Chi_Minh', is_24h: false, regular: { mon: [], tue: [] } };
-    const postgresOrder = { is_24h: false, regular: { tue: [], mon: [] }, timezone: 'Asia/Ho_Chi_Minh' };
-    expect(canonicalJson(manifestOrder)).toBe(canonicalJson(postgresOrder));
-  });
-
-  it('khác GIÁ TRỊ thì vẫn khác chuỗi (không chuẩn hoá quá tay)', () => {
-    expect(canonicalJson({ a: 1 })).not.toBe(canonicalJson({ a: 2 }));
-  });
-
-  it('giữ nguyên thứ tự MẢNG (thứ tự phần tử là dữ liệu, không phải nhiễu)', () => {
-    expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]));
-  });
-
-  it('null/undefined không làm sập', () => {
-    expect(canonicalJson(null)).toBe('null');
-    expect(canonicalJson({ a: null })).toBe('{"a":null}');
-  });
-});
+// Test canonicalJson() ĐÃ DỜI sang common/canonical-json.spec.ts (2026-08-24, Slice 0.5B) cùng
+// lúc hàm dời sang common/ — xem comment ở canonical-json.ts vì sao (publish-manifest.contract.ts
+// cần dùng lại nó mà không tạo circular import với file service này).

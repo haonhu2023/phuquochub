@@ -14,6 +14,7 @@ import { VerificationsService } from '../verifications/verifications.service';
 import { VerificationsRepository } from '../verifications/repositories/verifications.repository';
 import { VerificationMethod, VerificationTargetType } from '../verifications/verification.enums';
 import { VerificationStatus } from '../places/place.enums';
+import { canonicalJson } from '../../common/canonical-json';
 import {
   CONFIDENCE_BY_RETRIEVAL,
   RELIABILITY_BY_RETRIEVAL,
@@ -48,34 +49,10 @@ import {
  *
  * IDEMPOTENT: source theo (type, externalRef); contact theo (ownerType, ownerId, contactType,
  * value); attribution theo (entityType, entityId, field, sourceId); opening_hours so sánh CHUẨN
- * HOÁ (xem `canonicalJson`). Chạy lại KHÔNG nhân bản.
+ * HOÁ (xem `canonicalJson`, `common/canonical-json.ts` — dời khỏi file này 2026-08-24, Slice 0.5B,
+ * để `publish-manifest.contract.ts` dùng lại được mà không tạo circular import; xem comment tại
+ * nơi định nghĩa). Chạy lại KHÔNG nhân bản.
  */
-
-/**
- * So sánh JSON KHÔNG phụ thuộc thứ tự khoá.
- *
- * BẮT BUỘC: Postgres lưu `jsonb` với khoá đã chuẩn hoá (sắp xếp), nên giá trị đọc lên là
- * `{is_24h, regular{fri,mon,...}, timezone}` trong khi manifest khai `{timezone, is_24h, regular
- * {mon,tue,...}}`. `JSON.stringify` nhạy thứ tự khoá ⇒ so sánh thô LUÔN khác nhau, khiến mỗi lần
- * chạy lại ghi đè `opening_hours` và sinh thêm một `wiki_revisions` + một `source_attributions`
- * mới — mất tính idempotent. (Đã quan sát thấy thật trong một lần chạy trước: lần thứ hai tạo
- * revision #2 và attribution thứ 6.)
- */
-export function canonicalJson(value: unknown): string {
-  const normalize = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(normalize);
-    if (v !== null && typeof v === 'object') {
-      return Object.keys(v as Record<string, unknown>)
-        .sort()
-        .reduce<Record<string, unknown>>((acc, k) => {
-          acc[k] = normalize((v as Record<string, unknown>)[k]);
-          return acc;
-        }, {});
-    }
-    return v;
-  };
-  return JSON.stringify(normalize(value));
-}
 
 const PLACE_FIELD_ENTITY_TYPE = 'place_field';
 const WIKI_REVISION_ENTITY_TYPE = 'wiki_revision';

@@ -1,0 +1,357 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  SUPPORTED_MANIFEST_VERSIONS,
+  computeManifestChecksum,
+  validateManifest,
+  type PublishManifestPayloadV1,
+  type PublishManifestV1,
+} from './publish-manifest.contract';
+import { VERIFIED_FACTS_ROUND1, type VerifiedFactTarget } from './verified-facts.manifest';
+
+function buildTarget(overrides: Partial<VerifiedFactTarget> = {}): VerifiedFactTarget {
+  return {
+    slug: 'test-place',
+    source: {
+      externalRef: 'example.com/test-place',
+      title: 'Test Place — trang chính thức',
+      url: 'https://example.com/test-place',
+      publisher: 'Example Publisher',
+      language: 'vi',
+      retrievedAt: '2026-08-24T00:00:00.000Z',
+      retrievalMethod: 'direct_fetch',
+    },
+    contacts: [],
+    openingHours: null,
+    openingHoursQuote: null,
+    partialFactNote: null,
+    corroborations: [],
+    notCovered: [],
+    ...overrides,
+  };
+}
+
+function buildPayload(overrides: Partial<PublishManifestPayloadV1> = {}): PublishManifestPayloadV1 {
+  return {
+    manifestVersion: 1,
+    manifestId: 'batch-2026-08-24-001',
+    targetEnvironment: 'production',
+    minSchemaVersion: 45,
+    approval: {
+      approvedBy: 'nhuhao2023@gmail.com',
+      approvedAt: '2026-08-24T10:00:00.000Z',
+      reason: 'Slice 0.5B — fixture kiểm thử hợp đồng manifest.',
+    },
+    targets: [buildTarget()],
+    ...overrides,
+  };
+}
+
+function buildManifest(payloadOverrides: Partial<PublishManifestPayloadV1> = {}): PublishManifestV1 {
+  const payload = buildPayload(payloadOverrides);
+  return { payload, checksum: computeManifestChecksum(payload) };
+}
+
+describe('publish-manifest.contract', () => {
+  // -------------------------------------------------------------------------
+  // 1. Manifest V1 hợp lệ được chấp nhận
+  // -------------------------------------------------------------------------
+  it('manifest V1 hợp lệ (tự dựng) → ok:true', () => {
+    const result = validateManifest(buildManifest());
+    expect(result.ok).toBe(true);
+  });
+
+  it('manifest hợp lệ dựng từ VERIFIED_FACTS_ROUND1 (Sun World + VinWonders) → ok:true', () => {
+    const payload = buildPayload({ targets: VERIFIED_FACTS_ROUND1 });
+    const manifest: PublishManifestV1 = { payload, checksum: computeManifestChecksum(payload) };
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. Thứ tự khoá khác nhau trong payload → cùng checksum
+  // -------------------------------------------------------------------------
+  it('đổi THỨ TỰ KHOÁ trong payload → checksum KHÔNG đổi (canonicalJson chuẩn hoá đúng)', () => {
+    const p1 = buildPayload();
+    // Cùng nội dung, khai lại object theo thứ tự khoá NGƯỢC — insertion order thật sự khác nhau
+    // ở runtime (không chỉ khác về mặt hình thức trong mã nguồn).
+    const p2: PublishManifestPayloadV1 = {
+      targets: p1.targets,
+      approval: { reason: p1.approval.reason, approvedAt: p1.approval.approvedAt, approvedBy: p1.approval.approvedBy },
+      minSchemaVersion: p1.minSchemaVersion,
+      targetEnvironment: p1.targetEnvironment,
+      manifestId: p1.manifestId,
+      manifestVersion: p1.manifestVersion,
+    };
+
+    expect(computeManifestChecksum(p2)).toBe(computeManifestChecksum(p1));
+  });
+
+  // -------------------------------------------------------------------------
+  // 3. Giá trị thay đổi → checksum thay đổi
+  // -------------------------------------------------------------------------
+  it('đổi GIÁ TRỊ trong targets → checksum đổi', () => {
+    const p1 = buildPayload();
+    const p2 = buildPayload({ targets: [buildTarget({ slug: 'other-place' })] });
+
+    expect(computeManifestChecksum(p2)).not.toBe(computeManifestChecksum(p1));
+  });
+
+  // -------------------------------------------------------------------------
+  // 4-7. Sửa từng trường approval/targetEnvironment SAU khi checksum đã tính → mismatch bị phát hiện
+  // -------------------------------------------------------------------------
+  it('sửa approval.approvedBy SAU khi có checksum → validateManifest phát hiện checksum mismatch', () => {
+    const m = buildManifest();
+    const tampered: PublishManifestV1 = {
+      ...m,
+      payload: { ...m.payload, approval: { ...m.payload.approval, approvedBy: 'ke-mao-danh' } },
+    };
+
+    const result = validateManifest(tampered);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('checksum không khớp'))).toBe(true);
+  });
+
+  it('sửa approval.approvedAt SAU khi có checksum → validateManifest phát hiện checksum mismatch', () => {
+    const m = buildManifest();
+    const tampered: PublishManifestV1 = {
+      ...m,
+      payload: { ...m.payload, approval: { ...m.payload.approval, approvedAt: '2099-01-01T00:00:00.000Z' } },
+    };
+
+    const result = validateManifest(tampered);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('checksum không khớp'))).toBe(true);
+  });
+
+  it('sửa approval.reason SAU khi có checksum → validateManifest phát hiện checksum mismatch', () => {
+    const m = buildManifest();
+    const tampered: PublishManifestV1 = {
+      ...m,
+      payload: { ...m.payload, approval: { ...m.payload.approval, reason: 'lý do khác' } },
+    };
+
+    const result = validateManifest(tampered);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('checksum không khớp'))).toBe(true);
+  });
+
+  it('sửa targetEnvironment SAU khi có checksum → validateManifest phát hiện checksum mismatch', () => {
+    const m = buildManifest();
+    const tampered: PublishManifestV1 = {
+      ...m,
+      payload: { ...m.payload, targetEnvironment: 'staging' },
+    };
+
+    const result = validateManifest(tampered);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('checksum không khớp'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 8-9. Thiếu / rỗng approval metadata
+  // -------------------------------------------------------------------------
+  it('thiếu payload.approval → bị từ chối', () => {
+    const payload = buildPayload();
+    const withoutApproval = { ...payload } as Record<string, unknown>;
+    delete withoutApproval.approval;
+    const manifest = {
+      payload: withoutApproval,
+      checksum: computeManifestChecksum(withoutApproval as unknown as PublishManifestPayloadV1),
+    };
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('approval'))).toBe(true);
+  });
+
+  it.each(['approvedBy', 'reason'] as const)('approval.%s rỗng → bị từ chối', (field) => {
+    const manifest = buildManifest({ approval: { ...buildPayload().approval, [field]: '   ' } });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes(field))).toBe(true);
+  });
+
+  it('approval.approvedBy là placeholder chung chung ("owner") → bị từ chối', () => {
+    const manifest = buildManifest({ approval: { ...buildPayload().approval, approvedBy: 'owner' } });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('placeholder'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. approvedAt không hợp lệ
+  // -------------------------------------------------------------------------
+  it.each(['2026-08-24', 'không phải ngày', '2026-13-45T00:00:00Z', ''])(
+    'approval.approvedAt="%s" (không phải ISO-8601 datetime hợp lệ) → bị từ chối',
+    (bad) => {
+      const manifest = buildManifest({ approval: { ...buildPayload().approval, approvedAt: bad } });
+
+      const result = validateManifest(manifest);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.some((e) => e.includes('approvedAt'))).toBe(true);
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 11. Version không hỗ trợ
+  // -------------------------------------------------------------------------
+  it('manifestVersion không nằm trong SUPPORTED_MANIFEST_VERSIONS → bị từ chối', () => {
+    const manifest = buildManifest({ manifestVersion: 2 as unknown as 1 });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('manifestVersion'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 12. targets rỗng
+  // -------------------------------------------------------------------------
+  it('payload.targets rỗng → bị từ chối', () => {
+    const manifest = buildManifest({ targets: [] });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('targets'))).toBe(true);
+  });
+
+  it('slug trùng trong targets → bị từ chối', () => {
+    const manifest = buildManifest({
+      targets: [buildTarget({ slug: 'sun-world-hon-thom' }), buildTarget({ slug: 'sun-world-hon-thom' })],
+    });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('trùng'))).toBe(true);
+  });
+
+  it('retrievalMethod lạ (không phải direct_fetch/search_index) → bị từ chối', () => {
+    const manifest = buildManifest({
+      targets: [
+        buildTarget({
+          source: { ...buildTarget().source, retrievalMethod: 'guess' as never },
+        }),
+      ],
+    });
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('retrievalMethod'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 13. Checksum sai định dạng
+  // -------------------------------------------------------------------------
+  it.each(['not-a-hash', 'a'.repeat(63), 'A'.repeat(64), ''])(
+    'checksum="%s" sai định dạng → bị từ chối',
+    (badChecksum) => {
+      const payload = buildPayload();
+      const manifest = { payload, checksum: badChecksum };
+
+      const result = validateManifest(manifest);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.errors.some((e) => e.includes('checksum'))).toBe(true);
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // 14. Checksum mismatch (đúng định dạng, sai giá trị)
+  // -------------------------------------------------------------------------
+  it('checksum đúng ĐỊNH DẠNG nhưng KHÔNG khớp payload → bị từ chối', () => {
+    const payload = buildPayload();
+    const real = computeManifestChecksum(payload);
+    // Đổi ký tự đầu sang một hex khác — vẫn đúng định dạng 64-hex, chỉ sai giá trị.
+    const flipped = (real[0] === '0' ? '1' : '0') + real.slice(1);
+    const manifest = { payload, checksum: flipped };
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('checksum không khớp'))).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 15. Không mutate input
+  // -------------------------------------------------------------------------
+  it('validateManifest KHÔNG mutate input (hợp lệ lẫn không hợp lệ)', () => {
+    const validManifest = buildManifest();
+    const validSnapshot = JSON.parse(JSON.stringify(validManifest));
+    validateManifest(validManifest);
+    expect(validManifest).toEqual(validSnapshot);
+
+    const invalidManifest = buildManifest({ approval: { ...buildPayload().approval, approvedBy: '' } });
+    const invalidSnapshot = JSON.parse(JSON.stringify(invalidManifest));
+    validateManifest(invalidManifest);
+    expect(invalidManifest).toEqual(invalidSnapshot);
+  });
+
+  // -------------------------------------------------------------------------
+  // 17. Thứ tự MẢNG targets là dữ liệu, không phải nhiễu
+  // -------------------------------------------------------------------------
+  it('đổi THỨ TỰ các phần tử trong targets → checksum đổi', () => {
+    const a = buildTarget({ slug: 'a' });
+    const b = buildTarget({ slug: 'b' });
+    const p1 = buildPayload({ targets: [a, b] });
+    const p2 = buildPayload({ targets: [b, a] });
+
+    expect(computeManifestChecksum(p2)).not.toBe(computeManifestChecksum(p1));
+  });
+
+  // -------------------------------------------------------------------------
+  // Bảo vệ threat #11 — không chứa khoá giống secret
+  // -------------------------------------------------------------------------
+  it('payload chứa một khoá tên giống secret/credential → bị từ chối', () => {
+    const payload = buildPayload();
+    const withSecret = { ...payload, apiKey: 'shhh' } as unknown as PublishManifestPayloadV1;
+    const manifest = { payload: withSecret, checksum: computeManifestChecksum(withSecret) };
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.some((e) => e.includes('secret'))).toBe(true);
+  });
+
+  it('manifest hợp lệ dựng từ VERIFIED_FACTS_ROUND1 KHÔNG bị false-positive bởi bộ quét secret-key', () => {
+    const payload = buildPayload({ targets: VERIFIED_FACTS_ROUND1 });
+    const manifest: PublishManifestV1 = { payload, checksum: computeManifestChecksum(payload) };
+
+    const result = validateManifest(manifest);
+
+    expect(result.ok).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 18. File contract phải tự ghi rõ ranh giới authenticity — kiểm tra bằng đọc chính mã nguồn,
+  // để việc này không lặng lẽ bị xoá trong một lần sửa sau này mà không ai để ý.
+  // -------------------------------------------------------------------------
+  it('mã nguồn contract phải nói rõ checksum KHÔNG phải xác thực danh tính (yêu cầu owner)', () => {
+    const src = readFileSync(join(__dirname, 'publish-manifest.contract.ts'), 'utf8');
+
+    expect(src).toMatch(/KHÔNG PHẢI XÁC THỰC DANH TÍNH/);
+    expect(src).toMatch(/KHÔNG được dùng (làm căn cứ )?CẤP QUYỀN/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Cấu trúc export
+  // -------------------------------------------------------------------------
+  it('SUPPORTED_MANIFEST_VERSIONS chỉ chứa 1 (chưa có V2 thật)', () => {
+    expect(SUPPORTED_MANIFEST_VERSIONS).toEqual([1]);
+  });
+});
