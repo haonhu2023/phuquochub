@@ -572,14 +572,20 @@ describe('DataQualityAuditService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // NOT_APPLICABLE — regression (2026-08-23). Rule dựa trên OPERATOR, không phải category đơn thuần.
+  // NOT_APPLICABLE — regression (2026-08-23, invariant sửa lại 2026-08-24).
+  // Rule dựa trên OPERATOR, không phải category đơn thuần. CHỈ business claim `approved` là bằng
+  // chứng operator — `contacts` KHÔNG được tính, dù loại gì (xem comment `notApplicableFieldsFor`
+  // trong service: `contacts` không lưu provenance, và `contributor` có `Contact.Edit.Any` không
+  // scope theo place, nên một contact — kể cả PHONE — không chứng minh được có doanh nghiệp vận
+  // hành thật).
   // -------------------------------------------------------------------------
-  describe('NOT_APPLICABLE — bãi biển công cộng vs bãi biển có operator', () => {
+  describe('NOT_APPLICABLE — chỉ approved business claim mới là bằng chứng operator', () => {
     const publicBeach = (o = {}) => baseRow({ slug: 'bai-cong-cong', id: 'b1', category_slug: 'beach', ...o });
+    const approvedClaim = { status: ClaimStatus.APPROVED, createdAt: new Date('2026-03-01T00:00:00Z') };
 
-    // (1) + (2) của §5
+    // A — không claim, không contact.
     it.each(['phone', 'opening_hours'])(
-      'bãi biển KHÔNG có operator → "%s" là NOT_APPLICABLE, không sinh MISSING_FIELD',
+      'bãi biển KHÔNG có approved claim, KHÔNG có contact → "%s" là NOT_APPLICABLE, không sinh MISSING_FIELD',
       async (field) => {
         placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
         const report = await service.audit(['bai-cong-cong']);
@@ -595,10 +601,7 @@ describe('DataQualityAuditService', () => {
     // Ranh giới cốt lõi: KHÔNG phải "beach ⇒ luôn N/A".
     it('bãi biển CÓ business claim approved → có operator ⇒ VẪN báo MISSING phone/opening_hours', async () => {
       placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
-      businessClaimsRepo.list.mockResolvedValue({
-        items: [{ status: ClaimStatus.APPROVED, createdAt: new Date('2026-03-01T00:00:00Z') }] as never,
-        total: 1,
-      });
+      businessClaimsRepo.list.mockResolvedValue({ items: [approvedClaim] as never, total: 1 });
 
       const report = await service.audit(['bai-cong-cong']);
 
@@ -610,17 +613,75 @@ describe('DataQualityAuditService', () => {
       ).toBeDefined();
     });
 
-    it('bãi biển đã CÓ contacts → có operator ⇒ thoát diện NOT_APPLICABLE', async () => {
+    // B — regression cho lỗi ĐÃ SỬA: một contact KHÔNG-điện-thoại KHÔNG được coi là bằng chứng operator.
+    it('bãi biển KHÔNG có approved claim nhưng CÓ contact WEBSITE → VẪN không có operator, phone/opening_hours VẪN N/A', async () => {
       placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+      contactsRepo.listByOwner.mockResolvedValue([
+        { contactType: 'WEBSITE', value: 'https://vd.gov.vn', verificationStatus: VerificationStatus.VERIFIED } as never,
+      ]);
+
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].has_operator).toBe(false);
+      expect(report.places[0].not_applicable_fields).toEqual(
+        expect.arrayContaining(['phone', 'opening_hours']),
+      );
+      expect(report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'phone')).toBeUndefined();
+      expect(
+        report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'opening_hours'),
+      ).toBeUndefined();
+    });
+
+    // C — regression cho lỗi §8.1 chưa sửa hết: contact PHONE CŨNG KHÔNG được coi là bằng chứng
+    // operator (contributor thêm được số cứu hộ/tổng đài du lịch cho một bãi biển công cộng — số
+    // đó có thật, nhưng không chứng minh có DOANH NGHIỆP vận hành).
+    it('bãi biển KHÔNG có approved claim nhưng CÓ contact PHONE → VẪN không có operator; số điện thoại đã có không bị báo MISSING, nhưng opening_hours/price vẫn xử lý đúng quy tắc của chúng', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach({ price_range: null }));
       contactsRepo.listByOwner.mockResolvedValue([
         { contactType: 'PHONE', value: '0900 000 000', verificationStatus: VerificationStatus.VERIFIED } as never,
       ]);
 
       const report = await service.audit(['bai-cong-cong']);
 
-      expect(report.places[0].has_operator).toBe(true);
-      expect(report.places[0].not_applicable_fields).toEqual([]);
+      expect(report.places[0].has_operator).toBe(false);
+      // phone/opening_hours vẫn N/A — không có operator, dù đã có SỐ điện thoại thật.
+      expect(report.places[0].not_applicable_fields).toEqual(
+        expect.arrayContaining(['phone', 'opening_hours']),
+      );
+      // Số điện thoại ĐÃ CÓ ⇒ không báo thiếu (cơ chế độc lập với N/A: kiểm tra phone_count > 0).
+      expect(report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'phone')).toBeUndefined();
+      // opening_hours vẫn N/A nên không báo thiếu — KHÔNG PHẢI vì có phone, mà vì vẫn chưa có operator.
+      expect(
+        report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'opening_hours'),
+      ).toBeUndefined();
+      // price_range KHÔNG BAO GIỜ N/A (ngoài phạm vi OPERATOR_DEPENDENT_FIELDS) — có phone không
+      // làm thay đổi việc này; place ở đây thiếu price_range nên vẫn báo MISSING như bình thường.
+      expect(
+        report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'price_range'),
+      ).toBeDefined();
     });
+
+    // D — pending/rejected claim không phải bằng chứng operator, kể cả kèm contact.
+    it.each([ClaimStatus.PENDING, ClaimStatus.REJECTED])(
+      'bãi biển có business claim "%s" (chưa approved) + có contact → VẪN không có operator',
+      async (status) => {
+        placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+        businessClaimsRepo.list.mockResolvedValue({
+          items: [{ status, createdAt: new Date('2026-03-01T00:00:00Z') }] as never,
+          total: 1,
+        });
+        contactsRepo.listByOwner.mockResolvedValue([
+          { contactType: 'PHONE', value: '0900 000 000', verificationStatus: VerificationStatus.VERIFIED } as never,
+        ]);
+
+        const report = await service.audit(['bai-cong-cong']);
+
+        expect(report.places[0].has_operator).toBe(false);
+        expect(report.places[0].not_applicable_fields).toEqual(
+          expect.arrayContaining(['phone', 'opening_hours']),
+        );
+      },
+    );
 
     // (3) + (4) của §5
     it.each(['phone', 'opening_hours'])(

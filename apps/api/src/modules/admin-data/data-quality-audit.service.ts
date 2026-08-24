@@ -60,22 +60,36 @@ function isTrustedStatus(status: VerificationStatus): boolean {
 export const AUDIT_TARGET_SLUGS: readonly string[] = ADMINISTRATIVE_BACKFILL_TARGETS.map((t) => t.slug);
 
 /**
- * NOT_APPLICABLE — trường KHÔNG áp dụng được cho một place cụ thể (2026-08-23).
+ * NOT_APPLICABLE — trường KHÔNG áp dụng được cho một place cụ thể (2026-08-23, sửa lại 2026-08-24).
  *
- * LỖI ĐÃ SỬA: audit trước đây phát `MISSING_FIELD` cho `phone`/`opening_hours`/`website` với MỌI
- * place, kể cả bãi biển công cộng — sinh ra việc KHÔNG BAO GIỜ hoàn thành được (một bãi biển công
- * cộng không có đơn vị vận hành, nên không có số điện thoại, không có giờ mở cửa, không có website
- * chính thức). Hai hệ quả thật: hàng đợi bị thổi phồng bằng việc bất khả thi, và `completeness`
- * phạt oan (bãi biển bị chặn trần vì phần điểm nó KHÔNG THỂ kiếm được).
+ * LỖI ĐÃ SỬA (2026-08-23): audit trước đây phát `MISSING_FIELD` cho `phone`/`opening_hours`/`website`
+ * với MỌI place, kể cả bãi biển công cộng — sinh ra việc KHÔNG BAO GIỜ hoàn thành được (một bãi biển
+ * công cộng không có đơn vị vận hành, nên không có số điện thoại, không có giờ mở cửa, không có
+ * website chính thức). Hai hệ quả thật: hàng đợi bị thổi phồng bằng việc bất khả thi, và
+ * `completeness` phạt oan (bãi biển bị chặn trần vì phần điểm nó KHÔNG THỂ kiếm được).
  *
- * RULE KHÔNG PHẢI "beach ⇒ luôn NOT_APPLICABLE". Repository ĐÃ CÓ ngữ nghĩa để biết một place có
- * đơn vị vận hành hay chưa, và rule dựa vào ĐÓ:
+ * LỖI THỨ HAI ĐÃ SỬA (2026-08-24): bản 2026-08-23 coi "đã tồn tại `contacts`" là bằng chứng có
+ * operator — sai, vì `contacts` KHÔNG lưu ai đã tạo nó (không có cột `created_by`), và
+ * `Contact.Edit.Any` (`1720000600000-SeedPlacePermissions.ts`) được cấp cho role `contributor`
+ * ("Biên tập viên dữ liệu") KHÔNG SCOPE — một biên tập viên có thể thêm BẤT KỲ loại contact nào
+ * (kể cả `PHONE`/`HOTLINE`) cho BẤT KỲ place nào, không liên quan gì tới việc place đó có doanh
+ * nghiệp thật sự vận hành hay không. Một số điện thoại trên trang bãi biển công cộng có thể là số
+ * cứu hộ, tổng đài du lịch tỉnh, hoặc số của cơ quan quản lý — không phải bằng chứng "có operator"
+ * theo nghĩa `OPERATOR_DEPENDENT_FIELDS` đòi hỏi (đơn vị kinh doanh chịu trách nhiệm về giờ mở
+ * cửa/giá/liên hệ chính thức). Lọc theo `contactType` (chỉ tính contact loại điện thoại) CŨNG
+ * KHÔNG sửa được gốc: `Contact.Edit.Any` không phân biệt loại contact được thêm, nên lỗ hổng y hệt
+ * vẫn còn với một contact `PHONE` do contributor thêm — chỉ đổi bề mặt lỗi, không đổi bản chất.
+ *
+ * RULE KHÔNG PHẢI "beach ⇒ luôn NOT_APPLICABLE". Repository CHỈ CÓ ĐÚNG MỘT bằng chứng đáng tin cậy
+ * rằng một place có operator:
  *   • `business_claims` đã `approved` — ADR-015 Model A: business CHÍNH LÀ Place đã được claim.
- *     Một bãi biển được doanh nghiệp nhận quản lý (beach club, bãi tắm có thu phí) sẽ có claim.
- *   • hoặc đã tồn tại `contacts` — có người dựng kênh liên hệ thì có người vận hành.
- * Có BẤT KỲ dấu hiệu nào ở trên ⇒ place CÓ operator ⇒ KHÔNG trường nào bị coi là N/A, và mọi
- * thiếu sót vẫn được báo MISSING như thường. Nhờ vậy "managed beach" trong tương lai tự động thoát
- * khỏi diện N/A mà không phải sửa code.
+ *     Một bãi biển được doanh nghiệp nhận quản lý (beach club, bãi tắm có thu phí) sẽ có claim, và
+ *     việc duyệt claim tự nó đã đi qua một bước xác minh — khác hẳn một dòng `contacts` ai cũng
+ *     thêm được. `contacts` là THÔNG TIN LIÊN HỆ của place, không phải bằng chứng SỞ HỮU/VẬN HÀNH.
+ * CHỈ khi CÓ claim `approved` ⇒ place CÓ operator ⇒ KHÔNG trường nào bị coi là N/A, và mọi thiếu
+ * sót vẫn được báo MISSING như thường. Nhờ vậy khi domain có thêm một bằng chứng operator đáng tin
+ * cậy khác trong tương lai (vd provenance thật trên `contacts`), chỉ cần thêm nhánh mới vào
+ * `hasOperator()` — không đổi cấu trúc rule.
  *
  * PHẠM VI CATEGORY HẸP CÓ CHỦ Ý: chỉ `beach`. KHÔNG mở sang `attraction` — nhóm đó lẫn cả nơi có
  * đơn vị vận hành bán vé (VinWonders, Sun World: có hotline và giờ mở cửa THẬT) lẫn nơi công cộng
@@ -86,19 +100,19 @@ export const AUDIT_TARGET_SLUGS: readonly string[] = ADMINISTRATIVE_BACKFILL_TAR
 const OPERATOR_DEPENDENT_FIELDS = ['phone', 'opening_hours', 'website'] as const;
 const OPERATOR_OPTIONAL_CATEGORIES: ReadonlySet<string> = new Set(['beach']);
 
-/** Dấu hiệu place có đơn vị vận hành — chỉ dùng dữ liệu đã có, không suy đoán từ tên/category. */
-export function hasOperator(input: {
-  businessClaimStatus: string | null;
-  contactCount: number;
-}): boolean {
-  return input.businessClaimStatus === 'approved' || input.contactCount > 0;
+/**
+ * Dấu hiệu place có đơn vị vận hành — CHỈ business claim đã `approved`. KHÔNG dùng số lượng/loại
+ * `contacts`: `contacts` không lưu provenance (ai tạo), và role `contributor` có `Contact.Edit.Any`
+ * không scope theo place — xem giải thích đầy đủ ở comment của `notApplicableFieldsFor` phía trên.
+ */
+export function hasOperator(input: { businessClaimStatus: string | null }): boolean {
+  return input.businessClaimStatus === 'approved';
 }
 
 /** Trường KHÔNG áp dụng được cho place này. Rỗng nghĩa là mọi trường đều áp dụng. */
 export function notApplicableFieldsFor(input: {
   categorySlug: string | null;
   businessClaimStatus: string | null;
-  contactCount: number;
 }): string[] {
   if (!input.categorySlug || !OPERATOR_OPTIONAL_CATEGORIES.has(input.categorySlug)) return [];
   if (hasOperator(input)) return [];
@@ -376,11 +390,9 @@ export class DataQualityAuditService {
     const notApplicableFields = notApplicableFieldsFor({
       categorySlug: row.category_slug,
       businessClaimStatus: latestClaim?.status ?? null,
-      contactCount: contacts.length,
     });
     const placeHasOperator = hasOperator({
       businessClaimStatus: latestClaim?.status ?? null,
-      contactCount: contacts.length,
     });
 
     const completeness = this.computeCompleteness(row, contactInfo, allMedia, revisions, notApplicableFields);
