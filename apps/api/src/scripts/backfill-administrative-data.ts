@@ -1,8 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
-import { AppModule } from '../app.module';
-import { AdministrativeBackfillService } from '../modules/admin-data/administrative-backfill.service';
+import type { AdministrativeBackfillService } from '../modules/admin-data/administrative-backfill.service';
 
 // ADMINISTRATIVE DATA BACKFILL (2026-08-18) — cùng khuôn `expire-overdue-verifications.ts`/
 // `bootstrap-operator.ts`: `NestFactory.createApplicationContext()` (KHÔNG mở HTTP server, KHÔNG
@@ -48,6 +47,24 @@ export function assertNotProduction(env: NodeJS.ProcessEnv = process.env): Produ
   return { isSafe: reasons.length === 0, reasons };
 }
 
+// CI IMPORT ISOLATION (2026-08-24) — `AppModule` và service KHÔNG được import TĨNH ở đầu file.
+// Lý do: `import` tĩnh chạy ngay khi module được nạp, kể cả khi `require.main !== module`. Chuỗi
+// `script → app.module → config.module → ConfigModule.forRoot()` validate env NGAY lúc nạp, nên
+// spec chỉ muốn test hàm thuần (`assertNotProduction`) vẫn bị bắt phải có JWT_ACCESS_SECRET/
+// JWT_REFRESH_SECRET — trên CI (không có `.env`) worker Jest chết trước khi chạy test nào.
+// Nạp ĐỘNG bên trong `main()` giữ nguyên hành vi khi script chạy thật, nhưng `import` từ test thì
+// không kéo theo AppModule. `module: CommonJS` ⇒ `import()` biên dịch thành `require()` trì hoãn.
+export async function loadRuntime(): Promise<{
+  AppModule: unknown;
+  AdministrativeBackfillService: new (...args: never[]) => AdministrativeBackfillService;
+}> {
+  const [{ AppModule }, { AdministrativeBackfillService }] = await Promise.all([
+    import('../app.module'),
+    import('../modules/admin-data/administrative-backfill.service'),
+  ]);
+  return { AppModule, AdministrativeBackfillService };
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
@@ -75,7 +92,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['log', 'warn', 'error'] });
+  const { AppModule, AdministrativeBackfillService } = await loadRuntime();
+  const app = await NestFactory.createApplicationContext(AppModule as never, { logger: ['log', 'warn', 'error'] });
 
   try {
     const service = app.get(AdministrativeBackfillService);

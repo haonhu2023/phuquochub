@@ -1,8 +1,26 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
-import { AppModule } from '../app.module';
-import { VerificationsService, type VerificationExpirySummary } from '../modules/verifications/verifications.service';
+import type { VerificationsService, VerificationExpirySummary } from '../modules/verifications/verifications.service';
+
+// CI IMPORT ISOLATION (2026-08-24) — `AppModule` và service KHÔNG được import TĨNH ở đầu file.
+// Lý do: `import` tĩnh chạy ngay khi module được nạp, kể cả khi `require.main !== module`. Chuỗi
+// `script → app.module → config.module → ConfigModule.forRoot()` validate env NGAY lúc nạp, nên
+// spec chỉ muốn test hàm thuần (`hasSystemicFailure`/`parseIntArg`) vẫn bị bắt phải có
+// JWT_ACCESS_SECRET/JWT_REFRESH_SECRET — trên CI (không có `.env`) worker Jest chết trước khi chạy
+// test nào. Nạp ĐỘNG bên trong `main()` giữ nguyên hành vi khi script chạy thật, nhưng `import` từ
+// test thì không kéo theo AppModule. `module: CommonJS` ⇒ `import()` biên dịch thành `require()`
+// trì hoãn.
+export async function loadRuntime(): Promise<{
+  AppModule: unknown;
+  VerificationsService: new (...args: never[]) => VerificationsService;
+}> {
+  const [{ AppModule }, { VerificationsService }] = await Promise.all([
+    import('../app.module'),
+    import('../modules/verifications/verifications.service'),
+  ]);
+  return { AppModule, VerificationsService };
+}
 
 // VERIFICATION SCHEDULER — Operational Enablement (2026-08-06, ADR-008). Standalone manual runner
 // — no HTTP server started, no cron/schedule registered (calls `VerificationsService.
@@ -23,7 +41,8 @@ async function main(): Promise<void> {
   const maxBatches = parseIntArg(args, '--max-batches');
   const maxExecutionMs = parseIntArg(args, '--max-execution-ms');
 
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['log', 'warn', 'error'] });
+  const { AppModule, VerificationsService } = await loadRuntime();
+  const app = await NestFactory.createApplicationContext(AppModule as never, { logger: ['log', 'warn', 'error'] });
   const logger = new Logger('VerificationExpiryRunner');
 
   try {
