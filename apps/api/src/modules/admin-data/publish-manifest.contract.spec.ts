@@ -1,5 +1,7 @@
+import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { canonicalJson } from '../../common/canonical-json';
 import {
   SUPPORTED_MANIFEST_VERSIONS,
   computeManifestChecksum,
@@ -87,6 +89,37 @@ describe('publish-manifest.contract', () => {
     };
 
     expect(computeManifestChecksum(p2)).toBe(computeManifestChecksum(p1));
+  });
+
+  // -------------------------------------------------------------------------
+  // 2b. Encoding tường minh (2026-08-25, Gate B) — computeManifestChecksum() PHẢI khớp bit-for-bit
+  // với một phép tính SHA-256 ĐỘC LẬP trên `Buffer.from(canonicalJson(payload), 'utf8')`. Đây là
+  // semantic test (tính lại digest bằng tay), KHÔNG phải source-text scan — nguồn thật của bằng
+  // chứng là giá trị digest, không phải có xuất hiện chuỗi "utf8" trong source hay không.
+  // -------------------------------------------------------------------------
+  it('checksum KHỚP CHÍNH XÁC với SHA-256 tính độc lập trên Buffer UTF-8 tường minh của canonicalJson(payload)', () => {
+    const payload = buildPayload();
+    const expected = createHash('sha256')
+      .update(Buffer.from(canonicalJson(payload), 'utf8'))
+      .digest('hex');
+
+    expect(computeManifestChecksum(payload)).toBe(expected);
+    expect(computeManifestChecksum(payload)).toMatch(/^[0-9a-f]{64}$/); // 64 hex = SHA-256, không đổi thuật toán
+  });
+
+  it('payload chứa Unicode thật (dấu tiếng Việt, chữ Hàn, chữ Nga) → checksum vẫn khớp digest tính độc lập bằng Buffer UTF-8 (chứng minh xử lý đúng byte ngoài ASCII)', () => {
+    const payload = buildPayload({
+      approval: {
+        approvedBy: 'nhuhao2023@gmail.com',
+        approvedAt: '2026-08-24T10:00:00.000Z',
+        reason: 'Phê duyệt thử nghiệm — 한국어 텍스트 그리고 русский текст, đủ dấu: ă â ê ô ơ ư đ.',
+      },
+    });
+    const expected = createHash('sha256')
+      .update(Buffer.from(canonicalJson(payload), 'utf8'))
+      .digest('hex');
+
+    expect(computeManifestChecksum(payload)).toBe(expected);
   });
 
   // -------------------------------------------------------------------------
