@@ -635,11 +635,12 @@ describe('approval-evidence.contract', () => {
         .filter((line) => line.startsWith('import '));
     }
 
-    it('source CHỈ import node:crypto + common canonical utilities — đúng 3 dòng, không hơn', () => {
+    it('source CHỈ import node:crypto + common canonical utilities — đúng 4 dòng, không hơn', () => {
       const importLines = extractImportStatements(SOURCE);
-      expect(importLines).toHaveLength(3);
+      expect(importLines).toHaveLength(4);
       expect(importLines).toEqual([
         "import { createHash } from 'crypto';",
+        "import { isCanonicalDecimalString } from '../../common/canonical-decimal-string';",
         "import { canonicalJson } from '../../common/canonical-json';",
         "import { isValidCanonicalTimestamp } from '../../common/canonical-timestamp';",
       ]);

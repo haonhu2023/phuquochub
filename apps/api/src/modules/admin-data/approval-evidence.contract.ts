@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { isCanonicalDecimalString } from '../../common/canonical-decimal-string';
 import { canonicalJson } from '../../common/canonical-json';
 import { isValidCanonicalTimestamp } from '../../common/canonical-timestamp';
 
@@ -68,12 +69,6 @@ import { isValidCanonicalTimestamp } from '../../common/canonical-timestamp';
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 /** SHA-1 hex 40 ký tự — format git commit SHA hiện tại (repo chưa dùng SHA-256 object format). */
 const GIT_SHA_HEX_RE = /^[0-9a-f]{40}$/;
-/**
- * Chuỗi thập phân canonical: chỉ chữ số ASCII, dương, KHÔNG leading zero — để một ID số có ĐÚNG
- * MỘT biểu diễn (hai chuỗi khác nhau cùng chỉ một ID sẽ làm so sánh allow-list ở D2 âm thầm
- * trượt). `"0"` bị từ chối vì GitHub numeric ID luôn dương, không bao giờ là 0.
- */
-const CANONICAL_DECIMAL_STRING_RE = /^[1-9][0-9]*$/;
 /** `owner/repo` — hình dạng hợp lý cho field DISPLAY-ONLY; numeric ID mới là authority (§ trên). */
 const REPOSITORY_FULL_NAME_RE = /^[^/\s]+\/[^/\s]+$/;
 
@@ -91,10 +86,6 @@ function isSha256Hex(v: unknown): v is string {
 
 function isGitShaHex(v: unknown): v is string {
   return typeof v === 'string' && GIT_SHA_HEX_RE.test(v);
-}
-
-function isCanonicalDecimalString(v: unknown): v is string {
-  return typeof v === 'string' && CANONICAL_DECIMAL_STRING_RE.test(v);
 }
 
 /**
