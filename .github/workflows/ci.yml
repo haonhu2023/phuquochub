@@ -7,6 +7,15 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+# GHCR publishing (docker-build job, below) is gated on this flag, tracked here in Git rather than
+# in a repository variable or environment secret. The point of tracking it in the workflow file
+# itself: turning publishing on is then a reviewable Git diff -- visible in `git log`, subject to
+# the same PR/CODEOWNERS review as any other workflow change -- instead of a silent toggle in
+# GitHub Settings that leaves no diff and no reviewer. Flip to 'true' only in its own commit, once
+# release policy, GHCR package permissions, and an image rollback plan are approved.
+env:
+  GHCR_PUBLISH_ENABLED: 'false'
+
 jobs:
   build-test:
     name: Lint · Typecheck · Build · Unit test
@@ -282,12 +291,15 @@ jobs:
           docker rm -f web-ci
 
       # PLACE-026 (OD2-7): GHCR via the auto-provided GITHUB_TOKEN — no new secret required.
-      # NOT exercised by a live run in this session: this repository has no git remote configured
-      # here, so no Actions run has ever executed this workflow. The steps below follow the
-      # documented GHCR login/push pattern and are expected to work once a remote exists; treat
-      # them as unverified until the first real push-triggered run confirms it.
+      # The remote for this repository exists and is in active use. That is exactly why these two
+      # steps are gated behind GHCR_PUBLISH_ENABLED (declared at workflow level, above): GHCR
+      # publishing itself has not been owner-approved, and creating a `main` branch would otherwise
+      # be enough on its own to arm a `push`-triggered image publish nobody reviewed. The flag
+      # defaults to 'false' so that moment never happens silently. Flip it to 'true' only in a
+      # reviewed commit, once release policy, GHCR package permissions, and an image rollback plan
+      # are approved -- until then, treat the login/push steps below as unverified.
       - name: Log in to GHCR
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: ${{ env.GHCR_PUBLISH_ENABLED == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -295,7 +307,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push images to GHCR
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+        if: ${{ env.GHCR_PUBLISH_ENABLED == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop') }}
         run: |
           IMAGE_API=ghcr.io/${{ github.repository }}/api
           IMAGE_WEB=ghcr.io/${{ github.repository }}/web
