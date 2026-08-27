@@ -661,6 +661,26 @@ describe('DataQualityAuditService', () => {
       ).toBeDefined();
     });
 
+    // B2 — cùng fixture với "C" ở trên (contact PHONE, không claim approved), nhưng khẳng định RÕ
+    // RÀNG cho field `website`: notApplicableFieldsFor() trả về CẢ BA field cùng lúc (không tách
+    // riêng theo loại contact đã có), nên `website` — dù không có contact nào loại website — vẫn
+    // phải N/A và không được phép sinh MISSING_FIELD phantom. Đây CHÍNH LÀ field mà lỗi lịch sử
+    // (a045a8f: `contactCount > 0` bất kể loại) sẽ làm sai: một contact PHONE do contributor thêm
+    // từng khiến `hasOperator()` trả `true`, kéo `website` ra khỏi N/A dù bãi biển không có
+    // operator thật — sinh MISSING_FIELD oan cho website.
+    it('bãi biển KHÔNG có approved claim nhưng CÓ contact PHONE → website vẫn N/A, không phantom MISSING_FIELD', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue(publicBeach());
+      contactsRepo.listByOwner.mockResolvedValue([
+        { contactType: 'PHONE', value: '0900 000 000', verificationStatus: VerificationStatus.VERIFIED } as never,
+      ]);
+
+      const report = await service.audit(['bai-cong-cong']);
+
+      expect(report.places[0].has_operator).toBe(false);
+      expect(report.places[0].not_applicable_fields).toContain('website');
+      expect(report.issues.find((i) => i.issue_type === 'MISSING_FIELD' && i.field === 'website')).toBeUndefined();
+    });
+
     // D — pending/rejected claim không phải bằng chứng operator, kể cả kèm contact.
     it.each([ClaimStatus.PENDING, ClaimStatus.REJECTED])(
       'bãi biển có business claim "%s" (chưa approved) + có contact → VẪN không có operator',
