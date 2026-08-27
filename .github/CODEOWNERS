@@ -1,0 +1,44 @@
+# ── Trust boundary ────────────────────────────────────────────────────────
+# Vì sao file này tồn tại: các path bên dưới quyết định điều gì được coi là
+# "đã phê duyệt" trước khi dữ liệu chạm production. Sửa chúng mà không có
+# review là bỏ qua chính cổng mà Slice 0.5D dựng lên.
+#
+# THỨ TỰ QUAN TRỌNG: GitHub áp dụng pattern KHỚP CUỐI CÙNG. Catch-all phải
+# đứng đầu; mọi path an ninh phải đứng sau nó, nếu không sẽ bị nuốt.
+#
+# GIỚI HẠN HIỆN TẠI: chỉ có một owner, và GitHub CẤM tác giả PR tự approve.
+# Vì vậy "Require Code Owner review" đang TẮT ở ruleset — file này hiện chỉ
+# tự động REQUEST review và tài liệu hoá quyền sở hữu, chưa CƯỠNG CHẾ.
+# Bật cưỡng chế khi có reviewer thứ hai (điều kiện trước bulk publish).
+
+*                                                              @haonhu2023
+
+# ── CI/CD và chính config quyền sở hữu ───────────────────────────────────
+/.github/**                                                    @haonhu2023
+/.github/CODEOWNERS                                             @haonhu2023
+
+# ── Approval evidence chain (Slice 0.5B/0.5C/0.5D1/0.5D2) ────────────────
+/apps/api/src/modules/admin-data/approval-evidence.contract.ts       @haonhu2023
+/apps/api/src/modules/admin-data/approval-policy.contract.ts         @haonhu2023
+/apps/api/src/modules/admin-data/approval-review-record.contract.ts  @haonhu2023
+/apps/api/src/modules/admin-data/publish-manifest.contract.ts        @haonhu2023
+
+# ── Canonical primitives (bytes được ký phụ thuộc vào chúng) ─────────────
+/apps/api/src/common/canonical-json.ts                         @haonhu2023
+/apps/api/src/common/canonical-timestamp.ts                    @haonhu2023
+/apps/api/src/common/canonical-decimal-string.ts                @haonhu2023
+
+# ── Đường ghi production + guard ─────────────────────────────────────────
+/apps/api/src/modules/admin-data/verified-facts-ingestion.service.ts @haonhu2023
+/apps/api/src/scripts/ingest-verified-facts.ts                 @haonhu2023
+/apps/api/src/scripts/validate-publish-manifest.ts             @haonhu2023
+/apps/api/src/scripts/backfill-administrative-data.ts          @haonhu2023
+
+# ── Hạ tầng deploy ───────────────────────────────────────────────────────
+/scripts/**                                                    @haonhu2023
+/docker-compose.prod.yml                                       @haonhu2023
+/apps/api/Dockerfile                                            @haonhu2023
+/apps/web/Dockerfile                                            @haonhu2023
+
+# ── Migration (có thể ảnh hưởng publication/audit ledger) ────────────────
+/apps/api/src/core/database/migrations/**                      @haonhu2023
