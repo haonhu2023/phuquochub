@@ -10,6 +10,7 @@ import {
 } from '@/modules/tours/api/tours.api';
 import { ApiError } from '@/lib/http';
 import { buildTourJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -81,6 +82,12 @@ export default async function TourDetailPage({ params }: Params) {
         </section>
       )}
 
+      {/* Public Beta price trust gate (2026-08-28): `tour_schedules.price` KHÔNG có cột
+          verification/trust nào ở DB (migration InitTour) — không có bằng chứng nào để gate theo
+          TỪNG chuyến, và place.verification_status của Place cha KHÔNG được dùng làm proxy (một
+          tour đã xác minh không có nghĩa TỪNG mức giá theo lịch khởi hành đã được đối chiếu).
+          Fail-closed: ẩn raw price ở mọi chuyến, MỘT dòng đang xác minh dùng chung cho cả mục
+          (không lặp lại cho từng chuyến) khi có ít nhất một chuyến đã nhập giá. */}
       {schedule.length > 0 && (
         <section>
           <h2>Lịch khởi hành</h2>
@@ -88,11 +95,11 @@ export default async function TourDetailPage({ params }: Params) {
             {schedule.map((s) => (
               <li key={s.id}>
                 {new Date(s.date).toLocaleDateString('vi-VN')}
-                {s.price !== null ? ` · ${s.price.toLocaleString('vi-VN')} ${s.currency}` : ''}
                 {s.capacity ? ` · ${s.capacity} chỗ` : ''}
               </li>
             ))}
           </ul>
+          {schedule.some((s) => s.price !== null) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
     </article>

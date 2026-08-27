@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { BeachesRepository } from './repositories/beaches.repository';
 import { ListBeachesQueryDto } from './dto/beaches.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
+import { redactUntrustedPriceRange } from '../../common/price-trust';
 
 /**
  * Beach = Place có `categories.slug = 'beach'` — KHÔNG có bảng vệ tinh riêng, nên module này chỉ
@@ -33,7 +34,8 @@ export class BeachesService {
       ward: r.ward,
       verification_status: r.verification_status,
       location: { lat: Number(r.lat), lng: Number(r.lng) },
-    }));
+      // Public Beta price trust gate (2026-08-28): raw price_range chỉ lộ khi trạng thái tin cậy.
+    })).map(redactUntrustedPriceRange);
     return paginate(items, p, l, total);
   }
 }

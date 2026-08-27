@@ -176,9 +176,39 @@ describe('buildPopupCard — nội dung popup marker (Phase 4.3)', () => {
     expect(card.textContent).toContain('★ 4.6 (12)');
   });
 
-  it('price_range hợp lệ → hiển thị nhãn tiếng Việt', () => {
-    const card = buildPopupCard(detail({ price_range: 'high' }));
+  // Public Beta price trust gate (2026-08-28) — mặc định `detail()` là verification_status=
+  // 'pending' (chưa tin cậy), nên phải TRUYỀN THÊM trạng thái tin cậy để test giá thật hợp lệ.
+  it('price_range hợp lệ + verification_status tin cậy → hiển thị nhãn tiếng Việt', () => {
+    const card = buildPopupCard(detail({ price_range: 'high', verification_status: 'verified' }));
     expect(card.textContent).toContain('Cao cấp');
+  });
+
+  describe('price trust gate', () => {
+    it('verification_status pending (mặc định) → KHÔNG lộ giá thật, hiện "Giá đang được xác minh"', () => {
+      const card = buildPopupCard(detail({ price_range: 'high' }));
+      expect(card.textContent).not.toContain('Cao cấp');
+      expect(card.textContent).toContain('Giá đang được xác minh');
+    });
+
+    it.each(['expired', 'rejected'] as const)('verification_status %s → vẫn ẩn giá thật', (status) => {
+      const card = buildPopupCard(detail({ price_range: 'mid', verification_status: status }));
+      expect(card.textContent).not.toContain('Tầm trung');
+      expect(card.textContent).toContain('Giá đang được xác minh');
+    });
+
+    it.each(['verified', 'official', 'community_verified'] as const)(
+      'verification_status %s → hiện giá thật, không hiện dòng đang xác minh',
+      (status) => {
+        const card = buildPopupCard(detail({ price_range: 'low', verification_status: status }));
+        expect(card.textContent).toContain('Bình dân');
+        expect(card.textContent).not.toContain('Giá đang được xác minh');
+      },
+    );
+
+    it('không có price_range → không hiện giá thật lẫn dòng đang xác minh', () => {
+      const card = buildPopupCard(detail({ price_range: null }));
+      expect(card.textContent).not.toContain('Giá đang được xác minh');
+    });
   });
 
   it('ward null → không hiển thị dòng khu vực trống', () => {

@@ -8,6 +8,7 @@ import {
 } from '@/modules/restaurants/api/restaurants.api';
 import { ApiError } from '@/lib/http';
 import { buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -66,19 +67,27 @@ export default async function RestaurantDetailPage({ params }: Params) {
       {r.description && <p>{r.description}</p>}
       {r.cuisines.length > 0 && <p style={{ color: '#6b7280' }}>Ẩm thực: {r.cuisines.join(' · ')}</p>}
 
-      {menu.map((s) => (
-        <section key={s.id}>
-          <h2>{s.name}</h2>
-          <ul>
-            {s.items.map((i) => (
-              <li key={i.id}>
-                {i.name}
-                {i.price !== null ? ` · ${i.price.toLocaleString('vi-VN')} ${i.currency}` : ''}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {/* Public Beta price trust gate (2026-08-28): `restaurant_menu_items.price` KHÔNG có cột
+          verification/trust nào ở DB (migration InitRestaurant) — không có bằng chứng nào để
+          gate theo TỪNG món, và place.verification_status của Place cha KHÔNG được dùng làm proxy
+          (một place đã xác minh không có nghĩa TỪNG giá món trong thực đơn đã được đối chiếu).
+          Fail-closed: ẩn raw price ở mọi món, MỘT dòng đang xác minh dùng chung cho cả section
+          (không lặp lại cho từng món) khi section có ít nhất một món đã nhập giá. Tên/mô tả món
+          KHÔNG bị ẩn — chỉ giá trị tiền mới là dữ liệu chưa có bằng chứng xác minh. */}
+      {menu.map((s) => {
+        const hasPricedItem = s.items.some((i) => i.price !== null);
+        return (
+          <section key={s.id}>
+            <h2>{s.name}</h2>
+            <ul>
+              {s.items.map((i) => (
+                <li key={i.id}>{i.name}</li>
+              ))}
+            </ul>
+            {hasPricedItem && <p>{PRICE_VERIFYING_TEXT}</p>}
+          </section>
+        );
+      })}
     </article>
   );
 }

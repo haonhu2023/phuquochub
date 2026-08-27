@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
 import { buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 interface Params {
   params: Promise<{ slug: string }>;
@@ -62,6 +63,12 @@ export default async function HotelDetailPage({ params }: Params) {
         </section>
       )}
 
+      {/* Public Beta price trust gate (2026-08-28): `hotel_room_types.price_ref` KHÔNG có cột
+          verification/trust nào ở DB (migration InitHotel) — không có bằng chứng nào để gate theo
+          TỪNG loại phòng, và place.verification_status của Place cha KHÔNG được dùng làm proxy
+          (một khách sạn đã xác minh không có nghĩa TỪNG mức giá phòng đã được đối chiếu).
+          Fail-closed: ẩn raw price ở mọi loại phòng, MỘT dòng đang xác minh dùng chung cho cả mục
+          (không lặp lại cho từng phòng) khi có ít nhất một loại phòng đã nhập giá. */}
       {h.rooms.length > 0 && (
         <section>
           <h2>Loại phòng</h2>
@@ -70,10 +77,10 @@ export default async function HotelDetailPage({ params }: Params) {
               <li key={r.id}>
                 {r.name}
                 {r.capacity ? ` · ${r.capacity} khách` : ''}
-                {r.price_ref !== null ? ` · từ ${r.price_ref.toLocaleString('vi-VN')} ${r.currency}` : ''}
               </li>
             ))}
           </ul>
+          {h.rooms.some((r) => r.price_ref !== null) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
     </article>

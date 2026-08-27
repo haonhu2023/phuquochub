@@ -115,4 +115,29 @@ describe('BeachesService', () => {
     expect(res.meta.total).toBe(10);
     expect(res.meta.totalPages).toBe(3);
   });
+
+  // Public Beta price trust gate (2026-08-28): route công khai GET /beaches trước đây trả raw
+  // price_range bất kể verification_status — web chỉ ẩn ở tầng render, không phải response JSON.
+  describe('price trust gate', () => {
+    const SECRET_PLACE_RANGE = 'high';
+
+    it.each(['pending', 'expired', 'rejected'])('verification_status %s → price_range redact thành null', async (status) => {
+      repo.listBeaches.mockResolvedValue([
+        { id: 'b3', name: 'Bãi X', slug: 'bai-x', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, ward: null, verification_status: status, lat: '10', lng: '104' },
+      ]);
+      repo.countBeaches.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBeNull();
+      expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+    });
+
+    it.each(['verified', 'official', 'community_verified'])('verification_status %s → giữ nguyên price_range thật', async (status) => {
+      repo.listBeaches.mockResolvedValue([
+        { id: 'b4', name: 'Bãi Y', slug: 'bai-y', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, ward: null, verification_status: status, lat: '10', lng: '104' },
+      ]);
+      repo.countBeaches.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBe(SECRET_PLACE_RANGE);
+    });
+  });
 });

@@ -3,8 +3,19 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 // Mapper đã có test riêng (places.mapper.spec / places-detail.mapper.spec) → mock để test
 // thuần logic điều phối của service, giống events.service.spec.ts.
 jest.mock('./places.mapper', () => ({
-  toPlaceCard: (r: { id?: string; status?: string }) => ({ id: r?.id, status: r?.status, mapped: true }),
-  toPlaceDetail: (r: { id?: string }) => ({ id: r?.id, mappedDetail: true }),
+  toPlaceCard: (r: { id?: string; status?: string; price_range?: string | null; verification_status?: string }) => ({
+    id: r?.id,
+    status: r?.status,
+    price_range: r?.price_range ?? null,
+    verification_status: r?.verification_status ?? 'pending',
+    mapped: true,
+  }),
+  toPlaceDetail: (r: { id?: string; price_range?: string | null; verification_status?: string }) => ({
+    id: r?.id,
+    ...(r?.price_range !== undefined ? { price_range: r.price_range } : {}),
+    ...(r?.verification_status !== undefined ? { verification_status: r.verification_status } : {}),
+    mappedDetail: true,
+  }),
 }));
 
 import { PlacesService } from './places.service';
@@ -100,7 +111,53 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(params.limit).toBe(10);
       expect(params.offset).toBe(10);
       expect(res.meta.total).toBe(1);
-      expect(res.data[0]).toEqual({ id: 'p1', status: undefined, mapped: true });
+      expect(res.data[0]).toEqual({
+        id: 'p1',
+        status: undefined,
+        price_range: null,
+        verification_status: 'pending',
+        mapped: true,
+      });
+    });
+
+    // Public Beta price trust gate (2026-08-28): route công khai `GET /places` trước đây trả
+    // raw price_range bất kể verification_status — web chỉ ẩn nó ở tầng render, không phải ở
+    // response JSON. Sentinel để chứng minh giá trị thật KHÔNG lộ ra dưới bất kỳ hình thức nào.
+    describe('price trust gate', () => {
+      const SECRET_PLACE_RANGE = 'high'; // price_range là enum đóng (free/low/mid/high) — giá trị
+      // "bí mật" ở đây là chính giá trị enum, khoá bằng cách kiểm tra CHÍNH XÁC nó không xuất hiện.
+
+      it('verification_status pending → price_range redact thành null', async () => {
+        placesRepo.list.mockResolvedValue({
+          items: [{ id: 'p1', price_range: SECRET_PLACE_RANGE, verification_status: 'pending' }],
+          total: 1,
+        });
+        const res = await service.list({} as never);
+        expect(res.data[0].price_range).toBeNull();
+        expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+      });
+
+      it.each(['expired', 'rejected'])('verification_status %s → vẫn redact', async (status) => {
+        placesRepo.list.mockResolvedValue({
+          items: [{ id: 'p1', price_range: SECRET_PLACE_RANGE, verification_status: status }],
+          total: 1,
+        });
+        const res = await service.list({} as never);
+        expect(res.data[0].price_range).toBeNull();
+        expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+      });
+
+      it.each(['verified', 'official', 'community_verified'])(
+        'verification_status %s → giữ nguyên price_range thật',
+        async (status) => {
+          placesRepo.list.mockResolvedValue({
+            items: [{ id: 'p1', price_range: SECRET_PLACE_RANGE, verification_status: status }],
+            total: 1,
+          });
+          const res = await service.list({} as never);
+          expect(res.data[0].price_range).toBe(SECRET_PLACE_RANGE);
+        },
+      );
     });
   });
 
@@ -353,6 +410,122 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(pricesRepo.current).toHaveBeenCalledWith('place', 'p1');
       // trust_sources đọc entity_type='place_field' (từng trường), KHÔNG 'place'.
       expect(sourceAttributionsRepo.listByEntity).toHaveBeenCalledWith('place_field', 'p1');
+    });
+
+    // Public Beta price trust gate (2026-08-28): `GET /places/:slug` trước đây trả raw
+    // `price_range` VÀ raw `prices[].amount` bất kể verification_status — web chỉ ẩn ở tầng
+    // render, không phải ở response JSON. Sentinel để chứng minh giá trị thật KHÔNG lộ ra dưới
+    // bất kỳ hình thức nào (kể cả JSON.stringify toàn bộ response).
+    describe('price trust gate', () => {
+      const SECRET_PLACE_RANGE = 'high';
+      const SECRET_PLACE_PRICE = 987652;
+
+      function commonMocks() {
+        contactsRepo.listByOwner.mockResolvedValue([]);
+        mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+        placesRepo.listFaqs.mockResolvedValue([]);
+        sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+      }
+
+      it('place verification_status pending → price_range redact thành null', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          price_range: SECRET_PLACE_RANGE,
+          verification_status: 'pending',
+        });
+        pricesRepo.current.mockResolvedValue([]);
+        commonMocks();
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.price_range).toBeNull();
+        expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+      });
+
+      it('place verification_status verified → giữ nguyên price_range thật', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          price_range: SECRET_PLACE_RANGE,
+          verification_status: 'verified',
+        });
+        pricesRepo.current.mockResolvedValue([]);
+        commonMocks();
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.price_range).toBe(SECRET_PLACE_RANGE);
+      });
+
+      it('price_history record pending → amount redact thành null (verification_status của TỪNG dòng giá, không phải của place)', async () => {
+        // Place BẢN THÂN đã 'verified' — không được dùng làm proxy cho trust của dòng giá.
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', verification_status: 'verified' });
+        pricesRepo.current.mockResolvedValue([
+          {
+            id: 'pr1',
+            serviceName: 'Vé vào cổng',
+            amount: String(SECRET_PLACE_PRICE),
+            currency: 'VND',
+            unit: null,
+            isFree: false,
+            validFrom: null,
+            validTo: null,
+            verificationStatus: 'pending',
+          },
+        ]);
+        commonMocks();
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.prices[0].amount).toBeNull();
+        expect(res.prices[0].service_name).toBe('Vé vào cổng'); // trường không phải giá vẫn giữ
+        expect(JSON.stringify(res)).not.toContain(String(SECRET_PLACE_PRICE));
+      });
+
+      it.each(['verified', 'official', 'community_verified'])(
+        'price_history record %s → giữ nguyên amount thật',
+        async (status) => {
+          placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+          pricesRepo.current.mockResolvedValue([
+            {
+              id: 'pr1',
+              serviceName: 'Vé vào cổng',
+              amount: String(SECRET_PLACE_PRICE),
+              currency: 'VND',
+              unit: null,
+              isFree: false,
+              validFrom: null,
+              validTo: null,
+              verificationStatus: status,
+            },
+          ]);
+          commonMocks();
+
+          const res = await service.getBySlug('bai-sao');
+
+          expect(res.prices[0].amount).toBe(SECRET_PLACE_PRICE);
+        },
+      );
+
+      it('nhiều dòng giá trộn trusted/untrusted → chỉ dòng untrusted bị redact', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+        pricesRepo.current.mockResolvedValue([
+          {
+            id: 'pr-trusted', serviceName: 'Vé người lớn', amount: '150000', currency: 'VND',
+            unit: null, isFree: false, validFrom: null, validTo: null, verificationStatus: 'verified',
+          },
+          {
+            id: 'pr-untrusted', serviceName: 'Vé trẻ em', amount: String(SECRET_PLACE_PRICE), currency: 'VND',
+            unit: null, isFree: false, validFrom: null, validTo: null, verificationStatus: 'rejected',
+          },
+        ]);
+        commonMocks();
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.prices[0].amount).toBe(150000);
+        expect(res.prices[1].amount).toBeNull();
+        expect(JSON.stringify(res)).not.toContain(String(SECRET_PLACE_PRICE));
+      });
     });
 
     // Place Trust & Freshness Surface (2026-08-19) — ghép trust_sources từ source_attributions + sources.

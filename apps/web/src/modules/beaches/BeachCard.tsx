@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { BeachCard as BeachCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
-import { getTrustBadge, TRUST_BADGE_LABEL } from '@/modules/places/trust';
+import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from '@/modules/places/trust';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './beaches.module.css';
 
@@ -12,7 +12,12 @@ import styles from './beaches.module.css';
 // schema không có trường nào cho chúng, và đó là thông tin an toàn — suy đoán từ mô tả rồi trình
 // bày như dữ kiện là điều không được làm.
 export function BeachCard({ beach }: { beach: BeachCardType }) {
-  const priceLabel = formatPriceRange(beach.price_range);
+  // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
+  // cậy — cùng invariant dùng chung mọi thẻ public, không phụ thuộc category (xem places/trust.ts).
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(beach.price_range),
+    beach.verification_status,
+  );
   const isVerified = getTrustBadge(beach.verification_status) === 'verified';
 
   return (
@@ -47,7 +52,9 @@ export function BeachCard({ beach }: { beach: BeachCardType }) {
           )}
           {/* price_range NULL nghĩa là CHƯA BIẾT, không phải "miễn phí" — chỉ hiện nhãn khi API
               thực sự trả giá trị, không suy ra "bãi biển thì luôn miễn phí". */}
-          {priceLabel && <span className={placesStyles.price}>{priceLabel}</span>}
+          {(priceLabel || showPriceVerifying) && (
+            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+          )}
           {isVerified && (
             <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
           )}

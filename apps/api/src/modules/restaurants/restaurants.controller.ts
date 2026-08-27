@@ -19,7 +19,9 @@ export class RestaurantsController {
   @Public()
   @Get(':id/menu')
   getMenu(@Param('id', ParseUUIDPipe) id: string) {
-    return this.restaurantsService.getMenu(id);
+    // Public Beta price trust gate (2026-08-28): route công khai → luôn redact raw price
+    // (menu items không có trust column riêng để gate theo từng món, xem restaurants.service.ts).
+    return this.restaurantsService.getMenu(id, { publicResponse: true });
   }
 
   @Patch(':id/menu')

@@ -72,7 +72,13 @@ export interface PlaceContact {
 export interface PlacePrice {
   id: string;
   service_name: string;
-  amount: number;
+  /**
+   * Public Beta price trust gate (2026-08-28): `null` khi `verification_status` của CHÍNH bản ghi
+   * giá này chưa tin cậy (API redact tại response boundary, xem apps/api PlacesService.getBySlug/
+   * PricesService.listByPlace) — KHÔNG suy ra ý nghĩa "miễn phí" hay "chưa nhập giá" từ `null`,
+   * chỉ dùng `is_free` cho ý nghĩa đó.
+   */
+  amount: number | null;
   currency: string;
   unit: string | null;
   is_free: boolean;

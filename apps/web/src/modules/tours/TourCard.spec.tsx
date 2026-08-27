@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { TourCard } from './TourCard';
 import type { TourCard as TourCardType } from './types';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 const BASE_TOUR: TourCardType = {
   id: 't1',
@@ -12,6 +13,7 @@ const BASE_TOUR: TourCardType = {
   rating_avg: null,
   rating_count: 0,
   price_range: null,
+  verification_status: 'pending',
   ward: null,
   tour_type: 'diving',
   duration_minutes: null,
@@ -63,8 +65,29 @@ describe('TourCard', () => {
   });
 
   it('renders a localized price label for a known price_range', () => {
-    render(<TourCard tour={{ ...BASE_TOUR, price_range: 'mid' }} />);
+    render(<TourCard tour={{ ...BASE_TOUR, price_range: 'mid', verification_status: 'verified' }} />);
     expect(screen.getByText('Tầm trung')).toBeInTheDocument();
+  });
+
+  // Public Beta price trust gate (2026-08-28): raw price of an unverified tour must never render
+  // — TourCard previously had no verification_status field at all and showed price unconditionally.
+  describe('price trust gate', () => {
+    it('pending + có giá → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', () => {
+      render(<TourCard tour={{ ...BASE_TOUR, verification_status: 'pending', price_range: 'low' }} />);
+      expect(screen.queryByText('Bình dân')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it('expired + có giá → vẫn ẩn giá thật', () => {
+      render(<TourCard tour={{ ...BASE_TOUR, verification_status: 'expired', price_range: 'high' }} />);
+      expect(screen.queryByText('Cao cấp')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it('pending KHÔNG có giá → không hiện giá thật lẫn dòng đang xác minh', () => {
+      render(<TourCard tour={{ ...BASE_TOUR, verification_status: 'pending', price_range: null }} />);
+      expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+    });
   });
 
   it('renders rating with a count suffix when rating_count > 0, without one when zero', () => {

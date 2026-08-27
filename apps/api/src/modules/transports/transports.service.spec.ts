@@ -2,6 +2,12 @@ import { NotFoundException } from '@nestjs/common';
 import { TransportsService } from './transports.service';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
+// Public Beta price trust gate — Transport (2026-08-28): a distinctive sentinel amount used only
+// in the raw repository fixtures below. It must NEVER appear anywhere in a mapped/serialized
+// response — proving the redaction is real (the fixture legitimately carries the value; the
+// mapper is what strips it), not an artifact of the fixture never having a price to begin with.
+const SECRET_TRANSPORT_PRICE = '987654';
+
 // Transport = Place (category='transport') + satellite `place_transport_details` (ADR-017).
 // Mock PlacesService + repo — service không có phương thức ghi nào.
 describe('TransportsService', () => {
@@ -48,12 +54,35 @@ describe('TransportsService', () => {
         id: 't1',
         rating_avg: 4.2,
         transport_type: { code: 'taxi', label_vi: 'Taxi', label_en: 'Taxi' },
-        pricing: { model: 'per_km', price_ref: 15000, currency: 'VND', unit: 'km' },
+        // Public Beta price trust gate (2026-08-28): price_ref ALWAYS null in the public response
+        // — no per-record trust column exists on place_transport_details (see transports.service.ts).
+        // model/currency/unit describe the pricing structure, not an amount, so they still pass through.
+        pricing: { model: 'per_km', price_ref: null, currency: 'VND', unit: 'km' },
         capacity_passengers: 4,
         booking_required: false,
         airport_transfer: true,
         location: { lat: 10.2, lng: 103.96 },
       });
+    });
+
+    it('price trust gate: raw price_ref never leaks into the public list response, even verified', async () => {
+      repo.listTransports.mockResolvedValue([
+        {
+          id: 't1', name: 'Taxi Mai Linh Phú Quốc', slug: 'taxi-mai-linh', short_description: null,
+          cover_image_url: null, ward: 'Dương Đông', rating_avg: null, rating_count: 0,
+          verification_status: 'verified', // place itself IS trusted — must NOT be used as a proxy
+          transport_type_code: 'taxi', transport_type_label_vi: 'Taxi', transport_type_label_en: 'Taxi',
+          pricing_model: 'fixed', price_ref: SECRET_TRANSPORT_PRICE, price_currency: 'VND', price_unit: null,
+          capacity_passengers: 4, booking_required: false, airport_transfer: true,
+          lat: '10.2', lng: '103.96',
+        },
+      ]);
+      repo.countTransports.mockResolvedValue(1);
+
+      const res = await service.list();
+
+      expect(res.data[0].pricing.price_ref).toBeNull();
+      expect(JSON.stringify(res)).not.toContain(SECRET_TRANSPORT_PRICE);
     });
 
     it('pricing_model/price_ref NULL → pricing.model=null, price_ref=null (chưa xác nhận ≠ 0/miễn phí)', async () => {
@@ -162,20 +191,78 @@ describe('TransportsService', () => {
 
       const res = await service.getBySlug('taxi-mai-linh');
 
+      // Public Beta price trust gate (2026-08-28): price_ref ALWAYS null — no per-record trust
+      // column exists on place_transport_details/transport_service_options.
       expect(res.transport_details).toMatchObject({
         transport_type: { code: 'taxi', label_vi: 'Taxi', label_en: 'Taxi' },
-        pricing: { model: 'fixed', price_ref: 200000, currency: 'VND', unit: null },
+        pricing: { model: 'fixed', price_ref: null, currency: 'VND', unit: null },
         booking_required: true,
         booking_note: 'Đặt trước 2 giờ',
       });
       expect(res.service_options).toHaveLength(1);
-      expect(res.service_options[0]).toMatchObject({ id: 'o1', name: 'Xe 4 chỗ', price_ref: 200000 });
+      expect(res.service_options[0]).toMatchObject({ id: 'o1', name: 'Xe 4 chỗ', price_ref: null });
       expect(res.routes[0]).toMatchObject({
         origin_label: 'Sân bay Phú Quốc',
         origin_location: { lat: 10.2, lng: 103.96 },
         destination_location: null,
       });
       expect(res.service_areas).toEqual(['Dương Đông', 'An Thới']);
+    });
+
+    it('price trust gate: raw price_ref (transport_details và service_options) không lộ ra JSON response, kể cả place đã verified', async () => {
+      placesService.getBySlug.mockResolvedValue({ id: 'p1', slug: 'taxi-mai-linh', verification_status: 'verified' });
+      repo.detail.mockResolvedValue({
+        transport_type_code: 'taxi', transport_type_label_vi: 'Taxi', transport_type_label_en: 'Taxi',
+        provider_business_id: null, pricing_model: 'fixed', price_ref: SECRET_TRANSPORT_PRICE, price_currency: 'VND',
+        price_unit: null, capacity_passengers: 4, booking_required: true, airport_transfer: true,
+        booking_note: null,
+      });
+      repo.listServiceOptions.mockResolvedValue([
+        {
+          id: 'o1', name: 'Xe 4 chỗ', capacity_passengers: 4,
+          price_ref: SECRET_TRANSPORT_PRICE, price_currency: 'VND', price_unit: null,
+          valid_from: null, valid_to: null, sort_order: 0,
+        },
+      ]);
+      repo.listRoutes.mockResolvedValue([]);
+      repo.listServiceAreas.mockResolvedValue([]);
+
+      const res = await service.getBySlug('taxi-mai-linh');
+
+      expect(res.transport_details.pricing.price_ref).toBeNull();
+      expect(res.service_options[0].price_ref).toBeNull();
+      // Full-response scan — proves the sentinel doesn't leak into any nested field, not just the
+      // ones explicitly asserted above.
+      expect(JSON.stringify(res)).not.toContain(SECRET_TRANSPORT_PRICE);
+    });
+
+    // Public Beta price trust gate (2026-08-28): `place.price_range`/`place.prices[]` are already
+    // redacted INSIDE PlacesService.getBySlug() (own sentinel tests in places.service.spec.ts) —
+    // TransportsService.getBySlug() just spreads `...place` (transports.service.ts). This test
+    // pins that TransportsService does NOT re-derive or restore those fields from anywhere else,
+    // so a future edit here can't silently reintroduce the leak that existed before that fix.
+    it('không tự khôi phục price_range/prices[] đã redact ở PlacesService — chỉ kế thừa nguyên trạng', async () => {
+      placesService.getBySlug.mockResolvedValue({
+        id: 'p1',
+        slug: 'taxi-mai-linh',
+        verification_status: 'pending',
+        price_range: null, // PlacesService.getBySlug() ĐÃ redact vì place đang pending
+        prices: [{ id: 'pr1', service_name: 'Phí phụ thu', amount: null, verification_status: 'pending' }],
+      });
+      repo.detail.mockResolvedValue({
+        transport_type_code: 'taxi', transport_type_label_vi: 'Taxi', transport_type_label_en: 'Taxi',
+        provider_business_id: null, pricing_model: null, price_ref: null, price_currency: 'VND',
+        price_unit: null, capacity_passengers: null, booking_required: null, airport_transfer: null,
+        booking_note: null,
+      });
+      repo.listServiceOptions.mockResolvedValue([]);
+      repo.listRoutes.mockResolvedValue([]);
+      repo.listServiceAreas.mockResolvedValue([]);
+
+      const res = await service.getBySlug('taxi-mai-linh');
+
+      expect(res.price_range).toBeNull();
+      expect(res.prices[0].amount).toBeNull();
     });
 
     it('place tồn tại nhưng thiếu hàng vệ tinh → NotFoundException (toàn vẹn dữ liệu lệch, không trả record hỏng)', async () => {
@@ -209,11 +296,29 @@ describe('TransportsService', () => {
       const res = await service.findByPlaceId('p1');
 
       expect(repo.detail).toHaveBeenCalledWith('p1');
+      // Public Beta price trust gate (2026-08-28): findByPlaceId shares mapPricing() with the
+      // public list()/getBySlug() paths, so it gets the same fail-closed redaction even though it
+      // isn't wired to any controller today — a future internal caller can't accidentally leak a
+      // raw price by reusing this mapper.
       expect(res).toMatchObject({
         transport_type: { code: 'ferry', label_vi: 'Phà' },
         provider_business_id: 'biz1',
-        pricing: { model: 'per_person', price_ref: 80000, unit: 'khách' },
+        pricing: { model: 'per_person', price_ref: null, unit: 'khách' },
       });
+    });
+
+    it('price trust gate: raw price_ref không lộ ra dù chưa có controller nào gọi endpoint này', async () => {
+      repo.detail.mockResolvedValue({
+        transport_type_code: 'ferry', transport_type_label_vi: 'Phà', transport_type_label_en: 'Ferry',
+        provider_business_id: 'biz1', pricing_model: 'per_person', price_ref: SECRET_TRANSPORT_PRICE,
+        price_currency: 'VND', price_unit: 'khách', capacity_passengers: null, booking_required: null,
+        airport_transfer: null, booking_note: null,
+      });
+
+      const res = await service.findByPlaceId('p1');
+
+      expect(res.pricing.price_ref).toBeNull();
+      expect(JSON.stringify(res)).not.toContain(SECRET_TRANSPORT_PRICE);
     });
 
     it('không có hàng → NotFoundException', async () => {

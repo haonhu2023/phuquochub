@@ -78,7 +78,7 @@ export class ToursRepository {
     // liệu ĐÃ có trong row, cũng không truy vấn thêm.
     const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count,
-              p.price_range, p.ward,
+              p.price_range, p.ward, p.verification_status,
               ${COVER_IMAGE_COLS},
               td.tour_type, td.duration_minutes, td.difficulty,
               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng

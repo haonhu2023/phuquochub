@@ -114,4 +114,29 @@ describe('AttractionsService', () => {
     expect(res.meta.total).toBe(45);
     expect(res.meta.totalPages).toBe(3);
   });
+
+  // Public Beta price trust gate (2026-08-28): route công khai GET /attractions trước đây trả
+  // raw price_range bất kể verification_status — web chỉ ẩn ở tầng render, không phải response JSON.
+  describe('price trust gate', () => {
+    const SECRET_PLACE_RANGE = 'mid';
+
+    it.each(['pending', 'expired', 'rejected'])('verification_status %s → price_range redact thành null', async (status) => {
+      repo.listAttractions.mockResolvedValue([
+        { id: 'a3', name: 'Điểm X', slug: 'diem-x', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, ward: null, verification_status: status, lat: '10', lng: '104' },
+      ]);
+      repo.countAttractions.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBeNull();
+      expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+    });
+
+    it.each(['verified', 'official', 'community_verified'])('verification_status %s → giữ nguyên price_range thật', async (status) => {
+      repo.listAttractions.mockResolvedValue([
+        { id: 'a4', name: 'Điểm Y', slug: 'diem-y', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, ward: null, verification_status: status, lat: '10', lng: '104' },
+      ]);
+      repo.countAttractions.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBe(SECRET_PLACE_RANGE);
+    });
+  });
 });

@@ -12,10 +12,22 @@ function mapTransportType(r: Record<string, unknown>) {
   };
 }
 
+// Public Beta price trust gate — Transport (2026-08-28): `place_transport_details.price_ref` and
+// `transport_service_options.price_ref` carry NO verification/trust column at the DB level
+// (migration InitTransport1720002300000 never added one, and none since) — same class of gap
+// already closed UI-side for restaurant menu items / tour schedules / hotel rooms, but this is the
+// runtime RESPONSE boundary for a fully `@Public()` REST API (list + detail), so redaction has to
+// happen here, not in a web component that doesn't exist for this domain yet. Fail-closed:
+// `price_ref` is ALWAYS `null` in every public response — never read from the row, never derived
+// from `places.verification_status` (that would be a false proxy: a verified transport listing
+// doesn't mean its price was individually checked). `model`/`currency`/`unit` describe the pricing
+// STRUCTURE, not an amount, so they stay — only the numeric value is redacted. `price_ref` was
+// already `number | null` in the response contract, so returning `null` unconditionally is not a
+// breaking shape change for any consumer.
 function mapPricing(r: Record<string, unknown>) {
   return {
     model: r.pricing_model ?? null,
-    price_ref: r.price_ref !== null && r.price_ref !== undefined ? Number(r.price_ref) : null,
+    price_ref: null,
     currency: r.price_currency,
     unit: r.price_unit ?? null,
   };
@@ -26,7 +38,8 @@ function mapServiceOption(r: Record<string, unknown>) {
     id: r.id,
     name: r.name,
     capacity_passengers: r.capacity_passengers,
-    price_ref: r.price_ref !== null && r.price_ref !== undefined ? Number(r.price_ref) : null,
+    // Public Beta price trust gate (2026-08-28) — see mapPricing() above; same fail-closed policy.
+    price_ref: null,
     price_currency: r.price_currency,
     price_unit: r.price_unit ?? null,
     valid_from: r.valid_from,

@@ -1,4 +1,4 @@
-import type { GeoPoint, PriceRangeValue } from '@/modules/places/types';
+import type { GeoPoint, PriceRangeValue, VerificationStatusValue } from '@/modules/places/types';
 
 export const TOUR_SORT_VALUES = ['rating_desc', 'name_asc', 'duration_asc'] as const;
 export type TourSort = (typeof TOUR_SORT_VALUES)[number];
@@ -29,6 +29,7 @@ export interface TourCard {
   rating_avg: number | null;
   rating_count: number;
   price_range: PriceRangeValue | null;
+  verification_status: VerificationStatusValue;
   /** Khu vực khởi hành = places.ward (vd "An Thới"). */
   ward: string | null;
   tour_type: string;

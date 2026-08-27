@@ -1,9 +1,13 @@
 import type { PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
 import {
+  canDisplayPrice,
   fieldLabel,
   formatVerifiedAt,
   getTrustBadge,
+  isPendingVerification,
   isTrustedVerification,
+  PRICE_VERIFYING_TEXT,
+  resolvePriceDisplay,
   summarizeTrustSources,
   TRUST_BADGE_LABEL,
 } from './trust';
@@ -45,6 +49,66 @@ describe('isTrustedVerification / getTrustBadge', () => {
       for (const label of allLabels) {
         expect(label).not.toContain(phrase);
       }
+    }
+  });
+});
+
+describe('isPendingVerification', () => {
+  it('pending → true', () => {
+    expect(isPendingVerification('pending')).toBe(true);
+  });
+
+  // rejected KHÔNG được gộp với pending — đây là hai trạng thái thật khác nhau (đã bị từ chối vs
+  // chưa ai xem tới), dù cả hai cùng rơi vào badge "unverified".
+  it.each<VerificationStatusValue>(['rejected', 'verified', 'official', 'community_verified', 'expired'])(
+    '%s → false (không phải pending)',
+    (status) => {
+      expect(isPendingVerification(status)).toBe(false);
+    },
+  );
+});
+
+describe('canDisplayPrice — Public Beta price trust gate (2026-08-28)', () => {
+  it.each<VerificationStatusValue>(['verified', 'official', 'community_verified'])(
+    '%s → được phép hiện giá thật',
+    (status) => {
+      expect(canDisplayPrice(status)).toBe(true);
+    },
+  );
+
+  // KHÔNG phụ thuộc category — mọi trạng thái chưa tin cậy đều bị chặn như nhau, bất kể place
+  // thuộc nhóm "thương mại" hay không (beach/attraction/market không còn là ngoại lệ).
+  it.each<VerificationStatusValue>(['pending', 'expired', 'rejected'])(
+    '%s → KHÔNG được hiện giá thật',
+    (status) => {
+      expect(canDisplayPrice(status)).toBe(false);
+    },
+  );
+});
+
+describe('resolvePriceDisplay', () => {
+  it('trusted + có giá → trả nguyên nhãn thật, verifying=false', () => {
+    expect(resolvePriceDisplay('Cao cấp', 'verified')).toEqual({ label: 'Cao cấp', verifying: false });
+  });
+
+  it('chưa tin cậy + có giá → label=null, verifying=true (nơi gọi hiện PRICE_VERIFYING_TEXT)', () => {
+    expect(resolvePriceDisplay('Cao cấp', 'pending')).toEqual({ label: null, verifying: true });
+  });
+
+  // Không được bịa dòng "đang xác minh" cho một place CHƯA TỪNG có giá trị.
+  it('chưa tin cậy + KHÔNG có giá (null) → label=null, verifying=false', () => {
+    expect(resolvePriceDisplay(null, 'pending')).toEqual({ label: null, verifying: false });
+  });
+
+  it('trusted + không có giá → label=null, verifying=false', () => {
+    expect(resolvePriceDisplay(null, 'verified')).toEqual({ label: null, verifying: false });
+  });
+});
+
+describe('PRICE_VERIFYING_TEXT', () => {
+  it('không chứa bất kỳ nhãn mức giá thật nào', () => {
+    for (const real of ['Miễn phí', 'Bình dân', 'Tầm trung', 'Cao cấp']) {
+      expect(PRICE_VERIFYING_TEXT).not.toContain(real);
     }
   });
 });

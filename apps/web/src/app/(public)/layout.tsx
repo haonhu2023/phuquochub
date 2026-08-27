@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { SiteFooter } from '@/modules/legal/SiteFooter';
+import { BetaBanner } from '@/modules/legal/BetaBanner';
 
 // Layout công khai (Places · Map · Search) — nav tối giản, không cần đăng nhập.
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <div>
+      <BetaBanner />
       <header
         style={{
           display: 'flex',

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
-import { getTrustBadge, TRUST_BADGE_LABEL } from './trust';
+import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from './trust';
 import styles from './places.module.css';
 
 // Thẻ địa điểm (presentational). Dùng ở danh sách + kết quả tìm kiếm.
@@ -16,7 +16,13 @@ export function PlaceCard({
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
 }) {
-  const priceLabel = formatPriceRange(place.price_range);
+  // Public Beta price trust gate (2026-08-28): giá thật CHỈ hiện khi verification_status đã tin
+  // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
+  // BeachCard, AttractionCard, popup bản đồ). Chưa tin cậy nhưng CÓ giá → PRICE_VERIFYING_TEXT.
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(place.price_range),
+    place.verification_status,
+  );
   // Thẻ chỉ hiện tín hiệu TÍCH CỰC — không hiện gì cho 'stale'/'unverified': một badge trung tính
   // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
   const isVerified = getTrustBadge(place.verification_status) === 'verified';
@@ -47,7 +53,9 @@ export function PlaceCard({
               {place.rating_count > 0 ? ` (${place.rating_count})` : ''}
             </span>
           )}
-          {priceLabel && <span className={styles.price}>{priceLabel}</span>}
+          {(priceLabel || showPriceVerifying) && (
+            <span className={styles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+          )}
           {typeof place.distance_m === 'number' && <span>{formatDistance(place.distance_m)}</span>}
           {isVerified && (
             <span className={`${styles.badge} ${styles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>

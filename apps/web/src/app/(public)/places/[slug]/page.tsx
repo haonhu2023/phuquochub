@@ -5,13 +5,18 @@ import { getPlace } from '@/modules/places/api/places.api';
 import { formatPriceRange } from '@/modules/places/format';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import {
+  canDisplayPrice,
   formatVerifiedAt,
   getTrustBadge,
+  isPendingVerification,
+  PENDING_DISCLOSURE_TEXT,
+  PRICE_VERIFYING_TEXT,
+  resolvePriceDisplay,
   summarizeTrustSources,
   TRUST_BADGE_LABEL,
 } from '@/modules/places/trust';
 import { ApiError } from '@/lib/http';
-import type { PlaceContact, PlaceDetail, PlaceMedia } from '@/modules/places/types';
+import type { PlaceContact, PlaceDetail, PlaceMedia, VerificationStatusValue } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
 import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
@@ -109,7 +114,17 @@ export default async function PlaceDetailPage({ params }: Params) {
   const hasHours = hasOpeningHours(place.opening_hours);
   const openingToday = getOpeningToday(place.opening_hours);
   const openingWeek = getOpeningWeek(place.opening_hours);
-  const priceLabel = formatPriceRange(place.price_range);
+  // Public Beta price trust gate (2026-08-28): price_range của MỌI place — bất kể category — chỉ
+  // hiển thị giá trị THẬT khi verification_status đã tin cậy (canDisplayPrice, places/trust.ts).
+  // Chưa tin cậy thì thay bằng PRICE_VERIFYING_TEXT (không bao giờ giá trị thật), CHỈ khi thật sự
+  // có price_range để ẩn (place chưa từng nhập giá thì không bịa ra một dòng "đang xác minh" cho
+  // thứ chưa tồn tại). KHÔNG còn phụ thuộc category: bản trước chỉ ẩn giá cho category "thương
+  // mại" (isCommercialCategory) — rủi ro rò giá sai của một attraction/beach/market chưa xác minh
+  // là như nhau, gate này không được phép đoán qua category.
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(place.price_range),
+    place.verification_status,
+  );
   // Trust & Freshness Surface: badge suy từ verification_status theo CHÍNH SÁCH đã có ở backend
   // (verified/official/community_verified = tin cậy; expired = đã lâu chưa xác minh lại — job
   // expireOverdue() đã hạ nó xuống đây, không phải một ngưỡng ngày tự đặt ở web). 'unverified'
@@ -118,8 +133,15 @@ export default async function PlaceDetailPage({ params }: Params) {
   const trustBadge = getTrustBadge(place.verification_status);
   const trustSource = summarizeTrustSources(place.trust_sources);
   const verifiedAtLabel = place.verified_at ? formatVerifiedAt(place.verified_at) : null;
-  const hasInfo = place.address || place.ward || priceLabel || hasHours;
+  const hasInfo = place.address || place.ward || priceLabel || showPriceVerifying || hasHours;
   const mapHref = `https://www.google.com/maps?q=${place.location.lat},${place.location.lng}`;
+  // Public Beta price trust gate — "Giá dịch vụ" (2026-08-28): mỗi dòng `PlacePrice` đã mang sẵn
+  // `verification_status` RIÊNG của chính bản ghi giá đó (price_history.verification_status,
+  // KHÔNG phải verification_status của place) — dùng ĐÚNG field đó, cùng canDisplayPrice() dùng
+  // cho price_range, không suy ra trust của một dòng giá từ trust của place chứa nó. MỘT dòng
+  // disclosure DÙNG CHUNG cho cả mục thay vì lặp lại cho từng dòng giá chưa xác minh.
+  const trustedPrices = place.prices.filter((p) => canDisplayPrice(p.verification_status));
+  const hasUnverifiedPrices = place.prices.some((p) => !canDisplayPrice(p.verification_status));
 
   return (
     <article className={styles.detail}>
@@ -177,6 +199,7 @@ export default async function PlaceDetailPage({ params }: Params) {
         </p>
         <TrustNote
           badge={trustBadge}
+          rawStatus={place.verification_status}
           verifiedAtLabel={verifiedAtLabel}
           sourceLabel={trustSource.label}
           sourceUrl={trustSource.url}
@@ -225,10 +248,10 @@ export default async function PlaceDetailPage({ params }: Params) {
                 <dd className={styles.infoValue}>{place.ward}</dd>
               </div>
             )}
-            {priceLabel && (
+            {(priceLabel || showPriceVerifying) && (
               <div className={styles.infoItem}>
                 <dt className={styles.infoLabel}>Mức giá</dt>
-                <dd className={styles.infoValue}>{priceLabel}</dd>
+                <dd className={styles.infoValue}>{priceLabel ?? PRICE_VERIFYING_TEXT}</dd>
               </div>
             )}
             {hasHours && (
@@ -283,18 +306,27 @@ export default async function PlaceDetailPage({ params }: Params) {
       {place.prices.length > 0 && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Giá dịch vụ</h2>
-          <ul className={styles.list}>
-            {place.prices.map((p) => (
-              <li key={p.id} className={styles.listItem}>
-                <span>{p.service_name}</span>
-                <span>
-                  {p.is_free
-                    ? 'Miễn phí'
-                    : `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {trustedPrices.length > 0 && (
+            <ul className={styles.list}>
+              {trustedPrices.map((p) => (
+                <li key={p.id} className={styles.listItem}>
+                  <span>{p.service_name}</span>
+                  <span>
+                    {p.is_free
+                      ? 'Miễn phí'
+                      // `trustedPrices` đã lọc canDisplayPrice() ở trên nên `amount` LUÔN có giá trị
+                      // thật ở đây — API chỉ trả null cho bản ghi CHƯA tin cậy (đã bị lọc ra). Guard
+                      // `!== null` chỉ để khớp kiểu `number | null` của contract, không phải một
+                      // nhánh dữ liệu thật sự xảy ra.
+                      : p.amount !== null
+                        ? `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`
+                        : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hasUnverifiedPrices && <p className={styles.trustNote}>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
 
@@ -357,11 +389,13 @@ function MediaCredit({ media }: { media: PlaceMedia }) {
  */
 function TrustNote({
   badge,
+  rawStatus,
   verifiedAtLabel,
   sourceLabel,
   sourceUrl,
 }: {
   badge: 'verified' | 'stale' | 'unverified';
+  rawStatus: VerificationStatusValue;
   verifiedAtLabel: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
@@ -397,6 +431,13 @@ function TrustNote({
           : 'Thông tin cần được kiểm tra lại.'}
       </p>
     );
+  }
+
+  // Public Beta trust disclosure (2026-08-27): `pending` ĐÚNG NGHĨA (chưa ai xem tới) đổi sang câu
+  // này — `rejected` (đã bị từ chối, một trạng thái thật khác) VẪN giữ câu cũ bên dưới, không gộp
+  // chung dù cả hai cùng rơi vào badge "unverified".
+  if (isPendingVerification(rawStatus)) {
+    return <p className={styles.trustNote}>{PENDING_DISCLOSURE_TEXT}</p>;
   }
 
   return <p className={styles.trustNote}>Chưa xác minh — thông tin do cộng đồng đóng góp.</p>;

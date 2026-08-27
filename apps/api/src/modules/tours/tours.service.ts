@@ -4,6 +4,7 @@ import { ToursRepository } from './repositories/tours.repository';
 import { CreateTourDto, ListToursQueryDto } from './dto/tours.dto';
 import type { CreatePlaceDto } from '../places/dto/places.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
+import { redactUntrustedPriceRange } from '../../common/price-trust';
 
 function mapStop(s: Record<string, unknown>) {
   const lat = s.lat as number | null;
@@ -18,12 +19,16 @@ function mapStop(s: Record<string, unknown>) {
   };
 }
 
+// Public Beta price trust gate (2026-08-28): `tour_schedules.price` KHÔNG có cột verification/
+// trust nào ở DB (migration InitTour) — không có bằng chứng theo TỪNG chuyến để gate, và không
+// có đường ghi/phản ánh đặc quyền nào đọc lại giá trị này (không có ToursService.updateSchedule).
+// Fail-closed vô điều kiện: raw price KHÔNG BAO GIỜ lộ ra, kể cả cho actor đã đăng nhập.
 function mapSchedule(s: Record<string, unknown>) {
   return {
     id: s.id,
     date: s.date,
     capacity: s.capacity,
-    price: s.price !== null && s.price !== undefined ? Number(s.price) : null,
+    price: null,
     currency: s.currency,
     valid_from: s.valid_from,
     valid_to: s.valid_to,
@@ -62,16 +67,20 @@ export class ToursService {
       rating_avg: r.rating_avg !== null ? Number(r.rating_avg) : null,
       rating_count: r.rating_count,
       price_range: r.price_range,
+      verification_status: r.verification_status,
       ward: r.ward,
       tour_type: r.tour_type,
       duration_minutes: r.duration_minutes,
       difficulty: r.difficulty,
       location: { lat: Number(r.lat), lng: Number(r.lng) },
-    }));
+      // Public Beta price trust gate (2026-08-28): raw price_range chỉ lộ khi trạng thái tin cậy.
+    })).map(redactUntrustedPriceRange);
     return paginate(items, p, l, total);
   }
 
   async getBySlug(slug: string) {
+    // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
+    // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất).
     const place = await this.placesService.getBySlug(slug);
     const details = await this.repo.detail(place.id);
     return { ...place, tour_details: details };

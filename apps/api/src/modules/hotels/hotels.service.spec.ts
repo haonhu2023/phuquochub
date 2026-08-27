@@ -75,7 +75,9 @@ describe('HotelsService', () => {
     expect(repo.countHotels).toHaveBeenCalledWith({ stars: 5, sort: 'name_asc' });
   });
 
-  it('getBySlug: ghép hotel_details/rooms/amenities lên base Place', async () => {
+  // Public Beta price trust gate (2026-08-28): getBySlug() là chi tiết CÔNG KHAI — rooms luôn
+  // publicResponse=true, raw price_ref không có trust column nên fail-closed vô điều kiện.
+  it('getBySlug: ghép hotel_details/rooms/amenities lên base Place — rooms.price_ref redact (public detail)', async () => {
     placesService.getBySlug.mockResolvedValue({ id: 'h1', slug: 'ks-a', name: 'Khách sạn A' });
     repo.detail.mockResolvedValue({ star_rating: 4, hotel_type: 'resort' });
     repo.listRooms.mockResolvedValue([
@@ -88,10 +90,11 @@ describe('HotelsService', () => {
     expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a');
     expect(res.hotel_details).toEqual({ star_rating: 4, hotel_type: 'resort' });
     expect(res.amenities).toEqual(['wifi', 'pool']);
-    expect(res.rooms[0]).toMatchObject({ id: 'r1', price_ref: 1500000 }); // string→Number
+    expect(res.rooms[0]).toMatchObject({ id: 'r1', name: 'Deluxe', price_ref: null });
+    expect(JSON.stringify(res)).not.toContain('1500000');
   });
 
-  it('listRooms: chuyển price_ref sang Number', async () => {
+  it('listRooms (mặc định, KHÔNG publicResponse): chuyển price_ref sang Number — đường đặc quyền updateRooms() phản ánh đúng giá actor vừa lưu', async () => {
     repo.listRooms.mockResolvedValue([
       { id: 'r1', name: 'Std', capacity: null, price_ref: null, currency: 'VND', valid_from: null, valid_to: null, sort_order: 1 },
       { id: 'r2', name: 'Suite', capacity: 4, price_ref: '3000000', currency: 'VND', valid_from: null, valid_to: null, sort_order: 2 },
@@ -112,5 +115,34 @@ describe('HotelsService', () => {
 
     expect(repo.replaceRooms).toHaveBeenCalledWith('h1', dto.rooms);
     expect(res[0]).toMatchObject({ id: 'r9', name: 'Deluxe' });
+  });
+
+  // Public Beta price trust gate (2026-08-28)
+  describe('price trust gate', () => {
+    const SECRET_ROOM_PRICE = 987655;
+
+    it('listRooms({ publicResponse: true }) — route công khai: raw price KHÔNG BAO GIỜ lộ, kể cả trong JSON', async () => {
+      repo.listRooms.mockResolvedValue([
+        { id: 'r1', name: 'Phòng Deluxe', capacity: 2, price_ref: String(SECRET_ROOM_PRICE), currency: 'VND', valid_from: null, valid_to: null, sort_order: 0 },
+      ]);
+
+      const rooms = await service.listRooms('h1', { publicResponse: true });
+
+      expect(rooms[0].price_ref).toBeNull();
+      expect(rooms[0].name).toBe('Phòng Deluxe'); // tên phòng không phải giá, vẫn giữ nguyên
+      expect(JSON.stringify(rooms)).not.toContain(String(SECRET_ROOM_PRICE));
+    });
+
+    it('updateRooms (đặc quyền) trả raw price thật, không bị redact', async () => {
+      const dto = { rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
+      repo.replaceRooms.mockResolvedValue(undefined);
+      repo.listRooms.mockResolvedValue([
+        { id: 'r1', name: 'Deluxe', capacity: 2, price_ref: String(SECRET_ROOM_PRICE), currency: 'VND', valid_from: null, valid_to: null, sort_order: 0 },
+      ]);
+
+      const rooms = await service.updateRooms('h1', dto);
+
+      expect(rooms[0].price_ref).toBe(SECRET_ROOM_PRICE);
+    });
   });
 });
