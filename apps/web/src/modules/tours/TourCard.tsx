@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { TourCard as TourCardType } from './types';
 import { formatDifficulty, formatDuration, formatTourType } from './format';
 import { formatPriceRange } from '@/modules/places/format';
+import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './tours.module.css';
 
@@ -9,7 +10,12 @@ export function TourCard({ tour }: { tour: TourCardType }) {
   const typeLabel = formatTourType(tour.tour_type);
   const durationLabel = formatDuration(tour.duration_minutes);
   const difficultyLabel = formatDifficulty(tour.difficulty);
-  const priceLabel = formatPriceRange(tour.price_range);
+  // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
+  // cậy — cùng invariant dùng chung mọi thẻ public (xem places/trust.ts).
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(tour.price_range),
+    tour.verification_status,
+  );
 
   return (
     <Link href={`/tours/${tour.slug}`} className={placesStyles.card}>
@@ -35,7 +41,9 @@ export function TourCard({ tour }: { tour: TourCardType }) {
             </span>
           )}
           {durationLabel && <span className={styles.duration}>⏱ {durationLabel}</span>}
-          {priceLabel && <span className={placesStyles.price}>{priceLabel}</span>}
+          {(priceLabel || showPriceVerifying) && (
+            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+          )}
           {typeLabel && <span className={placesStyles.badge}>{typeLabel}</span>}
           {difficultyLabel && (
             <span className={`${placesStyles.badge} ${styles.difficultyBadge}`}>

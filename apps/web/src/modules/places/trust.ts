@@ -39,6 +39,51 @@ export function getTrustBadge(status: VerificationStatusValue): TrustBadge {
   return 'unverified';
 }
 
+/** Public Beta disclosure (2026-08-27) — CHÍNH XÁC trạng thái `pending`, không gộp với `rejected`.
+ *  `rejected` là một claim/edit ĐÃ được xem xét và từ chối — trạng thái thật khác với "chưa ai xem
+ *  tới", nên giữ nguyên câu giải thích cũ cho nó (xem places/[slug]/page.tsx TrustNote); chỉ
+ *  `pending` mới đổi sang câu này. */
+export const PENDING_DISCLOSURE_TEXT = 'Thông tin đang được xác minh';
+
+export function isPendingVerification(status: VerificationStatusValue): boolean {
+  return status === 'pending';
+}
+
+/** Nhãn thay thế khi ẩn `price_range` thật của một place chưa qua xác minh (Public Beta price
+ *  trust gate, 2026-08-28) — KHÔNG bao giờ chứa giá trị thật. */
+export const PRICE_VERIFYING_TEXT = 'Giá đang được xác minh';
+
+/**
+ * Cổng hiển thị giá công khai (Public Beta price trust gate, 2026-08-28) — MỘT hàm DUY NHẤT mà
+ * MỌI public surface hiển thị `price_range` (PlaceCard, RestaurantCard, TourCard, BeachCard,
+ * AttractionCard, trang chi tiết, popup bản đồ) phải gọi trước khi lộ giá trị thật.
+ *
+ * Fail-closed, KHÔNG phụ thuộc category: bản trước của gate này chỉ ẩn giá cho các category
+ * "thương mại" (`isCommercialCategory`) — một attraction/beach/market chưa xác minh vẫn lộ giá
+ * thật, dù rủi ro sai lệch giá là như nhau bất kể place được gắn nhãn category gì. Dùng LẠI đúng
+ * `isTrustedVerification` — KHÔNG tự định nghĩa một danh sách trạng thái tin cậy thứ hai.
+ */
+export function canDisplayPrice(status: VerificationStatusValue): boolean {
+  return isTrustedVerification(status);
+}
+
+export interface PriceDisplay {
+  /** Nhãn giá THẬT (đã dịch, vd "Cao cấp") — null nếu place không có giá hoặc giá chưa đủ tin cậy. */
+  label: string | null;
+  /** true khi place CÓ giá nhưng chưa qua xác minh — nơi gọi hiện `PRICE_VERIFYING_TEXT` thay thế. */
+  verifying: boolean;
+}
+
+/**
+ * Áp `canDisplayPrice` lên một nhãn giá đã dịch sẵn (`formatPriceRange(place.price_range)`).
+ * `verifying` chỉ true khi CÓ giá thật để ẩn — một place chưa từng nhập giá không được bịa ra
+ * dòng "đang xác minh" cho một trường không tồn tại.
+ */
+export function resolvePriceDisplay(rawLabel: string | null, status: VerificationStatusValue): PriceDisplay {
+  if (canDisplayPrice(status)) return { label: rawLabel, verifying: false };
+  return { label: null, verifying: rawLabel !== null };
+}
+
 /**
  * Nhãn ngắn cho badge. Cố ý KHÔNG dùng "Đã xác minh chính thức" cho trạng thái `official` — dù
  * tên ENUM trùng khớp, đó là cụm từ bị cấm (task brief Phần 3): tạo cảm giác bảo đảm pháp lý mà

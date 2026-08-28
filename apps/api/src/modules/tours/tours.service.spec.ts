@@ -37,7 +37,7 @@ describe('ToursService', () => {
 
   it('list: map cover_image_url/price_range/ward + rating_avg chuỗi → Number', async () => {
     repo.listTours.mockResolvedValue([
-      { id: 't2', name: 'Tour B', slug: 'tour-b', short_description: null, cover_image_url: 'https://cdn/b.jpg', rating_avg: '4.5', rating_count: 12, price_range: 'mid', ward: 'An Thới', tour_type: 'cruise', duration_minutes: null, difficulty: null, lat: '9.9', lng: '104.01' },
+      { id: 't2', name: 'Tour B', slug: 'tour-b', short_description: null, cover_image_url: 'https://cdn/b.jpg', rating_avg: '4.5', rating_count: 12, price_range: 'mid', verification_status: 'verified', ward: 'An Thới', tour_type: 'cruise', duration_minutes: null, difficulty: null, lat: '9.9', lng: '104.01' },
     ]);
     repo.countTours.mockResolvedValue(1);
 
@@ -48,9 +48,44 @@ describe('ToursService', () => {
       rating_avg: 4.5,
       rating_count: 12,
       price_range: 'mid',
+      verification_status: 'verified',
       ward: 'An Thới',
       duration_minutes: null,
       difficulty: null,
+    });
+  });
+
+  // Public Beta price trust gate (2026-08-28): web quyết định có hiện price_range thật hay không
+  // dựa trên verification_status — service PHẢI truyền đúng giá trị THẬT từ repository.
+  it('list: truyền đúng verification_status thật từ repository, không mặc định "pending"', async () => {
+    repo.listTours.mockResolvedValue([
+      { id: 't3', name: 'Tour C', slug: 'tour-c', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: 'high', verification_status: 'expired', ward: null, tour_type: 'diving', duration_minutes: null, difficulty: null, lat: '10', lng: '104' },
+    ]);
+    repo.countTours.mockResolvedValue(1);
+    const res = await service.list();
+    expect(res.data[0].verification_status).toBe('expired');
+  });
+
+  describe('price trust gate', () => {
+    const SECRET_PLACE_RANGE = 'high';
+
+    it.each(['pending', 'expired', 'rejected'])('list: verification_status %s → price_range redact thành null', async (status) => {
+      repo.listTours.mockResolvedValue([
+        { id: 't4', name: 'Tour D', slug: 'tour-d', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, verification_status: status, ward: null, tour_type: 'diving', duration_minutes: null, difficulty: null, lat: '10', lng: '104' },
+      ]);
+      repo.countTours.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBeNull();
+      expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+    });
+
+    it.each(['verified', 'official', 'community_verified'])('list: verification_status %s → giữ nguyên price_range thật', async (status) => {
+      repo.listTours.mockResolvedValue([
+        { id: 't5', name: 'Tour E', slug: 'tour-e', short_description: null, cover_image_url: null, rating_avg: null, rating_count: 0, price_range: SECRET_PLACE_RANGE, verification_status: status, ward: null, tour_type: 'diving', duration_minutes: null, difficulty: null, lat: '10', lng: '104' },
+      ]);
+      repo.countTours.mockResolvedValue(1);
+      const res = await service.list();
+      expect(res.data[0].price_range).toBe(SECRET_PLACE_RANGE);
     });
   });
 
@@ -91,12 +126,26 @@ describe('ToursService', () => {
     expect(it[1].location).toBeNull();
   });
 
-  it('getSchedule: price→Number', async () => {
+  // Public Beta price trust gate (2026-08-28): `tour_schedules.price` không có cột trust ở DB
+  // (migration InitTour) và không có đường ghi/phản ánh đặc quyền nào đọc lại nó — fail-closed
+  // vô điều kiện, khác `getMenu`/`listRooms` (không cần tham số publicResponse).
+  it('getSchedule: price luôn redact thành null (không có trust column, sentinel không lộ dưới bất kỳ hình thức nào)', async () => {
+    const SECRET_TOUR_PRICE = 987654;
     repo.schedules.mockResolvedValue([
-      { id: 'sc1', date: '2026-08-01', capacity: 20, price: '500000', currency: 'VND', valid_from: null, valid_to: null },
+      { id: 'sc1', date: '2026-08-01', capacity: 20, price: String(SECRET_TOUR_PRICE), currency: 'VND', valid_from: null, valid_to: null },
     ]);
     const sc = await service.getSchedule('t1');
-    expect(sc[0].price).toBe(500000);
+    expect(sc[0].price).toBeNull();
+    expect(sc[0].capacity).toBe(20); // trường không phải giá vẫn giữ nguyên
+    expect(JSON.stringify(sc)).not.toContain(String(SECRET_TOUR_PRICE));
+  });
+
+  it('getSchedule: không có giá (null) → vẫn null, không crash', async () => {
+    repo.schedules.mockResolvedValue([
+      { id: 'sc1', date: '2026-08-01', capacity: null, price: null, currency: 'VND', valid_from: null, valid_to: null },
+    ]);
+    const sc = await service.getSchedule('t1');
+    expect(sc[0].price).toBeNull();
   });
 
   it('create: danh mục "tour" chưa khởi tạo → BadRequest', async () => {

@@ -1,4 +1,4 @@
-import type { GeoPoint, PriceRangeValue } from '@/modules/places/types';
+import type { GeoPoint, PriceRangeValue, VerificationStatusValue } from '@/modules/places/types';
 
 export const RESTAURANT_SORT_VALUES = ['rating_desc', 'name_asc'] as const;
 export type RestaurantSort = (typeof RESTAURANT_SORT_VALUES)[number];
@@ -13,6 +13,7 @@ export interface RestaurantCard {
   rating_avg: number | null;
   rating_count: number;
   price_range: PriceRangeValue | null;
+  verification_status: VerificationStatusValue;
   is_local_specialty: boolean;
   /** Nhãn tiếng Việt (label_vi) từ bảng cuisines — đã dịch sẵn ở backend, không hardcode ở FE. */
   cuisines: string[];

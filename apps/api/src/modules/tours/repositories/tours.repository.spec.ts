@@ -136,8 +136,16 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
       expect(ds.query).toHaveBeenCalledTimes(1);
       const q = sql(ds.query.mock.calls[0][0]);
       expect(q).toContain('AS cover_image_url');
-      expect(q).toContain('p.price_range, p.ward');
+      expect(q).toContain('p.price_range, p.ward, p.verification_status');
       expect(q).toContain('td.tour_type, td.duration_minutes, td.difficulty');
+    });
+
+    // Public Beta price trust gate (2026-08-28): TourCard cần verification_status để web quyết
+    // định có được hiện price_range thật hay không (canDisplayPrice, apps/web/.../trust.ts).
+    it('SELECT có p.verification_status (cần cho price trust gate ở web)', async () => {
+      ds.query.mockResolvedValue([]);
+      await sut.listTours(20, 0);
+      expect(sql(ds.query.mock.calls[0][0])).toContain('p.verification_status');
     });
 
     it('ảnh bìa lấy qua subquery lọc media chưa xoá (không JOIN nhân dòng)', async () => {

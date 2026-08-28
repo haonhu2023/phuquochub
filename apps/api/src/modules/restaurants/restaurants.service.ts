@@ -3,12 +3,19 @@ import { PlacesService } from '../places/places.service';
 import { RestaurantsRepository } from './repositories/restaurants.repository';
 import { ListRestaurantsQueryDto, UpdateRestaurantMenuDto } from './dto/restaurants.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
+import { redactUntrustedPriceRange } from '../../common/price-trust';
 
-function mapItem(i: Record<string, unknown>) {
+// Public Beta price trust gate (2026-08-28): `restaurant_menu_items.price` KHÔNG có cột
+// verification/trust nào ở DB (migration InitRestaurant) — không có bằng chứng theo TỪNG món để
+// gate. Fail-closed: `publicResponse: true` (route @Public() GET :id/menu) luôn null hoá `price`;
+// `publicResponse: false` (mặc định — dùng bởi `updateMenu()`, đặc quyền) giữ giá trị thật để actor
+// thấy đúng giá họ vừa lưu. KHÔNG dùng place.verification_status làm proxy: place đã xác minh
+// không có nghĩa từng giá món trong thực đơn đã được đối chiếu.
+function mapItem(i: Record<string, unknown>, publicResponse: boolean) {
   return {
     id: i.id,
     name: i.name,
-    price: i.price !== null && i.price !== undefined ? Number(i.price) : null,
+    price: publicResponse ? null : i.price !== null && i.price !== undefined ? Number(i.price) : null,
     currency: i.currency,
     tags: i.tags ?? null,
     sort_order: i.sort_order,
@@ -40,14 +47,18 @@ export class RestaurantsService {
       rating_avg: r.rating_avg !== null ? Number(r.rating_avg) : null,
       rating_count: r.rating_count,
       price_range: r.price_range,
+      verification_status: r.verification_status,
       is_local_specialty: r.is_local_specialty,
       cuisines: r.cuisines ?? [],
       location: { lat: Number(r.lat), lng: Number(r.lng) },
-    }));
+      // Public Beta price trust gate (2026-08-28): raw price_range chỉ lộ khi trạng thái đã tin cậy.
+    })).map(redactUntrustedPriceRange);
     return paginate(items, p, l, total);
   }
 
   async getBySlug(slug: string) {
+    // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
+    // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất).
     const place = await this.placesService.getBySlug(slug);
     const [details, cuisines] = await Promise.all([
       this.repo.detail(place.id),
@@ -56,17 +67,22 @@ export class RestaurantsService {
     return { ...place, restaurant_details: details, cuisines };
   }
 
-  async getMenu(placeId: string) {
+  async getMenu(placeId: string, opts: { publicResponse?: boolean } = {}) {
+    const publicResponse = opts.publicResponse ?? false;
     const sections = await this.repo.sections(placeId);
     const items = await this.repo.itemsBySection(sections.map((s: { id: string }) => s.id));
     return sections.map((s: Record<string, unknown>) => ({
       id: s.id,
       name: s.name,
       sort_order: s.sort_order,
-      items: items.filter((i: { section_id: string }) => i.section_id === s.id).map(mapItem),
+      items: items
+        .filter((i: { section_id: string }) => i.section_id === s.id)
+        .map((i: Record<string, unknown>) => mapItem(i, publicResponse)),
     }));
   }
 
+  // Đặc quyền (Place.Edit.Managed) — actor phải thấy đúng giá họ vừa lưu, KHÔNG redact
+  // (publicResponse mặc định false).
   async updateMenu(placeId: string, dto: UpdateRestaurantMenuDto) {
     await this.repo.replaceMenu(placeId, dto.sections);
     return this.getMenu(placeId);

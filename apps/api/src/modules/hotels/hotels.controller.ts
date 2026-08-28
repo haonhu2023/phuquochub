@@ -20,7 +20,9 @@ export class HotelsController {
   @Public()
   @Get(':id/rooms')
   listRooms(@Param('id', ParseUUIDPipe) id: string) {
-    return this.hotelsService.listRooms(id);
+    // Public Beta price trust gate (2026-08-28): route công khai → luôn redact raw price
+    // (room types không có trust column riêng để gate theo từng loại phòng, xem hotels.service.ts).
+    return this.hotelsService.listRooms(id, { publicResponse: true });
   }
 
   @Patch(':id/rooms')

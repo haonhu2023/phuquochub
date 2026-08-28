@@ -33,3 +33,50 @@ describe('GeoService.bbox — chuyển tiếp Search Filters (category/ward)', (
     expect(arg.ward).toBe('An Thới');
   });
 });
+
+// Public Beta price trust gate (2026-08-28): GET /geo/nearby trước đây trả raw price_range
+// (qua toPlaceCard) bất kể verification_status — web chỉ ẩn ở tầng render, không phải response JSON.
+describe('GeoService.nearby — price trust gate', () => {
+  let placesRepo: LooseMock<PlacesRepository>;
+  let sut: GeoService;
+
+  beforeEach(() => {
+    placesRepo = createMock<PlacesRepository>({ nearby: jest.fn() });
+    const redis = createMock<RedisService>({});
+    sut = new GeoService(placesRepo, redis);
+  });
+
+  const SECRET_PLACE_RANGE = 'high';
+
+  function nearbyRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'p1',
+      name: 'Bãi Sao',
+      slug: 'bai-sao',
+      category_id: 'c1',
+      short_description: null,
+      price_range: SECRET_PLACE_RANGE,
+      cover_image_url: null,
+      rating_avg: null,
+      rating_count: 0,
+      verification_status: 'pending',
+      status: 'published',
+      lat: '10.0',
+      lng: '104.0',
+      ...overrides,
+    };
+  }
+
+  it.each(['pending', 'expired', 'rejected'])('verification_status %s → price_range redact thành null', async (status) => {
+    placesRepo.nearby.mockResolvedValue([nearbyRow({ verification_status: status })]);
+    const res = await sut.nearby({ lat: 10, lng: 104 } as Parameters<typeof sut.nearby>[0]);
+    expect(res[0].price_range).toBeNull();
+    expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
+  });
+
+  it.each(['verified', 'official', 'community_verified'])('verification_status %s → giữ nguyên price_range thật', async (status) => {
+    placesRepo.nearby.mockResolvedValue([nearbyRow({ verification_status: status })]);
+    const res = await sut.nearby({ lat: 10, lng: 104 } as Parameters<typeof sut.nearby>[0]);
+    expect(res[0].price_range).toBe(SECRET_PLACE_RANGE);
+  });
+});

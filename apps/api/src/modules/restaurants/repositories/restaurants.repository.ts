@@ -65,6 +65,7 @@ export class RestaurantsRepository {
     // theo từng hàng ở tầng application, toàn bộ chạy trong một round-trip SQL).
     const rows: CardRow[] = await this.ds.query(
       `SELECT p.id, p.name, p.slug, p.short_description, p.rating_avg, p.rating_count, p.price_range,
+              p.verification_status,
               ${COVER_IMAGE_COLS},
               rd.is_local_specialty,
               (SELECT array_agg(c.label_vi ORDER BY c.code) FROM place_cuisines pc

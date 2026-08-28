@@ -15,12 +15,18 @@ interface RoomRow {
   sort_order: number;
 }
 
-function mapRoom(r: RoomRow) {
+// Public Beta price trust gate (2026-08-28): `hotel_room_types.price_ref` KHÔNG có cột
+// verification/trust nào ở DB (migration InitHotel) — không có bằng chứng theo TỪNG loại phòng
+// để gate. Fail-closed: `publicResponse: true` (route @Public() GET :id/rooms + getBySlug) luôn
+// null hoá `price_ref`; `publicResponse: false` (mặc định — dùng bởi `updateRooms()`, đặc quyền)
+// giữ giá trị thật để actor thấy đúng giá họ vừa lưu. KHÔNG dùng place.verification_status làm
+// proxy: khách sạn đã xác minh không có nghĩa từng mức giá phòng đã được đối chiếu.
+function mapRoom(r: RoomRow, publicResponse: boolean) {
   return {
     id: r.id,
     name: r.name,
     capacity: r.capacity,
-    price_ref: r.price_ref !== null ? Number(r.price_ref) : null,
+    price_ref: publicResponse ? null : r.price_ref !== null ? Number(r.price_ref) : null,
     currency: r.currency,
     valid_from: r.valid_from,
     valid_to: r.valid_to,
@@ -61,23 +67,34 @@ export class HotelsService {
   }
 
   async getBySlug(slug: string) {
+    // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
+    // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất). Rooms là public
+    // (không route riêng, ghép thẳng vào chi tiết công khai) → publicResponse=true.
     const place = await this.placesService.getBySlug(slug);
     const [hotelDetails, rooms, amenities] = await Promise.all([
       this.repo.detail(place.id),
       this.repo.listRooms(place.id),
       this.repo.listAmenities(place.id),
     ]);
-    return { ...place, hotel_details: hotelDetails, rooms: rooms.map(mapRoom), amenities };
+    return {
+      ...place,
+      hotel_details: hotelDetails,
+      rooms: rooms.map((r: RoomRow) => mapRoom(r, true)),
+      amenities,
+    };
   }
 
-  async listRooms(placeId: string) {
-    return (await this.repo.listRooms(placeId)).map(mapRoom);
+  async listRooms(placeId: string, opts: { publicResponse?: boolean } = {}) {
+    const publicResponse = opts.publicResponse ?? false;
+    return (await this.repo.listRooms(placeId)).map((r: RoomRow) => mapRoom(r, publicResponse));
   }
 
   listAmenities(placeId: string) {
     return this.repo.listAmenities(placeId);
   }
 
+  // Đặc quyền (Place.Edit.Managed) — actor phải thấy đúng giá họ vừa lưu, KHÔNG redact
+  // (publicResponse mặc định false).
   async updateRooms(placeId: string, dto: UpdateHotelRoomsDto) {
     await this.repo.replaceRooms(placeId, dto.rooms);
     return this.listRooms(placeId);

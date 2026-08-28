@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { BeachCard } from './BeachCard';
 import type { BeachCard as BeachCardType } from './types';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 const BASE_BEACH: BeachCardType = {
   id: 'b1',
@@ -41,8 +42,23 @@ describe('BeachCard', () => {
   });
 
   it('renders a localized price label for a known price_range (deliberately not defaulted to "free")', () => {
-    render(<BeachCard beach={{ ...BASE_BEACH, price_range: 'free' }} />);
+    render(<BeachCard beach={{ ...BASE_BEACH, price_range: 'free', verification_status: 'verified' }} />);
     expect(screen.getByText('Miễn phí')).toBeInTheDocument();
+  });
+
+  // Public Beta price trust gate (2026-08-28) — beach KHÔNG còn là ngoại lệ "ngoài phạm vi thương
+  // mại": một beach pending có giá vẫn phải ẩn giá thật, y hệt hotel/restaurant/tour.
+  describe('price trust gate', () => {
+    it('pending + có giá → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', () => {
+      render(<BeachCard beach={{ ...BASE_BEACH, verification_status: 'pending', price_range: 'free' }} />);
+      expect(screen.queryByText('Miễn phí')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it('pending KHÔNG có giá → không hiện giá thật lẫn dòng đang xác minh', () => {
+      render(<BeachCard beach={{ ...BASE_BEACH, verification_status: 'pending', price_range: null }} />);
+      expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+    });
   });
 
   it('renders the verified badge only when verification_status is "verified"', () => {

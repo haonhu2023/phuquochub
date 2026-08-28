@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { PlaceCard } from './PlaceCard';
 import type { PlaceCard as PlaceCardType } from './types';
+import { PRICE_VERIFYING_TEXT } from './trust';
 
 const BASE_PLACE: PlaceCardType = {
   id: 'p1',
@@ -88,8 +89,39 @@ describe('PlaceCard', () => {
   );
 
   it('renders a localized price label for a known price_range', () => {
-    render(<PlaceCard place={{ ...BASE_PLACE, price_range: 'low' }} />);
+    render(<PlaceCard place={{ ...BASE_PLACE, price_range: 'low', verification_status: 'verified' }} />);
     expect(screen.getByText('Bình dân')).toBeInTheDocument();
+  });
+
+  // Public Beta price trust gate (2026-08-28): raw price of an unverified place must never
+  // render on the generic PlaceCard, regardless of category — the card previously showed it
+  // unconditionally.
+  describe('price trust gate', () => {
+    it('pending + có giá → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', () => {
+      render(<PlaceCard place={{ ...BASE_PLACE, verification_status: 'pending', price_range: 'high' }} />);
+      expect(screen.queryByText('Cao cấp')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it.each(['expired', 'rejected'] as const)('%s + có giá → vẫn ẩn giá thật', (status) => {
+      render(<PlaceCard place={{ ...BASE_PLACE, verification_status: status, price_range: 'mid' }} />);
+      expect(screen.queryByText('Tầm trung')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it.each(['verified', 'official', 'community_verified'] as const)(
+      '%s + có giá → hiện giá thật, không hiện dòng đang xác minh',
+      (status) => {
+        render(<PlaceCard place={{ ...BASE_PLACE, verification_status: status, price_range: 'low' }} />);
+        expect(screen.getByText('Bình dân')).toBeInTheDocument();
+        expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+      },
+    );
+
+    it('pending KHÔNG có giá (null) → không hiện giá thật lẫn dòng đang xác minh', () => {
+      render(<PlaceCard place={{ ...BASE_PLACE, verification_status: 'pending', price_range: null }} />);
+      expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+    });
   });
 
   it('renders rating with a count suffix when rating_count > 0, without one when zero', () => {

@@ -234,6 +234,18 @@ describe('TransportsRepository — đọc nền tảng (ADR-017)', () => {
       ds.query.mockResolvedValue([row]);
       await expect(sut.detail('p1')).resolves.toEqual(row);
     });
+
+    // Public Beta price trust gate (2026-08-28): the repository layer is intentionally a raw
+    // passthrough — it does NOT redact price_ref itself. Redaction happens one layer up, in
+    // TransportsService's mapPricing()/mapServiceOption() (see transports.service.spec.ts sentinel
+    // tests). This test pins that boundary: if the repository ever raw-passthrough behavior were
+    // removed by mistake, the service-level redaction tests would then be vacuously true (nothing
+    // to redact) instead of proving anything.
+    it('price_ref đi qua nguyên vẹn ở tầng repository — redaction là trách nhiệm của service, không phải ở đây', async () => {
+      const row = { transport_type_code: 'taxi', pricing_model: 'fixed', price_ref: '987654' };
+      ds.query.mockResolvedValue([row]);
+      await expect(sut.detail('p1')).resolves.toEqual(row);
+    });
   });
 
   describe('listServiceOptions / listRoutes / listServiceAreas', () => {

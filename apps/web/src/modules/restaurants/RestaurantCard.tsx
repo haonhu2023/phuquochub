@@ -1,11 +1,17 @@
 import Link from 'next/link';
 import type { RestaurantCard as RestaurantCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
+import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './restaurants.module.css';
 
 export function RestaurantCard({ restaurant }: { restaurant: RestaurantCardType }) {
-  const priceLabel = formatPriceRange(restaurant.price_range);
+  // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
+  // cậy — cùng invariant dùng chung mọi thẻ public (xem places/trust.ts).
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(restaurant.price_range),
+    restaurant.verification_status,
+  );
   return (
     <Link href={`/restaurants/${restaurant.slug}`} className={placesStyles.card}>
       {restaurant.cover_image_url ? (
@@ -38,7 +44,9 @@ export function RestaurantCard({ restaurant }: { restaurant: RestaurantCardType 
               {restaurant.rating_count > 0 ? ` (${restaurant.rating_count})` : ''}
             </span>
           )}
-          {priceLabel && <span className={placesStyles.price}>{priceLabel}</span>}
+          {(priceLabel || showPriceVerifying) && (
+            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+          )}
           {restaurant.is_local_specialty && (
             <span className={`${placesStyles.badge} ${styles.specialtyBadge}`}>Đặc sản địa phương</span>
           )}

@@ -84,6 +84,14 @@ describe('RestaurantsRepository — browse (price_range/cuisine filter, sort, pa
       expect(q).toContain('AS cover_image_url');
       expect(q).toContain('array_agg(c.label_vi ORDER BY c.code)');
     });
+
+    // Public Beta price trust gate (2026-08-28): RestaurantCard cần verification_status để web
+    // quyết định có được hiện price_range thật hay không (canDisplayPrice, apps/web/.../trust.ts).
+    it('SELECT có p.verification_status (cần cho price trust gate ở web)', async () => {
+      ds.query.mockResolvedValue([]);
+      await sut.listRestaurants(20, 0);
+      expect(sql(ds.query.mock.calls[0][0])).toContain('p.verification_status');
+    });
   });
 
   describe('countRestaurants', () => {

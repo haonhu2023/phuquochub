@@ -22,6 +22,7 @@ import { CreatePlaceDto, GeoPointDto, ListPlacesQueryDto, UpdatePlaceDto } from 
 import { toPlaceCard, toPlaceDetail } from './places.mapper';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 import { outOfProvisionalBounds } from '../../common/geo-bounds';
+import { canDisclosePrice, redactUntrustedPriceRange } from '../../common/price-trust';
 
 // Permission edit-managed dùng để enumerate "địa điểm tôi quản lý" (listMine, PLACE-041) —
 // CÙNG chuỗi permission mà route PATCH /places/:id đã yêu cầu (places.controller.ts), nên
@@ -88,7 +89,10 @@ export class PlacesService {
       limit,
       offset: (page - 1) * limit,
     });
-    return paginate(items.map(toPlaceCard), page, limit, total);
+    // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ được lộ ra khi
+    // verification_status đã tin cậy — trước đây route công khai này luôn trả raw price_range,
+    // bất kể trạng thái (web chỉ ẩn nó ở tầng render, không phải ở response JSON).
+    return paginate(items.map(toPlaceCard).map(redactUntrustedPriceRange), page, limit, total);
   }
 
   async getBySlug(slug: string) {
@@ -105,7 +109,9 @@ export class PlacesService {
       this.resolveTrustSources(row.id),
     ]);
     return {
-      ...toPlaceDetail(row),
+      // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
+      // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
+      ...redactUntrustedPriceRange(toPlaceDetail(row)),
       trust_sources: trustSources,
       contacts: contacts.map((c) => ({
         id: c.id,
@@ -116,10 +122,15 @@ export class PlacesService {
         verification_status: c.verificationStatus,
         display_order: c.displayOrder,
       })),
+      // Public Beta price trust gate (2026-08-28): mỗi dòng `price_history` mang
+      // `verification_status` RIÊNG của chính bản ghi giá đó — dùng ĐÚNG field đó
+      // (canDisclosePrice), KHÔNG suy trust của một dòng giá từ trust của place chứa nó. `amount`
+      // redact thành `null` khi chưa tin cậy; các trường khác (service_name/currency/is_free/…)
+      // không phải "raw price" nên vẫn giữ nguyên.
       prices: prices.map((p) => ({
         id: p.id,
         service_name: p.serviceName,
-        amount: Number(p.amount),
+        amount: canDisclosePrice(p.verificationStatus) ? Number(p.amount) : null,
         currency: p.currency,
         unit: p.unit,
         is_free: p.isFree,

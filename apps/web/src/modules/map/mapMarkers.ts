@@ -1,6 +1,7 @@
 // Logic thuần (không phụ thuộc maplibre-gl) cho marker/popup của MapView — tách riêng để test
 // được mà không cần nạp `maplibre-gl` (cần canvas/WebGL, không có trong Jest) hay CSS thật của nó.
 import { formatPriceRange } from '@/modules/places/format';
+import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
 import type { Category } from '@/modules/categories/api/categories.api';
 import type { PlaceDetail } from '@/modules/places/types';
 import styles from './map.module.css';
@@ -104,8 +105,15 @@ export function buildPopupCard(detail: PlaceDetail, categories?: Category[]): HT
       ),
     );
   }
-  const priceLabel = formatPriceRange(detail.price_range);
+  // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
+  // cậy — cùng invariant dùng chung mọi surface public (xem places/trust.ts). Popup được gắn
+  // thẳng vào DOM ngoài cây React nên KHÔNG được rò giá thật vào bất kỳ node nào ở đây.
+  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
+    formatPriceRange(detail.price_range),
+    detail.verification_status,
+  );
   if (priceLabel) meta.appendChild(textRow(priceLabel));
+  else if (showPriceVerifying) meta.appendChild(textRow(PRICE_VERIFYING_TEXT));
   card.appendChild(meta);
 
   const link = document.createElement('a');

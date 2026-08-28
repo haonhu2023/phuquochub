@@ -4,6 +4,7 @@ import { RedisService } from '../../core/redis/redis.service';
 import { toPlaceCard } from '../places/places.mapper';
 import { clampLimit } from '../../common/pagination';
 import { BboxQueryDto, NearbyQueryDto } from './dto/geo.dto';
+import { redactUntrustedPriceRange } from '../../common/price-trust';
 
 const MAX_RADIUS_M = 50000;
 const NOMINATIM = process.env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.org';
@@ -29,7 +30,9 @@ export class GeoService {
       category: dto.category,
       limit: clampLimit(dto.limit),
     });
-    return rows.map(toPlaceCard);
+    // Public Beta price trust gate (2026-08-28): raw price_range chỉ lộ khi trạng thái tin cậy —
+    // route công khai này trước đây trả nguyên `toPlaceCard(row)` không qua gate nào.
+    return rows.map(toPlaceCard).map(redactUntrustedPriceRange);
   }
 
   // bbox → điểm gom cụm theo zoom (api.md §11 "clustered points"). Cell nhỏ dần khi zoom tăng →

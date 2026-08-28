@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { AttractionCard } from './AttractionCard';
 import type { AttractionCard as AttractionCardType } from './types';
+import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
 const BASE_ATTRACTION: AttractionCardType = {
   id: 'a1',
@@ -86,8 +87,29 @@ describe('AttractionCard', () => {
   );
 
   it('renders a localized price label for a known price_range', () => {
-    render(<AttractionCard attraction={{ ...BASE_ATTRACTION, price_range: 'mid' }} />);
+    render(
+      <AttractionCard attraction={{ ...BASE_ATTRACTION, price_range: 'mid', verification_status: 'verified' }} />,
+    );
     expect(screen.getByText('Tầm trung')).toBeInTheDocument();
+  });
+
+  // Public Beta price trust gate (2026-08-28) — attraction KHÔNG còn là ngoại lệ "ngoài phạm vi
+  // thương mại": vé thật của VinWonders/Sun World lẫn nơi công cộng đều phải qua cùng một gate.
+  describe('price trust gate', () => {
+    it('pending + có giá → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', () => {
+      render(
+        <AttractionCard attraction={{ ...BASE_ATTRACTION, verification_status: 'pending', price_range: 'mid' }} />,
+      );
+      expect(screen.queryByText('Tầm trung')).not.toBeInTheDocument();
+      expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    });
+
+    it('pending KHÔNG có giá → không hiện giá thật lẫn dòng đang xác minh', () => {
+      render(
+        <AttractionCard attraction={{ ...BASE_ATTRACTION, verification_status: 'pending', price_range: null }} />,
+      );
+      expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+    });
   });
 
   it('renders ward and short_description when present', () => {
