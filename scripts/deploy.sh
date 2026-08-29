@@ -47,9 +47,59 @@ TILE_URL="${NEXT_PUBLIC_MAP_TILE_URL:-}"
 if [ -z "$TILE_URL" ]; then
   TILE_URL="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 fi
+# Site-URL build-arg gap (2026-08-29): unlike NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL above,
+# this deliberately has NO fallback default. apps/web/Dockerfile's own ARG default
+# (`http://localhost:3000`) is a *local-dev* convenience, not a safe production value: if this
+# build-arg is silently omitted, metadataBase/sitemap.ts/robots.ts/JSON-LD all get baked with
+# localhost URLs, and Next.js inlines NEXT_PUBLIC_* at build time -- there is no runtime override
+# once the image exists. `${VAR:?msg}` fails HERE, before `docker build` is even invoked, rather
+# than let that ship. The one prior deploy of `4ed9af7` got this right only because it was built by
+# a one-off `deploy-c9cf9e5.sh` that passed this same build-arg by hand -- this closes that gap in
+# the real, reusable deploy path. See docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md §2.
+SITE_URL="${NEXT_PUBLIC_SITE_URL:?NEXT_PUBLIC_SITE_URL required (e.g. https://phuquochub.com) -- refusing to silently bake the Dockerfile default (http://localhost:3000) into a production web image}"
+
+# Exact canonical-origin match (2026-08-29, hardened AGAIN after independent review): a generic
+# hostname-shaped regex plus a small blocklist is the wrong tool here. This repo serves exactly
+# ONE production origin -- infrastructure/caddy/Caddyfile's only non-redirect, non-media site
+# block is `phuquochub.com, :8080 { ... }`; `www.phuquochub.com` 301-redirects to it; .env.example
+# and CORS_ALLOWED_ORIGINS's own default both hardcode `https://phuquochub.com`. A shape+blocklist
+# regex that only rejected localhost/loopback/www still ACCEPTED `https://example.com`,
+# `https://evil.example`, `https://phuquochub.co` (a one-character typo), and
+# `https://phuquochub.com.evil.example` -- any of which bakes a wrong-but-well-formed
+# canonical/OG/sitemap/JSON-LD origin into a production image, which is exactly the failure this
+# check exists to prevent. There being only one valid answer, the check is now an EXACT match
+# against it, not a shape test.
+#
+# `grep -qE '^...$'` (the prior mechanism) was independently proven bypassable: `grep` is
+# LINE-oriented, so those anchors bind to any ONE line of a multi-line value, not to the whole
+# string. `NEXT_PUBLIC_SITE_URL=$'JUNK-NOT-A-URL\nhttps://phuquochub.com'` made the check pass
+# (line 2 matched) while the build-arg that actually reached `docker build` was `JUNK-NOT-A-URL`
+# (line 1) -- confirmed directly, exit 0, wrong value shipped. `case` does not have this problem:
+# it matches the ENTIRE parameter value as one string against the pattern (POSIX pathname-matching
+# semantics), so an embedded newline is just another character the exact literal pattern does not
+# contain -- the whole value fails to match and falls through to the reject branch, no special
+# newline handling needed.
+case "$SITE_URL" in
+  "https://phuquochub.com" | "https://phuquochub.com/")
+    SITE_URL="https://phuquochub.com"
+    ;;
+  *)
+    # The submitted value is deliberately NOT echoed here. It may contain newlines or other
+    # control characters that, printed verbatim into a log, could forge additional log lines (log
+    # injection) or otherwise mislead whoever reads the output. Stating the one valid contract is
+    # enough to fix a typo without ever reproducing whatever was actually submitted.
+    echo "[deploy] ERROR: NEXT_PUBLIC_SITE_URL must be exactly 'https://phuquochub.com' (a single" >&2
+    echo "[deploy]        optional trailing '/' is accepted and normalized away). No other value —" >&2
+    echo "[deploy]        no other domain, no http://, no www., no port/credentials/path/query/" >&2
+    echo "[deploy]        fragment, no surrounding or embedded whitespace — is a valid production" >&2
+    echo "[deploy]        origin for this deploy. Refusing to build." >&2
+    exit 1
+    ;;
+esac
 docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
   --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
   --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
+  --build-arg "NEXT_PUBLIC_SITE_URL=$SITE_URL" \
   --build-arg "GIT_COMMIT=$TAG" \
   --build-arg "BUILD_DATE=$BUILD_DATE"
 

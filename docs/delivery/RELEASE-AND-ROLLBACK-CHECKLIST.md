@@ -68,14 +68,188 @@ Two facts an operator needs before touching image tags:
 - [ ] A short, announced maintenance window exists for this specific release if it is the first
       real deploy ever, or introduces a non-additive migration; not required for routine releases.
 
+### Canonical release artifact (added 2026-08-29, hardened twice on 2026-08-29)
+
+If this release is transferred to the VPS as a source archive rather than built in place, create
+it with `bash scripts/create-release-artifact.sh <commit-sha> [output-dir]` — **never a bare
+`git archive`**. (`bash`, not a bare path: the script's committed file mode is `100644`, matching
+the majority of this repo's `scripts/*.sh`/`scripts/lib/*.sh` — it is not marked executable.)
+
+**Why not a bare `git archive`:** this repository has `core.autocrlf=true` (Windows checkouts) and
+no `.gitattributes`. A bare `git archive` run from a Windows shell silently runs every text blob
+through the CRLF-conversion filter on the way out, so the archive's file bytes no longer match
+`git cat-file blob <sha>:<path>`. This is not theoretical — it happened during the 2026-08-28
+production deploy of commit `4ed9af7`: a first, bare `git archive` produced an artifact where 1342
+of 1392 tracked files (96%) had CRLF-mismatched bytes against their Git blobs; only a second
+archive built with `-c core.autocrlf=false -c core.eol=lf` matched the artifact actually staged and
+used for that deploy. `scripts/create-release-artifact.sh` applies that override as a *command-local*
+git config flag on the one `git archive` invocation — it never edits `.git/config`, and it never
+adds a repo-wide `.gitattributes` (which would renormalize unrelated files far beyond this fix's
+scope). **This is proven only on this Windows/Linux pair, not claimed as a general cross-platform
+byte-identity guarantee.**
+
+**Source of truth:** the archive is built from the resolved commit's Git *object*, never from the
+working tree — untracked files, `.git/`, and any uncommitted working-tree edit are structurally
+absent, proven directly (a dirty tracked-file edit and an untracked sentinel file both left no
+trace in the resulting archive, which reflected only the committed content).
+
+- [ ] `<commit-sha>` is the exact, immutable target commit for this release (not a branch name, not
+      `HEAD`) — the script resolves it to a full commit SHA and fails, touching nothing on disk,
+      if it does not resolve.
+- [ ] Output filenames use the **full 40-character commit SHA**, not a short SHA:
+      `release-<full-sha>.tar.gz`, `.tar.gz.sha256`, `.manifest.sha256`, `.files.txt`, `.meta.txt`.
+      All land under `.release-transfer/` by default (gitignored; matches `.gitignore`'s
+      `release-*`/`*.tar.gz` patterns, so nothing here is ever committed by accident).
+- [ ] `release-<sha>.meta.txt` is the artifact's identity record — deterministic `key=value` lines
+      (`format_version`, `commit_sha`, `tree_sha`, `archive_sha256`, `archive_filename`), with no
+      timestamp/hostname/username/local path baked in, so it is byte-identical across independent
+      runs of the same commit. **Its presence (together with all four siblings) is what makes an
+      artifact trustworthy — see the consumer checklist below.** `archive_filename` is
+      informational only — the consumer gate below does not verify it.
+- [ ] The archive contains only tracked files as of that exact commit: no `.git/`, no untracked
+      files, no working-tree edits, and no runtime `.env` (only the tracked `.env.example`, if the
+      commit has one). **Never copy the real `.env` into a release artifact or transfer path** — it
+      carries live secrets; see `scripts/lib/release-tag.sh`'s own header for why rotation/rollback
+      never needs to copy it either.
+- [ ] **Tracked symlinks are refused, not archived.** If the target commit contains one, the script
+      exits non-zero before touching the output directory at all and names the offending path(s).
+      This repo has zero tracked symlinks today; if one is ever legitimately needed, extend the
+      script's manifest format deliberately rather than working around the refusal — hashing a
+      symlink's *target string* and having `sha256sum -c` later follow the link and hash its
+      *content* are two different numbers for the same manifest line.
+- [ ] **Refuses to overwrite if ANY final output already exists** — a regular file, a directory, a
+      symlink, or a broken symlink, for any of the five (archive/checksum/manifest/file-list/meta),
+      checked before staging even begins. Hardened after an independent review proved a prior
+      version wrong: it treated `.meta.txt`'s presence as the *only* guard and force-replaced
+      (`mv -f`) anything else sitting under a final name — which silently destroyed a genuine
+      pre-existing artifact whenever `.meta.txt` happened to be missing, reproduced directly with a
+      hand-planted "IRREPLACEABLE PRIOR ARTIFACT" file overwritten with zero warning. There is no
+      "safe to replace" leftover from this script's perspective, orphaned or not: **remove
+      conflicting paths yourself** after confirming it is safe, or use a different output-dir.
+- [ ] **Publish is no-clobber, not just atomic.** Everything (archive, checksum, manifest, file
+      list, meta) is built and self-verified in a private staging directory inside the output-dir
+      first. Promotion uses a hard link (`ln --`, not `mv -f`) for each of the five files: `link()`
+      fails with `EEXIST` if the destination appears between the precheck and promotion, so a
+      conflicting file created in that exact window is refused rather than silently overwritten —
+      proven directly by planting a file mid-run. `.meta.txt` is promoted last; a run interrupted at
+      any point before or during promotion leaves nothing behind under a final name (the interrupt
+      handler removes only the paths *that run itself* created, tracked individually, and only if
+      `.meta.txt` was not among them — a run interrupted immediately *after* `.meta.txt` publishes
+      correctly leaves the complete set in place).
+
+### Before trusting ANY release artifact (consumer checklist — added 2026-08-29)
+
+An artifact is not a release until **all five files verify together**. Do not upload, deploy, or
+transfer a partial set as if it were complete, and do not delete an unexplained leftover file
+yourself — investigate first; if it turns out to be an orphan from an aborted run, remove it only
+after you've confirmed that.
+
+```bash
+cd .release-transfer   # or wherever the artifact was transferred to
+SHA=<the exact commit SHA this release is supposed to be>
+BASE="release-$SHA"
+
+# 1. All five files present
+for ext in tar.gz tar.gz.sha256 manifest.sha256 files.txt meta.txt; do
+  [ -f "$BASE.$ext" ] || echo "MISSING: $BASE.$ext"
+done
+
+# 2. meta.txt exists, is a regular file (not a symlink), and is non-empty
+[ -f "$BASE.meta.txt" ] && [ ! -L "$BASE.meta.txt" ] && [ -s "$BASE.meta.txt" ] || echo "meta.txt invalid"
+
+# 3-6. Each required key must appear EXACTLY ONCE, THEN its value must match exactly. A bare
+# `grep -qx "key=value" file` only proves ONE line somewhere in the file equals "key=value" -- it
+# says nothing about whether "key" also appears a SECOND time with a DIFFERENT value. A meta.txt
+# with two `commit_sha=` lines (one correct, one attacker- or corruption-supplied) would still pass
+# every one of the four `grep -qx` checks below unmodified, because each only needs its own
+# expected line to exist ANYWHERE, not to be the file's only claim about that key. Fail closed on
+# any duplicate key before ever comparing a value.
+require_unique_kv() {
+  local key="$1" expected_value="$2" file="$3" count
+  count=$(grep -c "^${key}=" "$file")
+  if [ "$count" -ne 1 ]; then
+    echo "$key: expected exactly 1 line in $file, found $count -- refusing to trust any value for this key"
+    return 1
+  fi
+  grep -qx "${key}=${expected_value}" "$file" || echo "$key mismatch"
+}
+
+EXPECTED_TREE=$(git rev-parse "$SHA^{tree}")
+ACTUAL_ARCHIVE_SHA=$(sha256sum "$BASE.tar.gz" | cut -d' ' -f1)
+
+require_unique_kv format_version 1 "$BASE.meta.txt"
+require_unique_kv commit_sha "$SHA" "$BASE.meta.txt"
+# 5. tree_sha matches Git's own answer for that commit (requires the commit's object to be
+#    reachable where you run this -- e.g. on a checkout of this repo)
+require_unique_kv tree_sha "$EXPECTED_TREE" "$BASE.meta.txt"
+# 6. archive_sha256 in meta.txt matches the archive's REAL bytes
+require_unique_kv archive_sha256 "$ACTUAL_ARCHIVE_SHA" "$BASE.meta.txt"
+
+# 7. the .sha256 sidecar agrees too (independent of meta.txt)
+sha256sum -c "$BASE.tar.gz.sha256"
+
+# 8. per-file manifest verifies after extraction
+mkdir -p /tmp/verify-extract && tar -xzf "$BASE.tar.gz" -C /tmp/verify-extract
+( cd /tmp/verify-extract && sha256sum -c "$OLDPWD/$BASE.manifest.sha256" )
+```
+
+**Scope of this gate:** it checks an allowlist of *required* keys — `format_version`, `commit_sha`,
+`tree_sha`, `archive_sha256` — each must appear exactly once with the expected value. It is not a
+strict allowlist of every key the file may contain: an additional key beyond these four (including
+`archive_filename`) is permitted, because today's implementation does not treat an unrecognized key
+as an error. `archive_filename` is written into `meta.txt` but is **not** one of the four checked
+keys, so it is informational only — never rely on it as verified. Nothing above reads it either:
+`BASE="release-$SHA"` is built directly from the commit SHA you already know, not from
+`archive_filename`. If a future consumer ever needs to trust a filename read out of an untrusted
+`meta.txt`, extend this gate to check it explicitly first — do not assume it already is.
+
+If any check fails, or any of the five files is missing: **the set is INCOMPLETE**, full stop. Do
+not treat four-out-of-five as "close enough" — a `.tar.gz` with a valid `.sha256` sidecar but no
+`.meta.txt` may still be a genuine, complete archive from an interrupted run's *first* promoted
+file, or it may be something else entirely; the point of the marker is that you don't have to
+guess. Report it and let an operator decide, rather than silently deleting or silently trusting it.
+
+**URL contract enforced at deploy time** (see §2 below) governs `NEXT_PUBLIC_SITE_URL`, not this
+artifact helper — the two are unrelated build-time concerns that happen to be hardened in the same
+change.
+
 ## 2. Deploy checklist
 
 Run `scripts/deploy.sh <tag>` (requires `DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_ACCESS_SECRET`,
 `JWT_REFRESH_SECRET` set in the environment it runs in). It performs, in order:
 
 - [ ] Step 5 — build `phuquochub-api:<tag>` / `phuquochub-web:<tag>` images (the web build embeds
-      `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_MAP_TILE_URL` at build time — confirm these build-args
-      resolve to the real production values before trusting the image).
+      `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_MAP_TILE_URL`/`NEXT_PUBLIC_SITE_URL` at build time —
+      confirm these build-args resolve to the real production values before trusting the image).
+      `NEXT_PUBLIC_SITE_URL` (added 2026-08-29, hardened 2026-08-29) has **no fallback default** in
+      `deploy.sh` and is **validated, not just checked for presence** — unlike the other two, an
+      invalid value makes the script fail *before* `docker build` even runs, rather than silently
+      bake something wrong into a production image (broken `metadataBase`/sitemap/robots/JSON-LD
+      URLs). `deploy.sh` never sources `.env` itself; export the value explicitly in the environment
+      it runs in: `NEXT_PUBLIC_SITE_URL=https://phuquochub.com`.
+
+      **The full contract:** an exact, case-sensitive match against the literal string
+      `https://phuquochub.com`, with exactly one accepted variant — a single trailing `/`
+      (`https://phuquochub.com/`) — which is normalized away to the bare form before it reaches
+      `docker build`. This is **not** a shape/regex validator with several passing hostnames; a
+      shape-plus-blocklist regex was tried and independently proven bypassable (it still accepted
+      `https://example.com`, `https://phuquochub.co`, and `https://phuquochub.com.evil.example` —
+      see the script's own header comment), so the check is a literal `case` match against the one
+      production origin this repo actually serves
+      ([`infrastructure/caddy/Caddyfile`](../../infrastructure/caddy/Caddyfile)'s only non-redirect
+      site block). Every other value is rejected, including but not limited to: any other domain or
+      subdomain, `www.phuquochub.com` (a 301 redirect target, not the canonical origin), any
+      different case than the literal above, a near-miss/typo/lookalike hostname, `http://`, a
+      port, `user:pass@` credentials, any path beyond the one accepted trailing `/`, a `?query`, a
+      `#fragment`, surrounding or embedded whitespace, `localhost`/loopback/`0.0.0.0`, and any
+      value containing control characters (e.g. an embedded newline).
+
+      On rejection, `deploy.sh` prints one fixed message stating the single required production
+      value and refuses to build — it deliberately does **not** echo the rejected input back. The
+      submitted value may contain newlines or other control characters that, printed verbatim into
+      a log, could forge additional log lines (log injection) or otherwise mislead whoever reads
+      the output; stating the one valid contract is enough to fix a typo without ever reproducing
+      whatever was actually submitted.
 - [ ] Step 6 — tag retained (needed for `scripts/rollback.sh` later — do not delete it).
 - [ ] Step 7 — `migrate` compose service runs all pending migrations; **halts the whole deploy
       on failure** without touching the running stack.
