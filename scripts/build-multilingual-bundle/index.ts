@@ -20,7 +20,6 @@ import { parseXlsxSheet } from './xlsx-parser';
 import {
   processRows,
   validateHeaders,
-  REQUIRED_COLUMNS,
   MULTILINGUAL_IMPORT_CONTRACT_VERSION,
 } from './bundle-processor';
 import {
