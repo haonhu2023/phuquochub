@@ -35,6 +35,9 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { BusinessModule } from './modules/business/business.module';
 import { VerificationsModule } from './modules/verifications/verifications.module';
 import { AdminDataModule } from './modules/admin-data/admin-data.module';
+import { LocalesModule } from './modules/locales/locales.module';
+import { PlaceTranslationsModule } from './modules/place-translations/place-translations.module';
+import { MultilingualImportModule } from './modules/multilingual-import/multilingual-import.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -85,6 +88,10 @@ import { AdminDataModule } from './modules/admin-data/admin-data.module';
     BusinessModule,
     VerificationsModule,
     AdminDataModule,
+    // ADR-020: nền tảng i18n (vi mặc định, en hoạt động thứ hai) — bảng riêng, không đụng `places`.
+    LocalesModule,
+    PlaceTranslationsModule,
+    MultilingualImportModule,
   ],
 })
 export class AppModule {}

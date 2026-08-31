@@ -24,6 +24,7 @@
     "audit:data-quality": "ts-node src/scripts/audit-data-quality.ts",
     "admin:ingest-verified-facts": "ts-node src/scripts/ingest-verified-facts.ts",
     "admin:validate-publish-manifest": "ts-node src/scripts/validate-publish-manifest.ts",
+    "admin:import-multilingual": "ts-node src/scripts/import-multilingual-places.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {
