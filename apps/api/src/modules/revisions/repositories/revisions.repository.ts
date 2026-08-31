@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { WikiRevision } from '../entities/wiki-revision.entity';
 import { RevisionEntityType, RevisionOrigin, RevisionStatus } from '../revision.enums';
 
@@ -38,8 +38,14 @@ export class RevisionsRepository {
     private readonly repo: Repository<WikiRevision>,
   ) {}
 
-  async record(input: RecordRevisionInput): Promise<{ id: string; revisionNumber: number }> {
-    const rows: Array<{ id: string; revision_number: number }> = await this.repo.query(
+  // `manager` tuỳ chọn (ADR-020 §5): khi được truyền — từ `dataSource.transaction(...)` ở một
+  // service khác (place-translations, publish theo bundle) — INSERT này chạy TRONG giao dịch đó,
+  // để một revision và hàng nội dung đi cùng nó rollback CÙNG NHAU nếu một trong hai lỗi. Không
+  // truyền = hành vi cũ, dùng repository mặc định của module (mọi call site hiện tại, kể cả
+  // `recordPlaceRevision()`, không đổi).
+  async record(input: RecordRevisionInput, manager?: EntityManager): Promise<{ id: string; revisionNumber: number }> {
+    const executor: Pick<EntityManager, 'query'> = manager ?? this.repo.manager;
+    const rows: Array<{ id: string; revision_number: number }> = await executor.query(
       `INSERT INTO wiki_revisions
          (entity_type, entity_id, revision_number, parent_revision_id,
           snapshot, diff, origin, change_note, editor_id, status)
