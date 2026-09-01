@@ -41,6 +41,38 @@ describe('RevisionsService', () => {
     );
   });
 
+  it('recordPlaceTranslationRevision ghi vết với entity_type=place_translation, entityId là id của record (không phải placeId)', async () => {
+    const res = await service.recordPlaceTranslationRevision({
+      entityId: 'place-translation-row-1',
+      snapshot: { translatedText: 'Sao Beach' },
+      origin: RevisionOrigin.IMPORT,
+      status: RevisionStatus.APPROVED,
+    });
+    expect(res).toEqual({ id: 'r1', revisionNumber: 1 });
+    expect(repo.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: RevisionEntityType.PLACE_TRANSLATION,
+        entityId: 'place-translation-row-1',
+        status: RevisionStatus.APPROVED,
+      }),
+      undefined,
+    );
+  });
+
+  it('recordPlaceTranslationRevision forward một EntityManager tuỳ chọn xuống repository (để tham gia cùng giao dịch với hàng place_translations)', async () => {
+    const fakeManager = {} as never;
+    await service.recordPlaceTranslationRevision(
+      {
+        entityId: 'row-2',
+        snapshot: {},
+        origin: RevisionOrigin.IMPORT,
+        status: RevisionStatus.APPROVED,
+      },
+      fakeManager,
+    );
+    expect(repo.record).toHaveBeenCalledWith(expect.anything(), fakeManager);
+  });
+
   it('listByPlace map row → WikiRevision (khớp openapi)', async () => {
     const res = await service.listByPlace('p1');
     expect(repo.listByEntity).toHaveBeenCalledWith(RevisionEntityType.PLACE, 'p1');

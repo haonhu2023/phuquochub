@@ -3,8 +3,12 @@
 
 // entity_type: giai đoạn đầu chỉ `place`; mở rộng `topic, area, business…`
 // = THÊM giá trị enum (ADR-014) — không đổi schema. Chưa thêm khi entity đích chưa tồn tại.
+//
+// PLACE_TRANSLATION (ADR-020): mỗi bản dịch/route/seo đa ngôn ngữ là một entity riêng theo dõi
+// revision qua bảng wiki_revisions dùng chung — KHÔNG tạo bảng revision riêng cho i18n.
 export enum RevisionEntityType {
   PLACE = 'place',
+  PLACE_TRANSLATION = 'place_translation',
 }
 
 // Kênh kỹ thuật phát sinh revision (khác `source_attributions` = bằng chứng nội dung).
