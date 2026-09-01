@@ -301,6 +301,25 @@ describe('MultilingualPlaceImportService', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
+  // Regression for the local-staging dry-run finding: importBundle() used to call
+  // batchRepo.insert() unconditionally BEFORE branching on dryRun, so every dry-run left a
+  // real row behind in multilingual_import_batches (dry_run=true, status=pending) even though
+  // nothing else was written. That violates this pipeline's own documented contract — reused
+  // from VerifiedFactsIngestionService, see PRODUCTION-DATA-DELIVERY-PATH-DESIGN-2026-08-24.md
+  // §5.1: "`--dry-run` vẫn chạy đủ [các kiểm tra], chỉ không ghi" (dry-run still runs every
+  // check in full, it just does not write) — and matches how every mutation in that sibling
+  // service is individually gated on `!dryRun`. Zero DB writes for dry-run, full stop.
+  it('dry-run performs zero repository mutations — no batch row, no import row', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    await service.importBundle({ contract, actorId: VALID_UUID, dryRun: true });
+
+    expect(batchRepo.insert).not.toHaveBeenCalled();
+    expect(batchRepo.update).not.toHaveBeenCalled();
+    expect(rowRepo.insertMany).not.toHaveBeenCalled();
+  });
+
   // ============================================================
   // Successful write
   // ============================================================
