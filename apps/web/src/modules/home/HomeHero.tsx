@@ -1,4 +1,5 @@
 import { SearchBox } from '@/modules/search/SearchBox';
+import { DEFAULT_LOCALE, type Locale } from '@/lib/locale';
 import styles from './home.module.css';
 
 export const HOME_TITLE = 'Khám phá Phú Quốc';
@@ -13,7 +14,7 @@ export const HOME_DESCRIPTION =
  * tải xong. `q=""` vì trang chủ luôn bắt đầu từ trạng thái rỗng; không truyền category/ward/
  * price_range để người dùng vào /search không bị áp sẵn bộ lọc nào.
  */
-export function HomeHero() {
+export function HomeHero({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
   return (
     <section className={styles.hero} aria-labelledby="home-hero-title">
       <h1 id="home-hero-title" className={styles.heroTitle}>
@@ -21,7 +22,7 @@ export function HomeHero() {
       </h1>
       <p className={styles.heroLede}>{HOME_DESCRIPTION}</p>
       <div className={styles.heroSearch}>
-        <SearchBox q="" />
+        <SearchBox q="" locale={locale} />
       </div>
     </section>
   );

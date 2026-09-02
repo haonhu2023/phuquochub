@@ -29,10 +29,10 @@ import { OperatorContactBlock } from './OperatorContact';
 const WEB_SRC = path.join(process.cwd(), 'src');
 
 const LEGAL_PAGES = [
-  'app/(public)/privacy/page.tsx',
-  'app/(public)/terms/page.tsx',
-  'app/(public)/about/page.tsx',
-  'app/(public)/contact/page.tsx',
+  'app/[locale]/(public)/privacy/page.tsx',
+  'app/[locale]/(public)/terms/page.tsx',
+  'app/[locale]/(public)/about/page.tsx',
+  'app/[locale]/(public)/contact/page.tsx',
 ];
 
 function readSrc(rel: string): string {
@@ -156,17 +156,23 @@ describe('OperatorContactBlock', () => {
 });
 
 describe('SiteFooter', () => {
-  it('trỏ tới đủ 4 trang tin cậy/pháp lý', () => {
+  it('mặc định trỏ tới đủ 4 trang tin cậy/pháp lý dưới locale vi (không truyền prop)', () => {
     render(<SiteFooter />);
     const expected: Array<[string, string]> = [
-      ['Giới thiệu', '/about'],
-      ['Liên hệ', '/contact'],
-      ['Chính sách bảo mật', '/privacy'],
-      ['Điều khoản sử dụng', '/terms'],
+      ['Giới thiệu', '/vi/about'],
+      ['Liên hệ', '/vi/contact'],
+      ['Chính sách bảo mật', '/vi/privacy'],
+      ['Điều khoản sử dụng', '/vi/terms'],
     ];
     for (const [label, href] of expected) {
       expect(screen.getByRole('link', { name: label })).toHaveAttribute('href', href);
     }
+  });
+
+  it('PR A: trỏ đúng locale khi truyền prop locale="en"', () => {
+    render(<SiteFooter locale="en" />);
+    expect(screen.getByRole('link', { name: 'Giới thiệu' })).toHaveAttribute('href', '/en/about');
+    expect(screen.getByRole('link', { name: 'Điều khoản sử dụng' })).toHaveAttribute('href', '/en/terms');
   });
 
   it('ghi công OpenStreetMap (yêu cầu của giấy phép dữ liệu bản đồ)', () => {
@@ -176,24 +182,26 @@ describe('SiteFooter', () => {
   });
 });
 
-describe('footer hiện diện ở cả hai layout', () => {
+describe('footer hiện diện ở cả ba root layout', () => {
   it.each([
-    ['app/(public)/layout.tsx', 'khu vực công khai'],
+    ['app/[locale]/(public)/layout.tsx', 'khu vực công khai'],
     ['app/(auth)/layout.tsx', 'khu vực đăng nhập/đăng ký'],
   ])('%s có SiteFooter (%s)', (rel) => {
-    expect(readSrc(rel)).toMatch(/<SiteFooter\s*\/>/);
+    expect(readSrc(rel)).toMatch(/<SiteFooter\b/);
   });
 });
 
 describe('công bố ở các form thu thập dữ liệu', () => {
   it.each([
-    ['app/(auth)/register/page.tsx', 'đăng ký'],
-    ['modules/reviews/ReviewsSection.tsx', 'đánh giá'],
-    ['modules/business-claims/ClaimForm.tsx', 'xác nhận cơ sở'],
-    ['modules/place-photos/PhotosView.tsx', 'tải ảnh'],
-  ])('%s có liên kết tới trang pháp lý (%s)', (rel) => {
+    ['app/(auth)/register/page.tsx', 'đăng ký', /href="\/(terms|privacy)"/],
+    // PR A: ReviewsSection render trong route public → href phải qua localizedHref/useLocale,
+    // không còn là chuỗi "/terms" cứng.
+    ['modules/reviews/ReviewsSection.tsx', 'đánh giá', /localizedHref\(locale, ['"]\/terms['"]\)/],
+    ['modules/business-claims/ClaimForm.tsx', 'xác nhận cơ sở', /href="\/(terms|privacy)"/],
+    ['modules/place-photos/PhotosView.tsx', 'tải ảnh', /href="\/(terms|privacy)"/],
+  ] as const)('%s có liên kết tới trang pháp lý (%s)', (rel, _label, pattern) => {
     const src = readSrc(rel);
-    expect(src).toMatch(/href="\/(terms|privacy)"/);
+    expect(src).toMatch(pattern);
   });
 
   it('form đăng ký nêu rõ sự đồng ý với CẢ Điều khoản và Chính sách bảo mật', () => {
@@ -206,7 +214,7 @@ describe('công bố ở các form thu thập dữ liệu', () => {
 
 describe('không có banner cookie (sản phẩm không đặt cookie nào)', () => {
   it('chính sách nêu rõ không dùng cookie và không có banner', () => {
-    const src = readSrc('app/(public)/privacy/page.tsx');
+    const src = readSrc('app/[locale]/(public)/privacy/page.tsx');
     expect(src).toMatch(/không đặt cookie/i);
     expect(src).toMatch(/không hiển thị banner/i);
   });
@@ -220,7 +228,7 @@ describe('không có banner cookie (sản phẩm không đặt cookie nào)', ()
  * viện dẫn gì. Test này ghim đúng bộ văn bản hiện hành.
  */
 describe('viện dẫn khung pháp lý Việt Nam hiện hành', () => {
-  const src = () => readSrc('app/(public)/privacy/page.tsx');
+  const src = () => readSrc('app/[locale]/(public)/privacy/page.tsx');
 
   it('nêu Luật Bảo vệ dữ liệu cá nhân số 91/2025/QH15 và mốc hiệu lực 01/01/2026', () => {
     expect(src()).toMatch(/91\/2025\/QH15/);
@@ -243,7 +251,7 @@ describe('viện dẫn khung pháp lý Việt Nam hiện hành', () => {
  * Không được tuyên bố sai rằng tài liệu đã qua rà soát pháp lý — chưa hề có luật sư nào rà soát.
  */
 describe('không tuyên bố đã qua rà soát pháp lý', () => {
-  it.each(['app/(public)/privacy/page.tsx', 'app/(public)/terms/page.tsx'])(
+  it.each(['app/[locale]/(public)/privacy/page.tsx', 'app/[locale]/(public)/terms/page.tsx'])(
     '%s nói rõ tài liệu CHƯA qua rà soát của luật sư',
     (rel) => {
       const text = readSrc(rel);
@@ -258,7 +266,7 @@ describe('câu luật áp dụng ở Điều khoản không lặp chữ "pháp l
   it('không ghép tiền tố "pháp luật" vào trước governingLaw', () => {
     // `governingLaw` đã là "Pháp luật Việt Nam"; mẫu cũ `pháp luật {governingLaw}` sẽ in ra
     // "pháp luật Pháp luật Việt Nam".
-    expect(readSrc('app/(public)/terms/page.tsx')).not.toMatch(
+    expect(readSrc('app/[locale]/(public)/terms/page.tsx')).not.toMatch(
       /pháp luật \{operatorContact\.governingLaw\}/i,
     );
   });

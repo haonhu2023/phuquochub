@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { BeachCard as BeachCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
 import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from '@/modules/places/trust';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './beaches.module.css';
 
@@ -11,7 +12,7 @@ import styles from './beaches.module.css';
 // CỐ Ý không hiển thị bất kỳ thông tin nào về tắm biển, cứu hộ, tiện ích hay chất lượng nước:
 // schema không có trường nào cho chúng, và đó là thông tin an toàn — suy đoán từ mô tả rồi trình
 // bày như dữ kiện là điều không được làm.
-export function BeachCard({ beach }: { beach: BeachCardType }) {
+export function BeachCard({ beach, locale = DEFAULT_LOCALE }: { beach: BeachCardType; locale?: Locale }) {
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public, không phụ thuộc category (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
@@ -21,7 +22,7 @@ export function BeachCard({ beach }: { beach: BeachCardType }) {
   const isVerified = getTrustBadge(beach.verification_status) === 'verified';
 
   return (
-    <Link href={`/places/${beach.slug}`} className={placesStyles.card}>
+    <Link href={localizedHref(locale, `/places/${beach.slug}`)} className={placesStyles.card}>
       {beach.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img

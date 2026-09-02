@@ -19,7 +19,7 @@ const BASE_HOTEL: HotelCardType = {
 describe('HotelCard', () => {
   it('links to /hotels/{slug}', () => {
     render(<HotelCard hotel={BASE_HOTEL} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/hotels/salinda-resort');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/hotels/salinda-resort');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

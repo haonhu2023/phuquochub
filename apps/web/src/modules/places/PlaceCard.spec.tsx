@@ -20,9 +20,14 @@ const BASE_PLACE: PlaceCardType = {
 };
 
 describe('PlaceCard', () => {
-  it('links to /places/{slug}', () => {
+  it('links to /places/{slug} (mặc định locale=vi khi không truyền)', () => {
     render(<PlaceCard place={BASE_PLACE} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/places/dinh-cau');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/places/dinh-cau');
+  });
+
+  it('PR A: dùng đúng locale="en" khi được truyền', () => {
+    render(<PlaceCard place={BASE_PLACE} locale="en" />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/en/places/dinh-cau');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

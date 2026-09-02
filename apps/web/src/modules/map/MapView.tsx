@@ -8,6 +8,7 @@ import { getPlace } from '@/modules/places/api/places.api';
 import type { Category } from '@/modules/categories/api/categories.api';
 import type { GeoPoint } from '@/modules/places/types';
 import { isValidCoord, clusterElement, placeElement, buildPopupCard, popupState } from './mapMarkers';
+import { useLocale } from '@/lib/LocaleContext';
 import styles from './map.module.css';
 
 // PLACE-026 (OD2-8): nguồn tile cấu hình được qua NEXT_PUBLIC_MAP_TILE_URL — mặc định GIỮ
@@ -41,12 +42,17 @@ interface MapViewProps {
 // khi `category`/`ward` đổi (KHÔNG di chuyển viewport — tránh jumping khi đổi bộ lọc).
 // `focusPoint` (tuỳ chọn): khi thay đổi → fly tới điểm (đồng bộ list→map ở trang Explore).
 export function MapView({ focusPoint, category, ward, categories }: MapViewProps = {}) {
+  const locale = useLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const filtersRef = useRef({ category, ward });
   const categoriesRef = useRef(categories);
+  // PR A: cùng pattern `categoriesRef` — `openPlacePopup` sống trong effect mount chạy MỘT LẦN,
+  // đọc `locale` qua ref thay vì đóng gói trực tiếp giá trị lúc mount (locale thực tế không đổi
+  // giữa client-side navigation trong PR A vì chưa có selector, nhưng giữ đúng pattern an toàn).
+  const localeRef = useRef(locale);
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   // Đếm request bbox — mỗi refresh() ghi lại số thứ tự của CHÍNH nó trước khi await, rồi so lại
   // sau khi resolve. Đổi filter trong lúc một refresh do pan/zoom trước đó còn đang bay có thể
@@ -65,6 +71,10 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
   }, [categories]);
 
   useEffect(() => {
+    localeRef.current = locale;
+  }, [locale]);
+
+  useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     // `openPlacePopup` sống TRONG effect mount (không phải biến ngoài) — đọc `categories` qua
     // categoriesRef thay vì đóng gói trực tiếp props, để mount effect chỉ chạy MỘT LẦN ([]) mà
@@ -79,7 +89,8 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
       try {
         const detail = await getPlace(m.slug);
         // Người dùng có thể đã đóng popup trong lúc chờ — không ghi đè popup khác đang mở.
-        if (popupRef.current === popup) popup.setDOMContent(buildPopupCard(detail, categoriesRef.current));
+        if (popupRef.current === popup)
+          popup.setDOMContent(buildPopupCard(detail, categoriesRef.current, localeRef.current));
       } catch {
         if (popupRef.current === popup) popup.setDOMContent(popupState('Không tải được thông tin địa điểm.'));
       }

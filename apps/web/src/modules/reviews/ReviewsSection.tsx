@@ -9,6 +9,8 @@ import { useSingleImageUpload } from '@/modules/media/useSingleImageUpload';
 import { createReview } from './api/reviews.api';
 import { formatReviewDate, ratingStars, reviewMediaAlt, reviewMediaSrc } from './format';
 import type { Review } from './types';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 import legalStyles from '@/modules/legal/legal.module.css';
 import styles from './reviews.module.css';
 
@@ -22,6 +24,7 @@ interface Props {
 // null (EmptySuccess, openapi.yaml) nên item mới được dựng từ chính dữ liệu vừa gửi + user hiện tại.
 export function ReviewsSection({ placeId, initialReviews }: Props) {
   const { isAuthenticated, user } = useAuth();
+  const locale = useLocale();
   const [reviews, setReviews] = useState(initialReviews);
   const [rating, setRating] = useState(5);
   const [content, setContent] = useState('');
@@ -198,7 +201,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
           <p className={legalStyles.formDisclosure}>
             Đánh giá và ảnh sẽ hiển thị công khai sau khi qua kiểm duyệt. Chỉ đăng ảnh bạn có quyền
             sử dụng, và đừng đưa vào thông tin cá nhân bạn không muốn công khai — xem{' '}
-            <Link href="/terms">Điều khoản</Link>.
+            <Link href={localizedHref(locale, '/terms')}>Điều khoản</Link>.
           </p>
         </form>
       )}

@@ -2,10 +2,17 @@ import Link from 'next/link';
 import type { RestaurantCard as RestaurantCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
 import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './restaurants.module.css';
 
-export function RestaurantCard({ restaurant }: { restaurant: RestaurantCardType }) {
+export function RestaurantCard({
+  restaurant,
+  locale = DEFAULT_LOCALE,
+}: {
+  restaurant: RestaurantCardType;
+  locale?: Locale;
+}) {
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
@@ -13,7 +20,7 @@ export function RestaurantCard({ restaurant }: { restaurant: RestaurantCardType 
     restaurant.verification_status,
   );
   return (
-    <Link href={`/restaurants/${restaurant.slug}`} className={placesStyles.card}>
+    <Link href={localizedHref(locale, `/restaurants/${restaurant.slug}`)} className={placesStyles.card}>
       {restaurant.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img

@@ -21,7 +21,7 @@ const BASE_ATTRACTION: AttractionCardType = {
 describe('AttractionCard', () => {
   it('links to the shared place detail page, not a dedicated attraction page', () => {
     render(<AttractionCard attraction={BASE_ATTRACTION} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/places/bai-sao');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/places/bai-sao');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

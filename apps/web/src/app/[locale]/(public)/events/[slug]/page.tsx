@@ -1,0 +1,61 @@
+import { notFound } from 'next/navigation';
+import { getEvent, type EventDetail } from '@/modules/events/api/events.api';
+import { ApiError } from '@/lib/http';
+import { buildEventJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { localizedHref, type Locale } from '@/lib/locale';
+
+interface Params {
+  params: Promise<{ slug: string; locale: string }>;
+}
+
+export async function generateMetadata({ params }: Params) {
+  const { slug, locale: localeParam } = await params;
+  const locale = localeParam as Locale;
+  try {
+    const ev = await getEvent(slug);
+    return {
+      title: `${ev.title} · Sự kiện · PhuQuocHub`,
+      description: ev.description ?? undefined,
+      alternates: { canonical: localizedHref(locale, `/events/${ev.slug}`) },
+    };
+  } catch {
+    return { title: 'Sự kiện · PhuQuocHub' };
+  }
+}
+
+const STATUS_LABEL: Record<EventDetail['time_status'], string> = {
+  upcoming: 'Sắp diễn ra',
+  ongoing: 'Đang diễn ra',
+  ended: 'Đã kết thúc',
+};
+
+// Server Component: chi tiết sự kiện (peer entity, ADR-002).
+export default async function EventDetailPage({ params }: Params) {
+  const { slug } = await params;
+  let ev: EventDetail;
+  try {
+    ev = await getEvent(slug);
+  } catch (err) {
+    // PLACE-041: phân biệt 404 với lỗi khác — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ.
+    if (err instanceof ApiError && err.isNotFound) {
+      notFound();
+    }
+    throw err;
+  }
+
+  return (
+    <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildEventJsonLd(ev)) }}
+      />
+      <h1>{ev.title}</h1>
+      <p style={{ color: '#4b5563' }}>
+        {new Date(ev.start_at).toLocaleString('vi-VN')} → {new Date(ev.end_at).toLocaleString('vi-VN')}{' '}
+        ({ev.timezone}) · <strong>{STATUS_LABEL[ev.time_status]}</strong>
+      </p>
+      {ev.event_category && <p style={{ color: '#6b7280', fontSize: 14 }}>Loại: {ev.event_category}</p>}
+      {ev.description && <p>{ev.description}</p>}
+    </article>
+  );
+}

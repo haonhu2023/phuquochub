@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { localizedHref, type Locale } from '@/lib/locale';
 import styles from './home.module.css';
 
 /**
@@ -6,7 +7,7 @@ import styles from './home.module.css';
  * là thứ nặng nhất trong ứng dụng và phần lớn khách vào trang chủ để tìm kiếm/duyệt, không phải để
  * xem bản đồ ngay. Trang `/map` đã có sẵn toàn bộ trải nghiệm đó.
  */
-export function MapCta() {
+export function MapCta({ locale }: { locale: Locale }) {
   return (
     <section className={styles.section} aria-labelledby="home-map-title">
       <div className={styles.cta}>
@@ -18,7 +19,7 @@ export function MapCta() {
             Duyệt địa điểm theo vị trí trên bản đồ Phú Quốc.
           </p>
         </div>
-        <Link href="/map" className={styles.ctaLink}>
+        <Link href={localizedHref(locale, '/map')} className={styles.ctaLink}>
           Mở bản đồ
         </Link>
       </div>

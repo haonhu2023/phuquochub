@@ -41,7 +41,7 @@ beforeEach(() => {
 describe('DiscoverPlaces — truy vấn', () => {
   // Trang chủ KHÔNG được kéo cả danh sách địa điểm: truy vấn luôn có chặn trên.
   it('gọi listPlaces đúng một lần với limit có chặn trên', async () => {
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
     expect(mockListPlaces).toHaveBeenCalledTimes(1);
     expect(mockListPlaces).toHaveBeenCalledWith({ limit: DISCOVER_LIMIT });
   });
@@ -49,7 +49,7 @@ describe('DiscoverPlaces — truy vấn', () => {
   // Không truyền tham số sắp xếp nào: thứ tự "nổi bật" CHÍNH LÀ thứ tự mặc định của GET /places
   // (rating_avg DESC NULLS LAST, created_at DESC, id ASC) — không có xếp hạng nào bịa ở client.
   it('không truyền tham số sắp xếp/lọc tự chế nào', async () => {
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
     expect(Object.keys(mockListPlaces.mock.calls[0][0])).toEqual(['limit']);
   });
 });
@@ -57,16 +57,16 @@ describe('DiscoverPlaces — truy vấn', () => {
 describe('DiscoverPlaces — có dữ liệu', () => {
   it('render thẻ địa điểm thật, liên kết tới trang chi tiết', async () => {
     mockListPlaces.mockResolvedValueOnce([place(), place({ id: 'p2', name: 'Bãi Sao', slug: 'bai-sao' })]);
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
 
     expect(screen.getByText('Dinh Cậu')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Bãi Sao/ })).toHaveAttribute('href', '/places/bai-sao');
+    expect(screen.getByRole('link', { name: /Bãi Sao/ })).toHaveAttribute('href', '/vi/places/bai-sao');
   });
 
   // Tiêu đề khối là h2 → tên địa điểm phải là h3, không được phẳng cùng bậc.
   it('tên địa điểm nằm dưới tiêu đề khối một bậc (h2 → h3)', async () => {
     mockListPlaces.mockResolvedValueOnce([place()]);
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
 
     expect(screen.getByRole('heading', { level: 2, name: 'Địa điểm nổi bật' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Dinh Cậu' })).toBeInTheDocument();
@@ -74,15 +74,15 @@ describe('DiscoverPlaces — có dữ liệu', () => {
 
   it('có liên kết xem thêm tới /places', async () => {
     mockListPlaces.mockResolvedValueOnce([place()]);
-    render(await DiscoverPlaces());
-    expect(screen.getByRole('link', { name: /Xem thêm/ })).toHaveAttribute('href', '/places');
+    render(await DiscoverPlaces({ locale: 'vi' }));
+    expect(screen.getByRole('link', { name: /Xem thêm/ })).toHaveAttribute('href', '/vi/places');
   });
 });
 
 describe('DiscoverPlaces — rỗng', () => {
   it('không có địa điểm nào → trạng thái rỗng trung thực, KHÔNG dữ liệu giả', async () => {
     mockListPlaces.mockResolvedValueOnce([]);
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
 
     expect(screen.getByText('Chưa có địa điểm nào')).toBeInTheDocument();
     // Tiêu đề khối vẫn còn — người dùng hiểu khối này là gì.
@@ -95,7 +95,7 @@ describe('DiscoverPlaces — API hỏng', () => {
   it('listPlaces ném lỗi → KHÔNG ném ra ngoài, chỉ thu nhỏ khối này lại', async () => {
     mockListPlaces.mockRejectedValueOnce(new Error('API down'));
 
-    const element = await DiscoverPlaces();
+    const element = await DiscoverPlaces({ locale: 'vi' });
     render(element);
 
     expect(screen.getByRole('status')).toHaveTextContent(/chưa tải được danh sách địa điểm/i);
@@ -106,7 +106,7 @@ describe('DiscoverPlaces — API hỏng', () => {
 
   it('lỗi KHÔNG lộ chi tiết kỹ thuật ra giao diện', async () => {
     mockListPlaces.mockRejectedValueOnce(new Error('ECONNREFUSED 10.0.0.5:5432'));
-    render(await DiscoverPlaces());
+    render(await DiscoverPlaces({ locale: 'vi' }));
     expect(screen.queryByText(/ECONNREFUSED/)).not.toBeInTheDocument();
   });
 });

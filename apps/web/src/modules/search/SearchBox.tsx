@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import styles from './search.module.css';
 
 interface Props {
@@ -5,15 +6,20 @@ interface Props {
   category?: string;
   ward?: string;
   price_range?: string;
+  locale?: Locale;
 }
 
 // Server Component thuần (GET form) — hoạt động cả khi JS chưa chạy, cùng triết lý với
-// Pagination (link-based). Submit điều hướng /search?q=...&category=...&ward=...&price_range=...
-// — giữ nguyên bộ lọc hiện tại qua hidden input, KHÔNG giữ `page` (đổi q luôn reset về trang 1,
-// cùng quy ước SearchFilters.updateParam xoá `page` khi đổi bộ lọc).
-export function SearchBox({ q, category, ward, price_range }: Props) {
+// Pagination (link-based). Submit điều hướng /{locale}/search?q=...&category=...&ward=...&
+// price_range=... — giữ nguyên bộ lọc hiện tại qua hidden input, KHÔNG giữ `page` (đổi q luôn
+// reset về trang 1, cùng quy ước SearchFilters.updateParam xoá `page` khi đổi bộ lọc).
+//
+// PR A: `action` trỏ thẳng `/{locale}/search` thay vì `/search` — form GET native (không phải
+// SPA `<Link>`) nên middleware VẪN sẽ redirect đúng nếu thiếu prefix, nhưng trỏ thẳng tránh một
+// vòng redirect thừa (giữ đúng yêu cầu "không làm mất locale khi điều hướng").
+export function SearchBox({ q, category, ward, price_range, locale = DEFAULT_LOCALE }: Props) {
   return (
-    <form method="get" action="/search" className={styles.searchBox}>
+    <form method="get" action={localizedHref(locale, '/search')} className={styles.searchBox}>
       <input
         type="text"
         name="q"

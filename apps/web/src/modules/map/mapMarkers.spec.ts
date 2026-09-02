@@ -139,8 +139,15 @@ describe('buildPopupCard — nội dung popup marker (Phase 4.3)', () => {
     const card = buildPopupCard(detail());
     expect(card.querySelector('p')?.textContent).toBe('Bãi Sao');
     const link = card.querySelector('a');
-    expect(link?.getAttribute('href')).toBe('/places/bai-sao');
+    // PR A: `locale` mặc định DEFAULT_LOCALE ('vi') khi không truyền — không double-prefix.
+    expect(link?.getAttribute('href')).toBe('/vi/places/bai-sao');
     expect(link?.textContent).toContain('Xem chi tiết');
+  });
+
+  it('PR A: dùng đúng locale khi được truyền tường minh', () => {
+    const card = buildPopupCard(detail(), undefined, 'en');
+    const link = card.querySelector('a');
+    expect(link?.getAttribute('href')).toBe('/en/places/bai-sao');
   });
 
   it('có categories map → dùng nhãn tiếng Việt thay vì category_slug', () => {

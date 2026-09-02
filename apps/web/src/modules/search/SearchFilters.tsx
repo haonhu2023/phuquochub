@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Category } from '@/modules/categories/api/categories.api';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 import styles from '@/components/ui/ui.module.css';
 
 const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
@@ -24,6 +26,7 @@ interface Props {
 export function SearchFilters({ total, categories }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLocale();
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -33,7 +36,7 @@ export function SearchFilters({ total, categories }: Props) {
       params.delete(key);
     }
     params.delete('page');
-    router.push(`/search${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`${localizedHref(locale, '/search')}${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (

@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { TOUR_SORT_VALUES, type TourSort } from './types';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 import styles from '@/components/ui/ui.module.css';
 
 const SORT_LABELS: Record<TourSort, string> = {
@@ -56,6 +58,7 @@ interface Props {
 export function TourFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLocale();
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -65,7 +68,7 @@ export function TourFilters({ total }: Props) {
       params.delete(key);
     }
     params.delete('page');
-    router.push(`/tours${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`${localizedHref(locale, '/tours')}${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (

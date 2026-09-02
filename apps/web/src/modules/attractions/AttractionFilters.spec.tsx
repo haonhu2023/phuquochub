@@ -30,20 +30,20 @@ describe('AttractionFilters', () => {
     searchParamsString = 'page=2';
     render(<AttractionFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Sắp xếp'), { target: { value: 'name_asc' } });
-    expect(push).toHaveBeenCalledWith('/attractions?sort=name_asc');
+    expect(push).toHaveBeenCalledWith('/vi/attractions?sort=name_asc');
   });
 
   it('sets the ward param without disturbing existing params', () => {
     searchParamsString = 'sort=newest';
     render(<AttractionFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Khu vực'), { target: { value: 'Dương Đông' } });
-    expect(push).toHaveBeenCalledWith('/attractions?sort=newest&ward=D%C6%B0%C6%A1ng+%C4%90%C3%B4ng');
+    expect(push).toHaveBeenCalledWith('/vi/attractions?sort=newest&ward=D%C6%B0%C6%A1ng+%C4%90%C3%B4ng');
   });
 
   it('removes the price_range param when "Tất cả" is selected', () => {
     searchParamsString = 'price_range=free&page=3';
     render(<AttractionFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/attractions');
+    expect(push).toHaveBeenCalledWith('/vi/attractions');
   });
 });

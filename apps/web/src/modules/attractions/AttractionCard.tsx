@@ -7,12 +7,19 @@ import {
   resolvePriceDisplay,
   TRUST_BADGE_LABEL,
 } from '@/modules/places/trust';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './attractions.module.css';
 
 // Trỏ về /places/[slug]: điểm tham quan KHÔNG có trang chi tiết riêng (xem types.ts) —
 // một Place chỉ có duy nhất một URL chi tiết, tránh nội dung trùng lặp cho SEO.
-export function AttractionCard({ attraction }: { attraction: AttractionCardType }) {
+export function AttractionCard({
+  attraction,
+  locale = DEFAULT_LOCALE,
+}: {
+  attraction: AttractionCardType;
+  locale?: Locale;
+}) {
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public, không phụ thuộc category (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
@@ -22,7 +29,7 @@ export function AttractionCard({ attraction }: { attraction: AttractionCardType 
   const isVerified = getTrustBadge(attraction.verification_status) === 'verified';
 
   return (
-    <Link href={`/places/${attraction.slug}`} className={placesStyles.card}>
+    <Link href={localizedHref(locale, `/places/${attraction.slug}`)} className={placesStyles.card}>
       {attraction.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img
