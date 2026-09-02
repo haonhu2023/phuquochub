@@ -175,7 +175,11 @@ export class MultilingualPlaceImportService {
       await this.localesService.getKnownLocale(row.sourceLocaleCode);
     }
 
-    // 6. Create batch record (PENDING)
+    // 6. Build the batch record in memory. Dry-run stops here and returns a simulated
+    // result WITHOUT persisting anything — same contract as VerifiedFactsIngestionService
+    // (PRODUCTION-DATA-DELIVERY-PATH-DESIGN-2026-08-24.md §5.1: "--dry-run vẫn chạy đủ [mọi
+    // kiểm tra], chỉ không ghi"): every check above still ran in full, but zero rows are
+    // written to multilingual_import_batches (or anywhere else) unless execution was requested.
     const batchRecord = new MultilingualImportBatch();
     batchRecord.id = randomUUID();
     batchRecord.batchId = contract.batchId;
@@ -194,17 +198,15 @@ export class MultilingualPlaceImportService {
     batchRecord.errorSummary = null;
     batchRecord.startedAt = null;
     batchRecord.completedAt = null;
-    await this.batchRepo.insert(batchRecord);
 
     if (dryRun) {
       return this.buildDryRunResult(batchRecord, contract);
     }
 
-    // 7. Execute: one transaction for the entire batch
-    await this.batchRepo.update(batchRecord.id, {
-      status: MultilingualImportBatchStatus.RUNNING,
-      startedAt: new Date(),
-    });
+    // 7. Execute: persist the batch record as RUNNING, then one transaction for the entire batch.
+    batchRecord.status = MultilingualImportBatchStatus.RUNNING;
+    batchRecord.startedAt = new Date();
+    await this.batchRepo.insert(batchRecord);
 
     const rowResults: ImportRowResult[] = [];
     let errorSummary: string | null = null;
