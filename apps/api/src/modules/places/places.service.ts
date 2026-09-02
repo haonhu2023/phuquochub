@@ -9,6 +9,8 @@ import { MediaRepository } from '../media/repositories/media.repository';
 import { toMedia } from '../media/media.mapper';
 import { SourceAttributionsRepository } from '../sources/repositories/source-attributions.repository';
 import { SourcesRepository } from '../sources/repositories/sources.repository';
+import { PlaceTranslationsService } from '../place-translations/place-translations.service';
+import { LocalesService } from '../locales/locales.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
@@ -31,6 +33,11 @@ const PLACE_EDIT_MANAGED = 'Place.Edit.Managed';
 
 // Discriminator đa hình lowercase (B-3) cho contacts.owner_type / price_history.entity_type.
 const PLACE_DISCRIMINATOR = 'place';
+
+// Public Place i18n Read Path — field_key mà place_translations dùng cho phần mô tả ngắn công
+// khai (khớp field_key do multilingual importer ghi, xem 11_TRANSLATABLE_FIELDS.field_key).
+// Hằng số duy nhất, không lặp lại chuỗi 'short_description' ở nhiều nơi trong luồng đọc này.
+const SHORT_DESCRIPTION_FIELD_KEY = 'short_description';
 
 // Discriminator đa hình cho source_attributions.entity_type — KHÔNG 'place' mà 'place_field':
 // đối chiếu nguồn diễn ra Ở CẤP TỪNG TRƯỜNG (vd `province`, `admin_area`), không phải một nguồn
@@ -75,6 +82,8 @@ export class PlacesService {
     private readonly authz: AuthorizationService,
     private readonly sourceAttributionsRepo: SourceAttributionsRepository,
     private readonly sourcesRepo: SourcesRepository,
+    private readonly placeTranslationsService: PlaceTranslationsService,
+    private readonly localesService: LocalesService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -95,23 +104,40 @@ export class PlacesService {
     return paginate(items.map(toPlaceCard).map(redactUntrustedPriceRange), page, limit, total);
   }
 
-  async getBySlug(slug: string) {
+  /**
+   * Public Place i18n Read Path (2026-09-02) — `locale` TÙY CHỌN, giữ nguyên hợp đồng phản hồi
+   * hiện có (`short_description: string | null`, không thêm khoá mới). Nguồn locale DUY NHẤT là
+   * `?locale=` querystring; mọi việc chuẩn hoá/kiểm hợp lệ/fallback đều đi qua
+   * `LocalesService.resolveRequestLocale()` — locale sai/không hỗ trợ (unknown, không public,
+   * không production) không được phép làm sập route công khai này, rơi về locale mặc định thay vì
+   * throw. Lỗi hạ tầng (DB/repository) vẫn propagate như bình thường — đây không phải một
+   * guarantee "never throws" tuyệt đối cho mọi loại lỗi.
+   *
+   * Chỉ ghi đè `short_description`: đây là field DUY NHẤT multilingual importer đã ghi tới hôm
+   * nay (xem ADR-020, 11_TRANSLATABLE_FIELDS). Không tìm thấy bản dịch đủ điều kiện (current +
+   * public + production) → giữ nguyên giá trị gốc từ `places.short_description`, không phải lỗi.
+   */
+  async getBySlug(slug: string, locale?: string) {
     const row = await this.placesRepo.getDetailBySlug(slug);
     if (!row) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
-    const [contacts, prices, media, faqs, trustSources] = await Promise.all([
+    const [contacts, prices, media, faqs, trustSources, localizedShortDescription] = await Promise.all([
       this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
       this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
       this.mediaRepo.listPublishedByPlace(row.id),
       this.placesRepo.listFaqs(row.id),
       this.resolveTrustSources(row.id),
+      this.resolveLocalizedShortDescription(row.id, locale),
     ]);
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
       // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
       ...redactUntrustedPriceRange(toPlaceDetail(row)),
+      // Public Place i18n Read Path: overlay SAU cùng, ghi đè bất kỳ giá trị nào toPlaceDetail đã
+      // đặt — bản dịch hợp lệ nếu có, nếu không thì giữ nguyên `places.short_description` gốc.
+      short_description: localizedShortDescription ?? row.short_description,
       trust_sources: trustSources,
       contacts: contacts.map((c) => ({
         id: c.id,
@@ -141,6 +167,21 @@ export class PlacesService {
       media: media.map((m) => toMedia(m, (id) => this.mediaUrl.fileUrl(id))),
       faqs,
     };
+  }
+
+  /**
+   * Public Place i18n Read Path — seam DUY NHẤT nơi PlacesService chạm vào locale/translation.
+   * Không hardcode place nào: nhận placeId bất kỳ, tra `LocalesService.resolveRequestLocale()`
+   * rồi `PlaceTranslationsService.getCurrentPublicTranslatedText()` — cùng một đường cho MỌI
+   * place, không có nhánh riêng cho địa điểm cụ thể nào.
+   */
+  private async resolveLocalizedShortDescription(placeId: string, requestedLocale?: string): Promise<string | null> {
+    const locale = await this.localesService.resolveRequestLocale(requestedLocale);
+    return this.placeTranslationsService.getCurrentPublicTranslatedText(
+      placeId,
+      SHORT_DESCRIPTION_FIELD_KEY,
+      locale.localeCode,
+    );
   }
 
   /**

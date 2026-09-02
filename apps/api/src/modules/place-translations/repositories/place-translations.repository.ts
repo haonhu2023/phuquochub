@@ -30,6 +30,22 @@ export class PlaceTranslationsRepository {
     return this.target(manager).findOne({ where: { id } });
   }
 
+  // Public Place i18n Read Path — the ONLY query the public read surface may use. Unlike
+  // findCurrent() (write-path idempotency check, deliberately ignores publish flags so the
+  // importer can compare against its own not-yet-public draft), this ALSO requires isPublic AND
+  // isProductionData: a row that is merely "current" can still be an internal/non-approved
+  // revision. Never returns a draft/private/non-production translation to a public caller.
+  findCurrentPublic(
+    placeId: string,
+    fieldKey: string,
+    localeCode: string,
+    manager?: EntityManager,
+  ): Promise<PlaceTranslation | null> {
+    return this.target(manager).findOne({
+      where: { placeId, fieldKey, localeCode, isCurrent: true, isPublic: true, isProductionData: true },
+    });
+  }
+
   async insert(row: PlaceTranslation, manager?: EntityManager): Promise<PlaceTranslation> {
     return this.target(manager).save(row);
   }

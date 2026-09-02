@@ -589,7 +589,20 @@ paths:
       summary: Chi tiết địa điểm theo slug
       operationId: getPlace
       security: []
-      parameters: [{ $ref: '#/components/parameters/SlugPath' }]
+      description: >-
+        Public Place i18n Read Path (2026-09-02): `?locale=` tuỳ chọn ghi đè `short_description`
+        bằng bản dịch `place_translations` nếu có bản CURRENT + PUBLIC + PRODUCTION cho đúng
+        locale đó; không có bản dịch hợp lệ thì giữ nguyên `short_description` gốc. Locale không
+        tồn tại/không publishable KHÔNG gây lỗi — hệ thống rơi về locale mặc định
+        (`supported_locales.is_default`). Response shape không đổi.
+      parameters:
+        - { $ref: '#/components/parameters/SlugPath' }
+        - name: locale
+          in: query
+          description: >-
+            Mã BCP-47 (vd `vi`, `en`). Bỏ trống dùng locale mặc định. Không hợp lệ/không publishable
+            → rơi về mặc định, không phải lỗi 400/404.
+          schema: { type: string, maxLength: 35 }
       responses:
         '200':
           description: OK

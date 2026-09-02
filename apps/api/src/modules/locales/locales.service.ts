@@ -52,6 +52,27 @@ export class LocalesService {
     return locale;
   }
 
+  // Public Place i18n Read Path — nguồn locale duy nhất được tin cậy cho toàn bộ hợp đồng đọc
+  // công khai (?locale= querystring hôm nay; nguồn khác nếu thêm sau này đều gọi qua đây, không
+  // tự viết lại). Một mã locale sai/chưa publishable (NotFoundException — xem getKnownLocale/
+  // assertPublishableLocale) KHÔNG được phép làm sập request công khai: coi như client không chỉ
+  // định gì và rơi về locale mặc định. Lỗi hạ tầng (DB/repository) KHÔNG được coi là "locale sai"
+  // — phải propagate nguyên trạng, không fallback che giấu và không kéo theo một query mặc định
+  // thứ hai chạy trên một DB có thể đang down.
+  async resolveRequestLocale(requestedLocaleCode?: string | null): Promise<SupportedLocale> {
+    if (requestedLocaleCode) {
+      try {
+        return await this.assertPublishableLocale(requestedLocaleCode);
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
+        // Mã không tồn tại hoặc chưa publishable — rơi về mặc định thay vì 500.
+      }
+    }
+    return this.getDefaultLocale();
+  }
+
   listAll(): Promise<SupportedLocale[]> {
     return this.localesRepo.findAll();
   }

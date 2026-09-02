@@ -254,6 +254,21 @@ export class PlaceTranslationsService {
     });
   }
 
+  // Public Place i18n Read Path — the single seam every public read surface (Places API today,
+  // any future consumer) must go through to read a localized field. Delegates the actual
+  // eligibility predicate to the repository query (findCurrentPublic) rather than re-filtering
+  // in application code, so there is exactly one place that can drift from "public/current/
+  // production only". Returns `null` on no eligible row — callers keep their own fallback
+  // (e.g. the untranslated base column), never a thrown error for "no translation yet".
+  async getCurrentPublicTranslatedText(
+    placeId: string,
+    fieldKey: string,
+    localeCode: string,
+  ): Promise<string | null> {
+    const row = await this.translationsRepo.findCurrentPublic(placeId, fieldKey, localeCode);
+    return row ? row.translatedText : null;
+  }
+
   isSourceTextStale(translation: PlaceTranslation, currentSourceText: string): boolean {
     return isSourceTextStale(translation.sourceTextHash, currentSourceText);
   }

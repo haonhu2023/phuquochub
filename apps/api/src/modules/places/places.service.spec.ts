@@ -43,6 +43,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let authz: LooseMock<Ctor[9]>;
   let sourceAttributionsRepo: LooseMock<Ctor[10]>;
   let sourcesRepo: LooseMock<Ctor[11]>;
+  let placeTranslationsService: LooseMock<Ctor[12]>;
+  let localesService: LooseMock<Ctor[13]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -69,6 +71,16 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     authz = createMock<Ctor[9]>({ canWithGrants: jest.fn() });
     sourceAttributionsRepo = createMock<Ctor[10]>({ listByEntity: jest.fn() });
     sourcesRepo = createMock<Ctor[11]>({ findById: jest.fn() });
+    // Public Place i18n Read Path — default mocks keep every EXISTING test in this file passing
+    // unchanged: no requested locale resolves to a harmless default-shaped locale object, and no
+    // translation is found (so short_description keeps flowing from the base row untouched). The
+    // dedicated 'locale overlay' describe block below overrides these per-test.
+    placeTranslationsService = createMock<Ctor[12]>({
+      getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
+    });
+    localesService = createMock<Ctor[13]>({
+      resolveRequestLocale: jest.fn().mockResolvedValue({ localeCode: 'vi' }),
+    });
 
     service = new PlacesService(
       placesRepo,
@@ -83,6 +95,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       authz,
       sourceAttributionsRepo,
       sourcesRepo,
+      placeTranslationsService,
+      localesService,
     );
   });
 
@@ -629,6 +643,112 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
       expect(mediaUrl.fileUrl).not.toHaveBeenCalled();
       expect(res.media).toEqual([expect.objectContaining({ id: 'm1', url: null })]);
+    });
+  });
+
+  // Public Place i18n Read Path — GET /places/:slug locale overlay. `toPlaceDetail` is mocked at
+  // the top of this file (does not pass short_description through), so every assertion here
+  // checks the FINAL response's short_description, proving the overlay is applied by the service
+  // itself after mapping, not something the mapper happens to do.
+  describe('getBySlug — locale overlay (Public Place i18n Read Path)', () => {
+    function commonMocks() {
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+    }
+
+    it('locale=vi with an eligible VI translation → short_description is the translated text', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', short_description: 'Mô tả gốc' });
+      commonMocks();
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(
+        'Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.',
+      );
+
+      const res = await service.getBySlug('vinwonders-phu-quoc', 'vi');
+
+      expect(res.short_description).toBe('Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.');
+      expect(localesService.resolveRequestLocale).toHaveBeenCalledWith('vi');
+      expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+        'p1',
+        'short_description',
+        'vi',
+      );
+    });
+
+    it('locale=en with an eligible EN translation → short_description is the English text', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', short_description: 'Mô tả gốc' });
+      commonMocks();
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(
+        'Explore the largest theme park in Vietnam that ranks top in Asia.',
+      );
+
+      const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+      expect(res.short_description).toBe('Explore the largest theme park in Vietnam that ranks top in Asia.');
+      expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+        'p1',
+        'short_description',
+        'en',
+      );
+    });
+
+    it('no eligible translation for the resolved locale → falls back to the base places.short_description', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p2', short_description: 'Mô tả cơ bản chưa dịch' });
+      commonMocks();
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+      const res = await service.getBySlug('chua-co-ban-dich', 'en');
+
+      expect(res.short_description).toBe('Mô tả cơ bản chưa dịch');
+    });
+
+    it('no locale query param at all → resolveRequestLocale is called with undefined (its own default-locale fallback applies)', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', short_description: 'Mô tả gốc' });
+      commonMocks();
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+      await service.getBySlug('vinwonders-phu-quoc');
+
+      expect(localesService.resolveRequestLocale).toHaveBeenCalledWith(undefined);
+    });
+
+    it('unsupported/garbage locale never throws or 500s — resolveRequestLocale is trusted to have already fallen back', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', short_description: 'Mô tả gốc' });
+      commonMocks();
+      // Simulates LocalesService.resolveRequestLocale's own safe fallback (tested in its own
+      // spec) — the SERVICE layer under test must not add a second, redundant try/catch AROUND
+      // an already-safe call, but must also not blow up if invoked with nonsense input.
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+      await expect(service.getBySlug('vinwonders-phu-quoc', 'xx-not-a-real-locale')).resolves.toBeDefined();
+      expect(localesService.resolveRequestLocale).toHaveBeenCalledWith('xx-not-a-real-locale');
+    });
+
+    it('localization overlay never touches canonical id/slug/category — only short_description', async () => {
+      placesRepo.getDetailBySlug.mockResolvedValue({
+        id: 'p1',
+        slug: 'vinwonders-phu-quoc',
+        category_id: 'cat-1',
+        short_description: 'Mô tả gốc',
+      });
+      commonMocks();
+      localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue('Translated text');
+
+      const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+      // toPlaceDetail is mocked to only ever emit `id` (+ mappedDetail:true) among these fields —
+      // proving the overlay logic itself never independently reads/re-injects slug/category_id.
+      expect(res.id).toBe('p1');
+      expect(res).not.toHaveProperty('slug');
+      expect(res).not.toHaveProperty('category_id');
     });
   });
 
