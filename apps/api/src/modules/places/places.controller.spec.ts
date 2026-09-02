@@ -144,9 +144,16 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       expect(revisionsService.listByPlace).toHaveBeenCalledWith('p1');
     });
 
-    it('getBySlug → placesService.getBySlug(slug)', () => {
-      controller.getBySlug('bai-sao');
-      expect(placesService.getBySlug).toHaveBeenCalledWith('bai-sao');
+    it('getBySlug → placesService.getBySlug(slug, undefined) khi không truyền ?locale=', () => {
+      controller.getBySlug('bai-sao', {});
+      expect(placesService.getBySlug).toHaveBeenCalledWith('bai-sao', undefined);
+    });
+
+    // Public Place i18n Read Path (2026-09-02): controller chỉ chuyển tiếp `query.locale` —
+    // mọi chuẩn hoá/validate/fallback thuộc về LocalesService, không lặp lại ở đây.
+    it('getBySlug → placesService.getBySlug(slug, locale) khi có ?locale=', () => {
+      controller.getBySlug('vinwonders-phu-quoc', { locale: 'en' });
+      expect(placesService.getBySlug).toHaveBeenCalledWith('vinwonders-phu-quoc', 'en');
     });
 
     // Các route ghi phải truyền user.sub (id), KHÔNG phải cả principal — actor id đi thẳng vào

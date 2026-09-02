@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { CreatePlaceDto, ListPlacesQueryDto, UpdatePlaceDto } from './places.dto';
+import { CreatePlaceDto, GetPlaceDetailQueryDto, ListPlacesQueryDto, UpdatePlaceDto } from './places.dto';
 import { PriceRange } from '../place.enums';
 import { PHU_QUOC_BOUNDS } from '../../../common/geo-bounds';
 
@@ -74,6 +74,34 @@ describe('ListPlacesQueryDto — query công khai (GAP-04)', () => {
 // dưới đây trước kia khẳng định "từ chối ngoài hộp" (GAP-07/PLACE-002) và nay khẳng định điều
 // NGƯỢC LẠI — đó chính là hành vi được chủ sở hữu phê duyệt, không phải test bị nới lỏng:
 // mỗi spec vẫn kiểm chứng một mệnh đề chặt, chỉ là mệnh đề đã đổi theo quyết định.
+// Public Place i18n Read Path (2026-09-02) — GET /places/:slug?locale=
+describe('GetPlaceDetailQueryDto', () => {
+  function validateDetailQuery(raw: Record<string, unknown>) {
+    return validate(plainToInstance(GetPlaceDetailQueryDto, raw), PIPE_OPTIONS);
+  }
+
+  it('không có ?locale= → hợp lệ (locale hoàn toàn tuỳ chọn)', async () => {
+    const errors = await validateDetailQuery({});
+    expect(errors).toHaveLength(0);
+  });
+
+  it('locale hợp lệ (chuỗi ngắn) → không lỗi — KHÔNG @IsEnum vì tập locale do dữ liệu điều khiển', async () => {
+    const errors = await validateDetailQuery({ locale: 'en' });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('locale quá dài (>35, vượt cột supported_locales.locale_code) → bị từ chối', async () => {
+    const errors = await validateDetailQuery({ locale: 'x'.repeat(36) });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].property).toBe('locale');
+  });
+
+  it('trường lạ ngoài `locale` → bị từ chối (forbidNonWhitelisted, khớp toàn cục main.ts)', async () => {
+    const errors = await validateDetailQuery({ locale: 'vi', status: 'pending' });
+    expect(errors.some((e) => e.property === 'status')).toBe(true);
+  });
+});
+
 describe('GeoPointDto — hộp Phú Quốc PROVISIONAL: cảnh báo, KHÔNG từ chối (F-1/OD-F-1)', () => {
   it('chấp nhận toạ độ hợp lệ trong Phú Quốc (Dương Đông)', async () => {
     expect(await validateCreate({ lat: 10.2145, lng: 103.9603 })).toHaveLength(0);

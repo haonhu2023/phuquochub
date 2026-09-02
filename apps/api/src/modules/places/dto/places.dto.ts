@@ -133,3 +133,14 @@ export class ListPlacesQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   limit?: number;
 }
+
+// Query của `GET /api/places/:slug` — endpoint công khai (@Public). Public Place i18n Read Path
+// (2026-09-02): `locale` TÙY CHỌN, không có giá trị mặc định ở đây — mặc định thực sự
+// (supported_locales.is_default) được LocalesService.resolveRequestLocale() quyết định, không
+// lặp lại ở tầng DTO. Chuỗi tự do có trần độ dài (không @IsEnum): tập locale hợp lệ do dữ liệu
+// `supported_locales` điều khiển (owner decision #3 — thêm locale là một INSERT, không migration),
+// nên validate "biết tồn tại hay không" phải ở service, không đóng cứng danh sách ở DTO.
+export class GetPlaceDetailQueryDto {
+  @IsOptional() @IsString() @MaxLength(35)
+  locale?: string;
+}

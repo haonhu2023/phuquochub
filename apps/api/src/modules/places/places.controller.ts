@@ -17,7 +17,7 @@ import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.dec
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
-import { CreatePlaceDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
+import { CreatePlaceDto, GetPlaceDetailQueryDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
 
 // api.md §11. Đọc công khai; ghi qua permission (deny-by-default).
 @Controller('places')
@@ -53,10 +53,12 @@ export class PlacesController {
     return this.revisionsService.listByPlace(id);
   }
 
+  // Public Place i18n Read Path (2026-09-02): `?locale=vi|en` tuỳ chọn — không đổi shape phản
+  // hồi hiện có, chỉ ghi đè `short_description` khi có bản dịch current/public/production hợp lệ.
   @Public()
   @Get(':slug')
-  getBySlug(@Param('slug') slug: string) {
-    return this.placesService.getBySlug(slug);
+  getBySlug(@Param('slug') slug: string, @Query() query: GetPlaceDetailQueryDto) {
+    return this.placesService.getBySlug(slug, query.locale);
   }
 
   @Post()

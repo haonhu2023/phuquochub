@@ -80,6 +80,7 @@ describe('PlaceTranslationsService', () => {
     revisionCounter = 0;
     translationsRepo = {
       findCurrent: jest.fn(),
+      findCurrentPublic: jest.fn(),
       findById: jest.fn(),
       insert: jest.fn((row) => Promise.resolve(row)),
       markNotCurrent: jest.fn(),
@@ -415,6 +416,27 @@ describe('PlaceTranslationsService', () => {
         { id: 'route-old' },
         { isCurrent: false, isRedirect: true, redirectFromSlug: 'old-slug' },
       );
+    });
+  });
+
+  describe('getCurrentPublicTranslatedText — Public Place i18n Read Path', () => {
+    it('eligible row found → returns its translatedText', async () => {
+      translationsRepo.findCurrentPublic.mockResolvedValue(
+        currentRow({ translatedText: 'Explore the largest theme park in Vietnam.' }),
+      );
+
+      const result = await service.getCurrentPublicTranslatedText(PLACE_ID, 'short_description', 'en');
+
+      expect(result).toBe('Explore the largest theme park in Vietnam.');
+      expect(translationsRepo.findCurrentPublic).toHaveBeenCalledWith(PLACE_ID, 'short_description', 'en');
+    });
+
+    it('no eligible row (never published, or is_current/is_public/is_production_data fails) → null, not thrown', async () => {
+      translationsRepo.findCurrentPublic.mockResolvedValue(null);
+
+      const result = await service.getCurrentPublicTranslatedText(PLACE_ID, 'short_description', 'vi');
+
+      expect(result).toBeNull();
     });
   });
 });
