@@ -39,6 +39,12 @@ const PLACE_DISCRIMINATOR = 'place';
 // Hằng số duy nhất, không lặp lại chuỗi 'short_description' ở nhiều nơi trong luồng đọc này.
 const SHORT_DESCRIPTION_FIELD_KEY = 'short_description';
 
+// Public Place i18n Read Path (2026-09-03, đóng khoảng trống integration): field_key bản dịch tên
+// hiển thị. Hợp đồng phản hồi công khai KHÔNG có khoá `display_name` — field công khai là `name`
+// (khớp toPlaceCard/toPlaceDetail hiện có) — nên bản dịch được overlay vào ĐÚNG khoá `name`, không
+// thêm khoá mới, cùng nguyên tắc `short_description` bên dưới.
+const DISPLAY_NAME_FIELD_KEY = 'display_name';
+
 // Discriminator đa hình cho source_attributions.entity_type — KHÔNG 'place' mà 'place_field':
 // đối chiếu nguồn diễn ra Ở CẤP TỪNG TRƯỜNG (vd `province`, `admin_area`), không phải một nguồn
 // đại diện cho toàn bộ place (administrative-backfill.service.ts dùng cùng giá trị này — không
@@ -113,9 +119,11 @@ export class PlacesService {
    * throw. Lỗi hạ tầng (DB/repository) vẫn propagate như bình thường — đây không phải một
    * guarantee "never throws" tuyệt đối cho mọi loại lỗi.
    *
-   * Chỉ ghi đè `short_description`: đây là field DUY NHẤT multilingual importer đã ghi tới hôm
-   * nay (xem ADR-020, 11_TRANSLATABLE_FIELDS). Không tìm thấy bản dịch đủ điều kiện (current +
-   * public + production) → giữ nguyên giá trị gốc từ `places.short_description`, không phải lỗi.
+   * Ghi đè `name` (bản dịch `display_name`) và `short_description`: hai field DUY NHẤT
+   * multilingual importer đã ghi tới hôm nay (xem ADR-020, 11_TRANSLATABLE_FIELDS). Không tìm
+   * thấy bản dịch đủ điều kiện (current + public + production) cho field nào → giữ nguyên giá trị
+   * gốc từ `places.name` / `places.short_description` cho ĐÚNG field đó, không phải lỗi — hai field
+   * fallback độc lập với nhau (thiếu bản dịch tên không kéo theo mất bản dịch mô tả và ngược lại).
    */
   async getBySlug(slug: string, locale?: string) {
     const row = await this.placesRepo.getDetailBySlug(slug);
@@ -123,20 +131,24 @@ export class PlacesService {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
-    const [contacts, prices, media, faqs, trustSources, localizedShortDescription] = await Promise.all([
-      this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
-      this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
-      this.mediaRepo.listPublishedByPlace(row.id),
-      this.placesRepo.listFaqs(row.id),
-      this.resolveTrustSources(row.id),
-      this.resolveLocalizedShortDescription(row.id, locale),
-    ]);
+    const [contacts, prices, media, faqs, trustSources, localizedDisplayName, localizedShortDescription] =
+      await Promise.all([
+        this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
+        this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
+        this.mediaRepo.listPublishedByPlace(row.id),
+        this.placesRepo.listFaqs(row.id),
+        this.resolveTrustSources(row.id),
+        this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
+        this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
+      ]);
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
       // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
       ...redactUntrustedPriceRange(toPlaceDetail(row)),
       // Public Place i18n Read Path: overlay SAU cùng, ghi đè bất kỳ giá trị nào toPlaceDetail đã
-      // đặt — bản dịch hợp lệ nếu có, nếu không thì giữ nguyên `places.short_description` gốc.
+      // đặt — bản dịch hợp lệ nếu có, nếu không thì giữ nguyên giá trị gốc. `id`/`slug` KHÔNG bao
+      // giờ nằm trong overlay này — identity không đổi theo locale.
+      name: localizedDisplayName ?? row.name,
       short_description: localizedShortDescription ?? row.short_description,
       trust_sources: trustSources,
       contacts: contacts.map((c) => ({
@@ -171,17 +183,20 @@ export class PlacesService {
 
   /**
    * Public Place i18n Read Path — seam DUY NHẤT nơi PlacesService chạm vào locale/translation.
-   * Không hardcode place nào: nhận placeId bất kỳ, tra `LocalesService.resolveRequestLocale()`
-   * rồi `PlaceTranslationsService.getCurrentPublicTranslatedText()` — cùng một đường cho MỌI
-   * place, không có nhánh riêng cho địa điểm cụ thể nào.
+   * Không hardcode place nào: nhận placeId + fieldKey bất kỳ, tra
+   * `LocalesService.resolveRequestLocale()` rồi
+   * `PlaceTranslationsService.getCurrentPublicTranslatedText()` — cùng một đường cho MỌI field/
+   * place, không có nhánh riêng cho field hay địa điểm cụ thể nào. Dùng chung cho cả `name`
+   * (display_name) và `short_description` — thêm field dịch được mới trong tương lai chỉ cần gọi
+   * lại hàm này với fieldKey khác, không cần một private method riêng cho từng field.
    */
-  private async resolveLocalizedShortDescription(placeId: string, requestedLocale?: string): Promise<string | null> {
+  private async resolveLocalizedField(
+    placeId: string,
+    fieldKey: string,
+    requestedLocale?: string,
+  ): Promise<string | null> {
     const locale = await this.localesService.resolveRequestLocale(requestedLocale);
-    return this.placeTranslationsService.getCurrentPublicTranslatedText(
-      placeId,
-      SHORT_DESCRIPTION_FIELD_KEY,
-      locale.localeCode,
-    );
+    return this.placeTranslationsService.getCurrentPublicTranslatedText(placeId, fieldKey, locale.localeCode);
   }
 
   /**

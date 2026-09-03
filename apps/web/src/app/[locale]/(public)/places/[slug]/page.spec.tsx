@@ -278,4 +278,25 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
       expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
     });
   });
+
+  // 2026-09-03 — đóng khoảng trống integration: trang phải chuyển ĐÚNG locale trong URL cho
+  // getPlace(), không chỉ đọc nó cho breadcrumb/canonical. Thiếu dòng này, name/short_description
+  // vẫn luôn là bản tiếng Việt trên `/en/...` dù API đã hỗ trợ `?locale=en` đầy đủ (phát hiện từ
+  // proof chạy trên merged-main 2026-09-03).
+  describe('locale forwarding sang getPlace', () => {
+    it('URL /vi/... → getPlace được gọi với locale="vi"', async () => {
+      mockGetPlace.mockResolvedValueOnce(place());
+      mockListReviews.mockResolvedValueOnce([]);
+      render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'vi' }) }));
+      expect(mockGetPlace).toHaveBeenCalledWith('bai-sao', 'vi');
+    });
+
+    it('URL /en/... → getPlace được gọi với locale="en"', async () => {
+      mockGetPlace.mockResolvedValueOnce(place({ name: 'Sao Beach', short_description: 'White sand beach' }));
+      mockListReviews.mockResolvedValueOnce([]);
+      render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'en' }) }));
+      expect(mockGetPlace).toHaveBeenCalledWith('bai-sao', 'en');
+      expect(screen.getByRole('heading', { name: 'Sao Beach' })).toBeInTheDocument();
+    });
+  });
 });
