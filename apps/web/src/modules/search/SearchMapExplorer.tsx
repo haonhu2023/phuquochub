@@ -9,8 +9,11 @@ import { MapView } from '@/modules/map/MapView';
 import { searchPlaces, type SearchResult } from '@/modules/search/api/search.api';
 import { getPlace } from '@/modules/places/api/places.api';
 import type { GeoPoint } from '@/modules/places/types';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 
 export function SearchMapExplorer() {
+  const locale = useLocale();
   const [q, setQ] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
@@ -100,7 +103,7 @@ export function SearchMapExplorer() {
                 >
                   Xem trên bản đồ
                 </button>
-                <Link href={`/places/${r.slug}`} style={{ color: '#2563eb' }}>
+                <Link href={localizedHref(locale, `/places/${r.slug}`)} style={{ color: '#2563eb' }}>
                   Chi tiết →
                 </Link>
               </div>

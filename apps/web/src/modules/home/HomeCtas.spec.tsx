@@ -12,13 +12,18 @@ jest.mock('next/link', () => ({
 }));
 
 describe('MapCta', () => {
-  it('liên kết tới trải nghiệm bản đồ đã có (/map)', () => {
-    render(<MapCta />);
-    expect(screen.getByRole('link', { name: 'Mở bản đồ' })).toHaveAttribute('href', '/map');
+  it('liên kết tới trải nghiệm bản đồ đã có (/{locale}/map)', () => {
+    render(<MapCta locale="vi" />);
+    expect(screen.getByRole('link', { name: 'Mở bản đồ' })).toHaveAttribute('href', '/vi/map');
+  });
+
+  it('PR A: dùng đúng locale="en" khi được truyền', () => {
+    render(<MapCta locale="en" />);
+    expect(screen.getByRole('link', { name: 'Mở bản đồ' })).toHaveAttribute('href', '/en/map');
   });
 
   it('là section có tiêu đề h2 gắn nhãn', () => {
-    render(<MapCta />);
+    render(<MapCta locale="vi" />);
     expect(screen.getByRole('heading', { level: 2, name: 'Xem trên bản đồ' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Xem trên bản đồ' })).toBeInTheDocument();
   });

@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { RESTAURANT_SORT_VALUES, type RestaurantSort } from './types';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 import styles from '@/components/ui/ui.module.css';
 
 const SORT_LABELS: Record<RestaurantSort, string> = {
@@ -38,6 +40,7 @@ interface Props {
 export function RestaurantFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLocale();
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -47,7 +50,7 @@ export function RestaurantFilters({ total }: Props) {
       params.delete(key);
     }
     params.delete('page');
-    router.push(`/restaurants${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`${localizedHref(locale, '/restaurants')}${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (

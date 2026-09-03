@@ -44,20 +44,20 @@ describe('SearchFilters', () => {
     searchParamsString = 'q=phu+quoc&page=3';
     render(<SearchFilters total={0} categories={CATEGORIES} />);
     fireEvent.change(screen.getByLabelText('Danh mục'), { target: { value: 'c1' } });
-    expect(push).toHaveBeenCalledWith('/search?q=phu+quoc&category=c1');
+    expect(push).toHaveBeenCalledWith('/vi/search?q=phu+quoc&category=c1');
   });
 
   it('removes the ward param and resets page when "Tất cả" is selected', () => {
     searchParamsString = 'ward=Duong+Dong&page=2';
     render(<SearchFilters total={0} categories={CATEGORIES} />);
     fireEvent.change(screen.getByLabelText('Khu vực'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/search');
+    expect(push).toHaveBeenCalledWith('/vi/search');
   });
 
   it('sets the price_range param without disturbing other existing params', () => {
     searchParamsString = 'category=c2';
     render(<SearchFilters total={0} categories={CATEGORIES} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: 'mid' } });
-    expect(push).toHaveBeenCalledWith('/search?category=c2&price_range=mid');
+    expect(push).toHaveBeenCalledWith('/vi/search?category=c2&price_range=mid');
   });
 });

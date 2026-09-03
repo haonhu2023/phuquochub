@@ -3,10 +3,11 @@ import type { TourCard as TourCardType } from './types';
 import { formatDifficulty, formatDuration, formatTourType } from './format';
 import { formatPriceRange } from '@/modules/places/format';
 import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './tours.module.css';
 
-export function TourCard({ tour }: { tour: TourCardType }) {
+export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType; locale?: Locale }) {
   const typeLabel = formatTourType(tour.tour_type);
   const durationLabel = formatDuration(tour.duration_minutes);
   const difficultyLabel = formatDifficulty(tour.difficulty);
@@ -18,7 +19,7 @@ export function TourCard({ tour }: { tour: TourCardType }) {
   );
 
   return (
-    <Link href={`/tours/${tour.slug}`} className={placesStyles.card}>
+    <Link href={localizedHref(locale, `/tours/${tour.slug}`)} className={placesStyles.card}>
       {tour.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img className={placesStyles.thumb} src={tour.cover_image_url} alt={tour.name} loading="lazy" />

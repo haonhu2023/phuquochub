@@ -40,26 +40,26 @@ describe('TourFilters', () => {
     searchParamsString = 'page=2';
     render(<TourFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Loại tour'), { target: { value: 'diving' } });
-    expect(push).toHaveBeenCalledWith('/tours?type=diving');
+    expect(push).toHaveBeenCalledWith('/vi/tours?type=diving');
   });
 
   it('sets the numeric max_duration_minutes param (as a string) without disturbing an existing type param', () => {
     searchParamsString = 'type=trekking';
     render(<TourFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Thời lượng'), { target: { value: '240' } });
-    expect(push).toHaveBeenCalledWith('/tours?type=trekking&max_duration_minutes=240');
+    expect(push).toHaveBeenCalledWith('/vi/tours?type=trekking&max_duration_minutes=240');
   });
 
   it('sets the departure_area param from the shared PHU_QUOC_WARDS list', () => {
     render(<TourFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Khu vực khởi hành'), { target: { value: 'An Thới' } });
-    expect(push).toHaveBeenCalledWith('/tours?departure_area=An+Th%E1%BB%9Bi');
+    expect(push).toHaveBeenCalledWith('/vi/tours?departure_area=An+Th%E1%BB%9Bi');
   });
 
   it('removes the difficulty param and resets page when "Tất cả" is selected', () => {
     searchParamsString = 'difficulty=hard&page=3';
     render(<TourFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Độ khó'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/tours');
+    expect(push).toHaveBeenCalledWith('/vi/tours');
   });
 });

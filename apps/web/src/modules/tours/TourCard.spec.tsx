@@ -24,7 +24,7 @@ const BASE_TOUR: TourCardType = {
 describe('TourCard', () => {
   it('links to /tours/{slug}', () => {
     render(<TourCard tour={BASE_TOUR} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/tours/lan-ngam-san-ho-an-thoi');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/tours/lan-ngam-san-ho-an-thoi');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

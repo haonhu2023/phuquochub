@@ -21,7 +21,7 @@ const BASE_BEACH: BeachCardType = {
 describe('BeachCard', () => {
   it('links to the shared place detail page /places/{slug}, NOT a dedicated /beaches/{slug} route', () => {
     render(<BeachCard beach={BASE_BEACH} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/places/bai-sao');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/places/bai-sao');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

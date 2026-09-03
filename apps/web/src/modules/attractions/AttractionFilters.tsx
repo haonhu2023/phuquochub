@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ATTRACTION_SORT_VALUES, type AttractionSort } from './types';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
+import { useLocale } from '@/lib/LocaleContext';
+import { localizedHref } from '@/lib/locale';
 import styles from '@/components/ui/ui.module.css';
 
 const SORT_LABELS: Record<AttractionSort, string> = {
@@ -28,6 +30,7 @@ interface Props {
 export function AttractionFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const locale = useLocale();
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -37,7 +40,7 @@ export function AttractionFilters({ total }: Props) {
       params.delete(key);
     }
     params.delete('page');
-    router.push(`/attractions${params.toString() ? `?${params.toString()}` : ''}`);
+    router.push(`${localizedHref(locale, '/attractions')}${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
   return (

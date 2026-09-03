@@ -4,6 +4,7 @@ import { formatPriceRange } from '@/modules/places/format';
 import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
 import type { Category } from '@/modules/categories/api/categories.api';
 import type { PlaceDetail } from '@/modules/places/types';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import styles from './map.module.css';
 
 // Toạ độ hợp lệ: số hữu hạn, trong khoảng lat/lng của Trái Đất. Bỏ TỪNG marker lỗi thay vì để
@@ -73,7 +74,11 @@ function textRow(text: string, className?: string): HTMLElement {
 // Nội dung popup khi bấm marker địa điểm — tên/category/khu vực/thumbnail/rating/giá (những gì
 // dữ liệu THỰC SỰ có, không suy diễn), + link "Xem chi tiết". `categories` (tuỳ chọn, do trang gọi
 // truyền vào cùng bộ lọc) chỉ để đổi category_id → nhãn tiếng Việt; thiếu thì lùi về category_slug.
-export function buildPopupCard(detail: PlaceDetail, categories?: Category[]): HTMLElement {
+export function buildPopupCard(
+  detail: PlaceDetail,
+  categories?: Category[],
+  locale: Locale = DEFAULT_LOCALE,
+): HTMLElement {
   const card = document.createElement('div');
   card.className = styles.popup;
 
@@ -118,7 +123,7 @@ export function buildPopupCard(detail: PlaceDetail, categories?: Category[]): HT
 
   const link = document.createElement('a');
   link.className = styles.popupLink;
-  link.href = `/places/${detail.slug}`;
+  link.href = localizedHref(locale, `/places/${detail.slug}`);
   link.textContent = 'Xem chi tiết →';
   card.appendChild(link);
 

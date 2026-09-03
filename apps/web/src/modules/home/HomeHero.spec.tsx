@@ -17,14 +17,19 @@ describe('HomeHero', () => {
     ).toBeInTheDocument();
   });
 
-  // Tái dùng SearchBox: form GET thật tới /search — hoạt động cả khi JS chưa chạy, và KHÔNG có
-  // triển khai tìm kiếm thứ hai nào trên trang chủ.
-  it('ô tìm kiếm là form GET điều hướng tới /search với tham số q', () => {
+  // Tái dùng SearchBox: form GET thật tới /{locale}/search — hoạt động cả khi JS chưa chạy, và
+  // KHÔNG có triển khai tìm kiếm thứ hai nào trên trang chủ.
+  it('ô tìm kiếm là form GET điều hướng tới /vi/search (mặc định) với tham số q', () => {
     const { container } = render(<HomeHero />);
     const form = container.querySelector('form');
-    expect(form).toHaveAttribute('action', '/search');
+    expect(form).toHaveAttribute('action', '/vi/search');
     expect(form).toHaveAttribute('method', 'get');
     expect(form?.querySelector('input[name="q"]')).toBeInTheDocument();
+  });
+
+  it('PR A: dùng đúng locale="en" khi được truyền', () => {
+    const { container } = render(<HomeHero locale="en" />);
+    expect(container.querySelector('form')).toHaveAttribute('action', '/en/search');
   });
 
   it('ô nhập có nhãn cho trình đọc màn hình và bắt đầu rỗng', () => {

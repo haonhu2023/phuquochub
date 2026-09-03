@@ -32,20 +32,20 @@ describe('RestaurantFilters', () => {
     searchParamsString = 'page=2';
     render(<RestaurantFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: 'low' } });
-    expect(push).toHaveBeenCalledWith('/restaurants?price_range=low');
+    expect(push).toHaveBeenCalledWith('/vi/restaurants?price_range=low');
   });
 
   it('sets the cuisine param without disturbing an existing price_range param', () => {
     searchParamsString = 'price_range=mid';
     render(<RestaurantFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Ẩm thực'), { target: { value: 'seafood' } });
-    expect(push).toHaveBeenCalledWith('/restaurants?price_range=mid&cuisine=seafood');
+    expect(push).toHaveBeenCalledWith('/vi/restaurants?price_range=mid&cuisine=seafood');
   });
 
   it('removes the cuisine param and resets page when "Tất cả" is selected', () => {
     searchParamsString = 'cuisine=bbq&page=4';
     render(<RestaurantFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Ẩm thực'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/restaurants');
+    expect(push).toHaveBeenCalledWith('/vi/restaurants');
   });
 });

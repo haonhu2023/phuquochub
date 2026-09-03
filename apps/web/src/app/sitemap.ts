@@ -5,6 +5,7 @@ import { listHotelSlugs } from '@/modules/hotels/api/hotels.api';
 import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
+import { localizedHref } from '@/lib/locale';
 
 // MVP SEO pass: no sitemap existed anywhere before this (confirmed absent, PLACE-036/041). Built
 // on Next.js's native `app/sitemap.ts` convention -- served automatically at /sitemap.xml, no
@@ -50,38 +51,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     safeList(() => listEvents(1, 100)),
   ]);
 
+  // PR A: mọi URL phát ra được prefix `/vi` — locale routing đã bắt buộc mọi route public nằm
+  // dưới `[locale]`, một sitemap không-prefix giờ trỏ tới URL redirect (lãng phí crawl budget,
+  // không phải URL canonical). CHƯA phát `/en/...` (chưa có nội dung EN thật để index — ngoài
+  // phạm vi PR A, xem kế hoạch PR E).
   const staticEntries: MetadataRoute.Sitemap = STATIC_ROUTES.map((path) => ({
-    url: `${site}${path}`,
+    url: `${site}${localizedHref('vi', path)}`,
     changeFrequency: path === '' ? 'daily' : 'daily',
     priority: path === '' ? 1 : 0.7,
   }));
 
   const placeEntries: MetadataRoute.Sitemap = places.map((p) => ({
-    url: `${site}/places/${p.slug}`,
+    url: `${site}${localizedHref('vi', `/places/${p.slug}`)}`,
     changeFrequency: 'weekly',
     priority: 0.8,
   }));
 
   const hotelEntries: MetadataRoute.Sitemap = hotels.map((h) => ({
-    url: `${site}/hotels/${h.slug}`,
+    url: `${site}${localizedHref('vi', `/hotels/${h.slug}`)}`,
     changeFrequency: 'weekly',
     priority: 0.6,
   }));
 
   const restaurantEntries: MetadataRoute.Sitemap = restaurants.map((r) => ({
-    url: `${site}/restaurants/${r.slug}`,
+    url: `${site}${localizedHref('vi', `/restaurants/${r.slug}`)}`,
     changeFrequency: 'weekly',
     priority: 0.6,
   }));
 
   const tourEntries: MetadataRoute.Sitemap = tours.map((t) => ({
-    url: `${site}/tours/${t.slug}`,
+    url: `${site}${localizedHref('vi', `/tours/${t.slug}`)}`,
     changeFrequency: 'weekly',
     priority: 0.6,
   }));
 
   const eventEntries: MetadataRoute.Sitemap = events.map((e) => ({
-    url: `${site}/events/${e.slug}`,
+    url: `${site}${localizedHref('vi', `/events/${e.slug}`)}`,
     changeFrequency: 'daily',
     priority: 0.5,
   }));

@@ -31,20 +31,20 @@ describe('HotelFilters', () => {
     searchParamsString = 'page=2';
     render(<HotelFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Sắp xếp'), { target: { value: 'name_asc' } });
-    expect(push).toHaveBeenCalledWith('/hotels?sort=name_asc');
+    expect(push).toHaveBeenCalledWith('/vi/hotels?sort=name_asc');
   });
 
   it('sets the stars param without disturbing an existing sort param', () => {
     searchParamsString = 'sort=name_asc';
     render(<HotelFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Hạng sao'), { target: { value: '5' } });
-    expect(push).toHaveBeenCalledWith('/hotels?sort=name_asc&stars=5');
+    expect(push).toHaveBeenCalledWith('/vi/hotels?sort=name_asc&stars=5');
   });
 
   it('removes the stars param and resets page when "Tất cả" is selected', () => {
     searchParamsString = 'stars=4&page=3';
     render(<HotelFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Hạng sao'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/hotels');
+    expect(push).toHaveBeenCalledWith('/vi/hotels');
   });
 });

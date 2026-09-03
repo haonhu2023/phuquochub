@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { localizedHref, type Locale } from '@/lib/locale';
 import styles from './home.module.css';
 
 /**
@@ -22,21 +23,21 @@ const ENTRIES: Array<{ href: string; name: string; hint: string }> = [
   { href: '/events', name: 'Sự kiện', hint: 'Đang và sắp diễn ra' },
 ];
 
-export function CategoryLinks() {
+export function CategoryLinks({ locale }: { locale: Locale }) {
   return (
     <section className={styles.section} aria-labelledby="home-categories-title">
       <div className={styles.sectionHead}>
         <h2 id="home-categories-title" className={styles.sectionTitle}>
           Bạn đang tìm gì?
         </h2>
-        <Link href="/places" className={styles.sectionLink}>
+        <Link href={localizedHref(locale, '/places')} className={styles.sectionLink}>
           Tất cả địa điểm →
         </Link>
       </div>
 
       <div className={styles.categoryGrid}>
         {ENTRIES.map((entry) => (
-          <Link key={entry.href} href={entry.href} className={styles.categoryTile}>
+          <Link key={entry.href} href={localizedHref(locale, entry.href)} className={styles.categoryTile}>
             <span className={styles.categoryName}>{entry.name}</span>
             <span className={styles.categoryHint}>{entry.hint}</span>
           </Link>

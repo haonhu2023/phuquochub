@@ -37,20 +37,20 @@ describe('BeachFilters', () => {
     searchParamsString = 'page=2';
     render(<BeachFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Khu vực'), { target: { value: 'Hàm Ninh' } });
-    expect(push).toHaveBeenCalledWith('/beaches?ward=H%C3%A0m+Ninh');
+    expect(push).toHaveBeenCalledWith('/vi/beaches?ward=H%C3%A0m+Ninh');
   });
 
   it('sets the price_range param without disturbing an existing ward param', () => {
     searchParamsString = 'ward=Hàm+Ninh';
     render(<BeachFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: 'free' } });
-    expect(push).toHaveBeenCalledWith('/beaches?ward=H%C3%A0m+Ninh&price_range=free');
+    expect(push).toHaveBeenCalledWith('/vi/beaches?ward=H%C3%A0m+Ninh&price_range=free');
   });
 
   it('removes the price_range param and resets page when "Tất cả" is selected', () => {
     searchParamsString = 'price_range=free&page=5';
     render(<BeachFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: '' } });
-    expect(push).toHaveBeenCalledWith('/beaches');
+    expect(push).toHaveBeenCalledWith('/vi/beaches');
   });
 });

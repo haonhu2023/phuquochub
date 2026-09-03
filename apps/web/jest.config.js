@@ -12,6 +12,11 @@ module.exports = {
   // khớp trước và không bao giờ tới được mock CSS.
   moduleNameMapper: {
     '\\.module\\.css$': '<rootDir>/jest.cssModuleMock.js',
+    // PR A: root layout (`[locale]/layout.tsx`, `(auth)/layout.tsx`, `(dashboard)/layout.tsx`)
+    // mỗi file tự `import '../../styles/globals.css'` (CSS toàn cục, không phải CSS Module) —
+    // cần map riêng vì pattern `.module.css$` ở trên không khớp; tái dùng đúng mock rỗng vì import
+    // này chỉ có side-effect, không destructure export nào.
+    '\\.css$': '<rootDir>/jest.cssModuleMock.js',
     // Ánh xạ alias `@/*` (tsconfig paths) để test import được như code ứng dụng.
     '^@/(.*)$': '<rootDir>/src/$1',
   },

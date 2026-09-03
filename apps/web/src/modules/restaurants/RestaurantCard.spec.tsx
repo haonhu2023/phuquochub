@@ -22,7 +22,7 @@ const BASE_RESTAURANT: RestaurantCardType = {
 describe('RestaurantCard', () => {
   it('links to /restaurants/{slug}', () => {
     render(<RestaurantCard restaurant={BASE_RESTAURANT} />);
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/restaurants/quan-hai-san-bien-xanh');
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/restaurants/quan-hai-san-bien-xanh');
   });
 
   it('renders the fallback initial when there is no cover image', () => {

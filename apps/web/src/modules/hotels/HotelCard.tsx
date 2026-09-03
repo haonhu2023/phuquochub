@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { HotelCard as HotelCardType } from './types';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './hotels.module.css';
 
@@ -12,10 +13,10 @@ const HOTEL_TYPE_LABELS: Record<string, string> = {
   apartment: 'Căn hộ',
 };
 
-export function HotelCard({ hotel }: { hotel: HotelCardType }) {
+export function HotelCard({ hotel, locale = DEFAULT_LOCALE }: { hotel: HotelCardType; locale?: Locale }) {
   const typeLabel = HOTEL_TYPE_LABELS[hotel.hotel_type] ?? hotel.hotel_type;
   return (
-    <Link href={`/hotels/${hotel.slug}`} className={placesStyles.card}>
+    <Link href={localizedHref(locale, `/hotels/${hotel.slug}`)} className={placesStyles.card}>
       {hotel.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img

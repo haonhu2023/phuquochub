@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
 import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
+import { localizedHref, type Locale } from '@/lib/locale';
 import placeStyles from '@/modules/places/places.module.css';
 import styles from './home.module.css';
 
@@ -22,13 +23,13 @@ export const DISCOVER_LIMIT = 8;
  * là nội dung tĩnh luôn dùng được, nên một sự cố API chỉ được phép thu nhỏ ĐÚNG khối này lại chứ
  * không được làm hỏng cả trang chủ.
  */
-export async function DiscoverPlaces() {
+export async function DiscoverPlaces({ locale }: { locale: Locale }) {
   let places: PlaceCardType[];
   try {
     places = await listPlaces({ limit: DISCOVER_LIMIT });
   } catch {
     return (
-      <Section>
+      <Section locale={locale}>
         <p className={styles.sectionError} role="status">
           Hiện chưa tải được danh sách địa điểm. Bạn vẫn có thể tìm kiếm hoặc duyệt theo danh mục ở
           trên.
@@ -39,7 +40,7 @@ export async function DiscoverPlaces() {
 
   if (places.length === 0) {
     return (
-      <Section>
+      <Section locale={locale}>
         <div className={placeStyles.state}>
           <p className={placeStyles.stateTitle}>Chưa có địa điểm nào</p>
           <p>Nội dung đang được cập nhật. Vui lòng quay lại sau.</p>
@@ -49,25 +50,25 @@ export async function DiscoverPlaces() {
   }
 
   return (
-    <Section>
+    <Section locale={locale}>
       <div className={placeStyles.grid}>
         {places.map((place) => (
           // titleAs="h3": tiêu đề khối là <h2>, nên tên địa điểm phải nằm DƯỚI nó một bậc.
-          <PlaceCard key={place.id} place={place} titleAs="h3" />
+          <PlaceCard key={place.id} place={place} titleAs="h3" locale={locale} />
         ))}
       </div>
     </Section>
   );
 }
 
-function Section({ children }: { children: React.ReactNode }) {
+function Section({ children, locale }: { children: React.ReactNode; locale: Locale }) {
   return (
     <section className={styles.section} aria-labelledby="home-discover-title">
       <div className={styles.sectionHead}>
         <h2 id="home-discover-title" className={styles.sectionTitle}>
           Địa điểm nổi bật
         </h2>
-        <Link href="/places" className={styles.sectionLink}>
+        <Link href={localizedHref(locale, '/places')} className={styles.sectionLink}>
           Xem thêm →
         </Link>
       </div>

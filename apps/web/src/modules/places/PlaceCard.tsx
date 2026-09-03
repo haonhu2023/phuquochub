@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
 import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from './trust';
+import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import styles from './places.module.css';
 
 // Thẻ địa điểm (presentational). Dùng ở danh sách + kết quả tìm kiếm.
@@ -9,12 +10,17 @@ import styles from './places.module.css';
 // `titleAs` cho phép nơi gọi đặt tên địa điểm ĐÚNG bậc trong cây tiêu đề của trang đó. Mặc định
 // `h2` — giữ NGUYÊN hành vi cũ cho mọi nơi gọi hiện có (trang danh sách: h1 trang + h2 thẻ). Trang
 // chủ gom thẻ dưới một tiêu đề khối `h2` nên truyền `h3` để không làm phẳng cấu trúc tiêu đề.
+//
+// `locale` (PR A): tuỳ chọn, mặc định `DEFAULT_LOCALE` — nơi gọi trong `[locale]/(public)/**` nên
+// luôn truyền `locale` thật; mặc định chỉ để không crash nếu một nơi gọi nào đó quên truyền.
 export function PlaceCard({
   place,
   titleAs: TitleTag = 'h2',
+  locale = DEFAULT_LOCALE,
 }: {
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
+  locale?: Locale;
 }) {
   // Public Beta price trust gate (2026-08-28): giá thật CHỈ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
@@ -27,7 +33,7 @@ export function PlaceCard({
   // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
   const isVerified = getTrustBadge(place.verification_status) === 'verified';
   return (
-    <Link href={`/places/${place.slug}`} className={styles.card}>
+    <Link href={localizedHref(locale, `/places/${place.slug}`)} className={styles.card}>
       {place.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img
