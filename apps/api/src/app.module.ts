@@ -38,6 +38,7 @@ import { AdminDataModule } from './modules/admin-data/admin-data.module';
 import { LocalesModule } from './modules/locales/locales.module';
 import { PlaceTranslationsModule } from './modules/place-translations/place-translations.module';
 import { MultilingualImportModule } from './modules/multilingual-import/multilingual-import.module';
+import { PlaceExternalIdentifiersModule } from './modules/place-external-identifiers/place-external-identifiers.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -92,6 +93,9 @@ import { MultilingualImportModule } from './modules/multilingual-import/multilin
     LocalesModule,
     PlaceTranslationsModule,
     MultilingualImportModule,
+    // 2026-09-02 data-SSOT remediation Phase 5: Google Place ID (and any future provider
+    // identifier) registry — deliberately not a column on `places`, see module doc comment.
+    PlaceExternalIdentifiersModule,
   ],
 })
 export class AppModule {}
