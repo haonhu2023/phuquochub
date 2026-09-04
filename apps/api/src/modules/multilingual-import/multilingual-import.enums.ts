@@ -6,6 +6,12 @@ export const MULTILINGUAL_IMPORT_CONTRACT_VERSION = 'phuquochub.multilingual-imp
 
 // Lifecycle of a batch run — once SUCCEEDED or FAILED the record is immutable;
 // rollback is expressed as a new SUCCEEDED batch, not a mutation of history.
+//
+// CANCELLED/SUPERSEDED (2026-09-02 data-SSOT remediation, Phase 3.6) are the one deliberate
+// exception to "never mutate a batch's status": they apply ONLY to a batch that is still PENDING
+// (never started running, nothing written) — there is no history to preserve for an abandoned
+// intent. MultilingualImportBatchRepository.cancelPending()/supersedePending() are the only code
+// paths allowed to write these, and both refuse unless the row's current status is PENDING.
 export enum MultilingualImportBatchStatus {
   PENDING = 'pending',
   RUNNING = 'running',
@@ -13,6 +19,10 @@ export enum MultilingualImportBatchStatus {
   FAILED = 'failed',
   // A later batch explicitly rolled back the content of this one (via new insertions).
   ROLLED_BACK = 'rolled_back',
+  // A pending batch that was deliberately abandoned before it ever ran.
+  CANCELLED = 'cancelled',
+  // A pending batch that a newer, corrected batch replaces before either ever ran.
+  SUPERSEDED = 'superseded',
 }
 
 // Per-row outcome written to multilingual_import_rows after the transaction commits or rolls back.
@@ -34,13 +44,19 @@ export enum TranslationApprovalStatus {
   HOLD = 'HOLD',
   PENDING = 'PENDING',
   REJECTED = 'REJECTED',
+  // A human reviewer asked for a specific edit before re-review (human-translation-review, 2026-09-04).
+  NEEDS_CHANGES = 'NEEDS_CHANGES',
 }
 
-// Values for human_review_status in place_translations.
+// Values for human_review_status in place_translations. Written ONLY by
+// TranslationReviewService.reviewTranslation() (the one trusted review chokepoint) or forced to
+// PENDING by PlaceTranslationsService on every new/edited row — never asserted directly by an
+// importer/bundle caller (human-translation-review, 2026-09-04).
 export enum HumanReviewStatus {
   APPROVED = 'APPROVED',
   PENDING = 'PENDING',
   REJECTED = 'REJECTED',
+  NEEDS_CHANGES = 'NEEDS_CHANGES',
 }
 
 // Values for quality_gate in place_translations.

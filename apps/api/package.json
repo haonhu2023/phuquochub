@@ -27,6 +27,7 @@
     "admin:import-multilingual": "ts-node src/scripts/import-multilingual-places.ts",
     "content-promotion:export": "ts-node src/scripts/content-promotion-export-cli.ts",
     "content-promotion:apply": "ts-node src/scripts/content-promotion-apply-cli.ts",
+    "admin:cancel-multilingual-batch": "ts-node src/scripts/cancel-multilingual-batch.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {

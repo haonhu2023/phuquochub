@@ -25,6 +25,12 @@ export interface RecordRevisionInput {
   changeNote?: string | null;
   editorId?: string | null;
   status: RevisionStatus;
+  // reviewedBy/reviewedAt (human-translation-review, 2026-09-04): set ONLY by
+  // TranslationReviewService when this revision records an actual human review decision — never by
+  // a content-write call site (publish/rollback/backfill). Both nullable, both default null below,
+  // preserving every existing caller's behavior unchanged.
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
 }
 
 // Repository Pattern cho `wiki_revisions`. Append-only: chỉ INSERT + đọc.
@@ -48,7 +54,7 @@ export class RevisionsRepository {
     const rows: Array<{ id: string; revision_number: number }> = await executor.query(
       `INSERT INTO wiki_revisions
          (entity_type, entity_id, revision_number, parent_revision_id,
-          snapshot, diff, origin, change_note, editor_id, status)
+          snapshot, diff, origin, change_note, editor_id, status, reviewed_by, reviewed_at)
        SELECT
          $1::revision_entity_type, $2,
          COALESCE(
@@ -57,7 +63,7 @@ export class RevisionsRepository {
          (SELECT id FROM wiki_revisions
           WHERE entity_type = $1::revision_entity_type AND entity_id = $2
           ORDER BY revision_number DESC LIMIT 1),
-         $3::jsonb, $4::jsonb, $5::revision_origin, $6, $7, $8::revision_status
+         $3::jsonb, $4::jsonb, $5::revision_origin, $6, $7, $8::revision_status, $9, $10
        RETURNING id, revision_number`,
       [
         input.entityType,
@@ -68,6 +74,8 @@ export class RevisionsRepository {
         input.changeNote ?? null,
         input.editorId ?? null,
         input.status,
+        input.reviewedBy ?? null,
+        input.reviewedAt ?? null,
       ],
     );
     return { id: rows[0].id, revisionNumber: rows[0].revision_number };

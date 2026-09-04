@@ -16,7 +16,7 @@ import type { AuditService } from '../../core/audit/audit.service';
 // email nào, vai trò nào, và chuyện gì xảy ra khi chạy lại. Mỗi test dưới đây khoá đúng một trong
 // những câu hỏi đó.
 describe('OperatorBootstrapService', () => {
-  const USER = { id: 'user-1', email: 'operator@example.test' };
+  const USER = { id: 'user-1', email: 'operator@example.test', isActive: true, isServiceAccount: false };
   const ROLE = { id: 'role-admin', code: 'administrator' };
 
   let usersRepo: LooseMock<UsersRepository>;
@@ -109,6 +109,25 @@ describe('OperatorBootstrapService', () => {
       await expect(sut.bootstrap({ email: 'khong-ton-tai@example.test' })).rejects.toThrow(
         /Không tìm thấy người dùng/,
       );
+      expect(userRolesRepo.assign).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    // human-translation-review, 2026-09-04: bootstrap là code cấp quyền NGOÀI mọi guard HTTP — hai
+    // test dưới đây khoá đúng bề mặt "email nào" không được phép biến thành một cấp quyền, dù
+    // hợp lệ theo mọi điều kiện khác (email tồn tại, vai trò hợp lệ, chưa từng được cấp).
+    it('tài khoản dịch vụ (is_service_account=true) -> từ chối, KHÔNG cấp gì', async () => {
+      usersRepo.findByEmail.mockResolvedValue({ ...USER, isServiceAccount: true, isActive: true });
+
+      await expect(sut.bootstrap({ email: USER.email })).rejects.toThrow(/tài khoản dịch vụ/);
+      expect(userRolesRepo.assign).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('tài khoản không hoạt động (is_active=false) -> từ chối, KHÔNG cấp gì', async () => {
+      usersRepo.findByEmail.mockResolvedValue({ ...USER, isServiceAccount: false, isActive: false });
+
+      await expect(sut.bootstrap({ email: USER.email })).rejects.toThrow(/không hoạt động/);
       expect(userRolesRepo.assign).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });

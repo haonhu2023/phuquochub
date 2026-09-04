@@ -58,7 +58,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const locale = localeParam as Locale;
   let place: PlaceDetail;
   try {
-    place = await getPlace(slug);
+    place = await getPlace(slug, locale);
   } catch {
     return { title: `Địa điểm · ${SITE}` };
   }
@@ -91,7 +91,7 @@ export default async function PlaceDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let place: PlaceDetail;
   try {
-    place = await getPlace(slug);
+    place = await getPlace(slug, locale);
   } catch (err) {
     // Phân biệt: resource không tồn tại (404) → notFound(); lỗi khác → ném lên error.tsx.
     if (err instanceof ApiError && err.isNotFound) {

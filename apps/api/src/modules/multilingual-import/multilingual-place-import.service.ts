@@ -15,7 +15,6 @@ import {
   MultilingualImportBatchStatus,
   MultilingualImportRowOutcome,
   MULTILINGUAL_IMPORT_CONTRACT_VERSION,
-  TranslationApprovalStatus,
   ValidationStatus,
 } from './multilingual-import.enums';
 import { MultilingualImportBatch } from './entities/multilingual-import-batch.entity';
@@ -26,6 +25,7 @@ import { PlaceTranslationsService } from '../place-translations/place-translatio
 import { LocalesService } from '../locales/locales.service';
 import { RevisionOrigin } from '../revisions/revision.enums';
 import { TextFormat, TranslationMethod } from '../place-translations/place-translations.enums';
+import { assertNonDryRunAllowed, type ReleaseManifestV1 } from '../admin-data/release-manifest.contract';
 
 // ============================================================================
 // Production safety
@@ -76,6 +76,9 @@ export interface ImportBundleInput {
   contract: MultilingualImportContract;
   actorId: string;
   dryRun: boolean;
+  // 2026-09-02 data-SSOT remediation Phase 3.4 — required (and gate-checked) whenever dryRun=false.
+  // Optional for dry-run so existing dry-run callers/tests that predate the release gate keep working.
+  releaseManifest?: ReleaseManifestV1;
 }
 
 export interface ImportRowResult {
@@ -122,7 +125,7 @@ export class MultilingualPlaceImportService {
   ) {}
 
   async importBundle(input: ImportBundleInput): Promise<ImportBundleResult> {
-    const { contract, actorId, dryRun } = input;
+    const { contract, actorId, dryRun, releaseManifest } = input;
 
     // 1. Validate contract structure + checksums before touching DB
     const validation = validateContract(contract);
@@ -169,6 +172,38 @@ export class MultilingualPlaceImportService {
       );
     }
 
+    // 4b. Release gate (2026-09-02 data-SSOT remediation, Phase 3.4) — non-dry-run categorically
+    // requires a release manifest that already passed identity/policy/preflight/approval/
+    // idempotency-key checks. Dry-run may omit it entirely (existing dry-run callers/tests keep
+    // working unchanged); if one IS supplied on a dry-run it is still gate-checked, so a dry-run can
+    // be used to preview whether a manifest would pass before ever attempting --execute.
+    if (!dryRun && !releaseManifest) {
+      throw new BadRequestException(
+        'Non-dry-run import requires a releaseManifest — no direct write path bypasses the release gate.',
+      );
+    }
+    let idempotencyKeyFromManifest: string | null = null;
+    if (releaseManifest) {
+      const gate = assertNonDryRunAllowed(releaseManifest, 'translation');
+      if (!dryRun && !gate.allowed) {
+        throw new BadRequestException(
+          `Release manifest blocked this non-dry-run import:\n${gate.reasons.map((r) => `  - ${r}`).join('\n')}`,
+        );
+      }
+      const subBatch = releaseManifest.payload.subBatches.find((sb) => sb.kind === 'translation');
+      idempotencyKeyFromManifest = subBatch?.idempotencyKey ?? null;
+      if (!dryRun && idempotencyKeyFromManifest) {
+        const existingByKey = await this.batchRepo.findByIdempotencyKey(idempotencyKeyFromManifest);
+        if (existingByKey) {
+          throw new BadRequestException(
+            `idempotencyKey "${idempotencyKeyFromManifest}" was already used by batch ${existingByKey.batchId} ` +
+              `(status=${existingByKey.status}). Re-running under the same idempotency key must not create a ` +
+              `second write — submit with a new key only if this is genuinely a different release attempt.`,
+          );
+        }
+      }
+    }
+
     // 5. Pre-validate all locales before opening a DB transaction
     for (const row of contract.rows) {
       await this.localesService.assertPublishableLocale(row.localeCode);
@@ -198,6 +233,14 @@ export class MultilingualPlaceImportService {
     batchRecord.errorSummary = null;
     batchRecord.startedAt = null;
     batchRecord.completedAt = null;
+    batchRecord.releaseItemId = releaseManifest?.payload.releaseItemId ?? null;
+    batchRecord.releaseManifestDigest = releaseManifest?.checksum ?? null;
+    batchRecord.evidenceDigest = releaseManifest?.payload.evidenceDigest ?? null;
+    batchRecord.policyStatus = releaseManifest?.payload.policyStatus ?? null;
+    batchRecord.preflightStatus = releaseManifest?.payload.preflightStatus ?? null;
+    batchRecord.idempotencyKey = idempotencyKeyFromManifest;
+    batchRecord.cancellationReason = null;
+    batchRecord.supersededByBatchId = null;
 
     if (dryRun) {
       return this.buildDryRunResult(batchRecord, contract);
@@ -304,9 +347,15 @@ export class MultilingualPlaceImportService {
       if (row.errorCount !== 0) {
         return { ...base, outcome: MultilingualImportRowOutcome.HELD, translationId: null, errorDetail: `error_count=${row.errorCount}` };
       }
-      if (row.translationStatus !== TranslationApprovalStatus.APPROVED) {
-        return { ...base, outcome: MultilingualImportRowOutcome.HELD, translationId: null, errorDetail: `translation_status=${row.translationStatus}` };
-      }
+      // REMOVED (human-translation-review, 2026-09-04): this gate used to HOLD every row whose
+      // translation_status wasn't pre-marked APPROVED — meaning nothing could ever import without
+      // being pre-asserted approved by whatever produced the import contract (a workbook column, a
+      // script's own literal) with zero real review. That is exactly the fabricated-approval defect
+      // class this workstream closed. The importer's job is to create CONTENT; approval is a human
+      // decision made afterward through TranslationReviewService. PlaceTranslationsService now
+      // force-sets translation_status/human_review_status to PENDING on every row it writes
+      // regardless of what this row claims (see publishOneTranslation()), so importing a row no
+      // longer requires — or trusts — a pre-asserted APPROVED value.
       // AI translations must have human approval before going production
       if (
         row.translationMethod === 'ai_plus_human' &&

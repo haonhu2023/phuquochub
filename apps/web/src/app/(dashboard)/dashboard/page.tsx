@@ -86,6 +86,13 @@ export default function DashboardPage() {
           </Link>
         </p>
       )}
+      {caps.canReviewTranslations && (
+        <p style={{ marginTop: '0.5rem' }}>
+          <Link href="/dashboard/translations/review" style={{ color: 'var(--accent)' }}>
+            Duyệt bản dịch →
+          </Link>
+        </p>
+      )}
       <button
         type="button"
         onClick={onLogout}

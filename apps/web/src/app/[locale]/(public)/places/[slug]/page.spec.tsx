@@ -4,7 +4,7 @@ import type { PlaceDetail } from '@/modules/places/types';
 import { getPlace } from '@/modules/places/api/places.api';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { PENDING_DISCLOSURE_TEXT, PRICE_VERIFYING_TEXT, TRUST_BADGE_LABEL } from '@/modules/places/trust';
-import PlaceDetailPage from './page';
+import PlaceDetailPage, { generateMetadata } from './page';
 
 jest.mock('@/modules/places/api/places.api', () => ({ getPlace: jest.fn() }));
 jest.mock('@/modules/reviews/api/reviews.api', () => ({ listReviews: jest.fn() }));
@@ -276,6 +276,98 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
       expect(document.body.textContent).not.toContain(String(SENTINEL_AMOUNT + 1));
       expect(document.body.textContent).not.toContain((SENTINEL_AMOUNT + 1).toLocaleString('vi-VN'));
       expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
+    });
+  });
+
+  // Regression: `getPlace()` supports an optional `locale` param (defaults to 'vi'), and this page
+  // already reads `params.locale` for breadcrumbs/canonical — but never forwards it into
+  // getPlace(). Both call sites (generateMetadata + the page component) silently fetch `vi`
+  // content regardless of the URL's locale, so GET /en/places/... renders Vietnamese
+  // short_description. These tests assert on the FORWARDED locale AND on locale-dependent output
+  // content (not just call count), so a fix that forwards the wrong value or forwards it into the
+  // wrong place still fails here.
+  describe('locale forwarding to getPlace() (bug: page ignores params.locale)', () => {
+    const viPlace = place({
+      slug: 'vinwonders-phu-quoc',
+      name: 'VinWonders Phú Quốc',
+      short_description: 'Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.',
+    });
+    const enPlace = place({
+      slug: 'vinwonders-phu-quoc',
+      name: 'VinWonders Phu Quoc',
+      short_description: 'Explore the largest theme park in Vietnam that ranks top in Asia.',
+    });
+
+    describe('generateMetadata', () => {
+      it('locale=en → getPlace được gọi với ("vinwonders-phu-quoc", "en"), không phải mặc định vi', async () => {
+        mockGetPlace.mockResolvedValueOnce(enPlace);
+        await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(mockGetPlace).toHaveBeenCalledWith('vinwonders-phu-quoc', 'en');
+      });
+
+      it('locale=vi → getPlace được gọi với ("vinwonders-phu-quoc", "vi")', async () => {
+        mockGetPlace.mockResolvedValueOnce(viPlace);
+        await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }),
+        });
+        expect(mockGetPlace).toHaveBeenCalledWith('vinwonders-phu-quoc', 'vi');
+      });
+
+      it('locale=en → metadata.description dùng ĐÚNG bản dịch tiếng Anh trả về từ getPlace, không phải bản tiếng Việt', async () => {
+        mockGetPlace.mockResolvedValueOnce(enPlace);
+        const metadata = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadata.description).toBe('Explore the largest theme park in Vietnam that ranks top in Asia.');
+        expect(metadata.description).not.toBe('Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.');
+      });
+
+      it('canonical vẫn locale-prefixed đúng bất kể có forward locale vào getPlace hay không (không regression PR A)', async () => {
+        mockGetPlace.mockResolvedValueOnce(enPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.alternates?.canonical).toBe('/en/places/vinwonders-phu-quoc');
+
+        mockGetPlace.mockResolvedValueOnce(viPlace);
+        const metadataVi = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }),
+        });
+        expect(metadataVi.alternates?.canonical).toBe('/vi/places/vinwonders-phu-quoc');
+      });
+    });
+
+    describe('page render', () => {
+      it('locale=en → getPlace được gọi với ("bai-sao", "en")', async () => {
+        mockGetPlace.mockResolvedValueOnce(place({ slug: 'bai-sao' }));
+        mockListReviews.mockResolvedValueOnce([]);
+        render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'en' }) }));
+        expect(mockGetPlace).toHaveBeenCalledWith('bai-sao', 'en');
+      });
+
+      it('locale=vi → getPlace được gọi với ("bai-sao", "vi")', async () => {
+        mockGetPlace.mockResolvedValueOnce(place({ slug: 'bai-sao' }));
+        mockListReviews.mockResolvedValueOnce([]);
+        render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'vi' }) }));
+        expect(mockGetPlace).toHaveBeenCalledWith('bai-sao', 'vi');
+      });
+
+      it('locale=en → h1 và meta description render ĐÚNG nội dung tiếng Anh mà getPlace trả về (không phải mock vi bị dùng nhầm)', async () => {
+        mockGetPlace.mockResolvedValueOnce(enPlace);
+        mockListReviews.mockResolvedValueOnce([]);
+        render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }) }));
+        expect(screen.getByRole('heading', { name: 'VinWonders Phu Quoc' })).toBeInTheDocument();
+        expect(screen.queryByText('VinWonders Phú Quốc')).not.toBeInTheDocument();
+      });
+
+      it('locale=vi → h1 render đúng nội dung tiếng Việt', async () => {
+        mockGetPlace.mockResolvedValueOnce(viPlace);
+        mockListReviews.mockResolvedValueOnce([]);
+        render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }) }));
+        expect(screen.getByRole('heading', { name: 'VinWonders Phú Quốc' })).toBeInTheDocument();
+      });
     });
   });
 });
