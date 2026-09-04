@@ -17,6 +17,16 @@ import { PlaceTranslation } from './entities/place-translation.entity';
 // these three tests actually verify, is that the schema/service correctly REPRESENTS each outcome
 // once a caller has made that decision — a future importer built on top of these primitives can
 // implement the gate logic without any schema change.
+//
+// UPDATED (human-translation-review, 2026-09-04): I18N-CONTRACT-001/002 originally asserted that a
+// caller-supplied qualityGate of APPROVED_FOR_PUBLISH made a row immediately isPublic/
+// isProductionData=true at publish time — i.e. that publishing WAS approving. That premise is
+// exactly the fabricated-approval defect class this workstream closed: qualityGate is a structural/
+// data-quality signal (e.g. static validation), never a human-review decision. Both tests below now
+// assert the corrected invariant — publish always creates PENDING, not-public content regardless of
+// qualityGate; only TranslationReviewService.reviewTranslation() (a real human review, see that
+// file) can ever set isPublic/isProductionData=true. qualityGate itself is still faithfully stored
+// either way, since it remains a legitimate structural signal, just not an approval one.
 const PLACE_ID = 'place-bai-sao';
 
 describe('98_I18N_CONTRACT_TEST fixtures (ADR-020)', () => {
@@ -67,7 +77,7 @@ describe('98_I18N_CONTRACT_TEST fixtures (ADR-020)', () => {
     service = new PlaceTranslationsService(translationsRepo, routesRepo, seoRepo, localesService, revisionsService, dataSource);
   });
 
-  it('I18N-CONTRACT-001 — full vi/en coverage, gate APPROVED_FOR_PUBLISH → both locales publish as production-current', async () => {
+  it('I18N-CONTRACT-001 — full vi/en coverage, gate APPROVED_FOR_PUBLISH → both locales are current but PENDING, not yet public (approval is a separate human-review step)', async () => {
     const rows = await service.publishTranslationBundle({
       placeId: PLACE_ID,
       origin: RevisionOrigin.IMPORT,
@@ -104,12 +114,16 @@ describe('98_I18N_CONTRACT_TEST fixtures (ADR-020)', () => {
     });
 
     expect(rows).toHaveLength(2);
-    expect(rows.every((r) => r.isCurrent && r.isProductionData && r.isPublic)).toBe(true);
+    expect(rows.every((r) => r.isCurrent)).toBe(true);
+    expect(rows.every((r) => !r.isProductionData && !r.isPublic)).toBe(true);
+    expect(rows.every((r) => r.humanReviewStatus === 'PENDING' && r.translationStatus === 'PENDING')).toBe(true);
+    // qualityGate is still stored faithfully — it is a structural signal, not an approval one.
+    expect(rows.every((r) => r.qualityGate === 'APPROVED_FOR_PUBLISH')).toBe(true);
     const currentByPlace = await translationsRepo.listCurrentByPlace(PLACE_ID);
     expect(currentByPlace.map((r) => r.localeCode).sort()).toEqual(['en', 'vi']);
   });
 
-  it('I18N-CONTRACT-002 — one gate FAILs → that locale is written but NOT production data (not published)', async () => {
+  it('I18N-CONTRACT-002 — one gate FAILs → that locale is written but NOT production data (not published) — same as a passing gate, since neither is ever live at publish time', async () => {
     const [, en] = await service.publishTranslationBundle({
       placeId: PLACE_ID,
       origin: RevisionOrigin.IMPORT,

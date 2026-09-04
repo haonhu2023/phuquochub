@@ -24,6 +24,8 @@
 | [ADR-017](ADR-017-transport-domain-foundation.md) | Nền tảng miền Transport (satellite ADR-002 biến thể — `transport_type` là từ điển FK, không ENUM) | **Accepted** (2026-07-28) | ✗ |
 | [ADR-018](ADR-018-moderation-foundation.md) | Nền tảng Kiểm duyệt (`reports` + `moderation_cases`; case ≠ hiển thị; ngoại lệ đa hình theo ADR-016) | **Accepted** (2026-08-02) | ✗ |
 | [ADR-019](ADR-019-resource-scoped-authorization.md) | Phân quyền theo tài nguyên (`Managed`/`Own` so `user_roles.business_id` với tài nguyên đích; `AuthorizationContext` + resolver; fail closed) — bổ sung [ADR-007](ADR-007-rbac-model.md), **chặn** [ADR-015](ADR-015-business-ownership-model.md) M3 | **Accepted** (2026-08-04) | ✗ |
+| [ADR-020](ADR-020-place-translation-model.md) | Mô hình dịch đa ngôn ngữ cho Place (`place_translations`, normalized, không cột `_vi`/`_en`) | Proposed | ✗ |
+| [ADR-021](ADR-021-human-translation-review.md) | Quy trình duyệt bản dịch bởi người thật (`TranslationReviewService`; reviewer thật + quyết định + timestamp + phiên bản nội dung + audit trail; import KHÔNG thể tạo approval) — mở rộng [ADR-020](ADR-020-place-translation-model.md), [ADR-014](ADR-014-revision-model.md) | Proposed (2026-09-04) | ✗ |
 
 *Mẫu chuẩn: [ADR-template.md](ADR-template.md).*
 

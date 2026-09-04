@@ -21,10 +21,14 @@ export enum RevisionOrigin {
   IMPORT = 'import',
 }
 
-// Vòng đời duyệt phiên bản (WF-06/07/08/09).
+// Vòng đời duyệt phiên bản (WF-06/07/08/09). NEEDS_CHANGES (2026-09-04, human-translation-review):
+// a REVIEW revision's decision — distinct from PENDING (never reviewed) and REJECTED (declined
+// outright) — the reviewer asked for a specific edit before re-review. Added via
+// AddNeedsChangesRevisionStatus migration (`ALTER TYPE ... ADD VALUE`, Postgres enum).
 export enum RevisionStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
   REJECTED = 'rejected',
   REVERTED = 'reverted',
+  NEEDS_CHANGES = 'needs_changes',
 }

@@ -101,6 +101,8 @@ export class PlaceTranslationsService {
     // RULE-LANG-003 (AI cần người duyệt trước khi công khai) — sàn ở tầng CHECK DB
     // (ck_place_trans_ai_needs_review) cũng thực thi đúng điều này; kiểm ở đây để trả lỗi rõ ràng
     // hơn một constraint-violation thô, KHÔNG thay thế CHECK — cả hai cùng tồn tại có chủ đích.
+    // Now effectively unreachable for a freshly-created row (isProductionData is always forced
+    // false below), kept as defense-in-depth documenting the same invariant the DB CHECK enforces.
     if (
       item.translationMethod === TranslationMethod.AI_PLUS_HUMAN &&
       item.humanReviewStatus !== 'APPROVED' &&
@@ -116,12 +118,27 @@ export class PlaceTranslationsService {
 
     // Idempotency (canonicalJson()'s own doc comment names this exact failure mode for
     // VerifiedFactsIngestionService: re-running an unchanged write silently creates a second
-    // revision). Republishing byte-identical content is a no-op: no new row, no new
-    // wiki_revisions entry.
+    // revision). Republishing byte-identical CONTENT is a no-op: no new row, no new wiki_revisions
+    // entry, and — critically — the existing row's real governance/review state (possibly a genuine
+    // human APPROVED) is left untouched. isSameTranslationContent() deliberately compares only
+    // translatable content, never translationStatus/humanReviewStatus/isPublic/isProductionData/
+    // productionEligible (human-translation-review, 2026-09-04): those are governance state owned
+    // by TranslationReviewService, not part of a row's content identity — comparing them here would
+    // make a harmless re-import (unchanged text) look like a "content change" whenever it disagrees
+    // with the current governance flags, silently stripping a real approval on every rerun.
     if (existing && this.isSameTranslationContent(existing, item, sourceTextHash)) {
       return existing;
     }
 
+    // GOVERNANCE HARDENING (human-translation-review, 2026-09-04): a publish call — whether from the
+    // multilingual importer, a bundle caller, or any future producer — creates content, never an
+    // approval. Every new/edited row starts PENDING and not public/production/eligible, REGARDLESS
+    // of what the caller's item claims for these five fields. This is the single write chokepoint
+    // for place_translations; only TranslationReviewService.reviewTranslation() (place-translations/
+    // translation-review.service.ts) may ever set these to APPROVED/true after a real human review.
+    // This also gives content-edit invalidation "for free": editing approved content always inserts
+    // a new row via this exact path, so the edit always resets to PENDING — no separate
+    // invalidation logic is needed.
     const id = randomUUID();
     const revision = await this.revisionsService.recordPlaceTranslationRevision(
       {
@@ -136,14 +153,20 @@ export class PlaceTranslationsService {
           textFormat: item.textFormat ?? TextFormat.PLAIN_TEXT,
           sourceTextHash,
           translationMethod: item.translationMethod,
-          translationStatus: item.translationStatus,
-          humanReviewStatus: item.humanReviewStatus,
+          translationStatus: 'PENDING',
+          humanReviewStatus: 'PENDING',
           qualityGate: item.qualityGate,
           supersedesTranslationId: existing?.id ?? null,
         },
         origin,
         editorId,
         changeNote,
+        // NOTE ON MEANING: this wiki_revisions row is a CONTENT snapshot, not a review decision —
+        // `status: APPROVED` here has always meant "this write committed successfully" (every
+        // content-write call site in this service uses the same value), never "a human approved
+        // this text". The actual human-review decision lives on a SEPARATE, later wiki_revisions
+        // row for this same entityId (reviewedBy/reviewedAt set, status mapped from the decision),
+        // written only by TranslationReviewService — see that file's header comment.
         status: RevisionStatus.APPROVED,
       },
       manager,
@@ -159,15 +182,15 @@ export class PlaceTranslationsService {
       textFormat: item.textFormat ?? TextFormat.PLAIN_TEXT,
       sourceTextHash,
       translationMethod: item.translationMethod,
-      translationStatus: item.translationStatus,
-      humanReviewStatus: item.humanReviewStatus,
+      translationStatus: 'PENDING',
+      humanReviewStatus: 'PENDING',
       qualityGate: item.qualityGate,
       revisionId: revision.id,
       supersedesTranslationId: existing?.id ?? null,
       isCurrent: true,
-      isPublic: item.isPublic,
-      isProductionData: item.isProductionData,
-      productionEligible: item.productionEligible,
+      isPublic: false,
+      isProductionData: false,
+      productionEligible: false,
       sourceId: item.sourceId ?? null,
       evidenceId: item.evidenceId ?? null,
       importBatchId: item.importBatchId ?? null,
@@ -195,6 +218,12 @@ export class PlaceTranslationsService {
         return current; // đã là bản hiện hành — không có gì để rollback.
       }
 
+      // GOVERNANCE HARDENING (human-translation-review, 2026-09-04): a revert is a content write
+      // like any other — it inserts a NEW row via this same insert-only architecture — so it gets
+      // the identical treatment as publishOneTranslation(): always PENDING/not-public/not-production
+      // regardless of what the target revision's flags were. This closes a loophole where reverting
+      // to an old row could otherwise reinstate a stale is_public/production_eligible state without
+      // a fresh human review looking at the content actually being restored.
       const id = randomUUID();
       const revision = await this.revisionsService.recordPlaceTranslationRevision(
         {
@@ -209,8 +238,8 @@ export class PlaceTranslationsService {
             textFormat: target.textFormat,
             sourceTextHash: target.sourceTextHash,
             translationMethod: target.translationMethod,
-            translationStatus: target.translationStatus,
-            humanReviewStatus: target.humanReviewStatus,
+            translationStatus: 'PENDING',
+            humanReviewStatus: 'PENDING',
             qualityGate: target.qualityGate,
             supersedesTranslationId: current?.id ?? null,
             revertedFromRevisionId: target.revisionId,
@@ -233,15 +262,15 @@ export class PlaceTranslationsService {
         textFormat: target.textFormat,
         sourceTextHash: target.sourceTextHash,
         translationMethod: target.translationMethod,
-        translationStatus: target.translationStatus,
-        humanReviewStatus: target.humanReviewStatus,
+        translationStatus: 'PENDING',
+        humanReviewStatus: 'PENDING',
         qualityGate: target.qualityGate,
         revisionId: revision.id,
         supersedesTranslationId: current?.id ?? null,
         isCurrent: true,
-        isPublic: target.isPublic,
-        isProductionData: target.isProductionData,
-        productionEligible: target.productionEligible,
+        isPublic: false,
+        isProductionData: false,
+        productionEligible: false,
         sourceId: target.sourceId,
         evidenceId: target.evidenceId,
         importBatchId: target.importBatchId,
@@ -273,6 +302,14 @@ export class PlaceTranslationsService {
     return isSourceTextStale(translation.sourceTextHash, currentSourceText);
   }
 
+  // Compares CONTENT identity only (human-translation-review, 2026-09-04) — translationStatus/
+  // humanReviewStatus/isPublic/isProductionData/productionEligible are deliberately excluded. They
+  // are governance state now owned exclusively by TranslationReviewService, not part of what makes
+  // two translations "the same text" — including them here would make re-publishing byte-identical
+  // content look like a change whenever it disagrees with the row's current review state, which
+  // would silently create a spurious PENDING row and strip a real approval on every idempotent
+  // rerun. qualityGate stays in the comparison: it is a caller-supplied structural/data-quality
+  // signal (e.g. static validation PASS/WARN/FAIL), not a human-approval signal.
   private isSameTranslationContent(
     existing: PlaceTranslation,
     incoming: PublishTranslationItem,
@@ -285,12 +322,7 @@ export class PlaceTranslationsService {
         sourceLocaleCode: existing.sourceLocaleCode,
         sourceTextHash: existing.sourceTextHash,
         translationMethod: existing.translationMethod,
-        translationStatus: existing.translationStatus,
-        humanReviewStatus: existing.humanReviewStatus,
         qualityGate: existing.qualityGate,
-        isPublic: existing.isPublic,
-        isProductionData: existing.isProductionData,
-        productionEligible: existing.productionEligible,
       }) ===
       canonicalJson({
         translatedText: incoming.translatedText,
@@ -298,12 +330,7 @@ export class PlaceTranslationsService {
         sourceLocaleCode: incoming.sourceLocaleCode,
         sourceTextHash: incomingSourceTextHash,
         translationMethod: incoming.translationMethod,
-        translationStatus: incoming.translationStatus,
-        humanReviewStatus: incoming.humanReviewStatus,
         qualityGate: incoming.qualityGate,
-        isPublic: incoming.isPublic,
-        isProductionData: incoming.isProductionData,
-        productionEligible: incoming.productionEligible,
       })
     );
   }

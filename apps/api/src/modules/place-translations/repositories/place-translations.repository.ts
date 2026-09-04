@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { PlaceTranslation } from '../entities/place-translation.entity';
 
 // Mọi phương thức nhận `manager?: EntityManager` tuỳ chọn — khi được truyền (từ
@@ -56,5 +56,36 @@ export class PlaceTranslationsRepository {
 
   listCurrentByPlace(placeId: string, manager?: EntityManager): Promise<PlaceTranslation[]> {
     return this.target(manager).find({ where: { placeId, isCurrent: true } });
+  }
+
+  // Owner review queue (human-translation-review, 2026-09-04) — every CURRENT row still awaiting a
+  // human decision (never reviewed, or a reviewer asked for changes). Excludes APPROVED/REJECTED —
+  // those already have a real decision on record and do not need to surface here again.
+  listPendingReview(placeId: string | undefined, manager?: EntityManager): Promise<PlaceTranslation[]> {
+    return this.target(manager).find({
+      where: {
+        ...(placeId ? { placeId } : {}),
+        isCurrent: true,
+        humanReviewStatus: In(['PENDING', 'NEEDS_CHANGES']),
+      },
+      order: { placeId: 'ASC', fieldKey: 'ASC', localeCode: 'ASC' },
+    });
+  }
+
+  // Written ONLY by TranslationReviewService.reviewTranslation() — the sole caller trusted to set
+  // these five governance columns after a real human review decision (human-translation-review,
+  // 2026-09-04). Never call this from an importer/bundle path.
+  async updateReviewState(
+    id: string,
+    state: {
+      humanReviewStatus: string;
+      translationStatus: string;
+      isPublic: boolean;
+      isProductionData: boolean;
+      productionEligible: boolean;
+    },
+    manager?: EntityManager,
+  ): Promise<void> {
+    await this.target(manager).update({ id }, state);
   }
 }
