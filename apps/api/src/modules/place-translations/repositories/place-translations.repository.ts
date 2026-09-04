@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { PlaceTranslation } from '../entities/place-translation.entity';
+import type { ReviewQueueCursor } from '../review-queue-cursor';
 
 // Owner review queue — one enriched row per pending/needs-changes translation (human-translation-
 // review, 2026-09-04). A single query (place + base/current-public comparison text + source) so the
@@ -13,9 +14,21 @@ export interface ReviewQueueFilter {
   fieldKey?: string;
   // Defaults to ['PENDING', 'NEEDS_CHANGES'] — the two states genuinely awaiting a decision.
   humanReviewStatus?: string[];
-  // Capped to [1, 200] regardless of what's requested — prevents an unbounded fetch as the
-  // candidate pool grows past the current 8 rows; not full keyset pagination yet (see ADR-021 follow-up).
+  // Capped to [1, 200] regardless of what's requested.
   limit?: number;
+  // Keyset pagination (2026-09-04 scale-up) — already-decoded (created_at, id) of the last row the
+  // caller saw; decoding/encoding of the opaque cursor string lives in review-queue-cursor.ts /
+  // TranslationReviewService, kept out of this repository on purpose (same separation as every
+  // other filter field here being plain values, never wire-format strings).
+  cursor?: ReviewQueueCursor;
+}
+
+export interface ReviewQueuePage {
+  rows: ReviewQueueRow[];
+  // true iff strictly more rows exist beyond this page for the same filter — computed by fetching
+  // one extra row and checking for it, never by comparing rows.length to limit (which would be
+  // wrong exactly when the remaining count equals limit).
+  hasMore: boolean;
 }
 
 // snake_case fields, matching openapi.yaml's response convention (same pattern as
@@ -105,7 +118,14 @@ export class PlaceTranslationsRepository {
   // name/slug, the currently-LIVE text for the same (place, field, locale) slot for side-by-side
   // comparison, and the backing source's url/title — so the frontend renders the whole queue from
   // one response, never N+1 per row. All filter values are bound parameters (never interpolated).
-  async listReviewQueue(filter: ReviewQueueFilter, manager?: EntityManager): Promise<ReviewQueueRow[]> {
+  //
+  // KEYSET PAGINATION (2026-09-04 scale-up): fetches limit+1 rows so hasMore is known without a
+  // second COUNT query; the extra row is dropped before returning. filter.cursor (already decoded —
+  // see ReviewQueueFilter's own comment) becomes a row-value WHERE condition on the exact same
+  // (created_at, id) pair the ORDER BY uses, so page N+1 picks up EXACTLY where page N ended: no
+  // gap, no overlap, stable even as new rows are inserted concurrently (unlike OFFSET, which shifts
+  // under concurrent inserts on a queue that only ever grows).
+  async listReviewQueue(filter: ReviewQueueFilter, manager?: EntityManager): Promise<ReviewQueuePage> {
     const executor: Pick<EntityManager, 'query'> = manager ?? this.repo.manager;
     const statuses = filter.humanReviewStatus?.length ? filter.humanReviewStatus : ['PENDING', 'NEEDS_CHANGES'];
     const limit = Math.min(Math.max(Math.trunc(filter.limit ?? 50), 1), 200);
@@ -129,9 +149,13 @@ export class PlaceTranslationsRepository {
       params.push(filter.fieldKey);
       conditions.push(`pt.field_key = $${params.length}`);
     }
-    params.push(limit);
+    if (filter.cursor) {
+      params.push(filter.cursor.createdAt, filter.cursor.id);
+      conditions.push(`(pt.created_at, pt.id) > ($${params.length - 1}, $${params.length})`);
+    }
+    params.push(limit + 1);
 
-    return executor.query(
+    const rows: ReviewQueueRow[] = await executor.query(
       `SELECT
          pt.id, pt.place_id, p.name AS place_name, p.slug AS place_slug,
          pt.field_key, pt.locale_code, pt.source_locale_code,
@@ -153,6 +177,9 @@ export class PlaceTranslationsRepository {
        LIMIT $${params.length}`,
       params,
     );
+
+    const hasMore = rows.length > limit;
+    return { rows: hasMore ? rows.slice(0, limit) : rows, hasMore };
   }
 
   // Written ONLY by TranslationReviewService.reviewTranslation() — the sole caller trusted to set

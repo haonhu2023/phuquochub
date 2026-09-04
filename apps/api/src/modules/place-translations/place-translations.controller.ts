@@ -13,10 +13,15 @@ import { ReviewQueueQueryDto } from './dto/review-queue-query.dto';
 export class PlaceTranslationsController {
   constructor(private readonly reviewService: TranslationReviewService) {}
 
-  // GET /admin/place-translations/review-queue[?placeId=&placeSlug=&localeCode=&fieldKey=&limit=] —
-  // one enriched row per translation still awaiting a human decision (PENDING or NEEDS_CHANGES):
+  // GET /admin/place-translations/review-queue[?placeId=&placeSlug=&localeCode=&fieldKey=&limit=&cursor=]
+  // — one enriched row per translation still awaiting a human decision (PENDING or NEEDS_CHANGES):
   // place name/slug, the currently-live text for the same slot (for comparison), and source
   // url/title — see ReviewQueueRow. Read-only; never hides source/evidence fields.
+  //
+  // Keyset-paginated (2026-09-04 scale-up): response is `{ rows, nextCursor }` — pass `nextCursor`
+  // back as `?cursor=` to fetch the next page; `null` means this was the last page. Deliberately NOT
+  // page-number pagination (see listReviewQueue()'s own comment on why OFFSET is unsafe for a
+  // queue that only ever grows).
   @Get('review-queue')
   @RequirePermissions(PLACE_TRANSLATION_REVIEW_PERMISSION)
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
@@ -28,6 +33,7 @@ export class PlaceTranslationsController {
       fieldKey: query.fieldKey,
       humanReviewStatus: query.humanReviewStatus,
       limit: query.limit,
+      cursor: query.cursor,
     });
   }
 

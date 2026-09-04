@@ -53,6 +53,15 @@ export interface ListReviewQueueParams {
   localeCode?: string;
   fieldKey?: string;
   limit?: number;
+  /** Từ `nextCursor` của trang trước — bỏ trống để lấy trang đầu. */
+  cursor?: string;
+}
+
+// Khớp ReviewQueuePageResult ở BE — data là { rows, nextCursor }, không phải mảng trần (phân
+// trang keyset, 2026-09-04 scale-up).
+export interface ReviewQueueApiPage {
+  rows: TranslationReviewQueueItem[];
+  nextCursor: string | null;
 }
 
 // POST /admin/place-translations/{id}/review — ĐÚNG hai trường (khớp ReviewPlaceTranslationDto ở

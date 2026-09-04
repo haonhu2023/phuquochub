@@ -40,4 +40,10 @@ export class ReviewQueueQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200)
   limit?: number;
+
+  // Opaque, from a previous response's meta.nextCursor — decoded/validated in
+  // TranslationReviewService.listReviewQueue() (review-queue-cursor.ts), which throws a clean 400
+  // for anything malformed; this DTO only bounds length (a well-formed cursor is ~60 chars).
+  @IsOptional() @IsString() @MaxLength(200)
+  cursor?: string;
 }

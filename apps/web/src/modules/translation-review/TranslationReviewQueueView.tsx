@@ -12,14 +12,22 @@ import type { ListReviewQueueParams, TranslationReviewQueueItem } from './types'
 import modStyles from '../moderation/moderation.module.css';
 import placeStyles from '@/modules/places/places.module.css';
 
+const PAGE_SIZE = 50;
+
 type State =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: TranslationReviewQueueItem[] };
+  | {
+      kind: 'ready';
+      items: TranslationReviewQueueItem[];
+      nextCursor: string | null;
+      loadingMore: boolean;
+      loadMoreError: string | null;
+    };
 
-function parseParams(sp: URLSearchParams): ListReviewQueueParams {
-  const params: ListReviewQueueParams = { limit: 100 };
+function parseParams(sp: URLSearchParams): Omit<ListReviewQueueParams, 'cursor'> {
+  const params: Omit<ListReviewQueueParams, 'cursor'> = { limit: PAGE_SIZE };
   const placeSlug = sp.get('placeSlug');
   if (placeSlug) params.placeSlug = placeSlug;
   const localeCode = sp.get('localeCode');
@@ -32,8 +40,14 @@ function parseParams(sp: URLSearchParams): ListReviewQueueParams {
 // Hàng chờ duyệt bản dịch (human-translation-review, 2026-09-04) — cùng khung state/fetch với
 // ModerationQueueView.tsx: 403 -> ForbiddenState (ai KHÔNG giữ PlaceTranslation.Review.Any vẫn có
 // thể vào route này qua URL trực tiếp — dashboard chỉ ẩn LIÊN KẾT, không phải route; BE mới là nơi
-// chặn thật, xem capabilities.ts). Không phân trang cursor (chỉ giới hạn limit=100, xem
-// ReviewQueueFilter ở BE) — đủ cho quy mô hiện tại, không quá phức tạp cho 8 dòng.
+// chặn thật, xem capabilities.ts).
+//
+// Phân trang keyset (2026-09-04 scale-up): "Tải thêm" nối thêm một trang vào danh sách đã có, KHÔNG
+// thay thế nó — khớp quy ước Pagination.tsx hiện có của repo là điều hướng trang (không phải
+// infinite scroll), nhưng "Tải thêm" phù hợp hơn cho một hàng chờ công việc đang xử lý dần (owner
+// duyệt xong vài mục rồi mới cần xem thêm), tránh mất vị trí cuộn mỗi khi nạp trang mới. Đổi bộ lọc
+// hoặc một quyết định vừa xảy ra (reload) luôn NẠP LẠI TỪ ĐẦU (bỏ cursor), không nối tiếp — dữ liệu
+// cũ có thể không còn đúng bộ lọc/trạng thái nữa.
 export function TranslationReviewQueueView() {
   const searchParams = useSearchParams();
   const spString = searchParams.toString();
@@ -56,8 +70,10 @@ export function TranslationReviewQueueView() {
         if (!cancelled) setState({ kind: 'loading' });
         return listReviewQueue(parseParams(new URLSearchParams(spString)), session.accessToken);
       })
-      .then((items) => {
-        if (!cancelled) setState({ kind: 'ready', items });
+      .then((page) => {
+        if (!cancelled) {
+          setState({ kind: 'ready', items: page.rows, nextCursor: page.nextCursor, loadingMore: false, loadMoreError: null });
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -73,6 +89,29 @@ export function TranslationReviewQueueView() {
   }, [spString, reloadKey]);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const loadMore = useCallback(() => {
+    setState((prev) => {
+      if (prev.kind !== 'ready' || !prev.nextCursor || prev.loadingMore) return prev;
+      const session = readSession();
+      if (!session) return prev; // phiên hết hạn giữa chừng — nút Duyệt của từng dòng sẽ tự báo lỗi
+
+      const cursor = prev.nextCursor;
+      void listReviewQueue({ ...parseParams(new URLSearchParams(spString)), cursor }, session.accessToken)
+        .then((page) => {
+          setState((cur) =>
+            cur.kind === 'ready'
+              ? { kind: 'ready', items: [...cur.items, ...page.rows], nextCursor: page.nextCursor, loadingMore: false, loadMoreError: null }
+              : cur,
+          );
+        })
+        .catch((err: unknown) => {
+          setState((cur) => (cur.kind === 'ready' ? { ...cur, loadingMore: false, loadMoreError: safeMessage(err) } : cur));
+        });
+
+      return { ...prev, loadingMore: true, loadMoreError: null };
+    });
+  }, [spString]);
 
   if (state.kind === 'forbidden') {
     return (
@@ -121,11 +160,27 @@ export function TranslationReviewQueueView() {
       )}
 
       {state.kind === 'ready' && state.items.length > 0 && (
-        <div className={modStyles.queue}>
-          {state.items.map((item) => (
-            <TranslationReviewCard key={item.id} item={item} onDecided={reload} />
-          ))}
-        </div>
+        <>
+          <div className={modStyles.queue}>
+            {state.items.map((item) => (
+              <TranslationReviewCard key={item.id} item={item} onDecided={reload} />
+            ))}
+          </div>
+
+          {state.loadMoreError && (
+            <p className={modStyles.alert} role="alert">
+              {state.loadMoreError}
+            </p>
+          )}
+
+          {state.nextCursor && (
+            <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+              <button type="button" className={placeStyles.btn} onClick={loadMore} disabled={state.loadingMore}>
+                {state.loadingMore ? 'Đang tải…' : 'Tải thêm'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </main>
   );

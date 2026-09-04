@@ -10,6 +10,7 @@ import { HumanReviewStatus } from '../multilingual-import/multilingual-import.en
 import { PlaceTranslation } from './entities/place-translation.entity';
 import { TextFormat, TranslationMethod } from './place-translations.enums';
 import { User } from '../users/entities/user.entity';
+import { decodeReviewQueueCursor, encodeReviewQueueCursor } from './review-queue-cursor';
 
 const TRANSLATION_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const ACTOR_ID = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -344,11 +345,45 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     expect(call.reviewedBy).toBe(ACTOR_ID);
   });
 
-  it('listReviewQueue delegates straight to the repository with the given filter', async () => {
-    translationsRepo.listReviewQueue.mockResolvedValue([]);
+  describe('listReviewQueue — keyset pagination', () => {
+    it('page 1 (no cursor): passes filter through with cursor=undefined, returns nextCursor=null when hasMore=false', async () => {
+      translationsRepo.listReviewQueue.mockResolvedValue({ rows: [], hasMore: false });
 
-    await service.listReviewQueue({ placeId: 'place-1', limit: 10 });
+      const result = await service.listReviewQueue({ placeId: 'place-1', limit: 10 });
 
-    expect(translationsRepo.listReviewQueue).toHaveBeenCalledWith({ placeId: 'place-1', limit: 10 });
+      expect(translationsRepo.listReviewQueue).toHaveBeenCalledWith({ placeId: 'place-1', limit: 10, cursor: undefined });
+      expect(result).toEqual({ rows: [], nextCursor: null });
+    });
+
+    it('hasMore=true: nextCursor encodes the LAST row of the page (created_at + id)', async () => {
+      const ROW_1 = 'aaaaaaaa-1111-4111-8111-111111111111';
+      const ROW_2 = 'bbbbbbbb-2222-4222-8222-222222222222';
+      const lastRow = { id: ROW_2, created_at: new Date('2026-09-04T00:00:00.000Z') } as never;
+      translationsRepo.listReviewQueue.mockResolvedValue({ rows: [{ id: ROW_1 } as never, lastRow], hasMore: true });
+
+      const result = await service.listReviewQueue({});
+
+      expect(result.nextCursor).not.toBeNull();
+      // Round-trips through the same decoder listReviewQueue itself uses — proves it's the LAST row.
+      const decoded = decodeReviewQueueCursor(result.nextCursor!);
+      expect(decoded.id).toBe(ROW_2);
+      expect(decoded.createdAt.toISOString()).toBe('2026-09-04T00:00:00.000Z');
+    });
+
+    it('a well-formed cursor string is decoded and forwarded to the repository as a real (createdAt, id) pair', async () => {
+      translationsRepo.listReviewQueue.mockResolvedValue({ rows: [], hasMore: false });
+      const ROW_1 = 'aaaaaaaa-1111-4111-8111-111111111111';
+      const cursor = encodeReviewQueueCursor({ created_at: new Date('2026-09-04T00:00:00.000Z'), id: ROW_1 });
+
+      await service.listReviewQueue({ cursor });
+
+      const passedFilter = translationsRepo.listReviewQueue.mock.calls[0][0];
+      expect(passedFilter.cursor).toEqual({ createdAt: new Date('2026-09-04T00:00:00.000Z'), id: ROW_1 });
+    });
+
+    it('a malformed cursor is rejected with BadRequestException BEFORE ever querying the repository', async () => {
+      await expect(service.listReviewQueue({ cursor: 'not-a-valid-cursor!!' })).rejects.toThrow(BadRequestException);
+      expect(translationsRepo.listReviewQueue).not.toHaveBeenCalled();
+    });
   });
 });

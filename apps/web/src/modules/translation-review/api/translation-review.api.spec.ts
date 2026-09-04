@@ -10,7 +10,7 @@ const mockGet = apiGetAuth as jest.Mock;
 const mockPost = apiPost as jest.Mock;
 
 beforeEach(() => {
-  mockGet.mockReset().mockResolvedValue([]);
+  mockGet.mockReset().mockResolvedValue({ rows: [], nextCursor: null });
   mockPost.mockReset().mockResolvedValue(null);
 });
 
@@ -36,6 +36,21 @@ describe('listReviewQueue', () => {
       'tok',
       { cache: 'no-store' },
     );
+  });
+
+  it('gồm cursor khi có (trang tiếp theo)', async () => {
+    await listReviewQueue({ cursor: 'opaque-cursor-token' }, 'tok');
+    expect(mockGet).toHaveBeenCalledWith(
+      '/admin/place-translations/review-queue?cursor=opaque-cursor-token',
+      'tok',
+      { cache: 'no-store' },
+    );
+  });
+
+  it('trả nguyên { rows, nextCursor } từ BE, không bóc tách', async () => {
+    mockGet.mockResolvedValue({ rows: [{ id: 't1' }], nextCursor: 'next-page-token' });
+    const result = await listReviewQueue({}, 'tok');
+    expect(result).toEqual({ rows: [{ id: 't1' }], nextCursor: 'next-page-token' });
   });
 });
 

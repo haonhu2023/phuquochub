@@ -14,6 +14,17 @@ import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { UsersRepository } from '../users/repositories/users.repository';
 import { AuthorizationService } from '../authz/authorization.service';
 import { HumanReviewStatus, TranslationApprovalStatus } from '../multilingual-import/multilingual-import.enums';
+import { decodeReviewQueueCursor, encodeReviewQueueCursor, InvalidReviewQueueCursorError } from './review-queue-cursor';
+
+// The controller-facing filter shape: `cursor` here is the OPAQUE wire string (or absent for page
+// 1); this service decodes it before handing a real (created_at, id) pair to the repository.
+export type ListReviewQueueParams = Omit<ReviewQueueFilter, 'cursor'> & { cursor?: string };
+
+export interface ReviewQueuePageResult {
+  rows: ReviewQueueRow[];
+  // Pass back verbatim as `?cursor=` to fetch the next page; null means this was the last page.
+  nextCursor: string | null;
+}
 
 export const PLACE_TRANSLATION_REVIEW_PERMISSION = 'PlaceTranslation.Review.Any';
 
@@ -114,8 +125,22 @@ export class TranslationReviewService {
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
-  listReviewQueue(filter: ReviewQueueFilter): Promise<ReviewQueueRow[]> {
-    return this.translationsRepo.listReviewQueue(filter);
+  async listReviewQueue(params: ListReviewQueueParams): Promise<ReviewQueuePageResult> {
+    let cursor: ReviewQueueFilter['cursor'];
+    if (params.cursor) {
+      try {
+        cursor = decodeReviewQueueCursor(params.cursor);
+      } catch (err) {
+        if (err instanceof InvalidReviewQueueCursorError) {
+          throw new BadRequestException(`listReviewQueue: ${err.message}`);
+        }
+        throw err;
+      }
+    }
+
+    const { rows, hasMore } = await this.translationsRepo.listReviewQueue({ ...params, cursor });
+    const last = rows[rows.length - 1];
+    return { rows, nextCursor: hasMore && last ? encodeReviewQueueCursor(last) : null };
   }
 
   async reviewTranslation(
