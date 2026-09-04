@@ -731,11 +731,12 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(localesService.resolveRequestLocale).toHaveBeenCalledWith('xx-not-a-real-locale');
     });
 
-    it('localization overlay never touches canonical id/slug/category — only short_description', async () => {
+    it('localization overlay never touches canonical id/slug/category — only name/short_description', async () => {
       placesRepo.getDetailBySlug.mockResolvedValue({
         id: 'p1',
         slug: 'vinwonders-phu-quoc',
         category_id: 'cat-1',
+        name: 'VinWonders Phú Quốc',
         short_description: 'Mô tả gốc',
       });
       commonMocks();
@@ -749,6 +750,170 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(res.id).toBe('p1');
       expect(res).not.toHaveProperty('slug');
       expect(res).not.toHaveProperty('category_id');
+    });
+
+    // 2026-09-03 — đóng khoảng trống integration: `name` (bản dịch `display_name`) giờ overlay
+    // CÙNG cơ chế field-agnostic `resolveLocalizedField` với `short_description`, không phải một
+    // nhánh riêng — các test dưới đây khoá lại hành vi đó cho cả hai pilot thật (VinWonders, Hòn
+    // Thơm) và các ca fallback độc lập giữa hai field.
+    describe('display_name overlay (field_key = display_name → response.name)', () => {
+      function mockTranslations(byField: Record<string, string | null>) {
+        placeTranslationsService.getCurrentPublicTranslatedText.mockImplementation(
+          async (_placeId: string, fieldKey: string) => byField[fieldKey] ?? null,
+        );
+      }
+
+      it('VinWonders, locale=vi → name is the Vietnamese display_name translation', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          name: 'VinWonders Phú Quốc (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslations({
+          display_name: 'VinWonders Phú Quốc',
+          short_description: 'Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.',
+        });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'vi');
+
+        expect(res.name).toBe('VinWonders Phú Quốc');
+        expect(res.short_description).toBe('Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.');
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          'display_name',
+          'vi',
+        );
+      });
+
+      it('VinWonders, locale=en → name is the English display_name translation', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          name: 'VinWonders Phú Quốc (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({
+          display_name: 'VinWonders Phu Quoc',
+          short_description: 'Explore the largest theme park in Vietnam that ranks top in Asia.',
+        });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+        expect(res.name).toBe('VinWonders Phu Quoc');
+        expect(res.short_description).toBe('Explore the largest theme park in Vietnam that ranks top in Asia.');
+      });
+
+      it('Hòn Thơm, locale=vi → name is the Vietnamese display_name translation', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '554b3fec-37e4-4656-a7cd-989dc167c80d',
+          name: 'Sun World Hòn Thơm (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslations({ display_name: 'Sun World Hòn Thơm', short_description: 'Mô tả tiếng Việt' });
+
+        const res = await service.getBySlug('sun-world-hon-thom', 'vi');
+
+        expect(res.name).toBe('Sun World Hòn Thơm');
+      });
+
+      it('Hòn Thơm, locale=en → name is the English display_name translation', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '554b3fec-37e4-4656-a7cd-989dc167c80d',
+          name: 'Sun World Hòn Thơm (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ display_name: 'Sun World Hon Thom', short_description: 'English description' });
+
+        const res = await service.getBySlug('sun-world-hon-thom', 'en');
+
+        expect(res.name).toBe('Sun World Hon Thom');
+      });
+
+      it('translation thiếu display_name nhưng CÓ short_description → name fallback gốc, short_description vẫn dịch (fallback độc lập theo field)', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          name: 'Tên gốc chưa dịch',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ short_description: 'Translated description only' });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+        expect(res.name).toBe('Tên gốc chưa dịch');
+        expect(res.short_description).toBe('Translated description only');
+      });
+
+      it('translation CÓ display_name nhưng thiếu short_description → short_description fallback gốc, name vẫn dịch', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          name: 'Tên gốc',
+          short_description: 'Mô tả gốc chưa dịch',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ display_name: 'Translated name only' });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+        expect(res.name).toBe('Translated name only');
+        expect(res.short_description).toBe('Mô tả gốc chưa dịch');
+      });
+
+      it('translation không tồn tại cho cả hai field → cả name và short_description đều fallback gốc', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'bai-sao-id',
+          name: 'Bãi Sao',
+          short_description: 'Bãi biển cát trắng nổi tiếng phía nam đảo',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.getBySlug('bai-sao', 'en');
+
+        expect(res.name).toBe('Bãi Sao');
+        expect(res.short_description).toBe('Bãi biển cát trắng nổi tiếng phía nam đảo');
+      });
+
+      it('missing/invalid locale → resolveRequestLocale tự fallback vi, name vẫn overlay đúng theo locale đã resolve', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          name: 'VinWonders Phú Quốc (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslations({ display_name: 'VinWonders Phú Quốc' });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'xx-not-a-real-locale');
+
+        expect(res.name).toBe('VinWonders Phú Quốc');
+        expect(localesService.resolveRequestLocale).toHaveBeenCalledWith('xx-not-a-real-locale');
+      });
+
+      it('overlay name/short_description không đổi UUID/identity — id giữ nguyên staging UUID bất kể locale', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          name: 'VinWonders Phú Quốc (gốc)',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ display_name: 'VinWonders Phu Quoc', short_description: 'Explore...' });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
+
+        expect(res.id).toBe('129cbaeb-8cd2-4254-9ae2-9dc276700bb8');
+      });
     });
   });
 

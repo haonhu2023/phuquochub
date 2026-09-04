@@ -211,4 +211,19 @@ export class PlaceTranslationsRepository {
     );
     return (result.affected ?? 0) > 0;
   }
+
+  // Scoped provenance-only update (2026-09-02 data-SSOT remediation, Phase 4.7) — touches ONLY
+  // source_id/evidence_id, never translated_text/status/etc. This is the one narrow exception to
+  // "never UPDATE a place_translations row": provenance metadata is not part of a row's CONTENT
+  // identity (isSameTranslationContent() in the service deliberately does not compare it), so
+  // backfilling it does not require superseding the row with a new one the way a content change
+  // would. Governed — see PlaceTranslationsService.backfillProvenance(), never called with a raw ad
+  // hoc UPDATE from outside that method.
+  async updateProvenance(
+    id: string,
+    provenance: { sourceId: string | null; evidenceId: string | null },
+    manager?: EntityManager,
+  ): Promise<void> {
+    await this.target(manager).update({ id }, provenance);
+  }
 }

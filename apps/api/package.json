@@ -25,6 +25,7 @@
     "admin:ingest-verified-facts": "ts-node src/scripts/ingest-verified-facts.ts",
     "admin:validate-publish-manifest": "ts-node src/scripts/validate-publish-manifest.ts",
     "admin:import-multilingual": "ts-node src/scripts/import-multilingual-places.ts",
+    "admin:cancel-multilingual-batch": "ts-node src/scripts/cancel-multilingual-batch.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {

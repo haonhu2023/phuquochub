@@ -309,6 +309,58 @@ export class PlaceTranslationsService {
     return row ? row.translatedText : null;
   }
 
+  // Backfill source_id/evidence_id onto an EXISTING current translation row without touching its
+  // content (2026-09-02 data-SSOT remediation, Phase 4.7). "không UPDATE trực tiếp tùy tiện" — this
+  // is the governed path: idempotent (already-matching provenance is a no-op, no revision written),
+  // records a wiki_revisions audit entry documenting the backfill (entityId = the translation's own
+  // id, origin=IMPORT, changeNote explains it is a provenance-only annotation), then a scoped
+  // UPDATE via PlaceTranslationsRepository.updateProvenance() — never translated_text/status/gate.
+  // The row's own revisionId is intentionally left pointing at the revision that produced its
+  // CONTENT; this backfill revision is an additional, independently queryable audit-trail entry for
+  // entityId, not a content-changing revision, so it does not supersede that pointer.
+  async backfillProvenance(
+    translationId: string,
+    provenance: { sourceId: string; evidenceId: string | null },
+    editorId: string | null,
+    changeNote: string,
+  ): Promise<PlaceTranslation> {
+    return this.dataSource.transaction(async (manager) => {
+      const existing = await this.translationsRepo.findById(translationId, manager);
+      if (!existing) {
+        throw new BadRequestException(`backfillProvenance: translation ${translationId} not found`);
+      }
+      if (!existing.isCurrent) {
+        throw new BadRequestException(
+          `backfillProvenance: translation ${translationId} is not the current row for its (place_id, field_key, locale_code) — provenance may only be backfilled onto the current row`,
+        );
+      }
+      if (existing.sourceId === provenance.sourceId && existing.evidenceId === provenance.evidenceId) {
+        return existing; // idempotent no-op — nothing to backfill
+      }
+
+      await this.revisionsService.recordPlaceTranslationRevision(
+        {
+          entityId: existing.id,
+          snapshot: {
+            id: existing.id,
+            placeId: existing.placeId,
+            fieldKey: existing.fieldKey,
+            localeCode: existing.localeCode,
+            provenanceBackfill: { sourceId: provenance.sourceId, evidenceId: provenance.evidenceId },
+          },
+          origin: RevisionOrigin.IMPORT,
+          editorId,
+          changeNote,
+          status: RevisionStatus.APPROVED,
+        },
+        manager,
+      );
+
+      await this.translationsRepo.updateProvenance(existing.id, provenance, manager);
+      return { ...existing, sourceId: provenance.sourceId, evidenceId: provenance.evidenceId };
+    });
+  }
+
   isSourceTextStale(translation: PlaceTranslation, currentSourceText: string): boolean {
     return isSourceTextStale(translation.sourceTextHash, currentSourceText);
   }

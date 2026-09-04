@@ -24,6 +24,38 @@ import { SupportedLocale } from '../../locales/entities/supported-locale.entity'
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 import { createHash } from 'crypto';
 import { randomUUID } from 'crypto';
+import {
+  computeReleaseManifestChecksum,
+  type ReleaseManifestPayloadV1,
+  type ReleaseManifestV1,
+} from '../../admin-data/release-manifest.contract';
+
+// Fixture builder shared by every non-dry-run test below — Phase 3.4 of the 2026-09-02
+// data-SSOT remediation made a fully-gated release manifest a REQUIRED input for any non-dry-run
+// import, so every existing non-dry-run call site needs one to keep exercising the behavior it
+// originally tested (a duplicate-batchId test still throws for duplicate-batchId, not for a
+// missing manifest, once a valid one is supplied).
+function buildReleaseManifest(overrides: Partial<ReleaseManifestPayloadV1> = {}): ReleaseManifestV1 {
+  const payload: ReleaseManifestPayloadV1 = {
+    releaseManifestVersion: 1,
+    releaseItemId: randomUUID(),
+    canonicalKey: 'place:test-place',
+    slug: 'test-place',
+    targetEnvironment: 'local_staging',
+    identityResolutionStatus: 'MATCHED',
+    policyStatus: 'PASS',
+    preflightStatus: 'PASS',
+    evidenceDigest: 'a'.repeat(64),
+    approval: {
+      approvedBy: 'test-owner@example.com',
+      approvedAt: '2026-09-03T00:00:00.000Z',
+      reason: 'Unit test fixture.',
+    },
+    subBatches: [{ kind: 'translation', idempotencyKey: randomUUID(), payloadDigest: 'b'.repeat(64) }],
+    ...overrides,
+  };
+  return { payload, checksum: computeReleaseManifestChecksum(payload) };
+}
 
 // ============================================================================
 // Helpers
@@ -169,6 +201,7 @@ describe('MultilingualPlaceImportService', () => {
     batchRepo = createMock<MultilingualImportBatchRepository>({
       findByBatchId: jest.fn(),
       findSucceededBySourceChecksum: jest.fn(),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       insert: jest.fn(),
       update: jest.fn(),
     });
@@ -252,7 +285,7 @@ describe('MultilingualPlaceImportService', () => {
     localesService.assertPublishableLocale.mockResolvedValue({ localeCode: 'vi' } as unknown as SupportedLocale);
     localesService.getKnownLocale.mockResolvedValue({ localeCode: 'vi' } as unknown as SupportedLocale);
 
-    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false }))
+    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() }))
       .rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -270,7 +303,7 @@ describe('MultilingualPlaceImportService', () => {
     localesService.assertPublishableLocale.mockResolvedValue({ localeCode: 'vi' } as unknown as SupportedLocale);
     localesService.getKnownLocale.mockResolvedValue({ localeCode: 'vi' } as unknown as SupportedLocale);
 
-    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false }))
+    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() }))
       .rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -329,7 +362,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract();
     setupHappyPath(contract, newTranslationId);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.SUCCEEDED);
     expect(result.failed).toBe(0);
@@ -351,7 +384,7 @@ describe('MultilingualPlaceImportService', () => {
     dataSource.transaction.mockImplementation(async (cb: (m: unknown) => Promise<unknown>) => cb({}));
 
     // Because HELD rows cause a batch failure (throw inside transaction), we expect the batch to fail
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.FAILED);
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
@@ -362,7 +395,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
   });
@@ -372,7 +405,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
   });
@@ -382,7 +415,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
   });
@@ -402,7 +435,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract, newTranslationId);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.SUCCEEDED);
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(false);
@@ -422,7 +455,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
     expect(translationsService.publishTranslationInTransaction).not.toHaveBeenCalled();
@@ -438,7 +471,7 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract([row]);
     setupHappyPath(contract, newTranslationId);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.SUCCEEDED);
     expect(translationsService.publishTranslationInTransaction).toHaveBeenCalledTimes(1);
@@ -458,7 +491,7 @@ describe('MultilingualPlaceImportService', () => {
       importBatchId: oldBatchRecordId, // != the new batchRecordId assigned in this run
     } as unknown as PlaceTranslation);
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.SUCCEEDED);
     expect(result.rowResults[0].outcome).toBe(MultilingualImportRowOutcome.ALREADY_CURRENT);
@@ -476,7 +509,7 @@ describe('MultilingualPlaceImportService', () => {
     batchRepo.findSucceededBySourceChecksum.mockResolvedValue(null);
     localesService.assertPublishableLocale.mockRejectedValue(new Error('Locale not publishable'));
 
-    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false }))
+    await expect(service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() }))
       .rejects.toThrow();
   });
 
@@ -502,7 +535,7 @@ describe('MultilingualPlaceImportService', () => {
     // Simulate transaction: execute callback — re-throw so the service catches it (TypeORM rolls back here in real DB)
     dataSource.transaction.mockImplementation(async (cb: (m: unknown) => Promise<unknown>) => cb({}));
 
-    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(result.status).toBe(MultilingualImportBatchStatus.FAILED);
     expect(result.failed).toBeGreaterThan(0);
@@ -551,11 +584,116 @@ describe('MultilingualPlaceImportService', () => {
     const contract = makeContract();
     setupHappyPath(contract);
 
-    await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false });
+    await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
     expect(rowRepo.insertMany).toHaveBeenCalledTimes(1);
     const auditRows = rowRepo.insertMany.mock.calls[0][0] as MultilingualImportRow[];
     expect(auditRows).toHaveLength(1);
     expect(auditRows[0].placeId).toBe(VALID_UUID);
+  });
+
+  // ============================================================
+  // Release gate (2026-09-02 data-SSOT remediation, Phase 3.4)
+  // ============================================================
+
+  it('rejects non-dry-run with no releaseManifest at all — no direct write path bypasses the gate', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    await expect(
+      service.importBundle({ contract, actorId: VALID_UUID, dryRun: false }),
+    ).rejects.toThrow(/releaseManifest/);
+    expect(batchRepo.insert).not.toHaveBeenCalled();
+  });
+
+  it('allows dry-run with no releaseManifest (backward compatible with pre-gate callers)', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: true });
+    expect(result.dryRun).toBe(true);
+  });
+
+  it.each([
+    ['identityResolutionStatus', { identityResolutionStatus: 'HOLD_IDENTITY_CONFLICT' as const }],
+    ['policyStatus', { policyStatus: 'FAIL' as const }],
+    ['preflightStatus', { preflightStatus: 'NOT_RUN' as const }],
+  ])('rejects non-dry-run when %s does not pass the release gate', async (_label, override) => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    await expect(
+      service.importBundle({
+        contract,
+        actorId: VALID_UUID,
+        dryRun: false,
+        releaseManifest: buildReleaseManifest(override),
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(batchRepo.insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-dry-run when the release manifest has no translation sub-batch', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    await expect(
+      service.importBundle({
+        contract,
+        actorId: VALID_UUID,
+        dryRun: false,
+        releaseManifest: buildReleaseManifest({
+          subBatches: [{ kind: 'facts', idempotencyKey: randomUUID(), payloadDigest: 'c'.repeat(64) }],
+        }),
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects non-dry-run when the idempotency key was already used by another batch', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+    const manifest = buildReleaseManifest();
+    batchRepo.findByIdempotencyKey.mockResolvedValue({
+      batchId: randomUUID(),
+      status: MultilingualImportBatchStatus.SUCCEEDED,
+    } as unknown as MultilingualImportBatch);
+
+    await expect(
+      service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: manifest }),
+    ).rejects.toThrow(/idempotencyKey/);
+    expect(batchRepo.insert).not.toHaveBeenCalled();
+    expect(batchRepo.findByIdempotencyKey).toHaveBeenCalledWith(manifest.payload.subBatches[0].idempotencyKey);
+  });
+
+  it('persists release-gate columns onto the batch record on a fully-gated successful run', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract, randomUUID());
+    const manifest = buildReleaseManifest();
+
+    await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: manifest });
+
+    expect(batchRepo.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        releaseItemId: manifest.payload.releaseItemId,
+        releaseManifestDigest: manifest.checksum,
+        evidenceDigest: manifest.payload.evidenceDigest,
+        policyStatus: 'PASS',
+        preflightStatus: 'PASS',
+        idempotencyKey: manifest.payload.subBatches[0].idempotencyKey,
+      }),
+    );
+  });
+
+  it('a dry-run manifest that would fail the gate does not block the dry-run itself (preview, not enforcement)', async () => {
+    const contract = makeContract();
+    setupHappyPath(contract);
+
+    const result = await service.importBundle({
+      contract,
+      actorId: VALID_UUID,
+      dryRun: true,
+      releaseManifest: buildReleaseManifest({ policyStatus: 'FAIL' }),
+    });
+    expect(result.dryRun).toBe(true);
   });
 });
