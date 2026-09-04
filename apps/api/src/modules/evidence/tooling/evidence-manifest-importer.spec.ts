@@ -60,7 +60,16 @@ function fakeDb(opts: {
   return { calls, query: query as unknown as EvidenceManifestDbPort['query'] };
 }
 
-function fakePorts(db: ReturnType<typeof fakeDb>, opts: { existingSource?: { id: string } | null } = {}): {
+type EnsureEvidenceArtifactInput = { businessKey: string; sourceId: string };
+type EnsureEvidenceArtifactResult = { id: string; businessKey: string; sourceId: string };
+
+function fakePorts(
+  db: ReturnType<typeof fakeDb>,
+  opts: {
+    existingSource?: { id: string } | null;
+    ensureEvidenceArtifactImpl?: (input: EnsureEvidenceArtifactInput) => Promise<EnsureEvidenceArtifactResult>;
+  } = {},
+): {
   ports: EvidenceManifestImportPorts;
   ensureEvidenceArtifact: jest.Mock;
   linkEvidenceToTranslation: jest.Mock;
@@ -69,10 +78,14 @@ function fakePorts(db: ReturnType<typeof fakeDb>, opts: { existingSource?: { id:
 } {
   const findByTypeAndExternalRef = jest.fn(async () => opts.existingSource ?? null);
   const createSource = jest.fn(async () => ({ id: 'source-new' }));
-  const ensureEvidenceArtifact = jest.fn(async (input: { businessKey: string }) => ({
-    id: `evidence-${input.businessKey}`,
-    businessKey: input.businessKey,
-  }));
+  const ensureEvidenceArtifact = jest.fn(
+    opts.ensureEvidenceArtifactImpl ??
+      (async (input: { businessKey: string; sourceId: string }) => ({
+        id: `evidence-${input.businessKey}`,
+        businessKey: input.businessKey,
+        sourceId: input.sourceId, // real EvidenceService: a FRESH row's sourceId always matches the input
+      })),
+  );
   const linkEvidenceToTranslation = jest.fn(async () => ({ id: 'link-1' }));
 
   return {
@@ -191,5 +204,52 @@ describe('runEvidenceManifestImport', () => {
     const { ports: ports2, ensureEvidenceArtifact: ensure2 } = fakePorts(db2);
     await runEvidenceManifestImport(baseManifest(), ports2, { execute: true });
     expect(ensure2.mock.calls[0][0].contentHashSha256).toBe(firstHash);
+  });
+
+  it('a mid-loop exception on one entry is caught and reported as SKIPPED_ERROR, not aborting the rest of the manifest', async () => {
+    const db = fakeDb({
+      places: { 'bai-sao': 'place-1', 'bai-khem': 'place-2' },
+      translations: { 'place-1:short_description:vi': 'trans-1', 'place-2:short_description:vi': 'trans-2' },
+    });
+    const manifest = baseManifest();
+    manifest.entries.push({
+      ...manifest.entries[0],
+      place_slug: 'bai-khem',
+      evidence: { ...manifest.entries[0].evidence, business_key: 'EVD-BAIKHEM-VI-20260904' },
+    });
+    const { ports, linkEvidenceToTranslation } = fakePorts(db);
+    // Make the SECOND entry's link call throw, simulating a transient/DB error mid-manifest.
+    linkEvidenceToTranslation.mockImplementationOnce(async () => ({ id: 'link-1' }));
+    linkEvidenceToTranslation.mockImplementationOnce(async () => {
+      throw new Error('simulated transient DB error');
+    });
+
+    const result = await runEvidenceManifestImport(manifest, ports, { execute: true });
+
+    expect(result.aborted).toBe(false);
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0].status).toBe('IMPORTED');
+    expect(result.results[1].status).toBe('SKIPPED_ERROR');
+    expect(result.results[1].issues[0]).toMatchObject({ code: 'UNEXPECTED_ERROR', severity: 'error' });
+  });
+
+  it('BUSINESS_KEY_COLLISION: refuses to link when the business_key already belongs to a different source, fails closed', async () => {
+    const db = fakeDb();
+    const { ports, linkEvidenceToTranslation } = fakePorts(db, {
+      // Simulates ensureEvidenceArtifact finding a PRE-EXISTING row (from an unrelated import)
+      // whose sourceId does NOT match the source this entry resolved — a colliding business_key.
+      ensureEvidenceArtifactImpl: async (input: EnsureEvidenceArtifactInput) => ({
+        id: 'evidence-preexisting-unrelated',
+        businessKey: input.businessKey,
+        sourceId: 'source-belonging-to-a-different-place',
+      }),
+    });
+
+    const result = await runEvidenceManifestImport(baseManifest(), ports, { execute: true });
+
+    expect(result.results[0].status).toBe('SKIPPED_ERROR');
+    expect(result.results[0].issues.some((i) => i.code === 'BUSINESS_KEY_COLLISION')).toBe(true);
+    expect(result.results[0].links_created).toBe(0);
+    expect(linkEvidenceToTranslation).not.toHaveBeenCalled();
   });
 });

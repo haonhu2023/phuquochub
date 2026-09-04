@@ -26,6 +26,7 @@
     "admin:validate-publish-manifest": "ts-node src/scripts/validate-publish-manifest.ts",
     "admin:import-multilingual": "ts-node src/scripts/import-multilingual-places.ts",
     "admin:cancel-multilingual-batch": "ts-node src/scripts/cancel-multilingual-batch.ts",
+    "admin:evidence-manifest": "ts-node src/scripts/evidence-manifest-cli.ts",
     "clean": "rimraf dist tsconfig.build.tsbuildinfo"
   },
   "dependencies": {
