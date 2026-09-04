@@ -195,10 +195,19 @@ export class PlaceTranslationsService {
       evidenceId: item.evidenceId ?? null,
       importBatchId: item.importBatchId ?? null,
     });
-    const saved = await this.translationsRepo.insert(row, manager);
+    // ORDER MATTERS (fresh code-review finding, 2026-09-04): uq_place_trans_current is a plain
+    // CREATE UNIQUE INDEX ... WHERE is_current — Postgres unique indexes are checked per-statement,
+    // never deferrable, unlike a table CONSTRAINT declared DEFERRABLE. Inserting the new is_current
+    // row BEFORE clearing the old one violates that index immediately (23505) whenever `existing` is
+    // non-null — i.e. on every real republish/edit of a field that already has content. Every
+    // existing test for this path used a mocked repository, so this never surfaced against a real
+    // Postgres constraint. Clearing the old row first, then inserting, is correct and still safe:
+    // if the insert then fails, the whole transaction rolls back and the old row's is_current flips
+    // back with it — there is no window where a field/locale has zero current rows post-commit.
     if (existing) {
       await this.translationsRepo.markNotCurrent(existing.id, manager);
     }
+    const saved = await this.translationsRepo.insert(row, manager);
     return saved;
   }
 
@@ -275,10 +284,12 @@ export class PlaceTranslationsService {
         evidenceId: target.evidenceId,
         importBatchId: target.importBatchId,
       });
-      const saved = await this.translationsRepo.insert(row, manager);
+      // Same ordering fix as publishOneTranslation() — see that method's comment. uq_place_trans_current
+      // is not deferrable; clear the old current row before inserting the new one.
       if (current) {
         await this.translationsRepo.markNotCurrent(current.id, manager);
       }
+      const saved = await this.translationsRepo.insert(row, manager);
       return saved;
     });
   }
@@ -380,9 +391,13 @@ export class PlaceTranslationsService {
         isPublic: item.isPublic,
         isProductionData: item.isProductionData,
       });
-      const saved = await this.routesRepo.insert(row, manager);
       if (existing) {
-        // Đổi slug: hàng cũ trở thành redirect, không phải bị xoá (MAP-031).
+        // Đổi slug: hàng cũ trở thành redirect, không phải bị xoá (MAP-031). Same-slug branch must
+        // run BEFORE the insert below — uq_place_route_slug_current WHERE is_current is a plain
+        // unique index (never deferrable), and the new row would share the OLD row's exact
+        // (locale_code, localized_slug) key while both are is_current=true otherwise (23505). The
+        // slug-changed branch doesn't strictly need the reordering (its key changes too), but runs
+        // first here regardless for one consistent, always-safe order.
         if (existing.localizedSlug !== item.localizedSlug) {
           await manager
             .getRepository(PlaceTranslationRoute)
@@ -391,6 +406,7 @@ export class PlaceTranslationsService {
           await this.routesRepo.markNotCurrent(existing.id, manager);
         }
       }
+      const saved = await this.routesRepo.insert(row, manager);
       return saved;
     });
   }
@@ -441,10 +457,11 @@ export class PlaceTranslationsService {
         isPublic: item.isPublic,
         isProductionData: item.isProductionData,
       });
-      const saved = await this.seoRepo.insert(row, manager);
+      // Same ordering fix as publishOneTranslation() — uq_place_seo_current is not deferrable.
       if (existing) {
         await this.seoRepo.markNotCurrent(existing.id, manager);
       }
+      const saved = await this.seoRepo.insert(row, manager);
       return saved;
     });
   }
