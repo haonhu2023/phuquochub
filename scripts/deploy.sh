@@ -24,6 +24,22 @@ COMPOSE="docker compose -f $PROJECT_DIR/docker-compose.prod.yml"
 ENV_FILE="$PROJECT_DIR/.env"
 # shellcheck source=lib/release-tag.sh
 . "$SCRIPT_DIR/lib/release-tag.sh"
+# shellcheck source=lib/release-manifest.sh
+. "$SCRIPT_DIR/lib/release-manifest.sh"
+
+echo "[deploy] === Step 4b: verify source tree matches requested release $TAG (release-integrity"
+echo "[deploy]     gate, added after the 449c637 incident) ==="
+# migrate/api/web all build: from $PROJECT_DIR, which is not a git checkout
+# ([[migrate-builds-from-prod-tree]]). Before this gate existed, deploy.sh trusted that tree
+# unconditionally -- so a release whose source was never synced there built and tagged whatever
+# was already on disk as if it were $TAG, with no error. This refuses to build at all unless
+# scripts/sync-release-source.sh has already verified this exact tree against this exact $TAG.
+release_manifest_verify "$PROJECT_DIR" "$TAG" || {
+  echo "[deploy] ERROR: refusing to build $TAG from an unverified source tree. Run" >&2
+  echo "[deploy]        scripts/sync-release-source.sh <archive> <manifest> $PROJECT_DIR first" >&2
+  echo "[deploy]        (see scripts/create-release-archive.sh to produce them from git)." >&2
+  exit 1
+}
 
 echo "[deploy] === Step 5: build images tagged $TAG ==="
 # Image provenance (2026-08-14): stamp the commit and build time INTO the images as OCI labels, so
