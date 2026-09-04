@@ -173,6 +173,25 @@ describe('PlaceTranslationsService', () => {
       expect(result.supersedesTranslationId).toBe('row-1');
       expect(result.isCurrent).toBe(true);
     });
+
+    // Fresh code-review finding (2026-09-04): uq_place_trans_current (place_id, field_key,
+    // locale_code) WHERE is_current is a plain CREATE UNIQUE INDEX — never deferrable in Postgres,
+    // unlike a table CONSTRAINT declared DEFERRABLE. Inserting the new current row before clearing
+    // the old one violates that index immediately against a REAL database (23505) whenever a
+    // current row already exists — i.e. on every actual republish/edit. This test would NOT have
+    // caught the bug on its own (translationsRepo is mocked, so an insert-then-markNotCurrent order
+    // "works" against a mock that doesn't enforce the constraint) — it exists specifically to lock
+    // in the fix by asserting call ORDER, not just that both calls happened.
+    it('clears the old current row BEFORE inserting the new one (uq_place_trans_current is not deferrable)', async () => {
+      const existing = currentRow({ id: 'row-1' });
+      translationsRepo.findCurrent.mockResolvedValue(existing);
+
+      await service.publishTranslation(PLACE_ID, baseItem({ translatedText: 'A genuinely different text' }), RevisionOrigin.IMPORT);
+
+      const markNotCurrentOrder = translationsRepo.markNotCurrent.mock.invocationCallOrder[0];
+      const insertOrder = translationsRepo.insert.mock.invocationCallOrder[0];
+      expect(markNotCurrentOrder).toBeLessThan(insertOrder);
+    });
   });
 
   describe('publishTranslation — idempotency', () => {
@@ -301,6 +320,21 @@ describe('PlaceTranslationsService', () => {
       translationsRepo.findById.mockResolvedValue(null);
       await expect(service.rollbackTranslationTo('missing-id')).rejects.toThrow(BadRequestException);
     });
+
+    // Same fix as publishTranslation's ordering test above, applied to rollback's own insert/
+    // markNotCurrent pair (uq_place_trans_current, not deferrable).
+    it('clears the old current row BEFORE inserting the rolled-back one', async () => {
+      const target = currentRow({ id: 'row-old', isCurrent: false, translatedText: 'Old English text' });
+      const current = currentRow({ id: 'row-new', isCurrent: true, translatedText: 'New English text' });
+      translationsRepo.findById.mockResolvedValue(target);
+      translationsRepo.findCurrent.mockResolvedValue(current);
+
+      await service.rollbackTranslationTo('row-old');
+
+      const markNotCurrentOrder = translationsRepo.markNotCurrent.mock.invocationCallOrder[0];
+      const insertOrder = translationsRepo.insert.mock.invocationCallOrder[0];
+      expect(markNotCurrentOrder).toBeLessThan(insertOrder);
+    });
   });
 
   describe('publishSeo — no silent fallback to another locale', () => {
@@ -336,6 +370,27 @@ describe('PlaceTranslationsService', () => {
         }),
       ).resolves.toBeDefined();
       expect(seoRepo.insert).toHaveBeenCalledTimes(1);
+    });
+
+    // Fresh code-review finding (2026-09-04): uq_place_seo_current is a plain, non-deferrable
+    // unique index — markNotCurrent must run before insert.
+    it('republish clears the old current SEO row BEFORE inserting the new one', async () => {
+      seoRepo.findCurrent.mockResolvedValue({ id: 'seo-old', placeId: PLACE_ID, localeCode: 'en' } as never);
+
+      await service.publishSeo({
+        placeId: PLACE_ID,
+        localeCode: 'en',
+        canonicalUrl: 'https://phuquochub.com/en/places/bai-sao',
+        hreflangGroupId: 'group-1',
+        robotsIndex: false,
+        isPublic: true,
+        isProductionData: true,
+        origin: RevisionOrigin.IMPORT,
+      });
+
+      const markNotCurrentOrder = seoRepo.markNotCurrent.mock.invocationCallOrder[0];
+      const insertOrder = seoRepo.insert.mock.invocationCallOrder[0];
+      expect(markNotCurrentOrder).toBeLessThan(insertOrder);
     });
   });
 
@@ -384,6 +439,41 @@ describe('PlaceTranslationsService', () => {
           origin: RevisionOrigin.IMPORT,
         }),
       ).resolves.toBeDefined();
+    });
+
+    // Fresh code-review finding (2026-09-04): the same-slug branch above shares its EXACT
+    // (locale_code, localized_slug) key with the still-current old row — uq_place_route_slug_current
+    // is a plain, non-deferrable unique index, so markNotCurrent must run before insert here too.
+    it('same-slug republish clears the old current row BEFORE inserting the new one', async () => {
+      // findCurrentBySlug: no collision (this place already owns the slug — same row returned below).
+      // findCurrentByPlace: the row actually superseded by the `existing` branch in publishRoute().
+      routesRepo.findCurrentBySlug.mockResolvedValue({
+        id: 'route-1',
+        placeId: PLACE_ID,
+        localeCode: 'en',
+        localizedSlug: 'sao-beach',
+      } as never);
+      routesRepo.findCurrentByPlace.mockResolvedValue({
+        id: 'route-1',
+        placeId: PLACE_ID,
+        localeCode: 'en',
+        localizedSlug: 'sao-beach',
+      } as never);
+
+      await service.publishRoute({
+        placeId: PLACE_ID,
+        localeCode: 'en',
+        localizedSlug: 'sao-beach',
+        fullPath: '/en/places/sao-beach',
+        canonicalUrl: 'https://phuquochub.com/en/places/sao-beach',
+        isPublic: true,
+        isProductionData: true,
+        origin: RevisionOrigin.IMPORT,
+      });
+
+      const markNotCurrentOrder = routesRepo.markNotCurrent.mock.invocationCallOrder[0];
+      const insertOrder = routesRepo.insert.mock.invocationCallOrder[0];
+      expect(markNotCurrentOrder).toBeLessThan(insertOrder);
     });
 
     it('converts the old row to a redirect (never deletes) when the slug changes for the same place', async () => {

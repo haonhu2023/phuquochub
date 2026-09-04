@@ -44,13 +44,19 @@ export enum TranslationApprovalStatus {
   HOLD = 'HOLD',
   PENDING = 'PENDING',
   REJECTED = 'REJECTED',
+  // A human reviewer asked for a specific edit before re-review (human-translation-review, 2026-09-04).
+  NEEDS_CHANGES = 'NEEDS_CHANGES',
 }
 
-// Values for human_review_status in place_translations.
+// Values for human_review_status in place_translations. Written ONLY by
+// TranslationReviewService.reviewTranslation() (the one trusted review chokepoint) or forced to
+// PENDING by PlaceTranslationsService on every new/edited row — never asserted directly by an
+// importer/bundle caller (human-translation-review, 2026-09-04).
 export enum HumanReviewStatus {
   APPROVED = 'APPROVED',
   PENDING = 'PENDING',
   REJECTED = 'REJECTED',
+  NEEDS_CHANGES = 'NEEDS_CHANGES',
 }
 
 // Values for quality_gate in place_translations.

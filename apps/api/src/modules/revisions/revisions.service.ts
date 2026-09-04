@@ -26,6 +26,12 @@ export interface RecordPlaceTranslationRevisionInput {
   changeNote?: string | null;
   editorId?: string | null;
   status: RevisionStatus;
+  // Set ONLY by TranslationReviewService.reviewTranslation() — the real reviewer id + decision
+  // timestamp for a REVIEW revision (human-translation-review, 2026-09-04). Omitted by every
+  // content-write call site (publish/rollback/backfill), which never claims a human reviewed
+  // anything.
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
 }
 
 // Dịch vụ phiên bản (WikiRevision). Ghi vết mỗi thay đổi nội dung (WF-14) và
@@ -75,6 +81,8 @@ export class RevisionsService {
         changeNote: input.changeNote ?? null,
         editorId: input.editorId ?? null,
         status: input.status,
+        reviewedBy: input.reviewedBy ?? null,
+        reviewedAt: input.reviewedAt ?? null,
       },
       manager,
     );

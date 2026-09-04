@@ -3,26 +3,45 @@ import { capabilitiesFromRoles, NO_CAPABILITIES } from './capabilities';
 // Operator Bootstrap & Editorial Place Content (2026-08-12). Bảng ánh xạ này quyết định AI NHÌN
 // THẤY lối vào đặc quyền. Nó KHÔNG cấp quyền (backend cưỡng chế), nhưng hiện nhầm lối vào cho
 // người thường là một lỗi UX tệ (bấm vào chỉ để nhận 403), nên từng vai trò được khoá tường minh.
+//
+// canReviewTranslations (human-translation-review, 2026-09-04) thêm sau, dùng CÙNG tập vai trò với
+// canModerate hôm nay — mọi assertion dưới đây cập nhật để phản ánh cả ba cờ.
 describe('capabilitiesFromRoles', () => {
-  it('member thường: KHÔNG thấy lối vào biên tập lẫn kiểm duyệt', () => {
-    expect(capabilitiesFromRoles(['member'])).toEqual({ canEditorial: false, canModerate: false });
+  it('member thường: KHÔNG thấy lối vào biên tập, kiểm duyệt, hay duyệt bản dịch', () => {
+    expect(capabilitiesFromRoles(['member'])).toEqual({
+      canEditorial: false,
+      canModerate: false,
+      canReviewTranslations: false,
+    });
   });
 
   it.each([['business_owner'], ['business_manager'], ['local_guide'], ['guest'], ['ai_agent']])(
     'vai trò "%s" KHÔNG mở lối vào đặc quyền nào',
     (role) => {
-      expect(capabilitiesFromRoles([role])).toEqual({ canEditorial: false, canModerate: false });
+      expect(capabilitiesFromRoles([role])).toEqual({
+        canEditorial: false,
+        canModerate: false,
+        canReviewTranslations: false,
+      });
     },
   );
 
-  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt (đúng bộ quyền thật của vai trò này)', () => {
-    expect(capabilitiesFromRoles(['contributor'])).toEqual({ canEditorial: true, canModerate: false });
+  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt/duyệt bản dịch (đúng bộ quyền thật của vai trò này)', () => {
+    expect(capabilitiesFromRoles(['contributor'])).toEqual({
+      canEditorial: true,
+      canModerate: false,
+      canReviewTranslations: false,
+    });
   });
 
   it.each([['moderator'], ['administrator'], ['super_administrator']])(
-    'vai trò "%s": thấy CẢ biên tập lẫn kiểm duyệt',
+    'vai trò "%s": thấy CẢ biên tập, kiểm duyệt, lẫn duyệt bản dịch',
     (role) => {
-      expect(capabilitiesFromRoles([role])).toEqual({ canEditorial: true, canModerate: true });
+      expect(capabilitiesFromRoles([role])).toEqual({
+        canEditorial: true,
+        canModerate: true,
+        canReviewTranslations: true,
+      });
     },
   );
 
@@ -30,6 +49,7 @@ describe('capabilitiesFromRoles', () => {
     expect(capabilitiesFromRoles(['member', 'contributor'])).toEqual({
       canEditorial: true,
       canModerate: false,
+      canReviewTranslations: false,
     });
   });
 
@@ -51,6 +71,7 @@ describe('capabilitiesFromRoles', () => {
       expect(capabilitiesFromRoles([null, 42, {}, 'contributor'])).toEqual({
         canEditorial: true,
         canModerate: false,
+        canReviewTranslations: false,
       });
     });
 

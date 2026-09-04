@@ -99,6 +99,25 @@ export class OperatorBootstrapService {
           'Hãy đăng ký tài khoản đó qua luồng đăng ký bình thường TRƯỚC, rồi chạy lại lệnh này.',
       );
     }
+    // Hai chặn bổ sung (human-translation-review, 2026-09-04): trước đây bootstrap() không đọc
+    // isServiceAccount/isActive, nên về lý thuyết có thể cấp một vai trò đặc quyền cho một tài
+    // khoản dịch vụ hoặc đã vô hiệu hoá. Không có đường đăng ký nào tạo ra tài khoản dịch vụ (cờ đó
+    // chỉ được đặt bằng thao tác trực tiếp), nên trong thực tế đây chưa từng xảy ra — nhưng lệnh
+    // bootstrap là code cấp quyền chạy NGOÀI mọi guard HTTP (xem doc-comment class), nên "chưa từng
+    // xảy ra" không phải lý do để bỏ qua bề mặt tấn công của chính tham số đầu vào (email nào).
+    // Từ chối tường minh ở đây, thay vì để việc cấp "thành công" xong không ai dùng được (mọi
+    // route đặc quyền, kể cả TranslationReviewService, đều tự từ chối tài khoản dịch vụ/không hoạt
+    // động ở tầng riêng — đây là phòng thủ theo chiều sâu, không phải chốt chặn duy nhất).
+    if (user.isServiceAccount) {
+      throw new OperatorBootstrapError(
+        `Tài khoản "${email}" là tài khoản dịch vụ (is_service_account=true) — không được cấp vai trò đặc quyền qua bootstrap.`,
+      );
+    }
+    if (!user.isActive) {
+      throw new OperatorBootstrapError(
+        `Tài khoản "${email}" đang không hoạt động (is_active=false) — kích hoạt lại tài khoản trước khi cấp vai trò.`,
+      );
+    }
 
     const role = await this.rolesRepo.findByCode(roleCode);
     if (!role) {

@@ -15,7 +15,6 @@ import {
   MultilingualImportBatchStatus,
   MultilingualImportRowOutcome,
   MULTILINGUAL_IMPORT_CONTRACT_VERSION,
-  TranslationApprovalStatus,
   ValidationStatus,
 } from './multilingual-import.enums';
 import { MultilingualImportBatch } from './entities/multilingual-import-batch.entity';
@@ -348,9 +347,15 @@ export class MultilingualPlaceImportService {
       if (row.errorCount !== 0) {
         return { ...base, outcome: MultilingualImportRowOutcome.HELD, translationId: null, errorDetail: `error_count=${row.errorCount}` };
       }
-      if (row.translationStatus !== TranslationApprovalStatus.APPROVED) {
-        return { ...base, outcome: MultilingualImportRowOutcome.HELD, translationId: null, errorDetail: `translation_status=${row.translationStatus}` };
-      }
+      // REMOVED (human-translation-review, 2026-09-04): this gate used to HOLD every row whose
+      // translation_status wasn't pre-marked APPROVED — meaning nothing could ever import without
+      // being pre-asserted approved by whatever produced the import contract (a workbook column, a
+      // script's own literal) with zero real review. That is exactly the fabricated-approval defect
+      // class this workstream closed. The importer's job is to create CONTENT; approval is a human
+      // decision made afterward through TranslationReviewService. PlaceTranslationsService now
+      // force-sets translation_status/human_review_status to PENDING on every row it writes
+      // regardless of what this row claims (see publishOneTranslation()), so importing a row no
+      // longer requires — or trusts — a pre-asserted APPROVED value.
       // AI translations must have human approval before going production
       if (
         row.translationMethod === 'ai_plus_human' &&

@@ -420,14 +420,26 @@ describe('MultilingualPlaceImportService', () => {
     expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
   });
 
-  it('holds a row when translationStatus is not APPROVED', async () => {
-    const row = makeRow({ translationStatus: 'HOLD' });
+  // REPLACED (human-translation-review, 2026-09-04): the importer used to HOLD every row whose
+  // translationStatus wasn't pre-marked APPROVED — meaning nothing could import without being
+  // pre-asserted approved by whatever produced the contract, with zero real human review. That is
+  // the exact fabricated-approval defect class this workstream closed (see
+  // multilingual-place-import.service.ts's own comment at the removed gate). The importer's job is
+  // now to create PENDING content; approval is a separate, later human decision through
+  // TranslationReviewService. This test now proves the opposite of what it used to: a
+  // not-yet-approved row is INSERTED as pending content, not held, and the importer never fabricates
+  // a translationStatus/humanReviewStatus of APPROVED on the caller's behalf.
+  it('imports a row as pending content when translationStatus is not APPROVED (importer no longer gates on approval)', async () => {
+    const newTranslationId = randomUUID();
+    const row = makeRow({ translationStatus: 'HOLD', humanReviewStatus: 'PENDING' });
     const contract = makeContract([row]);
-    setupHappyPath(contract);
+    setupHappyPath(contract, newTranslationId);
 
     const result = await service.importBundle({ contract, actorId: VALID_UUID, dryRun: false, releaseManifest: buildReleaseManifest() });
 
-    expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(true);
+    expect(result.status).toBe(MultilingualImportBatchStatus.SUCCEEDED);
+    expect(result.rowResults.some(r => r.outcome === MultilingualImportRowOutcome.HELD)).toBe(false);
+    expect(translationsService.publishTranslationInTransaction).toHaveBeenCalledTimes(1);
   });
 
   // ============================================================
