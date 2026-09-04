@@ -80,6 +80,21 @@ describe('Human review lifecycle — end-to-end (PlaceTranslationsService + Tran
         ),
       ),
       findById: jest.fn((id: string) => Promise.resolve(store.get(id) ?? null)),
+      // Real semantics of findCurrentPublic (PlaceTranslationsRepository) — the ONLY query the
+      // public read path (PlacesService -> getCurrentPublicTranslatedText) is allowed to use.
+      findCurrentPublic: jest.fn((placeId: string, fieldKey: string, localeCode: string) =>
+        Promise.resolve(
+          [...store.values()].find(
+            (r) =>
+              r.placeId === placeId &&
+              r.fieldKey === fieldKey &&
+              r.localeCode === localeCode &&
+              r.isCurrent &&
+              r.isPublic &&
+              r.isProductionData,
+          ) ?? null,
+        ),
+      ),
       insert: jest.fn((row: PlaceTranslation) => {
         store.set(row.id, row);
         return Promise.resolve(row);
@@ -204,5 +219,54 @@ describe('Human review lifecycle — end-to-end (PlaceTranslationsService + Tran
       reviewService.reviewTranslation(v2.id, REVIEWER.id, HumanReviewStatus.APPROVED, null),
     ).rejects.toThrow();
     expect(store.get(v2.id)!.humanReviewStatus).toBe(HumanReviewStatus.REJECTED); // unchanged
+  });
+
+  // Phase 14 (2026-09-04): the prior task's publication-path proof relied on reading
+  // PlacesService's code to confirm it calls getCurrentPublicTranslatedText() (which itself calls
+  // findCurrentPublic()) as its ONLY seam into place_translations. This test proves the seam
+  // ITSELF behaves correctly across the full lifecycle — the exact call PlacesService.getBySlug()
+  // makes, using the real PlaceTranslationsService, not a re-implementation of PlacesService's many
+  // unrelated dependencies (contacts/prices/media/faqs), which would test infrastructure instead of
+  // the actual governance boundary.
+  it('public read-path lifecycle: PENDING -> fallback (null) -> APPROVED -> translation served -> edited -> fallback again', async () => {
+    const FIELD = 'short_description';
+    const LOCALE = 'en';
+
+    // Before anything is published, the read-path returns null (caller falls back to base content)
+    // — never throws, never returns a placeholder.
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBeNull();
+
+    // 1) Publish v1 — PENDING. Still not servable publicly.
+    const v1 = await translationsService.publishTranslation(PLACE_ID, baseItem({ localeCode: LOCALE }), RevisionOrigin.IMPORT);
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBeNull();
+
+    // 2) A real human APPROVEs it — now, and only now, the exact approved text is served.
+    await reviewService.reviewTranslation(v1.id, REVIEWER.id, HumanReviewStatus.APPROVED, 'accurate');
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBe(v1.translatedText);
+
+    // 3) Someone edits the SAME field/locale (new content) — this supersedes v1 with a new PENDING
+    // row. The read-path must immediately stop serving the (now-superseded) old approved text and
+    // fall back to null again — an edit invalidates the live-served translation, not just the DB flag.
+    const v2 = await translationsService.publishTranslation(
+      PLACE_ID,
+      baseItem({ localeCode: LOCALE, translatedText: 'A revised, more accurate description' }),
+      RevisionOrigin.IMPORT,
+    );
+    expect(v2.id).not.toBe(v1.id);
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBeNull();
+
+    // 4) REJECT the new version — still never served.
+    await reviewService.reviewTranslation(v2.id, REVIEWER.id, HumanReviewStatus.REJECTED, 'not accurate enough');
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBeNull();
+
+    // 5) A fresh, correct v3 is drafted and approved — served again, proving the seam recovers
+    // cleanly after a reject, not just once.
+    const v3 = await translationsService.publishTranslation(
+      PLACE_ID,
+      baseItem({ localeCode: LOCALE, translatedText: 'The corrected, source-supported description' }),
+      RevisionOrigin.IMPORT,
+    );
+    await reviewService.reviewTranslation(v3.id, REVIEWER.id, HumanReviewStatus.APPROVED, null);
+    expect(await translationsService.getCurrentPublicTranslatedText(PLACE_ID, FIELD, LOCALE)).toBe(v3.translatedText);
   });
 });
