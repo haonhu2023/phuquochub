@@ -85,6 +85,7 @@ describe('PlaceTranslationsService', () => {
       insert: jest.fn((row) => Promise.resolve(row)),
       markNotCurrent: jest.fn(),
       listCurrentByPlace: jest.fn(),
+      updateProvenance: jest.fn(),
     } as unknown as jest.Mocked<PlaceTranslationsRepository>;
 
     routesRepo = {
@@ -437,6 +438,67 @@ describe('PlaceTranslationsService', () => {
       const result = await service.getCurrentPublicTranslatedText(PLACE_ID, 'short_description', 'vi');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('backfillProvenance — 2026-09-02 data-SSOT remediation Phase 4.7', () => {
+    it('writes a wiki_revisions audit entry and updates only source_id/evidence_id', async () => {
+      const existing = currentRow({ sourceId: null, evidenceId: null });
+      translationsRepo.findById.mockResolvedValue(existing);
+
+      const result = await service.backfillProvenance(
+        existing.id,
+        { sourceId: 'src-vin-official-vi', evidenceId: null },
+        'editor-1',
+        'Provenance backfill: linked to SRC-VIN-OFFICIAL-VI per 05_Evidence_Archive.',
+      );
+
+      expect(revisionsService.recordPlaceTranslationRevision).toHaveBeenCalledWith(
+        expect.objectContaining({ entityId: existing.id, origin: RevisionOrigin.IMPORT }),
+        fakeManager,
+      );
+      expect(translationsRepo.updateProvenance).toHaveBeenCalledWith(
+        existing.id,
+        { sourceId: 'src-vin-official-vi', evidenceId: null },
+        fakeManager,
+      );
+      expect(result.sourceId).toBe('src-vin-official-vi');
+    });
+
+    it('is idempotent — provenance already matching is a no-op, no revision written', async () => {
+      const existing = currentRow({ sourceId: 'src-1', evidenceId: 'evd-1' });
+      translationsRepo.findById.mockResolvedValue(existing);
+
+      const result = await service.backfillProvenance(existing.id, { sourceId: 'src-1', evidenceId: 'evd-1' }, null, 'x');
+
+      expect(revisionsService.recordPlaceTranslationRevision).not.toHaveBeenCalled();
+      expect(translationsRepo.updateProvenance).not.toHaveBeenCalled();
+      expect(result).toBe(existing);
+    });
+
+    it('throws when the translation does not exist', async () => {
+      translationsRepo.findById.mockResolvedValue(null);
+      await expect(service.backfillProvenance('missing', { sourceId: 'src-1', evidenceId: null }, null, 'x')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('refuses to backfill a non-current (superseded) row', async () => {
+      translationsRepo.findById.mockResolvedValue(currentRow({ isCurrent: false }));
+      await expect(service.backfillProvenance('row-existing', { sourceId: 'src-1', evidenceId: null }, null, 'x')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(translationsRepo.updateProvenance).not.toHaveBeenCalled();
+    });
+
+    it('never touches translatedText/translationStatus/qualityGate — only the two provenance fields are passed to updateProvenance', async () => {
+      const existing = currentRow({ sourceId: null, evidenceId: null, translatedText: 'ORIGINAL TEXT — must not change' });
+      translationsRepo.findById.mockResolvedValue(existing);
+
+      await service.backfillProvenance(existing.id, { sourceId: 'src-1', evidenceId: 'evd-1' }, null, 'x');
+
+      const [, patchArg] = translationsRepo.updateProvenance.mock.calls[0];
+      expect(Object.keys(patchArg as object).sort()).toEqual(['evidenceId', 'sourceId']);
     });
   });
 });

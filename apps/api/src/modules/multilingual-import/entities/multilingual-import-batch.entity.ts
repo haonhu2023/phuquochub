@@ -63,6 +63,34 @@ export class MultilingualImportBatch {
   @Column({ type: 'timestamptz', nullable: true })
   completedAt!: Date | null;
 
+  // Release-gate columns (2026-09-02 data-SSOT remediation, Phase 3.3) — all nullable: a batch
+  // created without a release manifest (e.g. an older batch, or a facts-only run) simply has none
+  // of these set. Populated by MultilingualPlaceImportService only when the caller supplies a
+  // ReleaseManifestV1 and assertNonDryRunAllowed() passed.
+  @Column({ type: 'uuid', nullable: true })
+  releaseItemId!: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  releaseManifestDigest!: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  evidenceDigest!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  policyStatus!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  preflightStatus!: string | null;
+
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  idempotencyKey!: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  cancellationReason!: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  supersededByBatchId!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
