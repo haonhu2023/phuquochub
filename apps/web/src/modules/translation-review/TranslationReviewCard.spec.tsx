@@ -60,3 +60,21 @@ it('chưa từng công khai (current_public_text=null) hiện thông báo rõ r�
   fireEvent.click(screen.getByRole('button', { expanded: false }));
   expect(screen.getByText('Chưa có nội dung nào được công khai cho vị trí này.')).toBeInTheDocument();
 });
+
+// Phase 44/45 (2026-09-04): translated_text/source_title are untrusted data (drafted by an editor,
+// not yet reviewed). React's default JSX text interpolation escapes everything it renders — this
+// component never uses dangerouslySetInnerHTML/innerHTML (grepped, zero hits) — so a script payload
+// can only ever render as inert literal text. This test proves that behavior directly rather than
+// relying on "we didn't use that API" as the only evidence.
+it('nội dung chứa payload <script> chỉ hiện thành chữ, KHÔNG được thực thi/parse thành HTML', () => {
+  const payload = '<script>window.__xss_marker__=1</script><img src=x onerror="window.__xss_marker__=1">';
+  const { container } = render(
+    <TranslationReviewCard item={item({ translated_text: payload, source_title: payload })} onDecided={jest.fn()} />,
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+
+  expect(screen.getAllByText(payload).length).toBeGreaterThan(0);
+  expect(container.querySelector('script')).toBeNull();
+  expect(container.querySelector('img')).toBeNull();
+  expect((window as unknown as { __xss_marker__?: number }).__xss_marker__).toBeUndefined();
+});
