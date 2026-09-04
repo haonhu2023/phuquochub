@@ -20,14 +20,26 @@ const EDITORIAL_ROLES = ['contributor', 'moderator', 'administrator', 'super_adm
 /** Vai trò giữ `Moderation.Queue.View` + `Media.Moderate`/`Review.Moderate` (SeedModerationPermissions). */
 const MODERATION_ROLES = ['moderator', 'administrator', 'super_administrator'];
 
+/** Vai trò giữ `PlaceTranslation.Review.Any` (SeedPlaceTranslationReviewPermission,
+ *  human-translation-review 2026-09-04) — cùng tập vai trò với kiểm duyệt hôm nay (cấp cho
+ *  `moderator`, kế thừa lên `administrator`/`super_administrator`), tách riêng cờ vì đây là một
+ *  năng lực khái niệm khác (duyệt bản dịch, không phải duyệt case kiểm duyệt) dù trùng vai trò. */
+const TRANSLATION_REVIEW_ROLES = ['moderator', 'administrator', 'super_administrator'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
   /** Hiện lối vào "Hàng chờ kiểm duyệt". */
   canModerate: boolean;
+  /** Hiện lối vào "Duyệt bản dịch". */
+  canReviewTranslations: boolean;
 }
 
-export const NO_CAPABILITIES: UserCapabilities = { canEditorial: false, canModerate: false };
+export const NO_CAPABILITIES: UserCapabilities = {
+  canEditorial: false,
+  canModerate: false,
+  canReviewTranslations: false,
+};
 
 /**
  * Ánh xạ vai trò → năng lực. Nhận `string[]` bất kỳ (giá trị đến TỪ MẠNG — kiểu TypeScript ở biên
@@ -40,5 +52,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
   return {
     canEditorial: codes.some((c) => EDITORIAL_ROLES.includes(c)),
     canModerate: codes.some((c) => MODERATION_ROLES.includes(c)),
+    canReviewTranslations: codes.some((c) => TRANSLATION_REVIEW_ROLES.includes(c)),
   };
 }

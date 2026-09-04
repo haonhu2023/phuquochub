@@ -50,37 +50,48 @@ describe('PlaceTranslationsRepository.findCurrentPublic — Public Place i18n Re
 });
 
 describe('PlaceTranslationsRepository — human-translation-review additions (2026-09-04)', () => {
-  it('listPendingReview: queries isCurrent=true AND humanReviewStatus IN (PENDING, NEEDS_CHANGES), scoped to placeId when given', async () => {
-    const find = jest.fn().mockResolvedValue([]);
-    const repo = { find } as unknown as Repository<PlaceTranslation>;
+  it('listReviewQueue: defaults to PENDING/NEEDS_CHANGES, joins place + base text + source, caps limit at 200', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const repo = { manager: { query } } as unknown as Repository<PlaceTranslation>;
     const translationsRepo = new PlaceTranslationsRepository(repo);
 
-    await translationsRepo.listPendingReview(PLACE_ID);
+    await translationsRepo.listReviewQueue({ limit: 5000 });
 
-    const callArg = find.mock.calls[0][0];
-    expect(callArg.where.placeId).toBe(PLACE_ID);
-    expect(callArg.where.isCurrent).toBe(true);
-    expect(callArg.where.humanReviewStatus._type).toBe('in');
-    expect(callArg.where.humanReviewStatus._value).toEqual(['PENDING', 'NEEDS_CHANGES']);
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('pt.human_review_status = ANY($1)');
+    expect(sql).toContain('LEFT JOIN place_translations base');
+    expect(sql).toContain('LEFT JOIN sources s ON s.id = pt.source_id');
+    expect(sql).toContain('JOIN places p ON p.id = pt.place_id');
+    expect(params[0]).toEqual(['PENDING', 'NEEDS_CHANGES']);
+    expect(params[params.length - 1]).toBe(200); // capped, not the requested 5000
   });
 
-  it('listPendingReview: omits placeId filter when not given (global queue)', async () => {
-    const find = jest.fn().mockResolvedValue([]);
-    const repo = { find } as unknown as Repository<PlaceTranslation>;
+  it('listReviewQueue: adds a bound-parameter condition per given filter, never string-interpolates', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const repo = { manager: { query } } as unknown as Repository<PlaceTranslation>;
     const translationsRepo = new PlaceTranslationsRepository(repo);
 
-    await translationsRepo.listPendingReview(undefined);
+    await translationsRepo.listReviewQueue({
+      placeId: PLACE_ID,
+      placeSlug: "x'; DROP TABLE places; --",
+      localeCode: 'vi',
+      fieldKey: 'short_description',
+    });
 
-    const callArg = find.mock.calls[0][0];
-    expect(callArg.where.placeId).toBeUndefined();
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('pt.place_id = $2');
+    expect(sql).toContain('p.slug = $3');
+    expect(sql).toContain('pt.locale_code = $4');
+    expect(sql).toContain('pt.field_key = $5');
+    expect(params).toEqual([['PENDING', 'NEEDS_CHANGES'], PLACE_ID, "x'; DROP TABLE places; --", 'vi', 'short_description', 50]);
   });
 
-  it('updateReviewState: updates exactly the five governance columns for the given id', async () => {
-    const update = jest.fn().mockResolvedValue(undefined);
+  it('updateReviewState: conditions the UPDATE on isCurrent + the exact expected prior status, returns true when a row was affected', async () => {
+    const update = jest.fn().mockResolvedValue({ affected: 1 });
     const repo = { update } as unknown as Repository<PlaceTranslation>;
     const translationsRepo = new PlaceTranslationsRepository(repo);
 
-    await translationsRepo.updateReviewState('translation-1', {
+    const applied = await translationsRepo.updateReviewState('translation-1', 'PENDING', {
       humanReviewStatus: 'APPROVED',
       translationStatus: 'APPROVED',
       isPublic: true,
@@ -89,7 +100,7 @@ describe('PlaceTranslationsRepository — human-translation-review additions (20
     });
 
     expect(update).toHaveBeenCalledWith(
-      { id: 'translation-1' },
+      { id: 'translation-1', isCurrent: true, humanReviewStatus: 'PENDING' },
       {
         humanReviewStatus: 'APPROVED',
         translationStatus: 'APPROVED',
@@ -98,5 +109,22 @@ describe('PlaceTranslationsRepository — human-translation-review additions (20
         productionEligible: true,
       },
     );
+    expect(applied).toBe(true);
+  });
+
+  it('updateReviewState: returns false when nothing matched (already reviewed/edited by someone else)', async () => {
+    const update = jest.fn().mockResolvedValue({ affected: 0 });
+    const repo = { update } as unknown as Repository<PlaceTranslation>;
+    const translationsRepo = new PlaceTranslationsRepository(repo);
+
+    const applied = await translationsRepo.updateReviewState('translation-1', 'PENDING', {
+      humanReviewStatus: 'REJECTED',
+      translationStatus: 'REJECTED',
+      isPublic: false,
+      isProductionData: false,
+      productionEligible: false,
+    });
+
+    expect(applied).toBe(false);
   });
 });

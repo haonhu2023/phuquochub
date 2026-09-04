@@ -151,3 +151,41 @@ supersede either.
 - Open point: no genuine staging human-reviewer identity is known to exist yet — granting
   `PlaceTranslation.Review.Any` to a real staging user, and the first real VinWonders review decision,
   are separate, explicit owner/operator actions this ADR does not perform.
+
+### Addendum (2026-09-04, same-day follow-up) — owner-facing UI + concurrency hardening
+
+Added on the same branch/PR, after the mechanism above shipped:
+
+- **`GET /admin/place-translations/review-queue` enriched into one response**: place name/slug, the
+  currently-live text for the same (place, field, locale) slot (for side-by-side comparison), and
+  the backing `sources` row's url/title/reliability — a single parameterized SQL query
+  (`PlaceTranslationsRepository.listReviewQueue()`), avoiding N+1 from the frontend. Response fields
+  are `snake_case`, matching every other endpoint's wire format (`openapi.yaml`) — the raw-SQL row
+  shape returned by the repository IS the wire shape, same pattern as `RevisionListRow`.
+- **Concurrency**: `updateReviewState()`'s UPDATE is now conditioned on the row still being current
+  AND still carrying the exact `human_review_status` the caller observed — an atomic
+  optimistic-concurrency check, not just a pre-flight read. A translation already decided
+  (APPROVED/REJECTED) is not re-reviewable through this method; NEEDS_CHANGES is (a reviewer may
+  reconsider the same text without a content edit). Both the stale-content case (edited since
+  loaded) and the already-decided case (double-click, two tabs, two reviewers racing) now respond
+  `409 Conflict`, not a silent overwrite or a misleading `400`.
+- **Notes policy**: required (non-empty) for REJECTED/NEEDS_CHANGES, optional for APPROVED, capped
+  at 200 chars (`REVIEW_NOTES_MAX_LENGTH`) — sized so decision + actorId + notes always fits inside
+  `wiki_revisions.change_note`'s `varchar(300)` with margin, avoiding the truncation failure a prior
+  one-off script hit on this exact column.
+- **Minimal admin UI** at `/dashboard/translations/review` (`apps/web/src/modules/translation-review/`),
+  built entirely from existing `ModerationQueueView`/`ModerationDecisionForm` patterns and CSS
+  classes (no new design system) — an accordion list, each card expandable to show current-vs-proposed
+  text, source, and an Approve/Needs-changes/Reject form. Sends only `{decision, notes}`; reviewer
+  identity, timestamp, and every publication flag are server-derived. Source links are validated
+  (`http`/`https` only) before ever being rendered as clickable, and always open with
+  `rel="noopener noreferrer"`.
+- Dashboard nav gained a `canReviewTranslations` capability flag (`capabilities.ts`), same role set
+  as `canModerate` — pure UX (hides the link for accounts that can't use it); the backend permission
+  check is unchanged and authoritative.
+- Verified (not changed): no response cache exists anywhere in front of place/translation reads (grep
+  for `RedisService` usage across the API — it backs auth-revocation/token/geo/media only), so there
+  is no cache-invalidation concern for a review transition. The public read path
+  (`PlacesService` → `PlaceTranslationsService.getCurrentPublicTranslatedText()` →
+  `findCurrentPublic()`) was not touched by this addendum and remains the sole seam every public
+  consumer (including SEO/structured-data) goes through — confirmed by inspection, not rebuilt.

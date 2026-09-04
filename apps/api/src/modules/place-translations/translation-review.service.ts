@@ -1,7 +1,13 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { PlaceTranslationsRepository } from './repositories/place-translations.repository';
+import { PlaceTranslationsRepository, ReviewQueueFilter, ReviewQueueRow } from './repositories/place-translations.repository';
 import { PlaceTranslation } from './entities/place-translation.entity';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
@@ -10,6 +16,20 @@ import { AuthorizationService } from '../authz/authorization.service';
 import { HumanReviewStatus, TranslationApprovalStatus } from '../multilingual-import/multilingual-import.enums';
 
 export const PLACE_TRANSLATION_REVIEW_PERMISSION = 'PlaceTranslation.Review.Any';
+
+// UX-facing cap (Phase 6): chosen so `decision` (max label length 13, "NEEDS_CHANGES") + actorId
+// (uuid, 36 chars) + fixed prefix text + " — " + notes always fits inside wiki_revisions
+// .change_note's real varchar(300) limit with margin to spare — the previous governance script hit
+// that exact 300-char DB error by not budgeting for it. The service still defensively .slice(0,300)
+// as a backstop, but with this cap it should never actually need to truncate.
+export const REVIEW_NOTES_MAX_LENGTH = 200;
+
+// Prior human_review_status values a translation may be reviewed FROM. APPROVED/REJECTED are
+// deliberately excluded — once decided, that exact row is not re-reviewable through this method (a
+// second decision on an already-decided row is exactly the "stale tab" scenario Phase 5 requires be
+// rejected, not silently overwritten). NEEDS_CHANGES is reviewable again: a reviewer may reconsider
+// the same text without requiring a content edit first.
+const REVIEWABLE_PRIOR_STATUSES: readonly string[] = [HumanReviewStatus.PENDING, HumanReviewStatus.NEEDS_CHANGES];
 
 export type TranslationReviewDecision =
   | HumanReviewStatus.APPROVED
@@ -94,8 +114,8 @@ export class TranslationReviewService {
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
-  listPendingReview(placeId?: string): Promise<PlaceTranslation[]> {
-    return this.translationsRepo.listPendingReview(placeId);
+  listReviewQueue(filter: ReviewQueueFilter): Promise<ReviewQueueRow[]> {
+    return this.translationsRepo.listReviewQueue(filter);
   }
 
   async reviewTranslation(
@@ -124,6 +144,18 @@ export class TranslationReviewService {
       throw new ForbiddenException(`reviewTranslation: actor lacks ${PLACE_TRANSLATION_REVIEW_PERMISSION}`);
     }
 
+    // Notes policy (Phase 6): APPROVE may stand on its own; REJECTED/NEEDS_CHANGES must explain
+    // what's wrong or what to fix — an empty rejection is not actionable for whoever drafted the
+    // content. Enforced here (not only in the DTO) since it is a decision-dependent, cross-field
+    // rule, and this service is the one place that must never be bypassed.
+    const trimmedNotes = notes?.trim() || null;
+    if (decision !== HumanReviewStatus.APPROVED && !trimmedNotes) {
+      throw new BadRequestException(`reviewTranslation: notes are required for a ${decision} decision`);
+    }
+    if (trimmedNotes && trimmedNotes.length > REVIEW_NOTES_MAX_LENGTH) {
+      throw new BadRequestException(`reviewTranslation: notes must be ${REVIEW_NOTES_MAX_LENGTH} characters or fewer`);
+    }
+
     const outcome = deriveReviewOutcome(decision);
     const reviewedAt = new Date();
 
@@ -132,14 +164,23 @@ export class TranslationReviewService {
       if (!translation) {
         throw new NotFoundException(`reviewTranslation: translation ${translationId} not found`);
       }
+      // CONCURRENCY / STALE-CONTENT PROTECTION (Phase 4/5): both checks below are pre-flight reads —
+      // the actual guarantee is the conditional UPDATE in updateReviewState() further down, which
+      // re-checks the same conditions atomically at write time. These reads exist to fail fast with
+      // a clear message in the common (non-racing) case before doing any writes.
       if (!translation.isCurrent) {
-        throw new BadRequestException(
-          `reviewTranslation: translation ${translationId} is not the current row for its (place_id, field_key, locale_code) — it was superseded by a newer edit; review the current row instead`,
+        throw new ConflictException(
+          `reviewTranslation: translation ${translationId} was superseded by a newer edit since you loaded it — refresh the queue and review the current version instead`,
+        );
+      }
+      if (!REVIEWABLE_PRIOR_STATUSES.includes(translation.humanReviewStatus)) {
+        throw new ConflictException(
+          `reviewTranslation: translation ${translationId} was already reviewed (human_review_status=${translation.humanReviewStatus}) — refresh the queue`,
         );
       }
 
       const changeNoteBase = `Human review decision: ${decision} by ${actorId}`;
-      const changeNote = notes ? `${changeNoteBase} — ${notes}` : changeNoteBase;
+      const changeNote = trimmedNotes ? `${changeNoteBase} — ${trimmedNotes}` : changeNoteBase;
 
       await this.revisionsService.recordPlaceTranslationRevision(
         {
@@ -150,7 +191,7 @@ export class TranslationReviewService {
             fieldKey: translation.fieldKey,
             localeCode: translation.localeCode,
             decision,
-            notes: notes ?? null,
+            notes: trimmedNotes,
             // The exact content version this decision applies to — see class doc point 2.
             reviewedContentRevisionId: translation.revisionId,
           },
@@ -164,8 +205,12 @@ export class TranslationReviewService {
         manager,
       );
 
-      await this.translationsRepo.updateReviewState(
+      // Atomic optimistic-concurrency gate — see updateReviewState()'s own comment. If this returns
+      // false, someone else's review (or a content edit) committed between our read above and here;
+      // the whole transaction (including the revision insert just above) rolls back on the throw.
+      const applied = await this.translationsRepo.updateReviewState(
         translation.id,
+        translation.humanReviewStatus,
         {
           humanReviewStatus: outcome.humanReviewStatus,
           translationStatus: outcome.translationStatus,
@@ -175,6 +220,11 @@ export class TranslationReviewService {
         },
         manager,
       );
+      if (!applied) {
+        throw new ConflictException(
+          `reviewTranslation: translation ${translationId} was reviewed or edited by someone else at the same moment — refresh the queue`,
+        );
+      }
 
       return {
         ...translation,
