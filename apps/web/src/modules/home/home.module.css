@@ -9,6 +9,7 @@
    mà không cần ảnh chụp nào (Phase 9: trang phải đẹp ngay cả khi KHÔNG có ảnh). */
 .hero {
   --accent-warm: #fb923c;
+  --ocean: #0ea5b7;
   position: relative;
   overflow: hidden;
   padding: 2.25rem 1.5rem;
@@ -18,6 +19,25 @@
   background:
     radial-gradient(120% 140% at 15% -10%, color-mix(in srgb, var(--accent-warm) 22%, transparent), transparent 60%),
     linear-gradient(135deg, var(--surface-2), var(--surface));
+}
+
+/* Hero V3 (Phase 3) — hai cột trên màn rộng (nội dung chức năng trái, composition thị giác
+   phải), một cột trên di động (composition xuống dưới, không cạnh tranh với nội dung chính). */
+.heroGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.75rem;
+  align-items: center;
+}
+@media (min-width: 900px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+    gap: 2.5rem;
+  }
+}
+
+.heroContent {
+  min-width: 0;
 }
 
 .heroEyebrow {
@@ -99,6 +119,123 @@
   font-size: 0.82rem;
 }
 
+/* ---------- Hero visual composition (Phase 3) — CSS/SVG thuần, không ảnh chụp ---------- */
+.heroVisual {
+  position: relative;
+  min-height: 300px;
+  border-radius: calc(var(--radius) + 4px);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.heroVisualIsland {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(65% 75% at 30% 35%, color-mix(in srgb, var(--ocean) 38%, transparent), transparent),
+    radial-gradient(55% 65% at 75% 70%, color-mix(in srgb, var(--accent-warm) 30%, transparent), transparent),
+    linear-gradient(160deg, var(--surface-2), var(--surface));
+  /* Hình khối bo méo gợi một mảng đảo/bờ biển trừu tượng — KHÔNG phải bản đồ thật, không tuyên bố
+     là hình dạng địa lý chính xác của Phú Quốc. */
+  clip-path: polygon(8% 0%, 100% 6%, 96% 88%, 62% 100%, 0% 82%);
+}
+
+.heroVisualPin {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50% 50% 50% 0;
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ocean) 55%, var(--accent));
+  transform: rotate(-45deg);
+  z-index: 1;
+}
+.heroPinA {
+  top: 18%;
+  left: 22%;
+}
+.heroPinB {
+  top: 48%;
+  left: 62%;
+  box-shadow: 0 0 0 3px var(--accent-warm);
+}
+.heroPinC {
+  top: 72%;
+  left: 32%;
+}
+
+.heroMiniCard {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 168px;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(4px);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--fg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+.heroMiniCardDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.heroMiniCardName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.heroMiniCard0 {
+  top: 10%;
+  right: 8%;
+}
+.heroMiniCard1 {
+  bottom: 30%;
+  left: 6%;
+}
+.heroMiniCard2 {
+  bottom: 8%;
+  right: 14%;
+}
+
+.heroVisualChips {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  max-width: calc(100% - 20px);
+}
+.heroVisualChip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: var(--fg);
+  font-size: 0.72rem;
+  font-weight: 600;
+  backdrop-filter: blur(3px);
+}
+
+@media (max-width: 899px) {
+  .heroVisual {
+    min-height: 220px;
+  }
+  .heroMiniCard {
+    max-width: 130px;
+    font-size: 0.72rem;
+  }
+}
+
 .section {
   margin-bottom: 2.5rem;
 }
@@ -164,6 +301,83 @@
 .categoryHint {
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+/* ---------- Category discovery V2 (Phase 7) ---------- */
+.categoryGridV2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.85rem;
+}
+
+.categoryTileV2 {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.categoryTileV2:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.categoryTileV2:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.categoryIconWrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.categoryIcon {
+  width: 22px;
+  height: 22px;
+}
+
+.categoryTileBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.categoryTileBody .categoryName {
+  font-size: 0.98rem;
+}
+.categoryTileBody .categoryHint {
+  font-size: 0.8rem;
+  line-height: 1.3;
+  /* Một dòng ngắn gọn (Phase 7: "one-line intent explanation") — cắt gọn thay vì tràn/xuống dòng
+     làm lệch chiều cao các thẻ cạnh nhau. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.categoryArrow {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 1.1rem;
+  transition: transform 0.15s ease;
+}
+.categoryTileV2:hover .categoryArrow {
+  transform: translateX(3px);
+  color: var(--accent);
 }
 
 /* ---------- Dải CTA (bản đồ / chủ cơ sở) ---------- */
@@ -267,6 +481,34 @@
   top: 68%;
   left: 38%;
 }
+.mapPinD {
+  top: 22%;
+  left: 68%;
+  background: #0ea5b7;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #0ea5b7 25%, transparent);
+}
+.mapPinE {
+  top: 78%;
+  left: 62%;
+}
+
+.mapPreviewChips {
+  position: absolute;
+  z-index: 1;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  gap: 0.35rem;
+}
+.mapPreviewChip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: var(--fg);
+  font-size: 0.68rem;
+  font-weight: 600;
+  backdrop-filter: blur(3px);
+}
 
 /* ---------- Vì sao tin PhuQuocHub (Phase 10.5) ---------- */
 .trustGrid {
@@ -324,6 +566,31 @@
   margin: -0.5rem 0 1rem;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.smartQuickRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.smartQuickLink {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.smartQuickLink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.smartQuickLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .nearbyCard {

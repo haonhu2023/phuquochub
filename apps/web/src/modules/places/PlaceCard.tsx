@@ -44,7 +44,7 @@ export function PlaceCard({
         />
       ) : (
         <div className={styles.thumbFallback} aria-hidden="true">
-          {place.name.charAt(0)}
+          <span>{place.name.charAt(0)}</span>
         </div>
       )}
 

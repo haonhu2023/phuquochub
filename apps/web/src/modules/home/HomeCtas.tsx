@@ -21,6 +21,12 @@ export function MapCta({ locale }: { locale: Locale }) {
           <span className={`${styles.mapPin} ${styles.mapPinA}`} />
           <span className={`${styles.mapPin} ${styles.mapPinB}`} />
           <span className={`${styles.mapPin} ${styles.mapPinC}`} />
+          <span className={`${styles.mapPin} ${styles.mapPinD}`} />
+          <span className={`${styles.mapPin} ${styles.mapPinE}`} />
+          <div className={styles.mapPreviewChips}>
+            <span className={styles.mapPreviewChip}>{locale === 'en' ? 'Beach' : 'Bãi biển'}</span>
+            <span className={styles.mapPreviewChip}>{locale === 'en' ? 'Food' : 'Ăn uống'}</span>
+          </div>
         </div>
         <div className={styles.ctaText}>
           <p className={styles.ctaEyebrow}>{copy.mapEyebrow}</p>

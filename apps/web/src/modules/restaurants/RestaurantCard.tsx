@@ -31,7 +31,7 @@ export function RestaurantCard({
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
-          {restaurant.name.charAt(0)}
+          <span>{restaurant.name.charAt(0)}</span>
         </div>
       )}
 

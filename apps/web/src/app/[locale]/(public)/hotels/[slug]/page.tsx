@@ -1,24 +1,37 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
-import { buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+
+const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
+const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
 }
 
-export async function generateMetadata({ params }: Params) {
+// Phase 20 (EN indexation gate) — cùng lý do/cùng nguồn sự thật đã dùng ở
+// places/[slug]/page.tsx: `isEnDetailIndexable` là điểm quyết định DUY NHẤT, không tự suy đoán ở
+// từng trang chi tiết entity.
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
     const h = await getHotel(slug);
+    const path = `/hotels/${h.slug}`;
+    const enIndexable = isEnDetailIndexable(h.slug);
+    const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
+    const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
       title: `${h.name} · Khách sạn · PhuQuocHub`,
       description: h.short_description ?? undefined,
-      alternates: { canonical: localizedHref(locale, `/hotels/${h.slug}`) },
+      alternates: { canonical, languages },
+      ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
     };
   } catch {
     return { title: 'Khách sạn · PhuQuocHub' };
@@ -48,13 +61,25 @@ export default async function HotelDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildHotelJsonLd(h)) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: serializeJsonLd(
+            buildBreadcrumbJsonLd([
+              { name: BREADCRUMB_HOME_LABEL[locale], path: localizedHref(locale, '/') },
+              { name: BREADCRUMB_HOTELS_LABEL[locale], path: localizedHref(locale, '/hotels') },
+              { name: h.name, path: localizedHref(locale, `/hotels/${h.slug}`) },
+            ]),
+          ),
+        }}
+      />
       <nav aria-label="Breadcrumb" style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
         <Link href={localizedHref(locale, '/')} style={{ color: '#6b7280' }}>
-          Trang chủ
+          {BREADCRUMB_HOME_LABEL[locale]}
         </Link>
         {' / '}
         <Link href={localizedHref(locale, '/hotels')} style={{ color: '#6b7280' }}>
-          Khách sạn
+          {BREADCRUMB_HOTELS_LABEL[locale]}
         </Link>
         {' / '}
         <span aria-current="page">{h.name}</span>

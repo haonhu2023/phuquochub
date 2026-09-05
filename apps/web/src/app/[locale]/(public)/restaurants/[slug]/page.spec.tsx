@@ -7,7 +7,7 @@ import {
   type RestaurantDetail,
 } from '@/modules/restaurants/api/restaurants.api';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
-import RestaurantDetailPage from './page';
+import RestaurantDetailPage, { generateMetadata } from './page';
 
 jest.mock('@/modules/restaurants/api/restaurants.api', () => ({
   getRestaurant: jest.fn(),
@@ -130,5 +130,34 @@ describe('RestaurantDetailPage — menu price trust gate', () => {
       },
     ]);
     expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
+  });
+});
+
+// Phase 20 (EN indexation gate) — cùng chính sách/nguồn sự thật đã kiểm chứng ở
+// places/[slug]/page.spec.tsx: chưa có bản dịch restaurant nào APPROVED/PUBLIC hôm nay
+// (isEnDetailIndexable khoá `false` toàn cục), nên bản `/en` phải noindex,follow và không quảng
+// cáo hreflang="en" giả; bản `/vi` không bị ảnh hưởng.
+describe('RestaurantDetailPage — generateMetadata EN indexation gate', () => {
+  const r = restaurant({ slug: 'quan-hai-san', name: 'Quán Hải Sản' });
+
+  it('bản /en chưa đủ điều kiện index → noindex,follow, không hreflang="en"', async () => {
+    mockGetRestaurant.mockResolvedValueOnce(r);
+    const metadataEn = await generateMetadata({
+      params: Promise.resolve({ slug: r.slug, locale: 'en' }),
+    });
+    expect(metadataEn.robots).toEqual({ index: false, follow: true });
+    expect(metadataEn.alternates?.languages?.en).toBeUndefined();
+    expect(metadataEn.alternates?.languages?.['x-default']).toBe(
+      'http://localhost:3000/vi/restaurants/quan-hai-san',
+    );
+  });
+
+  it('bản /vi (nguồn gốc) KHÔNG bị noindex', async () => {
+    mockGetRestaurant.mockResolvedValueOnce(r);
+    const metadataVi = await generateMetadata({
+      params: Promise.resolve({ slug: r.slug, locale: 'vi' }),
+    });
+    expect(metadataVi.robots).toBeUndefined();
+    expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/restaurants/quan-hai-san');
   });
 });

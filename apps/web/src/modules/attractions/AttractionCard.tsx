@@ -40,7 +40,7 @@ export function AttractionCard({
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
-          {attraction.name.charAt(0)}
+          <span>{attraction.name.charAt(0)}</span>
         </div>
       )}
 

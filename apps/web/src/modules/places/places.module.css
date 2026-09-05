@@ -51,16 +51,37 @@
   object-fit: cover;
   background: var(--surface-2);
 }
+/* Featured V2 — placeholder có chủ đích khi chưa có ảnh (đa số 49 place hôm nay), không phải một
+   ô chữ cái trơn: dải màu ấm/lạnh xen kẽ theo brand + hoạ tiết chấm rời rạc (gợi hình điểm trên
+   bản đồ, nhất quán với ngôn ngữ marker của bản đồ thật) + chữ cái đầu làm điểm neo thị giác. Vẫn
+   KHÔNG ảnh giả — chỉ là một hệ thống trang trí, không suy diễn nội dung. */
 .thumbFallback {
+  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
   aspect-ratio: 4 / 3;
-  background: linear-gradient(135deg, var(--surface-2), var(--surface));
-  color: var(--muted);
-  font-size: 2rem;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 140% at 85% 15%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
+    radial-gradient(120% 140% at 15% 100%, color-mix(in srgb, #fb923c 16%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--surface-2), var(--surface));
+  color: var(--fg);
+  font-size: 2.1rem;
   font-weight: 700;
   text-transform: uppercase;
+}
+.thumbFallback::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--fg) 14%, transparent) 1.5px, transparent 1.5px);
+  background-size: 18px 18px;
+  opacity: 0.5;
+}
+.thumbFallback span {
+  position: relative;
+  opacity: 0.9;
 }
 
 .cardBody {

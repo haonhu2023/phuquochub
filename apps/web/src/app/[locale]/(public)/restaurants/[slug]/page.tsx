@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -7,23 +8,34 @@ import {
   type RestaurantDetail,
 } from '@/modules/restaurants/api/restaurants.api';
 import { ApiError } from '@/lib/http';
-import { buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { buildBreadcrumbJsonLd, buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+
+const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
+const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
 }
 
-export async function generateMetadata({ params }: Params) {
+// Phase 20 (EN indexation gate) — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ; cùng nguồn sự
+// thật DUY NHẤT `isEnDetailIndexable`, không tự suy đoán ở từng trang chi tiết entity.
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
     const r = await getRestaurant(slug);
+    const path = `/restaurants/${r.slug}`;
+    const enIndexable = isEnDetailIndexable(r.slug);
+    const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
+    const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
       title: `${r.name} · Nhà hàng · PhuQuocHub`,
       description: r.short_description ?? undefined,
-      alternates: { canonical: localizedHref(locale, `/restaurants/${r.slug}`) },
+      alternates: { canonical, languages },
+      ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
     };
   } catch {
     return { title: 'Nhà hàng · PhuQuocHub' };
@@ -58,13 +70,25 @@ export default async function RestaurantDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRestaurantJsonLd(r)) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: serializeJsonLd(
+            buildBreadcrumbJsonLd([
+              { name: BREADCRUMB_HOME_LABEL[locale], path: localizedHref(locale, '/') },
+              { name: BREADCRUMB_RESTAURANTS_LABEL[locale], path: localizedHref(locale, '/restaurants') },
+              { name: r.name, path: localizedHref(locale, `/restaurants/${r.slug}`) },
+            ]),
+          ),
+        }}
+      />
       <nav aria-label="Breadcrumb" style={{ fontSize: '0.85rem', color: '#6b7280', marginBottom: '1rem' }}>
         <Link href={localizedHref(locale, '/')} style={{ color: '#6b7280' }}>
-          Trang chủ
+          {BREADCRUMB_HOME_LABEL[locale]}
         </Link>
         {' / '}
         <Link href={localizedHref(locale, '/restaurants')} style={{ color: '#6b7280' }}>
-          Nhà hàng
+          {BREADCRUMB_RESTAURANTS_LABEL[locale]}
         </Link>
         {' / '}
         <span aria-current="page">{r.name}</span>
