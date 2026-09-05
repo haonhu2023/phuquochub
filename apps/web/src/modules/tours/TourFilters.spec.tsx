@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TourFilters } from './TourFilters';
+import { LocaleProvider } from '@/lib/LocaleContext';
 
 const push = jest.fn();
 let searchParamsString = '';
@@ -61,5 +62,27 @@ describe('TourFilters', () => {
     render(<TourFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Độ khó'), { target: { value: '' } });
     expect(push).toHaveBeenCalledWith('/vi/tours');
+  });
+
+  // Phase 14 (EN UI completion): mọi nhãn field/tuỳ chọn (Sắp xếp/Loại tour/Độ khó/Thời lượng/
+  // Mức giá/Khu vực khởi hành/Tất cả) đều là chrome tiếng Việt cứng trước bản này.
+  it('locale="en" → toàn bộ nhãn/tuỳ chọn dùng bản dịch tiếng Anh, điều hướng vẫn tới /en/tours', () => {
+    render(
+      <LocaleProvider locale="en">
+        <TourFilters total={5} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('5 tours')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('rating_desc');
+    expect(screen.getByLabelText('Tour type')).toHaveValue('');
+    expect(screen.getByLabelText('Difficulty')).toHaveValue('');
+    expect(screen.getByLabelText('Duration')).toHaveValue('');
+    expect(screen.getByLabelText('Price')).toHaveValue('');
+    expect(screen.getByLabelText('Departure area')).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Shortest duration' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Diving' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Tour type'), { target: { value: 'diving' } });
+    expect(push).toHaveBeenCalledWith('/en/tours?type=diving');
   });
 });

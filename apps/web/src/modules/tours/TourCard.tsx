@@ -25,7 +25,7 @@ export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType
         <img className={placesStyles.thumb} src={tour.cover_image_url} alt={tour.name} loading="lazy" />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
-          {tour.name.charAt(0)}
+          <span>{tour.name.charAt(0)}</span>
         </div>
       )}
 

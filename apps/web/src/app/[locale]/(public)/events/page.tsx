@@ -2,15 +2,19 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listEvents, type EventSummary } from '@/modules/events/api/events.api';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 
 // Không đặt canonical theo query string: cùng quy ước /attractions, /beaches, /hotels,
 // /restaurants và /tours — canonical luôn trỏ về /{locale}/events.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'events');
   return {
-    title: 'Sự kiện · PhuQuocHub',
-    alternates: { canonical: localizedHref(locale, '/events') },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/events'),
   };
 }
 
@@ -35,10 +39,15 @@ export default async function EventsPage({ params }: Props) {
     events = [];
   }
 
+  const copy = getHubPageCopy(locale, 'events');
+
   return (
     <section>
-      <h1>Sự kiện</h1>
-      {events.length === 0 && <p style={{ color: '#6b7280' }}>Chưa có sự kiện.</p>}
+      <h1>{copy.h1}</h1>
+      <p style={{ color: '#6b7280' }}>{copy.description}</p>
+      {events.length === 0 && (
+        <p style={{ color: '#6b7280' }}>{locale === 'en' ? 'No events yet.' : 'Chưa có sự kiện.'}</p>
+      )}
       <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8 }}>
         {events.map((e) => (
           <li key={e.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 12 }}>

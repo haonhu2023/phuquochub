@@ -22,6 +22,6 @@ describe('AuthLayout', () => {
         <p>form đăng nhập</p>
       </AuthLayout>,
     );
-    expect(screen.queryByText(BETA_DISCLOSURE_TEXT)).not.toBeInTheDocument();
+    expect(screen.queryByText(BETA_DISCLOSURE_TEXT.vi)).not.toBeInTheDocument();
   });
 });

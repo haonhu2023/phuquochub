@@ -27,7 +27,7 @@ export function HotelCard({ hotel, locale = DEFAULT_LOCALE }: { hotel: HotelCard
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
-          {hotel.name.charAt(0)}
+          <span>{hotel.name.charAt(0)}</span>
         </div>
       )}
 

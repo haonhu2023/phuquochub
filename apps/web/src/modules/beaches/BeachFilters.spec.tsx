@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BeachFilters } from './BeachFilters';
+import { LocaleProvider } from '@/lib/LocaleContext';
 
 const push = jest.fn();
 let searchParamsString = '';
@@ -52,5 +53,22 @@ describe('BeachFilters', () => {
     render(<BeachFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: '' } });
     expect(push).toHaveBeenCalledWith('/vi/beaches');
+  });
+
+  // Phase 14 (EN UI completion): "Sắp xếp"/"Khu vực"/"Mức giá"/"Tất cả" đều là chrome tiếng Việt
+  // cứng trước bản này — khoá đúng bản dịch tiếng Anh.
+  it('locale="en" → toàn bộ nhãn/kết quả dùng bản dịch tiếng Anh, điều hướng vẫn tới /en/beaches', () => {
+    render(
+      <LocaleProvider locale="en">
+        <BeachFilters total={3} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('3 beaches')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('rating_desc');
+    expect(screen.getByLabelText('Area')).toHaveValue('');
+    expect(screen.getByLabelText('Price')).toHaveValue('');
+
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: 'free' } });
+    expect(push).toHaveBeenCalledWith('/en/beaches?price_range=free');
   });
 });

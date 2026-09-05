@@ -1,12 +1,10 @@
 import type { Metadata } from 'next';
 import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
-import { localizedHref, type Locale } from '@/lib/locale';
+import { type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import styles from '@/modules/places/places.module.css';
-
-const TITLE = 'Địa điểm Phú Quốc';
-const DESCRIPTION =
-  'Khám phá bãi biển, điểm tham quan, chợ, nhà hàng và khách sạn nổi bật ở Phú Quốc — thông tin địa chỉ, giá và bản đồ.';
 
 interface Props {
   params: Promise<{ locale: string }>;
@@ -17,13 +15,14 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'places');
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/places') },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/places'),
     openGraph: {
-      title: `${TITLE} · PhuQuocHub`,
-      description: DESCRIPTION,
+      title: `${copy.title} | PhuQuocHub`,
+      description: copy.description,
       type: 'website',
     },
   };
@@ -35,18 +34,25 @@ export default async function PlacesPage({ params }: Props) {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
   const places = await listPlaces({ limit: 50 });
+  const copy = getHubPageCopy(locale, 'places');
 
   return (
     <section>
       <header className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>{TITLE}</h1>
-        <p className={styles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={styles.pageTitle}>{copy.h1}</h1>
+        <p className={styles.pageLede}>{copy.description}</p>
       </header>
 
       {places.length === 0 ? (
         <div className={styles.state}>
-          <p className={styles.stateTitle}>Chưa có địa điểm nào</p>
-          <p>Dữ liệu địa điểm đang được cập nhật. Vui lòng quay lại sau.</p>
+          <p className={styles.stateTitle}>
+            {locale === 'en' ? 'No places yet' : 'Chưa có địa điểm nào'}
+          </p>
+          <p>
+            {locale === 'en'
+              ? 'Place data is being added. Please check back soon.'
+              : 'Dữ liệu địa điểm đang được cập nhật. Vui lòng quay lại sau.'}
+          </p>
         </div>
       ) : (
         <div className={styles.grid}>

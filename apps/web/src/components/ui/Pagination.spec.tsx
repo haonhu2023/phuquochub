@@ -51,4 +51,12 @@ describe('Pagination', () => {
     const page1 = screen.getByText('1');
     expect(page1).toHaveAttribute('href', '/restaurants?cuisine=seafood&page=1');
   });
+
+  it('locale="en" → renders English prev/next labels and aria-label, not Vietnamese', () => {
+    render(<Pagination page={3} totalPages={5} basePath="/en/hotels" baseQuery="" locale="en" />);
+    expect(screen.getByText('‹ Prev')).toBeInTheDocument();
+    expect(screen.getByText('Next ›')).toBeInTheDocument();
+    expect(screen.queryByText('‹ Trước')).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeInTheDocument();
+  });
 });

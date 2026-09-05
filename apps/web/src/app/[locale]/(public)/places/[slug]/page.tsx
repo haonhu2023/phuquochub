@@ -18,12 +18,16 @@ import {
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, PlaceMedia, VerificationStatusValue } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
-import { buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
 import type { Review } from '@/modules/reviews/types';
 import { ClaimCta } from '@/modules/business-claims/ClaimCta';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+
+const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
+const BREADCRUMB_PLACES_LABEL: Record<Locale, string> = { vi: 'Địa điểm', en: 'Places' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -40,9 +44,9 @@ const SITE = 'PhuQuocHub';
  * trang đang xem thuộc luồng chi tiết của nhóm ấy. Danh mục không có trong bảng này giữ nguyên
  * breadcrumb cũ (Trang chủ / Địa điểm / …).
  */
-const BROWSE_LISTING_BY_CATEGORY: Record<string, { href: string; label: string }> = {
-  attraction: { href: '/attractions', label: 'Điểm tham quan' },
-  beach: { href: '/beaches', label: 'Bãi biển' },
+const BROWSE_LISTING_BY_CATEGORY: Record<string, { href: string; label: Record<Locale, string> }> = {
+  attraction: { href: '/attractions', label: { vi: 'Điểm tham quan', en: 'Attractions' } },
+  beach: { href: '/beaches', label: { vi: 'Bãi biển', en: 'Beaches' } },
 };
 
 function metaDescription(place: PlaceDetail): string | undefined {
@@ -66,11 +70,22 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const title = `${place.name} · ${SITE}`;
   const description = metaDescription(place);
   const image = place.cover_image_url ?? place.media[0]?.url ?? undefined;
+  const path = `/places/${place.slug}`;
+  // Phase 20 (EN indexation gate): `alternates.languages` (hreflang) và `robots` chỉ được phát
+  // hreflang="en" / index=true khi trang EN THẬT SỰ có nội dung tiếng Anh đã duyệt — không phải vì
+  // route `/en/places/{slug}` trả 200 (nó luôn trả 200, chỉ là lùi về nguyên văn tiếng Việt khi
+  // chưa có bản dịch). `isEnDetailIndexable` là NGUỒN SỰ THẬT DUY NHẤT cho quyết định này. Chưa đủ
+  // điều kiện → KHÔNG phát hreflang="en" (không quảng cáo một bản thay thế chưa thật sự tồn tại),
+  // chỉ giữ `vi` (nguồn gốc) + `x-default` trỏ về `vi`.
+  const enIndexable = isEnDetailIndexable(place.slug);
+  const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
+  const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
 
   return {
     title,
     description,
-    alternates: { canonical: localizedHref(locale, `/places/${place.slug}`) },
+    alternates: { canonical, languages },
+    ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
     openGraph: {
       title,
       description,
@@ -152,14 +167,29 @@ export default async function PlaceDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildPlaceJsonLd(place)) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: serializeJsonLd(
+            buildBreadcrumbJsonLd([
+              { name: BREADCRUMB_HOME_LABEL[locale], path: localizedHref(locale, '/') },
+              { name: BREADCRUMB_PLACES_LABEL[locale], path: localizedHref(locale, '/places') },
+              ...(browseListing
+                ? [{ name: browseListing.label[locale], path: localizedHref(locale, browseListing.href) }]
+                : []),
+              { name: place.name, path: localizedHref(locale, `/places/${place.slug}`) },
+            ]),
+          ),
+        }}
+      />
       <nav className={styles.breadcrumb} aria-label="Breadcrumb">
-        <Link href={localizedHref(locale, '/')}>Trang chủ</Link>
+        <Link href={localizedHref(locale, '/')}>{BREADCRUMB_HOME_LABEL[locale]}</Link>
         <span className={styles.sep}>/</span>
-        <Link href={localizedHref(locale, '/places')}>Địa điểm</Link>
+        <Link href={localizedHref(locale, '/places')}>{BREADCRUMB_PLACES_LABEL[locale]}</Link>
         {browseListing && (
           <>
             <span className={styles.sep}>/</span>
-            <Link href={localizedHref(locale, browseListing.href)}>{browseListing.label}</Link>
+            <Link href={localizedHref(locale, browseListing.href)}>{browseListing.label[locale]}</Link>
           </>
         )}
         <span className={styles.sep}>/</span>

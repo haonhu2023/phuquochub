@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RestaurantFilters } from './RestaurantFilters';
+import { LocaleProvider } from '@/lib/LocaleContext';
 
 const push = jest.fn();
 let searchParamsString = '';
@@ -47,5 +48,23 @@ describe('RestaurantFilters', () => {
     render(<RestaurantFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Ẩm thực'), { target: { value: '' } });
     expect(push).toHaveBeenCalledWith('/vi/restaurants');
+  });
+
+  // Phase 14 (EN UI completion): "Sắp xếp"/"Mức giá"/"Ẩm thực"/"Tất cả" đều là chrome tiếng Việt
+  // cứng trước bản này — khoá đúng bản dịch tiếng Anh, không chỉ "không tiếng Việt".
+  it('locale="en" → toàn bộ nhãn/kết quả dùng bản dịch tiếng Anh, điều hướng vẫn tới /en/restaurants', () => {
+    render(
+      <LocaleProvider locale="en">
+        <RestaurantFilters total={9} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('9 restaurants')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('rating_desc');
+    expect(screen.getByLabelText('Price')).toHaveValue('');
+    expect(screen.getByLabelText('Cuisine')).toHaveValue('');
+    expect(screen.getByText('Seafood')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Price'), { target: { value: 'low' } });
+    expect(push).toHaveBeenCalledWith('/en/restaurants?price_range=low');
   });
 });

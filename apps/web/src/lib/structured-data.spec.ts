@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlaceDetail } from '@phuquochub/shared-types';
-import { buildPlaceJsonLd, serializeJsonLd } from './structured-data';
+import { buildPlaceJsonLd, buildWebSiteJsonLd, serializeJsonLd } from './structured-data';
 
 // STRUCTURED_DATA_NO_HARDCODED_REGION (Place Information Foundation, 2026-08-18).
 
@@ -268,5 +268,28 @@ describe('structured-data.ts không được hard-code địa danh hành chính'
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '');
     expect(code).not.toContain(needle);
+  });
+});
+
+// SEO v2 — trước đây `inLanguage`/`url`/`potentialAction.target` đều hằng số tiếng Việt bất kể
+// trang chủ đang phục vụ locale nào, tự mâu thuẫn với `<html lang="en">` render cùng lúc trên
+// `/en`. Khoá lại: cả ba trường phải khớp ĐÚNG locale được truyền vào.
+describe('buildWebSiteJsonLd — locale-aware (SEO v2)', () => {
+  it('locale=vi: inLanguage/url/search action đều là bản vi', () => {
+    const jsonLd = buildWebSiteJsonLd('PhuQuocHub', 'Mô tả', 'vi');
+    expect(jsonLd.inLanguage).toBe('vi-VN');
+    expect(jsonLd.url).toBe('http://localhost:3000/vi');
+    expect((jsonLd.potentialAction as { target: { urlTemplate: string } }).target.urlTemplate).toBe(
+      'http://localhost:3000/vi/search?q={search_term_string}',
+    );
+  });
+
+  it('locale=en: cả ba trường đổi đúng sang bản en, không còn URL /vi nào', () => {
+    const jsonLd = buildWebSiteJsonLd('PhuQuocHub', 'Description', 'en');
+    expect(jsonLd.inLanguage).toBe('en-US');
+    expect(jsonLd.url).toBe('http://localhost:3000/en');
+    expect((jsonLd.potentialAction as { target: { urlTemplate: string } }).target.urlTemplate).toBe(
+      'http://localhost:3000/en/search?q={search_term_string}',
+    );
   });
 });

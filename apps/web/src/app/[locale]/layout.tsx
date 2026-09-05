@@ -1,16 +1,37 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { AuthProvider } from '@/modules/auth/AuthProvider';
 import { LocaleProvider } from '@/lib/LocaleContext';
-import { isSupportedLocale } from '@/lib/locale';
+import { isSupportedLocale, type Locale } from '@/lib/locale';
 import { DEFAULT_METADATA } from '@/lib/default-metadata';
 import '../../styles/globals.css';
-
-export const metadata = DEFAULT_METADATA;
 
 interface Props {
   children: ReactNode;
   params: Promise<{ locale: string }>;
+}
+
+// SEO v2 (Phase 16): title/description mặc định của TOÀN BỘ cây route công khai giờ đổi theo
+// locale — trước đây `export const metadata = DEFAULT_METADATA` tĩnh nghĩa là MỌI trang `/en`
+// không tự ghi đè metadata riêng (vd trang lỗi, trang chưa có `generateMetadata`) đều lộ ra tiêu
+// đề/mô tả tiếng Việt. Vẫn spread `DEFAULT_METADATA` để giữ `metadataBase` DÙNG CHUNG với
+// `(auth)`/`(dashboard)` (root-layouts.spec.ts khoá bất biến này) — chỉ `title`/`description` đổi
+// theo locale. Trang con nào cần tiêu đề/canonical riêng vẫn tự khai `generateMetadata` của nó,
+// Next.js ưu tiên metadata gần route nhất.
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale: localeParam } = await params;
+  if (!isSupportedLocale(localeParam)) return DEFAULT_METADATA;
+  const locale = localeParam as Locale;
+  if (locale === 'en') {
+    return {
+      ...DEFAULT_METADATA,
+      title: 'PhuQuocHub — Phú Quốc Travel Guide & Local Discovery',
+      description:
+        'Discover places, restaurants, beaches, hotels, tours and local experiences across Phú Quốc with maps and source-backed information.',
+    };
+  }
+  return DEFAULT_METADATA;
 }
 
 // Root layout #1 của 3 ("multiple root layouts" — Next.js App Router routing fundamentals): xoá

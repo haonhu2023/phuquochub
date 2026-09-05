@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { HomeHero } from '@/modules/home/HomeHero';
 import { CategoryLinks } from '@/modules/home/CategoryLinks';
+import { SmartDiscovery } from '@/modules/home/SmartDiscovery';
 import { DiscoverPlaces, DiscoverPlacesSkeleton } from '@/modules/home/DiscoverPlaces';
 import { MapCta, OwnerCta } from '@/modules/home/HomeCtas';
 import { TrustSection } from '@/modules/home/TrustSection';
 import { getHomeCopy } from '@/modules/home/home.copy';
 import { buildWebSiteJsonLd, serializeJsonLd } from '@/lib/structured-data';
-import { localizedHref, type Locale } from '@/lib/locale';
+import { type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
 
 const SITE = 'PhuQuocHub';
 
@@ -22,29 +24,28 @@ interface Props {
 //
 // `title` KHÔNG có hậu tố "· PhuQuocHub" như các trang con: đây là trang gốc, tiêu đề của nó
 // chính là danh tính sản phẩm.
-// PR A: chuyển sang `generateMetadata` vì canonical cần `params.locale`. `openGraph.locale`
-// GIỮ NGUYÊN `'vi_VN'` tĩnh — cố ý CHƯA đổi (ngoài phạm vi PR A, xem ghi chú kế hoạch).
-// map/home upgrade: title/description giờ đọc từ `home.copy.ts` theo locale thay vì hằng số tiếng
-// Việt cứng — trang `/en` trước đây trả về metadata tiếng Việt dù nội dung route đã có locale.
+// SEO v2: `alternates` giờ dùng `buildRouteAlternates` — phát cả `languages.vi`/`languages.en`/
+// `languages['x-default']` (Phase 19), không chỉ `canonical` một mình. `openGraph.locale` đã đổi
+// động theo locale từ map/home upgrade.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
   const copy = getHomeCopy(locale);
-  const canonical = localizedHref(locale, '/');
+  const alternates = buildRouteAlternates(locale, '/');
   return {
     title: `${SITE} — ${copy.title}`,
     description: copy.lede,
-    alternates: { canonical },
+    alternates,
     openGraph: {
       title: `${SITE} — ${copy.title}`,
       description: copy.lede,
       type: 'website',
-      url: canonical,
+      url: alternates.canonical,
       siteName: SITE,
       locale: locale === 'en' ? 'en_US' : 'vi_VN',
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image',
       title: `${SITE} — ${copy.title}`,
       description: copy.lede,
     },
@@ -73,12 +74,13 @@ export default async function HomePage({ params }: Props) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: serializeJsonLd(buildWebSiteJsonLd(SITE, copy.lede)),
+          __html: serializeJsonLd(buildWebSiteJsonLd(SITE, copy.lede, locale)),
         }}
       />
 
       <HomeHero locale={locale} />
       <CategoryLinks locale={locale} />
+      <SmartDiscovery locale={locale} />
 
       <Suspense fallback={<DiscoverPlacesSkeleton locale={locale} />}>
         <DiscoverPlaces locale={locale} />

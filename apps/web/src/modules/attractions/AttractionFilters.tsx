@@ -4,21 +4,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ATTRACTION_SORT_VALUES, type AttractionSort } from './types';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
 import { useLocale } from '@/lib/LocaleContext';
-import { localizedHref } from '@/lib/locale';
+import { localizedHref, type Locale } from '@/lib/locale';
+import { COMMON_SORT_LABELS, PRICE_RANGE_LABELS, getFilterChrome, type PriceRangeValue } from '@/lib/filters.copy';
 import styles from '@/components/ui/ui.module.css';
 
-const SORT_LABELS: Record<AttractionSort, string> = {
-  rating_desc: 'Đánh giá cao nhất',
-  name_asc: 'Tên A → Z',
-  newest: 'Mới thêm gần đây',
+const SORT_LABELS: Record<Locale, Record<AttractionSort, string>> = {
+  vi: COMMON_SORT_LABELS.vi,
+  en: COMMON_SORT_LABELS.en,
 };
 
-const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'free', label: 'Miễn phí' },
-  { value: 'low', label: 'Bình dân' },
-  { value: 'mid', label: 'Tầm trung' },
-  { value: 'high', label: 'Cao cấp' },
-];
+const PRICE_RANGE_VALUES: PriceRangeValue[] = ['free', 'low', 'mid', 'high'];
+
+const RESULT_UNIT: Record<Locale, string> = { vi: 'điểm tham quan', en: 'attractions' };
 
 interface Props {
   total: number;
@@ -31,6 +28,7 @@ export function AttractionFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locale = useLocale();
+  const chrome = getFilterChrome(locale);
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -47,7 +45,7 @@ export function AttractionFilters({ total }: Props) {
     <div className={styles.toolbar}>
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="attraction-sort">
-          Sắp xếp
+          {chrome.sortLabel}
         </label>
         <select
           id="attraction-sort"
@@ -57,7 +55,7 @@ export function AttractionFilters({ total }: Props) {
         >
           {ATTRACTION_SORT_VALUES.map((v) => (
             <option key={v} value={v}>
-              {SORT_LABELS[v]}
+              {SORT_LABELS[locale][v]}
             </option>
           ))}
         </select>
@@ -65,7 +63,7 @@ export function AttractionFilters({ total }: Props) {
 
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="attraction-ward">
-          Khu vực
+          {chrome.areaLabel}
         </label>
         <select
           id="attraction-ward"
@@ -73,7 +71,7 @@ export function AttractionFilters({ total }: Props) {
           value={searchParams.get('ward') ?? ''}
           onChange={(e) => updateParam('ward', e.target.value)}
         >
-          <option value="">Tất cả</option>
+          <option value="">{chrome.allOption}</option>
           {PHU_QUOC_WARDS.map((w) => (
             <option key={w} value={w}>
               {w}
@@ -84,7 +82,7 @@ export function AttractionFilters({ total }: Props) {
 
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="attraction-price-range">
-          Mức giá
+          {chrome.priceLabel}
         </label>
         <select
           id="attraction-price-range"
@@ -92,16 +90,18 @@ export function AttractionFilters({ total }: Props) {
           value={searchParams.get('price_range') ?? ''}
           onChange={(e) => updateParam('price_range', e.target.value)}
         >
-          <option value="">Tất cả</option>
-          {PRICE_RANGE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
+          <option value="">{chrome.allOption}</option>
+          {PRICE_RANGE_VALUES.map((v) => (
+            <option key={v} value={v}>
+              {PRICE_RANGE_LABELS[locale][v]}
             </option>
           ))}
         </select>
       </div>
 
-      <span className={styles.resultCount}>{total} điểm tham quan</span>
+      <span className={styles.resultCount}>
+        {total} {RESULT_UNIT[locale]}
+      </span>
     </div>
   );
 }

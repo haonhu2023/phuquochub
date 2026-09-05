@@ -10,11 +10,25 @@ import {
   type TourSort,
 } from '@/modules/tours/types';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
-const TITLE = 'Tour & trải nghiệm Phú Quốc';
-const DESCRIPTION =
-  'Danh sách tour và trải nghiệm ở Phú Quốc — lọc theo loại tour, độ khó, thời lượng, mức giá và khu vực khởi hành.';
+const EMPTY_COPY: Record<Locale, { filteredTitle: string; filteredBody: string; emptyTitle: string; emptyBody: string }> = {
+  vi: {
+    filteredTitle: 'Không có tour phù hợp',
+    filteredBody: 'Không tìm thấy tour khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.',
+    emptyTitle: 'Chưa có tour nào',
+    emptyBody: 'Dữ liệu tour đang được cập nhật. Vui lòng quay lại sau.',
+  },
+  en: {
+    filteredTitle: 'No matching tours',
+    filteredBody: 'No tours match the selected filters. Try clearing some filters or picking different criteria.',
+    emptyTitle: 'No tours yet',
+    emptyBody: 'Tour data is being added. Please check back soon.',
+  },
+};
+
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 // Chặn trên cho `max_duration_minutes` đọc từ URL: 43200 phút = 30 ngày, đủ rộng cho mọi tour có
@@ -41,11 +55,12 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'tours');
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/tours') },
-    openGraph: { title: `${TITLE} · PhuQuocHub`, description: DESCRIPTION, type: 'website' },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/tours'),
+    openGraph: { title: `${copy.title} | PhuQuocHub`, description: copy.description, type: 'website' },
   };
 }
 
@@ -107,12 +122,13 @@ export default async function ToursPage({ params, searchParams }: Props) {
   if (departureArea) baseQuery.set('departure_area', departureArea);
   if (sort) baseQuery.set('sort', sort);
   const hasFilter = Boolean(type || difficulty || priceRange || maxDuration || departureArea);
+  const copy = getHubPageCopy(locale, 'tours');
 
   return (
     <section>
       <header className={placesStyles.pageHeader}>
-        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={placesStyles.pageTitle}>{copy.h1}</h1>
+        <p className={placesStyles.pageLede}>{copy.description}</p>
       </header>
 
       <TourFilters total={meta.total} />
@@ -120,13 +136,9 @@ export default async function ToursPage({ params, searchParams }: Props) {
       {tours.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {hasFilter ? 'Không có tour phù hợp' : 'Chưa có tour nào'}
+            {hasFilter ? EMPTY_COPY[locale].filteredTitle : EMPTY_COPY[locale].emptyTitle}
           </p>
-          <p>
-            {hasFilter
-              ? 'Không tìm thấy tour khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.'
-              : 'Dữ liệu tour đang được cập nhật. Vui lòng quay lại sau.'}
-          </p>
+          <p>{hasFilter ? EMPTY_COPY[locale].filteredBody : EMPTY_COPY[locale].emptyBody}</p>
         </div>
       ) : (
         <>
@@ -140,6 +152,7 @@ export default async function ToursPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/tours')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

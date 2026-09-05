@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import styles from './legal.module.css';
+import styles from '@/modules/shell/shell.module.css';
+import { getNavCopy } from '@/modules/shell/nav.copy';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 
 interface Props {
@@ -12,27 +13,66 @@ interface Props {
   locale?: Locale;
 }
 
-// Footer chung: đường dẫn tới các trang tin cậy/pháp lý. Đặt ở layout công khai VÀ layout đăng
-// nhập/đăng ký, vì trang đăng ký là nơi người dùng lần đầu cung cấp dữ liệu cá nhân — họ phải với
-// tới được Điều khoản và Chính sách bảo mật ngay tại đó, không chỉ ở khu vực công khai.
+const ABOUT_LINKS: Record<Locale, { about: string; contact: string; privacy: string; terms: string }> = {
+  vi: { about: 'Giới thiệu', contact: 'Liên hệ', privacy: 'Chính sách bảo mật', terms: 'Điều khoản sử dụng' },
+  en: { about: 'About', contact: 'Contact', privacy: 'Privacy Policy', terms: 'Terms of Service' },
+};
+
+/**
+ * Footer V2 (Phase 15) — nâng từ một dải liên kết pháp lý đơn giản thành footer điều hướng/SEO
+ * thật: nhóm "Khám phá" (internal linking thật tới các trang duyệt), nhóm "PhuQuocHub" (pháp lý),
+ * và công tắc ngôn ngữ hiển thị TƯỜNG MINH (không chỉ ở header — hữu ích khi người dùng cuộn hết
+ * trang). Mọi liên kết đều là route CÓ THẬT — không có mục nào trỏ tới trang chưa tồn tại.
+ */
 export function SiteFooter({ locale = DEFAULT_LOCALE }: Props) {
+  const nav = getNavCopy(locale);
+  const legal = ABOUT_LINKS[locale];
+
   return (
-    <footer className={styles.footer}>
-      <div className={styles.footerInner}>
-        <nav className={styles.footerNav} aria-label="Liên kết pháp lý và thông tin">
-          <Link href={localizedHref(locale, '/about')}>Giới thiệu</Link>
-          <Link href={localizedHref(locale, '/contact')}>Liên hệ</Link>
-          <Link href={localizedHref(locale, '/privacy')}>Chính sách bảo mật</Link>
-          <Link href={localizedHref(locale, '/terms')}>Điều khoản sử dụng</Link>
-        </nav>
-        <p className={styles.footerNote}>
-          PhuQuocHub — dữ liệu bản đồ ©{' '}
-          <a href="https://www.openstreetmap.org/copyright" rel="noreferrer noopener" target="_blank">
-            OpenStreetMap
-          </a>{' '}
-          contributors
-        </p>
+    <footer className={styles.footerV2}>
+      <div className={styles.footerV2Inner}>
+        <div>
+          <p className={styles.footerGroupTitle}>{nav.footerExploreTitle}</p>
+          <nav className={styles.footerGroupLinks} aria-label={nav.footerExploreTitle}>
+            {nav.footerExploreItems.map((item) => (
+              <Link key={item.href} href={localizedHref(locale, item.href)}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <div>
+          <p className={styles.footerGroupTitle}>{nav.footerAboutTitle}</p>
+          <nav className={styles.footerGroupLinks} aria-label={nav.footerAboutTitle}>
+            <Link href={localizedHref(locale, '/about')}>{legal.about}</Link>
+            <Link href={localizedHref(locale, '/contact')}>{legal.contact}</Link>
+            <Link href={localizedHref(locale, '/privacy')}>{legal.privacy}</Link>
+            <Link href={localizedHref(locale, '/terms')}>{legal.terms}</Link>
+          </nav>
+        </div>
+
+        <div>
+          <p className={styles.footerGroupTitle}>{nav.footerLanguageTitle}</p>
+          <nav className={styles.footerGroupLinks} aria-label={nav.footerLanguageTitle}>
+            <Link href={localizedHref('vi', '/')} lang="vi" hrefLang="vi">
+              Tiếng Việt
+            </Link>
+            <Link href={localizedHref('en', '/')} lang="en" hrefLang="en">
+              English
+            </Link>
+          </nav>
+        </div>
       </div>
+
+      <p className={styles.footerBottom}>
+        PhuQuocHub —{' '}
+        {locale === 'en' ? 'map data ©' : 'dữ liệu bản đồ ©'}{' '}
+        <a href="https://www.openstreetmap.org/copyright" rel="noreferrer noopener" target="_blank">
+          OpenStreetMap
+        </a>{' '}
+        contributors
+      </p>
     </footer>
   );
 }

@@ -3,13 +3,18 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { HOTEL_SORT_VALUES, type HotelSort } from './types';
 import { useLocale } from '@/lib/LocaleContext';
-import { localizedHref } from '@/lib/locale';
+import { localizedHref, type Locale } from '@/lib/locale';
+import { COMMON_SORT_LABELS, getFilterChrome } from '@/lib/filters.copy';
 import styles from '@/components/ui/ui.module.css';
 
-const SORT_LABELS: Record<HotelSort, string> = {
-  rating_desc: 'Đánh giá cao nhất',
-  name_asc: 'Tên A → Z',
+const SORT_LABELS: Record<Locale, Record<HotelSort, string>> = {
+  vi: { rating_desc: COMMON_SORT_LABELS.vi.rating_desc, name_asc: COMMON_SORT_LABELS.vi.name_asc },
+  en: { rating_desc: COMMON_SORT_LABELS.en.rating_desc, name_asc: COMMON_SORT_LABELS.en.name_asc },
 };
+
+const RESULT_UNIT: Record<Locale, string> = { vi: 'khách sạn', en: 'hotels' };
+const STARS_UNIT: Record<Locale, string> = { vi: 'sao', en: 'stars' };
+const STARS_FIELD_LABEL: Record<Locale, string> = { vi: 'Hạng sao', en: 'Star rating' };
 
 interface Props {
   total: number;
@@ -22,6 +27,7 @@ export function HotelFilters({ total }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locale = useLocale();
+  const chrome = getFilterChrome(locale);
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -38,7 +44,7 @@ export function HotelFilters({ total }: Props) {
     <div className={styles.toolbar}>
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="hotel-sort">
-          Sắp xếp
+          {chrome.sortLabel}
         </label>
         <select
           id="hotel-sort"
@@ -48,7 +54,7 @@ export function HotelFilters({ total }: Props) {
         >
           {HOTEL_SORT_VALUES.map((v) => (
             <option key={v} value={v}>
-              {SORT_LABELS[v]}
+              {SORT_LABELS[locale][v]}
             </option>
           ))}
         </select>
@@ -56,7 +62,7 @@ export function HotelFilters({ total }: Props) {
 
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="hotel-stars">
-          Hạng sao
+          {STARS_FIELD_LABEL[locale]}
         </label>
         <select
           id="hotel-stars"
@@ -64,16 +70,18 @@ export function HotelFilters({ total }: Props) {
           value={searchParams.get('stars') ?? ''}
           onChange={(e) => updateParam('stars', e.target.value)}
         >
-          <option value="">Tất cả</option>
+          <option value="">{chrome.allOption}</option>
           {[5, 4, 3, 2, 1].map((n) => (
             <option key={n} value={n}>
-              {n} sao
+              {n} {STARS_UNIT[locale]}
             </option>
           ))}
         </select>
       </div>
 
-      <span className={styles.resultCount}>{total} khách sạn</span>
+      <span className={styles.resultCount}>
+        {total} {RESULT_UNIT[locale]}
+      </span>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { HotelFilters } from './HotelFilters';
+import { LocaleProvider } from '@/lib/LocaleContext';
 
 const push = jest.fn();
 let searchParamsString = '';
@@ -46,5 +47,24 @@ describe('HotelFilters', () => {
     render(<HotelFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Hạng sao'), { target: { value: '' } });
     expect(push).toHaveBeenCalledWith('/vi/hotels');
+  });
+
+  // Phase 14 (EN UI completion): trước bản này, "Sắp xếp"/"Hạng sao"/"Tất cả" là chuỗi tiếng
+  // Việt cứng — hiển thị y nguyên trên /en/hotels dù toàn bộ phần còn lại của trang đã là tiếng
+  // Anh. Bài test này khoá đúng bản dịch, không chỉ "không tiếng Việt".
+  it('locale="en" → toàn bộ nhãn/kết quả dùng bản dịch tiếng Anh, điều hướng vẫn tới /en/hotels', () => {
+    render(
+      <LocaleProvider locale="en">
+        <HotelFilters total={12} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('12 hotels')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('rating_desc');
+    expect(screen.getByLabelText('Star rating')).toHaveValue('');
+    expect(screen.getByText('Highest rated')).toBeInTheDocument();
+    expect(screen.getByText('5 stars')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'name_asc' } });
+    expect(push).toHaveBeenCalledWith('/en/hotels?sort=name_asc');
   });
 });

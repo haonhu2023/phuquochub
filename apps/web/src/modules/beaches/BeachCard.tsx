@@ -33,7 +33,7 @@ export function BeachCard({ beach, locale = DEFAULT_LOCALE }: { beach: BeachCard
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
-          {beach.name.charAt(0)}
+          <span>{beach.name.charAt(0)}</span>
         </div>
       )}
 

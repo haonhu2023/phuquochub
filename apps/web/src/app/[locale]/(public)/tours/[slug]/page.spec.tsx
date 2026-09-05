@@ -9,7 +9,7 @@ import {
   type TourStop,
 } from '@/modules/tours/api/tours.api';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
-import TourDetailPage from './page';
+import TourDetailPage, { generateMetadata } from './page';
 
 jest.mock('@/modules/tours/api/tours.api', () => ({
   getTour: jest.fn(),
@@ -107,5 +107,34 @@ describe('TourDetailPage — schedule price trust gate', () => {
       { id: 'sc2', date: '2026-09-02', capacity: null, price: SENTINEL_PRICE + 1, currency: 'VND', valid_from: null, valid_to: null },
     ]);
     expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
+  });
+});
+
+// Phase 20 (EN indexation gate) — cùng chính sách/nguồn sự thật đã kiểm chứng ở
+// places/[slug]/page.spec.tsx: chưa có bản dịch tour nào APPROVED/PUBLIC hôm nay
+// (isEnDetailIndexable khoá `false` toàn cục), nên bản `/en` phải noindex,follow và không quảng
+// cáo hreflang="en" giả; bản `/vi` không bị ảnh hưởng.
+describe('TourDetailPage — generateMetadata EN indexation gate', () => {
+  const t = tour({ slug: 'tour-lan-bien', name: 'Tour lặn biển' });
+
+  it('bản /en chưa đủ điều kiện index → noindex,follow, không hreflang="en"', async () => {
+    mockGetTour.mockResolvedValueOnce(t);
+    const metadataEn = await generateMetadata({
+      params: Promise.resolve({ slug: t.slug, locale: 'en' }),
+    });
+    expect(metadataEn.robots).toEqual({ index: false, follow: true });
+    expect(metadataEn.alternates?.languages?.en).toBeUndefined();
+    expect(metadataEn.alternates?.languages?.['x-default']).toBe(
+      'http://localhost:3000/vi/tours/tour-lan-bien',
+    );
+  });
+
+  it('bản /vi (nguồn gốc) KHÔNG bị noindex', async () => {
+    mockGetTour.mockResolvedValueOnce(t);
+    const metadataVi = await generateMetadata({
+      params: Promise.resolve({ slug: t.slug, locale: 'vi' }),
+    });
+    expect(metadataVi.robots).toBeUndefined();
+    expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/tours/tour-lan-bien');
   });
 });

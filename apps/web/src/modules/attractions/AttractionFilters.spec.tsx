@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { AttractionFilters } from './AttractionFilters';
+import { LocaleProvider } from '@/lib/LocaleContext';
 
 const push = jest.fn();
 let searchParamsString = '';
@@ -45,5 +46,23 @@ describe('AttractionFilters', () => {
     render(<AttractionFilters total={0} />);
     fireEvent.change(screen.getByLabelText('Mức giá'), { target: { value: '' } });
     expect(push).toHaveBeenCalledWith('/vi/attractions');
+  });
+
+  // Phase 14 (EN UI completion): "Sắp xếp"/"Khu vực"/"Mức giá"/"Tất cả" đều là chrome tiếng Việt
+  // cứng trước bản này — khoá đúng bản dịch tiếng Anh (ward name giữ nguyên, là danh từ riêng).
+  it('locale="en" → toàn bộ nhãn/kết quả dùng bản dịch tiếng Anh, điều hướng vẫn tới /en/attractions', () => {
+    render(
+      <LocaleProvider locale="en">
+        <AttractionFilters total={7} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('7 attractions')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort by')).toHaveValue('rating_desc');
+    expect(screen.getByLabelText('Area')).toHaveValue('');
+    expect(screen.getByLabelText('Price')).toHaveValue('');
+    expect(screen.getByText('Newest first')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'name_asc' } });
+    expect(push).toHaveBeenCalledWith('/en/attractions?sort=name_asc');
   });
 });

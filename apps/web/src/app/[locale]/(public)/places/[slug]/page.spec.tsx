@@ -324,18 +324,44 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
         expect(metadata.description).not.toBe('Khám phá công viên chủ đề lớn nhất Việt Nam, hàng đầu châu Á.');
       });
 
-      it('canonical vẫn locale-prefixed đúng bất kể có forward locale vào getPlace hay không (không regression PR A)', async () => {
+      // SEO v2: canonical giờ là URL ĐẦY ĐỦ (buildRouteAlternates/getSiteUrl), không còn path
+      // tương đối — khớp yêu cầu "test actual rendered <head> output" (Phase 18), đã xác minh
+      // trực tiếp qua trình duyệt trên local staging.
+      it('canonical vẫn locale-prefixed đúng (URL đầy đủ) bất kể có forward locale vào getPlace hay không (không regression PR A)', async () => {
         mockGetPlace.mockResolvedValueOnce(enPlace);
         const metadataEn = await generateMetadata({
           params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
         });
-        expect(metadataEn.alternates?.canonical).toBe('/en/places/vinwonders-phu-quoc');
+        expect(metadataEn.alternates?.canonical).toBe('http://localhost:3000/en/places/vinwonders-phu-quoc');
 
         mockGetPlace.mockResolvedValueOnce(viPlace);
         const metadataVi = await generateMetadata({
           params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }),
         });
-        expect(metadataVi.alternates?.canonical).toBe('/vi/places/vinwonders-phu-quoc');
+        expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/places/vinwonders-phu-quoc');
+      });
+
+      // Phase 20 (EN indexation gate): chưa có bản dịch EN nào được duyệt cho BẤT KỲ place nào
+      // hôm nay (isEnDetailIndexable khoá `false` toàn cục, xem lib/seo.ts) — bản `/en` phải
+      // noindex,follow và không quảng cáo hreflang="en" giả; bản `/vi` không bị ảnh hưởng.
+      it('Phase 20: bản /en chưa đủ điều kiện index → noindex,follow, không hreflang="en"', async () => {
+        mockGetPlace.mockResolvedValueOnce(enPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.robots).toEqual({ index: false, follow: true });
+        expect(metadataEn.alternates?.languages?.en).toBeUndefined();
+        expect(metadataEn.alternates?.languages?.['x-default']).toBe(
+          'http://localhost:3000/vi/places/vinwonders-phu-quoc',
+        );
+      });
+
+      it('Phase 20: bản /vi (nguồn gốc) KHÔNG bị noindex', async () => {
+        mockGetPlace.mockResolvedValueOnce(viPlace);
+        const metadataVi = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }),
+        });
+        expect(metadataVi.robots).toBeUndefined();
       });
     });
 
