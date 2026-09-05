@@ -12,6 +12,21 @@ import placesStyles from '@/modules/places/places.module.css';
 // Copy (`hub-pages.copy.ts`) chỉ nói đúng những gì trang này làm được: liệt kê và lọc. KHÔNG hứa
 // hẹn về điều kiện tắm biển, cứu hộ, tiện ích hay thời điểm đẹp nhất — schema không có dữ liệu nào
 // cho những điều đó.
+const EMPTY_COPY: Record<Locale, { filteredTitle: string; filteredBody: string; emptyTitle: string; emptyBody: string }> = {
+  vi: {
+    filteredTitle: 'Không có bãi biển phù hợp',
+    filteredBody: 'Không tìm thấy bãi biển khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.',
+    emptyTitle: 'Chưa có bãi biển nào',
+    emptyBody: 'Dữ liệu bãi biển đang được cập nhật. Vui lòng quay lại sau.',
+  },
+  en: {
+    filteredTitle: 'No matching beaches',
+    filteredBody: 'No beaches match the selected filters. Try clearing some filters or picking different criteria.',
+    emptyTitle: 'No beaches yet',
+    emptyBody: 'Beach data is being added. Please check back soon.',
+  },
+};
+
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -94,13 +109,9 @@ export default async function BeachesPage({ params, searchParams }: Props) {
       {beaches.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {hasFilter ? 'Không có bãi biển phù hợp' : 'Chưa có bãi biển nào'}
+            {hasFilter ? EMPTY_COPY[locale].filteredTitle : EMPTY_COPY[locale].emptyTitle}
           </p>
-          <p>
-            {hasFilter
-              ? 'Không tìm thấy bãi biển khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.'
-              : 'Dữ liệu bãi biển đang được cập nhật. Vui lòng quay lại sau.'}
-          </p>
+          <p>{hasFilter ? EMPTY_COPY[locale].filteredBody : EMPTY_COPY[locale].emptyBody}</p>
         </div>
       ) : (
         <>
@@ -114,6 +125,7 @@ export default async function BeachesPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/beaches')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

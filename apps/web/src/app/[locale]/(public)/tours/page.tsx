@@ -14,6 +14,21 @@ import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
+const EMPTY_COPY: Record<Locale, { filteredTitle: string; filteredBody: string; emptyTitle: string; emptyBody: string }> = {
+  vi: {
+    filteredTitle: 'Không có tour phù hợp',
+    filteredBody: 'Không tìm thấy tour khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.',
+    emptyTitle: 'Chưa có tour nào',
+    emptyBody: 'Dữ liệu tour đang được cập nhật. Vui lòng quay lại sau.',
+  },
+  en: {
+    filteredTitle: 'No matching tours',
+    filteredBody: 'No tours match the selected filters. Try clearing some filters or picking different criteria.',
+    emptyTitle: 'No tours yet',
+    emptyBody: 'Tour data is being added. Please check back soon.',
+  },
+};
+
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 // Chặn trên cho `max_duration_minutes` đọc từ URL: 43200 phút = 30 ngày, đủ rộng cho mọi tour có
@@ -121,13 +136,9 @@ export default async function ToursPage({ params, searchParams }: Props) {
       {tours.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {hasFilter ? 'Không có tour phù hợp' : 'Chưa có tour nào'}
+            {hasFilter ? EMPTY_COPY[locale].filteredTitle : EMPTY_COPY[locale].emptyTitle}
           </p>
-          <p>
-            {hasFilter
-              ? 'Không tìm thấy tour khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.'
-              : 'Dữ liệu tour đang được cập nhật. Vui lòng quay lại sau.'}
-          </p>
+          <p>{hasFilter ? EMPTY_COPY[locale].filteredBody : EMPTY_COPY[locale].emptyBody}</p>
         </div>
       ) : (
         <>
@@ -141,6 +152,7 @@ export default async function ToursPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/tours')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

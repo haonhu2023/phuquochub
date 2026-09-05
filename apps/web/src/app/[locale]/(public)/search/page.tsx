@@ -16,12 +16,22 @@ const SEARCH_COPY = {
     description: 'Tìm kiếm địa điểm ở Phú Quốc — lọc theo danh mục, khu vực và mức giá.',
     emptyPrompt: 'Nhập từ khoá để bắt đầu tìm kiếm',
     emptyHint: 'Ví dụ: "bai sao", "dinh cau" — tìm kiếm không phân biệt dấu.',
+    noResultsFilteredTitle: 'Không có kết quả phù hợp',
+    noResultsTitle: 'Không có kết quả',
+    noResultsFiltered: (q: string) =>
+      `Không tìm thấy kết quả khớp “${q}” với bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc đổi từ khoá.`,
+    noResults: (q: string) => `Không tìm thấy kết quả cho “${q}”.`,
   },
   en: {
     title: 'Search',
     description: 'Search places in Phú Quốc — filter by category, area and price.',
     emptyPrompt: 'Enter a keyword to start searching',
     emptyHint: 'Example: "bai sao", "dinh cau" — search ignores Vietnamese diacritics.',
+    noResultsFilteredTitle: 'No matching results',
+    noResultsTitle: 'No results',
+    noResultsFiltered: (q: string) =>
+      `No results match "${q}" with the selected filters. Try clearing some filters or changing your keyword.`,
+    noResults: (q: string) => `No results found for "${q}".`,
   },
 } as const;
 
@@ -136,13 +146,9 @@ export default async function SearchPage({ params, searchParams }: Props) {
       {results.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {hasFilter ? 'Không có kết quả phù hợp' : 'Không có kết quả'}
+            {hasFilter ? copy.noResultsFilteredTitle : copy.noResultsTitle}
           </p>
-          <p>
-            {hasFilter
-              ? `Không tìm thấy kết quả khớp “${q}” với bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc đổi từ khoá.`
-              : `Không tìm thấy kết quả cho “${q}”.`}
-          </p>
+          <p>{hasFilter ? copy.noResultsFiltered(q) : copy.noResults(q)}</p>
         </div>
       ) : (
         <>
@@ -161,6 +167,7 @@ export default async function SearchPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/search')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

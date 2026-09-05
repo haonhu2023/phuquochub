@@ -9,6 +9,21 @@ import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
+const EMPTY_COPY: Record<Locale, { filteredTitle: string; filteredBody: string; emptyTitle: string; emptyBody: string }> = {
+  vi: {
+    filteredTitle: 'Không có điểm tham quan phù hợp',
+    filteredBody: 'Không tìm thấy điểm tham quan khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.',
+    emptyTitle: 'Chưa có điểm tham quan nào',
+    emptyBody: 'Dữ liệu điểm tham quan đang được cập nhật. Vui lòng quay lại sau.',
+  },
+  en: {
+    filteredTitle: 'No matching attractions',
+    filteredBody: 'No attractions match the selected filters. Try clearing some filters or picking different criteria.',
+    emptyTitle: 'No attractions yet',
+    emptyBody: 'Attraction data is being added. Please check back soon.',
+  },
+};
+
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -93,13 +108,9 @@ export default async function AttractionsPage({ params, searchParams }: Props) {
       {attractions.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {hasFilter ? 'Không có điểm tham quan phù hợp' : 'Chưa có điểm tham quan nào'}
+            {hasFilter ? EMPTY_COPY[locale].filteredTitle : EMPTY_COPY[locale].emptyTitle}
           </p>
-          <p>
-            {hasFilter
-              ? 'Không tìm thấy điểm tham quan khớp bộ lọc đã chọn. Thử bỏ bớt bộ lọc hoặc chọn tiêu chí khác.'
-              : 'Dữ liệu điểm tham quan đang được cập nhật. Vui lòng quay lại sau.'}
-          </p>
+          <p>{hasFilter ? EMPTY_COPY[locale].filteredBody : EMPTY_COPY[locale].emptyBody}</p>
         </div>
       ) : (
         <>
@@ -113,6 +124,7 @@ export default async function AttractionsPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/attractions')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

@@ -9,6 +9,21 @@ import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
+const EMPTY_COPY: Record<Locale, { filteredTitle: string; filteredBody: string; emptyTitle: string; emptyBody: string }> = {
+  vi: {
+    filteredTitle: 'Không có khách sạn phù hợp',
+    filteredBody: 'Không tìm thấy khách sạn khớp hạng sao đã chọn. Thử bỏ bộ lọc hoặc chọn hạng khác.',
+    emptyTitle: 'Chưa có khách sạn nào',
+    emptyBody: 'Dữ liệu khách sạn đang được cập nhật. Vui lòng quay lại sau.',
+  },
+  en: {
+    filteredTitle: 'No matching hotels',
+    filteredBody: "No hotels match the selected star rating. Try clearing the filter or picking a different one.",
+    emptyTitle: 'No hotels yet',
+    emptyBody: 'Hotel data is being added. Please check back soon.',
+  },
+};
+
 const PAGE_SIZE = 20;
 
 interface Props {
@@ -77,13 +92,9 @@ export default async function HotelsPage({ params, searchParams }: Props) {
       {hotels.length === 0 ? (
         <div className={placesStyles.state}>
           <p className={placesStyles.stateTitle}>
-            {stars ? 'Không có khách sạn phù hợp' : 'Chưa có khách sạn nào'}
+            {stars ? EMPTY_COPY[locale].filteredTitle : EMPTY_COPY[locale].emptyTitle}
           </p>
-          <p>
-            {stars
-              ? 'Không tìm thấy khách sạn khớp hạng sao đã chọn. Thử bỏ bộ lọc hoặc chọn hạng khác.'
-              : 'Dữ liệu khách sạn đang được cập nhật. Vui lòng quay lại sau.'}
-          </p>
+          <p>{stars ? EMPTY_COPY[locale].filteredBody : EMPTY_COPY[locale].emptyBody}</p>
         </div>
       ) : (
         <>
@@ -97,6 +108,7 @@ export default async function HotelsPage({ params, searchParams }: Props) {
             totalPages={meta.totalPages}
             basePath={localizedHref(locale, '/hotels')}
             baseQuery={baseQuery.toString()}
+            locale={locale}
           />
         </>
       )}

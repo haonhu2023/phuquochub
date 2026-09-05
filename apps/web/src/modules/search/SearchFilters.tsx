@@ -4,15 +4,21 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { Category } from '@/modules/categories/api/categories.api';
 import { PHU_QUOC_WARDS } from '@/modules/places/wards';
 import { useLocale } from '@/lib/LocaleContext';
-import { localizedHref } from '@/lib/locale';
+import { localizedHref, type Locale } from '@/lib/locale';
+import { PRICE_RANGE_LABELS, getFilterChrome, type PriceRangeValue } from '@/lib/filters.copy';
 import styles from '@/components/ui/ui.module.css';
 
-const PRICE_RANGE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'free', label: 'Miễn phí' },
-  { value: 'low', label: 'Bình dân' },
-  { value: 'mid', label: 'Tầm trung' },
-  { value: 'high', label: 'Cao cấp' },
-];
+const PRICE_RANGE_VALUES: PriceRangeValue[] = ['free', 'low', 'mid', 'high'];
+
+const CATEGORY_FIELD_LABEL: Record<Locale, string> = { vi: 'Danh mục', en: 'Category' };
+const RESULT_UNIT: Record<Locale, string> = { vi: 'kết quả', en: 'results' };
+
+// `category.name_en` là field THẬT của API `/categories` (không phải bịa) — danh mục là taxonomy
+// nhỏ, cố định, KHÁC với nội dung place/hotel/restaurant/tour (chưa có bản dịch được duyệt).
+// Vẫn fallback về `name_vi` nếu một danh mục cụ thể chưa có `name_en` (API cho phép null).
+function categoryLabel(c: Category, locale: Locale): string {
+  return (locale === 'en' && c.name_en) || c.name_vi;
+}
 
 interface Props {
   total: number;
@@ -27,6 +33,7 @@ export function SearchFilters({ total, categories }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locale = useLocale();
+  const chrome = getFilterChrome(locale);
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -43,7 +50,7 @@ export function SearchFilters({ total, categories }: Props) {
     <div className={styles.toolbar}>
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="search-category">
-          Danh mục
+          {CATEGORY_FIELD_LABEL[locale]}
         </label>
         <select
           id="search-category"
@@ -51,10 +58,10 @@ export function SearchFilters({ total, categories }: Props) {
           value={searchParams.get('category') ?? ''}
           onChange={(e) => updateParam('category', e.target.value)}
         >
-          <option value="">Tất cả</option>
+          <option value="">{chrome.allOption}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name_vi}
+              {categoryLabel(c, locale)}
             </option>
           ))}
         </select>
@@ -62,7 +69,7 @@ export function SearchFilters({ total, categories }: Props) {
 
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="search-ward">
-          Khu vực
+          {chrome.areaLabel}
         </label>
         <select
           id="search-ward"
@@ -70,7 +77,7 @@ export function SearchFilters({ total, categories }: Props) {
           value={searchParams.get('ward') ?? ''}
           onChange={(e) => updateParam('ward', e.target.value)}
         >
-          <option value="">Tất cả</option>
+          <option value="">{chrome.allOption}</option>
           {PHU_QUOC_WARDS.map((w) => (
             <option key={w} value={w}>
               {w}
@@ -81,7 +88,7 @@ export function SearchFilters({ total, categories }: Props) {
 
       <div className={styles.field}>
         <label className={styles.fieldLabel} htmlFor="search-price-range">
-          Mức giá
+          {chrome.priceLabel}
         </label>
         <select
           id="search-price-range"
@@ -89,16 +96,18 @@ export function SearchFilters({ total, categories }: Props) {
           value={searchParams.get('price_range') ?? ''}
           onChange={(e) => updateParam('price_range', e.target.value)}
         >
-          <option value="">Tất cả</option>
-          {PRICE_RANGE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
+          <option value="">{chrome.allOption}</option>
+          {PRICE_RANGE_VALUES.map((v) => (
+            <option key={v} value={v}>
+              {PRICE_RANGE_LABELS[locale][v]}
             </option>
           ))}
         </select>
       </div>
 
-      <span className={styles.resultCount}>{total} kết quả</span>
+      <span className={styles.resultCount}>
+        {total} {RESULT_UNIT[locale]}
+      </span>
     </div>
   );
 }
