@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { getHomeCopy } from './home.copy';
 import styles from './home.module.css';
 
 /**
@@ -11,32 +12,24 @@ import styles from './home.module.css';
  * nó không có trạng thái lỗi/rỗng nào — phần điều hướng chính của trang chủ không bao giờ phụ
  * thuộc vào một lời gọi API có thể hỏng.
  *
- * Danh sách này PHẢI khớp với route thật; thêm mục ở đây mà không có trang tương ứng sẽ tạo liên
- * kết chết.
+ * Danh sách route + nhãn nay sống ở `home.copy.ts` (theo locale) — danh sách PHẢI khớp route thật;
+ * thêm mục mà không có trang tương ứng sẽ tạo liên kết chết.
  */
-const ENTRIES: Array<{ href: string; name: string; hint: string }> = [
-  { href: '/hotels', name: 'Khách sạn', hint: 'Nơi lưu trú' },
-  { href: '/restaurants', name: 'Nhà hàng', hint: 'Ăn uống' },
-  { href: '/tours', name: 'Tour', hint: 'Trải nghiệm có hướng dẫn' },
-  { href: '/attractions', name: 'Điểm tham quan', hint: 'Nơi nên ghé' },
-  { href: '/beaches', name: 'Bãi biển', hint: 'Biển và bờ cát' },
-  { href: '/events', name: 'Sự kiện', hint: 'Đang và sắp diễn ra' },
-];
-
 export function CategoryLinks({ locale }: { locale: Locale }) {
+  const copy = getHomeCopy(locale);
   return (
     <section className={styles.section} aria-labelledby="home-categories-title">
       <div className={styles.sectionHead}>
         <h2 id="home-categories-title" className={styles.sectionTitle}>
-          Bạn đang tìm gì?
+          {copy.categoriesTitle}
         </h2>
         <Link href={localizedHref(locale, '/places')} className={styles.sectionLink}>
-          Tất cả địa điểm →
+          {copy.categoriesAllLink}
         </Link>
       </div>
 
       <div className={styles.categoryGrid}>
-        {ENTRIES.map((entry) => (
+        {copy.categories.map((entry) => (
           <Link key={entry.href} href={localizedHref(locale, entry.href)} className={styles.categoryTile}>
             <span className={styles.categoryName}>{entry.name}</span>
             <span className={styles.categoryHint}>{entry.hint}</span>

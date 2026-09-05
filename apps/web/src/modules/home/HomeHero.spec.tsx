@@ -1,20 +1,29 @@
 /** @jest-environment jsdom */
 import { render, screen } from '@testing-library/react';
 import { HomeHero } from './HomeHero';
+import { getHomeCopy } from './home.copy';
 
 describe('HomeHero', () => {
-  it('có đúng MỘT h1 là tiêu đề trang', () => {
+  it('có đúng MỘT h1 là tiêu đề trang (VI mặc định)', () => {
     render(<HomeHero />);
     const h1s = screen.getAllByRole('heading', { level: 1 });
     expect(h1s).toHaveLength(1);
-    expect(h1s[0]).toHaveTextContent('Khám phá Phú Quốc');
+    expect(h1s[0]).toHaveTextContent(getHomeCopy('vi').title);
   });
 
   it('nêu rõ phạm vi nội dung trong lede', () => {
     render(<HomeHero />);
-    expect(
-      screen.getByText('Tìm địa điểm, khách sạn, nhà hàng, tour và trải nghiệm tại Phú Quốc.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText(getHomeCopy('vi').lede)).toBeInTheDocument();
+  });
+
+  it('có eyebrow định vị sản phẩm phía trên H1', () => {
+    render(<HomeHero />);
+    expect(screen.getByText(getHomeCopy('vi').eyebrow)).toBeInTheDocument();
+  });
+
+  it('có câu tín hiệu tin cậy', () => {
+    render(<HomeHero />);
+    expect(screen.getByText(getHomeCopy('vi').trustSignal)).toBeInTheDocument();
   });
 
   // Tái dùng SearchBox: form GET thật tới /{locale}/search — hoạt động cả khi JS chưa chạy, và
@@ -27,14 +36,17 @@ describe('HomeHero', () => {
     expect(form?.querySelector('input[name="q"]')).toBeInTheDocument();
   });
 
-  it('PR A: dùng đúng locale="en" khi được truyền', () => {
+  it('PR A: dùng đúng locale="en" khi được truyền — cả URL lẫn nội dung', () => {
     const { container } = render(<HomeHero locale="en" />);
     expect(container.querySelector('form')).toHaveAttribute('action', '/en/search');
+    const enCopy = getHomeCopy('en');
+    expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent(enCopy.title);
+    expect(screen.getByText(enCopy.lede)).toBeInTheDocument();
   });
 
   it('ô nhập có nhãn cho trình đọc màn hình và bắt đầu rỗng', () => {
     render(<HomeHero />);
-    const input = screen.getByLabelText('Từ khoá tìm kiếm');
+    const input = screen.getByLabelText(getHomeCopy('vi').searchAriaLabel);
     expect(input).toHaveValue('');
   });
 
@@ -46,6 +58,17 @@ describe('HomeHero', () => {
 
   it('có nút gửi bấm được', () => {
     render(<HomeHero />);
-    expect(screen.getByRole('button', { name: 'Tìm' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: getHomeCopy('vi').searchButton })).toBeInTheDocument();
+  });
+
+  it('mọi lối tắt theo nhu cầu trỏ tới trang duyệt CÓ THẬT, khớp locale', () => {
+    render(<HomeHero locale="en" />);
+    const copy = getHomeCopy('en');
+    for (const shortcut of copy.intentShortcuts) {
+      expect(screen.getByRole('link', { name: shortcut.label })).toHaveAttribute(
+        'href',
+        `/en${shortcut.href}`,
+      );
+    }
   });
 });

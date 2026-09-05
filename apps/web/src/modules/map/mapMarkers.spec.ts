@@ -1,5 +1,12 @@
 /** @jest-environment jsdom */
-import { isValidCoord, buildPopupCard, popupState, clusterElement, placeElement } from './mapMarkers';
+import {
+  isValidCoord,
+  buildPopupCard,
+  popupState,
+  clusterElement,
+  placeElement,
+  setMarkerSelected,
+} from './mapMarkers';
 import type { PlaceDetail } from '@/modules/places/types';
 import type { Category } from '@/modules/categories/api/categories.api';
 
@@ -96,6 +103,44 @@ describe('placeElement — kích hoạt bằng chuột/bàn phím', () => {
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(onKey).toHaveBeenCalledTimes(1);
   });
+
+  // Map/home upgrade (Phase 6.3): thay emoji 📍 bằng SVG pin — không có viền/tương phản trên nền
+  // tile OSM. Test này khoá lại việc "emoji không được quay trở lại", chứ không khoá chi tiết SVG.
+  it('không còn dùng emoji 📍 — marker là SVG pin có viền, tương phản trên mọi nền tile', () => {
+    const el = placeElement('Bãi Sao', jest.fn());
+    expect(el.textContent).not.toBe('📍');
+    expect(el.querySelector('svg')).not.toBeNull();
+  });
+
+  it('aria-current mặc định là false — chưa ở trạng thái đang chọn', () => {
+    const el = placeElement('Bãi Sao', jest.fn());
+    expect(el.getAttribute('aria-current')).not.toBe('true');
+  });
+});
+
+describe('setMarkerSelected — trạng thái đang chọn (Phase 6.3)', () => {
+  it('bật trạng thái chọn → gắn aria-current="true"', () => {
+    const el = placeElement('Bãi Sao', jest.fn());
+    setMarkerSelected(el, true);
+    expect(el.getAttribute('aria-current')).toBe('true');
+  });
+
+  it('tắt trạng thái chọn → aria-current quay lại "false"', () => {
+    const el = placeElement('Bãi Sao', jest.fn());
+    setMarkerSelected(el, true);
+    setMarkerSelected(el, false);
+    expect(el.getAttribute('aria-current')).toBe('false');
+  });
+});
+
+describe('clusterElement — kích thước tăng theo số lượng (Phase 6.4)', () => {
+  it('cụm lớn (>=50) to hơn cụm nhỏ, cả hai đều có trần kích thước hợp lý', () => {
+    const small = clusterElement(3, jest.fn());
+    const big = clusterElement(120, jest.fn());
+    const parse = (v: string) => Number.parseInt(v, 10);
+    expect(parse(big.style.width)).toBeGreaterThan(parse(small.style.width));
+    expect(parse(big.style.width)).toBeLessThanOrEqual(56);
+  });
 });
 
 function detail(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
@@ -161,9 +206,26 @@ describe('buildPopupCard — nội dung popup marker (Phase 4.3)', () => {
     expect(card.textContent).toContain('beach');
   });
 
-  it('không có cover_image_url → không render thẻ <img>', () => {
+  it('không có cover_image_url → không render thẻ <img>, thay bằng placeholder chữ cái đầu', () => {
     const card = buildPopupCard(detail({ cover_image_url: null }));
     expect(card.querySelector('img')).toBeNull();
+    const placeholder = card.querySelector('[aria-hidden="true"]');
+    expect(placeholder?.textContent).toBe('B'); // "Bãi Sao" → chữ cái đầu
+  });
+
+  it('có short_description công khai → hiển thị trong popup', () => {
+    const card = buildPopupCard(detail({ short_description: 'Bãi biển đẹp nhất đảo.' }));
+    expect(card.textContent).toContain('Bãi biển đẹp nhất đảo.');
+  });
+
+  it('không có short_description → không render dòng mô tả (không suy diễn nội dung)', () => {
+    const card = buildPopupCard(detail({ short_description: null }));
+    expect(card.querySelector('.popupDesc')).toBeNull();
+  });
+
+  it('locale=en → link "Xem chi tiết" đổi thành "View details"', () => {
+    const card = buildPopupCard(detail(), undefined, 'en');
+    expect(card.querySelector('a')?.textContent).toContain('View details');
   });
 
   it('có cover_image_url → render <img> với src/alt đúng', () => {

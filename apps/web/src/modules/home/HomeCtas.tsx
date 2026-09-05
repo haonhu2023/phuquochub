@@ -1,27 +1,37 @@
 import Link from 'next/link';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { getHomeCopy } from './home.copy';
 import styles from './home.module.css';
 
 /**
  * Lối vào bản đồ. CHỈ một liên kết tới `/map` — KHÔNG nhúng MapLibre vào trang chủ: bundle bản đồ
  * là thứ nặng nhất trong ứng dụng và phần lớn khách vào trang chủ để tìm kiếm/duyệt, không phải để
  * xem bản đồ ngay. Trang `/map` đã có sẵn toàn bộ trải nghiệm đó.
+ *
+ * `.mapPreview` (map/home upgrade) là một minh hoạ CSS thuần — dải màu + vài chấm định vị tĩnh gợi
+ * hình bản đồ — KHÔNG phải bản đồ thật, để khối này không còn là một dòng chữ trơn mà vẫn không hề
+ * tải MapLibre hay bất kỳ ảnh nặng nào trên trang chủ.
  */
 export function MapCta({ locale }: { locale: Locale }) {
+  const copy = getHomeCopy(locale);
   return (
     <section className={styles.section} aria-labelledby="home-map-title">
-      <div className={styles.cta}>
-        <div className={styles.ctaText}>
-          <h2 id="home-map-title" className={styles.ctaTitle}>
-            Xem trên bản đồ
-          </h2>
-          <p className={styles.ctaDesc}>
-            Duyệt địa điểm theo vị trí trên bản đồ Phú Quốc.
-          </p>
+      <div className={styles.mapCta}>
+        <div className={styles.mapPreview} aria-hidden="true">
+          <span className={`${styles.mapPin} ${styles.mapPinA}`} />
+          <span className={`${styles.mapPin} ${styles.mapPinB}`} />
+          <span className={`${styles.mapPin} ${styles.mapPinC}`} />
         </div>
-        <Link href={localizedHref(locale, '/map')} className={styles.ctaLink}>
-          Mở bản đồ
-        </Link>
+        <div className={styles.ctaText}>
+          <p className={styles.ctaEyebrow}>{copy.mapEyebrow}</p>
+          <h2 id="home-map-title" className={styles.ctaTitle}>
+            {copy.mapTitle}
+          </h2>
+          <p className={styles.ctaDesc}>{copy.mapDesc}</p>
+          <Link href={localizedHref(locale, '/map')} className={styles.ctaLink}>
+            {copy.mapLink}
+          </Link>
+        </div>
       </div>
     </section>
   );
@@ -33,20 +43,21 @@ export function MapCta({ locale }: { locale: Locale }) {
  * (`/dashboard/business-claims/new`); luồng này giờ đã đủ đầu-cuối (gửi → kiểm duyệt viên duyệt →
  * chủ cơ sở quản lý được địa điểm).
  */
-export function OwnerCta() {
+export function OwnerCta({ locale }: { locale: Locale }) {
+  const copy = getHomeCopy(locale);
   return (
     <section className={styles.section} aria-labelledby="home-owner-title">
       <div className={`${styles.cta} ${styles.ctaSecondary}`}>
         <div className={styles.ctaText}>
           <h2 id="home-owner-title" className={styles.ctaTitle}>
-            Bạn là chủ cơ sở?
+            {copy.ownerTitle}
           </h2>
-          <p className={styles.ctaDesc}>
-            Xác nhận quyền quản lý để cập nhật thông tin, giờ mở cửa và liên hệ của cơ sở.
-          </p>
+          <p className={styles.ctaDesc}>{copy.ownerDesc}</p>
         </div>
+        {/* KHÔNG qua localizedHref: (dashboard) nằm NGOÀI segment [locale] (app/(dashboard)/dashboard/…),
+            không có prefix /vi hoặc /en — bọc localizedHref ở đây sẽ tạo liên kết chết. */}
         <Link href="/dashboard/business-claims/new" className={styles.ctaLink}>
-          Xác nhận quyền quản lý
+          {copy.ownerLink}
         </Link>
       </div>
     </section>
