@@ -19,12 +19,14 @@ REPO_ROOT=$(dirname "$(dirname "$SCRIPT_DIR")")
 LIB="$REPO_ROOT/scripts/lib/release-manifest.sh"
 SYNC="$REPO_ROOT/scripts/sync-release-source.sh"
 DEPLOY="$REPO_ROOT/scripts/deploy.sh"
+CREATE="$REPO_ROOT/scripts/create-release-archive.sh"
 
 PASS=0; FAIL=0
 pass() { echo "  ok: $*"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $*"; FAIL=$((FAIL + 1)); }
 [ -f "$LIB" ] || { echo "FATAL: $LIB not found"; exit 1; }
 [ -f "$SYNC" ] || { echo "FATAL: $SYNC not found"; exit 1; }
+[ -f "$CREATE" ] || { echo "FATAL: $CREATE not found"; exit 1; }
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 
@@ -154,6 +156,98 @@ BUILD_CONTEXT_REFS=$(grep -c 'docker build .*"\$PROJECT_DIR"' "$DEPLOY")
 [ "$COMPOSE_REFS" -ge 1 ] && [ "$BUILD_CONTEXT_REFS" -eq 2 ] \
   && pass "migrate (via compose) and both api/web docker builds all resolve to the same \$PROJECT_DIR" \
   || fail "found $COMPOSE_REFS compose ref(s) and $BUILD_CONTEXT_REFS build context ref(s), expected a single shared root"
+
+echo "== 11. create-release-archive.sh: top-level migration files are counted, nested __tests__ specs are not =="
+# Real generator bug (2026-09-05): `git ls-tree -r` + a regex anchored only on the filename
+# recursed into every subdirectory, so migrations/__tests__/<timestamp>-Name.spec.ts files matched
+# the same "/<digits>-name.ts" pattern as real top-level migrations and were double-counted (85 vs
+# the true 53). A grep-only test on the script source cannot catch this -- it requires actually
+# running create-release-archive.sh against a real commit and checking the number it writes.
+#
+# create-release-archive.sh always operates on the repo containing itself (`cd "$REPO_ROOT"`
+# derived from $0's own location) -- there is no argument to point it at a different working tree.
+# To test it without touching this real repository's branches/history, build a throwaway git
+# repository under $TMP and run the script with GIT_DIR/GIT_WORK_TREE pointed at it: `git
+# rev-parse`, `git archive` and `git ls-tree` all honor those environment variables regardless of
+# the shell's cwd, so the script's own git invocations transparently operate on the fixture instead
+# of the real repository. The fixture commit/objects are discarded with $TMP; nothing is written to
+# this repo's refs.
+if ! command -v git >/dev/null 2>&1; then
+  echo "  skip: git not available"
+else
+  FIXTURE="$TMP/fixture-repo"
+  MIG_DIR="$FIXTURE/apps/api/src/core/database/migrations"
+  mkdir -p "$MIG_DIR/__tests__"
+  # 3 real top-level migrations (must be counted)
+  echo '// fixture migration 1' > "$MIG_DIR/1720000000000-Fake1.ts"
+  echo '// fixture migration 2' > "$MIG_DIR/1720000100000-Fake2.ts"
+  echo '// fixture migration 3' > "$MIG_DIR/1720000200000-Fake3.ts"
+  # 2 nested unit-test specs, deliberately named to match the OLD buggy regex too (timestamp-prefixed,
+  # ends in .ts) -- these must NOT be counted.
+  echo '// fixture spec 1' > "$MIG_DIR/__tests__/1720000000000-Fake1.spec.ts"
+  echo '// fixture spec 2' > "$MIG_DIR/__tests__/1720000100000-Fake2.spec.ts"
+
+  git -C "$FIXTURE" init -q
+  git -C "$FIXTURE" config user.email "test@example.com"
+  git -C "$FIXTURE" config user.name "Release Manifest Test"
+  git -C "$FIXTURE" config commit.gpgsign false
+  git -C "$FIXTURE" add -A
+  git -C "$FIXTURE" commit -q -m "fixture: 3 top-level migrations + 2 nested __tests__ specs"
+  FIXTURE_SHA=$(git -C "$FIXTURE" rev-parse HEAD)
+
+  EXPECTED_TOP_LEVEL=3
+
+  # Prove this fixture actually exercises the bug: the OLD recursive-regex approach must disagree
+  # with the true top-level count on these exact git objects, or this test would prove nothing.
+  OLD_STYLE_COUNT=$(GIT_DIR="$FIXTURE/.git" git ls-tree -r --name-only "$FIXTURE_SHA" \
+    -- apps/api/src/core/database/migrations | grep -cE '/[0-9]+-[^/]+\.ts$')
+  [ "$OLD_STYLE_COUNT" != "$EXPECTED_TOP_LEVEL" ] \
+    && pass "fixture reproduces the bug: old recursive regex would have counted $OLD_STYLE_COUNT, not $EXPECTED_TOP_LEVEL (this test would have failed under the old code)" \
+    || fail "fixture does not exercise the bug -- old-style count ($OLD_STYLE_COUNT) already equals the true count, test proves nothing"
+
+  ARCHIVE_OUT="$TMP/archive-out-11"
+  mkdir -p "$ARCHIVE_OUT"
+  CREATE_LOG=$(GIT_DIR="$FIXTURE/.git" GIT_WORK_TREE="$FIXTURE" bash "$CREATE" "$FIXTURE_SHA" "$ARCHIVE_OUT" 2>&1)
+  CREATE_ST=$?
+  GENERATED_MANIFEST="$ARCHIVE_OUT/release-manifest-$FIXTURE_SHA.txt"
+  GENERATED_ARCHIVE="$ARCHIVE_OUT/phuquochub-source-$FIXTURE_SHA.tar.gz"
+
+  [ "$CREATE_ST" -eq 0 ] && pass "create-release-archive.sh exits 0 against the fixture commit" \
+    || fail "create-release-archive.sh exited $CREATE_ST: $CREATE_LOG"
+  [ -f "$GENERATED_MANIFEST" ] && pass "manifest file was written" || fail "manifest file missing: $CREATE_LOG"
+
+  GENERATED_COUNT=$(awk -F= '$1=="migration_count"{print $2}' "$GENERATED_MANIFEST" 2>/dev/null)
+  [ "$GENERATED_COUNT" = "$EXPECTED_TOP_LEVEL" ] \
+    && pass "generator counts exactly the $EXPECTED_TOP_LEVEL top-level migration file(s), excluding the 2 nested __tests__ specs" \
+    || fail "generator wrote migration_count=$GENERATED_COUNT, expected $EXPECTED_TOP_LEVEL"
+
+  echo "== 12. sync-release-source.sh accepts the archive+manifest create-release-archive.sh just generated =="
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "  skip: rsync not available on this machine"
+  elif [ ! -f "$GENERATED_ARCHIVE" ] || [ ! -f "$GENERATED_MANIFEST" ]; then
+    fail "cannot run sync happy-path test -- generator did not produce both files"
+  else
+    TARGET12="$TMP/target12"
+    mkdir -p "$TARGET12"
+    SYNC_OUT=$(bash "$SYNC" "$GENERATED_ARCHIVE" "$GENERATED_MANIFEST" "$TARGET12" 2>&1)
+    SYNC_ST=$?
+    [ "$SYNC_ST" -eq 0 ] && pass "sync-release-source.sh accepts the generator's own archive+manifest (exit 0)" \
+      || fail "sync-release-source.sh refused the generator's own output (exit $SYNC_ST): $SYNC_OUT"
+
+    ACTUAL_ON_DISK=$(find "$TARGET12/apps/api/src/core/database/migrations" -maxdepth 1 -name '*.ts' 2>/dev/null | wc -l | tr -d ' ')
+    [ "$ACTUAL_ON_DISK" = "$EXPECTED_TOP_LEVEL" ] \
+      && pass "synced tree has exactly $EXPECTED_TOP_LEVEL top-level migration file(s) on disk" \
+      || fail "synced tree has $ACTUAL_ON_DISK top-level migration file(s), expected $EXPECTED_TOP_LEVEL"
+    [ -d "$TARGET12/apps/api/src/core/database/migrations/__tests__" ] \
+      && pass "nested __tests__/ directory was still applied to the tree (excluded from the COUNT, not from the release)" \
+      || fail "__tests__/ directory missing from synced tree"
+
+    VERIFY_OUT=$( ( . "$LIB"; release_manifest_verify "$TARGET12" "$FIXTURE_SHA" ) 2>&1 )
+    VERIFY_ST=$?
+    [ "$VERIFY_ST" -eq 0 ] && pass "release_manifest_verify passes on the tree sync just wrote" \
+      || fail "release_manifest_verify failed on the freshly synced tree: $VERIFY_OUT"
+  fi
+fi
 
 echo
 echo "== summary: $PASS passed, $FAIL failed =="

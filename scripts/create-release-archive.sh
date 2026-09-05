@@ -28,8 +28,18 @@ MANIFEST="$OUT_DIR/release-manifest-$SHA.txt"
 git -c core.autocrlf=false archive --format=tar.gz -o "$ARCHIVE" "$SHA"
 
 ARCHIVE_SHA256=$(sha256sum "$ARCHIVE" | awk '{print $1}')
-MIGRATION_COUNT=$(git ls-tree -r --name-only "$SHA" -- apps/api/src/core/database/migrations \
-  | grep -cE '/[0-9]+-[^/]+\.ts$')
+# Must count the SAME thing scripts/sync-release-source.sh and scripts/lib/release-manifest.sh
+# count: "*.ts files directly under migrations/", never anything in a nested directory (e.g.
+# migrations/__tests__/*.spec.ts). Those two scripts express this on a real checkout via
+# `find -maxdepth 1 -name '*.ts'`; there is no working tree here (SHA can be any historical
+# commit), so `git ls-tree --name-only "$SHA:<dir>"` is the git-native equivalent -- addressing the
+# tree object at that path lists only its immediate children, never descending into subdirectories,
+# regardless of what those subdirectories are named. (The previous `git ls-tree -r` + regex
+# recursed into every subdirectory and matched nested __tests__/*.spec.ts files too, since their
+# timestamp-prefixed names satisfy the same "/<digits>-name.ts" pattern -- see the 85-vs-53
+# discrepancy this fixes.)
+MIGRATION_COUNT=$(git ls-tree --name-only "$SHA:apps/api/src/core/database/migrations" \
+  | grep -cE '\.ts$')
 
 {
   echo "release_sha=$SHA"
