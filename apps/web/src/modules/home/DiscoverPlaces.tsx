@@ -3,6 +3,7 @@ import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
 import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { getHomeCopy } from './home.copy';
 import placeStyles from '@/modules/places/places.module.css';
 import styles from './home.module.css';
 
@@ -24,6 +25,7 @@ export const DISCOVER_LIMIT = 8;
  * không được làm hỏng cả trang chủ.
  */
 export async function DiscoverPlaces({ locale }: { locale: Locale }) {
+  const copy = getHomeCopy(locale);
   let places: PlaceCardType[];
   try {
     places = await listPlaces({ limit: DISCOVER_LIMIT });
@@ -31,8 +33,7 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
     return (
       <Section locale={locale}>
         <p className={styles.sectionError} role="status">
-          Hiện chưa tải được danh sách địa điểm. Bạn vẫn có thể tìm kiếm hoặc duyệt theo danh mục ở
-          trên.
+          {copy.discoverError}
         </p>
       </Section>
     );
@@ -42,8 +43,8 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
     return (
       <Section locale={locale}>
         <div className={placeStyles.state}>
-          <p className={placeStyles.stateTitle}>Chưa có địa điểm nào</p>
-          <p>Nội dung đang được cập nhật. Vui lòng quay lại sau.</p>
+          <p className={placeStyles.stateTitle}>{copy.discoverEmptyTitle}</p>
+          <p>{copy.discoverEmptyBody}</p>
         </div>
       </Section>
     );
@@ -62,14 +63,15 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
 }
 
 function Section({ children, locale }: { children: React.ReactNode; locale: Locale }) {
+  const copy = getHomeCopy(locale);
   return (
     <section className={styles.section} aria-labelledby="home-discover-title">
       <div className={styles.sectionHead}>
         <h2 id="home-discover-title" className={styles.sectionTitle}>
-          Địa điểm nổi bật
+          {copy.discoverTitle}
         </h2>
         <Link href={localizedHref(locale, '/places')} className={styles.sectionLink}>
-          Xem thêm →
+          {copy.discoverMoreLink}
         </Link>
       </div>
       {children}
@@ -78,11 +80,12 @@ function Section({ children, locale }: { children: React.ReactNode; locale: Loca
 }
 
 /** Khung chờ bám sát bố cục thật (lưới thẻ) để hạn chế layout shift khi khối này stream vào. */
-export function DiscoverPlacesSkeleton() {
+export function DiscoverPlacesSkeleton({ locale }: { locale: Locale }) {
+  const copy = getHomeCopy(locale);
   return (
-    <section className={styles.section} aria-busy="true" aria-label="Đang tải địa điểm nổi bật">
+    <section className={styles.section} aria-busy="true" aria-label={copy.discoverLoadingLabel}>
       <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>Địa điểm nổi bật</h2>
+        <h2 className={styles.sectionTitle}>{copy.discoverTitle}</h2>
       </div>
       <div className={placeStyles.grid}>
         {Array.from({ length: DISCOVER_LIMIT }).map((_, i) => (

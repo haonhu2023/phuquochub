@@ -68,7 +68,7 @@ describe('DiscoverPlaces — có dữ liệu', () => {
     mockListPlaces.mockResolvedValueOnce([place()]);
     render(await DiscoverPlaces({ locale: 'vi' }));
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Địa điểm nổi bật' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Khám phá Phú Quốc' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Dinh Cậu' })).toBeInTheDocument();
   });
 
@@ -86,7 +86,7 @@ describe('DiscoverPlaces — rỗng', () => {
 
     expect(screen.getByText('Chưa có địa điểm nào')).toBeInTheDocument();
     // Tiêu đề khối vẫn còn — người dùng hiểu khối này là gì.
-    expect(screen.getByRole('heading', { level: 2, name: 'Địa điểm nổi bật' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Khám phá Phú Quốc' })).toBeInTheDocument();
   });
 });
 
@@ -100,7 +100,7 @@ describe('DiscoverPlaces — API hỏng', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent(/chưa tải được danh sách địa điểm/i);
     // Vẫn còn tiêu đề + lối đi tiếp, không phải một khoảng trắng vô nghĩa.
-    expect(screen.getByRole('heading', { level: 2, name: 'Địa điểm nổi bật' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Khám phá Phú Quốc' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Xem thêm/ })).toBeInTheDocument();
   });
 
@@ -113,7 +113,7 @@ describe('DiscoverPlaces — API hỏng', () => {
 
 describe('DiscoverPlacesSkeleton', () => {
   it('thông báo trạng thái đang tải cho trình đọc màn hình', () => {
-    render(<DiscoverPlacesSkeleton />);
+    render(<DiscoverPlacesSkeleton locale="vi" />);
     const region = screen.getByLabelText('Đang tải địa điểm nổi bật');
     expect(region).toHaveAttribute('aria-busy', 'true');
   });

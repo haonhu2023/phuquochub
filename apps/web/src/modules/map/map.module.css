@@ -81,6 +81,133 @@
 .popupState {
   color: var(--muted);
 }
+.popupThumbFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.popupDesc {
+  margin: 0.1rem 0 0;
+  color: var(--fg);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+/* ---------- Marker/cluster (Phase 6.3/6.4 — thay emoji bằng SVG pin có trạng thái) ---------- */
+
+/* Hộp 40px lớn hơn pin thấy được (28x36) — vùng chạm đủ lớn cho ngón tay trên di động mà không
+   dịch chuyển điểm neo: pin căn ĐÁY-GIỮA trong hộp, và Marker được tạo với `anchor: 'bottom'`
+   (MapView.tsx) nên đúng đầu nhọn pin — không phải tâm hộp — mới là toạ độ thật. */
+.placeMarker {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  transition: transform 0.12s ease;
+}
+.placeMarker:hover {
+  transform: scale(1.1);
+}
+.placeMarker:focus-visible {
+  outline: none;
+  transform: scale(1.1);
+}
+.placeMarker:focus-visible .pinBody {
+  stroke: #fff;
+  stroke-width: 2.5px;
+}
+.pinBody {
+  fill: var(--accent);
+  stroke: #0b1120;
+  stroke-width: 1.5px;
+}
+.pinDot {
+  fill: #fff;
+}
+/* Đang chọn (popup đang mở cho marker này) — màu ấm để phân biệt rõ với các pin còn lại, không
+   chỉ dựa vào kích thước (tránh truyền tải trạng thái CHỈ bằng màu sắc một mình cho phần kích
+   thước/viền cũng đổi theo). */
+.placeMarkerSelected {
+  transform: scale(1.15);
+}
+.placeMarkerSelected .pinBody {
+  fill: #fb923c;
+  stroke: #fff;
+}
+
+.cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #0b1120;
+  font-weight: 700;
+  cursor: pointer;
+  border: 2px solid #0b1120;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.cluster:hover {
+  filter: brightness(1.08);
+}
+.cluster:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ---------- Khung chứa bản đồ (Phase 6.6 — không được khoá cứng 70vh trên di động) ---------- */
+.mapContainer {
+  position: relative;
+  width: 100%;
+  height: 70vh;
+  min-height: 420px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+@media (max-width: 640px) {
+  .mapContainer {
+    /* dvh thay vì vh trên di động: vh tính theo chiều cao viewport TĨNH, khiến bản đồ bị thanh địa
+       chỉ/thanh công cụ trình duyệt che khuất một phần cho tới khi cuộn; dvh theo dõi chiều cao
+       viewport ĐỘNG thật sự đang hiển thị. Trình duyệt không hỗ trợ dvh dùng luôn vh ở khai báo
+       trước làm nền (thuộc tính trùng tên: khai báo hợp lệ cuối cùng thắng, khai báo không hiểu
+       được bỏ qua hoàn toàn, không phải "fallback" viết tường minh nào khác cần thêm ở đây). */
+    height: 60vh;
+    height: 60dvh;
+    min-height: 320px;
+  }
+}
+
+.resetControl {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 1;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.resetControl:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.resetControl:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .filters {
   display: flex;

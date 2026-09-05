@@ -30,38 +30,59 @@ function bindActivation(el: HTMLElement, onActivate: () => void): void {
   };
 }
 
-export function clusterElement(count: number, onActivate: () => void): HTMLElement {
+// Cụm: kích thước tăng nhẹ theo số lượng (3 bậc) để "cụm to hơn = nhiều điểm hơn" nhìn được ngay,
+// nhưng chặn trần ở 56px — tránh bong bóng khổng lồ nuốt cả khung nhìn khi một khu vực có rất
+// nhiều địa điểm (Phase 6.4: tránh cluster khổng lồ/nhãn chồng lấn khó đọc).
+function clusterSize(count: number): number {
+  if (count >= 50) return 56;
+  if (count >= 10) return 44;
+  return 34;
+}
+
+export function clusterElement(
+  count: number,
+  onActivate: () => void,
+  ariaLabel: string = `${count} địa điểm — bấm để phóng to`,
+): HTMLElement {
+  const size = clusterSize(count);
   const el = document.createElement('div');
+  el.className = styles.cluster;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.fontSize = size >= 44 ? '14px' : '12px';
   el.textContent = String(count);
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', `${count} địa điểm — bấm để phóng to`);
-  Object.assign(el.style, {
-    background: '#2563eb',
-    color: '#fff',
-    borderRadius: '50%',
-    width: '32px',
-    height: '32px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '13px',
-    fontWeight: '700',
-    cursor: 'pointer',
-  } as CSSStyleDeclaration);
+  el.setAttribute('aria-label', ariaLabel);
   bindActivation(el, onActivate);
   return el;
 }
 
+// Pin SVG thay cho emoji 📍 (Phase 6.3): hình giọt nước cổ điển, đủ tương phản trên cả nền đất
+// (raster OSM be/vàng nhạt) lẫn nền biển (xanh) vì viền trắng dày bao quanh khối màu đặc —
+// emoji cũ không có viền nên gần như biến mất trên vài tông nền của tile OSM mặc định.
+const PIN_SVG = `
+<svg viewBox="0 0 28 36" width="28" height="36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <path class="${styles.pinBody}" d="M14 0C6.8 0 1 5.8 1 13c0 9.5 11.3 21.6 12.3 22.6.4.4 1 .4 1.4 0C15.7 34.6 27 22.5 27 13 27 5.8 21.2 0 14 0z"/>
+  <circle class="${styles.pinDot}" cx="14" cy="13" r="5.5"/>
+</svg>`.trim();
+
 export function placeElement(title: string, onActivate: () => void): HTMLElement {
   const el = document.createElement('div');
-  el.textContent = '📍';
+  el.className = styles.placeMarker;
+  el.innerHTML = PIN_SVG;
   el.title = title;
   el.setAttribute('role', 'button');
   el.setAttribute('aria-label', title);
-  el.style.cursor = 'pointer';
-  el.style.fontSize = '20px';
   bindActivation(el, onActivate);
   return el;
+}
+
+// Bật/tắt trạng thái "đang chọn" (Phase 6.3) — gọi từ MapView khi mở/đóng popup của marker này.
+// Hàm riêng (không phải class CSS gắn cứng lúc dựng marker) vì trạng thái chọn đổi SAU khi marker
+// đã tồn tại trên bản đồ, không phải lúc dựng.
+export function setMarkerSelected(el: HTMLElement, selected: boolean): void {
+  el.classList.toggle(styles.placeMarkerSelected, selected);
+  el.setAttribute('aria-current', selected ? 'true' : 'false');
 }
 
 function textRow(text: string, className?: string): HTMLElement {
@@ -89,6 +110,14 @@ export function buildPopupCard(
     img.alt = detail.name;
     img.loading = 'lazy';
     card.appendChild(img);
+  } else {
+    // Không ảnh vỡ, không khoảng trắng đột ngột: chữ cái đầu tên địa điểm trên nền màu — cùng
+    // hướng xử lý PlaceCard.thumbFallback ở danh sách, để popup và thẻ danh sách nhất quán.
+    const placeholder = document.createElement('div');
+    placeholder.className = styles.popupThumbFallback;
+    placeholder.setAttribute('aria-hidden', 'true');
+    placeholder.textContent = detail.name.charAt(0);
+    card.appendChild(placeholder);
   }
 
   const title = document.createElement('p');
@@ -121,10 +150,17 @@ export function buildPopupCard(
   else if (showPriceVerifying) meta.appendChild(textRow(PRICE_VERIFYING_TEXT));
   card.appendChild(meta);
 
+  if (detail.short_description) {
+    const desc = document.createElement('p');
+    desc.className = styles.popupDesc;
+    desc.textContent = detail.short_description;
+    card.appendChild(desc);
+  }
+
   const link = document.createElement('a');
   link.className = styles.popupLink;
   link.href = localizedHref(locale, `/places/${detail.slug}`);
-  link.textContent = 'Xem chi tiết →';
+  link.textContent = locale === 'en' ? 'View details →' : 'Xem chi tiết →';
   card.appendChild(link);
 
   return card;

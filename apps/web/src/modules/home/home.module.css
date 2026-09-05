@@ -3,19 +3,44 @@
    (search.module.css) đều tái dùng nguyên vẹn, không dựng lại. */
 
 /* Hero CỐ Ý gọn: đây là trang khám phá, không phải landing page quảng cáo — người dùng phải thấy
-   ngay ô tìm kiếm và các lối vào danh mục mà không phải cuộn hết một màn hình. */
+   ngay ô tìm kiếm và các lối vào danh mục mà không phải cuộn hết một màn hình.
+   map/home upgrade: gradient thêm một tông ấm (--accent-warm, chỉ định nghĩa CỤC BỘ trong file
+   này — không đụng token toàn cục) để hero có cảm giác "đảo nhiệt đới" thay vì thuần dashboard tối,
+   mà không cần ảnh chụp nào (Phase 9: trang phải đẹp ngay cả khi KHÔNG có ảnh). */
 .hero {
-  padding: 1.75rem 1.5rem;
+  --accent-warm: #fb923c;
+  position: relative;
+  overflow: hidden;
+  padding: 2.25rem 1.5rem;
   margin-bottom: 2rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: linear-gradient(135deg, var(--surface-2), var(--surface));
+  background:
+    radial-gradient(120% 140% at 15% -10%, color-mix(in srgb, var(--accent-warm) 22%, transparent), transparent 60%),
+    linear-gradient(135deg, var(--surface-2), var(--surface));
+}
+
+.heroEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .heroTitle {
   margin: 0 0 0.5rem;
-  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-size: clamp(1.75rem, 5.5vw, 2.6rem);
   line-height: 1.15;
+  max-width: 22ch;
 }
 
 .heroLede {
@@ -29,6 +54,49 @@
    nằm trong hero, không ghi đè gì khác. */
 .heroSearch > form {
   margin-bottom: 0;
+}
+
+/* Lối tắt theo nhu cầu — chip ngang, cuộn được trên màn hẹp thay vì bọc dòng lộn xộn. */
+.heroIntents {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: thin;
+}
+
+.heroIntentsLabel {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.heroChip {
+  flex-shrink: 0;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.heroChip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.heroChip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.heroTrust {
+  margin: 1.1rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .section {
@@ -123,15 +191,107 @@
   min-width: 0;
 }
 
+.ctaEyebrow {
+  margin: 0 0 0.3rem;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .ctaTitle {
   margin: 0 0 0.2rem;
   font-size: 1.05rem;
 }
 
 .ctaDesc {
-  margin: 0;
+  margin: 0 0 0.85rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* ---------- Bản đồ: khối CTA nâng cấp thành "bản xem trước" (Phase 6/10) ---------- */
+/* `.mapCta` xếp cạnh nhau trên màn rộng, chồng dọc trên màn hẹp (auto-fit không cần media query
+   riêng cho breakpoint này vì minmax buộc `.mapPreview` xuống hàng khi không đủ ~220px). */
+.mapCta {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 1.25rem;
+  align-items: stretch;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+@media (max-width: 560px) {
+  .mapCta {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Minh hoạ CSS thuần thay cho bản đồ thật — KHÔNG tải MapLibre/ảnh nào trên trang chủ (Phase 15:
+   bundle bản đồ không được nằm trên đường tải quan trọng). Dải màu + vài chấm định vị tĩnh đủ để
+   gợi hình "đây là bản đồ" mà không giả vờ là dữ liệu thật. */
+.mapPreview {
+  position: relative;
+  min-height: 140px;
+  border-radius: calc(var(--radius) - 4px);
+  overflow: hidden;
+  background:
+    radial-gradient(60% 80% at 30% 20%, color-mix(in srgb, var(--accent) 35%, transparent), transparent),
+    radial-gradient(70% 90% at 75% 75%, color-mix(in srgb, #fb923c 28%, transparent), transparent),
+    var(--surface-2);
+}
+
+.mapPin {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  transform: rotate(-45deg);
+}
+.mapPinA {
+  top: 32%;
+  left: 28%;
+}
+.mapPinB {
+  top: 55%;
+  left: 58%;
+  background: #fb923c;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #fb923c 25%, transparent);
+}
+.mapPinC {
+  top: 68%;
+  left: 38%;
+}
+
+/* ---------- Vì sao tin PhuQuocHub (Phase 10.5) ---------- */
+.trustGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.trustCard {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.trustCardTitle {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.trustCardBody {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .ctaLink {
