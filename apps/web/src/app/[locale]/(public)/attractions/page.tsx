@@ -5,11 +5,10 @@ import { AttractionFilters } from '@/modules/attractions/AttractionFilters';
 import { Pagination } from '@/components/ui/Pagination';
 import { ATTRACTION_SORT_VALUES, type AttractionSort } from '@/modules/attractions/types';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
-const TITLE = 'Điểm tham quan Phú Quốc';
-const DESCRIPTION =
-  'Danh sách điểm tham quan ở Phú Quốc — lọc theo khu vực và mức giá, sắp xếp theo đánh giá.';
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -25,11 +24,12 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'attractions');
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/attractions') },
-    openGraph: { title: `${TITLE} · PhuQuocHub`, description: DESCRIPTION, type: 'website' },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/attractions'),
+    openGraph: { title: `${copy.title} | PhuQuocHub`, description: copy.description, type: 'website' },
   };
 }
 
@@ -79,12 +79,13 @@ export default async function AttractionsPage({ params, searchParams }: Props) {
   if (priceRange) baseQuery.set('price_range', priceRange);
   if (sort) baseQuery.set('sort', sort);
   const hasFilter = Boolean(ward || priceRange);
+  const copy = getHubPageCopy(locale, 'attractions');
 
   return (
     <section>
       <header className={placesStyles.pageHeader}>
-        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={placesStyles.pageTitle}>{copy.h1}</h1>
+        <p className={placesStyles.pageLede}>{copy.description}</p>
       </header>
 
       <AttractionFilters total={meta.total} />

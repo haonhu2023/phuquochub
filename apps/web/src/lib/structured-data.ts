@@ -7,6 +7,7 @@ import type { RestaurantDetail } from '@/modules/restaurants/api/restaurants.api
 import type { TourDetail } from '@/modules/tours/api/tours.api';
 import type { EventDetail } from '@/modules/events/api/events.api';
 import { getSiteUrl } from './site';
+import { localizedHref, type Locale } from './locale';
 import { hasOpeningHours, regularOf, validRanges, WEEKDAY_KEYS, type WeekdayKey } from '@/modules/places/openingHours';
 
 type JsonLd = Record<string, unknown>;
@@ -20,29 +21,36 @@ export function serializeJsonLd(data: JsonLd): string {
   return JSON.stringify(data).replace(/</g, '\\u003c');
 }
 
+const SCHEMA_LANGUAGE: Record<Locale, string> = { vi: 'vi-VN', en: 'en-US' };
+
 /**
  * JSON-LD trang chủ. CHỈ `WebSite` — CỐ Ý KHÔNG phát `Organization`/`LocalBusiness`: những kiểu đó
  * đòi các dữ kiện pháp nhân (logo, địa chỉ, mạng xã hội, số đăng ký) mà repo này không có nguồn
  * nào xác thực được, và bịa ra chúng là đúng thứ mà kỷ luật "không suy diễn khi không có bằng
  * chứng" của file này cấm.
  *
- * `potentialAction` trỏ tới `/search?q=` — đây là endpoint tìm kiếm CÓ THẬT của ứng dụng
- * (`app/(public)/search/page.tsx` đọc đúng tham số `q`), không phải một khai báo lấy lệ.
+ * `potentialAction` trỏ tới `/{locale}/search?q=` — endpoint tìm kiếm CÓ THẬT của ứng dụng
+ * (`app/[locale]/(public)/search/page.tsx` đọc đúng tham số `q`), không phải một khai báo lấy lệ.
+ *
+ * `locale` (SEO v2): trước đây `inLanguage`/`url`/`potentialAction.target` đều hằng-số tiếng Việt
+ * bất kể trang chủ đang phục vụ `/vi` hay `/en` — JSON-LD của một trang `/en` do đó tự mâu thuẫn
+ * với chính `<html lang="en">` render cùng lúc. Nhận `locale` để cả ba trường khớp ĐÚNG bản đang
+ * hiển thị.
  */
-export function buildWebSiteJsonLd(name: string, description: string): JsonLd {
+export function buildWebSiteJsonLd(name: string, description: string, locale: Locale): JsonLd {
   const site = getSiteUrl();
   return {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name,
     description,
-    url: site,
-    inLanguage: 'vi-VN',
+    url: `${site}${localizedHref(locale, '/')}`,
+    inLanguage: SCHEMA_LANGUAGE[locale],
     potentialAction: {
       '@type': 'SearchAction',
       target: {
         '@type': 'EntryPoint',
-        urlTemplate: `${site}/search?q={search_term_string}`,
+        urlTemplate: `${site}${localizedHref(locale, '/search')}?q={search_term_string}`,
       },
       'query-input': 'required name=search_term_string',
     },
@@ -195,6 +203,31 @@ export function buildPlaceJsonLd(place: PlaceDetail): JsonLd {
     '@context': 'https://schema.org',
     '@type': 'TouristAttraction',
     ...fields,
+  };
+}
+
+export interface BreadcrumbItem {
+  name: string;
+  path: string;
+}
+
+/**
+ * `BreadcrumbList` (Phase 23) — dựng TỪ cùng danh sách mắt breadcrumb mà trang đã hiển thị cho
+ * người dùng (không phải một cấu trúc điều hướng riêng chỉ tồn tại trong JSON-LD, thứ Google coi
+ * là spam schema nếu không khớp nội dung nhìn thấy được). `path` là đường dẫn ĐÃ có locale prefix
+ * (`localizedHref(locale, ...)`, nơi gọi tự ghép) — hàm này chỉ nối `getSiteUrl()` phía trước.
+ */
+export function buildBreadcrumbJsonLd(items: BreadcrumbItem[]): JsonLd {
+  const site = getSiteUrl();
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: items.map((item, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      name: item.name,
+      item: `${site}${item.path}`,
+    })),
   };
 }
 

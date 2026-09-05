@@ -6,11 +6,25 @@ import { SearchBox } from '@/modules/search/SearchBox';
 import { SearchFilters } from '@/modules/search/SearchFilters';
 import { Pagination } from '@/components/ui/Pagination';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates, NOINDEX_FOLLOW } from '@/lib/seo';
 import placesStyles from '@/modules/places/places.module.css';
 import searchStyles from '@/modules/search/search.module.css';
 
-const TITLE = 'Tìm kiếm';
-const DESCRIPTION = 'Tìm kiếm địa điểm ở Phú Quốc — lọc theo danh mục, khu vực và mức giá.';
+const SEARCH_COPY = {
+  vi: {
+    title: 'Tìm kiếm',
+    description: 'Tìm kiếm địa điểm ở Phú Quốc — lọc theo danh mục, khu vực và mức giá.',
+    emptyPrompt: 'Nhập từ khoá để bắt đầu tìm kiếm',
+    emptyHint: 'Ví dụ: "bai sao", "dinh cau" — tìm kiếm không phân biệt dấu.',
+  },
+  en: {
+    title: 'Search',
+    description: 'Search places in Phú Quốc — filter by category, area and price.',
+    emptyPrompt: 'Enter a keyword to start searching',
+    emptyHint: 'Example: "bai sao", "dinh cau" — search ignores Vietnamese diacritics.',
+  },
+} as const;
+
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -32,11 +46,15 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = SEARCH_COPY[locale];
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/search') },
-    robots: { index: false }, // trang kết quả tìm kiếm không nên vào chỉ mục (chuẩn SEO phổ biến)
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/search'),
+    // Phase 3/27: `noindex` PHẢI vẫn crawlable (KHÔNG chặn trong robots.txt) để crawler đọc được
+    // chính chỉ thị này — trang kết quả tìm kiếm nội bộ không nên trở thành một bề mặt index lớn,
+    // nhưng vẫn cần `follow` để crawler tiếp tục đi theo liên kết thật (/places/{slug}) bên trong.
+    robots: NOINDEX_FOLLOW,
   };
 }
 
@@ -72,18 +90,19 @@ export default async function SearchPage({ params, searchParams }: Props) {
   const category = parseCategory(sp.category);
   const ward = parseWard(sp.ward);
   const priceRange = parsePriceRange(sp.price_range);
+  const copy = SEARCH_COPY[locale];
 
   if (!q) {
     return (
       <section>
         <header className={placesStyles.pageHeader}>
-          <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-          <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+          <h1 className={placesStyles.pageTitle}>{copy.title}</h1>
+          <p className={placesStyles.pageLede}>{copy.description}</p>
         </header>
         <SearchBox q="" category={category} ward={ward} price_range={priceRange} locale={locale} />
         <div className={placesStyles.state}>
-          <p className={placesStyles.stateTitle}>Nhập từ khoá để bắt đầu tìm kiếm</p>
-          <p>Ví dụ: “bai sao”, “dinh cau” — tìm kiếm không phân biệt dấu.</p>
+          <p className={placesStyles.stateTitle}>{copy.emptyPrompt}</p>
+          <p>{copy.emptyHint}</p>
         </div>
       </section>
     );
@@ -107,8 +126,8 @@ export default async function SearchPage({ params, searchParams }: Props) {
   return (
     <section>
       <header className={placesStyles.pageHeader}>
-        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={placesStyles.pageTitle}>{copy.title}</h1>
+        <p className={placesStyles.pageLede}>{copy.description}</p>
       </header>
 
       <SearchBox q={q} category={category} ward={ward} price_range={priceRange} locale={locale} />

@@ -5,11 +5,10 @@ import { RestaurantFilters } from '@/modules/restaurants/RestaurantFilters';
 import { Pagination } from '@/components/ui/Pagination';
 import { RESTAURANT_SORT_VALUES, type RestaurantSort } from '@/modules/restaurants/types';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
-const TITLE = 'Nhà hàng Phú Quốc';
-const DESCRIPTION =
-  'Danh sách nhà hàng, quán ăn ở Phú Quốc — lọc theo mức giá, ẩm thực, sắp xếp theo đánh giá.';
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -25,11 +24,12 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'restaurants');
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/restaurants') },
-    openGraph: { title: `${TITLE} · PhuQuocHub`, description: DESCRIPTION, type: 'website' },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/restaurants'),
+    openGraph: { title: `${copy.title} | PhuQuocHub`, description: copy.description, type: 'website' },
   };
 }
 
@@ -76,12 +76,13 @@ export default async function RestaurantsPage({ params, searchParams }: Props) {
   if (cuisine) baseQuery.set('cuisine', cuisine);
   if (sort) baseQuery.set('sort', sort);
   const hasFilter = Boolean(priceRange || cuisine);
+  const copy = getHubPageCopy(locale, 'restaurants');
 
   return (
     <section>
       <header className={placesStyles.pageHeader}>
-        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={placesStyles.pageTitle}>{copy.h1}</h1>
+        <p className={placesStyles.pageLede}>{copy.description}</p>
       </header>
 
       <RestaurantFilters total={meta.total} />

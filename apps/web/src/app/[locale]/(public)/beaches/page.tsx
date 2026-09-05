@@ -5,12 +5,13 @@ import { BeachFilters } from '@/modules/beaches/BeachFilters';
 import { Pagination } from '@/components/ui/Pagination';
 import { BEACH_SORT_VALUES, type BeachSort } from '@/modules/beaches/types';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates } from '@/lib/seo';
+import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placesStyles from '@/modules/places/places.module.css';
 
-const TITLE = 'Bãi biển Phú Quốc';
-// Mô tả chỉ nói đúng những gì trang này làm được: liệt kê và lọc. KHÔNG hứa hẹn về điều kiện
-// tắm biển, cứu hộ, tiện ích hay thời điểm đẹp nhất — schema không có dữ liệu nào cho những điều đó.
-const DESCRIPTION = 'Danh sách bãi biển ở Phú Quốc — lọc theo khu vực và mức giá, sắp xếp theo đánh giá.';
+// Copy (`hub-pages.copy.ts`) chỉ nói đúng những gì trang này làm được: liệt kê và lọc. KHÔNG hứa
+// hẹn về điều kiện tắm biển, cứu hộ, tiện ích hay thời điểm đẹp nhất — schema không có dữ liệu nào
+// cho những điều đó.
 const PAGE_SIZE = 20;
 const PRICE_RANGE_VALUES = ['free', 'low', 'mid', 'high'];
 
@@ -26,11 +27,12 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const copy = getHubPageCopy(locale, 'beaches');
   return {
-    title: `${TITLE} · PhuQuocHub`,
-    description: DESCRIPTION,
-    alternates: { canonical: localizedHref(locale, '/beaches') },
-    openGraph: { title: `${TITLE} · PhuQuocHub`, description: DESCRIPTION, type: 'website' },
+    title: `${copy.title} | PhuQuocHub`,
+    description: copy.description,
+    alternates: buildRouteAlternates(locale, '/beaches'),
+    openGraph: { title: `${copy.title} | PhuQuocHub`, description: copy.description, type: 'website' },
   };
 }
 
@@ -78,12 +80,13 @@ export default async function BeachesPage({ params, searchParams }: Props) {
   if (priceRange) baseQuery.set('price_range', priceRange);
   if (sort) baseQuery.set('sort', sort);
   const hasFilter = Boolean(ward || priceRange);
+  const copy = getHubPageCopy(locale, 'beaches');
 
   return (
     <section>
       <header className={placesStyles.pageHeader}>
-        <h1 className={placesStyles.pageTitle}>{TITLE}</h1>
-        <p className={placesStyles.pageLede}>{DESCRIPTION}</p>
+        <h1 className={placesStyles.pageTitle}>{copy.h1}</h1>
+        <p className={placesStyles.pageLede}>{copy.description}</p>
       </header>
 
       <BeachFilters total={meta.total} />

@@ -169,10 +169,14 @@ describe('SiteFooter', () => {
     }
   });
 
-  it('PR A: trỏ đúng locale khi truyền prop locale="en"', () => {
+  // SEO v2 (Phase 4/15): trước đây nhãn footer LUÔN tiếng Việt bất kể locale — đúng dạng vi phạm
+  // "no Vietnamese under /en" mà nhiệm vụ này yêu cầu sửa. Nhãn giờ đổi theo locale; href vẫn khớp.
+  it('SEO v2: locale="en" → nhãn VÀ href đều đổi đúng tiếng Anh, không còn nhãn tiếng Việt', () => {
     render(<SiteFooter locale="en" />);
-    expect(screen.getByRole('link', { name: 'Giới thiệu' })).toHaveAttribute('href', '/en/about');
-    expect(screen.getByRole('link', { name: 'Điều khoản sử dụng' })).toHaveAttribute('href', '/en/terms');
+    expect(screen.getByRole('link', { name: 'About' })).toHaveAttribute('href', '/en/about');
+    expect(screen.getByRole('link', { name: 'Terms of Service' })).toHaveAttribute('href', '/en/terms');
+    expect(screen.queryByText('Giới thiệu')).not.toBeInTheDocument();
+    expect(screen.queryByText('Điều khoản sử dụng')).not.toBeInTheDocument();
   });
 
   it('ghi công OpenStreetMap (yêu cầu của giấy phép dữ liệu bản đồ)', () => {

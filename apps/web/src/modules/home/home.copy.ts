@@ -34,6 +34,14 @@ export interface HomeCopy {
   categoriesTitle: string;
   categoriesAllLink: string;
   categories: HomeCategoryEntry[];
+  smartTitle: string;
+  smartSubtitle: string;
+  nearbyCta: string;
+  nearbyLoading: string;
+  nearbyDenied: string;
+  nearbyError: string;
+  nearbyEmpty: string;
+  nearbyPrivacyNote: string;
   discoverTitle: string;
   discoverMoreLink: string;
   discoverLoadingLabel: string;
@@ -69,7 +77,7 @@ const vi: HomeCopy = {
     { href: '/attractions', label: 'Vui chơi' },
     { href: '/tours', label: 'Tour' },
   ],
-  trustSignal: 'Thông tin có nguồn — không suy đoán, không bịa dữ liệu.',
+  trustSignal: 'Thông tin rõ nguồn, dễ kiểm tra.',
   categoriesTitle: 'Bạn đang tìm gì?',
   categoriesAllLink: 'Tất cả địa điểm →',
   categories: [
@@ -80,6 +88,14 @@ const vi: HomeCopy = {
     { href: CATEGORY_HREFS[4], name: 'Bãi biển', hint: 'Biển và bờ cát' },
     { href: CATEGORY_HREFS[5], name: 'Sự kiện', hint: 'Đang và sắp diễn ra' },
   ],
+  smartTitle: 'Khám phá theo nhu cầu',
+  smartSubtitle: 'Gợi ý nhanh dựa trên vị trí thực tế — chỉ hoạt động khi bạn đồng ý chia sẻ vị trí.',
+  nearbyCta: 'Địa điểm gần bạn',
+  nearbyLoading: 'Đang tìm địa điểm gần bạn…',
+  nearbyDenied: 'Bạn chưa cho phép truy cập vị trí. Bạn vẫn có thể tìm kiếm hoặc duyệt theo danh mục ở trên.',
+  nearbyError: 'Không lấy được vị trí hoặc không tải được kết quả. Thử lại sau.',
+  nearbyEmpty: 'Không tìm thấy địa điểm nào gần vị trí hiện tại của bạn.',
+  nearbyPrivacyNote: 'Vị trí của bạn chỉ dùng để tìm địa điểm gần đó, không được lưu lại.',
   discoverTitle: 'Khám phá Phú Quốc',
   discoverMoreLink: 'Xem thêm →',
   discoverLoadingLabel: 'Đang tải địa điểm nổi bật',
@@ -127,7 +143,7 @@ const en: HomeCopy = {
     { href: '/attractions', label: 'Things to do' },
     { href: '/tours', label: 'Tours' },
   ],
-  trustSignal: 'Sourced information — no guessing, no invented data.',
+  trustSignal: 'Source-backed information, easy to double-check.',
   categoriesTitle: 'What are you looking for?',
   categoriesAllLink: 'All places →',
   categories: [
@@ -138,6 +154,14 @@ const en: HomeCopy = {
     { href: CATEGORY_HREFS[4], name: 'Beaches', hint: 'Sea and sand' },
     { href: CATEGORY_HREFS[5], name: 'Events', hint: 'Happening now and soon' },
   ],
+  smartTitle: 'Discover by need',
+  smartSubtitle: 'A quick suggestion based on your real location — only if you allow sharing it.',
+  nearbyCta: 'Places near you',
+  nearbyLoading: 'Finding places near you…',
+  nearbyDenied: "Location access wasn't allowed. You can still search or browse by category above.",
+  nearbyError: "Couldn't get your location or load results. Please try again.",
+  nearbyEmpty: 'No places found near your current location.',
+  nearbyPrivacyNote: "Your location is only used to find nearby places — it isn't stored.",
   discoverTitle: 'Discover Phú Quốc',
   discoverMoreLink: 'See more →',
   discoverLoadingLabel: 'Loading featured places',

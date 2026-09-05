@@ -318,3 +318,47 @@
   color: var(--muted);
   font-size: 0.92rem;
 }
+
+/* ---------- Khám phá theo nhu cầu / "Gần bạn" (Phase 9) ---------- */
+.smartSubtitle {
+  margin: -0.5rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.nearbyCard {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.nearbyButton {
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.nearbyButton:hover {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+.nearbyButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nearbyPrivacyNote {
+  margin: 0.6rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.nearbyStatus {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}

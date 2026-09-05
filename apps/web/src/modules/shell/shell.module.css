@@ -1,0 +1,275 @@
+/* Header/footer shell V2 (Phase 4/15) — dùng token màu đã có ở globals.css (--surface/--border/
+   --accent/--muted/--fg), không định nghĩa bảng màu mới. */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0.85rem 1.25rem;
+}
+
+.wordmark {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.wordmark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.desktopNav {
+  display: none;
+  align-items: center;
+  gap: 1.25rem;
+  margin-left: 0.5rem;
+}
+
+.navLink {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+.navLink:hover {
+  color: var(--fg);
+}
+.navLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.searchLink {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.searchLink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.searchLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.langSwitch {
+  display: flex;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem;
+}
+
+.langLink {
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  /* Chạm được: dù chữ nhỏ, hộp chạm tối thiểu ~32px cao — chấp nhận được cho một cặp công tắc
+     phụ cạnh nhau, không phải hành động chính của trang. */
+  min-width: 32px;
+  text-align: center;
+}
+.langLink:hover {
+  color: var(--fg);
+}
+.langLinkActive {
+  background: var(--accent);
+  color: #06202e;
+}
+.langLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.desktopOnly {
+  display: none;
+}
+
+/* ---------- Menu di động: <details>/<summary>, không JS ---------- */
+.mobileMenu {
+  position: relative;
+}
+
+.mobileMenuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.mobileMenuButton::-webkit-details-marker {
+  display: none;
+}
+.mobileMenuButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hamburgerIcon {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hamburgerIcon span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--fg);
+  border-radius: 1px;
+}
+
+.mobileNavPanel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 200px;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.mobileNavLink {
+  padding: 0.65rem 0.6rem;
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.95rem;
+  /* Chiều cao chạm tối thiểu 44px (padding + line-height) cho ngón tay trên di động. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.mobileNavLink:hover {
+  background: var(--surface-2);
+}
+.mobileNavLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mobileLangRow {
+  padding: 0.5rem 0.6rem 0.2rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.3rem;
+}
+
+@media (min-width: 860px) {
+  .desktopNav {
+    display: flex;
+  }
+  .desktopOnly {
+    display: flex;
+  }
+  .mobileMenu {
+    display: none;
+  }
+}
+
+/* ---------- Skip link (Phase 31 — accessibility) ---------- */
+.skipLink {
+  position: absolute;
+  left: 1rem;
+  top: -3rem;
+  z-index: 50;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #06202e;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skipLink:focus {
+  top: 0.75rem;
+}
+
+/* ---------- Footer V2 (Phase 15) ---------- */
+.footerV2 {
+  border-top: 1px solid var(--border);
+  margin-top: 2rem;
+}
+.footerV2Inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1.75rem;
+}
+.footerGroupTitle {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.footerGroupLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.footerGroupLinks a {
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.footerGroupLinks a:hover {
+  color: var(--accent);
+}
+.footerGroupLinks a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.footerBottom {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.footerBottom a {
+  color: var(--muted);
+}

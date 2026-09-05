@@ -12,6 +12,13 @@ jest.mock('next/link', () => ({
   ),
 }));
 
+// `LanguageSwitch` (đảo client trong Header) đọc `usePathname`/`useSearchParams` — mock cố định,
+// cùng quy ước `RouteGuard.spec.tsx` đã dùng cho next/navigation trong test.
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/vi/places',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 // `PublicLayout` là Server Component `async` (nhận `params.locale` từ PR A) — gọi trực tiếp như
 // một async function thuần rồi render JSX đã resolve, thay vì render component chưa await (React
 // Testing Library không tự `await` một component trả về Promise).
@@ -23,7 +30,7 @@ async function renderPublicLayout(children: React.ReactNode, locale: 'vi' | 'en'
 describe('PublicLayout', () => {
   it('hiển thị banner Public Beta sitewide trên mọi trang công khai', async () => {
     await renderPublicLayout(<p>nội dung trang</p>);
-    expect(screen.getByText(BETA_DISCLOSURE_TEXT)).toBeInTheDocument();
+    expect(screen.getByText(BETA_DISCLOSURE_TEXT.vi)).toBeInTheDocument();
   });
 
   it('vẫn render children bình thường cùng với banner', async () => {
@@ -31,14 +38,31 @@ describe('PublicLayout', () => {
     expect(screen.getByText('nội dung trang')).toBeInTheDocument();
   });
 
-  it('nav dùng đúng locale hiện tại, không double-prefix', async () => {
+  it('header V2: 6 mục điều hướng dùng đúng locale hiện tại, không double-prefix', async () => {
     await renderPublicLayout(<p>nội dung trang</p>, 'en');
-    expect(screen.getByText('Địa điểm').closest('a')).toHaveAttribute('href', '/en/places');
-    expect(screen.getByText('PhuQuocHub').closest('a')).toHaveAttribute('href', '/en');
+    expect(screen.getAllByText('Food')[0].closest('a')).toHaveAttribute('href', '/en/restaurants');
+    expect(screen.getAllByText('Map')[0].closest('a')).toHaveAttribute('href', '/en/map');
+    expect(screen.getByRole('link', { name: 'PhuQuocHub' })).toHaveAttribute('href', '/en');
   });
 
-  it('nav mặc định vi khi locale=vi', async () => {
+  it('header V2: nav mặc định vi khi locale=vi', async () => {
     await renderPublicLayout(<p>nội dung trang</p>, 'vi');
-    expect(screen.getByText('Địa điểm').closest('a')).toHaveAttribute('href', '/vi/places');
+    expect(screen.getAllByText('Ăn uống')[0].closest('a')).toHaveAttribute('href', '/vi/restaurants');
+  });
+
+  it('footer vẫn liên kết tới /places (mục điều hướng "Địa điểm" nay ở footer, không phải header)', async () => {
+    await renderPublicLayout(<p>nội dung trang</p>, 'vi');
+    expect(screen.getByRole('link', { name: 'Địa điểm' })).toHaveAttribute('href', '/vi/places');
+  });
+
+  it('có skip link nhảy tới #main-content, và <main> mang đúng id đó', async () => {
+    await renderPublicLayout(<p>nội dung trang</p>);
+    expect(screen.getByRole('link', { name: /bỏ qua/i })).toHaveAttribute('href', '#main-content');
+    expect(document.querySelector('main#main-content')).not.toBeNull();
+  });
+
+  it('có công tắc ngôn ngữ VI/EN nhìn thấy được trong header', async () => {
+    await renderPublicLayout(<p>nội dung trang</p>, 'vi');
+    expect(screen.getAllByRole('link', { name: 'EN' }).length).toBeGreaterThan(0);
   });
 });

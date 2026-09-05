@@ -5,7 +5,8 @@ import { listHotelSlugs } from '@/modules/hotels/api/hotels.api';
 import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
-import { localizedHref } from '@/lib/locale';
+import { localizedHref, SUPPORTED_LOCALES, type Locale } from '@/lib/locale';
+import { isEnDetailIndexable } from '@/lib/seo';
 
 // MVP SEO pass: no sitemap existed anywhere before this (confirmed absent, PLACE-036/041). Built
 // on Next.js's native `app/sitemap.ts` convention -- served automatically at /sitemap.xml, no
@@ -14,6 +15,11 @@ import { localizedHref } from '@/lib/locale';
 // clients the rest of the app already uses.
 export const dynamic = 'force-dynamic';
 
+// SEO v2 (Phase 21): `/search` REMOVED từ danh sách này — kết quả tìm kiếm nội bộ không nên là một
+// bề mặt index lớn (đã đổi `robots: noindex,follow` ở chính route đó, xem `search/page.tsx`; loại
+// khỏi sitemap là bước còn lại của cùng chính sách). Các route "hub" còn lại đều đã có tiêu đề/mô
+// tả/H1 tiếng Anh THẬT (`hub-pages.copy.ts`) — đủ điều kiện lên sitemap CẢ hai locale, khác các
+// trang chi tiết thực thể (còn phụ thuộc `isEnDetailIndexable`).
 const STATIC_ROUTES = [
   '',
   '/places',
@@ -26,7 +32,6 @@ const STATIC_ROUTES = [
   '/beaches',
   '/explore',
   '/map',
-  '/search',
   '/events',
 ];
 
@@ -40,6 +45,41 @@ async function safeList<T>(fn: () => Promise<T[]>): Promise<T[]> {
   }
 }
 
+function staticEntriesFor(site: string, locales: readonly Locale[]): MetadataRoute.Sitemap {
+  const entries: MetadataRoute.Sitemap = [];
+  for (const locale of locales) {
+    for (const path of STATIC_ROUTES) {
+      entries.push({
+        url: `${site}${localizedHref(locale, path)}`,
+        changeFrequency: 'daily',
+        priority: path === '' ? 1 : 0.7,
+      });
+    }
+  }
+  return entries;
+}
+
+// Trang chi tiết thực thể (Phase 20 — EN indexation gate): bản `vi` LUÔN vào sitemap (nội dung gốc
+// thật). Bản `en` CHỈ vào khi `isEnDetailIndexable(slug)` — hôm nay khoá `false` toàn bộ vì chưa có
+// bản dịch nào ở trạng thái APPROVED/PUBLIC (xem chú thích đầy đủ tại định nghĩa hàm đó); KHÔNG
+// đưa `/en/places/{slug}` vào sitemap chỉ vì route trả 200 trong khi nội dung vẫn là tiếng Việt.
+function detailEntries(
+  site: string,
+  slugs: string[],
+  pathPrefix: string,
+  opts: { changeFrequency: MetadataRoute.Sitemap[number]['changeFrequency']; priority: number },
+): MetadataRoute.Sitemap {
+  const entries: MetadataRoute.Sitemap = [];
+  for (const slug of slugs) {
+    const path = `${pathPrefix}/${slug}`;
+    entries.push({ url: `${site}${localizedHref('vi', path)}`, ...opts });
+    if (isEnDetailIndexable(slug)) {
+      entries.push({ url: `${site}${localizedHref('en', path)}`, ...opts });
+    }
+  }
+  return entries;
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = getSiteUrl();
 
@@ -51,52 +91,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     safeList(() => listEvents(1, 100)),
   ]);
 
-  // PR A: mọi URL phát ra được prefix `/vi` — locale routing đã bắt buộc mọi route public nằm
-  // dưới `[locale]`, một sitemap không-prefix giờ trỏ tới URL redirect (lãng phí crawl budget,
-  // không phải URL canonical). CHƯA phát `/en/...` (chưa có nội dung EN thật để index — ngoài
-  // phạm vi PR A, xem kế hoạch PR E).
-  const staticEntries: MetadataRoute.Sitemap = STATIC_ROUTES.map((path) => ({
-    url: `${site}${localizedHref('vi', path)}`,
-    changeFrequency: path === '' ? 'daily' : 'daily',
-    priority: path === '' ? 1 : 0.7,
-  }));
-
-  const placeEntries: MetadataRoute.Sitemap = places.map((p) => ({
-    url: `${site}${localizedHref('vi', `/places/${p.slug}`)}`,
-    changeFrequency: 'weekly',
-    priority: 0.8,
-  }));
-
-  const hotelEntries: MetadataRoute.Sitemap = hotels.map((h) => ({
-    url: `${site}${localizedHref('vi', `/hotels/${h.slug}`)}`,
-    changeFrequency: 'weekly',
-    priority: 0.6,
-  }));
-
-  const restaurantEntries: MetadataRoute.Sitemap = restaurants.map((r) => ({
-    url: `${site}${localizedHref('vi', `/restaurants/${r.slug}`)}`,
-    changeFrequency: 'weekly',
-    priority: 0.6,
-  }));
-
-  const tourEntries: MetadataRoute.Sitemap = tours.map((t) => ({
-    url: `${site}${localizedHref('vi', `/tours/${t.slug}`)}`,
-    changeFrequency: 'weekly',
-    priority: 0.6,
-  }));
-
-  const eventEntries: MetadataRoute.Sitemap = events.map((e) => ({
-    url: `${site}${localizedHref('vi', `/events/${e.slug}`)}`,
-    changeFrequency: 'daily',
-    priority: 0.5,
-  }));
-
   return [
-    ...staticEntries,
-    ...placeEntries,
-    ...hotelEntries,
-    ...restaurantEntries,
-    ...tourEntries,
-    ...eventEntries,
+    ...staticEntriesFor(site, SUPPORTED_LOCALES),
+    ...detailEntries(
+      site,
+      places.map((p) => p.slug),
+      '/places',
+      { changeFrequency: 'weekly', priority: 0.8 },
+    ),
+    ...detailEntries(
+      site,
+      hotels.map((h) => h.slug),
+      '/hotels',
+      { changeFrequency: 'weekly', priority: 0.6 },
+    ),
+    ...detailEntries(
+      site,
+      restaurants.map((r) => r.slug),
+      '/restaurants',
+      { changeFrequency: 'weekly', priority: 0.6 },
+    ),
+    ...detailEntries(
+      site,
+      tours.map((t) => t.slug),
+      '/tours',
+      { changeFrequency: 'weekly', priority: 0.6 },
+    ),
+    ...detailEntries(
+      site,
+      events.map((e) => e.slug),
+      '/events',
+      { changeFrequency: 'daily', priority: 0.5 },
+    ),
   ];
 }
