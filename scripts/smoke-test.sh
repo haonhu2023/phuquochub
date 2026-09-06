@@ -26,7 +26,8 @@ set -eu
 BASE_URL="${1:-http://127.0.0.1:8080}"
 SLUG="${2:-}"
 TMP_BODY=$(mktemp)
-trap 'rm -f "$TMP_BODY"' EXIT
+TMP_HEADERS=$(mktemp)
+trap 'rm -f "$TMP_BODY" "$TMP_HEADERS"' EXIT
 
 FAIL=0
 
@@ -56,20 +57,47 @@ echo "[smoke-test] Target: $BASE_URL"
 # 1. API health -- combined liveness+readiness (DB + Redis), matches HealthController.
 check "API health (/api/health)" "$BASE_URL/api/health" 200
 
-# 2. Web home page renders.
-check "Web home (/)" "$BASE_URL/" 200
+# 2. Web root -- locale routing (apps/web/src/proxy.ts) intentionally redirects `/` to the default
+#    locale; the home page is no longer served at the bare root. This deliberately does NOT use
+#    `curl -L` -- following the redirect would hide a wrong target (e.g. a stale absolute URL, or a
+#    regression back to 200) behind whatever `/vi` itself returns. No locale cookie is sent (no
+#    `-b`/cookie jar below), matching the no-cookie case proxy.ts falls back to DEFAULT_LOCALE for.
+CODE=$(curl -sS -o /dev/null -D "$TMP_HEADERS" -w '%{http_code}' "$BASE_URL/" 2>/dev/null || echo "000")
+if [ "$CODE" != "307" ]; then
+  echo "[smoke-test] FAIL: Web root (/) -> returned $CODE (expected EXACT 307)" >&2
+  FAIL=1
+else
+  echo "[smoke-test] OK:   Web root (/) -> 307"
+fi
 
-# 3. An unknown top-level route correctly 404s (PLACE-035 confirmed this on the current baseline;
-#    NOTE this deliberately does NOT use a /places/<bogus-slug> path -- PLACE-035/036 documented a
-#    pre-existing, unrelated quirk there that returns 200, not 404; asserting on it here would
+# 3. The redirect target must resolve to /vi -- either an absolute URL equivalent to
+#    ${BASE_URL%/}/vi (what NextResponse.redirect(req.nextUrl.clone()) actually emits, since
+#    nextUrl.clone() preserves protocol+host) or a bare /vi if a future change emits a relative
+#    Location instead. `grep -i` + `sed`/`tr` only -- no gawk IGNORECASE, stays POSIX sh.
+LOCATION=$(grep -i '^location:' "$TMP_HEADERS" | tail -n 1 | sed 's/^[Ll]ocation:[[:space:]]*//' | tr -d '\r\n')
+EXPECTED_ABS="${BASE_URL%/}/vi"
+if [ "$LOCATION" = "$EXPECTED_ABS" ] || [ "$LOCATION" = "/vi" ]; then
+  echo "[smoke-test] OK:   Root redirect Location -> $LOCATION"
+else
+  echo "[smoke-test] FAIL: Root redirect Location='$LOCATION' (expected '$EXPECTED_ABS' or '/vi')" >&2
+  FAIL=1
+fi
+
+# 4. The default locale home page itself renders.
+check "Web default locale (/vi)" "$BASE_URL/vi" 200
+
+# 5. An unknown top-level route correctly 404s (PLACE-035 confirmed this on the current baseline;
+#    NOTE this deliberately does NOT use a /vi/places/<bogus-slug> path -- PLACE-035/036 documented
+#    a pre-existing, unrelated quirk there that returns 200, not 404; asserting on it here would
 #    fail a healthy deploy for a known, already-accepted reason).
 check "Unknown route -> 404" "$BASE_URL/__smoke-test-unknown-route__" 404
 
-# 4. Optional: a real seeded place renders real content through the full web->API path.
+# 6. Optional: a real seeded place renders real content through the full web->API path, at its
+#    locale-prefixed URL (the old unprefixed /places/$SLUG now 307s, same as / above).
 if [ -n "$SLUG" ]; then
-  check "Place detail (/places/$SLUG)" "$BASE_URL/places/$SLUG" 200
+  check "Place detail (/vi/places/$SLUG)" "$BASE_URL/vi/places/$SLUG" 200
   if ! grep -qi "PhuQuocHub" "$TMP_BODY"; then
-    echo "[smoke-test] FAIL: /places/$SLUG did not contain the expected site title -- possible" >&2
+    echo "[smoke-test] FAIL: /vi/places/$SLUG did not contain the expected site title -- possible" >&2
     echo "[smoke-test]       fallback/error page instead of real data" >&2
     FAIL=1
   fi

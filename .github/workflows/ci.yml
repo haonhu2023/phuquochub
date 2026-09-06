@@ -276,19 +276,75 @@ jobs:
           grep -q '"database":{"status":"up"}' /tmp/health.json
           grep -q '"redis":{"status":"up"' /tmp/health.json
           docker logs api-ci
-          docker rm -f api-ci
+          # api-ci is intentionally left running (not removed here): the web-image step below needs
+          # it live on localhost:4000 to prove the real SSR web->API data path (AC3). Both containers
+          # are torn down together in the "Stop CI containers" step at the end of this job.
 
-      - name: Boot web image and verify it serves (PLACE-026 AC3)
+      - name: Boot web image and verify locale routing + real SSR data path (PLACE-026 AC3)
         run: |
-          docker run -d --name web-ci --network host -e NODE_ENV=production phuquochub-web:ci
+          # API_INTERNAL_URL: this job uses --network host, so the API is reachable at
+          # 127.0.0.1:4000 here -- NOT the Docker service hostname `api`, which only resolves on a
+          # user-defined bridge network (e.g. docker-compose.prod.yml's default network, a different
+          # topology than this host-network CI job). Omitting this var entirely is exactly the
+          # production regression this workflow gap let through undetected: apps/web/src/lib/api.ts
+          # throws server-side in NODE_ENV=production when it's unset, rather than silently falling
+          # back to a wrong address.
+          docker run -d --name web-ci --network host \
+            -e NODE_ENV=production -e API_INTERNAL_URL=http://127.0.0.1:4000/api \
+            phuquochub-web:ci
           for i in $(seq 1 20); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ || true)
-            [ "$code" = "200" ] && break
+            [ "$code" != "000" ] && break
             sleep 1
           done
-          curl -sfo /dev/null -w "web status: %{http_code}\n" http://localhost:3000/
+
+          # 1. Root MUST be an EXACT 307 -- apps/web/src/proxy.ts redirects / -> /vi on purpose, it
+          #    is no longer a 200 page. No `-L` here so the redirect itself is inspected, not
+          #    silently followed (a regression back to a bare 200, or a wrong Location, must fail).
+          ROOT_HEADERS=$(mktemp)
+          CODE=$(curl -s -o /dev/null -D "$ROOT_HEADERS" -w '%{http_code}' http://localhost:3000/)
+          echo "root status: $CODE"
+          if [ "$CODE" != "307" ]; then
+            echo "FAIL: / returned $CODE, expected 307"; docker logs web-ci; exit 1
+          fi
+
+          # 2. Location MUST resolve to /vi (absolute http://localhost:3000/vi, matching what
+          #    NextResponse.redirect(req.nextUrl.clone()) actually emits, or a bare /vi).
+          LOCATION=$(grep -i '^location:' "$ROOT_HEADERS" | tail -n 1 | sed 's/^[Ll]ocation:[[:space:]]*//' | tr -d '\r\n')
+          echo "root Location: $LOCATION"
+          case "$LOCATION" in
+            http://localhost:3000/vi|/vi) : ;;
+            *) echo "FAIL: Location='$LOCATION', expected http://localhost:3000/vi or /vi"; exit 1 ;;
+          esac
+
+          # 3. /vi itself MUST be 200.
+          VI_BODY=$(mktemp)
+          CODE=$(curl -s -o "$VI_BODY" -w '%{http_code}' http://localhost:3000/vi)
+          echo "/vi status: $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "FAIL: /vi returned $CODE, expected 200"; docker logs web-ci; exit 1
+          fi
+
+          # 4. Real SSR web->API data path -- this is AC3's actual point, and a bare 200 status
+          #    cannot prove it: /vi must NOT show DiscoverPlaces' fetch-failure copy, and must
+          #    contain at least one real, localized place-card link. This is exactly what silently
+          #    broke in the incident this workflow gap let through (API_INTERNAL_URL missing).
+          if grep -qF 'Hiện chưa tải được danh sách địa điểm.' "$VI_BODY"; then
+            echo "FAIL: /vi rendered the DiscoverPlaces error state -- SSR could not reach the API"
+            docker logs web-ci
+            exit 1
+          fi
+          if ! grep -qE 'href="/vi/places/' "$VI_BODY"; then
+            echo "FAIL: /vi did not render any /vi/places/ place-card link -- no evidence of real data"
+            docker logs web-ci
+            exit 1
+          fi
+          echo "OK: /vi rendered real place data via SSR"
           docker logs web-ci
-          docker rm -f web-ci
+
+      - name: Stop CI containers
+        if: always()
+        run: docker rm -f api-ci web-ci 2>/dev/null || true
 
       # PLACE-026 (OD2-7): GHCR via the auto-provided GITHUB_TOKEN — no new secret required.
       # The remote for this repository exists and is in active use. That is exactly why these two
