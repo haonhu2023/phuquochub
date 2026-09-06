@@ -337,6 +337,13 @@ services:
       - api
     environment:
       NODE_ENV: production
+      # Production regression fix: server-side fetches (SSR/RSC) run INSIDE this container and must
+      # reach the API via the internal Docker network name (`api:4000`), never via
+      # NEXT_PUBLIC_API_URL (a browser-facing address that does not resolve here). Missing this
+      # entirely was the root cause of the incident this fixes -- apps/web/src/lib/api.ts throws
+      # fail-closed in NODE_ENV=production when it is unset, taking down every server-rendered page
+      # that fetches place data. See apps/web/src/lib/api.ts for the full explanation.
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000/api}
     # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
     # service `web:3000`.
     logging:
