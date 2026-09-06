@@ -90,6 +90,30 @@ for svc in api web; do
   fi
 done
 
+echo "== web build passes NEXT_PUBLIC_SITE_URL with a production-safe default =="
+# Found alongside the provenance work, same web docker-build invocation this file already extracts
+# above: apps/web/Dockerfile declares `ARG NEXT_PUBLIC_SITE_URL=http://localhost:3000` (a local-dev
+# convenience), and apps/web/src/lib/site.ts falls back to that same value at runtime if the env var
+# is unset. NEXT_PUBLIC_* is baked in at build time with no runtime override once the image exists.
+# deploy.sh's web build previously passed NEXT_PUBLIC_API_URL/NEXT_PUBLIC_MAP_TILE_URL but NOT
+# NEXT_PUBLIC_SITE_URL -- so a release built via this script (rather than by hand, or via
+# docker-compose.prod.yml, which already passes it) would silently bake localhost:3000 into
+# metadataBase/sitemap.ts/robots.ts/JSON-LD in production. Fixed by adding the same
+# `${VAR:-default}` build-arg pattern already used for NEXT_PUBLIC_API_URL just above it, with
+# https://phuquochub.com (this repo's one production origin, per infrastructure/caddy/Caddyfile) as
+# the safe default.
+WEB_BLOCK=$(awk '/docker build .*apps\/web\/Dockerfile/,/^$/' "$DEPLOY")
+if printf '%s' "$WEB_BLOCK" | grep -q -- '--build-arg "NEXT_PUBLIC_SITE_URL='; then
+  pass "web build passes a NEXT_PUBLIC_SITE_URL build-arg"
+else
+  fail "web build does not pass NEXT_PUBLIC_SITE_URL -- would silently bake the Dockerfile's localhost:3000 default into production"
+fi
+if printf '%s' "$WEB_BLOCK" | grep -q -- '--build-arg "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}"'; then
+  pass "web build's NEXT_PUBLIC_SITE_URL default is the production origin (https://phuquochub.com)"
+else
+  fail "web build's NEXT_PUBLIC_SITE_URL default is missing or is not https://phuquochub.com"
+fi
+
 echo "== provenance must never carry a mutable identifier =="
 # `local`/`latest` as a recorded revision would defeat the whole point.
 if grep -qE -- '--build-arg "GIT_COMMIT=(local|latest)"' "$DEPLOY"; then

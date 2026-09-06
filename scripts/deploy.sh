@@ -65,6 +65,7 @@ if [ -z "$TILE_URL" ]; then
 fi
 docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
   --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
+  --build-arg "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}" \
   --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
   --build-arg "GIT_COMMIT=$TAG" \
   --build-arg "BUILD_DATE=$BUILD_DATE"
