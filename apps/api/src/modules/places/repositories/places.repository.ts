@@ -11,6 +11,8 @@ import {
   withCoverImageUrl,
   withCoverImageUrlOne,
 } from '../../../core/media-url/cover-image';
+import { computeFieldValueHash } from '../../evidence/field-value-hash';
+import { GATE_PASSING_VERIFICATION_STATUSES } from '../../evidence/evidence-trust';
 
 // Row phẳng cho card (đã trích lng/lat từ geography).
 //
@@ -137,6 +139,15 @@ const CARD_COLS = `
   p.rating_avg, p.rating_count, p.verification_status, p.status,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
 `;
+
+// rightNow()'s trust+presence candidate query is overfetched by this factor (capped) before
+// current-value field-evidence filtering removes ineligible rows — see that method's own comment
+// for why the filter can't happen inside the same SQL statement. 5x/60 keeps this a small, bounded
+// operation: RIGHT_NOW_MAX_LIMIT (12, places.service.ts) × 5 = 60, already at the cap, so the
+// multiplier never actually exceeds it in practice — both constants are named explicitly anyway so
+// neither bound is a silent, undocumented ceiling.
+const RIGHT_NOW_CANDIDATE_MULTIPLIER = 5;
+const RIGHT_NOW_CANDIDATE_CAP = 60;
 
 // Cột CHỈ có ở shape chi tiết (`PlaceDetailRow` = card + những cột này). Tách hằng số vì HAI truy
 // vấn dùng chung y hệt danh sách này — `getDetailBySlug` (công khai, lọc published) và
@@ -396,22 +407,51 @@ export class PlacesRepository {
 
   /**
    * "Right Now" MVP — trusted places that actually carry opening-hours data, for the homepage
-   * RightNowSection. Same trust whitelist as `nearby()`'s sibling `nearbyTrusted()`
-   * (`verified`/`official`/`community_verified`, literal like the existing `p.status = 'published'`
-   * literal above — fixed domain policy, not a caller-supplied filter).
+   * RightNowSection.
    *
-   * `p.opening_hours IS NOT NULL` is a PRESENCE check only — it does not interpret the JSON's
-   * contents (no day-of-week/is_24h logic here). A place with zero opening-hours data cannot
-   * support ANY "right now" claim, so it is excluded rather than shown with a permanently
-   * "unknown" state. The client still owns the actual open/closed READING via `getOpeningToday()`
-   * — this filter never decides open vs closed, only "is there data worth reading."
+   * Trust semantics correction (2026-09-08, PLACE_FIELD_EVIDENCE / Right Now trust semantics
+   * gate): `p.verification_status IN (...)` alone is NOT sufficient trust for an OPERATIONAL claim
+   * like "open 09:00–19:30 today." That status is a whole-PLACE aggregate (verifications.md §7) —
+   * confirmed by reading real `verifications` rows for the reviewed cohort: `official` is
+   * routinely earned via `method=source_match` against an "Administrative Data Backfill" (province/
+   * ward boundary matching a government resolution), which proves the place's ADMINISTRATIVE
+   * ADDRESS, not that anyone checked its opening hours. The `verifications` model has no
+   * field/scope column to distinguish that from a full identity/operator verification — see
+   * verification.entity.ts. Silently trusting `opening_hours` on the strength of an
+   * address-verification event would be exactly the overclaim `apps/web/.../places/trust.ts`
+   * already had to guard against at the LABEL level (banning "Đã xác minh chính thức" for
+   * `official`) — this closes the same gap at the QUERY level for the one place it actually
+   * matters: a feature that tells a real visitor a venue is open right now.
+   *
+   * The fix reuses the field-scoped evidence system that already exists for exactly this purpose
+   * (PR #21/#22, place_field_evidence_links + field_value_hash) instead of touching
+   * verification_status or adding a migration: a place is Right-Now-eligible only when its CURRENT
+   * `opening_hours` value has a `place_field_evidence_links` row whose `field_value_hash` matches
+   * sha256(canonicalJson(current value)) AND whose linked `evidence_artifacts.verification_status`
+   * clears `GATE_PASSING_VERIFICATION_STATUSES` (the SAME gate `evaluateTranslationEvidenceGate`
+   * already applies to translation evidence — NEEDS_REVIEW evidence must not silently pass here
+   * either). A stale link (hash computed against a value the field no longer holds) is real,
+   * retained history that simply won't match — it can never support a changed value.
+   *
+   * Two bounded queries, not N+1: query 1 overfetches trust+presence candidates (whitelist +
+   * `opening_hours IS NOT NULL`, same fixed literals as before); query 2 bulk-fetches every
+   * gate-passing field-evidence link for exactly those candidate ids in ONE round trip. The hash
+   * comparison itself is pure JS (computeFieldValueHash), never interpolated into SQL. Overfetch is
+   * capped (`RIGHT_NOW_CANDIDATE_MULTIPLIER`/`RIGHT_NOW_CANDIDATE_CAP`) so this stays a small,
+   * deterministic operation regardless of how many places exist — not an unbounded scan.
+   *
+   * `nearbyTrusted()` below is NOT given the same treatment: it never filters on or exposes
+   * `opening_hours` as an operational claim (no `IS NOT NULL`), so it is not making the same
+   * overclaim — see that method's own comment.
    *
    * Same ORDER BY as `list()` above (rating_avg DESC NULLS LAST, created_at DESC, id ASC) — reuses
    * the existing governed "browse" ordering instead of inventing a new ranking signal, with the
-   * same `p.id ASC` deterministic tie-break convention used throughout this repository.
+   * same `p.id ASC` deterministic tie-break convention used throughout this repository. Evidence
+   * filtering only REMOVES ineligible candidates from this ordered set — it never reorders it.
    */
   async rightNow(params: { limit: number }): Promise<PlaceNowCardRow[]> {
-    const rows: PlaceNowCardRow[] = await this.repo.query(
+    const candidateLimit = Math.min(params.limit * RIGHT_NOW_CANDIDATE_MULTIPLIER, RIGHT_NOW_CANDIDATE_CAP);
+    const candidates: PlaceNowCardRow[] = await this.repo.query(
       `SELECT ${CARD_COLS}, p.opening_hours
        FROM places p
        WHERE p.deleted_at IS NULL AND p.status = 'published'
@@ -419,8 +459,28 @@ export class PlacesRepository {
          AND p.opening_hours IS NOT NULL
        ORDER BY p.rating_avg DESC NULLS LAST, p.created_at DESC, p.id ASC
        LIMIT $1`,
-      [params.limit],
+      [candidateLimit],
     );
+    if (candidates.length === 0) return [];
+
+    const verifiedLinks: Array<{ place_id: string; field_value_hash: string }> = await this.repo.query(
+      `SELECT pfel.place_id, pfel.field_value_hash
+       FROM place_field_evidence_links pfel
+       JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
+       WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
+         AND ea.verification_status = ANY($2)`,
+      [candidates.map((c) => c.id), [...GATE_PASSING_VERIFICATION_STATUSES]],
+    );
+    const verifiedHashesByPlace = new Map<string, Set<string>>();
+    for (const link of verifiedLinks) {
+      const set = verifiedHashesByPlace.get(link.place_id) ?? new Set<string>();
+      set.add(link.field_value_hash);
+      verifiedHashesByPlace.set(link.place_id, set);
+    }
+
+    const rows = candidates
+      .filter((c) => verifiedHashesByPlace.get(c.id)?.has(computeFieldValueHash(c.opening_hours)) ?? false)
+      .slice(0, params.limit);
     return withCoverImageUrl(rows, this.mediaUrl);
   }
 
@@ -475,6 +535,13 @@ export class PlacesRepository {
    *      narrow row shape (`PlaceNowCardRow`) instead.
    * Server never computes open/closed here — that stays a pure client-side concern
    * (`getOpeningToday()`), so this method's only job is to pass `opening_hours` through unchanged.
+   *
+   * NOT given rightNow()'s current-value field-evidence filter (2026-09-08 trust semantics gate):
+   * that fix exists because Right Now makes an OPERATIONAL claim ("open now") that a bare
+   * `verification_status` cannot honestly back. This method makes no such claim — it does not even
+   * require `opening_hours IS NOT NULL` (see the SQL below), so a place with zero opening-hours
+   * data can still appear here. Adding a same-field evidence requirement to an endpoint that never
+   * asserts the field in the first place would be scope creep, not a fix.
    */
   async nearbyTrusted(params: {
     lat: number;
