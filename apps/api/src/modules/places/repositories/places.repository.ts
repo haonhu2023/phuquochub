@@ -11,6 +11,8 @@ import {
   withCoverImageUrl,
   withCoverImageUrlOne,
 } from '../../../core/media-url/cover-image';
+import { computeFieldValueHash } from '../../evidence/field-value-hash';
+import { GATE_PASSING_VERIFICATION_STATUSES, OFFICIAL_SOURCE_TYPES } from '../../evidence/evidence-trust';
 
 // Row phẳng cho card (đã trích lng/lat từ geography).
 //
@@ -137,6 +139,15 @@ const CARD_COLS = `
   p.rating_avg, p.rating_count, p.verification_status, p.status,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
 `;
+
+// rightNow()'s trust+presence candidate query is overfetched by this factor (capped) before
+// current-value field-evidence filtering removes ineligible rows — see that method's own comment
+// for why the filter can't happen inside the same SQL statement. 5x/60 keeps this a small, bounded
+// operation: RIGHT_NOW_MAX_LIMIT (12, places.service.ts) × 5 = 60, already at the cap, so the
+// multiplier never actually exceeds it in practice — both constants are named explicitly anyway so
+// neither bound is a silent, undocumented ceiling.
+const RIGHT_NOW_CANDIDATE_MULTIPLIER = 5;
+const RIGHT_NOW_CANDIDATE_CAP = 60;
 
 // Cột CHỈ có ở shape chi tiết (`PlaceDetailRow` = card + những cột này). Tách hằng số vì HAI truy
 // vấn dùng chung y hệt danh sách này — `getDetailBySlug` (công khai, lọc published) và
@@ -395,32 +406,116 @@ export class PlacesRepository {
   }
 
   /**
-   * "Right Now" MVP — trusted places that actually carry opening-hours data, for the homepage
-   * RightNowSection. Same trust whitelist as `nearby()`'s sibling `nearbyTrusted()`
-   * (`verified`/`official`/`community_verified`, literal like the existing `p.status = 'published'`
-   * literal above — fixed domain policy, not a caller-supplied filter).
+   * "Right Now" MVP — published places with sufficiently trustworthy CURRENT opening-hours
+   * evidence, for the homepage RightNowSection. The user-facing promise (RightNowSection.tsx +
+   * home.copy.ts's `rightNowTitle`/`rightNowEmptyBody`) is specifically about an ACTIONABLE,
+   * CURRENT open/closed claim a visitor can act on right now — not a general "this business's
+   * identity/operator has been verified" claim (that promise, if made anywhere, belongs to a
+   * verification-scope model this codebase does not have — see docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md).
    *
-   * `p.opening_hours IS NOT NULL` is a PRESENCE check only — it does not interpret the JSON's
-   * contents (no day-of-week/is_24h logic here). A place with zero opening-hours data cannot
-   * support ANY "right now" claim, so it is excluded rather than shown with a permanently
-   * "unknown" state. The client still owns the actual open/closed READING via `getOpeningToday()`
-   * — this filter never decides open vs closed, only "is there data worth reading."
+   * Trust semantics correction (2026-09-08, PLACE_FIELD_EVIDENCE / Right Now trust semantics gate,
+   * amended same day in the PR #24 final review): the ORIGINAL fix here added a current-value
+   * field-evidence requirement ON TOP OF the existing `p.verification_status IN (...)` whole-place
+   * whitelist. That whitelist is now REMOVED, not just supplemented — the final review established
+   * it cannot be relied on at all for this purpose:
+   *
+   *  1. `verifications` has no field/scope column (verification.entity.ts) — a `verified`/
+   *     `official`/`community_verified` row says a moderator or a source-match transitioned the
+   *     WHOLE place, never WHICH fact was actually checked.
+   *  2. `official` is reachable purely via `method=source_match` against an Administrative Data
+   *     Backfill (province/ward boundary matching a government resolution) — proving the place's
+   *     ADMINISTRATIVE ADDRESS, nothing about its opening hours. Confirmed empirically: most of the
+   *     current cohort's `official` rows are exactly this, with zero human review of the place
+   *     itself. `method=source_match` is ALSO used by the unrelated, legitimate
+   *     `VerifiedFactsIngestionService` for real operational facts — so `method` cannot even
+   *     reliably distinguish "admin-only" from "some real source matched" after the fact.
+   *  3. `p.status = 'published'` is NOT similarly hollow — `PlacesService.approve()` is a
+   *     privileged, audited action (`permission: 'Place.Approve'`; ADR-016) with no other code path
+   *     that sets it. A published place has already had SOME human gatekeeping; `verification_status`
+   *     was never the only legitimacy signal, and for this specific claim it was the WRONG one.
+   *
+   * So the whole-place whitelist added nothing this query actually needed and actively risked
+   * overclaiming: a place could be Right-Now-eligible purely because an address string matched a
+   * 2025 administrative-boundary resolution, which is exactly the "Đã xác minh chính thức" overclaim
+   * `apps/web/.../places/trust.ts` already had to ban at the LABEL level. Removing it does not
+   * loosen this query — `published` stays required, and the mandatory field-evidence check below
+   * (now also SOURCE-AUTHORITY-scoped, see next paragraph) is a STRICTER, more specifically-targeted
+   * guarantee than the whitelist it replaces: a `pending` place with real, current, source-
+   * authoritative opening-hours evidence now qualifies; an `official`-only-via-backfill place
+   * WITHOUT such evidence never did and still does not.
+   *
+   * SOURCE AUTHORITY (added in the same 2026-09-08 amendment): `evidence_artifacts.verification_status`
+   * is a plain `string` column with no DB check and, as of this review, no real write path in this
+   * codebase that ever sets a gate-passing value — its meaning is a convention trusted to whoever
+   * calls `EvidenceService.ensureEvidenceArtifact`. "VERIFIED" alone therefore does NOT guarantee the
+   * underlying SOURCE is credible (a `community`/`facebook`/`ai`-type source could reach it just as
+   * easily as an official one). `OFFICIAL_SOURCE_TYPES` (evidence-trust.ts, the SAME set
+   * `verifications.service.ts`'s `buildOfficialTransition` already requires for `official` status)
+   * closes that gap here too: gate-passing evidence must ALSO be attributed to an
+   * official_website/business_owner/government source.
+   *
+   * Mechanism (unchanged from the original fix): a place is Right-Now-eligible only when its
+   * CURRENT `opening_hours` value has a `place_field_evidence_links` row whose `field_value_hash`
+   * matches sha256(canonicalJson(current value)) AND whose linked `evidence_artifacts` row both
+   * clears `GATE_PASSING_VERIFICATION_STATUSES` AND is attributed to an `OFFICIAL_SOURCE_TYPES`
+   * source. A stale link (hash computed against a value the field no longer holds) is real, retained
+   * history that simply won't match — it can never support a changed value.
+   *
+   * Two bounded queries, not N+1: query 1 overfetches published+presence candidates (no longer
+   * trust-filtered — see above); query 2 bulk-fetches every gate-passing, source-authoritative
+   * field-evidence link for exactly those candidate ids in ONE round trip (now joining `sources`
+   * too). The hash comparison itself is pure JS (computeFieldValueHash), never interpolated into
+   * SQL. Overfetch is capped (`RIGHT_NOW_CANDIDATE_MULTIPLIER`/`RIGHT_NOW_CANDIDATE_CAP`) so this
+   * stays a small, deterministic operation regardless of how many places exist — not an unbounded
+   * scan. Removing the whitelist from query 1 does not change this bound (same LIMIT, same cap); it
+   * can only make the (still bounded) candidate window contain MORE not-yet-evidenced places, which
+   * the unchanged query-2 filter removes exactly as before.
+   *
+   * `nearbyTrusted()` below is deliberately NOT given the same treatment — it still uses the
+   * whole-place whitelist this method just removed. That is a real, KNOWN overclaim there too (same
+   * root cause), left unfixed in this task because, unlike here, there is no field-specific claim to
+   * substitute a scoped evidence check for — see that method's own comment and
+   * docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md for why closing it needs an actual verification-scope model,
+   * not a query change.
    *
    * Same ORDER BY as `list()` above (rating_avg DESC NULLS LAST, created_at DESC, id ASC) — reuses
    * the existing governed "browse" ordering instead of inventing a new ranking signal, with the
-   * same `p.id ASC` deterministic tie-break convention used throughout this repository.
+   * same `p.id ASC` deterministic tie-break convention used throughout this repository. Evidence
+   * filtering only REMOVES ineligible candidates from this ordered set — it never reorders it.
    */
   async rightNow(params: { limit: number }): Promise<PlaceNowCardRow[]> {
-    const rows: PlaceNowCardRow[] = await this.repo.query(
+    const candidateLimit = Math.min(params.limit * RIGHT_NOW_CANDIDATE_MULTIPLIER, RIGHT_NOW_CANDIDATE_CAP);
+    const candidates: PlaceNowCardRow[] = await this.repo.query(
       `SELECT ${CARD_COLS}, p.opening_hours
        FROM places p
        WHERE p.deleted_at IS NULL AND p.status = 'published'
-         AND p.verification_status IN ('verified', 'official', 'community_verified')
          AND p.opening_hours IS NOT NULL
        ORDER BY p.rating_avg DESC NULLS LAST, p.created_at DESC, p.id ASC
        LIMIT $1`,
-      [params.limit],
+      [candidateLimit],
     );
+    if (candidates.length === 0) return [];
+
+    const verifiedLinks: Array<{ place_id: string; field_value_hash: string }> = await this.repo.query(
+      `SELECT pfel.place_id, pfel.field_value_hash
+       FROM place_field_evidence_links pfel
+       JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
+       JOIN sources s ON s.id = ea.source_id
+       WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
+         AND ea.verification_status = ANY($2)
+         AND s.type = ANY($3)`,
+      [candidates.map((c) => c.id), [...GATE_PASSING_VERIFICATION_STATUSES], [...OFFICIAL_SOURCE_TYPES]],
+    );
+    const verifiedHashesByPlace = new Map<string, Set<string>>();
+    for (const link of verifiedLinks) {
+      const set = verifiedHashesByPlace.get(link.place_id) ?? new Set<string>();
+      set.add(link.field_value_hash);
+      verifiedHashesByPlace.set(link.place_id, set);
+    }
+
+    const rows = candidates
+      .filter((c) => verifiedHashesByPlace.get(c.id)?.has(computeFieldValueHash(c.opening_hours)) ?? false)
+      .slice(0, params.limit);
     return withCoverImageUrl(rows, this.mediaUrl);
   }
 
@@ -475,6 +570,27 @@ export class PlacesRepository {
    *      narrow row shape (`PlaceNowCardRow`) instead.
    * Server never computes open/closed here — that stays a pure client-side concern
    * (`getOpeningToday()`), so this method's only job is to pass `opening_hours` through unchanged.
+   *
+   * KNOWN PREDICATE OVERCLAIM, LEFT UNCHANGED (2026-09-08 PR #24 final trust-semantics review):
+   * `rightNow()` above no longer uses the whole-place `p.verification_status` whitelist at all — it
+   * was found to add no real guarantee (see that method's own comment) and was REPLACED with a
+   * field-scoped, source-authoritative evidence check for the one fact it actually asserts
+   * (opening_hours). This method still uses the whitelist below, and that is the SAME root-cause
+   * overclaim (`official` routinely means only "an address matched a 2025 administrative-boundary
+   * resolution," not that anyone reviewed this place), NOT a different, lesser problem than
+   * rightNow() had.
+   *
+   * It is left unfixed here — this is a real gap, not a judgment that it's safe — because there is
+   * no field-specific claim to substitute a scoped check for: this method asserts nothing about
+   * `opening_hours` (no `IS NOT NULL` even required, see the SQL below), so there is no equivalent
+   * of "field-evidence for the one fact being shown" to fall back on. The only fixes available
+   * without a schema change would be either (a) dropping the trust filter entirely — a real product
+   * decision (changes WHICH places appear here, not just a label) outside this task's authority to
+   * make unilaterally, or (b) something that actually distinguishes "administrative-only" from
+   * "identity/operator verified" `official` rows, which the current `verifications` model cannot do
+   * (no field/scope column, and `method=source_match` is shared with unrelated legitimate callers —
+   * see docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md). Closing this needs a real verification-scope model, not
+   * a query edit, and is reported there rather than invented here.
    */
   async nearbyTrusted(params: {
     lat: number;

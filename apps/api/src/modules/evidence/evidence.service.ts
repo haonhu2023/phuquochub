@@ -6,6 +6,7 @@ import { PlaceTranslationEvidenceLink } from './entities/place-translation-evide
 import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
 import { PlacesRepository, PlaceDetailRow } from '../places/repositories/places.repository';
 import { computeFieldValueHash } from './field-value-hash';
+import { GATE_PASSING_VERIFICATION_STATUSES } from './evidence-trust';
 
 // Maps a field_name accepted by PlaceFieldEvidenceLink to how its CURRENT value is actually read.
 // Deliberately explicit and small, not a closed enum on the column itself (field_name stays
@@ -31,10 +32,10 @@ export interface EnsureEvidenceArtifactInput {
   metadata?: Record<string, unknown> | null;
 }
 
-// Verification statuses this service will accept as "clears the gate" — NEEDS_REVIEW is
-// deliberately excluded. Only a real human review (recorded via verifiedBy/verifiedAt, never set
-// by this import path) may move a row into one of these.
-const GATE_PASSING_VERIFICATION_STATUSES = new Set(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
+// GATE_PASSING_VERIFICATION_STATUSES now lives in ./evidence-trust.ts (re-exported here for
+// existing importers of this module) — moved out so PlacesRepository.rightNow() can use the same
+// gate without creating a circular import (this file already imports PlacesRepository).
+export { GATE_PASSING_VERIFICATION_STATUSES };
 
 @Injectable()
 export class EvidenceService {

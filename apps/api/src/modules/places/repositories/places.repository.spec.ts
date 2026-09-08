@@ -4,6 +4,7 @@ import { Place } from '../entities/place.entity';
 import { PlaceStatus, PriceRange } from '../place.enums';
 import { createMock, LooseMock } from '../../../../test/helpers/create-mock';
 import type { MediaUrlService } from '../../../core/media-url/media-url.service';
+import { computeFieldValueHash } from '../../evidence/field-value-hash';
 
 // Chuẩn hoá khoảng trắng để assert nội dung SQL không phụ thuộc cách xuống dòng/thụt lề.
 function sql(query: string): string {
@@ -684,6 +685,48 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows[0].opening_hours).toEqual(oh);
   });
+
+  // 2026-09-08 Right Now trust semantics gate: nearbyTrusted() deliberately did NOT receive
+  // rightNow()'s current-value field-evidence filter (see this method's own doc comment for why —
+  // it never asserts opening_hours as an operational claim, so a same-field evidence requirement
+  // would be scope creep). These two tests lock that decision in: a single query, no
+  // place_field_evidence_links join, and a trusted place with opening_hours but ZERO field
+  // evidence still appears — proving the method is unaffected by (and does not need) the fix
+  // applied to rightNow().
+  it('KHÔNG join place_field_evidence_links — không áp gate bằng chứng theo trường (ngoài phạm vi cố ý)', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    expect(repo.query).toHaveBeenCalledTimes(1);
+    const [query] = repo.query.mock.calls[0];
+    expect(sql(query)).not.toContain('place_field_evidence_links');
+  });
+
+  it('place tin cậy có opening_hours nhưng KHÔNG có field-evidence vẫn xuất hiện (không đổi hành vi)', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    repo.query.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        name: 'Bãi Sao',
+        slug: 'bai-sao',
+        category_id: 'c1',
+        short_description: null,
+        price_range: null,
+        cover_image_url: null,
+        cover_image_media_id: null,
+        rating_avg: null,
+        rating_count: 0,
+        verification_status: 'official',
+        status: 'published',
+        lat: 10.05,
+        lng: 104.0,
+        opening_hours: oh,
+        distance_m: 12.3,
+      },
+    ]);
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -698,25 +741,43 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     sut = new PlacesRepository(repo, MEDIA_URL);
   });
 
+  // rightNow() is now TWO queries (2026-09-08 trust semantics gate): query 1 fetches
+  // trust+presence candidates (overfetched), query 2 bulk-fetches gate-passing field-evidence
+  // links for exactly those candidates. Most tests below only care about query 1's SQL shape, so
+  // this helper mocks an empty candidate set — the second query is never issued when there are no
+  // candidates (see the dedicated test for that below), keeping these assertions unaffected by the
+  // evidence-filtering logic.
   async function capturedQuery(): Promise<string> {
     repo.query.mockResolvedValueOnce([]);
     await sut.rightNow({ limit: 6 });
     return repo.query.mock.calls[0][0];
   }
 
-  it('lọc đúng whitelist tin cậy: verified/official/community_verified', async () => {
-    const query = sql(await capturedQuery());
-    expect(query).toContain(
-      "p.verification_status IN ('verified', 'official', 'community_verified')",
-    );
-  });
+  function mockCandidatesAndLinks(
+    candidates: Array<{ id: string; opening_hours: unknown; [key: string]: unknown }>,
+    links: Array<{ place_id: string; field_value_hash: string }> = [],
+  ) {
+    repo.query.mockResolvedValueOnce(candidates).mockResolvedValueOnce(links);
+  }
 
-  it('whitelist tin cậy đứng TRƯỚC LIMIT trong câu SQL (lọc xảy ra trước khi cắt)', async () => {
+  // PR #24 final trust-semantics review (2026-09-08): the whole-place `verification_status`
+  // whitelist is REMOVED from the candidate query, not just supplemented — see this repository's
+  // rightNow() doc comment for the full reasoning (verifications has no field/scope column,
+  // `official` is routinely admin-backfill-only, `published` is already a privileged gate). The
+  // candidate query now selects on `published` + presence alone; trust for the specific claim
+  // being shown is enforced entirely by query 2's field-evidence + source-authority check below.
+  it('KHÔNG còn lọc theo whitelist verification_status — cổng tin cậy chuyển hẳn sang field-evidence', async () => {
     const query = sql(await capturedQuery());
-    const whitelistIdx = query.indexOf('verification_status IN');
-    const limitIdx = query.indexOf('LIMIT');
-    expect(whitelistIdx).toBeGreaterThan(-1);
-    expect(limitIdx).toBeGreaterThan(whitelistIdx);
+    // p.verification_status is still SELECTed (part of CARD_COLS, needed for the row shape) — the
+    // whitelist FILTER on it is what's gone. Assert there is no IN(...) predicate on the column,
+    // and none of the three whitelist literal values appear anywhere in the query text at all
+    // (they never appeared outside that predicate before this change, so their total absence here
+    // is a reliable proxy for "the predicate itself is gone").
+    expect(query).not.toContain('verification_status IN');
+    expect(query).not.toContain('verified');
+    expect(query).not.toContain('official');
+    expect(query).not.toContain('community_verified');
+    expect(query).toContain('p.verification_status'); // still selected, just not filtered on
   });
 
   it('giữ ràng buộc published + chưa xoá mềm', async () => {
@@ -744,23 +805,188 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     ]);
   });
 
-  it('LIMIT truyền đúng tham số $1', async () => {
+  it('candidate query overfetches (bounded, x5) thay vì dùng thẳng limit của caller — còn khoảng trống cho lọc evidence', async () => {
     repo.query.mockResolvedValueOnce([]);
     await sut.rightNow({ limit: 9 });
     const [query, params] = repo.query.mock.calls[0];
     expect(sql(query)).toContain('LIMIT $1');
-    expect(params).toEqual([9]);
+    expect(params).toEqual([45]);
   });
 
-  it('opening_hours null truyền qua row nguyên trạng', async () => {
-    repo.query.mockResolvedValueOnce([{ id: 'p1', opening_hours: null }]);
+  it('overfetch bị chặn trần (cap) kể cả với limit lớn', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.rightNow({ limit: 12 });
+    const [, params] = repo.query.mock.calls[0];
+    expect(params).toEqual([60]);
+  });
+
+  it('không có candidate nào -> trả về [] mà KHÔNG gọi truy vấn field-evidence (khỏi tốn round trip)', async () => {
+    repo.query.mockResolvedValueOnce([]);
     const rows = await sut.rightNow({ limit: 6 });
-    expect(rows[0].opening_hours).toBeNull();
+    expect(rows).toEqual([]);
+    expect(repo.query).toHaveBeenCalledTimes(1);
   });
 
-  it('opening_hours object truyền qua row nguyên trạng (không đổi hình dạng)', async () => {
+  it('truy vấn thứ hai lấy field-evidence đúng phạm vi: đúng candidate id, field_name=opening_hours, đúng whitelist trạng thái xác minh VÀ nguồn có thẩm quyền', async () => {
+    mockCandidatesAndLinks([
+      { id: 'p1', opening_hours: { a: 1 } },
+      { id: 'p2', opening_hours: { b: 2 } },
+    ]);
+    await sut.rightNow({ limit: 6 });
+    const [query, params] = repo.query.mock.calls[1];
+    expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
+    expect(sql(query)).toContain('pfel.place_id = ANY($1)');
+    expect(sql(query)).toContain('ea.verification_status = ANY($2)');
+    expect(sql(query)).toContain('JOIN sources s ON s.id = ea.source_id');
+    expect(sql(query)).toContain('s.type = ANY($3)');
+    expect(params[0]).toEqual(['p1', 'p2']);
+    expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
+    expect(params[1]).not.toContain('NEEDS_REVIEW');
+    expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+  });
+
+  // Category 1: admin-backfill-only `official` (trusted status + opening_hours present, but no
+  // field-evidence link at all) must NOT satisfy Right Now's operational "open now" claim — this
+  // is the exact scenario the gate was built to close (see evidence-trust.ts / this repository's
+  // rightNow() doc comment).
+  it('place official CHỈ nhờ administrative backfill (không có field-evidence) bị loại khỏi Right Now', async () => {
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: { timezone: 'Asia/Ho_Chi_Minh', is_24h: false } }],
+      [],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  // PR #24 merge-gate audit (2026-09-08): explicit, literal coverage for "pending + currently open
+  // → excluded" using verification_status:'pending' in the mock — proves the SAME no-evidence
+  // exclusion mechanism as the test above applies identically regardless of what verification_status
+  // value a candidate carries (the query no longer reads it at all — see the "KHÔNG còn lọc" test).
+  // `is_24h: true` stands in for "currently open" without needing real clock injection at this layer
+  // (open/closed computation itself is a pure client-side concern — getOpeningToday() — never
+  // performed by this repository; see rightNow()'s own doc comment).
+  it('place pending, giờ mở cửa cho thấy đang mở, nhưng KHÔNG có field-evidence — vẫn bị loại khỏi Right Now', async () => {
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: { timezone: 'Asia/Ho_Chi_Minh', is_24h: true }, verification_status: 'pending' }],
+      [],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  // Category 2/3: trust status + a gate-passing field-evidence link whose hash matches the
+  // place's CURRENT opening_hours value qualifies.
+  it('place có trạng thái tin cậy VÀ field-evidence khớp giá trị opening_hours hiện tại thì ĐƯỢC nhận vào Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], [{ place_id: 'p1', field_value_hash: hash }]);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  // Category 4: a link whose hash was computed against an OLDER opening_hours value (the place's
+  // hours have since changed) must not be mistaken for support of the current value.
+  it('field_value_hash cũ (giá trị opening_hours đã đổi sau khi liên kết) KHÔNG được tính là hợp lệ', async () => {
+    const oldValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '16:00' }] } };
+    const currentValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const staleHash = computeFieldValueHash(oldValue);
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: currentValue }], [{ place_id: 'p1', field_value_hash: staleHash }]);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  // CASE 3 (Phase 5, PR #24 final review): a `pending` place — never separately reviewed at the
+  // whole-place level — now QUALIFIES for Right Now as long as it is `published` (still required by
+  // query 1's unchanged WHERE clause) and its opening_hours have real, current, gate-passing,
+  // source-authoritative evidence. This is the deliberate behavior change of this review: the
+  // place's own `verification_status` value is no longer read by rightNow() at all (the row shape
+  // still carries it for the SELECT, but the query never filters on it — see the "KHÔNG còn lọc"
+  // test above), so a mocked candidate can freely claim any verification_status here and the
+  // outcome depends ONLY on the field-evidence link.
+  it('place pending (chưa từng qua xác minh riêng) NHƯNG có field-evidence hợp lệ, có thẩm quyền vẫn ĐƯỢC nhận vào Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: oh, verification_status: 'pending' }],
+      [{ place_id: 'p1', field_value_hash: hash }],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  // CASE 6 (Phase 5, PR #24 final review): "VERIFIED" evidence status alone does not guarantee the
+  // backing SOURCE is credible — evidence_artifacts.verification_status is an unconstrained string
+  // with no real write path in this codebase, so it cannot by itself vouch for source authority.
+  // Query 2's `s.type = ANY($3)` filter is the mechanism that closes this; simulated here by NOT
+  // returning a row from query 2 for a place whose only backing evidence is on a low-authority
+  // source type (e.g. `community`/`facebook`/`ai`) — exactly what the real SQL's JOIN+WHERE would
+  // do, since such a row would never be SELECTed by that query in the first place.
+  it('field-evidence có trạng thái VERIFIED nhưng nguồn KHÔNG thuộc nhóm có thẩm quyền (official_website/business_owner/government) bị loại khỏi Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    // Query 2's own WHERE clause (s.type = ANY($3)) means a low-authority-source-backed link is
+    // never part of its result set at all — represented here by an EMPTY links array, the same
+    // outcome the real filtered SQL would produce for this scenario.
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  // Category 6 (part 2): NEEDS_REVIEW evidence never appears among gate-passing statuses (locked
+  // in by the "đúng whitelist trạng thái xác minh" test above); a link stuck at NEEDS_REVIEW is
+  // simply never returned by query 2's own WHERE clause, so a candidate backed only by such a link
+  // behaves identically to having no link at all — excluded.
+  it('field-evidence còn ở NEEDS_REVIEW (chưa qua gate) bị coi như không có bằng chứng — vẫn loại khỏi Right Now', async () => {
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: { a: 1 } }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  it('nhiều link cho cùng một place: chỉ cần MỘT hash khớp là đủ', async () => {
+    const oh = { a: 1 };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: oh }],
+      [
+        { place_id: 'p1', field_value_hash: 'unrelated-hash-tu-mot-evidence-khac' },
+        { place_id: 'p1', field_value_hash: hash },
+      ],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  it('giữ nguyên thứ tự ORDER BY ban đầu sau khi lọc — không sắp xếp lại candidate hợp lệ', async () => {
+    const oh = { a: 1 };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks(
+      [
+        { id: 'p1', opening_hours: oh, rating_avg: 5 },
+        { id: 'p2', opening_hours: oh, rating_avg: 4 },
+        { id: 'p3', opening_hours: oh, rating_avg: 3 },
+      ],
+      [
+        { place_id: 'p1', field_value_hash: hash },
+        { place_id: 'p3', field_value_hash: hash },
+      ],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('cắt về đúng limit của caller SAU KHI lọc evidence, không phải trước', async () => {
+    const oh = { a: 1 };
+    const hash = computeFieldValueHash(oh);
+    const candidates = ['p1', 'p2', 'p3'].map((id) => ({ id, opening_hours: oh }));
+    const links = ['p1', 'p2', 'p3'].map((id) => ({ place_id: id, field_value_hash: hash }));
+    mockCandidatesAndLinks(candidates, links);
+    const rows = await sut.rightNow({ limit: 2 });
+    expect(rows.map((r) => r.id)).toEqual(['p1', 'p2']);
+  });
+
+  it('opening_hours object truyền qua row nguyên trạng (không đổi hình dạng) khi có evidence khớp', async () => {
     const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
-    repo.query.mockResolvedValueOnce([{ id: 'p1', opening_hours: oh }]);
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], [{ place_id: 'p1', field_value_hash: hash }]);
     const rows = await sut.rightNow({ limit: 6 });
     expect(rows[0].opening_hours).toEqual(oh);
   });
