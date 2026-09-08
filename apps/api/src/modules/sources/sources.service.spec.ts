@@ -155,4 +155,35 @@ describe('SourcesService', () => {
 
     expect(attributionsRepo.clearPrimary).not.toHaveBeenCalled();
   });
+
+  // Idempotency contract (2026-09-08, Vinpearl Safari source conflict resolution task, Phase 2) —
+  // verified by reading SourceAttributionsRepository exhaustively: unlike
+  // EvidenceService.ensureEvidenceArtifact (checks findByBusinessKey first) and
+  // .linkEvidenceToPlaceField (checks findLink first), attachAttribution has NO existence check of
+  // its own — it unconditionally calls create()+save(). The repository exposes no
+  // find-by-(entity_type,entity_id,field,source_id) method at all, so the ONLY thing standing
+  // between a retried call and a literal duplicate row is the DB's own
+  // `uq_source_attr_entity_field_source` UNIQUE constraint (source_attributions table, confirmed
+  // live on production 2026-09-08). This test locks in what that actually means in practice: a
+  // second identical attachAttribution call is NOT a silent idempotent no-op — it calls save()
+  // again and, in real Postgres, would raise a unique-violation the caller must handle, not return
+  // the pre-existing row. Confirmed here without a second production write (per the task's explicit
+  // instruction) by asserting the service's own call pattern rather than exercising a real DB.
+  it('attachAttribution: KHÔNG tự kiểm tra tồn tại trước khi ghi — gọi lại với cùng khoá vẫn save() lần nữa (không phải no-op im lặng)', async () => {
+    sourcesRepo.findById.mockResolvedValue({ id: 'src-1' });
+    const dto = {
+      source_id: 'src-1',
+      entity_type: 'place_field',
+      entity_id: 'place-1',
+      field: 'opening_hours',
+      is_primary: true,
+    } as never;
+
+    await service.attachAttribution(dto);
+    await service.attachAttribution(dto);
+
+    // Không có phương thức "tìm bản ghi đã tồn tại theo khoá" nào được gọi ở tầng service — repo
+    // chỉ có findById(id CỦA CHÍNH attribution, không dùng để tra theo khoá nghiệp vụ).
+    expect(attributionsRepo.save).toHaveBeenCalledTimes(2);
+  });
 });

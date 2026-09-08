@@ -214,6 +214,102 @@ describe('getOpeningToday — dữ liệu hỏng/lạ không được thành kh�
   });
 });
 
+// VINWONDERS_OPENING_HOURS_CONTRACT (2026-09-08 — Vinpearl Safari source conflict resolution task,
+// Phase 1). Regression-locks the evaluator's behavior against the EXACT payload currently stored in
+// `places.opening_hours` for VinWonders Phú Quốc in production (verified live via DB + public API +
+// public web on 2026-09-08 — see the task's Phase 0 report). The task brief's own stated "current
+// production value" used a collapsed `"mon-sun"` key; that does NOT match what is actually stored —
+// production genuinely holds one entry per weekday (mon/tue/wed/thu/fri/sat/sun), each
+// `09:00–19:30`. Both are tested below: the REAL payload (must be understood) and the `mon-sun`
+// shorthand from the task's stale premise (must NOT be silently misread as a valid schedule).
+describe('getOpeningToday — VinWonders production payload contract (2026-09-08)', () => {
+  // Byte-for-byte the value read from `places.opening_hours` in production (DB, /api/places/…, and
+  // the rendered JSON-LD all agreed — see Phase 0 of the report).
+  const VINWONDERS_LIVE: OpeningHours = {
+    timezone: 'Asia/Ho_Chi_Minh',
+    regular: {
+      mon: [{ open: '09:00', close: '19:30' }],
+      tue: [{ open: '09:00', close: '19:30' }],
+      wed: [{ open: '09:00', close: '19:30' }],
+      thu: [{ open: '09:00', close: '19:30' }],
+      fri: [{ open: '09:00', close: '19:30' }],
+      sat: [{ open: '09:00', close: '19:30' }],
+      sun: [{ open: '09:00', close: '19:30' }],
+    },
+  };
+
+  // 2026-08-17 = Monday, 2026-08-19 = Wednesday, 2026-08-23 = Sunday (VN calendar) — same reference
+  // week already used by the existing TUE_10H/TUE_22H/TUE_01H fixtures above, so a reader can verify
+  // the weekday arithmetic by cross-checking those comments.
+  const MON_10H = new Date('2026-08-17T03:00:00Z'); // 10:00 thứ Hai, giờ VN
+  const WED_18H = new Date('2026-08-19T11:00:00Z'); // 18:00 thứ Tư, giờ VN
+  const SUN_20H = new Date('2026-08-23T13:00:00Z'); // 20:00 Chủ Nhật, giờ VN
+  const MON_0900_EXACT = new Date('2026-08-17T02:00:00Z'); // đúng 09:00 thứ Hai, giờ VN
+  const MON_1930_EXACT = new Date('2026-08-17T12:30:00Z'); // đúng 19:30 thứ Hai, giờ VN
+
+  it('thứ Hai 10:00 giờ VN → OPEN (payload thật đang lưu trên production)', () => {
+    expect(getOpeningToday(VINWONDERS_LIVE, MON_10H).state).toBe('open');
+  });
+
+  it('thứ Tư 18:00 giờ VN → OPEN', () => {
+    expect(getOpeningToday(VINWONDERS_LIVE, WED_18H).state).toBe('open');
+  });
+
+  it('Chủ nhật 20:00 giờ VN → CLOSED (sau 19:30)', () => {
+    expect(getOpeningToday(VINWONDERS_LIVE, SUN_20H).state).toBe('closed');
+  });
+
+  it('đúng thời điểm mở cửa 09:00 → OPEN (biên dưới bao gồm cả điểm mở)', () => {
+    expect(getOpeningToday(VINWONDERS_LIVE, MON_0900_EXACT).state).toBe('open');
+  });
+
+  it('đúng thời điểm đóng cửa 19:30 → CLOSED (biên trên KHÔNG bao gồm điểm đóng, xem covers())', () => {
+    expect(getOpeningToday(VINWONDERS_LIVE, MON_1930_EXACT).state).toBe('closed');
+  });
+
+  it('payload hỏng (regular không phải object theo thứ) → unknown, không ném lỗi, không suy diễn', () => {
+    const invalid = { timezone: 'Asia/Ho_Chi_Minh', regular: 'mon-fri 09:00-19:30' } as unknown as OpeningHours;
+    expect(() => getOpeningToday(invalid, MON_10H)).not.toThrow();
+    expect(getOpeningToday(invalid, MON_10H).state).toBe('unknown');
+  });
+
+  it('thiếu timezone → vẫn tính đúng theo mặc định Asia/Ho_Chi_Minh (không rơi về giờ máy chủ)', () => {
+    const noTz: OpeningHours = { regular: VINWONDERS_LIVE.regular };
+    expect(getOpeningToday(noTz, MON_10H).state).toBe('open');
+    expect(getOpeningToday(noTz, SUN_20H).state).toBe('closed');
+  });
+
+  // Trả lời trực tiếp câu hỏi Phase 1 #1/#2/#3 của brief: hệ thống — cả evaluator hiển thị (file
+  // này), Right Now (`RightNowSection.tsx` gọi thẳng `getOpeningToday`), lẫn structured data
+  // (`lib/structured-data.ts`, dùng lại `WEEKDAY_KEYS`) — CHỈ hiểu khoá từng thứ riêng lẻ
+  // (mon/tue/.../sun), KHÔNG hiểu khoá gộp dạng "mon-sun". `regular[zoned.weekday]` luôn tra đúng
+  // MỘT trong bảy khoá đó; một khoá lạ như "mon-sun" không bao giờ khớp weekday nào, nên MỌI ngày
+  // trong tuần đều đọc ra 'unknown' — không phải lỗi ném ra, mà là "chưa có thông tin" bị báo sai
+  // cho một địa điểm thực ra có giờ mở cửa đầy đủ. Đây là premise SAI trong phần đầu brief (giá trị
+  // production thật không dùng "mon-sun" — xem Phase 0) nhưng vẫn đáng khoá lại làm quy tắc chuẩn
+  // hoá: KHÔNG BAO GIỜ ghi "mon-sun" (hay bất kỳ khoá gộp nào khác) vào `opening_hours.regular`.
+  it('khoá gộp "mon-sun" (premise brief, KHÔNG khớp giá trị production thật) → unknown mọi ngày trong tuần, không phải open/closed đúng', () => {
+    const collapsed = {
+      timezone: 'Asia/Ho_Chi_Minh',
+      regular: { 'mon-sun': [{ open: '09:00', close: '19:30' }] },
+    } as unknown as OpeningHours;
+
+    for (const now of [MON_10H, WED_18H, SUN_20H]) {
+      const t = getOpeningToday(collapsed, now);
+      expect(t.state).toBe('unknown');
+      expect(t.hours).toBeNull();
+    }
+  });
+
+  // Backend write-time validator (`apps/api/src/common/opening-hours.ts`) độc lập xác nhận cùng kết
+  // luận: `regularErrors()` chỉ chấp nhận khoá nằm trong WEEKDAYS cố định — "mon-sun" bị từ chối
+  // ngay tại DTO validation (`IsOpeningHours`), nên đường ghi ĐÃ ĐƯỢC VALIDATE (PlacesService
+  // create/update) không bao giờ có thể lưu được khoá này. Rủi ro chỉ còn lại ở đường ghi KHÔNG qua
+  // DTO (administrative-backfill, script raw SQL/TypeORM) — những đường đó không chạy
+  // class-validator, nên trách nhiệm chặn "mon-sun" lọt vào phải nằm ở chính script/service ghi dữ
+  // liệu, không thể trông cậy vào tầng đọc phát hiện ngược.
+});
+
 describe('getOpeningWeek', () => {
   it('trả đủ 7 thứ theo tiếng Việt, đánh dấu hôm nay', () => {
     const week = getOpeningWeek(WEEKLY, TUE_10H);
