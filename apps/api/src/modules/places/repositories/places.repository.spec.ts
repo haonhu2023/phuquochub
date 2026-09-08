@@ -760,19 +760,24 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     repo.query.mockResolvedValueOnce(candidates).mockResolvedValueOnce(links);
   }
 
-  it('lọc đúng whitelist tin cậy: verified/official/community_verified', async () => {
+  // PR #24 final trust-semantics review (2026-09-08): the whole-place `verification_status`
+  // whitelist is REMOVED from the candidate query, not just supplemented — see this repository's
+  // rightNow() doc comment for the full reasoning (verifications has no field/scope column,
+  // `official` is routinely admin-backfill-only, `published` is already a privileged gate). The
+  // candidate query now selects on `published` + presence alone; trust for the specific claim
+  // being shown is enforced entirely by query 2's field-evidence + source-authority check below.
+  it('KHÔNG còn lọc theo whitelist verification_status — cổng tin cậy chuyển hẳn sang field-evidence', async () => {
     const query = sql(await capturedQuery());
-    expect(query).toContain(
-      "p.verification_status IN ('verified', 'official', 'community_verified')",
-    );
-  });
-
-  it('whitelist tin cậy đứng TRƯỚC LIMIT trong câu SQL (lọc xảy ra trước khi cắt)', async () => {
-    const query = sql(await capturedQuery());
-    const whitelistIdx = query.indexOf('verification_status IN');
-    const limitIdx = query.indexOf('LIMIT');
-    expect(whitelistIdx).toBeGreaterThan(-1);
-    expect(limitIdx).toBeGreaterThan(whitelistIdx);
+    // p.verification_status is still SELECTed (part of CARD_COLS, needed for the row shape) — the
+    // whitelist FILTER on it is what's gone. Assert there is no IN(...) predicate on the column,
+    // and none of the three whitelist literal values appear anywhere in the query text at all
+    // (they never appeared outside that predicate before this change, so their total absence here
+    // is a reliable proxy for "the predicate itself is gone").
+    expect(query).not.toContain('verification_status IN');
+    expect(query).not.toContain('verified');
+    expect(query).not.toContain('official');
+    expect(query).not.toContain('community_verified');
+    expect(query).toContain('p.verification_status'); // still selected, just not filtered on
   });
 
   it('giữ ràng buộc published + chưa xoá mềm', async () => {
@@ -822,7 +827,7 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(repo.query).toHaveBeenCalledTimes(1);
   });
 
-  it('truy vấn thứ hai lấy field-evidence đúng phạm vi: đúng candidate id, field_name=opening_hours, đúng whitelist trạng thái xác minh', async () => {
+  it('truy vấn thứ hai lấy field-evidence đúng phạm vi: đúng candidate id, field_name=opening_hours, đúng whitelist trạng thái xác minh VÀ nguồn có thẩm quyền', async () => {
     mockCandidatesAndLinks([
       { id: 'p1', opening_hours: { a: 1 } },
       { id: 'p2', opening_hours: { b: 2 } },
@@ -832,9 +837,12 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
     expect(sql(query)).toContain('pfel.place_id = ANY($1)');
     expect(sql(query)).toContain('ea.verification_status = ANY($2)');
+    expect(sql(query)).toContain('JOIN sources s ON s.id = ea.source_id');
+    expect(sql(query)).toContain('s.type = ANY($3)');
     expect(params[0]).toEqual(['p1', 'p2']);
     expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
     expect(params[1]).not.toContain('NEEDS_REVIEW');
+    expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
   });
 
   // Category 1: admin-backfill-only `official` (trusted status + opening_hours present, but no
@@ -871,15 +879,40 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(rows).toEqual([]);
   });
 
-  // Category 5: pending places never reach the candidate set at all — the trust whitelist in
-  // query 1's SQL already excludes them, so no field-evidence link (however well-formed) can pull
-  // a pending place into Right Now. Asserted here at the repository level by confirming the SQL's
-  // own whitelist (already covered above) plus that a pending place is simply absent from what the
-  // (mocked) query 1 would ever return — i.e. the evidence-link filter is a second gate ON TOP of,
-  // never a replacement for, the trust-status whitelist.
-  it('place pending không lọt qua kể cả khi có field-evidence hợp lệ (whitelist trạng thái vẫn là cổng đầu tiên)', async () => {
-    const query = sql(await capturedQuery());
-    expect(query).not.toContain('pending');
+  // CASE 3 (Phase 5, PR #24 final review): a `pending` place — never separately reviewed at the
+  // whole-place level — now QUALIFIES for Right Now as long as it is `published` (still required by
+  // query 1's unchanged WHERE clause) and its opening_hours have real, current, gate-passing,
+  // source-authoritative evidence. This is the deliberate behavior change of this review: the
+  // place's own `verification_status` value is no longer read by rightNow() at all (the row shape
+  // still carries it for the SELECT, but the query never filters on it — see the "KHÔNG còn lọc"
+  // test above), so a mocked candidate can freely claim any verification_status here and the
+  // outcome depends ONLY on the field-evidence link.
+  it('place pending (chưa từng qua xác minh riêng) NHƯNG có field-evidence hợp lệ, có thẩm quyền vẫn ĐƯỢC nhận vào Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: oh, verification_status: 'pending' }],
+      [{ place_id: 'p1', field_value_hash: hash }],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  // CASE 6 (Phase 5, PR #24 final review): "VERIFIED" evidence status alone does not guarantee the
+  // backing SOURCE is credible — evidence_artifacts.verification_status is an unconstrained string
+  // with no real write path in this codebase, so it cannot by itself vouch for source authority.
+  // Query 2's `s.type = ANY($3)` filter is the mechanism that closes this; simulated here by NOT
+  // returning a row from query 2 for a place whose only backing evidence is on a low-authority
+  // source type (e.g. `community`/`facebook`/`ai`) — exactly what the real SQL's JOIN+WHERE would
+  // do, since such a row would never be SELECTed by that query in the first place.
+  it('field-evidence có trạng thái VERIFIED nhưng nguồn KHÔNG thuộc nhóm có thẩm quyền (official_website/business_owner/government) bị loại khỏi Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    // Query 2's own WHERE clause (s.type = ANY($3)) means a low-authority-source-backed link is
+    // never part of its result set at all — represented here by an EMPTY links array, the same
+    // outcome the real filtered SQL would produce for this scenario.
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
   });
 
   // Category 6 (part 2): NEEDS_REVIEW evidence never appears among gate-passing statuses (locked

@@ -14,7 +14,7 @@ import { PlacesRepository } from '../places/repositories/places.repository';
 import { ContactsRepository } from '../contacts/repositories/contacts.repository';
 import { PricesRepository } from '../prices/repositories/prices.repository';
 import { SourcesRepository } from '../sources/repositories/sources.repository';
-import { SourceType } from '../sources/sources.enums';
+import { OFFICIAL_SOURCE_TYPES } from '../evidence/evidence-trust';
 import { AuditService } from '../../core/audit/audit.service';
 import { AuditResult } from '../../core/audit/audit.enums';
 import { Verification } from './entities/verification.entity';
@@ -69,12 +69,12 @@ const OFFICIAL_DEFAULT_EXPIRY_MONTHS = 12; // verification.md §7/§10 mục 3.
 
 // §7: "official đi kèm source_id thuộc nhóm chính thức (business_owner/official_website/government
 // theo module-source.md §4.1)" — KHÔNG diễn đạt được bằng CHECK (phụ thuộc bảng `sources`), cưỡng
-// chế ở đây.
-const OFFICIAL_SOURCE_TYPES = new Set<SourceType>([
-  SourceType.OFFICIAL_WEBSITE,
-  SourceType.BUSINESS_OWNER,
-  SourceType.GOVERNMENT,
-]);
+// chế ở đây. OFFICIAL_SOURCE_TYPES now lives in ../evidence/evidence-trust.ts (re-exported here for
+// existing importers of this module) — moved out 2026-09-08 so PlacesRepository.rightNow()'s
+// field-evidence source-authority filter can require the SAME source-type floor without a
+// verifications.service.ts -> places.repository.ts circular import (this file already imports
+// PlacesRepository).
+export { OFFICIAL_SOURCE_TYPES };
 
 // Partial-unique index trên `verifications` (một xác minh hiện hành / target) — chốt chặn CUỐI CÙNG
 // cho race giữa hai `submit()` đồng thời cùng target (ADR-008 CORRECTION, PIR finding T1).
