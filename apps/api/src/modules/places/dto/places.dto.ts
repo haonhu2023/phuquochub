@@ -144,3 +144,15 @@ export class GetPlaceDetailQueryDto {
   @IsOptional() @IsString() @MaxLength(35)
   locale?: string;
 }
+
+// Query của `GET /api/places/now` — endpoint công khai (@Public), "Right Now" MVP. `locale` cùng
+// hợp đồng với GetPlaceDetailQueryDto ở trên (chuỗi tự do, LocalesService quyết định hợp lệ/mặc
+// định). `limit` có TRẦN riêng nhỏ hơn ListPlacesQueryDto ở service (clampLimit override) — đây là
+// một khối trang chủ có chặn trên, không phải một trang duyệt.
+export class RightNowQueryDto {
+  @IsOptional() @IsString() @MaxLength(35)
+  locale?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  limit?: number;
+}

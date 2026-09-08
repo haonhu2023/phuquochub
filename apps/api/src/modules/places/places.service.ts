@@ -20,8 +20,8 @@ import { AuthorizationService } from '../authz/authorization.service';
 import { grantSatisfies } from '../authz/authorization.util';
 import type { AuthorizationContext } from '../authz/authorization-context';
 import { PlaceStatus } from './place.enums';
-import { CreatePlaceDto, GeoPointDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
-import { toPlaceCard, toPlaceDetail } from './places.mapper';
+import { CreatePlaceDto, GeoPointDto, ListPlacesQueryDto, RightNowQueryDto, UpdatePlaceDto } from './dto/places.dto';
+import { toPlaceCard, toPlaceDetail, toPlaceNowCard } from './places.mapper';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 import { outOfProvisionalBounds } from '../../common/geo-bounds';
 import { canDisclosePrice, redactUntrustedPriceRange } from '../../common/price-trust';
@@ -44,6 +44,11 @@ const SHORT_DESCRIPTION_FIELD_KEY = 'short_description';
 // (khớp toPlaceCard/toPlaceDetail hiện có) — nên bản dịch được overlay vào ĐÚNG khoá `name`, không
 // thêm khoá mới, cùng nguyên tắc `short_description` bên dưới.
 const DISPLAY_NAME_FIELD_KEY = 'display_name';
+
+// "Right Now" MVP — khối trang chủ CÓ CHẶN TRÊN (không phải trang duyệt), nên trần nhỏ hơn hẳn
+// clampLimit mặc định (20/100) của `list()`.
+const RIGHT_NOW_DEFAULT_LIMIT = 6;
+const RIGHT_NOW_MAX_LIMIT = 12;
 
 // Discriminator đa hình cho source_attributions.entity_type — KHÔNG 'place' mà 'place_field':
 // đối chiếu nguồn diễn ra Ở CẤP TỪNG TRƯỜNG (vd `province`, `admin_area`), không phải một nguồn
@@ -108,6 +113,35 @@ export class PlacesService {
     // verification_status đã tin cậy — trước đây route công khai này luôn trả raw price_range,
     // bất kể trạng thái (web chỉ ẩn nó ở tầng render, không phải ở response JSON).
     return paginate(items.map(toPlaceCard).map(redactUntrustedPriceRange), page, limit, total);
+  }
+
+  /**
+   * "Right Now" MVP — GET /places/now. Trust + opening-hours-presence filtering happens in SQL
+   * (`PlacesRepository.rightNow()`, before LIMIT) — this method never computes open/closed itself;
+   * the web client owns that reading via `getOpeningToday()`, same as GET /geo/nearby-trusted.
+   *
+   * Locale overlay reuses the EXACT same seam as `getBySlug()` below (`resolveLocalizedField`) —
+   * no parallel translation mechanism. Bounded result set (`RIGHT_NOW_MAX_LIMIT`), so resolving
+   * name/short_description per place via `Promise.all` stays a small, fixed-size fan-out, not an
+   * unbounded N+1.
+   */
+  async listRightNow(query: RightNowQueryDto) {
+    const limit = clampLimit(query.limit, RIGHT_NOW_DEFAULT_LIMIT, RIGHT_NOW_MAX_LIMIT);
+    const rows = await this.placesRepo.rightNow({ limit });
+    const cards = rows.map(toPlaceNowCard).map(redactUntrustedPriceRange);
+    return Promise.all(
+      cards.map(async (card) => {
+        const [name, shortDescription] = await Promise.all([
+          this.resolveLocalizedField(card.id, DISPLAY_NAME_FIELD_KEY, query.locale),
+          this.resolveLocalizedField(card.id, SHORT_DESCRIPTION_FIELD_KEY, query.locale),
+        ]);
+        return {
+          ...card,
+          name: name ?? card.name,
+          short_description: shortDescription ?? card.short_description,
+        };
+      }),
+    );
   }
 
   /**

@@ -46,8 +46,9 @@ export interface PlaceCardRow extends CoverImageColumns {
   score?: number;
 }
 
-// Trusted Nearby + Opening State v0 — card row + `opening_hours`, cho riêng `nearbyTrusted()`.
-// KHÔNG gộp vào PlaceCardRow: không caller nào khác của PlaceCardRow cần cột này.
+// Trusted Nearby + Opening State v0 — card row + `opening_hours`, dùng chung bởi
+// `nearbyTrusted()` và `rightNow()` (GET /geo/nearby-trusted, GET /places/now). KHÔNG gộp vào
+// PlaceCardRow: không caller nào khác của PlaceCardRow cần cột này.
 export interface PlaceNowCardRow extends PlaceCardRow {
   opening_hours: Record<string, unknown> | null;
 }
@@ -391,6 +392,36 @@ export class PlacesRepository {
       [...args, params.limit, params.offset],
     );
     return { items: withCoverImageUrl(items, this.mediaUrl), total };
+  }
+
+  /**
+   * "Right Now" MVP — trusted places that actually carry opening-hours data, for the homepage
+   * RightNowSection. Same trust whitelist as `nearby()`'s sibling `nearbyTrusted()`
+   * (`verified`/`official`/`community_verified`, literal like the existing `p.status = 'published'`
+   * literal above — fixed domain policy, not a caller-supplied filter).
+   *
+   * `p.opening_hours IS NOT NULL` is a PRESENCE check only — it does not interpret the JSON's
+   * contents (no day-of-week/is_24h logic here). A place with zero opening-hours data cannot
+   * support ANY "right now" claim, so it is excluded rather than shown with a permanently
+   * "unknown" state. The client still owns the actual open/closed READING via `getOpeningToday()`
+   * — this filter never decides open vs closed, only "is there data worth reading."
+   *
+   * Same ORDER BY as `list()` above (rating_avg DESC NULLS LAST, created_at DESC, id ASC) — reuses
+   * the existing governed "browse" ordering instead of inventing a new ranking signal, with the
+   * same `p.id ASC` deterministic tie-break convention used throughout this repository.
+   */
+  async rightNow(params: { limit: number }): Promise<PlaceNowCardRow[]> {
+    const rows: PlaceNowCardRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS}, p.opening_hours
+       FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND p.verification_status IN ('verified', 'official', 'community_verified')
+         AND p.opening_hours IS NOT NULL
+       ORDER BY p.rating_avg DESC NULLS LAST, p.created_at DESC, p.id ASC
+       LIMIT $1`,
+      [params.limit],
+    );
+    return withCoverImageUrl(rows, this.mediaUrl);
   }
 
   /**

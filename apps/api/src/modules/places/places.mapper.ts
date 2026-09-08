@@ -33,7 +33,8 @@ export function toPlaceCard(row: PlaceCardRow): PlaceCard {
 }
 
 // Trusted Nearby + Opening State v0 — card + `opening_hours` truyền nguyên vẹn (không suy diễn
-// open/closed ở đây; xem PlaceNowCard trong shared-types).
+// open/closed ở đây; xem PlaceNowCard trong shared-types). Dùng chung bởi GeoService.nearbyTrusted()
+// và PlacesService.listRightNow() (PlacesRepository.rightNow()) — một mapper duy nhất, không lặp lại.
 export function toPlaceNowCard(row: PlaceNowCardRow): PlaceNowCard {
   return {
     ...toPlaceCard(row),

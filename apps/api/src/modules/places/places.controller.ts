@@ -17,7 +17,13 @@ import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.dec
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
-import { CreatePlaceDto, GetPlaceDetailQueryDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
+import {
+  CreatePlaceDto,
+  GetPlaceDetailQueryDto,
+  ListPlacesQueryDto,
+  RightNowQueryDto,
+  UpdatePlaceDto,
+} from './dto/places.dto';
 
 // api.md §11. Đọc công khai; ghi qua permission (deny-by-default).
 @Controller('places')
@@ -31,6 +37,15 @@ export class PlacesController {
   @Get()
   list(@Query() query: ListPlacesQueryDto) {
     return this.placesService.list(query);
+  }
+
+  // "Right Now" MVP — additive, đọc công khai. Đặt TRƯỚC ':slug' (đoạn param một khúc) — nếu
+  // không, ':slug' sẽ nuốt mất '/places/now' y hệt lý do 'mine'/':id/revisions' ở dưới phải đứng
+  // trước nó.
+  @Public()
+  @Get('now')
+  listRightNow(@Query() query: RightNowQueryDto) {
+    return this.placesService.listRightNow(query);
   }
 
   // PLACE-041 (Place Content Management MVP) — "địa điểm tôi quản lý" (business_id nào user có
