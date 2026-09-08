@@ -629,3 +629,25 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
+
+/* ---------- Trusted Nearby + Opening State v0 (Phase 2) ---------- */
+.nearbyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nearbyOpeningState {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.nearbyOpeningStateOpen {
+  color: #16a34a;
+}
+.nearbyOpeningStateClosed {
+  color: #dc2626;
+}
+.nearbyOpeningStateUnknown {
+  color: var(--muted);
+}

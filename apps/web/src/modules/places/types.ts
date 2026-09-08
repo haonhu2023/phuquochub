@@ -8,6 +8,7 @@ export type {
   PlaceDetail,
   PlaceFaq,
   PlaceMedia,
+  PlaceNowCard,
   PlacePrice,
   PlaceStatusValue,
   PriceRangeValue,

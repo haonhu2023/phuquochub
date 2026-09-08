@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { nearby } from '@/modules/map/api/geo.api';
+import { nearbyTrusted } from '@/modules/map/api/geo.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
-import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
+import type { PlaceNowCard } from '@/modules/places/types';
+import { getOpeningToday, type OpeningState } from '@/modules/places/openingHours';
 import type { Locale } from '@/lib/locale';
 import placeStyles from '@/modules/places/places.module.css';
 import styles from './home.module.css';
 
-type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'denied' } | { kind: 'error' } | { kind: 'ok'; places: PlaceCardType[] };
+type State = { kind: 'idle' } | { kind: 'loading' } | { kind: 'denied' } | { kind: 'error' } | { kind: 'ok'; places: PlaceNowCard[] };
 
 interface Copy {
   cta: string;
@@ -17,19 +18,33 @@ interface Copy {
   error: string;
   empty: string;
   privacyNote: string;
+  openNow: string;
+  closedNow: string;
+  hoursUnknown: string;
 }
 
+const OPENING_STATE_STYLE: Record<OpeningState, string> = {
+  open: styles.nearbyOpeningStateOpen,
+  closed: styles.nearbyOpeningStateClosed,
+  unknown: styles.nearbyOpeningStateUnknown,
+};
+
 /**
- * "Gần bạn" (Phase 8/9/32) — module "thông minh" DUY NHẤT trên trang chủ có ý nghĩa "smart" thật:
- * dùng toạ độ thật của trình duyệt (SAU KHI người dùng đồng ý) gọi thẳng `GET /geo/nearby` (API
- * CÓ THẬT, không suy diễn/không AI giả). Không có bước này thì trang/web KHÔNG kém đi — nút chỉ là
- * một lối tắt, không phải điều kiện để dùng trang chủ (đúng yêu cầu "nếu từ chối, site vẫn dùng
- * được bình thường").
+ * "Gần bạn" (Phase 8/9/32; Trusted Nearby + Opening State v0 Phase 2) — module "thông minh" DUY
+ * NHẤT trên trang chủ có ý nghĩa "smart" thật: dùng toạ độ thật của trình duyệt (SAU KHI người
+ * dùng đồng ý) gọi thẳng `GET /geo/nearby-trusted` (API CÓ THẬT, không suy diễn/không AI giả).
+ * Không có bước này thì trang/web KHÔNG kém đi — nút chỉ là một lối tắt, không phải điều kiện để
+ * dùng trang chủ (đúng yêu cầu "nếu từ chối, site vẫn dùng được bình thường").
  *
  * KHÔNG lưu toạ độ (không state ngoài component, không localStorage, không gửi đâu khác ngoài
- * chính lệnh gọi `nearby()` một lần). Đây là "đảo" client DUY NHẤT của khối này — phần còn lại của
- * trang chủ vẫn là Server Component, và khối này không tải bất kỳ thứ gì (MapLibre, ảnh nặng) cho
- * tới khi người dùng chủ động bấm nút.
+ * chính lệnh gọi `nearbyTrusted()` một lần). Đây là "đảo" client DUY NHẤT của khối này — phần còn
+ * lại của trang chủ vẫn là Server Component, và khối này không tải bất kỳ thứ gì (MapLibre, ảnh
+ * nặng) cho tới khi người dùng chủ động bấm nút.
+ *
+ * Trạng thái mở/đóng cửa dùng `getOpeningToday(place.opening_hours).state` — CHỈ lấy `state`, KHÔNG
+ * dùng `.label` (nhãn đó luôn tiếng Việt bất kể locale). Văn bản hiển thị lấy từ `copy`
+ * (home.copy.ts) để đúng VI/EN. `unknown` KHÔNG BAO GIỜ hiển thị như `closed` — dữ liệu chưa đọc
+ * được không được biến thành lời khẳng định sai (xem openingHours.ts).
  */
 export function NearbyDiscovery({ locale, copy }: { locale: Locale; copy: Copy }) {
   const [state, setState] = useState<State>({ kind: 'idle' });
@@ -48,7 +63,7 @@ export function NearbyDiscovery({ locale, copy }: { locale: Locale; copy: Copy }
         (position) => {
           void (async () => {
             try {
-              const places = await nearby(position.coords.latitude, position.coords.longitude, 5000);
+              const places = await nearbyTrusted(position.coords.latitude, position.coords.longitude, 5000);
               setState({ kind: 'ok', places: places.slice(0, 4) });
             } catch {
               setState({ kind: 'error' });
@@ -97,9 +112,17 @@ export function NearbyDiscovery({ locale, copy }: { locale: Locale; copy: Copy }
       )}
       {state.kind === 'ok' && state.places.length > 0 && (
         <div className={placeStyles.grid}>
-          {state.places.map((p) => (
-            <PlaceCard key={p.id} place={p} titleAs="h3" locale={locale} />
-          ))}
+          {state.places.map((p) => {
+            const openingState = getOpeningToday(p.opening_hours).state;
+            const openingText =
+              openingState === 'open' ? copy.openNow : openingState === 'closed' ? copy.closedNow : copy.hoursUnknown;
+            return (
+              <div key={p.id} className={styles.nearbyItem}>
+                <PlaceCard place={p} titleAs="h3" locale={locale} />
+                <p className={`${styles.nearbyOpeningState} ${OPENING_STATE_STYLE[openingState]}`}>{openingText}</p>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
