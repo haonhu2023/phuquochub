@@ -2,6 +2,7 @@ import { resolveConflict, SourcesService } from './sources.service';
 import { AttributionWithSource } from './repositories/source-attributions.repository';
 import { SourceAttribution } from './entities/source-attribution.entity';
 import { SourceType, SourceKind } from './sources.enums';
+import { CreateAttributionDto } from './dto/sources.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 function attribution(overrides: Partial<SourceAttribution> = {}): SourceAttribution {
@@ -113,6 +114,10 @@ describe('SourcesService', () => {
       listWithSourceReliability: jest.fn(),
       listByEntity: jest.fn(),
       findById: jest.fn(),
+      // Idempotency-key lookup (2026-09-09 fix) — default MISS (no existing row) so the pre-existing
+      // is_primary tests below (which never mock this) keep exercising the "create new" path
+      // unchanged.
+      findByUniqueKey: jest.fn().mockResolvedValue(null),
     });
     service = new SourcesService(sourcesRepo, attributionsRepo);
   });
@@ -156,34 +161,121 @@ describe('SourcesService', () => {
     expect(attributionsRepo.clearPrimary).not.toHaveBeenCalled();
   });
 
-  // Idempotency contract (2026-09-08, Vinpearl Safari source conflict resolution task, Phase 2) —
-  // verified by reading SourceAttributionsRepository exhaustively: unlike
-  // EvidenceService.ensureEvidenceArtifact (checks findByBusinessKey first) and
-  // .linkEvidenceToPlaceField (checks findLink first), attachAttribution has NO existence check of
-  // its own — it unconditionally calls create()+save(). The repository exposes no
-  // find-by-(entity_type,entity_id,field,source_id) method at all, so the ONLY thing standing
-  // between a retried call and a literal duplicate row is the DB's own
-  // `uq_source_attr_entity_field_source` UNIQUE constraint (source_attributions table, confirmed
-  // live on production 2026-09-08). This test locks in what that actually means in practice: a
-  // second identical attachAttribution call is NOT a silent idempotent no-op — it calls save()
-  // again and, in real Postgres, would raise a unique-violation the caller must handle, not return
-  // the pre-existing row. Confirmed here without a second production write (per the task's explicit
-  // instruction) by asserting the service's own call pattern rather than exercising a real DB.
-  it('attachAttribution: KHÔNG tự kiểm tra tồn tại trước khi ghi — gọi lại với cùng khoá vẫn save() lần nữa (không phải no-op im lặng)', async () => {
-    sourcesRepo.findById.mockResolvedValue({ id: 'src-1' });
-    const dto = {
+  // Idempotency contract (fixed 2026-09-09, PR #25 audit — originally found broken 2026-09-08).
+  // attachAttribution's idempotency key is exactly the four columns of the real DB constraint
+  // `uq_source_attr_entity_field_source` (entity_type, entity_id, field, source_id) — the SAME
+  // columns already governing uniqueness in production, not a new/invented key. THIS describe
+  // block replaces a prior version of this test that asserted `save()` is called twice on replay —
+  // that old test only DOCUMENTED the bug (it certified duplicate-row creation as expected
+  // behavior); it was never a completion criterion. The tests below assert the actual desired
+  // contract: replay is a no-op that returns the existing row, never a second row.
+  describe('attachAttribution — idempotency (uq_source_attr_entity_field_source)', () => {
+    const dto: CreateAttributionDto = {
       source_id: 'src-1',
       entity_type: 'place_field',
       entity_id: 'place-1',
       field: 'opening_hours',
       is_primary: true,
-    } as never;
+    };
 
-    await service.attachAttribution(dto);
-    await service.attachAttribution(dto);
+    beforeEach(() => {
+      sourcesRepo.findById.mockResolvedValue({ id: 'src-1' });
+    });
 
-    // Không có phương thức "tìm bản ghi đã tồn tại theo khoá" nào được gọi ở tầng service — repo
-    // chỉ có findById(id CỦA CHÍNH attribution, không dùng để tra theo khoá nghiệp vụ).
-    expect(attributionsRepo.save).toHaveBeenCalledTimes(2);
+    it('lần gọi đầu tiên: chưa có bản ghi nào theo khoá → tạo mới đúng MỘT lần', async () => {
+      attributionsRepo.findByUniqueKey.mockResolvedValue(null);
+
+      await service.attachAttribution(dto);
+
+      expect(attributionsRepo.findByUniqueKey).toHaveBeenCalledWith('place_field', 'place-1', 'opening_hours', 'src-1');
+      expect(attributionsRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('gọi lại với ĐÚNG khoá cũ (entity_type, entity_id, field, source_id) → no-op, trả về bản ghi đã có, KHÔNG gọi save() lần hai, KHÔNG gọi lại clearPrimary', async () => {
+      const existing = attribution({ id: 'attr-existing', entityType: 'place_field', entityId: 'place-1', field: 'opening_hours', sourceId: 'src-1', isPrimary: true });
+      attributionsRepo.findByUniqueKey.mockResolvedValue(existing);
+
+      const first = await service.attachAttribution(dto);
+      const second = await service.attachAttribution(dto);
+
+      expect(first).toBe(existing);
+      expect(second).toBe(existing);
+      expect(attributionsRepo.save).not.toHaveBeenCalled();
+      // clearPrimary phải KHÔNG chạy khi đây thực ra là no-op — chạy nó sẽ là một side effect thật
+      // (xoá cờ primary của các attribution KHÁC) xảy ra dù attribution NÀY không hề thay đổi gì.
+      expect(attributionsRepo.clearPrimary).not.toHaveBeenCalled();
+    });
+
+    it('hai lời gọi CẠNH TRANH cùng khoá (race): findByUniqueKey miss ở cả hai, save() thứ hai va UNIQUE violation → đọc lại và trả về đúng bản ghi bên thắng đã tạo, KHÔNG ném lỗi, KHÔNG tạo dòng thứ hai', async () => {
+      const winnerRow = attribution({ id: 'attr-winner', entityType: 'place_field', entityId: 'place-1', field: 'opening_hours', sourceId: 'src-1', isPrimary: true });
+      // Cả hai lời gọi đều MISS ở lần tra đầu (mô phỏng đúng race thật: cả hai đọc "chưa có" trước
+      // khi cái nào kịp ghi).
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(null); // gọi 1: pre-check
+      attributionsRepo.save.mockResolvedValueOnce(winnerRow); // gọi 1: thắng race, ghi thành công
+
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(null); // gọi 2: pre-check cũng miss
+      const uniqueViolation = Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+        constraint: 'uq_source_attr_entity_field_source',
+      });
+      attributionsRepo.save.mockRejectedValueOnce(uniqueViolation); // gọi 2: thua race, DB chặn
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(winnerRow); // gọi 2: đọc lại sau khi bắt lỗi, thấy đúng bản ghi bên thắng
+
+      const [resultA, resultB] = await Promise.all([service.attachAttribution(dto), service.attachAttribution(dto)]);
+
+      // Không quan tâm ai "gọi 1"/"gọi 2" theo thứ tự thời gian thật — chỉ cần CẢ HAI kết quả cuối
+      // cùng đều là đúng MỘT bản ghi (bên thắng), và save() chỉ thực sự tạo được đúng MỘT dòng.
+      expect(resultA).toBe(winnerRow);
+      expect(resultB).toBe(winnerRow);
+      expect(attributionsRepo.save).toHaveBeenCalledTimes(2); // gọi 1 thành công + gọi 2 va lỗi (không tạo dòng thứ hai — save() thứ hai NÉM lỗi, không trả về row mới)
+    });
+
+    it('lỗi DB KHÔNG PHẢI unique violation (vd mất kết nối) vẫn được NÉM RA NGUYÊN VẸN, không bị nuốt nhầm thành "no-op"', async () => {
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(null);
+      const connectionError = new Error('connection terminated unexpectedly');
+      attributionsRepo.save.mockRejectedValueOnce(connectionError);
+
+      await expect(service.attachAttribution(dto)).rejects.toBe(connectionError);
+    });
+
+    it('khác source_id cùng (entity_type, entity_id, field) → KHÔNG bị coi là trùng, tạo bản ghi mới hợp lệ', async () => {
+      attributionsRepo.findByUniqueKey.mockResolvedValue(null); // khoá khác source_id -> luôn miss
+      const otherSourceDto: CreateAttributionDto = { ...dto, source_id: 'src-2' };
+
+      await service.attachAttribution(dto);
+      await service.attachAttribution(otherSourceDto);
+
+      expect(attributionsRepo.findByUniqueKey).toHaveBeenNthCalledWith(1, 'place_field', 'place-1', 'opening_hours', 'src-1');
+      expect(attributionsRepo.findByUniqueKey).toHaveBeenNthCalledWith(2, 'place_field', 'place-1', 'opening_hours', 'src-2');
+      expect(attributionsRepo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('khác field cùng (entity_type, entity_id, source_id) → KHÔNG bị coi là trùng, tạo bản ghi mới hợp lệ', async () => {
+      attributionsRepo.findByUniqueKey.mockResolvedValue(null);
+      const otherFieldDto: CreateAttributionDto = { ...dto, field: 'address' };
+
+      await service.attachAttribution(dto);
+      await service.attachAttribution(otherFieldDto);
+
+      expect(attributionsRepo.findByUniqueKey).toHaveBeenNthCalledWith(1, 'place_field', 'place-1', 'opening_hours', 'src-1');
+      expect(attributionsRepo.findByUniqueKey).toHaveBeenNthCalledWith(2, 'place_field', 'place-1', 'address', 'src-1');
+      expect(attributionsRepo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('retry sau lỗi KHÔNG unique-violation: bản ghi trước đó không được tạo (save reject), lần retry sau tạo đúng MỘT dòng — không nhân đôi', async () => {
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(null);
+      attributionsRepo.save.mockRejectedValueOnce(new Error('connection terminated unexpectedly'));
+      await expect(service.attachAttribution(dto)).rejects.toThrow('connection terminated unexpectedly');
+
+      // Retry thật: lần đọc lại vẫn miss (lần ghi trước THẬT SỰ đã thất bại, không có gì tồn tại) —
+      // lần retry này phải tạo được, và chỉ một lần.
+      attributionsRepo.findByUniqueKey.mockResolvedValueOnce(null);
+      const created = attribution({ id: 'attr-retry', entityType: 'place_field', entityId: 'place-1', field: 'opening_hours', sourceId: 'src-1' });
+      attributionsRepo.save.mockResolvedValueOnce(created);
+      const result = await service.attachAttribution(dto);
+
+      expect(result).toBe(created);
+      expect(attributionsRepo.save).toHaveBeenCalledTimes(2); // 1 lỗi (không tạo dòng) + 1 thành công
+    });
   });
 });
