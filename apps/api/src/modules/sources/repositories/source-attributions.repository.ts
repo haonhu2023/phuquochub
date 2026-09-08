@@ -25,6 +25,24 @@ export class SourceAttributionsRepository {
     return this.repo.findOne({ where: { id } });
   }
 
+  /**
+   * Tra theo ĐÚNG bốn cột của `uq_source_attr_entity_field_source` (migration
+   * `1720001700000-InitSources.ts`) — idempotency key cho `SourcesService.attachAttribution`
+   * (2026-09-09, attachAttribution idempotency fix). `field` dùng `IsNull()` khi `null`, cùng quy
+   * ước `clearPrimary`/`listByEntity` ở trên.
+   *
+   * LƯU Ý (đã ghi ở migration, nhắc lại ở đây để không ai "sửa nhầm"): ràng buộc UNIQUE gốc KHÔNG
+   * chặn được trùng lặp khi `field IS NULL` (ngữ nghĩa Postgres: NULL <> NULL). Với `field` khác
+   * NULL — trường hợp DUY NHẤT `attachAttribution` hiện đang được gọi với (place_field, ví dụ
+   * opening_hours) — cột này VẪN là chốt chặn DB thật. Trường hợp `field IS NULL` (vd
+   * `entity_type='wiki_revision'`) chỉ được bảo vệ ở tầng ứng dụng bởi lần tra này, KHÔNG có backstop
+   * DB — biết trước, chưa sửa trong lần này (không đủ phạm vi: đóng nó cần đổi chỉ mục, ảnh hưởng
+   * dữ liệu wiki_revision hiện có).
+   */
+  findByUniqueKey(entityType: string, entityId: string, field: string | null, sourceId: string): Promise<SourceAttribution | null> {
+    return this.repo.findOne({ where: { entityType, entityId, field: field ?? IsNull(), sourceId } });
+  }
+
   create(data: Partial<SourceAttribution>): SourceAttribution {
     return this.repo.create(data);
   }

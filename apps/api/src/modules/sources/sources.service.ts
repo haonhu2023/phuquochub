@@ -5,6 +5,13 @@ import { Source } from './entities/source.entity';
 import { SourceAttribution } from './entities/source-attribution.entity';
 import { SOURCE_TYPE_DEFAULT_RELIABILITY } from './sources.enums';
 import { CreateAttributionDto, CreateSourceDto } from './dto/sources.dto';
+import { isUniqueViolation } from '../../common/db/unique-violation';
+
+// Tên chỉ mục UNIQUE thật trên `source_attributions` (migration 1720001700000-InitSources.ts) —
+// (entity_type, entity_id, field, source_id). attachAttribution() idempotency fix (2026-09-09):
+// dùng ĐÚNG tên này để bắt CHÍNH XÁC vi phạm đã lường trước (cùng idiom isUniqueViolation() đã
+// dùng ở verifications.service.ts cho uq_verif_*), không nuốt nhầm một lỗi DB khác.
+const SOURCE_ATTRIBUTION_UNIQUE_CONSTRAINT = 'uq_source_attr_entity_field_source';
 
 // Kết quả phân xử xung đột nguồn (source.md §7): is_primary → reliability → retrieved_at
 // → hàng chờ moderator. Hàm thuần (pure), không phụ thuộc DB — dễ test từng nhánh (Module 12 Gate 3).
@@ -82,26 +89,57 @@ export class SourcesService {
     return source;
   }
 
+  /**
+   * Idempotent theo ĐÚNG khoá của `uq_source_attr_entity_field_source`
+   * (entity_type, entity_id, field, source_id) — attachAttribution idempotency fix (2026-09-09,
+   * PhuQuocHub PR #25 audit). Gọi lại với cùng bốn giá trị này là NO-OP, trả về dòng đã có
+   * NGUYÊN TRẠNG (không ghi đè `confidence`/`note`/`is_primary` — cùng triết lý
+   * EvidenceService.ensureEvidenceArtifact: hàng đã tồn tại không bị nâng cấp/hạ cấp ngầm bởi một
+   * lần gọi lại). `clearPrimary` (bỏ cờ primary của các attribution khác) CHỈ chạy khi đây thật sự
+   * là một attribution MỚI — chạy nó trên mỗi lần replay sẽ là một side effect thật (xoá cờ primary
+   * của người khác) xảy ra ngay cả khi lời gọi này bản chất chỉ là no-op.
+   *
+   * Race hai request đồng thời cùng khoá: `findByUniqueKey` trước có thể MISS ở cả hai (cùng đọc
+   * "chưa có" trước khi cái nào kịp ghi), nên `save()` là chốt chặn CUỐI CÙNG thật — bắt đúng
+   * `isUniqueViolation` (SQLSTATE 23505 trên `uq_source_attr_entity_field_source`, KHÔNG bắt lỗi DB
+   * khác) rồi đọc lại: bên thua race trả về đúng dòng bên thắng vừa tạo, KHÔNG ném lỗi ra ngoài —
+   * hợp đồng "replay = idempotent" phải đúng bất kể ai thắng race, không phải "replay = 409 thử
+   * lại" (khác nhánh xử lý race của `verifications.service.ts`'s `createPendingVerification`, nơi
+   * một xung đột thật SỰ cần caller biết và thử lại — ở đây hai lời gọi giống hệt nhau không phải
+   * xung đột, chỉ là cùng một ý định gửi hai lần).
+   */
   async attachAttribution(dto: CreateAttributionDto, actorUserId?: string): Promise<SourceAttribution> {
     // FK "source_id" tự xác thực khi save (báo lỗi nếu nguồn không tồn tại) — không query
     // trước để tránh race điều kiện thừa; NotFoundException ở đây chỉ bọc lỗi FK rõ ràng hơn.
     await this.getSource(dto.source_id);
 
+    const field = dto.field ?? null;
+    const existing = await this.attributionsRepo.findByUniqueKey(dto.entity_type, dto.entity_id, field, dto.source_id);
+    if (existing) return existing;
+
     if (dto.is_primary) {
-      await this.attributionsRepo.clearPrimary(dto.entity_type, dto.entity_id, dto.field ?? null);
+      await this.attributionsRepo.clearPrimary(dto.entity_type, dto.entity_id, field);
     }
 
     const attribution = this.attributionsRepo.create({
       sourceId: dto.source_id,
       entityType: dto.entity_type,
       entityId: dto.entity_id,
-      field: dto.field ?? null,
+      field,
       confidence: dto.confidence ?? null,
       note: dto.note ?? null,
       isPrimary: dto.is_primary ?? false,
       createdBy: actorUserId ?? null,
     });
-    return this.attributionsRepo.save(attribution);
+    try {
+      return await this.attributionsRepo.save(attribution);
+    } catch (err) {
+      if (isUniqueViolation(err, SOURCE_ATTRIBUTION_UNIQUE_CONSTRAINT)) {
+        const winner = await this.attributionsRepo.findByUniqueKey(dto.entity_type, dto.entity_id, field, dto.source_id);
+        if (winner) return winner;
+      }
+      throw err;
+    }
   }
 
   async listAttributionsFor(entityType: string, entityId: string, field?: string) {
