@@ -27,7 +27,7 @@ function permissionsOf(name: Handler): string[] | undefined {
   return Reflect.getMetadata(PERMISSIONS_KEY, handlerOf(name)) as string[] | undefined;
 }
 
-const READ_ROUTES: Handler[] = ['list', 'listRevisions', 'getBySlug'];
+const READ_ROUTES: Handler[] = ['list', 'listRightNow', 'listRevisions', 'getBySlug'];
 const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve'];
 // PLACE-041: `mine` là route THỨ BA — không @Public (đòi hỏi đăng nhập, JwtAuthGuard chặn), nhưng
 // cũng không mang @RequirePermissions tĩnh (nội dung tự lọc theo userId gọi, xem controller +
@@ -104,6 +104,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       expect(methods.indexOf('listMine')).toBeLessThan(methods.indexOf('getBySlug'));
       expect(Reflect.getMetadata(PATH_METADATA, handlerOf('listMine'))).toBe('mine');
     });
+
+    it("'now' được khai báo TRƯỚC ':slug' (Right Now MVP — nếu không, ':slug' sẽ nuốt '/places/now')", () => {
+      const methods = Object.getOwnPropertyNames(PlacesController.prototype);
+      expect(methods.indexOf('listRightNow')).toBeLessThan(methods.indexOf('getBySlug'));
+      expect(Reflect.getMetadata(PATH_METADATA, handlerOf('listRightNow'))).toBe('now');
+    });
   });
 
   describe('uỷ quyền xuống service', () => {
@@ -115,6 +121,7 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
     beforeEach(() => {
       placesService = createMock<Ctor[0]>({
         list: jest.fn(),
+        listRightNow: jest.fn(),
         listMine: jest.fn(),
         getBySlug: jest.fn(),
         create: jest.fn(),
@@ -132,6 +139,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       const query = { page: 2 } as never;
       controller.list(query);
       expect(placesService.list).toHaveBeenCalledWith(query);
+    });
+
+    it('now → placesService.listRightNow(query)', () => {
+      const query = { locale: 'en' } as never;
+      controller.listRightNow(query);
+      expect(placesService.listRightNow).toHaveBeenCalledWith(query);
     });
 
     it('mine → placesService.listMine(user.sub)', () => {

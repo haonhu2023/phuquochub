@@ -1,5 +1,5 @@
 import { apiGet } from '@/lib/http';
-import type { PlaceCard, PlaceDetail } from '../types';
+import type { PlaceCard, PlaceDetail, PlaceNowCard } from '../types';
 
 export interface ListPlacesParams {
   category?: string;
@@ -18,6 +18,22 @@ export async function listPlaces(params: ListPlacesParams = {}): Promise<PlaceCa
   if (params.limit) qs.set('limit', String(params.limit));
   const q = qs.toString();
   return apiGet<PlaceCard[]>(`/places${q ? `?${q}` : ''}`, { cache: 'no-store' });
+}
+
+export interface ListRightNowParams {
+  locale?: string;
+  limit?: number;
+}
+
+// "Right Now" MVP — GET /places/now. Trust + opening-hours-presence filtering happens server-side;
+// this is a bounded homepage feed (like GET /geo/nearby-trusted), not a paged browse list, so it
+// returns a plain array rather than going through apiGetPaginated.
+export async function listRightNow(params: ListRightNowParams = {}): Promise<PlaceNowCard[]> {
+  const qs = new URLSearchParams();
+  if (params.locale) qs.set('locale', params.locale);
+  if (params.limit) qs.set('limit', String(params.limit));
+  const q = qs.toString();
+  return apiGet<PlaceNowCard[]>(`/places/now${q ? `?${q}` : ''}`, { cache: 'no-store' });
 }
 
 // Public Place i18n Read Path (2026-09-02): `locale` TÙY CHỌN, khớp `?locale=` API vừa hỗ trợ ở

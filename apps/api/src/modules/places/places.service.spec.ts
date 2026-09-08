@@ -16,6 +16,22 @@ jest.mock('./places.mapper', () => ({
     ...(r?.verification_status !== undefined ? { verification_status: r.verification_status } : {}),
     mappedDetail: true,
   }),
+  toPlaceNowCard: (r: {
+    id?: string;
+    name?: string;
+    short_description?: string | null;
+    price_range?: string | null;
+    verification_status?: string;
+    opening_hours?: unknown;
+  }) => ({
+    id: r?.id,
+    name: r?.name,
+    short_description: r?.short_description ?? null,
+    price_range: r?.price_range ?? null,
+    verification_status: r?.verification_status ?? 'pending',
+    opening_hours: r?.opening_hours ?? null,
+    mappedNow: true,
+  }),
 }));
 
 import { PlacesService } from './places.service';
@@ -50,6 +66,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   beforeEach(() => {
     placesRepo = createMock<Ctor[0]>({
       list: jest.fn(),
+      rightNow: jest.fn(),
       createPlace: jest.fn(),
       getCardByIdIncludingInactive: jest.fn(),
       getDetailBySlug: jest.fn(),
@@ -172,6 +189,111 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
           expect(res.data[0].price_range).toBe(SECRET_PLACE_RANGE);
         },
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listRightNow — "Right Now" MVP (GET /places/now)
+  // -------------------------------------------------------------------------
+  describe('listRightNow', () => {
+    it('bounds limit via clampLimit (default 6, max 12) — không truyền limit thô xuống repo', async () => {
+      placesRepo.rightNow.mockResolvedValue([]);
+
+      await service.listRightNow({} as never);
+      expect(placesRepo.rightNow).toHaveBeenCalledWith({ limit: 6 });
+
+      await service.listRightNow({ limit: 9 } as never);
+      expect(placesRepo.rightNow).toHaveBeenCalledWith({ limit: 9 });
+
+      await service.listRightNow({ limit: 999 } as never);
+      expect(placesRepo.rightNow).toHaveBeenCalledWith({ limit: 12 });
+    });
+
+    it('trả mảng đã map qua toPlaceNowCard (không phải envelope phân trang)', async () => {
+      placesRepo.rightNow.mockResolvedValue([{ id: 'p1', name: 'Bãi Sao', opening_hours: null }]);
+
+      const res = await service.listRightNow({} as never);
+
+      expect(Array.isArray(res)).toBe(true);
+      expect(res[0]).toMatchObject({ id: 'p1', mappedNow: true });
+    });
+
+    describe('price trust gate (defense-in-depth — repo đã lọc trusted-only)', () => {
+      const SECRET_PLACE_RANGE = 'high';
+
+      it('mọi hàng trả về đều đã trusted → price_range giữ nguyên', async () => {
+        placesRepo.rightNow.mockResolvedValue([
+          { id: 'p1', price_range: SECRET_PLACE_RANGE, verification_status: 'verified' },
+        ]);
+        const res = await service.listRightNow({} as never);
+        expect(res[0].price_range).toBe(SECRET_PLACE_RANGE);
+      });
+
+      it('SENTINEL: nếu một hàng chưa trusted lọt qua, gate vẫn redact (không tin tưởng mù quáng vào repo)', async () => {
+        placesRepo.rightNow.mockResolvedValue([
+          { id: 'p1', price_range: SECRET_PLACE_RANGE, verification_status: 'pending' },
+        ]);
+        const res = await service.listRightNow({} as never);
+        expect(res[0].price_range).toBeNull();
+      });
+    });
+
+    // Public Place i18n Read Path — cùng seam resolveLocalizedField() mà getBySlug() dùng, xem
+    // describe 'getBySlug — locale overlay' bên dưới. toPlaceNowCard bị mock ở đầu file (giữ
+    // name/short_description nguyên trạng từ row) nên assertion dưới đây chứng minh overlay do
+    // CHÍNH service áp, không phải do mapper.
+    describe('locale overlay (Public Place i18n Read Path)', () => {
+      it('có bản dịch hợp lệ cho locale yêu cầu → name/short_description là bản dịch', async () => {
+        placesRepo.rightNow.mockResolvedValue([
+          { id: 'p1', name: 'Tên gốc', short_description: 'Mô tả gốc' },
+        ]);
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        placeTranslationsService.getCurrentPublicTranslatedText
+          .mockResolvedValueOnce('English name')
+          .mockResolvedValueOnce('English description');
+
+        const res = await service.listRightNow({ locale: 'en' } as never);
+
+        expect(res[0].name).toBe('English name');
+        expect(res[0].short_description).toBe('English description');
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          'p1',
+          'display_name',
+          'en',
+        );
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          'p1',
+          'short_description',
+          'en',
+        );
+      });
+
+      it('không có bản dịch → giữ nguyên name/short_description gốc (không lỗi, không trống)', async () => {
+        placesRepo.rightNow.mockResolvedValue([
+          { id: 'p1', name: 'Tên gốc', short_description: 'Mô tả gốc' },
+        ]);
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.listRightNow({} as never);
+
+        expect(res[0].name).toBe('Tên gốc');
+        expect(res[0].short_description).toBe('Mô tả gốc');
+      });
+    });
+
+    describe('opening_hours truyền qua nguyên trạng (không suy diễn open/closed ở service)', () => {
+      it('opening_hours null → giữ null', async () => {
+        placesRepo.rightNow.mockResolvedValue([{ id: 'p1', opening_hours: null }]);
+        const res = await service.listRightNow({} as never);
+        expect(res[0].opening_hours).toBeNull();
+      });
+
+      it('opening_hours object → giữ nguyên hình dạng', async () => {
+        const oh = { is_24h: true };
+        placesRepo.rightNow.mockResolvedValue([{ id: 'p1', opening_hours: oh }]);
+        const res = await service.listRightNow({} as never);
+        expect(res[0].opening_hours).toEqual(oh);
+      });
     });
   });
 

@@ -46,6 +46,14 @@ export interface HomeCopy {
   nearbyOpenNow: string;
   nearbyClosedNow: string;
   nearbyHoursUnknown: string;
+  rightNowTitle: string;
+  rightNowLoadingLabel: string;
+  rightNowError: string;
+  rightNowEmptyTitle: string;
+  rightNowEmptyBody: string;
+  rightNowOpenNow: string;
+  rightNowClosedNow: string;
+  rightNowHoursUnknown: string;
   discoverTitle: string;
   discoverMoreLink: string;
   discoverLoadingLabel: string;
@@ -110,6 +118,14 @@ const vi: HomeCopy = {
   nearbyOpenNow: 'Đang mở cửa',
   nearbyClosedNow: 'Đã đóng cửa',
   nearbyHoursUnknown: 'Chưa có thông tin giờ mở cửa',
+  rightNowTitle: 'Đi đâu ngay bây giờ?',
+  rightNowLoadingLabel: 'Đang tìm địa điểm phù hợp ngay bây giờ',
+  rightNowError: 'Hiện chưa tải được gợi ý. Bạn vẫn có thể tìm kiếm hoặc duyệt theo danh mục ở trên.',
+  rightNowEmptyTitle: 'Chưa có gợi ý nào lúc này',
+  rightNowEmptyBody: 'Các địa điểm đủ tin cậy và có giờ mở cửa rõ ràng đang được cập nhật.',
+  rightNowOpenNow: 'Đang mở cửa',
+  rightNowClosedNow: 'Đã đóng cửa',
+  rightNowHoursUnknown: 'Chưa có thông tin giờ mở cửa',
   discoverTitle: 'Khám phá Phú Quốc',
   discoverMoreLink: 'Xem thêm →',
   discoverLoadingLabel: 'Đang tải địa điểm nổi bật',
@@ -186,6 +202,14 @@ const en: HomeCopy = {
   nearbyOpenNow: 'Open now',
   nearbyClosedNow: 'Closed now',
   nearbyHoursUnknown: 'Hours unknown',
+  rightNowTitle: 'What to do right now',
+  rightNowLoadingLabel: 'Finding places that fit right now',
+  rightNowError: "We couldn't load these picks right now. You can still search or browse by category above.",
+  rightNowEmptyTitle: 'No picks right now',
+  rightNowEmptyBody: 'Places that are trusted and have clear opening hours are still being added.',
+  rightNowOpenNow: 'Open now',
+  rightNowClosedNow: 'Closed now',
+  rightNowHoursUnknown: 'Hours unknown',
   discoverTitle: 'Discover Phú Quốc',
   discoverMoreLink: 'See more →',
   discoverLoadingLabel: 'Loading featured places',

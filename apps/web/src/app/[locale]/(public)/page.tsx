@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { HomeHero } from '@/modules/home/HomeHero';
 import { CategoryLinks } from '@/modules/home/CategoryLinks';
 import { SmartDiscovery } from '@/modules/home/SmartDiscovery';
+import { RightNowSection, RightNowSectionSkeleton } from '@/modules/home/RightNowSection';
 import { DiscoverPlaces, DiscoverPlacesSkeleton } from '@/modules/home/DiscoverPlaces';
 import { MapCta, OwnerCta } from '@/modules/home/HomeCtas';
 import { TrustSection } from '@/modules/home/TrustSection';
@@ -61,9 +62,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * → bản đồ → vì sao tin PhuQuocHub → chủ cơ sở (mục phụ, cuối cùng — trang này ưu tiên khách tham
  * quan, không phải doanh nghiệp).
  *
- * CHỈ `DiscoverPlaces` chạm API. Nó được bọc `Suspense` để phần tĩnh hiển thị ngay, và tự bắt lỗi
- * bên trong (xem chú thích trong chính component) — nên một sự cố API chỉ thu nhỏ đúng khối đó,
- * không bao giờ đẩy cả trang chủ sang `error.tsx`.
+ * `DiscoverPlaces` và `RightNowSection` chạm API. Cả hai được bọc `Suspense` riêng để phần tĩnh
+ * hiển thị ngay, và tự bắt lỗi bên trong (xem chú thích trong chính component) — nên một sự cố API
+ * chỉ thu nhỏ đúng khối đó, không bao giờ đẩy cả trang chủ sang `error.tsx`.
  */
 export default async function HomePage({ params }: Props) {
   const { locale: localeParam } = await params;
@@ -81,6 +82,10 @@ export default async function HomePage({ params }: Props) {
       <HomeHero locale={locale} />
       <CategoryLinks locale={locale} />
       <SmartDiscovery locale={locale} />
+
+      <Suspense fallback={<RightNowSectionSkeleton locale={locale} />}>
+        <RightNowSection locale={locale} />
+      </Suspense>
 
       <Suspense fallback={<DiscoverPlacesSkeleton locale={locale} />}>
         <DiscoverPlaces locale={locale} />

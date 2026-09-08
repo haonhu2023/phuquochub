@@ -685,3 +685,83 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     expect(rows[0].opening_hours).toEqual(oh);
   });
 });
+
+// ---------------------------------------------------------------------------
+// "Right Now" MVP — PlacesRepository.rightNow()
+// ---------------------------------------------------------------------------
+describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo, MEDIA_URL);
+  });
+
+  async function capturedQuery(): Promise<string> {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.rightNow({ limit: 6 });
+    return repo.query.mock.calls[0][0];
+  }
+
+  it('lọc đúng whitelist tin cậy: verified/official/community_verified', async () => {
+    const query = sql(await capturedQuery());
+    expect(query).toContain(
+      "p.verification_status IN ('verified', 'official', 'community_verified')",
+    );
+  });
+
+  it('whitelist tin cậy đứng TRƯỚC LIMIT trong câu SQL (lọc xảy ra trước khi cắt)', async () => {
+    const query = sql(await capturedQuery());
+    const whitelistIdx = query.indexOf('verification_status IN');
+    const limitIdx = query.indexOf('LIMIT');
+    expect(whitelistIdx).toBeGreaterThan(-1);
+    expect(limitIdx).toBeGreaterThan(whitelistIdx);
+  });
+
+  it('giữ ràng buộc published + chưa xoá mềm', async () => {
+    const query = sql(await capturedQuery());
+    expect(query).toContain('p.deleted_at IS NULL');
+    expect(query).toContain("p.status = 'published'");
+  });
+
+  it('chỉ nhận place CÓ opening_hours (presence check, không suy diễn nội dung)', async () => {
+    const query = sql(await capturedQuery());
+    expect(query).toContain('p.opening_hours IS NOT NULL');
+  });
+
+  it('SELECT có p.opening_hours (đường DETAIL-only, không nằm trong CARD_COLS)', async () => {
+    const query = sql(await capturedQuery());
+    expect(query).toContain('p.opening_hours');
+  });
+
+  it('ORDER BY khớp thứ tự mặc định của list() — không xếp hạng bịa ra', async () => {
+    const keys = orderKeysFrom(await capturedQuery());
+    expect(keys).toEqual([
+      { col: 'rating_avg', dir: 'DESC', nullsLast: true },
+      { col: 'created_at', dir: 'DESC', nullsLast: false },
+      { col: 'id', dir: 'ASC', nullsLast: false },
+    ]);
+  });
+
+  it('LIMIT truyền đúng tham số $1', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.rightNow({ limit: 9 });
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('LIMIT $1');
+    expect(params).toEqual([9]);
+  });
+
+  it('opening_hours null truyền qua row nguyên trạng', async () => {
+    repo.query.mockResolvedValueOnce([{ id: 'p1', opening_hours: null }]);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('opening_hours object truyền qua row nguyên trạng (không đổi hình dạng)', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
+    repo.query.mockResolvedValueOnce([{ id: 'p1', opening_hours: oh }]);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows[0].opening_hours).toEqual(oh);
+  });
+});

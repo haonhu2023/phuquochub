@@ -629,7 +629,6 @@
   color: var(--muted);
   font-size: 0.9rem;
 }
-
 /* ---------- Trusted Nearby + Opening State v0 (Phase 2) ---------- */
 .nearbyItem {
   display: flex;
@@ -649,5 +648,27 @@
   color: #dc2626;
 }
 .nearbyOpeningStateUnknown {
+  color: var(--muted);
+}
+
+/* ---------- "Right Now" MVP ---------- */
+.rightNowItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.rightNowOpeningState {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.rightNowOpeningStateOpen {
+  color: #16a34a;
+}
+.rightNowOpeningStateClosed {
+  color: #dc2626;
+}
+.rightNowOpeningStateUnknown {
   color: var(--muted);
 }
