@@ -151,6 +151,22 @@ describe('RightNowSection — trạng thái mở/đóng cửa (getOpeningToday)'
   });
 });
 
+// 2026-09-09 Discovery trust surface follow-up: Right Now's field-evidence gate only proves
+// opening_hours — it must not lend its evidence to a generic "Đã xác minh" badge or a real price,
+// both of which read the unrelated whole-place verification_status.
+describe('RightNowSection — không mượn badge/giá từ verification_status toàn place', () => {
+  it('place trusted + có giá → KHÔNG hiện badge "Đã xác minh" lẫn giá thật trên trang chủ', async () => {
+    mockListRightNow.mockResolvedValueOnce([
+      place({ verification_status: 'verified', price_range: 'low', opening_hours: OPEN_24H }),
+    ]);
+    render(await RightNowSection({ locale: 'vi' }));
+
+    expect(screen.getByText('Đang mở cửa')).toBeInTheDocument();
+    expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bình dân')).not.toBeInTheDocument();
+  });
+});
+
 describe('RightNowSectionSkeleton', () => {
   it('thông báo trạng thái đang tải cho trình đọc màn hình', () => {
     render(<RightNowSectionSkeleton locale="vi" />);

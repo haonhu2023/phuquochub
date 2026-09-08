@@ -24,11 +24,24 @@ Two concrete, code-confirmed consequences:
 
 `PlacesRepository.rightNow()` was amended in this review to stop depending on this whitelist
 entirely, replacing it with a field-scoped, source-authoritative evidence check for the one fact
-it actually asserts (`opening_hours`) — see that method's doc comment. That fix does **not**
-generalize to `nearbyTrusted()` ("Trusted Nearby"): that feature makes no field-specific claim to
-substitute a scoped check for; its entire purpose is "show me places you can generally trust
-nearby," which is precisely the whole-place claim the data model cannot honestly back today. It is
-left unchanged, with this known overclaim.
+it actually asserts (`opening_hours`) — see that method's doc comment.
+
+**Post-merge correction (2026-09-09, follow-up to PR #24 — `fix/discovery-operational-trust-surface`):**
+the paragraph originally here claimed this fix "does not generalize to `nearbyTrusted()`" because
+that method "makes no field-specific claim to substitute a scoped check for." That was **factually
+wrong** — a fresh source-level audit found `apps/web/src/modules/home/NearbyDiscovery.tsx` calls
+`getOpeningToday(p.opening_hours).state` on every row `nearbyTrusted()` returns and renders "Open
+now"/"Closed now" from it, the exact same operational claim `RightNowSection.tsx` makes from
+`rightNow()`'s output. `nearbyTrusted()` *did* make a field-specific opening_hours claim; it just
+wasn't gated the way `rightNow()`'s was. The follow-up PR applied the same current-value
+field-evidence gate (via a helper now shared between both methods) to `nearbyTrusted()`'s
+`opening_hours`, without filtering places out of Nearby: a candidate without qualifying evidence
+stays in the (distance-ranked) result with `opening_hours` forced to `null`, so the UI renders
+"Hours unknown" instead of an unsupported Open/Closed claim.
+
+That correction does **not** touch the whole-place `SELECTION` claim below — the part of Trusted
+Nearby that decides *which* places appear at all is still the `verification_status` whitelist, and
+that remains exactly the open gap this document describes.
 
 ## Why it isn't fixed here
 
@@ -94,6 +107,9 @@ qualifying for a feature (like Trusted Nearby) that claims general place trust.
 
 `rightNow()`'s fix does not depend on any of this — it replaced the whole-place whitelist with a
 field-scoped, source-authoritative evidence check that already answers "is *this specific claim*
-trustworthy," which is the only claim that feature actually makes. `nearbyTrusted()` is the part of
-the codebase that still needs this model, and it is explicitly left unmerged/unfixed pending it —
-see PR #24's final report for the exact classification.
+trustworthy," which is the only claim that feature actually makes. `nearbyTrusted()`'s SELECTION
+predicate (which places appear in Trusted Nearby at all) is the part of the codebase that still
+needs this model — see PR #24's final report for the exact classification. Its OPERATIONAL
+opening_hours claim (whether an appearing place's Open/Closed state is safe to show) no longer needs
+this model: the 2026-09-09 follow-up (`fix/discovery-operational-trust-surface`) closed that half by
+reusing `rightNow()`'s field-evidence gate — see the post-merge correction above.

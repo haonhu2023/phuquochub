@@ -636,96 +636,201 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
   });
 
   it('opening_hours null truyền qua nguyên trạng (null, không suy diễn)', async () => {
-    repo.query.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        name: 'Bãi Sao',
-        slug: 'bai-sao',
-        category_id: 'c1',
-        short_description: null,
-        price_range: null,
-        cover_image_url: null,
-        cover_image_media_id: null,
-        rating_avg: null,
-        rating_count: 0,
-        verification_status: 'verified',
-        status: 'published',
-        lat: 10.05,
-        lng: 104.0,
-        opening_hours: null,
-        distance_m: 12.3,
-      },
-    ]);
+    repo.query
+      .mockResolvedValueOnce([
+        {
+          id: 'p1',
+          name: 'Bãi Sao',
+          slug: 'bai-sao',
+          category_id: 'c1',
+          short_description: null,
+          price_range: null,
+          cover_image_url: null,
+          cover_image_media_id: null,
+          rating_avg: null,
+          rating_count: 0,
+          verification_status: 'verified',
+          status: 'published',
+          lat: 10.05,
+          lng: 104.0,
+          opening_hours: null,
+          distance_m: 12.3,
+        },
+      ])
+      .mockResolvedValueOnce([]);
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows[0].opening_hours).toBeNull();
   });
 
-  it('opening_hours object truyền qua nguyên trạng (không đổi hình dạng)', async () => {
+  // 2026-09-09 follow-up: pass-through now REQUIRES a gate-passing, current-value field-evidence
+  // link (see NEARBY 2 below) — without one, opening_hours is null-hoá regardless of shape.
+  it('opening_hours object CÓ field-evidence khớp giá trị hiện tại → truyền qua nguyên trạng (không đổi hình dạng)', async () => {
     const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
-    repo.query.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        name: 'Bãi Sao',
-        slug: 'bai-sao',
-        category_id: 'c1',
-        short_description: null,
-        price_range: null,
-        cover_image_url: null,
-        cover_image_media_id: null,
-        rating_avg: null,
-        rating_count: 0,
-        verification_status: 'verified',
-        status: 'published',
-        lat: 10.05,
-        lng: 104.0,
-        opening_hours: oh,
-        distance_m: 12.3,
-      },
-    ]);
+    const hash = computeFieldValueHash(oh);
+    repo.query
+      .mockResolvedValueOnce([
+        {
+          id: 'p1',
+          name: 'Bãi Sao',
+          slug: 'bai-sao',
+          category_id: 'c1',
+          short_description: null,
+          price_range: null,
+          cover_image_url: null,
+          cover_image_media_id: null,
+          rating_avg: null,
+          rating_count: 0,
+          verification_status: 'verified',
+          status: 'published',
+          lat: 10.05,
+          lng: 104.0,
+          opening_hours: oh,
+          distance_m: 12.3,
+        },
+      ])
+      .mockResolvedValueOnce([{ place_id: 'p1', field_value_hash: hash }]);
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows[0].opening_hours).toEqual(oh);
   });
 
-  // 2026-09-08 Right Now trust semantics gate: nearbyTrusted() deliberately did NOT receive
-  // rightNow()'s current-value field-evidence filter (see this method's own doc comment for why —
-  // it never asserts opening_hours as an operational claim, so a same-field evidence requirement
-  // would be scope creep). These two tests lock that decision in: a single query, no
-  // place_field_evidence_links join, and a trusted place with opening_hours but ZERO field
-  // evidence still appears — proving the method is unaffected by (and does not need) the fix
-  // applied to rightNow().
-  it('KHÔNG join place_field_evidence_links — không áp gate bằng chứng theo trường (ngoài phạm vi cố ý)', async () => {
+  // Main geo query never joins place_field_evidence_links itself — the evidence check (when it
+  // runs at all) is a SEPARATE, second bounded query, never inlined into the geo query's SQL text.
+  it('truy vấn geo chính KHÔNG join place_field_evidence_links (gate bằng chứng là truy vấn RIÊNG)', async () => {
     repo.query.mockResolvedValueOnce([]);
     await sut.nearbyTrusted(PARAMS);
 
-    expect(repo.query).toHaveBeenCalledTimes(1);
     const [query] = repo.query.mock.calls[0];
     expect(sql(query)).not.toContain('place_field_evidence_links');
   });
 
-  it('place tin cậy có opening_hours nhưng KHÔNG có field-evidence vẫn xuất hiện (không đổi hành vi)', async () => {
+  // Zero geo results -> no reason to run the evidence query at all (saves a round trip).
+  it('không có kết quả geo nào -> KHÔNG gọi truy vấn field-evidence', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+    expect(repo.query).toHaveBeenCalledTimes(1);
+  });
+
+  function nearbyRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'p1',
+      name: 'Bãi Sao',
+      slug: 'bai-sao',
+      category_id: 'c1',
+      short_description: null,
+      price_range: null,
+      cover_image_url: null,
+      cover_image_media_id: null,
+      rating_avg: null,
+      rating_count: 0,
+      verification_status: 'official',
+      status: 'published',
+      lat: 10.05,
+      lng: 104.0,
+      opening_hours: null,
+      distance_m: 12.3,
+      ...overrides,
+    };
+  }
+
+  function mockGeoAndLinks(
+    geoRows: Array<Record<string, unknown>>,
+    links: Array<{ place_id: string; field_value_hash: string }> = [],
+  ) {
+    repo.query.mockResolvedValueOnce(geoRows).mockResolvedValueOnce(links);
+  }
+
+  // 2026-09-09 Discovery operational-trust follow-up (post-PR #24): NearbyDiscovery.tsx DOES render
+  // an Open now/Closed now claim from whatever opening_hours this method returns (getOpeningToday()),
+  // so a whitelist-only pass-through let an address-matched administrative-backfill `official` row
+  // assert live hours with zero supporting evidence. NEARBY 1: published/trusted-status candidate,
+  // opening_hours present, NO qualifying field-evidence -> place STAYS in the Nearby result (distance
+  // discovery must not shrink for this), but its exposed opening_hours is forced to null so the UI
+  // renders "Hours unknown" and never "Open now"/"Closed now".
+  it('NEARBY 1: opening_hours có nhưng KHÔNG có field-evidence -> place vẫn xuất hiện, opening_hours bị null hoá', async () => {
     const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
-    repo.query.mockResolvedValueOnce([
-      {
-        id: 'p1',
-        name: 'Bãi Sao',
-        slug: 'bai-sao',
-        category_id: 'c1',
-        short_description: null,
-        price_range: null,
-        cover_image_url: null,
-        cover_image_media_id: null,
-        rating_avg: null,
-        rating_count: 0,
-        verification_status: 'official',
-        status: 'published',
-        lat: 10.05,
-        lng: 104.0,
-        opening_hours: oh,
-        distance_m: 12.3,
-      },
-    ]);
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows.map((r) => r.id)).toEqual(['p1']);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('truy vấn field-evidence lấy đúng phạm vi (id vừa trả về, field_name=opening_hours, gate + nguồn có thẩm quyền)', async () => {
+    const oh = { a: 1 };
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query, params] = repo.query.mock.calls[1];
+    expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
+    expect(sql(query)).toContain('pfel.place_id = ANY($1)');
+    expect(sql(query)).toContain('ea.verification_status = ANY($2)');
+    expect(sql(query)).toContain('s.type = ANY($3)');
+    expect(params[0]).toEqual(['p1']);
+    expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
+    expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+  });
+
+  // NEARBY 2: current opening_hours + matching field_value_hash + gate-passing, source-authoritative
+  // evidence -> opening_hours passes through unchanged, so getOpeningToday() may compute Open/Closed.
+  it('NEARBY 2: field-evidence khớp giá trị opening_hours hiện tại -> truyền qua nguyên trạng', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], [{ place_id: 'p1', field_value_hash: hash }]);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toEqual(oh);
+  });
+
+  // NEARBY 3: a link whose hash was computed against an OLDER opening_hours value (hours have since
+  // changed) must not be mistaken for support of the CURRENT value -> Hours unknown, not stale hours.
+  it('NEARBY 3: field_value_hash cũ (giá trị đã đổi) KHÔNG hợp lệ -> opening_hours bị null hoá', async () => {
+    const oldValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '16:00' }] } };
+    const currentValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const staleHash = computeFieldValueHash(oldValue);
+    mockGeoAndLinks([nearbyRow({ opening_hours: currentValue })], [{ place_id: 'p1', field_value_hash: staleHash }]);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  // NEARBY 4: an artifact stuck at NEEDS_REVIEW never appears in query 2's own gate-passing result
+  // set (GATE_PASSING_VERIFICATION_STATUSES excludes it) -> behaves identically to no evidence at all.
+  it('NEARBY 4: field-evidence còn NEEDS_REVIEW (không lọt gate) -> opening_hours bị null hoá', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
+    // Query 2's own WHERE (ea.verification_status = ANY($2)) means a NEEDS_REVIEW-backed link is
+    // never part of its result set — represented here by an empty links array.
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  // NEARBY 5: evidence VERIFIED but backed by a low-authority source (community/facebook/ai) never
+  // appears in query 2's result set either (s.type = ANY($3)) -> Hours unknown, not a borrowed claim.
+  it('NEARBY 5: field-evidence VERIFIED nhưng nguồn không có thẩm quyền -> opening_hours bị null hoá', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('opening_hours vốn đã null (không có giờ) -> vẫn null sau gate, không gọi field-evidence cho giá trị null', async () => {
+    mockGeoAndLinks([nearbyRow({ opening_hours: null })], []);
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('nhiều place trong cùng kết quả: mỗi place được gate độc lập theo bằng chứng của chính nó', async () => {
+    const oh = { a: 1 };
+    const hash = computeFieldValueHash(oh);
+    mockGeoAndLinks(
+      [nearbyRow({ id: 'p1', opening_hours: oh }), nearbyRow({ id: 'p2', opening_hours: oh })],
+      [{ place_id: 'p1', field_value_hash: hash }],
+    );
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows.find((r) => r.id === 'p1')?.opening_hours).toEqual(oh);
+    expect(rows.find((r) => r.id === 'p2')?.opening_hours).toBeNull();
   });
 });
 

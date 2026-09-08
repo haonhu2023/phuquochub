@@ -406,6 +406,51 @@ export class PlacesRepository {
   }
 
   /**
+   * Bulk-fetches, for the given place ids, every CURRENT opening_hours value's evidence hash that
+   * clears the gate: a `place_field_evidence_links` row (`field_name = 'opening_hours'`) whose
+   * linked `evidence_artifacts` row both clears `GATE_PASSING_VERIFICATION_STATUSES` and is
+   * attributed to an `OFFICIAL_SOURCE_TYPES` source. Shared by `rightNow()` and `nearbyTrusted()`
+   * (2026-09-09 Nearby operational-trust fix) so both apply the exact SAME opening_hours evidence
+   * semantics from one place instead of two independently-maintained copies — see `rightNow()`'s
+   * own comment below for why each individual condition exists.
+   *
+   * ONE bounded query for however many ids are passed in (never N+1) — callers own keeping that id
+   * list itself bounded (both current callers pass an already-LIMIT-ed row set).
+   */
+  private async getVerifiedOpeningHoursHashes(placeIds: string[]): Promise<Map<string, Set<string>>> {
+    if (placeIds.length === 0) return new Map();
+    const links: Array<{ place_id: string; field_value_hash: string }> = await this.repo.query(
+      `SELECT pfel.place_id, pfel.field_value_hash
+       FROM place_field_evidence_links pfel
+       JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
+       JOIN sources s ON s.id = ea.source_id
+       WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
+         AND ea.verification_status = ANY($2)
+         AND s.type = ANY($3)`,
+      [placeIds, [...GATE_PASSING_VERIFICATION_STATUSES], [...OFFICIAL_SOURCE_TYPES]],
+    );
+    const byPlace = new Map<string, Set<string>>();
+    for (const link of links) {
+      const set = byPlace.get(link.place_id) ?? new Set<string>();
+      set.add(link.field_value_hash);
+      byPlace.set(link.place_id, set);
+    }
+    return byPlace;
+  }
+
+  /** `true` iff `openingHours` is the place's CURRENT value AND that exact value has a gate-passing,
+   *  source-authoritative evidence link (see `getVerifiedOpeningHoursHashes`). `null` never qualifies
+   *  — there is no value to have evidence for. */
+  private hasVerifiedOpeningHours(
+    placeId: string,
+    openingHours: Record<string, unknown> | null,
+    hashesByPlace: Map<string, Set<string>>,
+  ): boolean {
+    if (openingHours === null) return false;
+    return hashesByPlace.get(placeId)?.has(computeFieldValueHash(openingHours)) ?? false;
+  }
+
+  /**
    * "Right Now" MVP — published places with sufficiently trustworthy CURRENT opening-hours
    * evidence, for the homepage RightNowSection. The user-facing promise (RightNowSection.tsx +
    * home.copy.ts's `rightNowTitle`/`rightNowEmptyBody`) is specifically about an ACTIONABLE,
@@ -471,12 +516,13 @@ export class PlacesRepository {
    * can only make the (still bounded) candidate window contain MORE not-yet-evidenced places, which
    * the unchanged query-2 filter removes exactly as before.
    *
-   * `nearbyTrusted()` below is deliberately NOT given the same treatment — it still uses the
-   * whole-place whitelist this method just removed. That is a real, KNOWN overclaim there too (same
-   * root cause), left unfixed in this task because, unlike here, there is no field-specific claim to
-   * substitute a scoped evidence check for — see that method's own comment and
-   * docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md for why closing it needs an actual verification-scope model,
-   * not a query change.
+   * `nearbyTrusted()` below still uses the whole-place whitelist as its SELECTION predicate (that
+   * part is a real, separately-tracked model gap — see docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md,
+   * closing it needs an actual verification-scope model, not a query edit). But
+   * `getVerifiedOpeningHoursHashes()` above is now SHARED with `nearbyTrusted()` (2026-09-09 Nearby
+   * operational-trust fix): NearbyDiscovery.tsx renders the SAME open/closed claim RightNowSection
+   * does from whatever `opening_hours` this method passes through, so it needed the identical
+   * current-value evidence gate, not a whitelist-only pass-through — see that method's own comment.
    *
    * Same ORDER BY as `list()` above (rating_avg DESC NULLS LAST, created_at DESC, id ASC) — reuses
    * the existing governed "browse" ordering instead of inventing a new ranking signal, with the
@@ -496,25 +542,10 @@ export class PlacesRepository {
     );
     if (candidates.length === 0) return [];
 
-    const verifiedLinks: Array<{ place_id: string; field_value_hash: string }> = await this.repo.query(
-      `SELECT pfel.place_id, pfel.field_value_hash
-       FROM place_field_evidence_links pfel
-       JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
-       JOIN sources s ON s.id = ea.source_id
-       WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
-         AND ea.verification_status = ANY($2)
-         AND s.type = ANY($3)`,
-      [candidates.map((c) => c.id), [...GATE_PASSING_VERIFICATION_STATUSES], [...OFFICIAL_SOURCE_TYPES]],
-    );
-    const verifiedHashesByPlace = new Map<string, Set<string>>();
-    for (const link of verifiedLinks) {
-      const set = verifiedHashesByPlace.get(link.place_id) ?? new Set<string>();
-      set.add(link.field_value_hash);
-      verifiedHashesByPlace.set(link.place_id, set);
-    }
+    const verifiedHashesByPlace = await this.getVerifiedOpeningHoursHashes(candidates.map((c) => c.id));
 
     const rows = candidates
-      .filter((c) => verifiedHashesByPlace.get(c.id)?.has(computeFieldValueHash(c.opening_hours)) ?? false)
+      .filter((c) => this.hasVerifiedOpeningHours(c.id, c.opening_hours, verifiedHashesByPlace))
       .slice(0, params.limit);
     return withCoverImageUrl(rows, this.mediaUrl);
   }
@@ -568,29 +599,39 @@ export class PlacesRepository {
    *   2. `p.opening_hours` in the SELECT — deliberately NOT added to `CARD_COLS` (shared by
    *      list/search/nearby/etc.) since no other caller needs it; this method has its own
    *      narrow row shape (`PlaceNowCardRow`) instead.
-   * Server never computes open/closed here — that stays a pure client-side concern
-   * (`getOpeningToday()`), so this method's only job is to pass `opening_hours` through unchanged.
    *
-   * KNOWN PREDICATE OVERCLAIM, LEFT UNCHANGED (2026-09-08 PR #24 final trust-semantics review):
-   * `rightNow()` above no longer uses the whole-place `p.verification_status` whitelist at all — it
-   * was found to add no real guarantee (see that method's own comment) and was REPLACED with a
-   * field-scoped, source-authoritative evidence check for the one fact it actually asserts
-   * (opening_hours). This method still uses the whitelist below, and that is the SAME root-cause
-   * overclaim (`official` routinely means only "an address matched a 2025 administrative-boundary
-   * resolution," not that anyone reviewed this place), NOT a different, lesser problem than
-   * rightNow() had.
+   * POST-MERGE CORRECTION (2026-09-09, follow-up to PR #24): this method's PREVIOUS doc comment
+   * claimed "this method asserts nothing about opening_hours" and left it as a bare pass-through.
+   * That was factually wrong — `NearbyDiscovery.tsx` calls `getOpeningToday(p.opening_hours).state`
+   * on every row this returns and renders "Open now"/"Closed now" from it, the exact same
+   * operational claim `RightNowSection.tsx` makes from `rightNow()`'s output. A bare pass-through
+   * therefore let an address-matched administrative-backfill `official` row (see the whitelist gap
+   * below) assert a live open/closed state with zero opening-hours evidence behind it.
    *
-   * It is left unfixed here — this is a real gap, not a judgment that it's safe — because there is
-   * no field-specific claim to substitute a scoped check for: this method asserts nothing about
-   * `opening_hours` (no `IS NOT NULL` even required, see the SQL below), so there is no equivalent
-   * of "field-evidence for the one fact being shown" to fall back on. The only fixes available
-   * without a schema change would be either (a) dropping the trust filter entirely — a real product
-   * decision (changes WHICH places appear here, not just a label) outside this task's authority to
-   * make unilaterally, or (b) something that actually distinguishes "administrative-only" from
-   * "identity/operator verified" `official` rows, which the current `verifications` model cannot do
-   * (no field/scope column, and `method=source_match` is shared with unrelated legitimate callers —
-   * see docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md). Closing this needs a real verification-scope model, not
-   * a query edit, and is reported there rather than invented here.
+   * Fixed by applying `rightNow()`'s CURRENT-value field-evidence gate (via the shared
+   * `getVerifiedOpeningHoursHashes()`/`hasVerifiedOpeningHours()` helpers above) to `opening_hours`
+   * specifically — NOT by filtering rows out of Nearby. Distance-based discovery should not shrink
+   * just because hours evidence is missing, so a candidate that fails the gate stays in the result
+   * with `opening_hours` forced to `null`; `getOpeningToday(null)` already resolves that to
+   * `'unknown'` client-side ("Hours unknown"/"Chưa có thông tin giờ mở cửa"), never `'closed'` — see
+   * openingHours.ts. This is a SECOND, small, bounded query (candidates already LIMIT-ed by the geo
+   * query below, so the evidence lookup's id list is bounded by the SAME caller-supplied `limit` —
+   * not unbounded, not N+1) run only when the geo query actually returned rows.
+   *
+   * SELECTION PREDICATE OVERCLAIM, STILL LEFT UNCHANGED (tracked separately, not this fix's job):
+   * the `p.verification_status IN (...)` whitelist below decides WHICH places appear in Nearby at
+   * all — that is a different question from what this fix closes (whether an APPEARING place's
+   * opening_hours claim is trustworthy). It has the same root cause as the whole-place overclaim
+   * `rightNow()` used to have (`official` routinely means only "an address matched a 2025
+   * administrative-boundary resolution," not that anyone reviewed this place) and is NOT resolved by
+   * this change. Closing it needs a real verification-scope model (no field/scope column exists on
+   * `verifications` today), not a query edit — see
+   * docs/delivery/reports/PLACE-TRUST-SEMANTICS-MODEL-GAP-2026-09-08.md, which this same follow-up
+   * corrected to stop claiming this method makes no opening_hours assertion.
+   *
+   * Whole-place trust badge / price display for Nearby's cards are handled at the presentation layer
+   * (`NearbyDiscovery.tsx` passing `showTrustBadge={false} showPrice={false}` to `PlaceCard`), not
+   * here — this repository has no opinion on presentation, only on what data it returns.
    */
   async nearbyTrusted(params: {
     lat: number;
@@ -618,6 +659,14 @@ export class PlacesRepository {
        LIMIT $${args.length}`,
       args,
     );
+    if (rows.length > 0) {
+      const verifiedHashesByPlace = await this.getVerifiedOpeningHoursHashes(rows.map((r) => r.id));
+      for (const row of rows) {
+        if (!this.hasVerifiedOpeningHours(row.id, row.opening_hours, verifiedHashesByPlace)) {
+          row.opening_hours = null;
+        }
+      }
+    }
     return withCoverImageUrl(rows, this.mediaUrl);
   }
 
