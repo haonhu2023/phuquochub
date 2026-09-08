@@ -858,6 +858,22 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(rows).toEqual([]);
   });
 
+  // PR #24 merge-gate audit (2026-09-08): explicit, literal coverage for "pending + currently open
+  // → excluded" using verification_status:'pending' in the mock — proves the SAME no-evidence
+  // exclusion mechanism as the test above applies identically regardless of what verification_status
+  // value a candidate carries (the query no longer reads it at all — see the "KHÔNG còn lọc" test).
+  // `is_24h: true` stands in for "currently open" without needing real clock injection at this layer
+  // (open/closed computation itself is a pure client-side concern — getOpeningToday() — never
+  // performed by this repository; see rightNow()'s own doc comment).
+  it('place pending, giờ mở cửa cho thấy đang mở, nhưng KHÔNG có field-evidence — vẫn bị loại khỏi Right Now', async () => {
+    mockCandidatesAndLinks(
+      [{ id: 'p1', opening_hours: { timezone: 'Asia/Ho_Chi_Minh', is_24h: true }, verification_status: 'pending' }],
+      [],
+    );
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
   // Category 2/3: trust status + a gate-passing field-evidence link whose hash matches the
   // place's CURRENT opening_hours value qualifies.
   it('place có trạng thái tin cậy VÀ field-evidence khớp giá trị opening_hours hiện tại thì ĐƯỢC nhận vào Right Now', async () => {
