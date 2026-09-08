@@ -1,10 +1,22 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
 import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
 import { EvidenceArtifact } from './entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from './entities/place-translation-evidence-link.entity';
 import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
-import { PlacesRepository } from '../places/repositories/places.repository';
+import { PlacesRepository, PlaceDetailRow } from '../places/repositories/places.repository';
+import { computeFieldValueHash } from './field-value-hash';
+
+// Maps a field_name accepted by PlaceFieldEvidenceLink to how its CURRENT value is actually read.
+// Deliberately explicit and small, not a closed enum on the column itself (field_name stays
+// free-form VARCHAR, same ADR-020 reasoning as before) — but computing a "current value hash"
+// requires knowing where that value lives, so a field with no resolver here cannot be given a
+// current-value binding. Extend this map, not the schema, when a new field
+// (phone/website/address/price/operating status) needs current-value evidence.
+const PLACE_FIELD_VALUE_READERS: Record<string, (place: PlaceDetailRow) => unknown> = {
+  opening_hours: (place) => place.opening_hours,
+  short_description: (place) => place.short_description,
+};
 
 export interface EnsureEvidenceArtifactInput {
   sourceId: string;
@@ -98,24 +110,31 @@ export class EvidenceService {
   }
 
   // Place-field evidence V0 — links an EXISTING evidence_artifact to a named scalar field on a
-  // place (opening_hours today; generic enough for phone/website/address/price/operating status
-  // later, per PlaceFieldEvidenceLink's own field_name comment). Deliberately does NOT touch
-  // places.verification_status/verified_at — see PLACES-026 trust-model note: linking evidence to
-  // one field must never read as "the whole place is now trusted."
+  // place, pinned to the field's value AT LINK TIME via fieldValueHash (see field-value-hash.ts —
+  // same sha256(canonicalJson(value)) idiom as place_translations.source_text_hash). A row alone
+  // never means "supports the current value" — only listCurrentEvidenceForPlaceField's comparison
+  // against the LIVE value does. Deliberately does NOT touch places.verification_status/verified_at
+  // — see PLACES-026 trust-model note: linking evidence to one field must never read as "the whole
+  // place is now trusted."
   //
   // Existence checks happen HERE, explicitly, before the insert — same pattern as
   // SourcesService.attachAttribution's `await this.getSource(...)` (clearer error than relying on
-  // the FK violation alone, even though the FK is still the real backstop). PlacesRepository.existsById
-  // is already documented as the cross-module "is this place_id valid" seam (its own JSDoc names
-  // ReviewsService.create as an existing caller) — reused here rather than re-querying places.
+  // the FK violation alone, even though the FK is still the real backstop). Reuses
+  // getCardByIdIncludingInactive for BOTH the existence check and the current value read — one
+  // query, not two — since we need the row's actual field value regardless.
   async linkEvidenceToPlaceField(placeId: string, fieldName: string, evidenceArtifactId: string): Promise<PlaceFieldEvidenceLink> {
     const trimmedField = fieldName?.trim();
     if (!trimmedField) {
       throw new Error('fieldName must not be blank');
     }
 
-    const placeExists = await this.placesRepo.existsById(placeId);
-    if (!placeExists) {
+    const readCurrentValue = PLACE_FIELD_VALUE_READERS[trimmedField];
+    if (!readCurrentValue) {
+      throw new BadRequestException(`fieldName "${trimmedField}" has no current-value reader registered`);
+    }
+
+    const place = await this.placesRepo.getCardByIdIncludingInactive(placeId);
+    if (!place) {
       throw new NotFoundException(`Place ${placeId} not found`);
     }
 
@@ -124,17 +143,41 @@ export class EvidenceService {
       throw new NotFoundException(`Evidence artifact ${evidenceArtifactId} not found`);
     }
 
-    const existing = await this.fieldLinksRepo.findLink(placeId, trimmedField, evidenceArtifactId);
+    const fieldValueHash = computeFieldValueHash(readCurrentValue(place));
+
+    const existing = await this.fieldLinksRepo.findLink(placeId, trimmedField, evidenceArtifactId, fieldValueHash);
     if (existing) return existing;
 
-    const row = this.fieldLinksRepo.create({ placeId, fieldName: trimmedField, evidenceArtifactId });
+    const row = this.fieldLinksRepo.create({ placeId, fieldName: trimmedField, evidenceArtifactId, fieldValueHash });
     return this.fieldLinksRepo.save(row);
   }
 
-  // Read-only lookup, scoped to exactly one (place, field) pair — a different field on the same
-  // place, or the same field on a different place, must never leak into the result (verified by
-  // PlaceFieldEvidenceLinksRepository.listByPlaceAndField's WHERE clause + the covering index).
+  // Read-only lookup, scoped to exactly one (place, field) pair — ALL history, every
+  // field_value_hash. A different field on the same place, or the same field on a different place,
+  // must never leak into the result (verified by
+  // PlaceFieldEvidenceLinksRepository.listByPlaceAndField's WHERE clause + the covering index). Not
+  // proof of current-value support — a link here may back a since-superseded value. Use
+  // listCurrentEvidenceForPlaceField for a current-value claim.
   listEvidenceForPlaceField(placeId: string, fieldName: string): Promise<PlaceFieldEvidenceLink[]> {
     return this.fieldLinksRepo.listByPlaceAndField(placeId, fieldName);
+  }
+
+  // THE current-value query: computes the field's LIVE value hash and returns only links pinned to
+  // that exact hash. A link created against a value the field no longer holds (T1: value A linked;
+  // T2: value changes to B) is real, retained history that simply will not appear here once the
+  // value has moved on — it is never counted as support for the new value. If the place cannot be
+  // found, there is no "current value" to compare against, so the honest answer is an empty result,
+  // not an error (mirrors listEvidenceForPlaceField's read-only leniency).
+  async listCurrentEvidenceForPlaceField(placeId: string, fieldName: string): Promise<PlaceFieldEvidenceLink[]> {
+    const readCurrentValue = PLACE_FIELD_VALUE_READERS[fieldName];
+    if (!readCurrentValue) {
+      throw new BadRequestException(`fieldName "${fieldName}" has no current-value reader registered`);
+    }
+
+    const place = await this.placesRepo.getCardByIdIncludingInactive(placeId);
+    if (!place) return [];
+
+    const currentHash = computeFieldValueHash(readCurrentValue(place));
+    return this.fieldLinksRepo.listCurrentByPlaceAndField(placeId, fieldName, currentHash);
   }
 }
