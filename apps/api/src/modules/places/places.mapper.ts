@@ -1,5 +1,5 @@
-import type { PlaceCard } from '@phuquochub/shared-types';
-import { PlaceCardRow, PlaceDetailRow } from './repositories/places.repository';
+import type { PlaceCard, PlaceNowCard } from '@phuquochub/shared-types';
+import { PlaceCardRow, PlaceDetailRow, PlaceNowCardRow } from './repositories/places.repository';
 
 // Shape response openapi PlaceCard (snake_case) — nay khai báo MỘT LẦN ở
 // @phuquochub/shared-types (GAP-11), dùng chung với apps/web thay vì mỗi bên tự định nghĩa.
@@ -30,6 +30,15 @@ export function toPlaceCard(row: PlaceCardRow): PlaceCard {
   // nghĩa được thang đo/khoảng giá trị/tính ổn định ra hợp đồng công khai là KHÔNG được duyệt.
   // Nhánh cũ vốn không bao giờ chạy: không caller nào của toPlaceCard truyền row có score.
   return card;
+}
+
+// Trusted Nearby + Opening State v0 — card + `opening_hours` truyền nguyên vẹn (không suy diễn
+// open/closed ở đây; xem PlaceNowCard trong shared-types).
+export function toPlaceNowCard(row: PlaceNowCardRow): PlaceNowCard {
+  return {
+    ...toPlaceCard(row),
+    opening_hours: (row.opening_hours as PlaceNowCard['opening_hours']) ?? null,
+  };
 }
 
 // Map row chi tiết → phần scalar của openapi Place (mảng contacts/prices/media/faqs

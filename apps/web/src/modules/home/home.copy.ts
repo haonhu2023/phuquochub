@@ -43,6 +43,9 @@ export interface HomeCopy {
   nearbyError: string;
   nearbyEmpty: string;
   nearbyPrivacyNote: string;
+  nearbyOpenNow: string;
+  nearbyClosedNow: string;
+  nearbyHoursUnknown: string;
   discoverTitle: string;
   discoverMoreLink: string;
   discoverLoadingLabel: string;
@@ -104,6 +107,9 @@ const vi: HomeCopy = {
   nearbyError: 'Không lấy được vị trí hoặc không tải được kết quả. Thử lại sau.',
   nearbyEmpty: 'Không tìm thấy địa điểm nào gần vị trí hiện tại của bạn.',
   nearbyPrivacyNote: 'Vị trí của bạn chỉ dùng để tìm địa điểm gần đó, không được lưu lại.',
+  nearbyOpenNow: 'Đang mở cửa',
+  nearbyClosedNow: 'Đã đóng cửa',
+  nearbyHoursUnknown: 'Chưa có thông tin giờ mở cửa',
   discoverTitle: 'Khám phá Phú Quốc',
   discoverMoreLink: 'Xem thêm →',
   discoverLoadingLabel: 'Đang tải địa điểm nổi bật',
@@ -177,6 +183,9 @@ const en: HomeCopy = {
   nearbyError: "Couldn't get your location or load results. Please try again.",
   nearbyEmpty: 'No places found near your current location.',
   nearbyPrivacyNote: "Your location is only used to find nearby places — it isn't stored.",
+  nearbyOpenNow: 'Open now',
+  nearbyClosedNow: 'Closed now',
+  nearbyHoursUnknown: 'Hours unknown',
   discoverTitle: 'Discover Phú Quốc',
   discoverMoreLink: 'See more →',
   discoverLoadingLabel: 'Loading featured places',

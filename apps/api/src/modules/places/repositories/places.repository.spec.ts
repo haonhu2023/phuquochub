@@ -565,3 +565,123 @@ describe('PlacesRepository.bboxClusters — Search Filters (category/ward)', () 
     expect(params).toEqual([103.4, 9.8, 104.2, 10.5, 'c1', 0.01, 500]);
   });
 });
+
+// Trusted Nearby + Opening State v0 (Phase 2) — GET /geo/nearby-trusted.
+describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo, MEDIA_URL);
+  });
+
+  const PARAMS = { lat: 10.05, lng: 104.0, radius: 2000, limit: 20 };
+
+  it('lọc verification_status theo whitelist verified/official/community_verified, TRƯỚC LIMIT', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query] = repo.query.mock.calls[0];
+    const normalized = sql(query);
+    const whitelistIdx = normalized.indexOf("p.verification_status IN ('verified', 'official', 'community_verified')");
+    const limitIdx = normalized.indexOf('LIMIT $');
+    expect(whitelistIdx).toBeGreaterThan(-1);
+    expect(limitIdx).toBeGreaterThan(-1);
+    expect(whitelistIdx).toBeLessThan(limitIdx);
+  });
+
+  it('không lộ expired/pending/rejected qua whitelist (không xuất hiện dạng liệt kê riêng)', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query] = repo.query.mock.calls[0];
+    const normalized = sql(query);
+    expect(normalized).not.toContain('expired');
+    expect(normalized).not.toContain('pending');
+    expect(normalized).not.toContain('rejected');
+  });
+
+  it("giữ nguyên p.deleted_at IS NULL AND p.status = 'published'", async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain("p.deleted_at IS NULL AND p.status = 'published'");
+  });
+
+  it('giữ nguyên thứ tự distance_m ASC, p.id ASC làm khoá phụ', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('ORDER BY distance_m ASC, p.id ASC');
+  });
+
+  it('SELECT có p.opening_hours', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted(PARAMS);
+
+    const [query] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('p.opening_hours');
+  });
+
+  it('tham số hoá lng/lat/radius/limit giống hệt nearby() (không đổi hợp đồng tham số)', async () => {
+    repo.query.mockResolvedValueOnce([]);
+    await sut.nearbyTrusted({ ...PARAMS, category: 'c1' });
+
+    const [, params] = repo.query.mock.calls[0];
+    expect(params).toEqual([104.0, 10.05, 2000, 'c1', 20]);
+  });
+
+  it('opening_hours null truyền qua nguyên trạng (null, không suy diễn)', async () => {
+    repo.query.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        name: 'Bãi Sao',
+        slug: 'bai-sao',
+        category_id: 'c1',
+        short_description: null,
+        price_range: null,
+        cover_image_url: null,
+        cover_image_media_id: null,
+        rating_avg: null,
+        rating_count: 0,
+        verification_status: 'verified',
+        status: 'published',
+        lat: 10.05,
+        lng: 104.0,
+        opening_hours: null,
+        distance_m: 12.3,
+      },
+    ]);
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('opening_hours object truyền qua nguyên trạng (không đổi hình dạng)', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    repo.query.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        name: 'Bãi Sao',
+        slug: 'bai-sao',
+        category_id: 'c1',
+        short_description: null,
+        price_range: null,
+        cover_image_url: null,
+        cover_image_media_id: null,
+        rating_avg: null,
+        rating_count: 0,
+        verification_status: 'verified',
+        status: 'published',
+        lat: 10.05,
+        lng: 104.0,
+        opening_hours: oh,
+        distance_m: 12.3,
+      },
+    ]);
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toEqual(oh);
+  });
+});

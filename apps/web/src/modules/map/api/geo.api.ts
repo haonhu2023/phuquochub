@@ -1,5 +1,5 @@
 import { apiGet } from '@/lib/http';
-import type { PlaceCard } from '@/modules/places/types';
+import type { PlaceCard, PlaceNowCard } from '@/modules/places/types';
 
 // Marker bản đồ: cụm (nhiều điểm) hoặc một địa điểm — khớp GeoService.bbox (BE).
 export type BboxMarker =
@@ -26,6 +26,20 @@ export async function nearby(
   if (radius) qs.set('radius', String(radius));
   if (category) qs.set('category', category);
   return apiGet<PlaceCard[]>(`/geo/nearby?${qs.toString()}`);
+}
+
+// Trusted Nearby + Opening State v0 (Phase 2) — GET /geo/nearby-trusted, additive alongside
+// nearby() above. Trust filtering happens server-side (SQL); this just calls the new route.
+export async function nearbyTrusted(
+  lat: number,
+  lng: number,
+  radius?: number,
+  category?: string,
+): Promise<PlaceNowCard[]> {
+  const qs = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+  if (radius) qs.set('radius', String(radius));
+  if (category) qs.set('category', category);
+  return apiGet<PlaceNowCard[]>(`/geo/nearby-trusted?${qs.toString()}`);
 }
 
 export async function bbox(p: BboxParams): Promise<BboxMarker[]> {

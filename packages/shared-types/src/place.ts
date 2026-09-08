@@ -59,6 +59,17 @@ export interface PlaceCard {
   distance_m?: number;
 }
 
+/**
+ * Trusted Nearby + Opening State v0 — PlaceCard + `opening_hours`, cho riêng
+ * `GET /geo/nearby-trusted`. KHÔNG gộp `opening_hours` vào `PlaceCard` dùng chung: không caller
+ * nào khác của PlaceCard (list/search/nearby/bbox) cần trường này. Server không tự suy ra
+ * open/closed — client tính bằng `getOpeningToday(opening_hours)` (apps/web/src/modules/places/
+ * openingHours.ts), cùng engine đã dùng ở trang chi tiết.
+ */
+export interface PlaceNowCard extends PlaceCard {
+  opening_hours: OpeningHours | null;
+}
+
 export interface PlaceContact {
   id: string;
   contact_type: string;

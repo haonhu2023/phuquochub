@@ -14,6 +14,13 @@ export class GeoController {
     return this.geoService.nearby(dto);
   }
 
+  // Trusted Nearby + Opening State v0 (Phase 2) — additive; does not alter `nearby()` above.
+  @Public()
+  @Get('nearby-trusted')
+  nearbyTrusted(@Query() dto: NearbyQueryDto) {
+    return this.geoService.nearbyTrusted(dto);
+  }
+
   @Public()
   @Get('bbox')
   bbox(@Query() dto: BboxQueryDto) {

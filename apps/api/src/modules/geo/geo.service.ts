@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { RedisService } from '../../core/redis/redis.service';
-import { toPlaceCard } from '../places/places.mapper';
+import { toPlaceCard, toPlaceNowCard } from '../places/places.mapper';
 import { clampLimit } from '../../common/pagination';
 import { BboxQueryDto, NearbyQueryDto } from './dto/geo.dto';
 import { redactUntrustedPriceRange } from '../../common/price-trust';
@@ -33,6 +33,22 @@ export class GeoService {
     // Public Beta price trust gate (2026-08-28): raw price_range chỉ lộ khi trạng thái tin cậy —
     // route công khai này trước đây trả nguyên `toPlaceCard(row)` không qua gate nào.
     return rows.map(toPlaceCard).map(redactUntrustedPriceRange);
+  }
+
+  // Trusted Nearby + Opening State v0 (Phase 2) — same radius/category/limit/ordering semantics
+  // as nearby() above; trust filter runs in SQL (PlacesRepository.nearbyTrusted(), before LIMIT),
+  // never here. `redactUntrustedPriceRange` is a no-op for every row this returns (all are already
+  // in the trusted set) but is kept for defense-in-depth / consistency with nearby()'s own gate.
+  async nearbyTrusted(dto: NearbyQueryDto) {
+    const radius = Math.min(dto.radius ?? 2000, MAX_RADIUS_M);
+    const rows = await this.placesRepo.nearbyTrusted({
+      lat: dto.lat,
+      lng: dto.lng,
+      radius,
+      category: dto.category,
+      limit: clampLimit(dto.limit),
+    });
+    return rows.map(toPlaceNowCard).map(redactUntrustedPriceRange);
   }
 
   // bbox → điểm gom cụm theo zoom (api.md §11 "clustered points"). Cell nhỏ dần khi zoom tăng →

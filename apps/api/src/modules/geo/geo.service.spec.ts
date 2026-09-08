@@ -80,3 +80,63 @@ describe('GeoService.nearby — price trust gate', () => {
     expect(res[0].price_range).toBe(SECRET_PLACE_RANGE);
   });
 });
+
+// Trusted Nearby + Opening State v0 (Phase 2) — GeoService.nearbyTrusted() phải gọi
+// PlacesRepository.nearbyTrusted() (KHÔNG phải nearby()), truyền opening_hours nguyên vẹn qua
+// toPlaceNowCard(), và KHÔNG tự tính open/closed (không hàm nào ở service này làm việc đó).
+describe('GeoService.nearbyTrusted — Trusted Nearby + Opening State v0', () => {
+  let placesRepo: LooseMock<PlacesRepository>;
+  let sut: GeoService;
+
+  beforeEach(() => {
+    placesRepo = createMock<PlacesRepository>({ nearbyTrusted: jest.fn() });
+    const redis = createMock<RedisService>({});
+    sut = new GeoService(placesRepo, redis);
+  });
+
+  function nowRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'p1',
+      name: 'Bãi Sao',
+      slug: 'bai-sao',
+      category_id: 'c1',
+      short_description: null,
+      price_range: 'high',
+      cover_image_url: null,
+      rating_avg: null,
+      rating_count: 0,
+      verification_status: 'verified',
+      status: 'published',
+      lat: '10.0',
+      lng: '104.0',
+      opening_hours: null,
+      distance_m: '12.3',
+      ...overrides,
+    };
+  }
+
+  it('gọi placesRepo.nearbyTrusted() (không phải nearby())', async () => {
+    placesRepo.nearbyTrusted.mockResolvedValue([]);
+    await sut.nearbyTrusted({ lat: 10, lng: 104 } as Parameters<typeof sut.nearbyTrusted>[0]);
+    expect(placesRepo.nearbyTrusted).toHaveBeenCalledTimes(1);
+  });
+
+  it('opening_hours null truyền qua response nguyên trạng', async () => {
+    placesRepo.nearbyTrusted.mockResolvedValue([nowRow({ opening_hours: null })]);
+    const res = await sut.nearbyTrusted({ lat: 10, lng: 104 } as Parameters<typeof sut.nearbyTrusted>[0]);
+    expect(res[0].opening_hours).toBeNull();
+  });
+
+  it('opening_hours object truyền qua response nguyên trạng (không đổi hình dạng)', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: false };
+    placesRepo.nearbyTrusted.mockResolvedValue([nowRow({ opening_hours: oh })]);
+    const res = await sut.nearbyTrusted({ lat: 10, lng: 104 } as Parameters<typeof sut.nearbyTrusted>[0]);
+    expect(res[0].opening_hours).toEqual(oh);
+  });
+
+  it('vẫn qua price trust gate (đã trusted-only từ repo nên price_range luôn giữ nguyên)', async () => {
+    placesRepo.nearbyTrusted.mockResolvedValue([nowRow({ verification_status: 'verified', price_range: 'high' })]);
+    const res = await sut.nearbyTrusted({ lat: 10, lng: 104 } as Parameters<typeof sut.nearbyTrusted>[0]);
+    expect(res[0].price_range).toBe('high');
+  });
+});

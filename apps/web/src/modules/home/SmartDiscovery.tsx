@@ -10,9 +10,11 @@ import styles from './home.module.css';
  * JavaScript) đứng CẠNH widget vị trí thật — không phải danh sách "gợi ý AI", chỉ là điều hướng
  * theo nhu cầu phổ biến, trình bày ở một khối riêng thay vì trộn vào `CategoryLinks` phía trên.
  *
- * CỐ Ý KHÔNG có "Đang mở cửa": `opening_hours` trên phần lớn 49 địa điểm hôm nay chưa đủ tin cậy
- * để suy ra trạng thái mở/đóng ngay bây giờ mà không suy diễn (Phase 32: "OPEN_NOW requires
- * reliable hours; do not infer").
+ * Trusted Nearby + Opening State v0 (Phase 2): `NearbyDiscovery` bên dưới nay hiển thị trạng thái
+ * Đang mở cửa / Đã đóng cửa / Chưa có thông tin giờ mở cửa cho từng địa điểm TRUSTED trả về từ
+ * `GET /geo/nearby-trusted`, đọc trung thực qua `getOpeningToday()` — không suy diễn khi thiếu dữ
+ * liệu (Phase 32: "OPEN_NOW requires reliable hours; do not infer" vẫn đúng, chỉ là giờ đã có một
+ * đường hiển thị an toàn thay vì bị chặn hoàn toàn).
  */
 export function SmartDiscovery({ locale }: { locale: Locale }) {
   const copy = getHomeCopy(locale);
@@ -42,6 +44,9 @@ export function SmartDiscovery({ locale }: { locale: Locale }) {
           error: copy.nearbyError,
           empty: copy.nearbyEmpty,
           privacyNote: copy.nearbyPrivacyNote,
+          openNow: copy.nearbyOpenNow,
+          closedNow: copy.nearbyClosedNow,
+          hoursUnknown: copy.nearbyHoursUnknown,
         }}
       />
     </section>

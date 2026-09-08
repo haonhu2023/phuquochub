@@ -46,6 +46,12 @@ export interface PlaceCardRow extends CoverImageColumns {
   score?: number;
 }
 
+// Trusted Nearby + Opening State v0 — card row + `opening_hours`, cho riêng `nearbyTrusted()`.
+// KHÔNG gộp vào PlaceCardRow: không caller nào khác của PlaceCardRow cần cột này.
+export interface PlaceNowCardRow extends PlaceCardRow {
+  opening_hours: Record<string, unknown> | null;
+}
+
 // Row chi tiết = card + trường mở rộng (khớp openapi Place).
 export interface PlaceDetailRow extends PlaceCardRow {
   /**
@@ -415,6 +421,50 @@ export class PlacesRepository {
               ST_Distance(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography) AS distance_m
        FROM places p
        WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND ST_DWithin(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography, $3)
+         ${categoryCond}
+       ORDER BY distance_m ASC, p.id ASC
+       LIMIT $${args.length}`,
+      args,
+    );
+    return withCoverImageUrl(rows, this.mediaUrl);
+  }
+
+  /**
+   * Trusted Nearby + Opening State v0 (Phase 2) — bản dùng cho NearbyDiscovery: SAME semantics
+   * as `nearby()` (radius/category/limit, distance ASC + p.id ASC tie-break, published +
+   * deleted_at IS NULL) but adds two things:
+   *   1. a trust whitelist filter BEFORE LIMIT — the three literal values here are the exact
+   *      set `isTrustedStatus()` (verification.transition.ts) defines as "trusted"; kept as a
+   *      literal here (same convention as the existing `p.status = 'published'` literal two
+   *      lines below) rather than parameterized, since the whitelist is a fixed domain policy,
+   *      not caller input.
+   *   2. `p.opening_hours` in the SELECT — deliberately NOT added to `CARD_COLS` (shared by
+   *      list/search/nearby/etc.) since no other caller needs it; this method has its own
+   *      narrow row shape (`PlaceNowCardRow`) instead.
+   * Server never computes open/closed here — that stays a pure client-side concern
+   * (`getOpeningToday()`), so this method's only job is to pass `opening_hours` through unchanged.
+   */
+  async nearbyTrusted(params: {
+    lat: number;
+    lng: number;
+    radius: number;
+    category?: string;
+    limit: number;
+  }): Promise<PlaceNowCardRow[]> {
+    const args: unknown[] = [params.lng, params.lat, params.radius];
+    let categoryCond = '';
+    if (params.category) {
+      args.push(params.category);
+      categoryCond = `AND p.category_id = $${args.length}`;
+    }
+    args.push(params.limit);
+    const rows: PlaceNowCardRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS}, p.opening_hours,
+              ST_Distance(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography) AS distance_m
+       FROM places p
+       WHERE p.deleted_at IS NULL AND p.status = 'published'
+         AND p.verification_status IN ('verified', 'official', 'community_verified')
          AND ST_DWithin(p.location, ST_SetSRID(ST_MakePoint($1,$2),4326)::geography, $3)
          ${categoryCond}
        ORDER BY distance_m ASC, p.id ASC
