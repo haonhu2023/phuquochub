@@ -2,8 +2,11 @@ import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { EvidenceArtifact } from '../modules/evidence/entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from '../modules/evidence/entities/place-translation-evidence-link.entity';
+import { PlaceFieldEvidenceLink } from '../modules/evidence/entities/place-field-evidence-link.entity';
 import { EvidenceArtifactsRepository } from '../modules/evidence/repositories/evidence-artifacts.repository';
+import { PlaceFieldEvidenceLinksRepository } from '../modules/evidence/repositories/place-field-evidence-links.repository';
 import { EvidenceService } from '../modules/evidence/evidence.service';
+import type { PlacesRepository } from '../modules/places/repositories/places.repository';
 
 // PILOT EVIDENCE REMEDIATION — 2026-09-03 data-SSOT remediation, Phase 3. Same hand-wired-against-a-
 // bare-DataSource approach as cancel-multilingual-batch.ts / remediate-pilot-translations.ts (see
@@ -117,7 +120,13 @@ async function main(): Promise<void> {
       dataSource.getRepository(EvidenceArtifact),
       dataSource.getRepository(PlaceTranslationEvidenceLink),
     );
-    const evidenceService = new EvidenceService(evidenceRepo);
+    const fieldLinksRepo = new PlaceFieldEvidenceLinksRepository(dataSource.getRepository(PlaceFieldEvidenceLink));
+    // This script only ever calls ensureEvidenceArtifact()/linkEvidenceToTranslation() — never the
+    // place-field methods added later (place-field-evidence-v0) — so PlacesRepository is never
+    // actually invoked at runtime here. A real instance would additionally require MediaUrlService/
+    // ConfigService, which this pure translation-evidence remediation has no other reason to wire.
+    const placesRepoStub = {} as PlacesRepository;
+    const evidenceService = new EvidenceService(evidenceRepo, fieldLinksRepo, placesRepoStub);
 
     // Resolve the 3 real sources already ensured by remediate-pilot-translations.ts (idempotent —
     // fails loudly if they are missing rather than silently creating a placeholder).
