@@ -1,7 +1,11 @@
+import { NotFoundException } from '@nestjs/common';
 import { EvidenceService } from './evidence.service';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
+import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
+import { PlacesRepository } from '../places/repositories/places.repository';
 import { EvidenceArtifact } from './entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from './entities/place-translation-evidence-link.entity';
+import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
 
 function makeEvidence(overrides: Partial<EvidenceArtifact> = {}): EvidenceArtifact {
   const row = new EvidenceArtifact();
@@ -36,9 +40,23 @@ function makeLink(overrides: Partial<PlaceTranslationEvidenceLink> = {}): PlaceT
   return row;
 }
 
+function makeFieldLink(overrides: Partial<PlaceFieldEvidenceLink> = {}): PlaceFieldEvidenceLink {
+  const row = new PlaceFieldEvidenceLink();
+  Object.assign(row, {
+    id: 'field-link-1',
+    placeId: 'place-1',
+    fieldName: 'opening_hours',
+    evidenceArtifactId: 'evd-1',
+    ...overrides,
+  });
+  return row;
+}
+
 describe('EvidenceService', () => {
   let service: EvidenceService;
   let repo: jest.Mocked<EvidenceArtifactsRepository>;
+  let fieldLinksRepo: jest.Mocked<PlaceFieldEvidenceLinksRepository>;
+  let placesRepo: jest.Mocked<PlacesRepository>;
 
   beforeEach(() => {
     repo = {
@@ -51,7 +69,16 @@ describe('EvidenceService', () => {
       saveLink: jest.fn(async (row) => row),
       listLinksByTranslation: jest.fn(),
     } as unknown as jest.Mocked<EvidenceArtifactsRepository>;
-    service = new EvidenceService(repo);
+    fieldLinksRepo = {
+      findLink: jest.fn(),
+      listByPlaceAndField: jest.fn(),
+      create: jest.fn((data) => Object.assign(new PlaceFieldEvidenceLink(), data)),
+      save: jest.fn(async (row) => row),
+    } as unknown as jest.Mocked<PlaceFieldEvidenceLinksRepository>;
+    placesRepo = {
+      existsById: jest.fn(),
+    } as unknown as jest.Mocked<PlacesRepository>;
+    service = new EvidenceService(repo, fieldLinksRepo, placesRepo);
   });
 
   describe('ensureEvidenceArtifact', () => {
@@ -157,6 +184,93 @@ describe('EvidenceService', () => {
       expect(result.status).toBe('HOLD');
       expect(result.linkedEvidenceCount).toBe(2);
       expect(result.needsReviewCount).toBe(1);
+    });
+  });
+
+  describe('linkEvidenceToPlaceField', () => {
+    beforeEach(() => {
+      placesRepo.existsById.mockResolvedValue(true);
+      repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1' }));
+      fieldLinksRepo.findLink.mockResolvedValue(null);
+    });
+
+    it('creates a new link when none exists', async () => {
+      const result = await service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1');
+      expect(fieldLinksRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.placeId).toBe('place-1');
+      expect(result.fieldName).toBe('opening_hours');
+      expect(result.evidenceArtifactId).toBe('evd-1');
+    });
+
+    it('is idempotent — the same (place, field, evidence) triple returns the existing link, no duplicate write', async () => {
+      const existing = makeFieldLink();
+      fieldLinksRepo.findLink.mockResolvedValue(existing);
+      const result = await service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1');
+      expect(result).toBe(existing);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a nonexistent place before touching the evidence-artifact check or the link table', async () => {
+      placesRepo.existsById.mockResolvedValue(false);
+      await expect(service.linkEvidenceToPlaceField('missing-place', 'opening_hours', 'evd-1')).rejects.toThrow(NotFoundException);
+      expect(repo.findById).not.toHaveBeenCalled();
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a nonexistent evidence artifact', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'missing-evd')).rejects.toThrow(NotFoundException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank field name without querying either FK', async () => {
+      await expect(service.linkEvidenceToPlaceField('place-1', '   ', 'evd-1')).rejects.toThrow(/blank/);
+      expect(placesRepo.existsById).not.toHaveBeenCalled();
+      expect(repo.findById).not.toHaveBeenCalled();
+    });
+
+    it('trims the field name before storing it', async () => {
+      await service.linkEvidenceToPlaceField('place-1', '  opening_hours  ', 'evd-1');
+      const created = fieldLinksRepo.create.mock.calls[0][0];
+      expect(created?.fieldName).toBe('opening_hours');
+    });
+  });
+
+  describe('listEvidenceForPlaceField', () => {
+    it('returns only links for the exact requested place + field, not other fields on the same place', async () => {
+      const openingHoursLink = makeFieldLink({ id: 'l1', fieldName: 'opening_hours' });
+      fieldLinksRepo.listByPlaceAndField.mockResolvedValue([openingHoursLink]);
+
+      const result = await service.listEvidenceForPlaceField('place-1', 'opening_hours');
+
+      expect(fieldLinksRepo.listByPlaceAndField).toHaveBeenCalledWith('place-1', 'opening_hours');
+      expect(result).toEqual([openingHoursLink]);
+      // 'phone' evidence on the SAME place must never appear in an 'opening_hours' lookup — the
+      // repository call above is scoped by field_name, so a phone-field row would only surface if
+      // the mock itself returned it, which it deliberately does not.
+    });
+
+    it('returns only links for the exact requested place, not the same field on a different place', async () => {
+      fieldLinksRepo.listByPlaceAndField.mockResolvedValue([]);
+      const result = await service.listEvidenceForPlaceField('place-2', 'opening_hours');
+      expect(fieldLinksRepo.listByPlaceAndField).toHaveBeenCalledWith('place-2', 'opening_hours');
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('cross-field: same evidence artifact may support two different fields', () => {
+    it('does not block linking the same evidence_artifact_id to a second field on the same place', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+      repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1' }));
+      // No existing (place-1, phone, evd-1) row — only (place-1, opening_hours, evd-1) exists,
+      // which is a DIFFERENT composite key, so this must proceed as a fresh insert, not a duplicate.
+      fieldLinksRepo.findLink.mockResolvedValue(null);
+
+      const result = await service.linkEvidenceToPlaceField('place-1', 'phone', 'evd-1');
+
+      expect(fieldLinksRepo.findLink).toHaveBeenCalledWith('place-1', 'phone', 'evd-1');
+      expect(fieldLinksRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.fieldName).toBe('phone');
     });
   });
 });

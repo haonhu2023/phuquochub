@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
+import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
 import { EvidenceArtifact } from './entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from './entities/place-translation-evidence-link.entity';
+import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
+import { PlacesRepository } from '../places/repositories/places.repository';
 
 export interface EnsureEvidenceArtifactInput {
   sourceId: string;
@@ -23,7 +26,11 @@ const GATE_PASSING_VERIFICATION_STATUSES = new Set(['VERIFIED', 'BUSINESS_VERIFI
 
 @Injectable()
 export class EvidenceService {
-  constructor(private readonly repo: EvidenceArtifactsRepository) {}
+  constructor(
+    private readonly repo: EvidenceArtifactsRepository,
+    private readonly fieldLinksRepo: PlaceFieldEvidenceLinksRepository,
+    private readonly placesRepo: PlacesRepository,
+  ) {}
 
   // Idempotent theo business_key (workbook evidence_id). KHÔNG BAO GIỜ nâng verificationStatus của
   // một hàng đã tồn tại lên cao hơn — nếu hàng đã có, trả về nguyên trạng, không ghi đè. Import lại
@@ -88,5 +95,46 @@ export class EvidenceService {
       linkedEvidenceCount: links.length,
       needsReviewCount,
     };
+  }
+
+  // Place-field evidence V0 — links an EXISTING evidence_artifact to a named scalar field on a
+  // place (opening_hours today; generic enough for phone/website/address/price/operating status
+  // later, per PlaceFieldEvidenceLink's own field_name comment). Deliberately does NOT touch
+  // places.verification_status/verified_at — see PLACES-026 trust-model note: linking evidence to
+  // one field must never read as "the whole place is now trusted."
+  //
+  // Existence checks happen HERE, explicitly, before the insert — same pattern as
+  // SourcesService.attachAttribution's `await this.getSource(...)` (clearer error than relying on
+  // the FK violation alone, even though the FK is still the real backstop). PlacesRepository.existsById
+  // is already documented as the cross-module "is this place_id valid" seam (its own JSDoc names
+  // ReviewsService.create as an existing caller) — reused here rather than re-querying places.
+  async linkEvidenceToPlaceField(placeId: string, fieldName: string, evidenceArtifactId: string): Promise<PlaceFieldEvidenceLink> {
+    const trimmedField = fieldName?.trim();
+    if (!trimmedField) {
+      throw new Error('fieldName must not be blank');
+    }
+
+    const placeExists = await this.placesRepo.existsById(placeId);
+    if (!placeExists) {
+      throw new NotFoundException(`Place ${placeId} not found`);
+    }
+
+    const evidence = await this.repo.findById(evidenceArtifactId);
+    if (!evidence) {
+      throw new NotFoundException(`Evidence artifact ${evidenceArtifactId} not found`);
+    }
+
+    const existing = await this.fieldLinksRepo.findLink(placeId, trimmedField, evidenceArtifactId);
+    if (existing) return existing;
+
+    const row = this.fieldLinksRepo.create({ placeId, fieldName: trimmedField, evidenceArtifactId });
+    return this.fieldLinksRepo.save(row);
+  }
+
+  // Read-only lookup, scoped to exactly one (place, field) pair — a different field on the same
+  // place, or the same field on a different place, must never leak into the result (verified by
+  // PlaceFieldEvidenceLinksRepository.listByPlaceAndField's WHERE clause + the covering index).
+  listEvidenceForPlaceField(placeId: string, fieldName: string): Promise<PlaceFieldEvidenceLink[]> {
+    return this.fieldLinksRepo.listByPlaceAndField(placeId, fieldName);
   }
 }
