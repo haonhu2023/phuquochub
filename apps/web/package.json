@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@phuquochub/shared-types": "*",
-    "maplibre-gl": "^4.5.0",
+    "maplibre-gl": "^6.4.1",
     "next": "^16.2.11",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
