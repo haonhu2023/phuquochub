@@ -310,6 +310,87 @@ describe('getOpeningToday — VinWonders production payload contract (2026-09-08
   // liệu, không thể trông cậy vào tầng đọc phát hiện ngược.
 });
 
+// REAL_DATA_SPRINT1C (2026-09-09): locks down the exact midnight-boundary semantics before any
+// "closes at 24:00 daily" claim (VUI-Fest Bazaar: 16:00–24:00) is normalized into a payload. The
+// task's own instruction is to normalize a midnight close as `close: "00:00"`, never `"23:59"` —
+// this suite proves what that produces via the REAL `covers()` logic, not a guess: `covers()`'s
+// wrap-around branch (`close > open ? ... : minutes >= open || minutes < close`) can only trigger
+// its `minutes < close` half when `close` is nonzero, so `close: "00:00"` behaves as "open from
+// `open` through the end of the calendar day, CLOSED again at the literal 00:00 boundary" — not a
+// genuine overnight wrap into the next day. No coverage of this specific close:"00:00" shape
+// existed before this suite (only a same-day `close:"23:59"` fixture, unrelated to this question).
+describe('getOpeningToday — biên đóng cửa nửa đêm (close: "00:00", vd VUI-Fest 16:00–24:00 hàng ngày)', () => {
+  const MIDNIGHT_CLOSE: OpeningHours = {
+    timezone: 'Asia/Ho_Chi_Minh',
+    regular: {
+      mon: [{ open: '16:00', close: '00:00' }],
+      tue: [{ open: '16:00', close: '00:00' }],
+      wed: [{ open: '16:00', close: '00:00' }],
+      thu: [{ open: '16:00', close: '00:00' }],
+      fri: [{ open: '16:00', close: '00:00' }],
+      sat: [{ open: '16:00', close: '00:00' }],
+      sun: [{ open: '16:00', close: '00:00' }],
+    },
+  };
+
+  // Cùng ngày Thứ Ba 2026-08-18 dùng lại ở các mốc TUE_* phía trên; giờ UTC = giờ VN - 7h.
+  const TUE_1559 = new Date('2026-08-18T08:59:00Z'); // 15:59 thứ Ba, giờ VN
+  const TUE_1600 = new Date('2026-08-18T09:00:00Z'); // 16:00 thứ Ba, giờ VN
+  const TUE_2359 = new Date('2026-08-18T16:59:00Z'); // 23:59 thứ Ba, giờ VN
+  const WED_0000 = new Date('2026-08-18T17:00:00Z'); // 00:00 thứ Tư, giờ VN — cùng mốc dùng ở dòng ~199
+
+  it('15:59 → CLOSED (ngay trước giờ mở)', () => {
+    expect(getOpeningToday(MIDNIGHT_CLOSE, TUE_1559).state).toBe('closed');
+  });
+
+  it('16:00 → OPEN (đúng giờ mở, biên dưới bao gồm điểm mở)', () => {
+    expect(getOpeningToday(MIDNIGHT_CLOSE, TUE_1600).state).toBe('open');
+  });
+
+  it('23:59 → OPEN (còn trong ngày, chưa qua nửa đêm)', () => {
+    expect(getOpeningToday(MIDNIGHT_CLOSE, TUE_2359).state).toBe('open');
+  });
+
+  it('00:00 (đã sang ngày mới) → CLOSED, KHÔNG suy diễn tràn sang ngày kế — close:"00:00" không phải khung qua đêm thật (vd 22:00–02:00), mà là "đóng đúng lúc nửa đêm"', () => {
+    // Tại 00:00, weekday đã là thứ Tư (khung của thứ Ba không còn áp dụng) — nhưng dù ngay cả khi
+    // so covers() trực tiếp cho khung 16:00–00:00, kết quả vẫn là false: nhánh wrap-around của
+    // covers() là `minutes >= open || minutes < close`, và `minutes < 0` không bao giờ đúng (phút
+    // luôn nằm trong [0, 1439]), nên khung 16:00–00:00 không bao giờ "mở" tại đúng phút 00:00.
+    expect(getOpeningToday(MIDNIGHT_CLOSE, WED_0000).state).toBe('closed');
+  });
+
+  it('00:01 (1 phút sau nửa đêm, đã sang ngày mới) → CLOSED', () => {
+    const WED_0001 = new Date('2026-08-18T17:01:00Z'); // 00:01 thứ Tư, giờ VN
+    expect(getOpeningToday(MIDNIGHT_CLOSE, WED_0001).state).toBe('closed');
+  });
+
+  it('sau khi qua nửa đêm, hệ thống đọc lịch của NGÀY KẾ TIẾP theo đúng khoá thứ của nó — không phải lịch hôm trước bị "tràn" sang, và không phải một trạng thái mù/lẫn lộn', () => {
+    // Cho thứ Ba một khung khác hẳn thứ Tư để phân biệt được "đang dùng khung nào". Nếu implementation
+    // có lỗi carry-over (dùng nhầm mảng của ngày hôm trước sau khi qua nửa đêm), test dưới đây sẽ lộ ra
+    // ngay: 00:01 thứ Tư phải phản ánh khung CỦA THỨ TƯ (đóng cả ngày), không phải khung của thứ Ba.
+    const DIFFERENT_PER_DAY: OpeningHours = {
+      timezone: 'Asia/Ho_Chi_Minh',
+      regular: {
+        mon: [{ open: '16:00', close: '00:00' }],
+        tue: [{ open: '16:00', close: '00:00' }],
+        wed: [], // thứ Tư đóng cửa cả ngày — cố ý khác thứ Ba để lộ carry-over nếu có
+        thu: [{ open: '16:00', close: '00:00' }],
+        fri: [{ open: '16:00', close: '00:00' }],
+        sat: [{ open: '16:00', close: '00:00' }],
+        sun: [{ open: '16:00', close: '00:00' }],
+      },
+    };
+    const WED_0001 = new Date('2026-08-18T17:01:00Z'); // 00:01 thứ Tư, giờ VN
+    const result = getOpeningToday(DIFFERENT_PER_DAY, WED_0001);
+    // Thứ Tư có mảng RỖNG ("đóng cửa hôm nay", một lời khai) — nếu hệ thống lỡ dùng lại khung
+    // 16:00–00:00 của thứ Ba (carry-over), state vẫn sẽ là 'closed' ở phút 00:01 nên không đủ để
+    // phân biệt hai khả năng — phải kiểm cả `hours` (chỉ khung THẬT mới có, mảng rỗng luôn là
+    // 'Đóng cửa') để chứng minh hệ thống đang đọc ĐÚNG mảng của thứ Tư, không phải mảng thứ Ba.
+    expect(result.state).toBe('closed');
+    expect(result.hours).toBe('Đóng cửa');
+  });
+});
+
 describe('getOpeningWeek', () => {
   it('trả đủ 7 thứ theo tiếng Việt, đánh dấu hôm nay', () => {
     const week = getOpeningWeek(WEEKLY, TUE_10H);
