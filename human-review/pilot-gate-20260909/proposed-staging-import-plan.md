@@ -8,9 +8,15 @@ happened as part of producing this package.
 ## Preconditions before this plan may be executed
 
 1. `owner-approval-form.md` is signed, with every row explicitly decided (not left blank).
-2. For Vinpearl Safari specifically: the capture-method question (human vs. automated) for the
-   2026-09-08 staging evidence is answered. If the answer is "automated", those rows are deleted
-   from staging first — they must not be promoted or used to justify anything.
+2. For Vinpearl Safari specifically: 2 of its 3 staging evidence rows are already confirmed
+   `AUTOMATED_CAPTURE_CONFIRMED` (own metadata says "Fetched via curl"), the 3rd is
+   `CAPTURE_METHOD_UNCONFIRMED`. None qualify to gate PASS or to be promoted or cited as a
+   production basis. **They are not deleted** — the schema has no approved lifecycle/write path
+   for rejecting or superseding an evidence row yet (see `evidence-gap-manifest.csv`), so this
+   package does not invent one. If a human captures opening_hours properly later (per
+   `evidence-intake/vinpearl-safari/owner-capture-checklist.md`), the new evidence is linked as
+   normal and a supersession note can be added pointing at the ineligible rows — the record of why
+   the earlier attempt didn't count stays, rather than being erased.
 3. A human with the authority to do so has reviewed the underlying evidence files (not just this
    package's summary of them) for every row marked `APPROVE` on the owner form.
 

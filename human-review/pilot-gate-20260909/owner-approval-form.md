@@ -59,20 +59,30 @@ Signed (name): `____________________`  Date: `____________________`
 | field | decision_id | Claude's recommendation | owner_decision | owner_name | owner_note | decided_at |
 |---|---|---|---|---|---|---|
 | display_name (rename) | D1 | DEFER (owner decision required) | | | | |
-| opening_hours | D2 | HOLD (staging evidence capture-method UNCONFIRMED — do not treat as trustworthy yet) | | | | |
+| opening_hours | D2 | HOLD — `INELIGIBLE_AUTOMATED_CAPTURE` (2 of 3 staging evidence rows confirmed automated fetch; 1 unconfirmed — see `safari-field-review.csv`) | | | | |
 | phone | D3 | INSUFFICIENT_EVIDENCE | | | | |
 | province | D4 | APPROVE_RECOMMENDED (not yet promoted to production) | | | | |
 | admin_area | D4 | APPROVE_RECOMMENDED (not yet promoted to production) | | | | |
-| short_description | D5 | HOLD (same unconfirmed-capture-method concern as D2) | | | | |
+| short_description | D5 | HOLD — `INELIGIBLE_AUTOMATED_CAPTURE` (same rows as D2) | | | | |
 
-**Before signing this section**, the owner (or whoever ran the 2026-09-08 staging rehearsal) must
-answer: was the `vinwonders.com/en/vinpearl-safari-phu-quoc/` evidence captured by a human visiting
-and saving the page, or fetched by code? `vinwonders.com`'s robots.txt blocks automated fetching —
-if this was an automated fetch, these staging evidence rows should be deleted, not promoted.
+**Capture-method finding (already confirmed this round, read-only, against staging):** of the 3
+Vinpearl Safari evidence rows in staging, 2 are `AUTOMATED_CAPTURE_CONFIRMED` — their own stored
+`metadata` states outright that they were fetched by an automated process ("Fetched via curl for
+evidence-closure pass"), against `vinwonders.com`, whose `robots.txt` explicitly disallows
+`ClaudeBot`. The 3rd is `CAPTURE_METHOD_UNCONFIRMED` — its own metadata says it is "not a direct
+fetch" (a search-index-tier derivation) but does not claim human capture either. **None of the
+three qualify as evidence this package can act on.**
 
-Capture-method confirmed by (name): `____________________`
-Capture method was: `HUMAN` / `AUTOMATED` (circle one)
-If AUTOMATED: rows to delete, not promote: `____________________`
+**This is not a request to delete anything.** All 3 rows stay in the database exactly as they are —
+chain of custody and audit history are preserved, full stop. What changes is only how this package
+*treats* them: each is marked `INELIGIBLE_AUTOMATED_CAPTURE` below, may not gate PASS, may not be
+promoted, and may not be cited as the basis for any production write. If a human later captures
+opening_hours properly (per `owner-capture-checklist.md`), the new evidence gets linked as normal
+and — if the team wants — a `supersedes`/`superseded_by` note is added pointing at the ineligible
+rows, so the record of *why* the earlier attempt didn't count is preserved, not erased.
+
+Reviewed by (name): `____________________`
+Confirms the `INELIGIBLE_AUTOMATED_CAPTURE` marking above, or overrides it with a different finding: `____________________`
 
 Signed (name): `____________________`  Date: `____________________`
 

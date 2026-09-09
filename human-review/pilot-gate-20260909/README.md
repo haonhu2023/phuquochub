@@ -1,9 +1,19 @@
 # Pilot launch human-review gate (2026-09-09)
 
 Read-only audit package for the three pilot places — VinWonders Phu Quoc, Sun World Hon Thom,
-Vinpearl Safari Phu Quoc — produced alongside a review/merge of PR #27 (Vinpearl Safari
-evidence-intake tooling). Nothing in this package writes to any database. No `verification_status`
-was changed, no evidence was moved to `VERIFIED`, no staging import ran, no production write ran.
+Vinpearl Safari Phu Quoc. Nothing in this package writes to any database. No `verification_status`
+was changed, no evidence was moved to `VERIFIED`, no evidence row was deleted, no staging import
+ran, no production write ran, no production deploy was triggered by this package.
+
+## Launch scope — read this first
+
+**VinWonders Phu Quoc and Sun World Hon Thom are the two required pilots for soft launch.**
+**Vinpearl Safari is a supplementary research pilot only, held at `HOLD`, and does not block
+soft launch** — it is not counted as a "ready" place, and its unresolved evidence does not gate
+the other two. Once the two required pilots clear real human review, the next step (a separate,
+future task) is to bring **13–18 more places** through the same evidence-gated process to reach a
+total soft-launch cohort of 15–20 places. This package does not do that work — see
+`evidence-gap-manifest.csv` for what each required pilot is still missing.
 
 ## What this package contains
 
@@ -12,32 +22,70 @@ was changed, no evidence was moved to `VERIFIED`, no staging import ran, no prod
   known blockers.
 - `vinwonders-field-review.csv`, `hon-thom-field-review.csv`, `safari-field-review.csv` — one row
   per field/claim, with its evidence chain (source, hash, capture date), a recommendation
-  (`APPROVE_RECOMMENDED` / `NEEDS_CHANGES` / `REJECT` / `INSUFFICIENT_EVIDENCE`), and notes.
+  (`APPROVE_RECOMMENDED` / `NEEDS_CHANGES` / `REJECT` / `INSUFFICIENT_EVIDENCE` / `HOLD`), and notes.
 - `evidence-gap-manifest.csv` — schema gaps (no evidence-expiry field, no evidence-level
-  human-review-status field) and missing-evidence items, each with what a file the owner supplies
-  would need to contain.
+  human-review-status field, no lifecycle for rejected/ineligible/superseded evidence) and
+  missing-evidence items, each with what a file the owner supplies would need to contain.
 - `owner-approval-form.md` — the actual human sign-off gate. Every decision field is blank.
-  **A Claude-generated recommendation in this package is not an approval of anything.**
+  **A Claude-generated recommendation in this package is not an approval of anything, and this
+  package being produced/updated is not itself human approval of anything in it.**
 - `proposed-workbook-patch.csv` — proposed field changes, status `PROPOSED_NOT_APPLIED` or a
   `BLOCKED_*` reason. Nothing here has been applied anywhere.
 - `proposed-staging-import-plan.md` — the step order a **separate, future, explicitly-approved**
   task would follow once the owner has signed off. Not executed.
-- `checksums.sha256` — SHA-256 of every file in this package (generated last, from the actual
-  files, the same way `verify-evidence-files.sh` in the Vinpearl Safari evidence-intake package
-  does it).
+- `checksums.sha256` — SHA-256 of every other file in this package (the checksums file does not
+  hash itself), regenerated after every edit round.
 
-## Read this before anything else: the most important finding
+## Pilot readiness — current conclusion
 
-**Vinpearl Safari's staging environment has 2 evidence artifacts + a `place_field_evidence_links`
-row for `opening_hours`, all sourced from `vinwonders.com/en/vinpearl-safari-phu-quoc/`, whose
-capture method (human vs. automated) is not recorded.** `vinwonders.com`'s robots.txt blocks
-automated fetching — the entire reason PR #27's evidence-intake package exists is that no code in
-this repo may fetch that domain. The staging row's own `note` field says "staging rehearsal ...
-NOT owner-approved", which is reassuring, but does not answer *how* the underlying pages were
-captured. This must be confirmed (see `owner-approval-form.md`'s Vinpearl Safari section) before
-any of that evidence is trusted, regardless of its `NEEDS_REVIEW`/`PASS` technical status.
-Production correctly has zero `opening_hours` value for Safari — the D2 HOLD from
-`../../evidence-intake/SAFARI-DECISIONS.md` is being honored where it counts.
+```
+VINWONDERS_GATE=HOLD
+HON_THOM_GATE=HOLD
+SAFARI_GATE=HOLD
+REQUIRED_PILOTS_READY=0/2
+SOFT_LAUNCH_READY_PLACES=0
+SAFARI_BLOCKS_LAUNCH=NO
+```
+
+- **VinWonders**: `opening_hours` is already live on production, but its one supporting evidence
+  row is `NEEDS_REVIEW` (never through a real human VERIFIED step) — HOLD, not PASS.
+  `display_name`/`short_description` are `APPROVE_RECOMMENDED` only, not approved. The
+  government-sourced `province`/`admin_area` values in staging resolve those two fields
+  specifically — they do not mean the whole place is officially verified.
+- **Hon Thom**: `opening_hours` does not exist yet in either environment (a live check of the
+  official page this round found only a real-time "closes at 17:00" status widget, not a complete
+  range). `address` is null in both environments. `phone`/`website` have no field-level evidence at
+  all. `display_name`/`short_description` are `APPROVE_RECOMMENDED` only. HOLD, not PASS.
+- **Safari**: production correctly has no `opening_hours` value. Held at `HOLD`. Its existing
+  staging evidence for `opening_hours`/`short_description` is confirmed ineligible (see below) —
+  it does not qualify as a basis for anything, but Safari being unresolved does **not** block
+  VinWonders or Hon Thom from proceeding once *their* evidence clears real review.
+
+## Read this before anything else: the Vinpearl Safari evidence finding
+
+Vinpearl Safari's staging environment has **3** evidence_artifacts rows tied to `opening_hours`/
+`short_description`, all sourced from `vinwonders.com/en/vinpearl-safari-phu-quoc/`. Traced each
+one individually, read-only, against its own stored `metadata` (not inferred from `evidence_type`):
+
+- **2 of 3 are `AUTOMATED_CAPTURE_CONFIRMED`** — their own metadata states outright "Fetched via
+  curl for evidence-closure pass" and describes a programmatic content check against "the static
+  payload". `vinwonders.com`'s `robots.txt` was fetched directly and explicitly disallows the
+  `ClaudeBot` user-agent (`User-agent: ClaudeBot` / `Disallow: /`) — exactly the rule these 2 rows
+  violate.
+- **1 of 3 is `CAPTURE_METHOD_UNCONFIRMED`** — its own metadata says it is "not a direct fetch" (a
+  search-index-tier derivation) but does not claim human capture either.
+
+**None of the 3 rows qualify as evidence this package (or any future review) can act on: they may
+not gate PASS, may not be promoted, and may not be cited as the basis for a production write.**
+
+**This is not a request to delete anything.** All 3 rows stay in the database exactly as they are
+— chain of custody and audit history are preserved. Each is marked `INELIGIBLE_AUTOMATED_CAPTURE`
+in `safari-field-review.csv`, not removed. The schema currently has no approved lifecycle for
+rejecting/superseding an evidence row (see `evidence-gap-manifest.csv`'s schema-gap entry on this),
+so this package does not invent a write path around that gap — it only refuses to treat the rows as
+usable. If a human captures `opening_hours` properly later (per
+`../../evidence-intake/vinpearl-safari/owner-capture-checklist.md`), the new evidence gets linked
+as normal, optionally noting that it supersedes these 3 ineligible rows.
 
 ## Access limitations encountered while building this package (read before trusting any "unknown")
 
@@ -48,27 +96,26 @@ Production correctly has zero `opening_hours` value for Safari — the D2 HOLD f
   be seen from `apps/api/src/scripts/remediate-pilot-evidence.ts` and
   `remediate-pilot-translations.ts`, which transcribe specific workbook rows into code but are not
   the workbook itself.
-- **Direct production database access was blocked by the Claude Code auto-mode classifier during
-  this task.** The public read-only API (`https://phuquochub.com/api/places/:slug`) was used
-  instead for production place-level facts (opening_hours value, address, province/admin_area,
+- **Direct production database access is generally read-only-only for this package's purposes.**
+  The public read-only API (`https://phuquochub.com/api/places/:slug`) was used for most
+  production place-level facts (opening_hours value, address, province/admin_area,
   verification_status, status, and the `trust_sources` array, which is built from
-  `source_attributions` per `apps/api/src/modules/places/places.service.ts`). Anything in this
-  package attributed to "staging" but not confirmed against production should be read as
-  staging-only until someone with production DB access confirms it — several real staging/
-  production divergences were found this way (see `pilot-readiness.csv`'s `blockers` column),
-  including `verification_status` (staging shows `official` from an administrative-only backfill,
-  production correctly still shows `pending`) and `province`/`admin_area` (real government-sourced
-  data exists in staging, not yet promoted to production for any of the three places).
+  `source_attributions` per `apps/api/src/modules/places/places.service.ts`); a small number of
+  read-only SQL queries (via the documented `docker compose exec -T postgres psql` pattern) were
+  used only where the public API genuinely could not answer the question (e.g. translation
+  `human_review_status`, which is not exposed publicly). No production data was written at any
+  point.
 - **Staging was reached via the local Docker container `phuquochub-staging-postgres`** (port
-  15432), which existed already (stopped) and was resumed with `docker start` — no data was
-  written, only read via `psql` `SELECT` queries.
+  15432), resumed with `docker start` when needed — no data was written, only read via `psql`
+  `SELECT` queries.
 
-## PR #27 status (for context — this package is separate from it)
+## Live status (updated this round)
 
-PR #27 (the Vinpearl Safari evidence-intake tooling this package's Safari section builds on) was
-reviewed, hardened against 3 real gaps found in its validator script (path traversal, symlink
-following, CSV formula injection — commit `91f46e0`), and is CI-green on every job its own diff
-affects. Its merge is blocked by the repository's `main-one-owner-safe` ruleset because a required
-check (`Dependency security audit`) is red — a pre-existing condition of `main` itself, unrelated
-to PR #27's content, tracked separately by PR #28. See this session's final report for the exact
-current state of both PRs.
+- `main` is at `b32764755c54ede0ebeec6af9f44db0397714cc4`, and **production is deployed to the
+  same commit** (`API_IMAGE_TAG`/`WEB_IMAGE_TAG` both confirmed on the live VPS). PR #26, #27, and
+  #28 are all merged.
+- A post-deploy performance baseline passed cleanly: real backend request-duration logs (excluding
+  network/TLS) showed 1–13ms per request across every route sampled, Postgres at 2/100
+  connections, sub-millisecond Redis latency, no resource pressure.
+- Nothing in this update wrote to staging or production, imported evidence, raised any
+  `verification_status`, or deployed anything.
