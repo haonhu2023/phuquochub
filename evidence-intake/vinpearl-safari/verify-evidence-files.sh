@@ -3,7 +3,10 @@
 #
 # What it does:
 #   - reads evidence-intake-manifest.csv and files/ in THIS directory only
-#   - rejects empty/zero-byte files and malformed manifest rows
+#   - rejects empty/zero-byte files, symlinks, and malformed manifest rows
+#   - rejects a file_name that contains '/' (no traversing out of files/, no subdirectories)
+#   - rejects any manifest field that starts with '=' '+' '-' '@' or a tab (CSV/DDE
+#     formula-injection prefixes a spreadsheet could execute when the manifest is opened)
 #   - determines each file's MIME type (informational, via `file`)
 #   - computes the REAL SHA-256 of each file's bytes and compares it to the manifest's sha256
 #     column (never trusts a hand-typed hash)
@@ -33,6 +36,17 @@ NUM_COLS=11
 
 PROD_PLACE_ID="7ab06900-8d98-4222-8cfd-794526e65667"
 STAGING_PLACE_PREFIX="8381328d-"
+
+# A field starting with '=', '+', '-', '@', or a tab is a classic CSV/DDE formula-injection
+# trigger in Excel/Google Sheets (e.g. `=cmd|'/c calc'!A1`, `=HYPERLINK(...)`). This manifest is
+# handed to a human reviewer who will very likely open it in a spreadsheet, so any free-text field
+# is rejected outright rather than passed through as "just text".
+is_formula_injection() {
+  case "$1" in
+    '='*|'+'*|'-'*|'@'*|"$(printf '\t')"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 [ -f "$MANIFEST" ] || { echo "[verify] FAIL: $MANIFEST not found."; exit 1; }
 mkdir -p "$FILES_DIR"
@@ -66,6 +80,11 @@ if [ -d "$FILES_DIR" ]; then
       .*) continue ;;
     esac
     present_files=$((present_files + 1))
+    if [ -L "$f" ]; then
+      echo "[verify] FAIL: $base is a symlink, not a real file — evidence must be actual captured bytes, not a link to something else."
+      fail_count=$((fail_count + 1))
+      continue
+    fi
     if [ ! -s "$f" ]; then
       echo "[verify] FAIL: $base is empty (zero bytes) — cannot be evidence."
       fail_count=$((fail_count + 1))
@@ -142,10 +161,36 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     fi
   done
 
+  # Free-text fields only -- environment/place_id/sha256 are already validated against strict
+  # patterns above/below, so a formula-injection prefix there is caught as an invalid value anyway.
+  for pair in "evidence_id=$evidence_id" "file_name=$file_name" "source_url=$source_url" \
+    "captured_at=$captured_at" "page_title=$page_title" "claim_supported=$claim_supported" \
+    "reuse_note=$reuse_note" "reviewed_by=$reviewed_by"; do
+    fname=${pair%%=*}
+    fval=${pair#*=}
+    if [ -n "$fval" ] && is_formula_injection "$fval"; then
+      echo "[verify] FAIL ($evidence_id): field '$fname' starts with a character ('=' '+' '-' '@' or tab) that Excel/Sheets can interpret as a formula — rejecting rather than passing it through to a reviewer's spreadsheet."
+      row_had_fail=1
+    fi
+  done
+
+  file_name_invalid=0
   if [ -n "$file_name" ]; then
     referenced_files+=("$file_name")
+    case "$file_name" in
+      */*)
+        echo "[verify] FAIL ($evidence_id): file_name '$file_name' contains '/' — must be a plain filename directly inside $FILES_DIR/, not a path. Refusing to resolve outside the evidence directory."
+        row_had_fail=1
+        file_name_invalid=1
+        ;;
+    esac
+  fi
+  if [ -n "$file_name" ] && [ "$file_name_invalid" != 1 ]; then
     target="$FILES_DIR/$file_name"
-    if [ ! -f "$target" ]; then
+    if [ -L "$target" ]; then
+      echo "[verify] FAIL ($evidence_id): '$file_name' is a symlink, not a real file — evidence must be actual captured bytes, not a link to something else."
+      row_had_fail=1
+    elif [ ! -f "$target" ]; then
       echo "[verify] FAIL ($evidence_id): file_name '$file_name' not found in $FILES_DIR/."
       row_had_fail=1
     elif [ ! -s "$target" ]; then
