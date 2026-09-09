@@ -13,25 +13,36 @@ import styles from './places.module.css';
 //
 // `locale` (PR A): tuỳ chọn, mặc định `DEFAULT_LOCALE` — nơi gọi trong `[locale]/(public)/**` nên
 // luôn truyền `locale` thật; mặc định chỉ để không crash nếu một nơi gọi nào đó quên truyền.
+//
+// `showTrustBadge`/`showPrice` (2026-09-09, Discovery trust surface follow-up): mặc định `true` —
+// GIỮ NGUYÊN hành vi cũ cho MỌI nơi gọi hiện có. Cả badge "Đã xác minh" lẫn giá thật đọc thẳng
+// `place.verification_status` — một trạng thái TOÀN BỘ place (không có field/scope), nên chỉ đúng
+// khi caller thật sự đại diện cho một claim ở đúng phạm vi đó. RightNowSection/NearbyDiscovery
+// (trang chủ) chỉ chứng minh được MỘT trường (opening_hours, qua field-evidence) — không chứng minh
+// danh tính/chủ sở hữu hay giá — nên truyền `false` cho cả hai để không mượn badge/giá của một claim
+// khác hẳn phạm vi mà chúng thực sự đưa ra. Không đổi API khác của thẻ.
 export function PlaceCard({
   place,
   titleAs: TitleTag = 'h2',
   locale = DEFAULT_LOCALE,
+  showTrustBadge = true,
+  showPrice = true,
 }: {
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
   locale?: Locale;
+  showTrustBadge?: boolean;
+  showPrice?: boolean;
 }) {
   // Public Beta price trust gate (2026-08-28): giá thật CHỈ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
   // BeachCard, AttractionCard, popup bản đồ). Chưa tin cậy nhưng CÓ giá → PRICE_VERIFYING_TEXT.
-  const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(place.price_range),
-    place.verification_status,
-  );
+  const { label: priceLabel, verifying: showPriceVerifying } = showPrice
+    ? resolvePriceDisplay(formatPriceRange(place.price_range), place.verification_status)
+    : { label: null, verifying: false };
   // Thẻ chỉ hiện tín hiệu TÍCH CỰC — không hiện gì cho 'stale'/'unverified': một badge trung tính
   // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
-  const isVerified = getTrustBadge(place.verification_status) === 'verified';
+  const isVerified = showTrustBadge && getTrustBadge(place.verification_status) === 'verified';
   return (
     <Link href={localizedHref(locale, `/places/${place.slug}`)} className={styles.card}>
       {place.cover_image_url ? (

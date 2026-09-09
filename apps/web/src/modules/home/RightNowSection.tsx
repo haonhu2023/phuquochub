@@ -25,10 +25,18 @@ const OPENING_STATE_STYLE: Record<OpeningState, string> = {
  * tính ở server tại thời điểm render tránh mọi khác biệt giữa HTML server phát ra và lần render
  * đầu ở client (không có hydration mismatch nào về giờ giấc, không cần theo dõi đồng hồ máy khách).
  *
- * `GET /places/now` đã lọc trusted-only + chỉ trả place CÓ opening_hours (server không suy diễn
- * open/closed) — trang này chỉ ĐỌC state đó qua `getOpeningToday().state`, KHÔNG BAO GIỜ dùng
- * `.label` trực tiếp (nhãn đó luôn tiếng Việt bất kể locale). Văn bản hiển thị lấy từ `home.copy.ts`
- * để đúng VI/EN. `unknown` KHÔNG BAO GIỜ hiển thị như `closed`.
+ * `GET /places/now` KHÔNG còn là "trusted-only" (đã gỡ whitelist `verification_status` — 2026-09-08
+ * PR #24 final review): nó chỉ trả place `published` CÓ opening_hours VÀ có bằng chứng đối chiếu
+ * nguồn cho ĐÚNG giá trị opening_hours hiện tại (field-evidence, không phải trạng thái xác minh
+ * toàn bộ place — xem PlacesRepository.rightNow()). Server không suy diễn open/closed — trang này
+ * chỉ ĐỌC state đó qua `getOpeningToday().state`, KHÔNG BAO GIỜ dùng `.label` trực tiếp (nhãn đó
+ * luôn tiếng Việt bất kể locale). Văn bản hiển thị lấy từ `home.copy.ts` để đúng VI/EN. `unknown`
+ * KHÔNG BAO GIỜ hiển thị như `closed`.
+ *
+ * `showTrustBadge={false} showPrice={false}` trên PlaceCard bên dưới (2026-09-09 Discovery trust
+ * surface follow-up): field-evidence ở trên chỉ chứng minh MỘT trường (opening_hours) — không chứng
+ * minh danh tính/chủ sở hữu hay giá — nên khối này không được hiện badge "Đã xác minh" chung hay giá
+ * thật dựa trên `verification_status` (whole-place, không cùng phạm vi với claim mà khối này đưa ra).
  */
 export async function RightNowSection({ locale }: { locale: Locale }) {
   const copy = getHomeCopy(locale);
@@ -69,8 +77,10 @@ export async function RightNowSection({ locale }: { locale: Locale }) {
                 : copy.rightNowHoursUnknown;
           return (
             <div key={place.id} className={styles.rightNowItem}>
-              {/* titleAs="h3": tiêu đề khối là <h2>, nên tên địa điểm phải nằm DƯỚI nó một bậc. */}
-              <PlaceCard place={place} titleAs="h3" locale={locale} />
+              {/* titleAs="h3": tiêu đề khối là <h2>, nên tên địa điểm phải nằm DƯỚI nó một bậc.
+                  showTrustBadge/showPrice=false: field-evidence ở trên chỉ đối chiếu opening_hours,
+                  không chứng minh danh tính/giá — xem chú thích khối này ở đầu file. */}
+              <PlaceCard place={place} titleAs="h3" locale={locale} showTrustBadge={false} showPrice={false} />
               <p className={`${styles.rightNowOpeningState} ${OPENING_STATE_STYLE[openingState]}`}>
                 {openingText}
               </p>

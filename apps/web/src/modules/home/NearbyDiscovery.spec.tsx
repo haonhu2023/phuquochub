@@ -182,3 +182,26 @@ describe('NearbyDiscovery — Trusted Nearby + Opening State v0', () => {
     expect(screen.queryByText('Chưa có thông tin giờ mở cửa')).not.toBeInTheDocument();
   });
 });
+
+// 2026-09-09 Discovery trust surface follow-up: nearbyTrusted()'s field-evidence gate only proves
+// opening_hours — Nearby must not lend that to a generic "Đã xác minh" badge or a real price, both
+// of which read the unrelated whole-place verification_status.
+describe('NearbyDiscovery — không mượn badge/giá từ verification_status toàn place', () => {
+  afterEach(() => {
+    mockNearbyTrusted.mockReset();
+  });
+
+  it('place trusted + có giá → KHÔNG hiện badge "Đã xác minh" lẫn giá thật', async () => {
+    mockNearbyTrusted.mockResolvedValueOnce([
+      place({ verification_status: 'verified', price_range: 'low', opening_hours: OPEN_24H }),
+    ]);
+    const getCurrentPosition = jest.fn((success) => success({ coords: { latitude: 10, longitude: 104 } }));
+    Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition }, configurable: true });
+    render(<NearbyDiscovery locale="vi" copy={COPY} />);
+    fireEvent.click(screen.getByRole('button', { name: COPY.cta }));
+
+    await waitFor(() => expect(screen.getByText(COPY.openNow)).toBeInTheDocument());
+    expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bình dân')).not.toBeInTheDocument();
+  });
+});

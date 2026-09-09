@@ -138,6 +138,53 @@ describe('PlaceCard', () => {
   });
 });
 
+// showTrustBadge/showPrice (2026-09-09, Discovery trust surface follow-up): mặc định TRUE — không
+// đổi hành vi của bất kỳ nơi gọi hiện có nào (khoá lại bằng chính các test cũ ở trên, không truyền
+// hai prop này). Chỉ RightNowSection/NearbyDiscovery truyền false vì chúng chỉ chứng minh được MỘT
+// trường (opening_hours), không chứng minh danh tính/giá.
+describe('PlaceCard — showTrustBadge/showPrice', () => {
+  it('mặc định (không truyền) → vẫn hiện badge + giá như trước (không đổi hành vi cũ)', () => {
+    render(<PlaceCard place={{ ...BASE_PLACE, verification_status: 'verified', price_range: 'low' }} />);
+    expect(screen.getByText('Đã xác minh')).toBeInTheDocument();
+    expect(screen.getByText('Bình dân')).toBeInTheDocument();
+  });
+
+  it('showTrustBadge={false} → ẩn badge "Đã xác minh" kể cả khi verification_status đã tin cậy', () => {
+    render(
+      <PlaceCard
+        place={{ ...BASE_PLACE, verification_status: 'verified' }}
+        showTrustBadge={false}
+      />,
+    );
+    expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+  });
+
+  it('showPrice={false} → ẩn cả giá thật lẫn dòng "đang được xác minh"', () => {
+    render(
+      <PlaceCard
+        place={{ ...BASE_PLACE, verification_status: 'verified', price_range: 'low' }}
+        showPrice={false}
+      />,
+    );
+    expect(screen.queryByText('Bình dân')).not.toBeInTheDocument();
+    expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
+  });
+
+  it('showTrustBadge={false} showPrice={false} cùng lúc: các tín hiệu khác (rating, khoảng cách) không bị ảnh hưởng', () => {
+    render(
+      <PlaceCard
+        place={{ ...BASE_PLACE, verification_status: 'verified', price_range: 'low', rating_avg: 4.5, rating_count: 3, distance_m: 500 }}
+        showTrustBadge={false}
+        showPrice={false}
+      />,
+    );
+    expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bình dân')).not.toBeInTheDocument();
+    expect(screen.getByText('★ 4.5 (3)')).toBeInTheDocument();
+    expect(screen.getByText('500 m')).toBeInTheDocument();
+  });
+});
+
 // `titleAs` — nơi gọi đặt tên địa điểm đúng bậc tiêu đề của trang đó (trang chủ gom thẻ dưới một
 // h2 nên cần h3). Mặc định phải GIỮ NGUYÊN h2 để không đổi hành vi các trang danh sách hiện có.
 describe('PlaceCard — bậc tiêu đề', () => {
