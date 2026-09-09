@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import maplibregl, { type StyleSpecification } from 'maplibre-gl';
+// maplibre-gl v6 dropped its UMD/default-export build (ESM-only now) -- v4's `import maplibregl
+// from 'maplibre-gl'` no longer resolves. Namespace import is the direct replacement: every call
+// site below already accesses members off `maplibregl.*` (Map/Marker/Popup/NavigationControl), so
+// nothing else in this file changes.
+import * as maplibregl from 'maplibre-gl';
+import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { bbox as fetchBbox, type BboxMarker } from './api/geo.api';
 import { getPlace } from '@/modules/places/api/places.api';
