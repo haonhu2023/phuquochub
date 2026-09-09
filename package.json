@@ -15,7 +15,8 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:up": "docker compose up -d postgres redis minio",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "postinstall": "node scripts/patch-multer-security-fix.mjs"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
