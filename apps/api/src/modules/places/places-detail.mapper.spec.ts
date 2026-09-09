@@ -83,6 +83,20 @@ describe('toPlaceDetail', () => {
     expect(toPlaceDetail({ ...baseRow, osm_id: null }).osm_id).toBeNull();
   });
 
+  // REAL_DATA_SPRINT1C staging rehearsal (2026-09-09) — "API round-trip giữ nguyên 00:00": mapper
+  // là pass-through thuần (`row.opening_hours ?? null`, không transform), nên khoá lại bằng test để
+  // một `close: "00:00"` (VUI-Fest Bazaar) không bị bất kỳ bước nào trên đường API biến thành
+  // "23:59"/"24:00" hay giá trị nào khác trước khi ra JSON.
+  it('opening_hours với close:"00:00" đi qua NGUYÊN VẸN, không bị mapper biến đổi', () => {
+    const openingHours = {
+      timezone: 'Asia/Ho_Chi_Minh',
+      regular: { mon: [{ open: '16:00', close: '00:00' }] },
+    };
+    const d = toPlaceDetail({ ...baseRow, opening_hours: openingHours });
+    expect(d.opening_hours).toEqual(openingHours);
+    expect(JSON.stringify(d.opening_hours)).not.toContain('23:59');
+  });
+
   // Place Trust & Freshness Surface (2026-08-19) — cột đã có từ InitPlaces, lần đầu CHỌN ra ở đây.
   describe('verified_at', () => {
     it('có giá trị → chuyển ISO string (cùng quy ước created_at/updated_at)', () => {

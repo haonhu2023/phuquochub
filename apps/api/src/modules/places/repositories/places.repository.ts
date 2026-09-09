@@ -266,6 +266,16 @@ export class PlacesRepository {
    * `draft`/`pending` chưa qua kiểm duyệt **không** được lộ ra kênh công khai.
    * Luồng xem trước của moderator (nếu có) phải dùng truy vấn riêng đã kiểm tra quyền.
    */
+  /**
+   * `getDetailBySlug` is shared by MORE than the public detail response: `AdministrativeBackfillService`,
+   * `DataQualityAuditService` and `VerifiedFactsIngestionService` (all internal/privileged tooling)
+   * also call it and read the RAW `opening_hours` value off the row on purpose (audit "is this field
+   * present" reporting, ingestion "does the current value already match" comparisons) — gating INSIDE
+   * this method would silently corrupt those, e.g. the audit would report a real DB value as MISSING.
+   * The public opening-hours evidence gate therefore lives one layer up, in
+   * `PlacesService.getBySlug()`, via `hasCurrentQualifiedOpeningHoursEvidence()` below — this method
+   * itself is intentionally unchanged, still a bare pass-through of `p.opening_hours`.
+   */
   async getDetailBySlug(slug: string): Promise<PlaceDetailRow | null> {
     const rows: PlaceDetailRow[] = await this.repo.query(
       `SELECT ${CARD_COLS}, ${DETAIL_EXTRA_COLS}
@@ -275,6 +285,30 @@ export class PlacesRepository {
       [slug, PlaceStatus.PUBLISHED],
     );
     return rows[0] ? withCoverImageUrlOne(rows[0], this.mediaUrl) : null;
+  }
+
+  /**
+   * Public detail opening-hours evidence gate (2026-09-09 fix/public-opening-hours-evidence-gate) —
+   * the smallest reusable answer to "does THIS CURRENT opening_hours value have qualifying current
+   * evidence", for exactly one place. Wraps the SAME two private helpers `rightNow()`/`nearbyTrusted()`
+   * already use (`getVerifiedOpeningHoursHashes()`/`hasVerifiedOpeningHours()` above) — no duplicated
+   * trust constants, no new SQL shape, one bounded query and only when `currentValue` is non-null
+   * (nothing to have evidence for otherwise). Named for the one field this repository's evidence gate
+   * actually covers today (`getVerifiedOpeningHoursHashes()`'s query is opening_hours-specific) rather
+   * than a generic `fieldName` parameter the underlying query doesn't support — extend both together
+   * if a second gated field is ever needed, not just this method's signature.
+   *
+   * Used by `PlacesService.getBySlug()` to decide the PUBLIC response's `opening_hours` value —
+   * deliberately NOT inlined into `getDetailBySlug()` itself, which stays a raw pass-through for its
+   * other, privileged callers (see that method's own comment).
+   */
+  async hasCurrentQualifiedOpeningHoursEvidence(
+    placeId: string,
+    currentValue: Record<string, unknown> | null,
+  ): Promise<boolean> {
+    if (currentValue === null) return false;
+    const hashesByPlace = await this.getVerifiedOpeningHoursHashes([placeId]);
+    return this.hasVerifiedOpeningHours(placeId, currentValue, hashesByPlace);
   }
 
   /** FAQ đã duyệt của Place (place_faqs — satellite của places). */

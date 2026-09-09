@@ -165,16 +165,34 @@ export class PlacesService {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
-    const [contacts, prices, media, faqs, trustSources, localizedDisplayName, localizedShortDescription] =
-      await Promise.all([
-        this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
-        this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
-        this.mediaRepo.listPublishedByPlace(row.id),
-        this.placesRepo.listFaqs(row.id),
-        this.resolveTrustSources(row.id),
-        this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
-        this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
-      ]);
+    const [
+      contacts,
+      prices,
+      media,
+      faqs,
+      trustSources,
+      localizedDisplayName,
+      localizedShortDescription,
+      hasQualifiedOpeningHoursEvidence,
+    ] = await Promise.all([
+      this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
+      this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
+      this.mediaRepo.listPublishedByPlace(row.id),
+      this.placesRepo.listFaqs(row.id),
+      this.resolveTrustSources(row.id),
+      this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
+      this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
+      // Public detail opening-hours evidence gate (2026-09-09 fix/public-opening-hours-evidence-gate):
+      // Right Now/Nearby already refuse to show an opening_hours claim without a gate-passing,
+      // source-authoritative CURRENT-value evidence link (PlacesRepository's shared
+      // getVerifiedOpeningHoursHashes()/hasVerifiedOpeningHours() helpers) — this route was the one
+      // public opening_hours consumer that did not, letting the detail page assert hours Right Now
+      // would refuse (VinWonders Phú Quốc: production detail exposes its full weekly schedule while
+      // its one evidence row sits at NEEDS_REVIEW). Response-level only: the DB value is untouched,
+      // and getDetailBySlug() stays a raw pass-through for its other, privileged callers (audit/
+      // ingestion — see that method's own comment) that must keep seeing the real stored value.
+      this.placesRepo.hasCurrentQualifiedOpeningHoursEvidence(row.id, row.opening_hours),
+    ]);
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
       // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
@@ -184,6 +202,9 @@ export class PlacesService {
       // giờ nằm trong overlay này — identity không đổi theo locale.
       name: localizedDisplayName ?? row.name,
       short_description: localizedShortDescription ?? row.short_description,
+      // `null` khi opening_hours đã có giá trị nhưng KHÔNG có bằng chứng hiện hành đạt gate — không
+      // đổi giá trị trong DB, không 404 place, không ẩn field nào khác.
+      opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
       trust_sources: trustSources,
       contacts: contacts.map((c) => ({
         id: c.id,

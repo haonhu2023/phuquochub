@@ -1,0 +1,89 @@
+{
+  "status": "PROPOSED_NOT_APPLIED",
+  "note": "Nothing in this file has been written to any database. This is the exact staging opening_hours value and field_value_hash that would be used AFTER owner approval (owner-approval-form.md) and a real human evidence-review pass promotes a properly-captured artifact to VERIFIED / BUSINESS_VERIFIED_AND_REVIEWED. Zero database writes were made preparing this file.",
+  "claims": [
+    {
+      "place_id_staging": "129cbaeb-8cd2-4254-9ae2-9dc276700bb8",
+      "place_id_production": "2895bcc4-9c19-4c78-a53e-a2ccbb29a1c2",
+      "slug": "vinwonders-phu-quoc",
+      "field_name": "opening_hours",
+      "status": "TARGET_READY_AWAITING_OWNER_CAPTURE",
+      "value": {
+        "timezone": "Asia/Ho_Chi_Minh",
+        "regular": {
+          "mon": [{ "open": "09:00", "close": "19:30" }],
+          "tue": [{ "open": "09:00", "close": "19:30" }],
+          "wed": [{ "open": "09:00", "close": "19:30" }],
+          "thu": [{ "open": "09:00", "close": "19:30" }],
+          "fri": [{ "open": "09:00", "close": "19:30" }],
+          "sat": [{ "open": "09:00", "close": "19:30" }],
+          "sun": [{ "open": "09:00", "close": "19:30" }]
+        }
+      },
+      "field_value_hash": "02f2639dda91bdfd1357d514d1523edda7555f4980067aa06ccfc595e62a0a11",
+      "field_value_hash_cross_validated_against_production": true,
+      "note": "This value is already live on production. field_value_hash was confirmed byte-for-byte identical to the existing (NEEDS_REVIEW) place_field_evidence_links row on production as of this round -- the capture upgrades evidence quality only, it does not change the value."
+    },
+    {
+      "place_id_staging": "554b3fec-37e4-4656-a7cd-989dc167c80d",
+      "place_id_production": "6a4cc985-0b1e-47d7-a724-015ef8bd83e3",
+      "slug": "sun-world-hon-thom",
+      "field_name": "opening_hours",
+      "status": "HOLD_INSUFFICIENT_EVIDENCE",
+      "value": null,
+      "field_value_hash": null,
+      "note": "No weekly payload constructed. Only a partial real-time 'closes at 17:00' claim is currently known -- not a complete open-close range. Do not construct or hash a payload until the owner supplies the missing opening time."
+    },
+    {
+      "place_id_staging": "44ef4fa6-34a1-485b-a8cf-2f7ef842ef0f",
+      "place_id_production": "e9d9e86e-52a2-41e2-92cb-ec419e45b5d4",
+      "slug": "vui-fest-bazaar",
+      "field_name": "opening_hours",
+      "status": "TARGET_READY_AWAITING_OWNER_CAPTURE",
+      "value": {
+        "timezone": "Asia/Ho_Chi_Minh",
+        "regular": {
+          "mon": [{ "open": "16:00", "close": "00:00" }],
+          "tue": [{ "open": "16:00", "close": "00:00" }],
+          "wed": [{ "open": "16:00", "close": "00:00" }],
+          "thu": [{ "open": "16:00", "close": "00:00" }],
+          "fri": [{ "open": "16:00", "close": "00:00" }],
+          "sat": [{ "open": "16:00", "close": "00:00" }],
+          "sun": [{ "open": "16:00", "close": "00:00" }]
+        }
+      },
+      "field_value_hash": "bf86257cf32ae317ef964e929fdd293dc8f2229bc061cf3ca7d4334aa1536c37",
+      "field_value_hash_cross_validated_against_production": false,
+      "note": "Source claim '16:00-24:00 daily' normalized as close:'00:00', never '23:59', per explicit task instruction. Verified against the actual getOpeningToday()/covers() implementation (apps/web/src/modules/places/openingHours.ts), not invented -- see README midnight-boundary verification section."
+    },
+    {
+      "place_id_staging": "1a170657-359a-468a-af01-55d41bce136c",
+      "place_id_production": "0a64ae50-89c0-43b3-9169-5fca44a86162",
+      "slug": "sailing-club-phu-quoc",
+      "field_name": "opening_hours",
+      "status": "TARGET_READY_AWAITING_OWNER_CAPTURE",
+      "value": {
+        "timezone": "Asia/Ho_Chi_Minh",
+        "regular": {
+          "mon": [{ "open": "06:30", "close": "22:00" }],
+          "tue": [{ "open": "06:30", "close": "22:00" }],
+          "wed": [{ "open": "06:30", "close": "22:00" }],
+          "thu": [{ "open": "06:30", "close": "22:00" }],
+          "fri": [{ "open": "06:30", "close": "22:00" }],
+          "sat": [{ "open": "06:30", "close": "22:00" }],
+          "sun": [{ "open": "06:30", "close": "22:00" }]
+        }
+      },
+      "field_value_hash": "88bd4e41a37a30ad49ba4e5da6db009e1fe9d5b90183c1b86a3463b6f9a7292b",
+      "field_value_hash_cross_validated_against_production": false,
+      "note": "No existing production or staging value for this field -- clean insert once owner capture and evidence review clear."
+    }
+  ],
+  "hash_methodology": {
+    "algorithm": "sha256(canonicalJson(value))",
+    "canonicalJson_source": "apps/api/src/common/canonical-json.ts",
+    "computeFieldValueHash_source": "apps/api/src/modules/evidence/field-value-hash.ts",
+    "note": "Object keys sorted recursively before stringify, so the hash is independent of jsonb column key order. Reimplemented byte-for-byte in a scratch script, not modified from the real source files."
+  },
+  "post_capture_execution_plan_reference": "See README.md 'Post-capture execution plan' section for the governed methods (PlacesService.update / EvidenceService.ensureEvidenceArtifact / human evidence-review transition / EvidenceService.linkEvidenceToPlaceField). No script implementing this plan was written or executed in this task."
+}
