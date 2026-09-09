@@ -70,6 +70,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       createPlace: jest.fn(),
       getCardByIdIncludingInactive: jest.fn(),
       getDetailBySlug: jest.fn(),
+      // Public detail opening-hours evidence gate — default `false` keeps every EXISTING getBySlug
+      // test in this file passing unchanged (none of them assert on opening_hours, and most rows
+      // don't even set it, so it stays null either way). The dedicated describe block below
+      // overrides this per-test to prove the gate's actual PASS/HOLD behavior.
+      hasCurrentQualifiedOpeningHoursEvidence: jest.fn().mockResolvedValue(false),
       listFaqs: jest.fn(),
       updateScalars: jest.fn(),
       updateLocation: jest.fn(),
@@ -661,6 +666,81 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         expect(res.prices[0].amount).toBe(150000);
         expect(res.prices[1].amount).toBeNull();
         expect(JSON.stringify(res)).not.toContain(String(SECRET_PLACE_PRICE));
+      });
+    });
+
+    // fix/public-opening-hours-evidence-gate (2026-09-09): getBySlug() used to pass row.opening_hours
+    // straight through, unlike rightNow()/nearbyTrusted() which both already require a gate-passing,
+    // source-authoritative CURRENT-value field-evidence link. Confirmed live via VinWonders Phú Quốc:
+    // production detail exposed its full weekly schedule while GET /places/now correctly excluded it
+    // (its one evidence row sits at NEEDS_REVIEW). The actual gate query lives in
+    // PlacesRepository.hasCurrentQualifiedOpeningHoursEvidence() (own repository spec covers the 6
+    // DETAIL cases against real SQL/hash logic) — these tests prove getBySlug() wires that boolean
+    // into the response correctly: unchanged value on true, null (never a 404, never another field
+    // dropped) on false, and the repository call is skipped entirely when opening_hours is already
+    // null (nothing to have evidence for).
+    describe('opening-hours evidence gate', () => {
+      function commonMocks() {
+        contactsRepo.listByOwner.mockResolvedValue([]);
+        pricesRepo.current.mockResolvedValue([]);
+        mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+        placesRepo.listFaqs.mockResolvedValue([]);
+        sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+      }
+
+      const OH = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+
+      it('qualifying current evidence (true) → opening_hours truyền qua nguyên trạng', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: OH });
+        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(true);
+        commonMocks();
+
+        const res = await service.getBySlug('vinwonders-phu-quoc');
+
+        expect(res.opening_hours).toEqual(OH);
+        expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).toHaveBeenCalledWith('p1', OH);
+      });
+
+      // The VinWonders regression case: DB/API raw value 09:00-19:30 daily, but its supporting
+      // evidence is NEEDS_REVIEW (gate query resolves false) -> detail must expose null, not the
+      // raw value, and every OTHER field on the response must stay exactly as returned.
+      it('KHÔNG có qualifying current evidence (false) → opening_hours = null, các field khác không đổi', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          name: 'VinWonders Phú Quốc',
+          verification_status: 'pending',
+          opening_hours: OH,
+        });
+        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(false);
+        commonMocks();
+
+        const res = await service.getBySlug('vinwonders-phu-quoc');
+
+        expect(res.opening_hours).toBeNull();
+        // mapper có test riêng (places-detail.mapper.spec.ts) — ở đây chỉ chứng minh gate KHÔNG
+        // đụng tới bất kỳ field nào khác ngoài opening_hours: id/verification_status vẫn đi qua
+        // toPlaceDetail (mocked ở đầu file) nguyên vẹn, name vẫn đi qua overlay locale như cũ.
+        expect(res.id).toBe('p1');
+        expect(res.verification_status).toBe('pending');
+        expect(res.name).toBe('VinWonders Phú Quốc');
+      });
+
+      it('opening_hours đã null trên row → null, KHÔNG gọi hasCurrentQualifiedOpeningHoursEvidence (không có gì để có bằng chứng)', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: null });
+        commonMocks();
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.opening_hours).toBeNull();
+        expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).toHaveBeenCalledWith('p1', null);
+      });
+
+      it('place vẫn được trả về bình thường (không 404) khi gate fail — chỉ opening_hours bị ảnh hưởng', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: OH });
+        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(false);
+        commonMocks();
+
+        await expect(service.getBySlug('vinwonders-phu-quoc')).resolves.toMatchObject({ id: 'p1' });
       });
     });
 

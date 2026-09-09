@@ -293,3 +293,36 @@ describe('buildWebSiteJsonLd — locale-aware (SEO v2)', () => {
     );
   });
 });
+
+// REAL_DATA_SPRINT1C staging rehearsal (2026-09-09): `close: "00:00"` (VUI-Fest Bazaar,
+// 16:00–00:00 daily) phải phát nguyên vẹn vào JSON-LD, KHÔNG bị đổi thành "23:59" — đây là điểm
+// duy nhất trong `structured-data.ts` có hardcode `closes: '23:59'` (nhánh `is_24h === true`), nên
+// test này khoá lại rằng nhánh `regular`/`validRanges()` không đi qua đường đó.
+describe('buildPlaceJsonLd — openingHoursSpecification giữ nguyên close: "00:00"', () => {
+  it('regular với close:"00:00" → openingHoursSpecification.closes === "00:00", không phải "23:59"', () => {
+    const midnightClose = {
+      ...basePlace,
+      opening_hours: {
+        timezone: 'Asia/Ho_Chi_Minh',
+        regular: {
+          mon: [{ open: '16:00', close: '00:00' }],
+          tue: [{ open: '16:00', close: '00:00' }],
+          wed: [{ open: '16:00', close: '00:00' }],
+          thu: [{ open: '16:00', close: '00:00' }],
+          fri: [{ open: '16:00', close: '00:00' }],
+          sat: [{ open: '16:00', close: '00:00' }],
+          sun: [{ open: '16:00', close: '00:00' }],
+        },
+      } as PlaceDetail['opening_hours'],
+    };
+    const jsonLd = buildPlaceJsonLd(midnightClose);
+    const specs = jsonLd.openingHoursSpecification as Array<{ dayOfWeek: string; opens: string; closes: string }>;
+    expect(specs).toBeDefined();
+    expect(specs.length).toBe(7);
+    for (const spec of specs) {
+      expect(spec.opens).toBe('16:00');
+      expect(spec.closes).toBe('00:00');
+    }
+    expect(JSON.stringify(specs)).not.toContain('23:59');
+  });
+});

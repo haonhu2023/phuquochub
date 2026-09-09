@@ -155,6 +155,104 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(query).not.toContain("OR '1'='1");
       expect(params[0]).toBe("bai-sao' OR '1'='1");
     });
+
+    // getDetailBySlug() itself stays an intentional RAW pass-through — it is shared by privileged
+    // internal callers (AdministrativeBackfillService/DataQualityAuditService/
+    // VerifiedFactsIngestionService) that must keep reading the real stored opening_hours value.
+    // The public evidence gate lives one layer up in PlacesService.getBySlug(), via the new
+    // hasCurrentQualifiedOpeningHoursEvidence() method exercised below — this describe block only
+    // has ONE query per call, unchanged from before this fix.
+    it('KHÔNG chạy thêm truy vấn field-evidence nào — pass-through nguyên trạng cho các caller đặc quyền', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([detailRow({ opening_hours: oh })]);
+
+      const row = await sut.getDetailBySlug('bai-sao');
+      expect(row?.opening_hours).toEqual(oh);
+      expect(repo.query).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // fix/public-opening-hours-evidence-gate (2026-09-09): the public detail response used to pass
+  // `p.opening_hours` straight through, unlike rightNow()/nearbyTrusted() which both already require
+  // the CURRENT value to have a gate-passing, source-authoritative `place_field_evidence_links` row
+  // (see `getVerifiedOpeningHoursHashes()`/`hasVerifiedOpeningHours()` above). That let the detail
+  // page assert a live opening_hours claim Right Now would refuse to show for the SAME place —
+  // confirmed live via VinWonders Phú Quốc, whose one opening_hours evidence row is NEEDS_REVIEW: the
+  // detail API exposed the full weekly schedule while GET /places/now correctly excluded it.
+  // hasCurrentQualifiedOpeningHoursEvidence() is the smallest reusable answer PlacesService.getBySlug()
+  // now calls to decide the PUBLIC response's opening_hours value — these 6 cases mirror NEARBY 1-5
+  // above exactly (same two shared private helpers underneath, not reimplemented).
+  describe('hasCurrentQualifiedOpeningHoursEvidence', () => {
+    // DETAIL CASE 1: opening_hours present, no field-evidence link at all -> false.
+    it('DETAIL 1: opening_hours có nhưng KHÔNG có field-evidence nào -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    // DETAIL CASE 2: current hash matches a VERIFIED artifact from an official-website source -> true.
+    it('DETAIL 2: field-evidence khớp giá trị hiện tại, VERIFIED, nguồn có thẩm quyền -> true', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      const hash = computeFieldValueHash(oh);
+      repo.query.mockResolvedValueOnce([{ place_id: 'p1', field_value_hash: hash }]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(true);
+    });
+
+    // DETAIL CASE 3: a link whose hash was computed against an OLDER value (hours have since
+    // changed) must not be mistaken for support of the CURRENT value -> false, not stale hours.
+    it('DETAIL 3: field_value_hash cũ (giá trị đã đổi) KHÔNG hợp lệ -> false', async () => {
+      const oldValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '16:00' }] } };
+      const currentValue = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+      const staleHash = computeFieldValueHash(oldValue);
+      repo.query.mockResolvedValueOnce([{ place_id: 'p1', field_value_hash: staleHash }]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', currentValue)).resolves.toBe(false);
+    });
+
+    // DETAIL CASE 4: an artifact stuck at NEEDS_REVIEW never appears in the gate query's own
+    // gate-passing result set (its WHERE ea.verification_status = ANY($2) excludes it) -> represented
+    // here by an empty links array, exactly like a value with no evidence at all. The VinWonders case.
+    it('DETAIL 4: field-evidence còn NEEDS_REVIEW (không lọt gate) -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
+      repo.query.mockResolvedValueOnce([]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    // DETAIL CASE 5: evidence VERIFIED but backed by a low-authority source (community/facebook/ai)
+    // never appears in the gate query's result set either (its WHERE s.type = ANY($3) excludes it) ->
+    // represented the same way, by an empty links array.
+    it('DETAIL 5: field-evidence VERIFIED nhưng nguồn không có thẩm quyền -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    // DETAIL CASE 6: currentValue already null -> false, and NO query is issued at all (nothing to
+    // have evidence FOR) — same short-circuit as nearbyTrusted()'s "no geo results -> no evidence
+    // query" case, just at the single-place level.
+    it('DETAIL 6: currentValue null -> false, KHÔNG gọi truy vấn nào (không có gì để có bằng chứng)', async () => {
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', null)).resolves.toBe(false);
+      expect(repo.query).not.toHaveBeenCalled();
+    });
+
+    it('truy vấn field-evidence lấy đúng phạm vi (đúng place id, field_name=opening_hours, gate + nguồn có thẩm quyền)', async () => {
+      const oh = { a: 1 };
+      repo.query.mockResolvedValueOnce([]);
+      await sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh);
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
+      expect(sql(query)).toContain('pfel.place_id = ANY($1)');
+      expect(sql(query)).toContain('ea.verification_status = ANY($2)');
+      expect(sql(query)).toContain('s.type = ANY($3)');
+      expect(params[0]).toEqual(['p1']);
+      expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
+      expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+    });
   });
 
   describe('list', () => {
