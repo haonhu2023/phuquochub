@@ -17,6 +17,11 @@
     "db:up": "docker compose up -d postgres redis minio",
     "db:down": "docker compose down"
   },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.3.0"
+    }
+  },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
