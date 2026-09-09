@@ -45,6 +45,15 @@ const OPENING_STATE_STYLE: Record<OpeningState, string> = {
  * dùng `.label` (nhãn đó luôn tiếng Việt bất kể locale). Văn bản hiển thị lấy từ `copy`
  * (home.copy.ts) để đúng VI/EN. `unknown` KHÔNG BAO GIỜ hiển thị như `closed` — dữ liệu chưa đọc
  * được không được biến thành lời khẳng định sai (xem openingHours.ts).
+ *
+ * `p.opening_hours` ở đây đã qua field-evidence gate phía server (2026-09-09, follow-up sau PR #24:
+ * `PlacesRepository.nearbyTrusted()` trả `null` cho place KHÔNG có bằng chứng đối chiếu nguồn cho
+ * ĐÚNG giá trị opening_hours hiện tại — xem chú thích method đó) — khối này không tự suy đoán gì
+ * thêm, chỉ đọc lại state đã null-hoá đúng cách.
+ *
+ * `showTrustBadge={false} showPrice={false}` trên PlaceCard bên dưới: cùng lý do RightNowSection —
+ * field-evidence chỉ chứng minh MỘT trường (opening_hours), không chứng minh danh tính/chủ sở hữu
+ * hay giá, nên không mượn badge "Đã xác minh"/giá thật của whole-place `verification_status`.
  */
 export function NearbyDiscovery({ locale, copy }: { locale: Locale; copy: Copy }) {
   const [state, setState] = useState<State>({ kind: 'idle' });
@@ -118,7 +127,7 @@ export function NearbyDiscovery({ locale, copy }: { locale: Locale; copy: Copy }
               openingState === 'open' ? copy.openNow : openingState === 'closed' ? copy.closedNow : copy.hoursUnknown;
             return (
               <div key={p.id} className={styles.nearbyItem}>
-                <PlaceCard place={p} titleAs="h3" locale={locale} />
+                <PlaceCard place={p} titleAs="h3" locale={locale} showTrustBadge={false} showPrice={false} />
                 <p className={`${styles.nearbyOpeningState} ${OPENING_STATE_STYLE[openingState]}`}>{openingText}</p>
               </div>
             );
