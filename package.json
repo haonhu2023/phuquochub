@@ -15,11 +15,14 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:up": "docker compose up -d postgres redis minio",
-    "db:down": "docker compose down",
-    "postinstall": "node scripts/patch-multer-security-fix.mjs"
+    "db:down": "docker compose down"
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.3.0"
+    }
   },
   "devDependencies": {
-    "@nestjs/platform-express": "^11.1.28",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",
