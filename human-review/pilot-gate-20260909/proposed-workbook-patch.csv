@@ -1,0 +1,12 @@
+place_slug,field,current_production_value,proposed_value,proposed_source,confidence,depends_on_owner_decision,status
+vinwonders-phu-quoc,province,null,An Giang,"Nghi quyet 1654/NQ-UBTVQH15 (Uy ban Thuong vu Quoc hoi)",95,"No -- administrative source, not business-source",PROPOSED_NOT_APPLIED
+vinwonders-phu-quoc,admin_area,null,Dac khu Phu Quoc,"Nghi quyet 1654/NQ-UBTVQH15",95,No,PROPOSED_NOT_APPLIED
+vinwonders-phu-quoc,opening_hours,"Mon-Sun 09:00-19:30 (already live, evidence NEEDS_REVIEW)","no value change proposed -- proposing a REVIEW action instead",EVD-VIN-OFFICIAL-VI-20260829,n/a,"Yes -- needs an authorized reviewer to move evidence_artifacts.verification_status to VERIFIED",PROPOSED_NOT_APPLIED
+sun-world-hon-thom,province,null,An Giang,"Nghi quyet 1654/NQ-UBTVQH15",95,No,PROPOSED_NOT_APPLIED
+sun-world-hon-thom,admin_area,null,Dac khu Phu Quoc,"Nghi quyet 1654/NQ-UBTVQH15",95,No,PROPOSED_NOT_APPLIED
+sun-world-hon-thom,opening_hours,null,"(no value proposed -- insufficient evidence; a live check this round found only a real-time status widget, not a complete open-close range)",(none),n/a,"Yes -- owner must supply a primary-source capture first",BLOCKED_NO_EVIDENCE
+sun-world-hon-thom,address,null,"(no value proposed -- insufficient evidence)",(none),n/a,"Yes -- owner must confirm historical conflict and supply current address evidence",BLOCKED_NO_EVIDENCE
+vinpearl-safari,province,null,An Giang,"Nghi quyet 1654/NQ-UBTVQH15",95,No,PROPOSED_NOT_APPLIED
+vinpearl-safari,admin_area,null,Dac khu Phu Quoc,"Nghi quyet 1654/NQ-UBTVQH15",95,No,PROPOSED_NOT_APPLIED
+vinpearl-safari,display_name,Vinpearl Safari,Vinpearl Safari Phu Quoc,"SAFARI-DECISIONS.md D1 (cosmetic recommendation only)",n/a,"Yes -- explicit owner sign-off required per D1",BLOCKED_OWNER_DECISION
+vinpearl-safari,opening_hours,null,"(no value proposed -- all 3 existing staging evidence rows are ineligible: 2 AUTOMATED_CAPTURE_CONFIRMED, 1 CAPTURE_METHOD_UNCONFIRMED, per each row's own metadata)","EVD-VINPEARL-SAFARI-OPENING-HOURS-STAGING-20260908 and 2 related rows (INELIGIBLE -- see safari-field-review.csv)",70,"Yes -- owner must personally capture opening_hours; existing rows retained for audit, not usable as evidence",BLOCKED_INELIGIBLE_AUTOMATED_CAPTURE
