@@ -48,11 +48,21 @@ describe('InitEvidenceReviews1720005500000', () => {
       expect(table).toContain("CHECK (\"evidence_content_sha256\" ~ '^[0-9a-f]{64}$')");
     });
 
-    it('requires an APPROVE decision to also record verification_expires_at', async () => {
+    it('allows an APPROVE decision to record verification_expires_at as NULL (policy rejected it) without violating the schema', async () => {
       await migration.up(queryRunner as unknown as QueryRunner);
       const calls: string[] = queryRunner.query.mock.calls.map((c: [string]) => c[0]);
       const table = calls.find((q) => q.includes('CREATE TABLE "evidence_reviews"'));
-      expect(table).toContain('CHECK ("decision" <> \'APPROVE\' OR "verification_expires_at" IS NOT NULL)');
+      // Deliberately NOT "decision <> 'APPROVE' OR verification_expires_at IS NOT NULL" — that
+      // direction would reject an APPROVE row the policy evaluator found ineligible (hash mismatch,
+      // stale capture, etc.), which rule 7 requires to still be recorded, with expiry left NULL.
+      expect(table).not.toContain('"decision" <> \'APPROVE\' OR "verification_expires_at" IS NOT NULL');
+    });
+
+    it('only permits verification_expires_at to be set on an APPROVE row (never NEEDS_CHANGES/REJECT)', async () => {
+      await migration.up(queryRunner as unknown as QueryRunner);
+      const calls: string[] = queryRunner.query.mock.calls.map((c: [string]) => c[0]);
+      const table = calls.find((q) => q.includes('CREATE TABLE "evidence_reviews"'));
+      expect(table).toContain('CHECK ("verification_expires_at" IS NULL OR "decision" = \'APPROVE\')');
     });
 
     it('dedupes by (evidence_artifact_id, approval_artifact_sha256) for idempotent replay', async () => {

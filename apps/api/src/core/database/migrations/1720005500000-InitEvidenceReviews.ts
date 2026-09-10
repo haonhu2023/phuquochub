@@ -57,9 +57,14 @@ export class InitEvidenceReviews1720005500000 implements MigrationInterface {
         CONSTRAINT "chk_evidence_review_policy_version_not_blank" CHECK (btrim("policy_version") <> ''),
         CONSTRAINT "chk_evidence_review_approval_digest_format" CHECK ("approval_artifact_sha256" ~ '^[0-9a-f]{64}$'),
         CONSTRAINT "chk_evidence_review_content_digest_format" CHECK ("evidence_content_sha256" ~ '^[0-9a-f]{64}$'),
-        -- Rule 7 in code, not just convention: a human CANNOT approve without recording the resulting
-        -- expiry — there is no "APPROVE, decide the expiry later" state this schema allows.
-        CONSTRAINT "chk_evidence_review_approve_has_expiry" CHECK ("decision" <> 'APPROVE' OR "verification_expires_at" IS NOT NULL),
+        -- An expiry may only ever appear on an APPROVE row — the converse is NOT required: a human
+        -- can decide APPROVE and still have the policy evaluator reject it (hash mismatch, stale
+        -- capture, non-first-party source, temporary schedule, already expired), and rule 7 requires
+        -- that outcome be audited too, with verification_expires_at left NULL (nothing was actually
+        -- verified). A stricter "APPROVE implies expiry" check was tried and reverted before merge —
+        -- it would have made every ineligible-but-APPROVE review fail this INSERT outright, silently
+        -- losing exactly the audit trail rule 7 exists to guarantee.
+        CONSTRAINT "chk_evidence_review_expiry_requires_approve" CHECK ("verification_expires_at" IS NULL OR "decision" = 'APPROVE'),
         -- Idempotency key: the SAME approval receipt (its own content digest) replayed against the
         -- SAME evidence artifact is the SAME submission — the application layer treats a second call
         -- with an identical digest+payload as a no-op replay, and a digest reused with a DIFFERENT
