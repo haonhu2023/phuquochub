@@ -7,6 +7,9 @@ import { EvidenceArtifactsRepository } from '../modules/evidence/repositories/ev
 import { PlaceFieldEvidenceLinksRepository } from '../modules/evidence/repositories/place-field-evidence-links.repository';
 import { EvidenceService } from '../modules/evidence/evidence.service';
 import type { PlacesRepository } from '../modules/places/repositories/places.repository';
+import type { EvidenceReviewsRepository } from '../modules/evidence/repositories/evidence-reviews.repository';
+import type { SourcesRepository } from '../modules/sources/repositories/sources.repository';
+import type { Clock } from '../common/clock';
 
 // PILOT EVIDENCE REMEDIATION — 2026-09-03 data-SSOT remediation, Phase 3. Same hand-wired-against-a-
 // bare-DataSource approach as cancel-multilingual-batch.ts / remediate-pilot-translations.ts (see
@@ -122,11 +125,26 @@ async function main(): Promise<void> {
     );
     const fieldLinksRepo = new PlaceFieldEvidenceLinksRepository(dataSource.getRepository(PlaceFieldEvidenceLink));
     // This script only ever calls ensureEvidenceArtifact()/linkEvidenceToTranslation() — never the
-    // place-field methods added later (place-field-evidence-v0) — so PlacesRepository is never
-    // actually invoked at runtime here. A real instance would additionally require MediaUrlService/
-    // ConfigService, which this pure translation-evidence remediation has no other reason to wire.
+    // place-field methods added later (place-field-evidence-v0), nor reviewEvidenceArtifact()
+    // (Opening-Hours Evidence Governance v1) — so PlacesRepository/EvidenceReviewsRepository/
+    // SourcesRepository/Clock are never actually invoked at runtime here. A real PlacesRepository
+    // instance would additionally require MediaUrlService/ConfigService, which this pure
+    // translation-evidence remediation has no other reason to wire; the DataSource itself is real
+    // (already initialized above) since reviewEvidenceArtifact's unused transaction wrapping would
+    // otherwise reference an undefined dataSource if ever accidentally called.
     const placesRepoStub = {} as PlacesRepository;
-    const evidenceService = new EvidenceService(evidenceRepo, fieldLinksRepo, placesRepoStub);
+    const reviewsRepoStub = {} as EvidenceReviewsRepository;
+    const sourcesRepoStub = {} as SourcesRepository;
+    const clockStub = {} as Clock;
+    const evidenceService = new EvidenceService(
+      evidenceRepo,
+      fieldLinksRepo,
+      reviewsRepoStub,
+      placesRepoStub,
+      sourcesRepoStub,
+      clockStub,
+      dataSource,
+    );
 
     // Resolve the 3 real sources already ensured by remediate-pilot-translations.ts (idempotent —
     // fails loudly if they are missing rather than silently creating a placeholder).

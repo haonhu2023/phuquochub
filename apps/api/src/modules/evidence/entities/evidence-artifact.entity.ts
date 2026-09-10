@@ -9,6 +9,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Update
 @Index('idx_evidence_artifacts_source', ['sourceId'])
 @Index('idx_evidence_artifacts_verification_status', ['verificationStatus'])
 @Index('idx_evidence_artifacts_content_hash', ['contentHashSha256'])
+@Index('idx_evidence_artifacts_verification_expires_at', ['verificationExpiresAt'])
 export class EvidenceArtifact {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -48,6 +49,24 @@ export class EvidenceArtifact {
 
   @Column({ type: 'timestamptz', nullable: true })
   verifiedAt!: Date | null;
+
+  // Opening-Hours Evidence Governance v1 (InitEvidenceReviews, 1720005500000) — denormalized
+  // current-state mirror of this artifact's latest APPROVE row in `evidence_reviews` (the real
+  // audit trail; these four columns are never the source of truth, only a read-optimized cache of
+  // it, always written in the SAME transaction as the evidence_reviews insert that justifies them).
+  // NULL on every row this migration did not touch — see EvidenceService.reviewEvidenceArtifact and
+  // the migration's own header comment for why existing rows are never backfilled.
+  @Column({ type: 'timestamptz', nullable: true })
+  verificationExpiresAt!: Date | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  approvalArtifactSha256!: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  freshnessPolicyKey!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  freshnessPolicyVersion!: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;

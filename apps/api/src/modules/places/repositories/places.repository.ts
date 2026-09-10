@@ -442,11 +442,27 @@ export class PlacesRepository {
   /**
    * Bulk-fetches, for the given place ids, every CURRENT opening_hours value's evidence hash that
    * clears the gate: a `place_field_evidence_links` row (`field_name = 'opening_hours'`) whose
-   * linked `evidence_artifacts` row both clears `GATE_PASSING_VERIFICATION_STATUSES` and is
-   * attributed to an `OFFICIAL_SOURCE_TYPES` source. Shared by `rightNow()` and `nearbyTrusted()`
-   * (2026-09-09 Nearby operational-trust fix) so both apply the exact SAME opening_hours evidence
-   * semantics from one place instead of two independently-maintained copies — see `rightNow()`'s
-   * own comment below for why each individual condition exists.
+   * linked `evidence_artifacts` row clears `GATE_PASSING_VERIFICATION_STATUSES`, is attributed to
+   * an `OFFICIAL_SOURCE_TYPES` source, AND has not expired under Opening-Hours Evidence Governance
+   * v1. Shared by `rightNow()` and `nearbyTrusted()` (2026-09-09 Nearby operational-trust fix) so
+   * both apply the exact SAME opening_hours evidence semantics from one place instead of two
+   * independently-maintained copies — see `rightNow()`'s own comment below for why each individual
+   * condition exists.
+   *
+   * FRESHNESS GATE (Opening-Hours Evidence Governance v1, 2026-09-10): `ea.verification_status`
+   * alone is no longer sufficient — `verification_expires_at IS NOT NULL AND verification_expires_at
+   * > NOW()` is required too. A row can sit at `verification_status = 'VERIFIED'` forever while its
+   * time-boxed freshness window has lapsed (OPENING_HOURS_OFFICIAL_STABLE_V1: 30 days from
+   * `captured_at`, never re-derived from when it was reviewed) — the DB column is deliberately left
+   * unchanged when that happens (no batch job flips it back), so a query that trusted the status
+   * column alone would keep serving a stale claim indefinitely. `verification_expires_at` is a
+   * genuinely NEW column (InitEvidenceReviews, 1720005500000) — every `evidence_artifacts` row that
+   * predates a real governed review has it NULL, and `NULL > NOW()` is never true in Postgres, so
+   * those rows are correctly excluded here without any extra CASE/COALESCE. That is the intended
+   * effect of shipping this gate, not an incidental side effect: `evidence_artifacts.verification_status`
+   * has no real write path anywhere in this codebase that ever set a gate-passing value through an
+   * actual human review (see `evidence-trust.ts`) — this query no longer takes that column's word for
+   * it alone.
    *
    * ONE bounded query for however many ids are passed in (never N+1) — callers own keeping that id
    * list itself bounded (both current callers pass an already-LIMIT-ed row set).
@@ -460,7 +476,9 @@ export class PlacesRepository {
        JOIN sources s ON s.id = ea.source_id
        WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
          AND ea.verification_status = ANY($2)
-         AND s.type = ANY($3)`,
+         AND s.type = ANY($3)
+         AND ea.verification_expires_at IS NOT NULL
+         AND ea.verification_expires_at > NOW()`,
       [placeIds, [...GATE_PASSING_VERIFICATION_STATUSES], [...OFFICIAL_SOURCE_TYPES]],
     );
     const byPlace = new Map<string, Set<string>>();
