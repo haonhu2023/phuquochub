@@ -420,7 +420,6 @@ describe('EvidenceService', () => {
         evidenceArtifactId: 'evd-1',
         decision: 'APPROVE' as const,
         reviewerName: 'Reviewer One',
-        reviewedAt,
         approvalArtifactSha256: receiptDigest,
         claimType: 'opening_hours',
         scheduleStability: 'STABLE' as const,
@@ -483,6 +482,21 @@ describe('EvidenceService', () => {
       // Both writes happened via the SAME manager the transaction callback received.
       expect(reviewsRepo.save.mock.calls[0][1]).toBe(manager);
       expect(repo.save.mock.calls[0][1]).toBe(manager);
+    });
+
+    it('reviewedAt is always the injected clock\'s value — there is no input field a caller could use to backdate it', () => {
+      const input = baseInput() as Record<string, unknown>;
+      expect(input).not.toHaveProperty('reviewedAt');
+    });
+
+    it('the recorded reviewed_at tracks the clock exactly, independent of captured_at', async () => {
+      const laterNow = new Date(reviewedAt.getTime() + 3 * DAY_MS);
+      clock.now.mockReturnValue(laterNow);
+
+      await service.reviewEvidenceArtifact(baseInput());
+
+      const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+      expect(savedReview.reviewedAt).toBe(laterNow);
     });
 
     it('capture older than 168h -> review recorded, but evidence is NOT moved to VERIFIED', async () => {
@@ -582,11 +596,44 @@ describe('EvidenceService', () => {
         expect(repo.save).not.toHaveBeenCalled();
       });
 
-      it('a concurrent duplicate insert (unique-violation race) is converted to ConflictException, not a raw DB error', async () => {
+      it('a concurrent duplicate insert with a DIFFERENT payload (unique-violation race) is converted to ConflictException, not a raw DB error', async () => {
         const dbError = { code: '23505', constraint: 'uq_evidence_review_receipt' };
         reviewsRepo.save.mockRejectedValueOnce(dbError);
+        // Post-rollback re-read finds nothing matching (simulates: the concurrent winner's payload
+        // differs, or is simply not visible to this simplified mock) -> a real conflict, not a replay.
         await expect(service.reviewEvidenceArtifact(baseInput())).rejects.toThrow(ConflictException);
         expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      // The race-fallback must NOT collapse every unique-violation into a blanket conflict — a
+      // caller whose own request raced ITSELF (e.g. a retried network call) submitted the exact same
+      // payload twice; the second one loses the INSERT race but must still see success, not a 409.
+      it('a concurrent duplicate insert that turns out to be the SAME payload (a true replay race) resolves as a replay, not a conflict', async () => {
+        const dbError = { code: '23505', constraint: 'uq_evidence_review_receipt' };
+        reviewsRepo.save.mockRejectedValueOnce(dbError);
+
+        const winningRow = makeReview({
+          evidenceArtifactId: 'evd-1',
+          approvalArtifactSha256: receiptDigest,
+          decision: 'APPROVE',
+          reviewerName: 'Reviewer One',
+          claimType: 'opening_hours',
+          evidenceContentSha256: contentHash,
+          reviewNote: null,
+        });
+        // First call (pre-read, inside the doomed transaction) finds nothing — that's WHY this
+        // request proceeded to INSERT and lost the race. Second call (post-rollback re-read, outside
+        // any transaction) finds the row the concurrent request actually committed.
+        reviewsRepo.findByEvidenceAndReceipt.mockResolvedValueOnce(null).mockResolvedValueOnce(winningRow);
+
+        const result = await service.reviewEvidenceArtifact(baseInput());
+
+        expect(result.idempotentReplay).toBe(true);
+        expect(result.review).toBe(winningRow);
+        // The re-read that resolves this is NOT transactional — proven by it happening on the plain
+        // (manager-less) call signature, i.e. a THIRD arg was never passed on the second lookup.
+        expect(reviewsRepo.findByEvidenceAndReceipt).toHaveBeenCalledTimes(2);
+        expect(reviewsRepo.findByEvidenceAndReceipt.mock.calls[1]).toEqual(['evd-1', receiptDigest]);
       });
 
       it('an unrelated DB error from the review insert is NOT swallowed as a conflict', async () => {

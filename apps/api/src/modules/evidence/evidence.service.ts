@@ -55,7 +55,6 @@ export interface ReviewEvidenceArtifactInput {
   evidenceArtifactId: string;
   decision: EvidenceReviewDecision;
   reviewerName: string;
-  reviewedAt: Date;
   /** Digest of the approval receipt itself — the idempotency/conflict key alongside evidenceArtifactId. */
   approvalArtifactSha256: string;
   claimType: string;
@@ -76,11 +75,25 @@ export interface ReviewEvidenceArtifactResult {
   idempotentReplay: boolean;
 }
 
+// Carries a unique-violation's raw driver error out of a `dataSource.transaction()` callback
+// unchanged. A unique violation inside a Postgres transaction aborts the WHOLE transaction — any
+// further statement on that same connection/manager fails with "current transaction is aborted"
+// until rollback — so recovery must happen AFTER `dataSource.transaction()` has itself rolled back,
+// via a fresh, non-transactional read, never by continuing to use the manager the callback received.
+class EvidenceReviewRaceLost extends Error {
+  constructor(readonly dbError: unknown) {
+    super('evidence review insert lost a unique-constraint race');
+  }
+}
+
+// reviewedAt is deliberately EXCLUDED from payload identity — it is server time-stamped at call time
+// (see reviewEvidenceArtifact below), not caller input, so a true replay of the same submission will
+// always carry a DIFFERENT reviewedAt than the original (the clock has moved on). What must match for
+// a call to count as "the same submission" is everything the caller actually asserts.
 function sameReviewPayload(existing: EvidenceReview, input: ReviewEvidenceArtifactInput, claimType: string, reviewerName: string): boolean {
   return (
     existing.decision === input.decision &&
     existing.reviewerName === reviewerName &&
-    existing.reviewedAt.getTime() === input.reviewedAt.getTime() &&
     existing.claimType === claimType &&
     existing.evidenceContentSha256 === input.evidenceContentSha256 &&
     (existing.reviewNote ?? null) === (input.reviewNote ?? null)
@@ -257,11 +270,18 @@ export class EvidenceService {
   // "linking/reviewing evidence is not editing the place" boundary).
   //
   // Idempotent by (evidenceArtifactId, approvalArtifactSha256): replaying the exact same submission
-  // (same decision/reviewer/reviewedAt/claimType/evidenceContentSha256/note) is a true no-op — it
-  // returns the already-recorded row without a second INSERT or a second evidence UPDATE. The SAME
-  // digest reused with a DIFFERENT payload is a real conflict (409), never a silent overwrite — a
-  // digest is supposed to uniquely identify one receipt, so a mismatch signals either a caller bug
-  // or a tampering attempt, not "just apply the new values."
+  // (same decision/reviewer/claimType/evidenceContentSha256/note) is a true no-op — it returns the
+  // already-recorded row without a second INSERT or a second evidence UPDATE. The SAME digest reused
+  // with a DIFFERENT payload is a real conflict (409), never a silent overwrite — a digest is
+  // supposed to uniquely identify one receipt, so a mismatch signals either a caller bug or a
+  // tampering attempt, not "just apply the new values."
+  //
+  // `reviewedAt` is ALWAYS server time (this.clock.now(), captured once per call) — deliberately
+  // NOT accepted as caller input. A capture-age gate that trusted a client-supplied "when I reviewed
+  // this" timestamp could be defeated by backdating it close to captured_at, making a review that is
+  // actually happening long after capture appear to fall inside the 168-hour window. The evaluator's
+  // `now` (the expiry check) already used the injected clock; this closes the same gap for the
+  // capture-age check.
   async reviewEvidenceArtifact(input: ReviewEvidenceArtifactInput): Promise<ReviewEvidenceArtifactResult> {
     const reviewerName = input.reviewerName?.trim();
     if (!reviewerName) {
@@ -278,99 +298,122 @@ export class EvidenceService {
       throw new BadRequestException('evidenceContentSha256 must be 64 lowercase hex characters');
     }
 
-    return this.dataSource.transaction<ReviewEvidenceArtifactResult>(async (manager) => {
-      const evidence = await this.repo.findById(input.evidenceArtifactId, manager);
-      if (!evidence) {
-        throw new NotFoundException(`Evidence artifact ${input.evidenceArtifactId} not found`);
-      }
+    const reviewedAt = this.clock.now();
 
-      const existing = await this.reviewsRepo.findByEvidenceAndReceipt(input.evidenceArtifactId, input.approvalArtifactSha256, manager);
-      if (existing) {
-        if (!sameReviewPayload(existing, input, claimType, reviewerName)) {
-          throw new ConflictException(
-            `Approval receipt ${input.approvalArtifactSha256} was already recorded for evidence artifact ` +
-              `${input.evidenceArtifactId} with a different decision/reviewer/claim/evidence hash. A digest ` +
-              `must uniquely identify one approval payload — resolve the mismatch, do not resubmit.`,
-          );
+    const buildReplayResult = async (evidence: EvidenceArtifact, existing: EvidenceReview): Promise<ReviewEvidenceArtifactResult> => {
+      // Re-evaluating is informational only (no write) — uses the ORIGINALLY recorded reviewedAt,
+      // not this call's, so a replay's age calculation never drifts from what was actually decided.
+      // Reads outside any transaction (manager omitted) — always safe: this evidence/source state
+      // is only ever read here, never written, and the review row is by definition already committed.
+      const source = await this.sourcesRepo.findById(evidence.sourceId);
+      const evaluation = evaluateOpeningHoursOfficialStableV1({
+        claimType,
+        sourceType: source?.type ?? '',
+        scheduleStability: input.scheduleStability,
+        capturedAt: evidence.capturedAt,
+        reviewedAt: existing.reviewedAt,
+        now: this.clock.now(),
+        currentEvidenceContentHash: evidence.contentHashSha256,
+        approvalBoundEvidenceHash: existing.evidenceContentSha256,
+        decision: existing.decision,
+      });
+      return {
+        review: existing,
+        evaluation,
+        evidenceVerified: evidence.verificationStatus === 'VERIFIED' && evidence.approvalArtifactSha256 === existing.approvalArtifactSha256,
+        idempotentReplay: true,
+      };
+    };
+
+    try {
+      return await this.dataSource.transaction<ReviewEvidenceArtifactResult>(async (manager) => {
+        const evidence = await this.repo.findById(input.evidenceArtifactId, manager);
+        if (!evidence) {
+          throw new NotFoundException(`Evidence artifact ${input.evidenceArtifactId} not found`);
         }
-        // True replay — same evidence, same receipt digest, same payload: return the already-recorded
-        // outcome. Re-evaluating (informational only) is safe and side-effect-free; no second write.
+
+        const existing = await this.reviewsRepo.findByEvidenceAndReceipt(input.evidenceArtifactId, input.approvalArtifactSha256, manager);
+        if (existing) {
+          if (!sameReviewPayload(existing, input, claimType, reviewerName)) {
+            throw new ConflictException(
+              `Approval receipt ${input.approvalArtifactSha256} was already recorded for evidence artifact ` +
+                `${input.evidenceArtifactId} with a different decision/reviewer/claim/evidence hash. A digest ` +
+                `must uniquely identify one approval payload — resolve the mismatch, do not resubmit.`,
+            );
+          }
+          return buildReplayResult(evidence, existing);
+        }
+
         const source = await this.sourcesRepo.findById(evidence.sourceId, manager);
         const evaluation = evaluateOpeningHoursOfficialStableV1({
           claimType,
           sourceType: source?.type ?? '',
           scheduleStability: input.scheduleStability,
           capturedAt: evidence.capturedAt,
-          reviewedAt: existing.reviewedAt,
+          reviewedAt,
           now: this.clock.now(),
           currentEvidenceContentHash: evidence.contentHashSha256,
-          approvalBoundEvidenceHash: existing.evidenceContentSha256,
-          decision: existing.decision,
+          approvalBoundEvidenceHash: input.evidenceContentSha256,
+          decision: input.decision,
         });
-        return {
-          review: existing,
-          evaluation,
-          evidenceVerified: evidence.verificationStatus === 'VERIFIED' && evidence.approvalArtifactSha256 === existing.approvalArtifactSha256,
-          idempotentReplay: true,
-        };
-      }
 
-      const source = await this.sourcesRepo.findById(evidence.sourceId, manager);
-      const evaluation = evaluateOpeningHoursOfficialStableV1({
-        claimType,
-        sourceType: source?.type ?? '',
-        scheduleStability: input.scheduleStability,
-        capturedAt: evidence.capturedAt,
-        reviewedAt: input.reviewedAt,
-        now: this.clock.now(),
-        currentEvidenceContentHash: evidence.contentHashSha256,
-        approvalBoundEvidenceHash: input.evidenceContentSha256,
-        decision: input.decision,
-      });
+        const willVerify = input.decision === 'APPROVE' && evaluation.eligible;
 
-      const willVerify = input.decision === 'APPROVE' && evaluation.eligible;
-
-      let review: EvidenceReview;
-      try {
-        review = await this.reviewsRepo.save(
-          this.reviewsRepo.create({
-            evidenceArtifactId: evidence.id,
-            decision: input.decision,
-            reviewerName,
-            reviewedAt: input.reviewedAt,
-            approvalArtifactSha256: input.approvalArtifactSha256,
-            claimType,
-            policyKey: evaluation.policyKey,
-            policyVersion: evaluation.policyVersion,
-            evidenceContentSha256: input.evidenceContentSha256,
-            verificationExpiresAt: willVerify ? evaluation.verificationExpiresAt : null,
-            reviewNote: input.reviewNote ?? null,
-          }),
-          manager,
-        );
-      } catch (err) {
-        if (isUniqueViolation(err, 'uq_evidence_review_receipt')) {
-          // Lost a race against a concurrent identical submission — same handling as a pre-read hit.
-          throw new ConflictException(
-            `Approval receipt ${input.approvalArtifactSha256} for evidence artifact ${input.evidenceArtifactId} ` +
-              `was just recorded by a concurrent request — read back and retry.`,
+        let review: EvidenceReview;
+        try {
+          review = await this.reviewsRepo.save(
+            this.reviewsRepo.create({
+              evidenceArtifactId: evidence.id,
+              decision: input.decision,
+              reviewerName,
+              reviewedAt,
+              approvalArtifactSha256: input.approvalArtifactSha256,
+              claimType,
+              policyKey: evaluation.policyKey,
+              policyVersion: evaluation.policyVersion,
+              evidenceContentSha256: input.evidenceContentSha256,
+              verificationExpiresAt: willVerify ? evaluation.verificationExpiresAt : null,
+              reviewNote: input.reviewNote ?? null,
+            }),
+            manager,
           );
+        } catch (err) {
+          if (isUniqueViolation(err, 'uq_evidence_review_receipt')) {
+            throw new EvidenceReviewRaceLost(err);
+          }
+          throw err;
         }
+
+        if (willVerify) {
+          evidence.verificationStatus = 'VERIFIED';
+          evidence.verifiedAt = reviewedAt;
+          evidence.verifiedBy = input.reviewerUserId ?? null;
+          evidence.verificationExpiresAt = evaluation.verificationExpiresAt;
+          evidence.approvalArtifactSha256 = input.approvalArtifactSha256;
+          evidence.freshnessPolicyKey = evaluation.policyKey;
+          evidence.freshnessPolicyVersion = evaluation.policyVersion;
+          await this.repo.save(evidence, manager);
+        }
+
+        return { review, evaluation, evidenceVerified: willVerify, idempotentReplay: false };
+      });
+    } catch (err) {
+      if (!(err instanceof EvidenceReviewRaceLost)) {
         throw err;
       }
-
-      if (willVerify) {
-        evidence.verificationStatus = 'VERIFIED';
-        evidence.verifiedAt = input.reviewedAt;
-        evidence.verifiedBy = input.reviewerUserId ?? null;
-        evidence.verificationExpiresAt = evaluation.verificationExpiresAt;
-        evidence.approvalArtifactSha256 = input.approvalArtifactSha256;
-        evidence.freshnessPolicyKey = evaluation.policyKey;
-        evidence.freshnessPolicyVersion = evaluation.policyVersion;
-        await this.repo.save(evidence, manager);
+      // The transaction above has already been rolled back by TypeORM (the callback threw) — this
+      // read is deliberately NOT transactional, and deliberately a SEPARATE read of `evidence` too
+      // (the one captured inside the rolled-back transaction must not be reused: any assignment made
+      // to it before the throw was rolled back along with everything else).
+      const evidence = await this.repo.findById(input.evidenceArtifactId);
+      const winner = await this.reviewsRepo.findByEvidenceAndReceipt(input.evidenceArtifactId, input.approvalArtifactSha256);
+      if (evidence && winner && sameReviewPayload(winner, input, claimType, reviewerName)) {
+        return buildReplayResult(evidence, winner);
       }
-
-      return { review, evaluation, evidenceVerified: willVerify, idempotentReplay: false };
-    });
+      throw new ConflictException(
+        `Approval receipt ${input.approvalArtifactSha256} for evidence artifact ${input.evidenceArtifactId} ` +
+          `was just recorded by a concurrent request with a different payload — read back and retry.`,
+      );
+    }
   }
 }

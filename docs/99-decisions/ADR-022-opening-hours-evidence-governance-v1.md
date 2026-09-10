@@ -160,6 +160,40 @@ even for outcomes that do not verify anything. See
 deterministic evaluator (clock injected, never calls `new Date()` internally) and
 `apps/api/src/modules/evidence/evidence.service.ts` for the transactional service method.
 
+`reviewed_at` is always server time (the injected `Clock`, captured once per call) — it is not a
+field a caller can supply. A capture-age gate that trusted a client-asserted "when I reviewed this"
+timestamp could be defeated by backdating it close to `captured_at`, making a review that is
+actually happening long after capture appear to fall inside the 168-hour window; this closes that
+gap the same way the expiry check's `now` already did.
+
+Race handling: a unique-constraint violation on the review INSERT aborts the whole Postgres
+transaction (any further statement on that same connection fails until rollback), so recovering from
+it — telling a true replay-race apart from a genuine conflict — happens strictly AFTER
+`dataSource.transaction()` has itself rolled back, via a fresh, non-transactional re-read. The
+service never attempts to keep using a manager whose transaction has already failed.
+
+## Known limitation — evidence-to-link binding
+
+A review approves an `evidence_artifacts` row's **content** (bound by its content hash, claim type,
+and source) as trustworthy for `opening_hours` claims in general. It does **not**, and structurally
+cannot, approve a specific `place_field_evidence_links` row — that link's `field_value_hash` is set
+independently, at link time, by `EvidenceService.linkEvidenceToPlaceField` (a pre-existing method,
+unchanged by this feature). Consequently: if the SAME already-VERIFIED evidence artifact is later
+re-linked (by whatever internal caller has access to `linkEvidenceToPlaceField` — there is no public
+controller for either method today) to a place whose `opening_hours` has since changed to a
+*different* value than what the original review actually saw, the freshness gate would treat that
+new link as gate-passing too, without any new human review ever having looked at whether the
+evidence supports the new value.
+
+This is not introduced by this change — `linkEvidenceToPlaceField` has never validated evidence
+freshness or re-confirmed content-to-value correspondence at link time, for any value of
+`verification_status`. What this change does is make the gap newly *reachable* through a legitimate
+approval, where previously no evidence was ever legitimately `VERIFIED` at all. Closing it properly
+means hardening `linkEvidenceToPlaceField` itself (e.g. requiring a fresh review per link, or binding
+review eligibility to a specific `place_field_evidence_link_id`/`field_value_hash` rather than to the
+evidence artifact alone) — a real design change to a method outside this PR's diff, tracked as
+explicit follow-up rather than folded into policy v1.
+
 ## Consequences
 
 - Right Now / Trusted Nearby immediately stop surfacing opening-hours claims backed only by
