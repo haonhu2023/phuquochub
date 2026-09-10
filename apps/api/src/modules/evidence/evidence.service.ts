@@ -1,12 +1,24 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
 import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
+import { EvidenceReviewsRepository } from './repositories/evidence-reviews.repository';
 import { EvidenceArtifact } from './entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from './entities/place-translation-evidence-link.entity';
 import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
+import { EvidenceReview, EvidenceReviewDecision } from './entities/evidence-review.entity';
 import { PlacesRepository, PlaceDetailRow } from '../places/repositories/places.repository';
+import { SourcesRepository } from '../sources/repositories/sources.repository';
 import { computeFieldValueHash } from './field-value-hash';
 import { GATE_PASSING_VERIFICATION_STATUSES } from './evidence-trust';
+import { Clock } from '../../common/clock';
+import { isUniqueViolation } from '../../common/db/unique-violation';
+import {
+  evaluateOpeningHoursOfficialStableV1,
+  type PolicyEvaluationResult,
+  type ScheduleStability,
+} from './policy/opening-hours-official-stable-v1.policy';
 
 // Maps a field_name accepted by PlaceFieldEvidenceLink to how its CURRENT value is actually read.
 // Deliberately explicit and small, not a closed enum on the column itself (field_name stays
@@ -37,12 +49,55 @@ export interface EnsureEvidenceArtifactInput {
 // gate without creating a circular import (this file already imports PlacesRepository).
 export { GATE_PASSING_VERIFICATION_STATUSES };
 
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+export interface ReviewEvidenceArtifactInput {
+  evidenceArtifactId: string;
+  decision: EvidenceReviewDecision;
+  reviewerName: string;
+  reviewedAt: Date;
+  /** Digest of the approval receipt itself — the idempotency/conflict key alongside evidenceArtifactId. */
+  approvalArtifactSha256: string;
+  claimType: string;
+  scheduleStability: ScheduleStability;
+  /** The evidence content hash this specific approval receipt attests it reviewed. */
+  evidenceContentSha256: string;
+  reviewNote?: string | null;
+  /** Optional — if supplied, binds evidence_artifacts.verifiedBy when this review results in VERIFIED. */
+  reviewerUserId?: string | null;
+}
+
+export interface ReviewEvidenceArtifactResult {
+  review: EvidenceReview;
+  evaluation: PolicyEvaluationResult;
+  /** True iff evidence_artifacts.verificationStatus is VERIFIED as a result of (or already because of) this exact review. */
+  evidenceVerified: boolean;
+  /** True when this call was a no-op replay of an already-recorded review (same evidence + same receipt digest + same payload). */
+  idempotentReplay: boolean;
+}
+
+function sameReviewPayload(existing: EvidenceReview, input: ReviewEvidenceArtifactInput, claimType: string, reviewerName: string): boolean {
+  return (
+    existing.decision === input.decision &&
+    existing.reviewerName === reviewerName &&
+    existing.reviewedAt.getTime() === input.reviewedAt.getTime() &&
+    existing.claimType === claimType &&
+    existing.evidenceContentSha256 === input.evidenceContentSha256 &&
+    (existing.reviewNote ?? null) === (input.reviewNote ?? null)
+  );
+}
+
 @Injectable()
 export class EvidenceService {
   constructor(
     private readonly repo: EvidenceArtifactsRepository,
     private readonly fieldLinksRepo: PlaceFieldEvidenceLinksRepository,
+    private readonly reviewsRepo: EvidenceReviewsRepository,
     private readonly placesRepo: PlacesRepository,
+    private readonly sourcesRepo: SourcesRepository,
+    private readonly clock: Clock,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   // Idempotent theo business_key (workbook evidence_id). KHÔNG BAO GIỜ nâng verificationStatus của
@@ -180,5 +235,142 @@ export class EvidenceService {
 
     const currentHash = computeFieldValueHash(readCurrentValue(place));
     return this.fieldLinksRepo.listCurrentByPlaceAndField(placeId, fieldName, currentHash);
+  }
+
+  // Opening-Hours Evidence Governance v1 — THE (only) write path that may move
+  // evidence_artifacts.verificationStatus to a real, human-reviewed VERIFIED. Deliberately NOT named
+  // `markVerified(id)`: every call runs the full OPENING_HOURS_OFFICIAL_STABLE_V1 policy evaluator
+  // and records an append-only evidence_reviews row REGARDLESS of the outcome — there is no raw
+  // bypass. A NEEDS_CHANGES/REJECT decision, or an APPROVE that the evaluator still finds
+  // ineligible (hash mismatch, stale capture, non-first-party source, temporary schedule, already
+  // expired), is audited exactly the same as an eligible APPROVE — it simply never flips the
+  // evidence row to VERIFIED.
+  //
+  // One transaction (dataSource.transaction, same convention as VerificationsService): read
+  // evidence + source fresh, run the evaluator, INSERT the review row, and — only when APPROVE +
+  // eligible — UPDATE the SAME evidence_artifacts row's verifiedAt/verifiedBy/
+  // verificationExpiresAt/approvalArtifactSha256/freshnessPolicyKey/freshnessPolicyVersion, all
+  // inside the one transaction (task requirement: audit row and denormalized current-state must
+  // commit together or not at all). Never touches contentHashSha256/capturedAt (the evidence's own
+  // immutable facts), never touches places.verificationStatus (this is evidence governance, not a
+  // field-value edit — no wiki revision is created here, matching linkEvidenceToPlaceField's same
+  // "linking/reviewing evidence is not editing the place" boundary).
+  //
+  // Idempotent by (evidenceArtifactId, approvalArtifactSha256): replaying the exact same submission
+  // (same decision/reviewer/reviewedAt/claimType/evidenceContentSha256/note) is a true no-op — it
+  // returns the already-recorded row without a second INSERT or a second evidence UPDATE. The SAME
+  // digest reused with a DIFFERENT payload is a real conflict (409), never a silent overwrite — a
+  // digest is supposed to uniquely identify one receipt, so a mismatch signals either a caller bug
+  // or a tampering attempt, not "just apply the new values."
+  async reviewEvidenceArtifact(input: ReviewEvidenceArtifactInput): Promise<ReviewEvidenceArtifactResult> {
+    const reviewerName = input.reviewerName?.trim();
+    if (!reviewerName) {
+      throw new BadRequestException('reviewerName must not be blank');
+    }
+    const claimType = input.claimType?.trim();
+    if (!claimType) {
+      throw new BadRequestException('claimType must not be blank');
+    }
+    if (!SHA256_HEX.test(input.approvalArtifactSha256)) {
+      throw new BadRequestException('approvalArtifactSha256 must be 64 lowercase hex characters');
+    }
+    if (!SHA256_HEX.test(input.evidenceContentSha256)) {
+      throw new BadRequestException('evidenceContentSha256 must be 64 lowercase hex characters');
+    }
+
+    return this.dataSource.transaction<ReviewEvidenceArtifactResult>(async (manager) => {
+      const evidence = await this.repo.findById(input.evidenceArtifactId, manager);
+      if (!evidence) {
+        throw new NotFoundException(`Evidence artifact ${input.evidenceArtifactId} not found`);
+      }
+
+      const existing = await this.reviewsRepo.findByEvidenceAndReceipt(input.evidenceArtifactId, input.approvalArtifactSha256, manager);
+      if (existing) {
+        if (!sameReviewPayload(existing, input, claimType, reviewerName)) {
+          throw new ConflictException(
+            `Approval receipt ${input.approvalArtifactSha256} was already recorded for evidence artifact ` +
+              `${input.evidenceArtifactId} with a different decision/reviewer/claim/evidence hash. A digest ` +
+              `must uniquely identify one approval payload — resolve the mismatch, do not resubmit.`,
+          );
+        }
+        // True replay — same evidence, same receipt digest, same payload: return the already-recorded
+        // outcome. Re-evaluating (informational only) is safe and side-effect-free; no second write.
+        const source = await this.sourcesRepo.findById(evidence.sourceId, manager);
+        const evaluation = evaluateOpeningHoursOfficialStableV1({
+          claimType,
+          sourceType: source?.type ?? '',
+          scheduleStability: input.scheduleStability,
+          capturedAt: evidence.capturedAt,
+          reviewedAt: existing.reviewedAt,
+          now: this.clock.now(),
+          currentEvidenceContentHash: evidence.contentHashSha256,
+          approvalBoundEvidenceHash: existing.evidenceContentSha256,
+          decision: existing.decision,
+        });
+        return {
+          review: existing,
+          evaluation,
+          evidenceVerified: evidence.verificationStatus === 'VERIFIED' && evidence.approvalArtifactSha256 === existing.approvalArtifactSha256,
+          idempotentReplay: true,
+        };
+      }
+
+      const source = await this.sourcesRepo.findById(evidence.sourceId, manager);
+      const evaluation = evaluateOpeningHoursOfficialStableV1({
+        claimType,
+        sourceType: source?.type ?? '',
+        scheduleStability: input.scheduleStability,
+        capturedAt: evidence.capturedAt,
+        reviewedAt: input.reviewedAt,
+        now: this.clock.now(),
+        currentEvidenceContentHash: evidence.contentHashSha256,
+        approvalBoundEvidenceHash: input.evidenceContentSha256,
+        decision: input.decision,
+      });
+
+      const willVerify = input.decision === 'APPROVE' && evaluation.eligible;
+
+      let review: EvidenceReview;
+      try {
+        review = await this.reviewsRepo.save(
+          this.reviewsRepo.create({
+            evidenceArtifactId: evidence.id,
+            decision: input.decision,
+            reviewerName,
+            reviewedAt: input.reviewedAt,
+            approvalArtifactSha256: input.approvalArtifactSha256,
+            claimType,
+            policyKey: evaluation.policyKey,
+            policyVersion: evaluation.policyVersion,
+            evidenceContentSha256: input.evidenceContentSha256,
+            verificationExpiresAt: willVerify ? evaluation.verificationExpiresAt : null,
+            reviewNote: input.reviewNote ?? null,
+          }),
+          manager,
+        );
+      } catch (err) {
+        if (isUniqueViolation(err, 'uq_evidence_review_receipt')) {
+          // Lost a race against a concurrent identical submission — same handling as a pre-read hit.
+          throw new ConflictException(
+            `Approval receipt ${input.approvalArtifactSha256} for evidence artifact ${input.evidenceArtifactId} ` +
+              `was just recorded by a concurrent request — read back and retry.`,
+          );
+        }
+        throw err;
+      }
+
+      if (willVerify) {
+        evidence.verificationStatus = 'VERIFIED';
+        evidence.verifiedAt = input.reviewedAt;
+        evidence.verifiedBy = input.reviewerUserId ?? null;
+        evidence.verificationExpiresAt = evaluation.verificationExpiresAt;
+        evidence.approvalArtifactSha256 = input.approvalArtifactSha256;
+        evidence.freshnessPolicyKey = evaluation.policyKey;
+        evidence.freshnessPolicyVersion = evaluation.policyVersion;
+        await this.repo.save(evidence, manager);
+      }
+
+      return { review, evaluation, evidenceVerified: willVerify, idempotentReplay: false };
+    });
   }
 }

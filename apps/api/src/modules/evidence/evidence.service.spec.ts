@@ -1,12 +1,50 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
 import { EvidenceService } from './evidence.service';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
 import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
+import { EvidenceReviewsRepository } from './repositories/evidence-reviews.repository';
 import { PlacesRepository, PlaceDetailRow } from '../places/repositories/places.repository';
+import { SourcesRepository } from '../sources/repositories/sources.repository';
 import { EvidenceArtifact } from './entities/evidence-artifact.entity';
 import { PlaceTranslationEvidenceLink } from './entities/place-translation-evidence-link.entity';
 import { PlaceFieldEvidenceLink } from './entities/place-field-evidence-link.entity';
+import { EvidenceReview } from './entities/evidence-review.entity';
+import { Source } from '../sources/entities/source.entity';
+import { SourceType } from '../sources/sources.enums';
+import { Clock } from '../../common/clock';
 import { computeFieldValueHash } from './field-value-hash';
+import { createMock, LooseMock } from '../../../test/helpers/create-mock';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+function makeReview(overrides: Partial<EvidenceReview> = {}): EvidenceReview {
+  const row = new EvidenceReview();
+  Object.assign(row, {
+    id: 'review-1',
+    evidenceArtifactId: 'evd-1',
+    decision: 'APPROVE',
+    reviewerName: 'Reviewer One',
+    reviewedAt: new Date('2026-09-05T00:00:00.000Z'),
+    approvalArtifactSha256: 'c'.repeat(64),
+    claimType: 'opening_hours',
+    policyKey: 'OPENING_HOURS_OFFICIAL_STABLE_V1',
+    policyVersion: '1',
+    evidenceContentSha256: 'f'.repeat(64),
+    verificationExpiresAt: new Date('2026-10-05T00:00:00.000Z'),
+    reviewNote: null,
+    createdAt: new Date('2026-09-05T00:00:00.000Z'),
+    ...overrides,
+  });
+  return row;
+}
+
+function makeSource(overrides: Partial<Source> = {}): Source {
+  const s = new Source();
+  Object.assign(s, { id: 'src-1', type: SourceType.OFFICIAL_WEBSITE, ...overrides });
+  return s;
+}
 
 function makePlace(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
   return {
@@ -67,7 +105,12 @@ describe('EvidenceService', () => {
   let service: EvidenceService;
   let repo: jest.Mocked<EvidenceArtifactsRepository>;
   let fieldLinksRepo: jest.Mocked<PlaceFieldEvidenceLinksRepository>;
+  let reviewsRepo: LooseMock<EvidenceReviewsRepository>;
   let placesRepo: jest.Mocked<PlacesRepository>;
+  let sourcesRepo: LooseMock<SourcesRepository>;
+  let clock: LooseMock<Clock>;
+  let dataSource: LooseMock<DataSource>;
+  let manager: EntityManager;
 
   beforeEach(() => {
     repo = {
@@ -87,11 +130,22 @@ describe('EvidenceService', () => {
       create: jest.fn((data) => Object.assign(new PlaceFieldEvidenceLink(), data)),
       save: jest.fn(async (row) => row),
     } as unknown as jest.Mocked<PlaceFieldEvidenceLinksRepository>;
+    reviewsRepo = createMock<EvidenceReviewsRepository>({
+      findByEvidenceAndReceipt: jest.fn(),
+      create: jest.fn((data) => Object.assign(new EvidenceReview(), data)),
+      save: jest.fn(async (row: EvidenceReview) => row),
+    });
     placesRepo = {
       existsById: jest.fn(),
       getCardByIdIncludingInactive: jest.fn(),
     } as unknown as jest.Mocked<PlacesRepository>;
-    service = new EvidenceService(repo, fieldLinksRepo, placesRepo);
+    sourcesRepo = createMock<SourcesRepository>({ findById: jest.fn() });
+    clock = createMock<Clock>({ now: jest.fn() });
+    manager = createMock<EntityManager>();
+    dataSource = createMock<DataSource>({
+      transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
+    });
+    service = new EvidenceService(repo, fieldLinksRepo, reviewsRepo, placesRepo, sourcesRepo, clock, dataSource);
   });
 
   describe('ensureEvidenceArtifact', () => {
@@ -352,6 +406,217 @@ describe('EvidenceService', () => {
       expect(fieldLinksRepo.findLink).toHaveBeenCalledWith('place-1', 'short_description', 'evd-1', expectedHash);
       expect(fieldLinksRepo.save).toHaveBeenCalledTimes(1);
       expect(result.fieldName).toBe('short_description');
+    });
+  });
+
+  describe('reviewEvidenceArtifact — Opening-Hours Evidence Governance v1', () => {
+    const capturedAt = new Date('2026-09-01T00:00:00.000Z');
+    const reviewedAt = new Date(capturedAt.getTime() + HOUR_MS);
+    const contentHash = 'f'.repeat(64);
+    const receiptDigest = 'c'.repeat(64);
+
+    function baseInput(overrides: Partial<Parameters<EvidenceService['reviewEvidenceArtifact']>[0]> = {}) {
+      return {
+        evidenceArtifactId: 'evd-1',
+        decision: 'APPROVE' as const,
+        reviewerName: 'Reviewer One',
+        reviewedAt,
+        approvalArtifactSha256: receiptDigest,
+        claimType: 'opening_hours',
+        scheduleStability: 'STABLE' as const,
+        evidenceContentSha256: contentHash,
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1', sourceId: 'src-1', capturedAt, contentHashSha256: contentHash }));
+      sourcesRepo.findById.mockResolvedValue(makeSource({ id: 'src-1', type: SourceType.OFFICIAL_WEBSITE }));
+      reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(null);
+      clock.now.mockReturnValue(reviewedAt);
+    });
+
+    it('evidence artifact not found -> NotFoundException, opens the transaction but writes nothing', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.reviewEvidenceArtifact(baseInput())).rejects.toThrow(NotFoundException);
+      expect(reviewsRepo.save).not.toHaveBeenCalled();
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a blank reviewerName before opening a transaction', async () => {
+      await expect(service.reviewEvidenceArtifact(baseInput({ reviewerName: '   ' }))).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed approvalArtifactSha256 before opening a transaction', async () => {
+      await expect(service.reviewEvidenceArtifact(baseInput({ approvalArtifactSha256: 'not-a-hash' }))).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed evidenceContentSha256 before opening a transaction', async () => {
+      await expect(service.reviewEvidenceArtifact(baseInput({ evidenceContentSha256: 'ZZZZ' }))).rejects.toThrow(BadRequestException);
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('APPROVE + every gate passes -> evidence moves to VERIFIED with expiry/policy/digest recorded, inside one transaction', async () => {
+      const result = await service.reviewEvidenceArtifact(baseInput());
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(result.idempotentReplay).toBe(false);
+      expect(result.evidenceVerified).toBe(true);
+      expect(result.evaluation.eligible).toBe(true);
+
+      expect(reviewsRepo.save).toHaveBeenCalledTimes(1);
+      const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+      expect(savedReview.decision).toBe('APPROVE');
+      expect(savedReview.policyKey).toBe('OPENING_HOURS_OFFICIAL_STABLE_V1');
+      expect(savedReview.verificationExpiresAt?.getTime()).toBe(capturedAt.getTime() + 30 * DAY_MS);
+
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      const savedEvidence = repo.save.mock.calls[0][0] as EvidenceArtifact;
+      expect(savedEvidence.verificationStatus).toBe('VERIFIED');
+      expect(savedEvidence.verifiedAt).toBe(reviewedAt);
+      expect(savedEvidence.approvalArtifactSha256).toBe(receiptDigest);
+      expect(savedEvidence.freshnessPolicyKey).toBe('OPENING_HOURS_OFFICIAL_STABLE_V1');
+      expect(savedEvidence.verificationExpiresAt?.getTime()).toBe(capturedAt.getTime() + 30 * DAY_MS);
+
+      // Both writes happened via the SAME manager the transaction callback received.
+      expect(reviewsRepo.save.mock.calls[0][1]).toBe(manager);
+      expect(repo.save.mock.calls[0][1]).toBe(manager);
+    });
+
+    it('capture older than 168h -> review recorded, but evidence is NOT moved to VERIFIED', async () => {
+      const staleCapturedAt = new Date(reviewedAt.getTime() - 169 * HOUR_MS);
+      repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1', sourceId: 'src-1', capturedAt: staleCapturedAt, contentHashSha256: contentHash }));
+
+      const result = await service.reviewEvidenceArtifact(baseInput());
+
+      expect(result.evaluation.eligible).toBe(false);
+      expect(result.evaluation.reasonCodes).toContain('CAPTURE_TOO_OLD');
+      expect(result.evidenceVerified).toBe(false);
+      expect(reviewsRepo.save).toHaveBeenCalledTimes(1); // still audited
+      expect(repo.save).not.toHaveBeenCalled(); // never flips to VERIFIED
+      const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+      expect(savedReview.verificationExpiresAt).toBeNull(); // no expiry persisted for a non-eligible outcome
+    });
+
+    it('evidenceContentSha256 does not match the artifact\'s current content hash -> HASH_MISMATCH, not verified', async () => {
+      const result = await service.reviewEvidenceArtifact(baseInput({ evidenceContentSha256: 'b'.repeat(64) }));
+      expect(result.evaluation.reasonCodes).toContain('EVIDENCE_HASH_MISMATCH');
+      expect(result.evidenceVerified).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('source is not first-party (e.g. community/aggregator) -> SOURCE_NOT_FIRST_PARTY, not verified', async () => {
+      sourcesRepo.findById.mockResolvedValue(makeSource({ id: 'src-1', type: SourceType.COMMUNITY }));
+      const result = await service.reviewEvidenceArtifact(baseInput());
+      expect(result.evaluation.reasonCodes).toContain('SOURCE_NOT_FIRST_PARTY');
+      expect(result.evidenceVerified).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('temporary/event schedule -> TEMPORARY_SCHEDULE_UNSUPPORTED, held for a future policy, not verified', async () => {
+      const result = await service.reviewEvidenceArtifact(baseInput({ scheduleStability: 'TEMPORARY' }));
+      expect(result.evaluation.reasonCodes).toContain('TEMPORARY_SCHEDULE_UNSUPPORTED');
+      expect(result.evidenceVerified).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('decision = NEEDS_CHANGES -> audited, never verified even though every other gate would pass', async () => {
+      const result = await service.reviewEvidenceArtifact(baseInput({ decision: 'NEEDS_CHANGES' }));
+      expect(result.evaluation.reasonCodes).toContain('DECISION_NOT_APPROVED');
+      expect(result.evidenceVerified).toBe(false);
+      expect(reviewsRepo.save).toHaveBeenCalledTimes(1);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('decision = REJECT -> audited, never verified', async () => {
+      const result = await service.reviewEvidenceArtifact(baseInput({ decision: 'REJECT' }));
+      expect(result.evidenceVerified).toBe(false);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    describe('idempotency and conflict (evidenceArtifactId, approvalArtifactSha256)', () => {
+      it('replaying the exact same payload + digest is a no-op — no second insert, no second evidence write', async () => {
+        const existing = makeReview({
+          evidenceArtifactId: 'evd-1',
+          approvalArtifactSha256: receiptDigest,
+          decision: 'APPROVE',
+          reviewerName: 'Reviewer One',
+          reviewedAt,
+          claimType: 'opening_hours',
+          evidenceContentSha256: contentHash,
+          reviewNote: null,
+        });
+        reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+        repo.findById.mockResolvedValue(
+          makeEvidence({
+            id: 'evd-1',
+            sourceId: 'src-1',
+            capturedAt,
+            contentHashSha256: contentHash,
+            verificationStatus: 'VERIFIED',
+            approvalArtifactSha256: receiptDigest,
+          }),
+        );
+
+        const result = await service.reviewEvidenceArtifact(baseInput());
+
+        expect(result.idempotentReplay).toBe(true);
+        expect(result.review).toBe(existing);
+        expect(result.evidenceVerified).toBe(true);
+        expect(reviewsRepo.save).not.toHaveBeenCalled();
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('same digest, different payload (e.g. different decision) -> ConflictException, no write attempted', async () => {
+        const existing = makeReview({
+          evidenceArtifactId: 'evd-1',
+          approvalArtifactSha256: receiptDigest,
+          decision: 'REJECT', // different from the incoming APPROVE
+        });
+        reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+        await expect(service.reviewEvidenceArtifact(baseInput({ decision: 'APPROVE' }))).rejects.toThrow(ConflictException);
+        expect(reviewsRepo.save).not.toHaveBeenCalled();
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('a concurrent duplicate insert (unique-violation race) is converted to ConflictException, not a raw DB error', async () => {
+        const dbError = { code: '23505', constraint: 'uq_evidence_review_receipt' };
+        reviewsRepo.save.mockRejectedValueOnce(dbError);
+        await expect(service.reviewEvidenceArtifact(baseInput())).rejects.toThrow(ConflictException);
+        expect(repo.save).not.toHaveBeenCalled();
+      });
+
+      it('an unrelated DB error from the review insert is NOT swallowed as a conflict', async () => {
+        const dbError = { code: '23503', message: 'fk violation' };
+        reviewsRepo.save.mockRejectedValueOnce(dbError);
+        await expect(service.reviewEvidenceArtifact(baseInput())).rejects.toBe(dbError);
+      });
+    });
+
+    it('a failure updating evidence_artifacts propagates out of the transaction — the review write is never left standing alone', async () => {
+      const writeFailure = new Error('simulated write failure after the review insert');
+      repo.save.mockRejectedValueOnce(writeFailure);
+
+      await expect(service.reviewEvidenceArtifact(baseInput())).rejects.toThrow(writeFailure);
+
+      // Both writes were attempted inside the SAME transaction() call — a real Postgres transaction
+      // rolls both back together when the callback throws (dataSource.transaction's own contract,
+      // exercised for real by VerificationsService against the CI Postgres service container); this
+      // unit test proves the code path funnels both writes through that one callback.
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(reviewsRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('never mutates evidence_artifacts.contentHashSha256/capturedAt — only governance fields', async () => {
+      const evidence = makeEvidence({ id: 'evd-1', sourceId: 'src-1', capturedAt, contentHashSha256: contentHash });
+      repo.findById.mockResolvedValue(evidence);
+      await service.reviewEvidenceArtifact(baseInput());
+      const savedEvidence = repo.save.mock.calls[0][0] as EvidenceArtifact;
+      expect(savedEvidence.contentHashSha256).toBe(contentHash);
+      expect(savedEvidence.capturedAt).toBe(capturedAt);
     });
   });
 });
