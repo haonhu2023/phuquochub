@@ -239,7 +239,19 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(repo.query).not.toHaveBeenCalled();
     });
 
-    it('truy vấn field-evidence lấy đúng phạm vi (đúng place id, field_name=opening_hours, gate + nguồn có thẩm quyền)', async () => {
+    // DETAIL CASE 7 (Opening-Hours Evidence Governance v1): evidence VERIFIED, source authoritative,
+    // hash current — but its freshness window has lapsed. Postgres's own `verification_expires_at >
+    // NOW()` predicate is what would exclude this row from the query's result set for real; unit-level
+    // this is represented the same way as DETAIL 4/5 (an empty links array), with the query-shape
+    // assertion below proving the predicate that WOULD do the filtering is actually present in the SQL.
+    it('DETAIL 7: field-evidence VERIFIED, nguồn hợp lệ, hash khớp — nhưng đã hết hạn (verification_expires_at <= now) -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([]); // real Postgres: excluded by verification_expires_at > NOW()
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    it('truy vấn field-evidence lấy đúng phạm vi (đúng place id, field_name=opening_hours, gate + nguồn có thẩm quyền + còn hạn)', async () => {
       const oh = { a: 1 };
       repo.query.mockResolvedValueOnce([]);
       await sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh);
@@ -249,6 +261,8 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(sql(query)).toContain('pfel.place_id = ANY($1)');
       expect(sql(query)).toContain('ea.verification_status = ANY($2)');
       expect(sql(query)).toContain('s.type = ANY($3)');
+      expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
+      expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
       expect(params[0]).toEqual(['p1']);
       expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
       expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
@@ -863,6 +877,8 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     expect(sql(query)).toContain('pfel.place_id = ANY($1)');
     expect(sql(query)).toContain('ea.verification_status = ANY($2)');
     expect(sql(query)).toContain('s.type = ANY($3)');
+    expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
+    expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
     expect(params[0]).toEqual(['p1']);
     expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
     expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
@@ -911,6 +927,29 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
 
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows[0].opening_hours).toBeNull();
+  });
+
+  // NEARBY 6 (Opening-Hours Evidence Governance v1, 2026-09-10): evidence VERIFIED, source
+  // authoritative, hash current — but verification_expires_at has lapsed. Real Postgres excludes
+  // it via query 2's `verification_expires_at > NOW()` (asserted above); represented here the same
+  // way as NEARBY 4/5, by an empty links array.
+  it('NEARBY 6: field-evidence hợp lệ mọi mặt nhưng verification_expires_at đã <= now -> opening_hours bị null hoá', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  // NEARBY 7: converse — still-fresh evidence (verification_expires_at > now, per Postgres) that
+  // clears every other gate passes through unchanged, exactly like NEARBY 2.
+  it('NEARBY 7: field-evidence hợp lệ mọi mặt VÀ verification_expires_at còn hạn -> truyền qua nguyên trạng', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], [{ place_id: 'p1', field_value_hash: hash }]);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toEqual(oh);
   });
 
   it('opening_hours vốn đã null (không có giờ) -> vẫn null sau gate, không gọi field-evidence cho giá trị null', async () => {
@@ -1042,10 +1081,48 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(sql(query)).toContain('ea.verification_status = ANY($2)');
     expect(sql(query)).toContain('JOIN sources s ON s.id = ea.source_id');
     expect(sql(query)).toContain('s.type = ANY($3)');
+    expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
+    expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
     expect(params[0]).toEqual(['p1', 'p2']);
     expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
     expect(params[1]).not.toContain('NEEDS_REVIEW');
     expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+  });
+
+  // Opening-Hours Evidence Governance v1 (2026-09-10): a link backed by evidence whose
+  // verification_expires_at has lapsed is never part of query 2's result set — Postgres's own
+  // `verification_expires_at > NOW()` predicate (asserted above) is what does this filtering for
+  // real; unit-level it is represented, like every other gate failure in this suite, by simply not
+  // including the row in the mocked links array (empty here), since that is exactly what the real
+  // filtered SQL would return for an expired row.
+  it('field-evidence VERIFIED, nguồn hợp lệ, hash khớp — nhưng verification_expires_at đã <= now — bị loại khỏi Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []); // expired -> excluded by the SQL, not returned
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  // Converse of the above: still-fresh (verification_expires_at > now, per Postgres) evidence that
+  // clears every OTHER gate is included — the freshness gate does not additionally exclude anything
+  // that was already going to pass.
+  it('field-evidence VERIFIED, nguồn hợp lệ, hash khớp, verification_expires_at còn hạn — ĐƯỢC nhận vào Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    const hash = computeFieldValueHash(oh);
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], [{ place_id: 'p1', field_value_hash: hash }]);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  // Governance v1 must not touch evidence for OTHER fields — the query is already scoped to
+  // field_name='opening_hours' (asserted above); a place whose only evidence is for a different
+  // field (e.g. short_description) behaves exactly like having no opening_hours evidence at all.
+  it('evidence không liên quan (field khác, ví dụ short_description) không ảnh hưởng tới kết quả Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    // Query 2 is scoped to field_name='opening_hours' — a short_description link would never be part
+    // of its result set, represented the same way as every other "not in the result set" case above.
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
   });
 
   // Category 1: admin-backfill-only `official` (trusted status + opening_hours present, but no
