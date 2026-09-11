@@ -34,6 +34,9 @@ function makeReview(overrides: Partial<EvidenceReview> = {}): EvidenceReview {
     evidenceContentSha256: 'f'.repeat(64),
     verificationExpiresAt: new Date('2026-10-05T00:00:00.000Z'),
     reviewNote: null,
+    placeId: null,
+    fieldName: null,
+    fieldValueHash: null,
     createdAt: new Date('2026-09-05T00:00:00.000Z'),
     ...overrides,
   });
@@ -132,6 +135,7 @@ describe('EvidenceService', () => {
     } as unknown as jest.Mocked<PlaceFieldEvidenceLinksRepository>;
     reviewsRepo = createMock<EvidenceReviewsRepository>({
       findByEvidenceAndReceipt: jest.fn(),
+      findLatestForTuple: jest.fn(),
       create: jest.fn((data) => Object.assign(new EvidenceReview(), data)),
       save: jest.fn(async (row: EvidenceReview) => row),
     });
@@ -262,6 +266,14 @@ describe('EvidenceService', () => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue(place);
       repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1' }));
       fieldLinksRepo.findLink.mockResolvedValue(null);
+      // These tests predate Evidence Field-Binding V2 and exercise idempotency/creation mechanics
+      // unrelated to the new opening_hours link-write guard — a qualifying review is mocked
+      // unconditionally here so the guard never blocks them; the guard itself is covered by its own
+      // dedicated describe block below.
+      clock.now.mockReturnValue(new Date('2026-09-10T00:00:00.000Z'));
+      reviewsRepo.findLatestForTuple.mockResolvedValue(
+        makeReview({ decision: 'APPROVE', verificationExpiresAt: new Date('2099-01-01T00:00:00.000Z') }),
+      );
     });
 
     it('creates a new link when none exists, pinned to the CURRENT field value hash', async () => {
@@ -664,6 +676,409 @@ describe('EvidenceService', () => {
       const savedEvidence = repo.save.mock.calls[0][0] as EvidenceArtifact;
       expect(savedEvidence.contentHashSha256).toBe(contentHash);
       expect(savedEvidence.capturedAt).toBe(capturedAt);
+    });
+
+    describe('Evidence Field-Binding V2 — exact (place, field, value) binding', () => {
+      const boundPlace = makePlace({ id: 'place-1', opening_hours: { regular: { mon: ['09:00-17:00'] } } });
+      const boundHash = computeFieldValueHash(boundPlace.opening_hours);
+
+      beforeEach(() => {
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue(boundPlace);
+      });
+
+      function boundInput(overrides: Partial<Parameters<EvidenceService['reviewEvidenceArtifact']>[0]> = {}) {
+        return baseInput({
+          placeId: 'place-1',
+          fieldName: 'opening_hours',
+          fieldValueHash: boundHash,
+          ...overrides,
+        });
+      }
+
+      describe('all-three-or-none input validation', () => {
+        it('only placeId supplied -> BadRequestException before opening a transaction', async () => {
+          await expect(service.reviewEvidenceArtifact(baseInput({ placeId: 'place-1' }))).rejects.toThrow(BadRequestException);
+          expect(dataSource.transaction).not.toHaveBeenCalled();
+        });
+
+        it('only fieldName and fieldValueHash supplied (placeId omitted) -> BadRequestException', async () => {
+          await expect(
+            service.reviewEvidenceArtifact(baseInput({ fieldName: 'opening_hours', fieldValueHash: boundHash })),
+          ).rejects.toThrow(BadRequestException);
+          expect(dataSource.transaction).not.toHaveBeenCalled();
+        });
+
+        it('malformed fieldValueHash -> BadRequestException before opening a transaction', async () => {
+          await expect(service.reviewEvidenceArtifact(boundInput({ fieldValueHash: 'not-a-hash' }))).rejects.toThrow(BadRequestException);
+          expect(dataSource.transaction).not.toHaveBeenCalled();
+        });
+
+        it('blank fieldName (all three technically supplied) -> BadRequestException', async () => {
+          await expect(service.reviewEvidenceArtifact(boundInput({ fieldName: '   ' }))).rejects.toThrow(BadRequestException);
+          expect(dataSource.transaction).not.toHaveBeenCalled();
+        });
+
+        it('all three omitted -> V1 unbound semantics, unaffected', async () => {
+          const result = await service.reviewEvidenceArtifact(baseInput());
+          expect(result.evidenceVerified).toBe(true);
+          const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+          expect(savedReview.placeId).toBeNull();
+          expect(savedReview.fieldName).toBeNull();
+          expect(savedReview.fieldValueHash).toBeNull();
+        });
+      });
+
+      it('exact binding, everything else eligible -> APPROVE verifies, review row bound to the SERVER-resolved current hash', async () => {
+        const result = await service.reviewEvidenceArtifact(boundInput());
+
+        expect(result.evaluation.eligible).toBe(true);
+        expect(result.evidenceVerified).toBe(true);
+        const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+        expect(savedReview.placeId).toBe('place-1');
+        expect(savedReview.fieldName).toBe('opening_hours');
+        expect(savedReview.fieldValueHash).toBe(boundHash);
+        expect(savedReview.policyKey).toBe('OPENING_HOURS_FIELD_BOUND_V2');
+        expect(savedReview.policyVersion).toBe('2');
+      });
+
+      it('caller-asserted fieldValueHash does not match the CURRENT place value (server independently recomputes) -> FIELD_VALUE_HASH_MISMATCH, never verified', async () => {
+        const wrongHash = computeFieldValueHash({ regular: { mon: ['10:00-18:00'] } });
+        const result = await service.reviewEvidenceArtifact(boundInput({ fieldValueHash: wrongHash }));
+
+        expect(result.evaluation.eligible).toBe(false);
+        expect(result.evaluation.reasonCodes).toContain('FIELD_VALUE_HASH_MISMATCH');
+        expect(result.evidenceVerified).toBe(false);
+        expect(repo.save).not.toHaveBeenCalled();
+        // Still a REAL, complete, auditable tuple — bound to the hash the SERVICE independently
+        // resolved (the place's actual current value), never the caller's wrong assertion — so a
+        // future query for "what did this review actually attest to" is never misleading.
+        const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+        expect(savedReview.placeId).toBe('place-1');
+        expect(savedReview.fieldName).toBe('opening_hours');
+        expect(savedReview.fieldValueHash).toBe(boundHash);
+        expect(savedReview.fieldValueHash).not.toBe(wrongHash);
+      });
+
+      it('the CURRENT place value has changed since the receipt was prepared (place mutated between UI load and submit) -> FIELD_VALUE_HASH_MISMATCH, same as any other stale-binding attempt', async () => {
+        const changedPlace = makePlace({ id: 'place-1', opening_hours: { regular: { mon: ['11:00-19:00'] } } });
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue(changedPlace);
+
+        const result = await service.reviewEvidenceArtifact(boundInput()); // still asserts the OLD boundHash
+
+        expect(result.evaluation.eligible).toBe(false);
+        expect(result.evaluation.reasonCodes).toContain('FIELD_VALUE_HASH_MISMATCH');
+        expect(result.evidenceVerified).toBe(false);
+      });
+
+      it('fieldName other than opening_hours -> FIELD_NAME_UNSUPPORTED, never verified (this policy version covers no other field)', async () => {
+        const hash = computeFieldValueHash(boundPlace.short_description);
+        const result = await service.reviewEvidenceArtifact(boundInput({ fieldName: 'short_description', fieldValueHash: hash }));
+
+        expect(result.evaluation.eligible).toBe(false);
+        expect(result.evaluation.reasonCodes).toContain('FIELD_NAME_UNSUPPORTED');
+        expect(result.evidenceVerified).toBe(false);
+      });
+
+      it('place does not exist -> ineligible (fails closed via FIELD_VALUE_HASH_MISMATCH), review still recorded with the caller-asserted hash as a complete, auditable tuple', async () => {
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+
+        const result = await service.reviewEvidenceArtifact(boundInput());
+
+        expect(result.evaluation.eligible).toBe(false);
+        expect(result.evaluation.reasonCodes).toContain('FIELD_VALUE_HASH_MISMATCH');
+        expect(result.evidenceVerified).toBe(false);
+        const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+        // All-or-none is still satisfied — never a partial (place_id-but-no-hash) row.
+        expect(savedReview.placeId).toBe('place-1');
+        expect(savedReview.fieldName).toBe('opening_hours');
+        expect(savedReview.fieldValueHash).toBe(boundHash);
+      });
+
+      it('decision = REJECT with an otherwise-exact binding -> audited with the full binding, never verified', async () => {
+        const result = await service.reviewEvidenceArtifact(boundInput({ decision: 'REJECT' }));
+
+        expect(result.evidenceVerified).toBe(false);
+        const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+        expect(savedReview.decision).toBe('REJECT');
+        expect(savedReview.placeId).toBe('place-1');
+        expect(savedReview.fieldName).toBe('opening_hours');
+        expect(savedReview.fieldValueHash).toBe(boundHash);
+      });
+
+      describe('replay identity includes the binding', () => {
+        it('same receipt + IDENTICAL full binding -> idempotent replay, no second write', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'APPROVE',
+            reviewerName: 'Reviewer One',
+            reviewedAt,
+            claimType: 'opening_hours',
+            evidenceContentSha256: contentHash,
+            reviewNote: null,
+            placeId: 'place-1',
+            fieldName: 'opening_hours',
+            fieldValueHash: boundHash,
+            verificationExpiresAt: new Date(capturedAt.getTime() + 30 * DAY_MS),
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+          repo.findById.mockResolvedValue(
+            makeEvidence({
+              id: 'evd-1',
+              sourceId: 'src-1',
+              capturedAt,
+              contentHashSha256: contentHash,
+              verificationStatus: 'VERIFIED',
+              approvalArtifactSha256: receiptDigest,
+            }),
+          );
+
+          const result = await service.reviewEvidenceArtifact(boundInput());
+
+          expect(result.idempotentReplay).toBe(true);
+          expect(result.review).toBe(existing);
+          expect(reviewsRepo.save).not.toHaveBeenCalled();
+          expect(repo.save).not.toHaveBeenCalled();
+        });
+
+        it('same receipt + a DIFFERENT placeId than what was originally recorded -> ConflictException', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'APPROVE',
+            placeId: 'place-OTHER',
+            fieldName: 'opening_hours',
+            fieldValueHash: boundHash,
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(ConflictException);
+          expect(reviewsRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('same receipt + a DIFFERENT fieldName than what was originally recorded -> ConflictException', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'APPROVE',
+            placeId: 'place-1',
+            fieldName: 'short_description',
+            fieldValueHash: boundHash,
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(ConflictException);
+          expect(reviewsRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('same receipt + a DIFFERENT fieldValueHash than what was originally recorded -> ConflictException', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'APPROVE',
+            placeId: 'place-1',
+            fieldName: 'opening_hours',
+            fieldValueHash: 'e'.repeat(64),
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(ConflictException);
+          expect(reviewsRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('same receipt + previously UNBOUND (V1) vs now bound (V2) -> ConflictException, never silently upgraded, message names V2_APPROVAL_RECEIPT_REQUIRED', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'APPROVE',
+            placeId: null,
+            fieldName: null,
+            fieldValueHash: null,
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          // A caller reusing an OLD V1 receipt digest to submit a NEW V2-bound review is the
+          // realistic case this branch exists for (not a random digest collision) — the rollout
+          // contract is: mint a NEW receipt for the V2-bound approval, never reuse the V1 one. The
+          // message says so explicitly, not just "something differs", so a caller mid-V1→V2 upgrade
+          // can actually tell what went wrong instead of guessing at a generic conflict.
+          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(/V2_APPROVAL_RECEIPT_REQUIRED/);
+          expect(reviewsRepo.save).not.toHaveBeenCalled();
+          expect(repo.save).not.toHaveBeenCalled();
+          // The legacy V1 row itself is never touched — the conflict is thrown before any write path
+          // is reached, so there is no code path here that could mutate or upgrade it in place.
+          expect(existing.placeId).toBeNull();
+        });
+
+        it('the SAME conflict, but the existing row differs on decision/reviewer/claim (not a V1-vs-V2 binding mismatch) — message does NOT claim V2_APPROVAL_RECEIPT_REQUIRED', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'REJECT', // differs from the incoming APPROVE — nothing to do with V1/V2 binding
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          await expect(service.reviewEvidenceArtifact(baseInput({ decision: 'APPROVE' }))).rejects.not.toThrow(/V2_APPROVAL_RECEIPT_REQUIRED/);
+          await expect(service.reviewEvidenceArtifact(baseInput({ decision: 'APPROVE' }))).rejects.toThrow(ConflictException);
+        });
+      });
+
+      describe('APPROVE -> REJECT latest-review semantics (H2)', () => {
+        it('an APPROVE followed by a REJECT for the SAME exact tuple: the REJECT is audited, evidence_artifacts stays as the APPROVE left it (never reset by a non-APPROVE review)', async () => {
+          const approveResult = await service.reviewEvidenceArtifact(boundInput({ approvalArtifactSha256: 'c'.repeat(64) }));
+          expect(approveResult.evidenceVerified).toBe(true);
+          const verifiedEvidence = repo.save.mock.calls[0][0] as EvidenceArtifact;
+          expect(verifiedEvidence.verificationStatus).toBe('VERIFIED');
+
+          // Second call: a REJECT for the exact same tuple, using a fresh evidence snapshot that
+          // reflects the first call's write (verificationStatus now VERIFIED) — reviewsRepo has no
+          // prior receipt for THIS new digest, so this proceeds as a genuinely new review.
+          repo.findById.mockResolvedValue(verifiedEvidence);
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(null);
+
+          const rejectResult = await service.reviewEvidenceArtifact(
+            boundInput({ approvalArtifactSha256: 'd'.repeat(64), decision: 'REJECT', reviewerName: 'Reviewer Two' }),
+          );
+
+          expect(rejectResult.evidenceVerified).toBe(false);
+          // evidence_artifacts.verificationStatus is untouched by the REJECT — reviewEvidenceArtifact
+          // only ever WRITES evidence_artifacts on an eligible APPROVE (repo.save called once total,
+          // from the first call). This is exactly why the read gate (PlacesRepository) must read the
+          // LATEST evidence_reviews row per tuple rather than trusting this denormalized mirror.
+          expect(repo.save).toHaveBeenCalledTimes(1);
+        });
+      });
+    });
+  });
+
+  describe('linkEvidenceToPlaceField — Evidence Field-Binding V2 link-write guard (opening_hours only)', () => {
+    const place = makePlace({ id: 'place-1', opening_hours: { regular: { mon: ['09:00-17:00'] } } });
+    const openingHoursHash = computeFieldValueHash(place.opening_hours);
+    const future = new Date('2027-01-01T00:00:00.000Z');
+    const past = new Date('2020-01-01T00:00:00.000Z');
+
+    beforeEach(() => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(place);
+      repo.findById.mockResolvedValue(makeEvidence({ id: 'evd-1' }));
+      fieldLinksRepo.findLink.mockResolvedValue(null);
+      clock.now.mockReturnValue(new Date('2026-09-10T00:00:00.000Z'));
+    });
+
+    it('no qualifying review exists at all -> refuses the link (ConflictException), no write', async () => {
+      reviewsRepo.findLatestForTuple.mockResolvedValue(null);
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+      expect(reviewsRepo.findLatestForTuple).toHaveBeenCalledWith('evd-1', 'place-1', 'opening_hours', openingHoursHash);
+    });
+
+    // The remaining "wrong X" cases below are all really the SAME underlying mechanism: the guard
+    // asks the repository for the review bound to THIS EXACT (artifact, place, "opening_hours",
+    // current hash) tuple, and a review approved for a different place/value simply is not that row
+    // — findLatestForTuple (itself scoped by an exact-match WHERE clause, proven at the SQL/migration
+    // level) returns null for it, same as "no review at all". Modeled explicitly here (rather than
+    // only relying on the generic null case above) so each scenario has its own named, auditable
+    // regression, and to prove the SERVICE queries with the CORRECT arguments for each case.
+    it('a qualifying review exists, but for a DIFFERENT place -> refuses the link (findLatestForTuple correctly finds nothing for THIS place)', async () => {
+      // The review-repository lookup is itself scoped by placeId — a review bound to 'place-OTHER'
+      // can never be returned when queried for 'place-1', so the mock reflects exactly what a real
+      // exact-match WHERE clause would do: nothing found for the actual (evidenceId, place-1, ...) tuple.
+      reviewsRepo.findLatestForTuple.mockResolvedValue(null);
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(reviewsRepo.findLatestForTuple).toHaveBeenCalledWith('evd-1', 'place-1', 'opening_hours', openingHoursHash);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('a qualifying review exists, but for a DIFFERENT (stale) field_value_hash than the place\'s CURRENT value -> refuses the link', async () => {
+      // linkEvidenceToPlaceField always queries with the CURRENT hash (computed fresh from the live
+      // place row) — a review bound to an OLD value's hash can never satisfy that lookup once the
+      // value has changed, exactly mirroring the read gate's own current-value requirement.
+      reviewsRepo.findLatestForTuple.mockResolvedValue(null);
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(reviewsRepo.findLatestForTuple).toHaveBeenCalledWith('evd-1', 'place-1', 'opening_hours', openingHoursHash);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('only a legacy V1 (unbound) APPROVE exists for this artifact — no V2-bound review at all -> refuses the link', async () => {
+      // A legacy V1 review has placeId/fieldName/fieldValueHash all NULL — it can never be the row
+      // findLatestForTuple returns (its WHERE clause requires exact equality on all three, and NULL
+      // never equals a real place id/field name/hash) — represented here the same way as "no
+      // qualifying review at all", which is exactly what a legacy-only artifact looks like to this guard.
+      reviewsRepo.findLatestForTuple.mockResolvedValue(null);
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('the latest review for the exact tuple is NEEDS_CHANGES -> refuses the link', async () => {
+      reviewsRepo.findLatestForTuple.mockResolvedValue(
+        makeReview({ decision: 'NEEDS_CHANGES', placeId: 'place-1', fieldName: 'opening_hours', fieldValueHash: openingHoursHash }),
+      );
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('the latest review for the exact tuple is REJECT (even after an earlier APPROVE) -> refuses the link', async () => {
+      reviewsRepo.findLatestForTuple.mockResolvedValue(
+        makeReview({ decision: 'REJECT', placeId: 'place-1', fieldName: 'opening_hours', fieldValueHash: openingHoursHash }),
+      );
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('the latest review is APPROVE but already expired -> refuses the link', async () => {
+      reviewsRepo.findLatestForTuple.mockResolvedValue(
+        makeReview({
+          decision: 'APPROVE',
+          placeId: 'place-1',
+          fieldName: 'opening_hours',
+          fieldValueHash: openingHoursHash,
+          verificationExpiresAt: past,
+        }),
+      );
+
+      await expect(service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1')).rejects.toThrow(ConflictException);
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('the latest review is APPROVE and unexpired -> creates the link', async () => {
+      reviewsRepo.findLatestForTuple.mockResolvedValue(
+        makeReview({
+          decision: 'APPROVE',
+          placeId: 'place-1',
+          fieldName: 'opening_hours',
+          fieldValueHash: openingHoursHash,
+          verificationExpiresAt: future,
+        }),
+      );
+
+      const result = await service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1');
+
+      expect(fieldLinksRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.fieldValueHash).toBe(openingHoursHash);
+    });
+
+    it('short_description is unaffected by this guard — no V2 review lookup, link created exactly as V1', async () => {
+      const result = await service.linkEvidenceToPlaceField('place-1', 'short_description', 'evd-1');
+
+      expect(reviewsRepo.findLatestForTuple).not.toHaveBeenCalled();
+      expect(fieldLinksRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.fieldName).toBe('short_description');
+    });
+
+    it('an existing (idempotent) link for the CURRENT hash short-circuits before the guard even runs', async () => {
+      const existingLink = makeFieldLink({ fieldValueHash: openingHoursHash });
+      fieldLinksRepo.findLink.mockResolvedValue(existingLink);
+
+      const result = await service.linkEvidenceToPlaceField('place-1', 'opening_hours', 'evd-1');
+
+      expect(result).toBe(existingLink);
+      expect(reviewsRepo.findLatestForTuple).not.toHaveBeenCalled();
+      expect(fieldLinksRepo.save).not.toHaveBeenCalled();
     });
   });
 });

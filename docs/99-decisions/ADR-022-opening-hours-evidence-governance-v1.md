@@ -194,6 +194,38 @@ review eligibility to a specific `place_field_evidence_link_id`/`field_value_has
 evidence artifact alone) — a real design change to a method outside this PR's diff, tracked as
 explicit follow-up rather than folded into policy v1.
 
+**Resolved by Evidence Field-Binding V2** (`AddFieldBindingToEvidenceReviews`, follow-up to this
+ADR) — see that migration/policy's own comments for the full design. Summary: `evidence_reviews`
+gains three nullable, all-or-none columns (`place_id`/`field_name`/`field_value_hash`); a review may
+now be bound to the EXACT `(evidence_artifact_id, place_id, field_name, field_value_hash)` tuple it
+was submitted for, server-resolved and compared against the caller's assertion rather than trusted
+alone; `linkEvidenceToPlaceField` refuses a new `opening_hours` link unless a qualifying bound review
+already exists for that exact tuple; and the shared read gate (public detail / Right Now / Trusted
+Nearby) requires the LATEST review for the exact tuple to be `APPROVE` and unexpired — closing the
+"newer REJECT doesn't invalidate an older APPROVE" gap the same change found alongside this one.
+
+### V1 → V2 rollout contract
+
+This is additive, not a rewrite: existing (`OPENING_HOURS_OFFICIAL_STABLE_V1`) reviews are never
+mutated, backfilled, or deleted by the V2 migration — their `place_id`/`field_name`/`field_value_hash`
+stay `NULL` forever, exactly as before. Because `NULL` never equals `NULL` in the V2 read gate's join
+predicates, **any existing V1-only review fails closed against the new field-bound gate automatically
+the moment V2 ships**, in every environment it has ever been applied to — this is the intended
+effect (identical in spirit to how this ADR's own freshness gate already treats a never-reviewed
+`evidence_artifacts` row), not a regression to remediate.
+
+An operator who wants a place that only has a V1 review to keep clearing Right Now / Trusted Nearby
+must submit a **new** review through `EvidenceService.reviewEvidenceArtifact`, this time supplying
+`placeId`/`fieldName`/`fieldValueHash` (an "approval addendum," in effect) — bound to that place's
+*current* `opening_hours` value. This new submission requires a **new** `approval_artifact_sha256`
+receipt digest: reusing the digest already recorded against the old V1 row is rejected outright
+(`ConflictException`, reason `V2_APPROVAL_RECEIPT_REQUIRED` in the error message) by the existing
+`UNIQUE(evidence_artifact_id, approval_artifact_sha256)` idempotency/conflict rule — a digest
+identifies one approval payload, and a content-only V1 approval and a field-bound V2 approval are
+different payloads by definition, never silently the same submission "upgraded" in place. The old V1
+row is never touched by this rejection (or by anything else) — it stays exactly where it was, real
+and auditable, permanently ineligible for the V2 gate on its own.
+
 ## Consequences
 
 - Right Now / Trusted Nearby immediately stop surfacing opening-hours claims backed only by

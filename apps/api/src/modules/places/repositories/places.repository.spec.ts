@@ -211,9 +211,10 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', currentValue)).resolves.toBe(false);
     });
 
-    // DETAIL CASE 4: an artifact stuck at NEEDS_REVIEW never appears in the gate query's own
-    // gate-passing result set (its WHERE ea.verification_status = ANY($2) excludes it) -> represented
-    // here by an empty links array, exactly like a value with no evidence at all. The VinWonders case.
+    // DETAIL CASE 4: an artifact stuck at NEEDS_REVIEW (no eligible-APPROVE evidence_reviews row for
+    // this exact tuple at all) never appears in the gate query's own result set (the LATERAL join's
+    // `latest_review.decision = 'APPROVE'` predicate excludes it) -> represented here by an empty
+    // links array, exactly like a value with no evidence at all. The VinWonders case.
     it('DETAIL 4: field-evidence còn NEEDS_REVIEW (không lọt gate) -> false', async () => {
       const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
       repo.query.mockResolvedValueOnce([]);
@@ -251,7 +252,35 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
     });
 
-    it('truy vấn field-evidence lấy đúng phạm vi (đúng place id, field_name=opening_hours, gate + nguồn có thẩm quyền + còn hạn)', async () => {
+    // DETAIL V2-1: evidence_artifacts.verification_status = 'VERIFIED' (and even an unexpired legacy
+    // verification_expires_at from V1) is, on its own, NOT sufficient — this gate's query no longer
+    // reads that column at all (proven by the query-shape assertion below: `not.toContain('verification_status')`).
+    // Without a LATEST evidence_reviews row bound to this EXACT (artifact, place, field, current hash)
+    // tuple whose decision is APPROVE, real Postgres's LATERAL join returns zero rows for this place —
+    // represented here, like every other DB-side exclusion in this suite, by an empty links array. See
+    // evidence-field-binding-v2.e2e-spec.ts's "legacy V1 (unbound) review" case for the live-Postgres proof.
+    it('DETAIL V2-1: evidence_artifacts.verification_status=VERIFIED nhưng KHÔNG có V2-bound APPROVE cho đúng tuple -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    // DETAIL V2-2 (H2): an OLDER eligible APPROVE for the exact tuple exists (which is what set
+    // evidence_artifacts.verification_status/verification_expires_at to VERIFIED/unexpired in the
+    // first place — see EvidenceService.reviewEvidenceArtifact, which never resets those on a later
+    // non-APPROVE review) — but a NEWER REJECT for that SAME exact tuple has since been recorded.
+    // The LATERAL join always picks up the LATEST row (`ORDER BY reviewed_at DESC, created_at DESC,
+    // id DESC`), so `latest_review.decision = 'APPROVE'` now fails even though the denormalized
+    // evidence_artifacts row still says VERIFIED with a future verification_expires_at.
+    it('DETAIL V2-2: APPROVE cũ + REJECT mới hơn cho ĐÚNG tuple, evidence_artifacts vẫn VERIFIED/chưa hết hạn -> false', async () => {
+      const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+      repo.query.mockResolvedValueOnce([]);
+
+      await expect(sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh)).resolves.toBe(false);
+    });
+
+    it('truy vấn field-evidence lấy đúng phạm vi (đúng place id, field_name=opening_hours, latest review APPROVE + nguồn có thẩm quyền + còn hạn)', async () => {
       const oh = { a: 1 };
       repo.query.mockResolvedValueOnce([]);
       await sut.hasCurrentQualifiedOpeningHoursEvidence('p1', oh);
@@ -259,13 +288,23 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       const [query, params] = repo.query.mock.calls[0];
       expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
       expect(sql(query)).toContain('pfel.place_id = ANY($1)');
-      expect(sql(query)).toContain('ea.verification_status = ANY($2)');
-      expect(sql(query)).toContain('s.type = ANY($3)');
-      expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
-      expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
+      expect(sql(query)).toContain('s.type = ANY($2)');
+      // Evidence Field-Binding V2: latest evidence_reviews row for the EXACT (evidence_artifact_id,
+      // place_id, field_name, field_value_hash) tuple, not evidence_artifacts.verification_status.
+      expect(sql(query)).toContain('er.evidence_artifact_id = pfel.evidence_artifact_id');
+      expect(sql(query)).toContain('er.place_id = pfel.place_id');
+      expect(sql(query)).toContain('er.field_name = pfel.field_name');
+      expect(sql(query)).toContain('er.field_value_hash = pfel.field_value_hash');
+      expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+      // Explicitly proves this query never reads evidence_artifacts.verification_status — the
+      // V1 denormalized mirror is not the source of truth for the V2 gate (see the method's own
+      // comment: it never resets on a later non-APPROVE review, so trusting it here would let H2 back in).
+      expect(sql(query)).not.toContain('verification_status');
+      expect(sql(query)).toContain("latest_review.decision = 'APPROVE'");
+      expect(sql(query)).toContain('latest_review.verification_expires_at IS NOT NULL');
+      expect(sql(query)).toContain('latest_review.verification_expires_at > NOW()');
       expect(params[0]).toEqual(['p1']);
-      expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
-      expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+      expect(params[1]).toEqual(['official_website', 'business_owner', 'government']);
     });
   });
 
@@ -867,7 +906,7 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     expect(rows[0].opening_hours).toBeNull();
   });
 
-  it('truy vấn field-evidence lấy đúng phạm vi (id vừa trả về, field_name=opening_hours, gate + nguồn có thẩm quyền)', async () => {
+  it('truy vấn field-evidence lấy đúng phạm vi (id vừa trả về, field_name=opening_hours, latest review APPROVE + nguồn có thẩm quyền)', async () => {
     const oh = { a: 1 };
     mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
     await sut.nearbyTrusted(PARAMS);
@@ -875,13 +914,14 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     const [query, params] = repo.query.mock.calls[1];
     expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
     expect(sql(query)).toContain('pfel.place_id = ANY($1)');
-    expect(sql(query)).toContain('ea.verification_status = ANY($2)');
-    expect(sql(query)).toContain('s.type = ANY($3)');
-    expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
-    expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
+    expect(sql(query)).toContain('s.type = ANY($2)');
+    expect(sql(query)).toContain("latest_review.decision = 'APPROVE'");
+    expect(sql(query)).toContain('latest_review.verification_expires_at IS NOT NULL');
+    expect(sql(query)).toContain('latest_review.verification_expires_at > NOW()');
+    expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+    expect(sql(query)).not.toContain('verification_status');
     expect(params[0]).toEqual(['p1']);
-    expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
-    expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+    expect(params[1]).toEqual(['official_website', 'business_owner', 'government']);
   });
 
   // NEARBY 2: current opening_hours + matching field_value_hash + gate-passing, source-authoritative
@@ -907,12 +947,12 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     expect(rows[0].opening_hours).toBeNull();
   });
 
-  // NEARBY 4: an artifact stuck at NEEDS_REVIEW never appears in query 2's own gate-passing result
-  // set (GATE_PASSING_VERIFICATION_STATUSES excludes it) -> behaves identically to no evidence at all.
+  // NEARBY 4: an artifact stuck at NEEDS_REVIEW (no eligible-APPROVE evidence_reviews row for this
+  // exact tuple) never appears in query 2's own result set -> behaves identically to no evidence at all.
   it('NEARBY 4: field-evidence còn NEEDS_REVIEW (không lọt gate) -> opening_hours bị null hoá', async () => {
     const oh = { timezone: 'Asia/Ho_Chi_Minh', is_24h: true };
-    // Query 2's own WHERE (ea.verification_status = ANY($2)) means a NEEDS_REVIEW-backed link is
-    // never part of its result set — represented here by an empty links array.
+    // Query 2's own LATERAL join predicate (`latest_review.decision = 'APPROVE'`) means a
+    // NEEDS_REVIEW-backed link is never part of its result set — represented here by an empty links array.
     mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
 
     const rows = await sut.nearbyTrusted(PARAMS);
@@ -950,6 +990,26 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
 
     const rows = await sut.nearbyTrusted(PARAMS);
     expect(rows[0].opening_hours).toEqual(oh);
+  });
+
+  // NEARBY V2-1/V2-2 (Evidence Field-Binding V2 — same shared gate as DETAIL V2-1/V2-2 above):
+  // evidence_artifacts.verification_status=VERIFIED alone (V2-1), or an OLDER APPROVE for the exact
+  // tuple superseded by a NEWER REJECT (V2-2, H2) while evidence_artifacts still says VERIFIED/
+  // unexpired, both fail this SAME shared query — proven live in evidence-field-binding-v2.e2e-spec.ts.
+  it('NEARBY V2-1: verification_status=VERIFIED nhưng KHÔNG có V2-bound APPROVE cho đúng tuple -> opening_hours bị null hoá', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
+  });
+
+  it('NEARBY V2-2: APPROVE cũ + REJECT mới hơn cho ĐÚNG tuple, evidence_artifacts vẫn VERIFIED/chưa hết hạn -> opening_hours bị null hoá', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    mockGeoAndLinks([nearbyRow({ opening_hours: oh })], []);
+
+    const rows = await sut.nearbyTrusted(PARAMS);
+    expect(rows[0].opening_hours).toBeNull();
   });
 
   it('opening_hours vốn đã null (không có giờ) -> vẫn null sau gate, không gọi field-evidence cho giá trị null', async () => {
@@ -1069,7 +1129,7 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(repo.query).toHaveBeenCalledTimes(1);
   });
 
-  it('truy vấn thứ hai lấy field-evidence đúng phạm vi: đúng candidate id, field_name=opening_hours, đúng whitelist trạng thái xác minh VÀ nguồn có thẩm quyền', async () => {
+  it('truy vấn thứ hai lấy field-evidence đúng phạm vi: đúng candidate id, field_name=opening_hours, latest review đúng tuple = APPROVE VÀ nguồn có thẩm quyền', async () => {
     mockCandidatesAndLinks([
       { id: 'p1', opening_hours: { a: 1 } },
       { id: 'p2', opening_hours: { b: 2 } },
@@ -1078,15 +1138,22 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     const [query, params] = repo.query.mock.calls[1];
     expect(sql(query)).toContain("pfel.field_name = 'opening_hours'");
     expect(sql(query)).toContain('pfel.place_id = ANY($1)');
-    expect(sql(query)).toContain('ea.verification_status = ANY($2)');
     expect(sql(query)).toContain('JOIN sources s ON s.id = ea.source_id');
-    expect(sql(query)).toContain('s.type = ANY($3)');
-    expect(sql(query)).toContain('ea.verification_expires_at IS NOT NULL');
-    expect(sql(query)).toContain('ea.verification_expires_at > NOW()');
+    expect(sql(query)).toContain('s.type = ANY($2)');
+    // Evidence Field-Binding V2: LATERAL join finds the latest evidence_reviews row for the EXACT
+    // (evidence_artifact_id, place_id, field_name, field_value_hash) tuple — not a plain
+    // evidence_artifacts.verification_status whitelist, which never resets on a later REJECT.
+    expect(sql(query)).toContain('er.evidence_artifact_id = pfel.evidence_artifact_id');
+    expect(sql(query)).toContain('er.place_id = pfel.place_id');
+    expect(sql(query)).toContain('er.field_name = pfel.field_name');
+    expect(sql(query)).toContain('er.field_value_hash = pfel.field_value_hash');
+    expect(sql(query)).toContain("latest_review.decision = 'APPROVE'");
+    expect(sql(query)).toContain('latest_review.verification_expires_at IS NOT NULL');
+    expect(sql(query)).toContain('latest_review.verification_expires_at > NOW()');
+    expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+    expect(sql(query)).not.toContain('verification_status');
     expect(params[0]).toEqual(['p1', 'p2']);
-    expect(params[1]).toEqual(['VERIFIED', 'BUSINESS_VERIFIED_AND_REVIEWED']);
-    expect(params[1]).not.toContain('NEEDS_REVIEW');
-    expect(params[2]).toEqual(['official_website', 'business_owner', 'government']);
+    expect(params[1]).toEqual(['official_website', 'business_owner', 'government']);
   });
 
   // Opening-Hours Evidence Governance v1 (2026-09-10): a link backed by evidence whose
@@ -1111,6 +1178,24 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], [{ place_id: 'p1', field_value_hash: hash }]);
     const rows = await sut.rightNow({ limit: 6 });
     expect(rows.map((r) => r.id)).toEqual(['p1']);
+  });
+
+  // RIGHT NOW V2-1/V2-2 (Evidence Field-Binding V2 — same shared gate as DETAIL/NEARBY V2-1/V2-2
+  // above): verification_status=VERIFIED alone (V2-1), or an older APPROVE superseded by a newer
+  // REJECT for the exact tuple while evidence_artifacts still says VERIFIED/unexpired (V2-2, H2),
+  // both exclude the candidate from Right Now — proven live in evidence-field-binding-v2.e2e-spec.ts.
+  it('RIGHT NOW V2-1: verification_status=VERIFIED nhưng KHÔNG có V2-bound APPROVE cho đúng tuple -> loại khỏi Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
+  });
+
+  it('RIGHT NOW V2-2: APPROVE cũ + REJECT mới hơn cho ĐÚNG tuple, evidence_artifacts vẫn VERIFIED/chưa hết hạn -> loại khỏi Right Now', async () => {
+    const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+    mockCandidatesAndLinks([{ id: 'p1', opening_hours: oh }], []);
+    const rows = await sut.rightNow({ limit: 6 });
+    expect(rows).toEqual([]);
   });
 
   // Governance v1 must not touch evidence for OTHER fields — the query is already scoped to
@@ -1211,10 +1296,10 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(rows).toEqual([]);
   });
 
-  // Category 6 (part 2): NEEDS_REVIEW evidence never appears among gate-passing statuses (locked
-  // in by the "đúng whitelist trạng thái xác minh" test above); a link stuck at NEEDS_REVIEW is
-  // simply never returned by query 2's own WHERE clause, so a candidate backed only by such a link
-  // behaves identically to having no link at all — excluded.
+  // Category 6 (part 2): NEEDS_REVIEW evidence never has an eligible latest-APPROVE review for its
+  // tuple (locked in by the "latest review đúng tuple = APPROVE" test above); a link stuck at
+  // NEEDS_REVIEW is simply never returned by query 2's own LATERAL join, so a candidate backed only
+  // by such a link behaves identically to having no link at all — excluded.
   it('field-evidence còn ở NEEDS_REVIEW (chưa qua gate) bị coi như không có bằng chứng — vẫn loại khỏi Right Now', async () => {
     mockCandidatesAndLinks([{ id: 'p1', opening_hours: { a: 1 } }], []);
     const rows = await sut.rightNow({ limit: 6 });

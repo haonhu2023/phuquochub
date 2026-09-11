@@ -11,6 +11,11 @@ export type EvidenceReviewDecision = 'APPROVE' | 'NEEDS_CHANGES' | 'REJECT';
 @Entity('evidence_reviews')
 @Index('idx_evidence_reviews_evidence_artifact', ['evidenceArtifactId'])
 @Index('idx_evidence_reviews_reviewed_at', ['reviewedAt'])
+// Evidence Field-Binding V2 (AddFieldBindingToEvidenceReviews 1720005600000) — mirrors that
+// migration's partial index exactly (see placeId's own column comment below).
+@Index('idx_evidence_reviews_field_binding_tuple', ['evidenceArtifactId', 'placeId', 'fieldName', 'fieldValueHash', 'reviewedAt'], {
+  where: '"place_id" IS NOT NULL',
+})
 export class EvidenceReview {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -53,6 +58,25 @@ export class EvidenceReview {
 
   @Column({ type: 'varchar', length: 2000, nullable: true })
   reviewNote!: string | null;
+
+  // Evidence Field-Binding V2 (AddFieldBindingToEvidenceReviews 1720005600000) — all three or none
+  // (DB CHECK constraint, never a partial binding). NULL on every legacy V1 row and on any review
+  // EvidenceService.reviewEvidenceArtifact records WITHOUT a placeId/fieldName/fieldValueHash input
+  // (V1 semantics preserved unchanged for those calls — see that method's own comment). When set,
+  // this is the EXACT (place, field, value) tuple this review is bound to: place_value_hash is the
+  // field's value hash the service independently recomputed at review time, never the caller's own
+  // assertion alone. The hardened opening_hours read gate (PlacesRepository) and the link-write guard
+  // (EvidenceService.linkEvidenceToPlaceField) both require a LATEST review matching this exact
+  // tuple to be APPROVE and unexpired — a review bound to a different place/field/value, or an
+  // unbound legacy row, can never satisfy that match (NULL never equals NULL in the join predicate).
+  @Column({ type: 'uuid', nullable: true })
+  placeId!: string | null;
+
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  fieldName!: string | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  fieldValueHash!: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
