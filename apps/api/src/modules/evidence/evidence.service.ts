@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.repository';
 import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
 import { EvidenceReviewsRepository } from './repositories/evidence-reviews.repository';
@@ -19,6 +19,7 @@ import {
   type PolicyEvaluationResult,
   type ScheduleStability,
 } from './policy/opening-hours-official-stable-v1.policy';
+import { evaluateOpeningHoursFieldBoundV2, type FieldBoundPolicyEvaluationResult } from './policy/opening-hours-field-bound-v2.policy';
 
 // Maps a field_name accepted by PlaceFieldEvidenceLink to how its CURRENT value is actually read.
 // Deliberately explicit and small, not a closed enum on the column itself (field_name stays
@@ -64,11 +65,23 @@ export interface ReviewEvidenceArtifactInput {
   reviewNote?: string | null;
   /** Optional — if supplied, binds evidence_artifacts.verifiedBy when this review results in VERIFIED. */
   reviewerUserId?: string | null;
+  /**
+   * Evidence Field-Binding V2 — supply ALL THREE (or none) to bind this review to an exact
+   * (evidenceArtifactId, placeId, fieldName, fieldValueHash) tuple, the ADR-022 follow-up policy.
+   * Omitting all three preserves V1 semantics exactly (an unbound, content-only review). Supplying
+   * only some of the three is rejected outright — see the all-three-or-none check below.
+   * `fieldValueHash` is the CALLER's asserted hash; the service independently recomputes the
+   * place's CURRENT field value hash and only trusts that recomputed value for eligibility — a
+   * mismatch fails the review (FIELD_VALUE_HASH_MISMATCH), same posture as evidenceContentSha256.
+   */
+  placeId?: string;
+  fieldName?: string;
+  fieldValueHash?: string;
 }
 
 export interface ReviewEvidenceArtifactResult {
   review: EvidenceReview;
-  evaluation: PolicyEvaluationResult;
+  evaluation: PolicyEvaluationResult | FieldBoundPolicyEvaluationResult;
   /** True iff evidence_artifacts.verificationStatus is VERIFIED as a result of (or already because of) this exact review. */
   evidenceVerified: boolean;
   /** True when this call was a no-op replay of an already-recorded review (same evidence + same receipt digest + same payload). */
@@ -96,7 +109,15 @@ function sameReviewPayload(existing: EvidenceReview, input: ReviewEvidenceArtifa
     existing.reviewerName === reviewerName &&
     existing.claimType === claimType &&
     existing.evidenceContentSha256 === input.evidenceContentSha256 &&
-    (existing.reviewNote ?? null) === (input.reviewNote ?? null)
+    (existing.reviewNote ?? null) === (input.reviewNote ?? null) &&
+    // Evidence Field-Binding V2 replay identity: the SAME receipt digest replayed with an IDENTICAL
+    // full binding is the same submission (a true no-op replay); the same digest with a place/field/
+    // fieldValueHash that differs from what was originally recorded is a real conflict — a receipt
+    // digest is supposed to uniquely identify one (evidence, place, field, value) approval, so a
+    // mismatch here is either a caller bug or a tampering attempt, never "apply the new binding".
+    (existing.placeId ?? null) === (input.placeId ?? null) &&
+    (existing.fieldName ?? null) === (input.fieldName ?? null) &&
+    (existing.fieldValueHash ?? null) === (input.fieldValueHash ?? null)
   );
 }
 
@@ -217,6 +238,29 @@ export class EvidenceService {
     const existing = await this.fieldLinksRepo.findLink(placeId, trimmedField, evidenceArtifactId, fieldValueHash);
     if (existing) return existing;
 
+    // Evidence Field-Binding V2 link-write guard (opening_hours only — see ADR-022 "Known
+    // limitation") — a NEW operational link may only be created when a qualifying field-bound
+    // review ALREADY exists for this EXACT tuple (evidenceArtifactId, placeId, "opening_hours",
+    // fieldValueHash): latest review for the tuple is APPROVE and still unexpired. Without this,
+    // an already-VERIFIED artifact (reviewed for a different place/value entirely) could be
+    // re-linked here and immediately clear the read gate with zero human review of THIS binding.
+    // short_description is intentionally unaffected — this policy version governs opening_hours
+    // only (see evaluateOpeningHoursFieldBoundV2's own FIELD_NAME_UNSUPPORTED rule).
+    if (trimmedField === 'opening_hours') {
+      const latestReview = await this.reviewsRepo.findLatestForTuple(evidenceArtifactId, placeId, trimmedField, fieldValueHash);
+      const qualifies =
+        latestReview?.decision === 'APPROVE' &&
+        latestReview.verificationExpiresAt !== null &&
+        latestReview.verificationExpiresAt.getTime() > this.clock.now().getTime();
+      if (!qualifies) {
+        throw new ConflictException(
+          `No qualifying Evidence Field-Binding V2 review exists for evidence artifact ${evidenceArtifactId} bound ` +
+            `to place ${placeId}, field "opening_hours", current value hash ${fieldValueHash}. Submit a field-bound, ` +
+            `eligible APPROVE via EvidenceService.reviewEvidenceArtifact for this exact tuple before linking.`,
+        );
+      }
+    }
+
     const row = this.fieldLinksRepo.create({ placeId, fieldName: trimmedField, evidenceArtifactId, fieldValueHash });
     return this.fieldLinksRepo.save(row);
   }
@@ -298,24 +342,87 @@ export class EvidenceService {
       throw new BadRequestException('evidenceContentSha256 must be 64 lowercase hex characters');
     }
 
+    // Evidence Field-Binding V2 — all-three-or-none, checked before opening a transaction (same
+    // posture as every other input-shape validation above). Supplying only some of the three is
+    // rejected outright: a partial binding could never be persisted anyway (DB CHECK constraint),
+    // but failing fast here gives a caller a clear reason instead of a raw constraint-violation error.
+    const bindingFieldsGiven = [input.placeId, input.fieldName, input.fieldValueHash].filter((v) => v != null);
+    if (bindingFieldsGiven.length > 0 && bindingFieldsGiven.length < 3) {
+      throw new BadRequestException(
+        'placeId, fieldName and fieldValueHash must be supplied all together (Evidence Field-Binding V2) or all omitted (unbound V1 review)',
+      );
+    }
+    const isFieldBound = bindingFieldsGiven.length === 3;
+    if (isFieldBound) {
+      if (!input.fieldName!.trim()) {
+        throw new BadRequestException('fieldName must not be blank');
+      }
+      if (!SHA256_HEX.test(input.fieldValueHash!)) {
+        throw new BadRequestException('fieldValueHash must be 64 lowercase hex characters');
+      }
+    }
+
     const reviewedAt = this.clock.now();
 
-    const buildReplayResult = async (evidence: EvidenceArtifact, existing: EvidenceReview): Promise<ReviewEvidenceArtifactResult> => {
-      // Re-evaluating is informational only (no write) — uses the ORIGINALLY recorded reviewedAt,
-      // not this call's, so a replay's age calculation never drifts from what was actually decided.
-      // Reads outside any transaction (manager omitted) — always safe: this evidence/source state
-      // is only ever read here, never written, and the review row is by definition already committed.
-      const source = await this.sourcesRepo.findById(evidence.sourceId);
-      const evaluation = evaluateOpeningHoursOfficialStableV1({
+    // Resolves the evaluator for one evidence/source/binding combination — shared by the replay path
+    // (uses the ORIGINALLY recorded decision/reviewedAt/binding off `existing`) and the fresh-review
+    // path (uses this call's own input) below, so the V1-vs-V2 branch is written exactly once.
+    const resolveEvaluation = async (params: {
+      evidence: EvidenceArtifact;
+      decision: EvidenceReviewDecision;
+      reviewedAtForEvaluation: Date;
+      approvalBoundEvidenceHash: string;
+      binding: { placeId: string; fieldName: string; approvalBoundFieldValueHash: string } | null;
+      manager?: EntityManager;
+    }): Promise<{ evaluation: PolicyEvaluationResult | FieldBoundPolicyEvaluationResult; resolvedFieldValueHash: string | null }> => {
+      const source = await this.sourcesRepo.findById(params.evidence.sourceId, params.manager);
+      const baseInput = {
         claimType,
         sourceType: source?.type ?? '',
         scheduleStability: input.scheduleStability,
-        capturedAt: evidence.capturedAt,
-        reviewedAt: existing.reviewedAt,
+        capturedAt: params.evidence.capturedAt,
+        reviewedAt: params.reviewedAtForEvaluation,
         now: this.clock.now(),
-        currentEvidenceContentHash: evidence.contentHashSha256,
-        approvalBoundEvidenceHash: existing.evidenceContentSha256,
+        currentEvidenceContentHash: params.evidence.contentHashSha256,
+        approvalBoundEvidenceHash: params.approvalBoundEvidenceHash,
+        decision: params.decision,
+      };
+      if (!params.binding) {
+        return { evaluation: evaluateOpeningHoursOfficialStableV1(baseInput), resolvedFieldValueHash: null };
+      }
+
+      // The service independently resolves the place's CURRENT field value and computes its own
+      // hash — `approvalBoundFieldValueHash` (the caller's/receipt's assertion) is only ever
+      // COMPARED against this, never trusted alone. A missing place or an unregistered field reader
+      // resolves to a hash that can never legitimately match any receipt, so the binding fails
+      // closed (FIELD_VALUE_HASH_MISMATCH) rather than silently skipping the field-bound gate.
+      const place = await this.placesRepo.getCardByIdIncludingInactive(params.binding.placeId);
+      const reader = PLACE_FIELD_VALUE_READERS[params.binding.fieldName];
+      const currentFieldValueHash = place && reader ? computeFieldValueHash(reader(place)) : '';
+      const evaluation = evaluateOpeningHoursFieldBoundV2({
+        ...baseInput,
+        fieldName: params.binding.fieldName,
+        approvalBoundFieldValueHash: params.binding.approvalBoundFieldValueHash,
+        currentFieldValueHash,
+      });
+      return { evaluation, resolvedFieldValueHash: currentFieldValueHash || null };
+    };
+
+    const buildReplayResult = async (evidence: EvidenceArtifact, existing: EvidenceReview): Promise<ReviewEvidenceArtifactResult> => {
+      // Re-evaluating is informational only (no write) — uses the ORIGINALLY recorded reviewedAt
+      // and binding, not this call's, so a replay's age/binding calculation never drifts from what
+      // was actually decided. Reads outside any transaction (manager omitted) — always safe: this
+      // evidence/source/place state is only ever read here, never written, and the review row is by
+      // definition already committed.
+      const { evaluation } = await resolveEvaluation({
+        evidence,
         decision: existing.decision,
+        reviewedAtForEvaluation: existing.reviewedAt,
+        approvalBoundEvidenceHash: existing.evidenceContentSha256,
+        binding:
+          existing.placeId && existing.fieldName && existing.fieldValueHash
+            ? { placeId: existing.placeId, fieldName: existing.fieldName, approvalBoundFieldValueHash: existing.fieldValueHash }
+            : null,
       });
       return {
         review: existing,
@@ -344,17 +451,15 @@ export class EvidenceService {
           return buildReplayResult(evidence, existing);
         }
 
-        const source = await this.sourcesRepo.findById(evidence.sourceId, manager);
-        const evaluation = evaluateOpeningHoursOfficialStableV1({
-          claimType,
-          sourceType: source?.type ?? '',
-          scheduleStability: input.scheduleStability,
-          capturedAt: evidence.capturedAt,
-          reviewedAt,
-          now: this.clock.now(),
-          currentEvidenceContentHash: evidence.contentHashSha256,
-          approvalBoundEvidenceHash: input.evidenceContentSha256,
+        const { evaluation, resolvedFieldValueHash } = await resolveEvaluation({
+          evidence,
           decision: input.decision,
+          reviewedAtForEvaluation: reviewedAt,
+          approvalBoundEvidenceHash: input.evidenceContentSha256,
+          binding: isFieldBound
+            ? { placeId: input.placeId!, fieldName: input.fieldName!.trim(), approvalBoundFieldValueHash: input.fieldValueHash! }
+            : null,
+          manager,
         });
 
         const willVerify = input.decision === 'APPROVE' && evaluation.eligible;
@@ -374,6 +479,18 @@ export class EvidenceService {
               evidenceContentSha256: input.evidenceContentSha256,
               verificationExpiresAt: willVerify ? evaluation.verificationExpiresAt : null,
               reviewNote: input.reviewNote ?? null,
+              // Persists the SERVER-resolved current field value hash (never the caller's own
+              // assertion) — this is what the hardened read gate and the link-write guard will
+              // later match a place_field_evidence_links row's OWN independently-computed current
+              // hash against, so both sides always agree on "current" from the same source of truth.
+              // Falls back to the caller's own (already format-validated) asserted hash only when
+              // the server could not resolve one at all (place not found / no reader registered for
+              // fieldName) — the review is still a REAL, complete tuple either way (the all-or-none
+              // CHECK constraint requires it), it is simply ineligible (FIELD_VALUE_HASH_MISMATCH,
+              // since '' never matches a real hash), audited exactly like any other ineligible review.
+              placeId: isFieldBound ? input.placeId! : null,
+              fieldName: isFieldBound ? input.fieldName!.trim() : null,
+              fieldValueHash: isFieldBound ? (resolvedFieldValueHash ?? input.fieldValueHash!) : null,
             }),
             manager,
           );

@@ -12,7 +12,7 @@ import {
   withCoverImageUrlOne,
 } from '../../../core/media-url/cover-image';
 import { computeFieldValueHash } from '../../evidence/field-value-hash';
-import { GATE_PASSING_VERIFICATION_STATUSES, OFFICIAL_SOURCE_TYPES } from '../../evidence/evidence-trust';
+import { OFFICIAL_SOURCE_TYPES } from '../../evidence/evidence-trust';
 
 // Row phẳng cho card (đã trích lng/lat từ geography).
 //
@@ -441,28 +441,39 @@ export class PlacesRepository {
 
   /**
    * Bulk-fetches, for the given place ids, every CURRENT opening_hours value's evidence hash that
-   * clears the gate: a `place_field_evidence_links` row (`field_name = 'opening_hours'`) whose
-   * linked `evidence_artifacts` row clears `GATE_PASSING_VERIFICATION_STATUSES`, is attributed to
-   * an `OFFICIAL_SOURCE_TYPES` source, AND has not expired under Opening-Hours Evidence Governance
-   * v1. Shared by `rightNow()` and `nearbyTrusted()` (2026-09-09 Nearby operational-trust fix) so
-   * both apply the exact SAME opening_hours evidence semantics from one place instead of two
-   * independently-maintained copies — see `rightNow()`'s own comment below for why each individual
-   * condition exists.
+   * clears the gate. Shared by `rightNow()` and `nearbyTrusted()` (2026-09-09 Nearby operational-
+   * trust fix) and by `hasCurrentQualifiedOpeningHoursEvidence()` (public detail) so all three apply
+   * the exact SAME opening_hours evidence semantics from one query instead of three independently-
+   * maintained copies — see `rightNow()`'s own comment below for why each individual condition exists.
    *
-   * FRESHNESS GATE (Opening-Hours Evidence Governance v1, 2026-09-10): `ea.verification_status`
-   * alone is no longer sufficient — `verification_expires_at IS NOT NULL AND verification_expires_at
-   * > NOW()` is required too. A row can sit at `verification_status = 'VERIFIED'` forever while its
-   * time-boxed freshness window has lapsed (OPENING_HOURS_OFFICIAL_STABLE_V1: 30 days from
-   * `captured_at`, never re-derived from when it was reviewed) — the DB column is deliberately left
-   * unchanged when that happens (no batch job flips it back), so a query that trusted the status
-   * column alone would keep serving a stale claim indefinitely. `verification_expires_at` is a
-   * genuinely NEW column (InitEvidenceReviews, 1720005500000) — every `evidence_artifacts` row that
-   * predates a real governed review has it NULL, and `NULL > NOW()` is never true in Postgres, so
-   * those rows are correctly excluded here without any extra CASE/COALESCE. That is the intended
-   * effect of shipping this gate, not an incidental side effect: `evidence_artifacts.verification_status`
-   * has no real write path anywhere in this codebase that ever set a gate-passing value through an
-   * actual human review (see `evidence-trust.ts`) — this query no longer takes that column's word for
-   * it alone.
+   * EVIDENCE FIELD-BINDING V2 (ADR-022 "Known limitation — evidence-to-link binding" follow-up,
+   * AddFieldBindingToEvidenceReviews 1720005600000): a `place_field_evidence_links` row alone —
+   * even one whose linked `evidence_artifacts` row is VERIFIED and unexpired — is NOT sufficient.
+   * `evidence_artifacts.verification_status`/`verification_expires_at` are a single denormalized
+   * mirror of that artifact's LATEST eligible APPROVE, REGARDLESS of which (place, field, value)
+   * tuple it was for — an artifact reviewed once for place A's opening_hours could, before this
+   * gate existed, be re-linked to a totally different place B (or the SAME place after its hours
+   * changed) and clear this gate with zero human review of that new binding. This query instead
+   * requires the LATEST `evidence_reviews` row for the EXACT tuple (evidence_artifact_id, place_id,
+   * field_name, field_value_hash) — found via the LATERAL join below, ordered by `reviewed_at DESC,
+   * created_at DESC, id DESC` (the trailing two are deterministic tie-breaks, not temporal signals —
+   * `reviewed_at` is server-clock time captured once per call and can theoretically tie between two
+   * reviews; `created_at` almost never ties too, but nothing GUARANTEES it since it is a DB-assigned
+   * TIMESTAMPTZ default, not a strictly monotonic sequence; `id` is a random UUID with zero temporal
+   * meaning, kept purely so the ORDER BY is always FULLY deterministic even in that residual case,
+   * never "whatever order Postgres happens to return ties in") — to itself be `APPROVE` and unexpired.
+   * Consequences:
+   *   - A legacy V1 review (place_id/field_name/field_value_hash all NULL) can never satisfy the
+   *     LATERAL join's equality predicates — NULL never equals NULL in SQL — so it fails closed by
+   *     construction, not by an explicit exclusion this query would have to encode and could get wrong.
+   *   - An APPROVE followed by a newer REJECT/NEEDS_CHANGES for the SAME exact tuple immediately
+   *     stops clearing this gate: the LATERAL join always picks up the newest row, and only APPROVE
+   *     passes `latest_review.decision = 'APPROVE'` — no dependency on `evidence_artifacts`' own
+   *     columns, which never get reset by a later non-APPROVE review (see EvidenceService.
+   *     reviewEvidenceArtifact — it only ever writes evidence_artifacts on an ELIGIBLE APPROVE).
+   *   - `s.type = ANY($2)` (source authority) is still re-checked live against the CURRENT `sources`
+   *     row, the same defense-in-depth posture V1 already had — a source's authority is not trusted
+   *     from a stale snapshot at review time.
    *
    * ONE bounded query for however many ids are passed in (never N+1) — callers own keeping that id
    * list itself bounded (both current callers pass an already-LIMIT-ed row set).
@@ -474,12 +485,22 @@ export class PlacesRepository {
        FROM place_field_evidence_links pfel
        JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
        JOIN sources s ON s.id = ea.source_id
+       JOIN LATERAL (
+         SELECT er.decision, er.verification_expires_at
+         FROM evidence_reviews er
+         WHERE er.evidence_artifact_id = pfel.evidence_artifact_id
+           AND er.place_id = pfel.place_id
+           AND er.field_name = pfel.field_name
+           AND er.field_value_hash = pfel.field_value_hash
+         ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC
+         LIMIT 1
+       ) latest_review ON TRUE
        WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
-         AND ea.verification_status = ANY($2)
-         AND s.type = ANY($3)
-         AND ea.verification_expires_at IS NOT NULL
-         AND ea.verification_expires_at > NOW()`,
-      [placeIds, [...GATE_PASSING_VERIFICATION_STATUSES], [...OFFICIAL_SOURCE_TYPES]],
+         AND s.type = ANY($2)
+         AND latest_review.decision = 'APPROVE'
+         AND latest_review.verification_expires_at IS NOT NULL
+         AND latest_review.verification_expires_at > NOW()`,
+      [placeIds, [...OFFICIAL_SOURCE_TYPES]],
     );
     const byPlace = new Map<string, Set<string>>();
     for (const link of links) {
@@ -551,12 +572,14 @@ export class PlacesRepository {
    * closes that gap here too: gate-passing evidence must ALSO be attributed to an
    * official_website/business_owner/government source.
    *
-   * Mechanism (unchanged from the original fix): a place is Right-Now-eligible only when its
-   * CURRENT `opening_hours` value has a `place_field_evidence_links` row whose `field_value_hash`
-   * matches sha256(canonicalJson(current value)) AND whose linked `evidence_artifacts` row both
-   * clears `GATE_PASSING_VERIFICATION_STATUSES` AND is attributed to an `OFFICIAL_SOURCE_TYPES`
-   * source. A stale link (hash computed against a value the field no longer holds) is real, retained
-   * history that simply won't match — it can never support a changed value.
+   * Mechanism: a place is Right-Now-eligible only when its CURRENT `opening_hours` value has a
+   * `place_field_evidence_links` row whose `field_value_hash` matches sha256(canonicalJson(current
+   * value)) AND that EXACT (place, field, value) tuple has a latest `evidence_reviews` row that is
+   * APPROVE, unexpired, and attributed to an `OFFICIAL_SOURCE_TYPES` source (Evidence Field-Binding
+   * V2 — see `getVerifiedOpeningHoursHashes()`'s own comment above for why a review must be bound to
+   * the exact tuple, not just the evidence artifact). A stale link (hash computed against a value the
+   * field no longer holds) is real, retained history that simply won't match — it can never support
+   * a changed value.
    *
    * Two bounded queries, not N+1: query 1 overfetches published+presence candidates (no longer
    * trust-filtered — see above); query 2 bulk-fetches every gate-passing, source-authoritative
