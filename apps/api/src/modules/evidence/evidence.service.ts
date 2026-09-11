@@ -442,10 +442,26 @@ export class EvidenceService {
         const existing = await this.reviewsRepo.findByEvidenceAndReceipt(input.evidenceArtifactId, input.approvalArtifactSha256, manager);
         if (existing) {
           if (!sameReviewPayload(existing, input, claimType, reviewerName)) {
+            // A legacy V1 (unbound) row sitting at this exact digest is the most likely real-world
+            // case of this branch, not a random collision: someone reusing an OLD V1 approval
+            // receipt's digest while trying to submit a NEW V2-bound review for the same evidence.
+            // UNIQUE(evidence_artifact_id, approval_artifact_sha256) means that can never become a
+            // second row — this always surfaces as a conflict, never a silent no-op or a false
+            // "verified" success, and the V1 row itself is never touched (the throw happens before
+            // any write). The fix on the caller's side is to mint a NEW approval_artifact_sha256 for
+            // the new (place, field, value)-bound submission — a digest identifies ONE approval
+            // payload, and V1-content-only vs V2-field-bound are different payloads by definition.
+            const wasUnboundNowBound = existing.placeId === null && input.placeId != null;
             throw new ConflictException(
               `Approval receipt ${input.approvalArtifactSha256} was already recorded for evidence artifact ` +
-                `${input.evidenceArtifactId} with a different decision/reviewer/claim/evidence hash. A digest ` +
-                `must uniquely identify one approval payload — resolve the mismatch, do not resubmit.`,
+                `${input.evidenceArtifactId} with a different decision/reviewer/claim/evidence hash or a different ` +
+                `place/field/value binding. A digest must uniquely identify one approval payload — resolve the ` +
+                `mismatch, do not resubmit.` +
+                (wasUnboundNowBound
+                  ? ` The existing row is an unbound legacy (V1) review; reusing its receipt digest to submit a ` +
+                    `NEW field-bound (V2) review is not supported — mint a new approval_artifact_sha256 for the ` +
+                    `V2-bound approval (V2_APPROVAL_RECEIPT_REQUIRED).`
+                  : ''),
             );
           }
           return buildReplayResult(evidence, existing);

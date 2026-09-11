@@ -886,7 +886,7 @@ describe('EvidenceService', () => {
           expect(reviewsRepo.save).not.toHaveBeenCalled();
         });
 
-        it('same receipt + previously UNBOUND (V1) vs now bound (V2) -> ConflictException, never silently upgraded', async () => {
+        it('same receipt + previously UNBOUND (V1) vs now bound (V2) -> ConflictException, never silently upgraded, message names V2_APPROVAL_RECEIPT_REQUIRED', async () => {
           const existing = makeReview({
             evidenceArtifactId: 'evd-1',
             approvalArtifactSha256: receiptDigest,
@@ -897,8 +897,29 @@ describe('EvidenceService', () => {
           });
           reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
 
-          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(ConflictException);
+          // A caller reusing an OLD V1 receipt digest to submit a NEW V2-bound review is the
+          // realistic case this branch exists for (not a random digest collision) — the rollout
+          // contract is: mint a NEW receipt for the V2-bound approval, never reuse the V1 one. The
+          // message says so explicitly, not just "something differs", so a caller mid-V1→V2 upgrade
+          // can actually tell what went wrong instead of guessing at a generic conflict.
+          await expect(service.reviewEvidenceArtifact(boundInput())).rejects.toThrow(/V2_APPROVAL_RECEIPT_REQUIRED/);
           expect(reviewsRepo.save).not.toHaveBeenCalled();
+          expect(repo.save).not.toHaveBeenCalled();
+          // The legacy V1 row itself is never touched — the conflict is thrown before any write path
+          // is reached, so there is no code path here that could mutate or upgrade it in place.
+          expect(existing.placeId).toBeNull();
+        });
+
+        it('the SAME conflict, but the existing row differs on decision/reviewer/claim (not a V1-vs-V2 binding mismatch) — message does NOT claim V2_APPROVAL_RECEIPT_REQUIRED', async () => {
+          const existing = makeReview({
+            evidenceArtifactId: 'evd-1',
+            approvalArtifactSha256: receiptDigest,
+            decision: 'REJECT', // differs from the incoming APPROVE — nothing to do with V1/V2 binding
+          });
+          reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(existing);
+
+          await expect(service.reviewEvidenceArtifact(baseInput({ decision: 'APPROVE' }))).rejects.not.toThrow(/V2_APPROVAL_RECEIPT_REQUIRED/);
+          await expect(service.reviewEvidenceArtifact(baseInput({ decision: 'APPROVE' }))).rejects.toThrow(ConflictException);
         });
       });
 
