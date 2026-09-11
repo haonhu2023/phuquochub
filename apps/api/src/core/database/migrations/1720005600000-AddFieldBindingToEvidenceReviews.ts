@@ -22,9 +22,14 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // explicit exclusion this migration would have to encode and could get wrong.
 //
 // Additive-only, same convention as AddFieldValueHashToPlaceFieldEvidenceLinks (1720005400000):
-// editing InitEvidenceReviews in place is avoided even though (like that migration) evidence_reviews
-// has zero rows in every real environment at authoring time — no persistent environment has ever
-// exercised EvidenceService.reviewEvidenceArtifact.
+// editing InitEvidenceReviews in place is avoided rather than assuming any persistent environment's
+// evidence_reviews table is still empty by the time this ships. Persistent environments MAY already
+// contain legacy V1 (OPENING_HOURS_OFFICIAL_STABLE_V1, unbound) review rows from real use of
+// EvidenceService.reviewEvidenceArtifact — this migration's own guarantees do not depend on that
+// table being empty either way: the three new columns are added NULL on every existing row (no
+// UPDATE/backfill anywhere in up()), so any pre-existing row — legacy or otherwise — is preserved
+// byte-for-byte and stays fully auditable. It simply never satisfies the new V2 field-bound gate
+// on its own (see the class doc above) until a real V2-bound review is submitted for it.
 export class AddFieldBindingToEvidenceReviews1720005600000 implements MigrationInterface {
   name = 'AddFieldBindingToEvidenceReviews1720005600000';
 

@@ -270,9 +270,10 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
     // evidence_artifacts.verification_status/verification_expires_at to VERIFIED/unexpired in the
     // first place — see EvidenceService.reviewEvidenceArtifact, which never resets those on a later
     // non-APPROVE review) — but a NEWER REJECT for that SAME exact tuple has since been recorded.
-    // The LATERAL join always picks up the LATEST row (`ORDER BY reviewed_at DESC, created_at DESC,
-    // id DESC`), so `latest_review.decision = 'APPROVE'` now fails even though the denormalized
-    // evidence_artifacts row still says VERIFIED with a future verification_expires_at.
+    // The LATERAL join always picks up the LATEST row (ordered reviewed_at DESC, created_at DESC,
+    // decision-precedence ASC, id DESC), so `latest_review.decision = 'APPROVE'` now fails even
+    // though the denormalized evidence_artifacts row still says VERIFIED with a future
+    // verification_expires_at.
     it('DETAIL V2-2: APPROVE cũ + REJECT mới hơn cho ĐÚNG tuple, evidence_artifacts vẫn VERIFIED/chưa hết hạn -> false', async () => {
       const oh = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
       repo.query.mockResolvedValueOnce([]);
@@ -295,7 +296,9 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(sql(query)).toContain('er.place_id = pfel.place_id');
       expect(sql(query)).toContain('er.field_name = pfel.field_name');
       expect(sql(query)).toContain('er.field_value_hash = pfel.field_value_hash');
-      expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+      expect(sql(query)).toContain(
+      "ORDER BY er.reviewed_at DESC, er.created_at DESC, (CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END) ASC, er.id DESC",
+    );
       // Explicitly proves this query never reads evidence_artifacts.verification_status — the
       // V1 denormalized mirror is not the source of truth for the V2 gate (see the method's own
       // comment: it never resets on a later non-APPROVE review, so trusting it here would let H2 back in).
@@ -918,7 +921,9 @@ describe('PlacesRepository.nearbyTrusted — Trusted Nearby + Opening State v0',
     expect(sql(query)).toContain("latest_review.decision = 'APPROVE'");
     expect(sql(query)).toContain('latest_review.verification_expires_at IS NOT NULL');
     expect(sql(query)).toContain('latest_review.verification_expires_at > NOW()');
-    expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+    expect(sql(query)).toContain(
+      "ORDER BY er.reviewed_at DESC, er.created_at DESC, (CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END) ASC, er.id DESC",
+    );
     expect(sql(query)).not.toContain('verification_status');
     expect(params[0]).toEqual(['p1']);
     expect(params[1]).toEqual(['official_website', 'business_owner', 'government']);
@@ -1150,7 +1155,9 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(sql(query)).toContain("latest_review.decision = 'APPROVE'");
     expect(sql(query)).toContain('latest_review.verification_expires_at IS NOT NULL');
     expect(sql(query)).toContain('latest_review.verification_expires_at > NOW()');
-    expect(sql(query)).toContain('ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC');
+    expect(sql(query)).toContain(
+      "ORDER BY er.reviewed_at DESC, er.created_at DESC, (CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END) ASC, er.id DESC",
+    );
     expect(sql(query)).not.toContain('verification_status');
     expect(params[0]).toEqual(['p1', 'p2']);
     expect(params[1]).toEqual(['official_website', 'business_owner', 'government']);

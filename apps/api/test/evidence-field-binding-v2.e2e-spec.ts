@@ -259,54 +259,214 @@ describe('Evidence Field-Binding V2 (ADR-022 follow-up, live Postgres)', () => {
     expect(links).toEqual([]);
   });
 
-  it('DETERMINISM: two reviews for the exact same tuple tied on reviewed_at AND created_at resolve via a stable id DESC tiebreak, never arbitrarily', async () => {
-    const value = { timezone: 'Asia/Ho_Chi_Minh', regular: { wed: [{ open: '08:00', close: '17:00' }] } };
-    const hash = computeFieldValueHash(value);
-    const sourceId = await mkOfficialSource();
-    const placeId = await mkPlace('tie', value);
-    const capturedAt = new Date(Date.now() - 60 * 60 * 1000);
-    const content = contentDigest('tie');
-    const artifactId = await mkEvidenceArtifact(sourceId, 'tie', capturedAt, content);
-    const tiedTimestamp = new Date();
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-    // Both rows are inserted directly (bypassing EvidenceService — this test is about the SQL
-    // ORDER BY's own tie-break stability, not the service's write path) with the SAME reviewed_at
-    // AND the SAME created_at, so `reviewed_at DESC, created_at DESC` alone cannot resolve a winner
-    // — only the trailing `id DESC` tiebreak can.
-    const [{ id: approveId }]: Array<{ id: string }> = await ds.query(
-      `INSERT INTO evidence_reviews
-         (evidence_artifact_id, decision, reviewer_name, reviewed_at, approval_artifact_sha256, claim_type,
-          policy_key, policy_version, evidence_content_sha256, verification_expires_at, place_id, field_name,
-          field_value_hash, created_at)
-       VALUES ($1, 'APPROVE', 'Tie Reviewer A', $2, $3, 'opening_hours', 'OPENING_HOURS_FIELD_BOUND_V2', '2', $4, $5, $6, 'opening_hours', $7, $2)
-       RETURNING id`,
-      [artifactId, tiedTimestamp, receipt('tie-approve'), content, expiresAt, placeId, hash],
-    );
-    const [{ id: rejectId }]: Array<{ id: string }> = await ds.query(
-      `INSERT INTO evidence_reviews
-         (evidence_artifact_id, decision, reviewer_name, reviewed_at, approval_artifact_sha256, claim_type,
-          policy_key, policy_version, evidence_content_sha256, verification_expires_at, place_id, field_name,
-          field_value_hash, created_at)
-       VALUES ($1, 'REJECT', 'Tie Reviewer B', $2, $3, 'opening_hours', 'OPENING_HOURS_FIELD_BOUND_V2', '2', $4, NULL, $5, 'opening_hours', $6, $2)
-       RETURNING id`,
-      [artifactId, tiedTimestamp, receipt('tie-reject'), content, placeId, hash],
-    );
-    await ds.query(
-      `INSERT INTO place_field_evidence_links (place_id, field_name, evidence_artifact_id, field_value_hash) VALUES ($1, 'opening_hours', $2, $3)`,
-      [placeId, artifactId, hash],
-    );
-
-    // Postgres UUID ordering matches JS string comparison of the canonical lowercase-hex-with-
-    // hyphens form (hyphens sit at identical fixed positions in every UUID), so this predicts
-    // exactly what `id DESC` will pick without needing to special-case either outcome.
-    const approveWinsById = approveId > rejectId;
-
-    const results: boolean[] = [];
-    for (let i = 0; i < 3; i += 1) {
-      results.push(await placesRepo.hasCurrentQualifiedOpeningHoursEvidence(placeId, value));
+  describe('DETERMINISM at an exact (reviewed_at, created_at) tie — decision-precedence, not UUID luck', () => {
+    // Inserts a review row directly (bypassing EvidenceService — these tests are about the SQL
+    // ORDER BY's own tie-break behavior, not the service's write path) with an EXPLICIT reviewed_at
+    // AND created_at, so two rows sharing both can never be resolved by `reviewed_at DESC, created_at
+    // DESC` alone.
+    async function insertTiedReview(params: {
+      artifactId: string;
+      placeId: string;
+      hash: string;
+      decision: 'APPROVE' | 'REJECT' | 'NEEDS_CHANGES';
+      reviewerName: string;
+      receiptDigest: string;
+      content: string;
+      tiedTimestamp: Date;
+      expiresAt: Date | null;
+    }): Promise<string> {
+      const rows: Array<{ id: string }> = await ds.query(
+        `INSERT INTO evidence_reviews
+           (evidence_artifact_id, decision, reviewer_name, reviewed_at, approval_artifact_sha256, claim_type,
+            policy_key, policy_version, evidence_content_sha256, verification_expires_at, place_id, field_name,
+            field_value_hash, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'opening_hours', 'OPENING_HOURS_FIELD_BOUND_V2', '2', $6, $7, $8, 'opening_hours', $9, $4)
+         RETURNING id`,
+        [
+          params.artifactId,
+          params.decision,
+          params.reviewerName,
+          params.tiedTimestamp,
+          params.receiptDigest,
+          params.content,
+          params.expiresAt,
+          params.placeId,
+          params.hash,
+        ],
+      );
+      return rows[0].id;
     }
-    expect(new Set(results).size).toBe(1); // stable across repeated calls, never flip-flops
-    expect(results[0]).toBe(approveWinsById);
+
+    async function setUpTiedScenario(label: string) {
+      const value = { timezone: 'Asia/Ho_Chi_Minh', regular: { wed: [{ open: '08:00', close: '17:00' }] } };
+      const hash = computeFieldValueHash(value);
+      const sourceId = await mkOfficialSource();
+      const placeId = await mkPlace(label, value);
+      const capturedAt = new Date(Date.now() - 60 * 60 * 1000);
+      const content = contentDigest(label);
+      const artifactId = await mkEvidenceArtifact(sourceId, label, capturedAt, content);
+      await ds.query(
+        `INSERT INTO place_field_evidence_links (place_id, field_name, evidence_artifact_id, field_value_hash) VALUES ($1, 'opening_hours', $2, $3)`,
+        [placeId, artifactId, hash],
+      );
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      return { value, hash, placeId, artifactId, content, expiresAt, tiedTimestamp: new Date() };
+    }
+
+    it('1. APPROVE vs REJECT tied on reviewed_at AND created_at -> REJECT wins regardless of which UUID sorts higher -> gate FAILS', async () => {
+      const s = await setUpTiedScenario('tie-approve-reject');
+      // Deliberately NOT asserting anything about which row's UUID is lexically greater — the whole
+      // point of the decision-precedence tiebreak is that the outcome must NOT depend on that.
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'APPROVE',
+        reviewerName: 'Tie Reviewer A',
+        receiptDigest: receipt('tie-1-approve'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: s.expiresAt,
+      });
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'REJECT',
+        reviewerName: 'Tie Reviewer B',
+        receiptDigest: receipt('tie-1-reject'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: null,
+      });
+
+      const results: boolean[] = [];
+      for (let i = 0; i < 3; i += 1) results.push(await placesRepo.hasCurrentQualifiedOpeningHoursEvidence(s.placeId, s.value));
+      expect(new Set(results).size).toBe(1); // stable across repeated calls
+      expect(results[0]).toBe(false); // REJECT wins the tie -> gate fails closed
+    });
+
+    it('2. APPROVE vs NEEDS_CHANGES tied on reviewed_at AND created_at -> NEEDS_CHANGES wins regardless of UUID order -> gate FAILS', async () => {
+      const s = await setUpTiedScenario('tie-approve-needschanges');
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'APPROVE',
+        reviewerName: 'Tie Reviewer A',
+        receiptDigest: receipt('tie-2-approve'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: s.expiresAt,
+      });
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'NEEDS_CHANGES',
+        reviewerName: 'Tie Reviewer B',
+        receiptDigest: receipt('tie-2-needschanges'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: null,
+      });
+
+      const results: boolean[] = [];
+      for (let i = 0; i < 3; i += 1) results.push(await placesRepo.hasCurrentQualifiedOpeningHoursEvidence(s.placeId, s.value));
+      expect(new Set(results).size).toBe(1);
+      expect(results[0]).toBe(false);
+    });
+
+    it('3. Two APPROVEs tied on reviewed_at AND created_at -> deterministic id DESC tiebreak is acceptable (both are APPROVE, gate PASSES either way)', async () => {
+      const s = await setUpTiedScenario('tie-approve-approve');
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'APPROVE',
+        reviewerName: 'Tie Reviewer A',
+        receiptDigest: receipt('tie-3-approve-a'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: s.expiresAt,
+      });
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'APPROVE',
+        reviewerName: 'Tie Reviewer B',
+        receiptDigest: receipt('tie-3-approve-b'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: s.expiresAt,
+      });
+
+      const results: boolean[] = [];
+      for (let i = 0; i < 3; i += 1) results.push(await placesRepo.hasCurrentQualifiedOpeningHoursEvidence(s.placeId, s.value));
+      expect(new Set(results).size).toBe(1); // stable — doesn't flip-flop between calls
+      expect(results[0]).toBe(true);
+    });
+
+    it('4. Two REJECTs tied on reviewed_at AND created_at -> deterministic id DESC tiebreak is acceptable (neither is APPROVE, gate FAILS either way)', async () => {
+      const s = await setUpTiedScenario('tie-reject-reject');
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'REJECT',
+        reviewerName: 'Tie Reviewer A',
+        receiptDigest: receipt('tie-4-reject-a'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: null,
+      });
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'REJECT',
+        reviewerName: 'Tie Reviewer B',
+        receiptDigest: receipt('tie-4-reject-b'),
+        content: s.content,
+        tiedTimestamp: s.tiedTimestamp,
+        expiresAt: null,
+      });
+
+      const results: boolean[] = [];
+      for (let i = 0; i < 3; i += 1) results.push(await placesRepo.hasCurrentQualifiedOpeningHoursEvidence(s.placeId, s.value));
+      expect(new Set(results).size).toBe(1);
+      expect(results[0]).toBe(false);
+    });
+
+    it('5. REJECT at T1, then a fully-eligible APPROVE at a STRICTLY LATER T2 -> PASSES (negative precedence applies ONLY to an exact tie, never dominates across different timestamps)', async () => {
+      const s = await setUpTiedScenario('tie-reject-then-later-approve');
+      const t1 = new Date(s.tiedTimestamp.getTime() - 5000);
+      const t2 = new Date(s.tiedTimestamp.getTime());
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'REJECT',
+        reviewerName: 'Earlier Reviewer',
+        receiptDigest: receipt('tie-5-reject'),
+        content: s.content,
+        tiedTimestamp: t1,
+        expiresAt: null,
+      });
+      await insertTiedReview({
+        artifactId: s.artifactId,
+        placeId: s.placeId,
+        hash: s.hash,
+        decision: 'APPROVE',
+        reviewerName: 'Later Reviewer',
+        receiptDigest: receipt('tie-5-approve'),
+        content: s.content,
+        tiedTimestamp: t2,
+        expiresAt: s.expiresAt,
+      });
+
+      await expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence(s.placeId, s.value)).resolves.toBe(true);
+    });
   });
 });
