@@ -374,7 +374,7 @@ export class EvidenceService {
       approvalBoundEvidenceHash: string;
       binding: { placeId: string; fieldName: string; approvalBoundFieldValueHash: string } | null;
       manager?: EntityManager;
-    }): Promise<{ evaluation: PolicyEvaluationResult | FieldBoundPolicyEvaluationResult; resolvedFieldValueHash: string | null }> => {
+    }): Promise<{ evaluation: PolicyEvaluationResult | FieldBoundPolicyEvaluationResult }> => {
       const source = await this.sourcesRepo.findById(params.evidence.sourceId, params.manager);
       const baseInput = {
         claimType,
@@ -388,14 +388,15 @@ export class EvidenceService {
         decision: params.decision,
       };
       if (!params.binding) {
-        return { evaluation: evaluateOpeningHoursOfficialStableV1(baseInput), resolvedFieldValueHash: null };
+        return { evaluation: evaluateOpeningHoursOfficialStableV1(baseInput) };
       }
 
       // The service independently resolves the place's CURRENT field value and computes its own
       // hash — `approvalBoundFieldValueHash` (the caller's/receipt's assertion) is only ever
-      // COMPARED against this, never trusted alone. A missing place or an unregistered field reader
-      // resolves to a hash that can never legitimately match any receipt, so the binding fails
-      // closed (FIELD_VALUE_HASH_MISMATCH) rather than silently skipping the field-bound gate.
+      // COMPARED against this for ELIGIBILITY, never trusted alone and never persisted in its place.
+      // A missing place or an unregistered field reader resolves to a hash that can never
+      // legitimately match any receipt, so the binding fails closed (FIELD_VALUE_HASH_MISMATCH)
+      // rather than silently skipping the field-bound gate.
       const place = await this.placesRepo.getCardByIdIncludingInactive(params.binding.placeId);
       const reader = PLACE_FIELD_VALUE_READERS[params.binding.fieldName];
       const currentFieldValueHash = place && reader ? computeFieldValueHash(reader(place)) : '';
@@ -405,7 +406,7 @@ export class EvidenceService {
         approvalBoundFieldValueHash: params.binding.approvalBoundFieldValueHash,
         currentFieldValueHash,
       });
-      return { evaluation, resolvedFieldValueHash: currentFieldValueHash || null };
+      return { evaluation };
     };
 
     const buildReplayResult = async (evidence: EvidenceArtifact, existing: EvidenceReview): Promise<ReviewEvidenceArtifactResult> => {
@@ -467,7 +468,7 @@ export class EvidenceService {
           return buildReplayResult(evidence, existing);
         }
 
-        const { evaluation, resolvedFieldValueHash } = await resolveEvaluation({
+        const { evaluation } = await resolveEvaluation({
           evidence,
           decision: input.decision,
           reviewedAtForEvaluation: reviewedAt,
@@ -495,18 +496,23 @@ export class EvidenceService {
               evidenceContentSha256: input.evidenceContentSha256,
               verificationExpiresAt: willVerify ? evaluation.verificationExpiresAt : null,
               reviewNote: input.reviewNote ?? null,
-              // Persists the SERVER-resolved current field value hash (never the caller's own
-              // assertion) — this is what the hardened read gate and the link-write guard will
-              // later match a place_field_evidence_links row's OWN independently-computed current
-              // hash against, so both sides always agree on "current" from the same source of truth.
-              // Falls back to the caller's own (already format-validated) asserted hash only when
-              // the server could not resolve one at all (place not found / no reader registered for
-              // fieldName) — the review is still a REAL, complete tuple either way (the all-or-none
-              // CHECK constraint requires it), it is simply ineligible (FIELD_VALUE_HASH_MISMATCH,
-              // since '' never matches a real hash), audited exactly like any other ineligible review.
+              // Persists what the RECEIPT ITSELF ASSERTS (input.fieldValueHash), never the
+              // server-resolved current hash — the review row is an immutable record of what was
+              // actually attested to, not a snapshot of evaluation state. When eligible, these are
+              // the SAME value by construction (eligibility literally requires
+              // approvalBoundFieldValueHash === currentFieldValueHash — see
+              // evaluateOpeningHoursFieldBoundV2's FIELD_VALUE_HASH_MISMATCH rule), so the gate/
+              // link-write-guard matching against a place_field_evidence_links row's own current-hash
+              // is unaffected for any review that could ever pass. When INELIGIBLE (a genuine
+              // mismatch), persisting the caller's own value here — rather than substituting in the
+              // current DB hash — is what keeps replay identity correct: a true retry of the exact
+              // same (mismatched) submission must still compare equal to itself on a second call
+              // (idempotent no-op), which silently swapping in a different, evaluation-time-only
+              // value would break. format-validated (SHA256_HEX) before the transaction opened, so
+              // this is always a well-formed hash whenever isFieldBound is true.
               placeId: isFieldBound ? input.placeId! : null,
               fieldName: isFieldBound ? input.fieldName!.trim() : null,
-              fieldValueHash: isFieldBound ? (resolvedFieldValueHash ?? input.fieldValueHash!) : null,
+              fieldValueHash: isFieldBound ? input.fieldValueHash! : null,
             }),
             manager,
           );

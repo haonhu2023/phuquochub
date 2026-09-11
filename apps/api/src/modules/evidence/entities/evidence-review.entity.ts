@@ -63,9 +63,15 @@ export class EvidenceReview {
   // (DB CHECK constraint, never a partial binding). NULL on every legacy V1 row and on any review
   // EvidenceService.reviewEvidenceArtifact records WITHOUT a placeId/fieldName/fieldValueHash input
   // (V1 semantics preserved unchanged for those calls — see that method's own comment). When set,
-  // this is the EXACT (place, field, value) tuple this review is bound to: place_value_hash is the
-  // field's value hash the service independently recomputed at review time, never the caller's own
-  // assertion alone. The hardened opening_hours read gate (PlacesRepository) and the link-write guard
+  // this is the EXACT (place, field, value) tuple this review is bound to: `fieldValueHash` is what
+  // the RECEIPT ITSELF ASSERTS (an immutable record of what was actually attested to), never
+  // silently substituted with the service's independently-recomputed current value — that
+  // recomputation exists purely to decide ELIGIBILITY at review time (a mismatch fails the review,
+  // FIELD_VALUE_HASH_MISMATCH), not to decide what gets persisted here. The two are the SAME value
+  // whenever a review is actually eligible (eligibility literally requires them to be equal), so
+  // this distinction only matters for an ineligible/mismatched row — and matters there specifically
+  // to keep replay identity correct (see reviewEvidenceArtifact's own comment on this column). The
+  // hardened opening_hours read gate (PlacesRepository) and the link-write guard
   // (EvidenceService.linkEvidenceToPlaceField) both require a LATEST review matching this exact
   // tuple to be APPROVE and unexpired — a review bound to a different place/field/value, or an
   // unbound legacy row, can never satisfy that match (NULL never equals NULL in the join predicate).

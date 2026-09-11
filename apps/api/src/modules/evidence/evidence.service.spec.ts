@@ -741,7 +741,7 @@ describe('EvidenceService', () => {
         expect(savedReview.policyVersion).toBe('2');
       });
 
-      it('caller-asserted fieldValueHash does not match the CURRENT place value (server independently recomputes) -> FIELD_VALUE_HASH_MISMATCH, never verified', async () => {
+      it('caller-asserted fieldValueHash does not match the CURRENT place value (server independently recomputes for ELIGIBILITY only) -> FIELD_VALUE_HASH_MISMATCH, never verified, audit row records what the RECEIPT attested to', async () => {
         const wrongHash = computeFieldValueHash({ regular: { mon: ['10:00-18:00'] } });
         const result = await service.reviewEvidenceArtifact(boundInput({ fieldValueHash: wrongHash }));
 
@@ -749,14 +749,40 @@ describe('EvidenceService', () => {
         expect(result.evaluation.reasonCodes).toContain('FIELD_VALUE_HASH_MISMATCH');
         expect(result.evidenceVerified).toBe(false);
         expect(repo.save).not.toHaveBeenCalled();
-        // Still a REAL, complete, auditable tuple — bound to the hash the SERVICE independently
-        // resolved (the place's actual current value), never the caller's wrong assertion — so a
-        // future query for "what did this review actually attest to" is never misleading.
+        // The review row is an immutable record of what the RECEIPT actually attested to
+        // (input.fieldValueHash) — never silently swapped for the server's independently-recomputed
+        // current value, even though that recomputed value (boundHash here) is what DECIDED
+        // eligibility. Substituting the current-DB value in here would misrepresent the audit trail
+        // (this review never attested to boundHash) and would break replay identity (see the
+        // idempotent-replay-of-an-ineligible-review test below).
         const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
         expect(savedReview.placeId).toBe('place-1');
         expect(savedReview.fieldName).toBe('opening_hours');
-        expect(savedReview.fieldValueHash).toBe(boundHash);
-        expect(savedReview.fieldValueHash).not.toBe(wrongHash);
+        expect(savedReview.fieldValueHash).toBe(wrongHash);
+        expect(savedReview.fieldValueHash).not.toBe(boundHash);
+      });
+
+      it('a true replay of an INELIGIBLE (mismatched) submission — same receipt, same asserted (wrong) hash — is still an idempotent no-op, not a conflict', async () => {
+        const wrongHash = computeFieldValueHash({ regular: { mon: ['10:00-18:00'] } });
+        const mismatchedInput = boundInput({ fieldValueHash: wrongHash });
+
+        const first = await service.reviewEvidenceArtifact(mismatchedInput);
+        expect(first.idempotentReplay).toBe(false);
+        expect(first.evidenceVerified).toBe(false);
+        const created = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
+        expect(created.fieldValueHash).toBe(wrongHash);
+
+        // Second call: the exact same submission. findByEvidenceAndReceipt now returns the row the
+        // first call just created — the payload-identity check must find it IDENTICAL (including the
+        // binding), never a conflict, precisely because the stored fieldValueHash is what the RECEIPT
+        // asserted (wrongHash), matching this second call's own input exactly.
+        reviewsRepo.findByEvidenceAndReceipt.mockResolvedValue(created);
+
+        const second = await service.reviewEvidenceArtifact(mismatchedInput);
+
+        expect(second.idempotentReplay).toBe(true);
+        expect(second.evidenceVerified).toBe(false);
+        expect(reviewsRepo.save).toHaveBeenCalledTimes(1); // no second INSERT
       });
 
       it('the CURRENT place value has changed since the receipt was prepared (place mutated between UI load and submit) -> FIELD_VALUE_HASH_MISMATCH, same as any other stale-binding attempt', async () => {

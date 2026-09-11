@@ -455,13 +455,26 @@ export class PlacesRepository {
    * gate existed, be re-linked to a totally different place B (or the SAME place after its hours
    * changed) and clear this gate with zero human review of that new binding. This query instead
    * requires the LATEST `evidence_reviews` row for the EXACT tuple (evidence_artifact_id, place_id,
-   * field_name, field_value_hash) — found via the LATERAL join below, ordered by `reviewed_at DESC,
-   * created_at DESC, id DESC` (the trailing two are deterministic tie-breaks, not temporal signals —
-   * `reviewed_at` is server-clock time captured once per call and can theoretically tie between two
-   * reviews; `created_at` almost never ties too, but nothing GUARANTEES it since it is a DB-assigned
-   * TIMESTAMPTZ default, not a strictly monotonic sequence; `id` is a random UUID with zero temporal
-   * meaning, kept purely so the ORDER BY is always FULLY deterministic even in that residual case,
-   * never "whatever order Postgres happens to return ties in") — to itself be `APPROVE` and unexpired.
+   * field_name, field_value_hash) — found via the LATERAL join below — to itself be `APPROVE` and
+   * unexpired. Ordering (`reviewed_at DESC, created_at DESC, <decision-precedence> ASC, id DESC`):
+   *   - `reviewed_at DESC` is the real temporal signal (server-clock time, captured once per review).
+   *   - `created_at DESC` breaks a `reviewed_at` tie — still temporal (DB-assigned TIMESTAMPTZ
+   *     default), though nothing GUARANTEES it can never also tie.
+   *   - The decision-precedence term (`CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END ASC`)
+   *     is a FAIL-CLOSED SAFETY RULE, not a temporal signal: it only ever applies when `reviewed_at`
+   *     AND `created_at` are BOTH exactly tied between two reviews for the same tuple — in that one
+   *     genuinely ambiguous case (we cannot tell which review actually happened "later"), a negative
+   *     decision (REJECT/NEEDS_CHANGES) outranks APPROVE, so the tie resolves to NOT clearing the
+   *     gate rather than arbitrarily clearing it. This is deliberate and must never be left to
+   *     accidental UUID ordering — an earlier version of this query used `id DESC` as the only
+   *     tie-break beyond `created_at`, which could let an APPROVE row "win" a tie against a REJECT
+   *     purely because its random UUID happened to sort higher; that is exactly the kind of ambiguity
+   *     this codebase's fail-closed posture (see ADR-022's own NULL-expiry-never-eligible rule) exists
+   *     to resolve toward "don't trust it," not toward whichever row a coin flip favors.
+   *   - `id DESC` remains only as the FINAL tie-break, reached only when `reviewed_at`, `created_at`,
+   *     AND decision-precedence ALL tie too (i.e. two reviews with the SAME decision at the exact same
+   *     instant) — a random UUID has no temporal meaning, so this case is genuinely "doesn't matter
+   *     which one wins" (both APPROVE, or both negative — the gate's outcome is identical either way).
    * Consequences:
    *   - A legacy V1 review (place_id/field_name/field_value_hash all NULL) can never satisfy the
    *     LATERAL join's equality predicates — NULL never equals NULL in SQL — so it fails closed by
@@ -492,7 +505,8 @@ export class PlacesRepository {
            AND er.place_id = pfel.place_id
            AND er.field_name = pfel.field_name
            AND er.field_value_hash = pfel.field_value_hash
-         ORDER BY er.reviewed_at DESC, er.created_at DESC, er.id DESC
+         ORDER BY er.reviewed_at DESC, er.created_at DESC,
+                  (CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END) ASC, er.id DESC
          LIMIT 1
        ) latest_review ON TRUE
        WHERE pfel.place_id = ANY($1) AND pfel.field_name = 'opening_hours'
