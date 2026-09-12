@@ -28,7 +28,7 @@ function permissionsOf(name: Handler): string[] | undefined {
 }
 
 const READ_ROUTES: Handler[] = ['list', 'listRightNow', 'listRevisions', 'getBySlug'];
-const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve'];
+const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve', 'report'];
 // PLACE-041: `mine` là route THỨ BA — không @Public (đòi hỏi đăng nhập, JwtAuthGuard chặn), nhưng
 // cũng không mang @RequirePermissions tĩnh (nội dung tự lọc theo userId gọi, xem controller +
 // permissions.guard.ts). Tách riêng khỏi READ_ROUTES/WRITE_ROUTES để không âm thầm nới lỏng ý
@@ -61,6 +61,7 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       ['update', 'Place.Edit.Managed'],
       ['archive', 'Place.Archive'],
       ['approve', 'Place.Approve'],
+      ['report', 'Report.Create'],
     ];
 
     it.each(EXPECTED)('`%s` yêu cầu đúng permission %s', (name, permission) => {
@@ -82,6 +83,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
   describe('mã trạng thái & pipe', () => {
     it('POST / trả 201 CREATED', () => {
       expect(Reflect.getMetadata(HTTP_CODE_METADATA, handlerOf('create'))).toBe(
+        HttpStatus.CREATED,
+      );
+    });
+
+    it("POST ':id/report' trả 201 CREATED (cùng quy ước reviews/media report)", () => {
+      expect(Reflect.getMetadata(HTTP_CODE_METADATA, handlerOf('report'))).toBe(
         HttpStatus.CREATED,
       );
     });
@@ -128,6 +135,7 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
         update: jest.fn(),
         archive: jest.fn(),
         approve: jest.fn(),
+        report: jest.fn(),
       });
       revisionsService = createMock<Ctor[1]>({ listByPlace: jest.fn() });
       controller = new PlacesController(placesService, revisionsService);
@@ -191,6 +199,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
     it('approve → placesService.approve(id, user.sub)', () => {
       controller.approve('p1', user);
       expect(placesService.approve).toHaveBeenCalledWith('p1', 'u1');
+    });
+
+    it('report → placesService.report(id, dto, user.sub)', async () => {
+      const dto = { reason: 'misinformation' } as never;
+      await controller.report('p1', dto, user);
+      expect(placesService.report).toHaveBeenCalledWith('p1', dto, 'u1');
     });
   });
 });

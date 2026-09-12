@@ -11,6 +11,9 @@ import { SourceAttributionsRepository } from '../sources/repositories/source-att
 import { SourcesRepository } from '../sources/repositories/sources.repository';
 import { PlaceTranslationsService } from '../place-translations/place-translations.service';
 import { LocalesService } from '../locales/locales.service';
+import { ModerationReportsService } from '../moderation/moderation-reports.service';
+import { ModerationTargetType } from '../moderation/moderation.enums';
+import { CreateReportDto } from '../moderation/dto/moderation.dto';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
@@ -103,6 +106,7 @@ export class PlacesService {
     private readonly sourcesRepo: SourcesRepository,
     private readonly placeTranslationsService: PlaceTranslationsService,
     private readonly localesService: LocalesService,
+    private readonly moderationReports: ModerationReportsService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -248,6 +252,32 @@ export class PlacesService {
       media: media.map((m) => toMedia(m, (id) => this.mediaUrl.fileUrl(id))),
       faqs,
     };
+  }
+
+  /**
+   * "Báo thông tin sai" — cho phép người dùng đã đăng nhập báo một place có thông tin không đúng
+   * (giờ mở cửa sai, đã đóng cửa vĩnh viễn, trùng lặp, v.v.). Dùng LẠI đúng đường T3 mà
+   * ReviewsService.report()/MediaService.report() đã dùng — `ModerationTargetType.PLACE` đã có sẵn
+   * trong enum từ trước (chưa có route công khai nào gọi tới), không phải giá trị mới. Không tái
+   * dùng CHECK constraint mới cho `report_reason` — bộ giá trị hiện có (misinformation/other, …)
+   * đã đủ diễn đạt "thông tin sai" mà không cần migration; một taxonomy riêng cho place (kiểu
+   * `MediaModerationReasonCode`) có thể làm sau nếu cần chi tiết hơn.
+   *
+   * `existsById()` (không lọc theo status) — CÙNG mức kiểm tra ReviewsService.create() đã dùng cho
+   * place_id, không phải "chỉ published" như getBySlug(). Không lộ thêm thông tin gì qua nhánh lỗi:
+   * NotFoundException giống hệt "không tìm thấy" ở các route khác.
+   */
+  async report(placeId: string, dto: CreateReportDto, reporterId: string): Promise<void> {
+    if (!(await this.placesRepo.existsById(placeId))) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    await this.moderationReports.report({
+      targetType: ModerationTargetType.PLACE,
+      targetId: placeId,
+      reporterId,
+      reason: dto.reason,
+      description: dto.description || null,
+    });
   }
 
   /**
