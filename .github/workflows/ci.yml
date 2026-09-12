@@ -115,12 +115,20 @@ jobs:
       # Docker step instead, mirroring how `docker-build` below boots images with `--network host`.
       # Launched before `npm ci` so it warms up while dependencies install; readiness is asserted in
       # its own step before e2e, never assumed.
+      #
+      # `minio/minio` on Docker Hub returns HTTP 404 ("object not found") from Docker Hub's own
+      # repository API as of 2026-09-12 — not a rate limit, the repository itself is gone from that
+      # registry. Pinned to the official `minio/minio` org on quay.io instead (MinIO Inc.'s other
+      # active distribution channel; confirmed via quay.io's public API: state NORMAL, maintainer
+      # label "MinIO Inc <dev@min.io>"), by immutable RELEASE tag AND digest so this can never
+      # silently drift to a different build even if the tag were ever re-pushed.
       - name: Start MinIO (S3-compatible storage for StorageService)
         run: |
           docker run -d --name minio-ci --network host \
             -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
             -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            minio/minio:latest server /data --console-address :9001
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772@sha256:cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd \
+            server /data --console-address :9001
 
       - uses: actions/setup-node@v4
         with:
