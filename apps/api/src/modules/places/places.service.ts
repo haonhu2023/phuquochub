@@ -45,6 +45,14 @@ const SHORT_DESCRIPTION_FIELD_KEY = 'short_description';
 // thêm khoá mới, cùng nguyên tắc `short_description` bên dưới.
 const DISPLAY_NAME_FIELD_KEY = 'display_name';
 
+// Public Place i18n Read Path — field_key cho mô tả DÀI (`description`), field thứ ba dùng chung
+// đúng seam `resolveLocalizedField`/`getCurrentPublicTranslatedText` với `short_description` và
+// `display_name` ở trên — không có nhánh riêng, không đổi eligibility filter (current + public +
+// production, tại repository). CHỈ overlay trong `getBySlug()`: `description` không tồn tại trên
+// PlaceCard/PlaceNowCard (toPlaceCard/toPlaceNowCard không có khoá này — xem places.mapper.ts),
+// nên `list()`/`listRightNow()` không cần và không được gọi field_key này.
+const DESCRIPTION_FIELD_KEY = 'description';
+
 // "Right Now" MVP — khối trang chủ CÓ CHẶN TRÊN (không phải trang duyệt), nên trần nhỏ hơn hẳn
 // clampLimit mặc định (20/100) của `list()`.
 const RIGHT_NOW_DEFAULT_LIMIT = 6;
@@ -153,11 +161,14 @@ export class PlacesService {
    * throw. Lỗi hạ tầng (DB/repository) vẫn propagate như bình thường — đây không phải một
    * guarantee "never throws" tuyệt đối cho mọi loại lỗi.
    *
-   * Ghi đè `name` (bản dịch `display_name`) và `short_description`: hai field DUY NHẤT
-   * multilingual importer đã ghi tới hôm nay (xem ADR-020, 11_TRANSLATABLE_FIELDS). Không tìm
+   * Ghi đè `name` (bản dịch `display_name`), `short_description` và `description`: BA field
+   * multilingual importer có thể ghi tới hôm nay qua cùng seam field-agnostic (xem ADR-020,
+   * 11_TRANSLATABLE_FIELDS — `description` dùng chung cơ chế, không phải bảng/cột mới). Không tìm
    * thấy bản dịch đủ điều kiện (current + public + production) cho field nào → giữ nguyên giá trị
-   * gốc từ `places.name` / `places.short_description` cho ĐÚNG field đó, không phải lỗi — hai field
-   * fallback độc lập với nhau (thiếu bản dịch tên không kéo theo mất bản dịch mô tả và ngược lại).
+   * gốc từ `places.name` / `places.short_description` / `places.description` cho ĐÚNG field đó,
+   * không phải lỗi — cả ba field fallback độc lập với nhau (thiếu bản dịch field này không kéo
+   * theo mất bản dịch field khác). `description` CHỈ overlay ở route chi tiết này — không tồn tại
+   * trên PlaceCard/PlaceNowCard nên `list()`/`listRightNow()` không cần đường này.
    */
   async getBySlug(slug: string, locale?: string) {
     const row = await this.placesRepo.getDetailBySlug(slug);
@@ -173,6 +184,7 @@ export class PlacesService {
       trustSources,
       localizedDisplayName,
       localizedShortDescription,
+      localizedDescription,
       hasQualifiedOpeningHoursEvidence,
     ] = await Promise.all([
       this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
@@ -182,6 +194,7 @@ export class PlacesService {
       this.resolveTrustSources(row.id),
       this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
       this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
+      this.resolveLocalizedField(row.id, DESCRIPTION_FIELD_KEY, locale),
       // Public detail opening-hours evidence gate (2026-09-09 fix/public-opening-hours-evidence-gate):
       // Right Now/Nearby already refuse to show an opening_hours claim without a gate-passing,
       // source-authoritative CURRENT-value evidence link (PlacesRepository's shared
@@ -202,6 +215,7 @@ export class PlacesService {
       // giờ nằm trong overlay này — identity không đổi theo locale.
       name: localizedDisplayName ?? row.name,
       short_description: localizedShortDescription ?? row.short_description,
+      description: localizedDescription ?? row.description,
       // `null` khi opening_hours đã có giá trị nhưng KHÔNG có bằng chứng hiện hành đạt gate — không
       // đổi giá trị trong DB, không 404 place, không ẩn field nào khác.
       opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
@@ -242,8 +256,8 @@ export class PlacesService {
    * `LocalesService.resolveRequestLocale()` rồi
    * `PlaceTranslationsService.getCurrentPublicTranslatedText()` — cùng một đường cho MỌI field/
    * place, không có nhánh riêng cho field hay địa điểm cụ thể nào. Dùng chung cho cả `name`
-   * (display_name) và `short_description` — thêm field dịch được mới trong tương lai chỉ cần gọi
-   * lại hàm này với fieldKey khác, không cần một private method riêng cho từng field.
+   * (display_name), `short_description` và `description` — thêm field dịch được mới trong tương
+   * lai chỉ cần gọi lại hàm này với fieldKey khác, không cần một private method riêng cho từng field.
    */
   private async resolveLocalizedField(
     placeId: string,
