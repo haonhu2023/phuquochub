@@ -1117,6 +1117,106 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         expect(res.id).toBe('129cbaeb-8cd2-4254-9ae2-9dc276700bb8');
       });
     });
+
+    // description locale read path — field_key = 'description', cùng seam field-agnostic
+    // `resolveLocalizedField`/`getCurrentPublicTranslatedText` với display_name/short_description
+    // ở trên, KHÔNG một nhánh riêng. Route trả `description` DUY NHẤT là getBySlug (list/
+    // listRightNow không có khoá này trên PlaceCard/PlaceNowCard — không cần test ở đó).
+    describe('description overlay (field_key = description)', () => {
+      function mockTranslations(byField: Record<string, string | null>) {
+        placeTranslationsService.getCurrentPublicTranslatedText.mockImplementation(
+          async (_placeId: string, fieldKey: string) => byField[fieldKey] ?? null,
+        );
+      }
+
+      it('eligible EN translation (current+public+production, giả lập bởi getCurrentPublicTranslatedText trả text) → description là bản dịch', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          name: 'Tên gốc',
+          short_description: 'Mô tả ngắn gốc',
+          description: 'Mô tả dài gốc bằng tiếng Việt.',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ description: 'Long description translated to English.' });
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.description).toBe('Long description translated to English.');
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          'p1',
+          'description',
+          'en',
+        );
+      });
+
+      it('eligible VI translation → description là bản dịch tiếng Việt (không chỉ EN mới overlay)', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', description: 'Bản gốc chưa chỉnh' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslations({ description: 'Bản dịch tiếng Việt hiện hành (revision mới hơn row gốc).' });
+
+        const res = await service.getBySlug('some-place', 'vi');
+
+        expect(res.description).toBe('Bản dịch tiếng Việt hiện hành (revision mới hơn row gốc).');
+      });
+
+      it('không có bản dịch đủ điều kiện (getCurrentPublicTranslatedText trả null — bao gồm cả trường hợp chỉ có bản draft/chưa public/chưa production) → fallback về places.description gốc, không lộ ra text chưa đủ điều kiện', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p2',
+          description: 'Mô tả dài gốc chưa có bản dịch đủ điều kiện.',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.description).toBe('Mô tả dài gốc chưa có bản dịch đủ điều kiện.');
+      });
+
+      it('description gốc null (chưa từng có mô tả dài) và không có bản dịch → description vẫn null, không throw, không bịa chuỗi rỗng', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p3', description: null });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.description).toBeNull();
+      });
+
+      it('description dịch thiếu nhưng name/short_description CÓ bản dịch → 3 field fallback độc lập, không field nào kéo field khác về gốc', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: 'p1',
+          name: 'Tên gốc',
+          short_description: 'Mô tả ngắn gốc',
+          description: 'Mô tả dài gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ display_name: 'Translated name', short_description: 'Translated short' });
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.name).toBe('Translated name');
+        expect(res.short_description).toBe('Translated short');
+        expect(res.description).toBe('Mô tả dài gốc');
+      });
+
+      it('toPlaceDetail (mock đầu file không truyền description qua) không ghi đè overlay — response.description luôn đến từ resolveLocalizedField/row, không phải mapper', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', description: 'Từ row, không phải mapper' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.getBySlug('some-place', 'vi');
+
+        // toPlaceDetail mock (đầu file) chỉ phát id/price_range/verification_status/mappedDetail —
+        // nếu description tới từ đó thì sẽ là undefined, không phải chuỗi row gốc.
+        expect(res.description).toBe('Từ row, không phải mapper');
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
