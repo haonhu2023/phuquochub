@@ -261,6 +261,28 @@ export class PlacesRepository {
   }
 
   /**
+   * Locking twin of `getCardByIdIncludingInactive()` — `SELECT ... FOR UPDATE` run through the
+   * CALLER's own transaction manager (`manager.query`, not `this.repo.query`, so it shares the
+   * caller's connection/transaction instead of opening a second one). `FROM places p` here is a
+   * single table with only scalar subqueries for its extra columns (COVER_IMAGE_COLS/category_slug
+   * — see their own comments), so `FOR UPDATE` is unambiguous: it locks exactly this place row.
+   *
+   * Exists for callers that must read-then-write the SAME row atomically against a concurrent
+   * writer — a plain read (the method above) cannot provide that on its own. First caller:
+   * `PlacesService.update()`'s optional `manager` param, itself added for
+   * `PlaceEditProposalsService.decide()` (base-value-hash conflict check + the actual apply must
+   * lock this row for their whole combined duration, not just re-check after the fact).
+   */
+  async getCardByIdIncludingInactiveForUpdate(id: string, manager: EntityManager): Promise<PlaceDetailRow | null> {
+    const rows: PlaceDetailRow[] = await manager.query(
+      `SELECT ${CARD_COLS}, ${DETAIL_EXTRA_COLS}
+       FROM places p WHERE p.id = $1 AND p.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+      [id],
+    );
+    return rows[0] ? withCoverImageUrlOne(rows[0], this.mediaUrl) : null;
+  }
+
+  /**
    * Row chi tiết cho trang công khai (card + address/ward/description/opening_hours/osm_id/
    * timestamps). Chỉ trả Place đã `published` — giống `nearby()`/`bbox()`: nội dung
    * `draft`/`pending` chưa qua kiểm duyệt **không** được lộ ra kênh công khai.

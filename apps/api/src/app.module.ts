@@ -18,6 +18,7 @@ import { MediaModule } from './modules/media/media.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { PricesModule } from './modules/prices/prices.module';
 import { PlacesModule } from './modules/places/places.module';
+import { PlaceEditProposalsModule } from './modules/place-edit-proposals/place-edit-proposals.module';
 import { GeoModule } from './modules/geo/geo.module';
 import { SearchModule } from './modules/search/search.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
@@ -73,6 +74,7 @@ import { EvidenceModule } from './modules/evidence/evidence.module';
     ContactsModule,
     PricesModule,
     PlacesModule,
+    PlaceEditProposalsModule,
     GeoModule,
     SearchModule,
     HotelsModule,
