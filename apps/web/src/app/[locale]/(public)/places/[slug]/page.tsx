@@ -23,6 +23,7 @@ import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
 import type { Review } from '@/modules/reviews/types';
 import { ClaimCta } from '@/modules/business-claims/ClaimCta';
+import { ProposeEditCta } from '@/modules/place-edit-proposals/ProposeEditCta';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 
@@ -240,6 +241,7 @@ export default async function PlaceDetailPage({ params }: Params) {
       </header>
 
       <ClaimCta placeId={place.id} placeName={place.name} />
+      <ProposeEditCta placeId={place.id} placeName={place.name} placeSlug={place.slug} locale={locale} />
 
       {place.media.length > 0 && (
         <div className={styles.gallery}>
