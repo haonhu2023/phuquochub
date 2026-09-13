@@ -41,17 +41,27 @@ export interface RecordPlaceTranslationRevisionInput {
 export class RevisionsService {
   constructor(private readonly revisionsRepo: RevisionsRepository) {}
 
-  recordPlaceRevision(input: RecordPlaceRevisionInput): Promise<{ id: string; revisionNumber: number }> {
-    return this.revisionsRepo.record({
-      entityType: RevisionEntityType.PLACE,
-      entityId: input.placeId,
-      snapshot: input.snapshot,
-      diff: input.diff ?? null,
-      origin: input.origin,
-      changeNote: input.changeNote ?? null,
-      editorId: input.editorId ?? null,
-      status: input.status,
-    });
+  // `manager` TÙY CHỌN (thêm cho PlacesService.update()'s optional manager — chính nó thêm cho
+  // PlaceEditProposalsService.decide(), nơi việc ghi revision phải nằm CHUNG transaction với việc
+  // khoá/kiểm tra/ghi place, không phải một connection riêng "coi như" atomic) — cùng quy ước
+  // `recordPlaceTranslationRevision` đã có, bỏ trống dùng connection mặc định như trước.
+  recordPlaceRevision(
+    input: RecordPlaceRevisionInput,
+    manager?: EntityManager,
+  ): Promise<{ id: string; revisionNumber: number }> {
+    return this.revisionsRepo.record(
+      {
+        entityType: RevisionEntityType.PLACE,
+        entityId: input.placeId,
+        snapshot: input.snapshot,
+        diff: input.diff ?? null,
+        origin: input.origin,
+        changeNote: input.changeNote ?? null,
+        editorId: input.editorId ?? null,
+        status: input.status,
+      },
+      manager,
+    );
   }
 
   async listByPlace(placeId: string) {

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { slugify } from '@phuquochub/utils';
 import { PlacesRepository } from './repositories/places.repository';
@@ -406,9 +407,28 @@ export class PlacesService {
    * thay đổi, dù giá trị cuối cùng có đúng đến đâu. Không thêm giá trị enum mới: `revision_origin`
    * (CSDL) đã sẵn có `import`, đúng ngữ nghĩa cho một đợt backfill có nguồn xác định, chạy hàng
    * loạt, không phải quyết định biên tập của một cá nhân.
+   *
+   * `manager` TÙY CHỌN (Place Edit Proposals atomicity fix) — truyền vào khi caller cần TOÀN BỘ
+   * chuỗi đọc/ghi/ghi-revision này chạy trong MỘT transaction của họ, khoá ĐÚNG hàng place đó cho
+   * suốt thời gian đó. Không có nó, một caller làm "kiểm tra giá trị gốc rồi gọi update()" (như
+   * `PlaceEditProposalsService.decide()`) sẽ kiểm tra trên MỘT connection rồi ghi trên một
+   * connection KHÁC — hai bước tách rời, một writer khác có thể chen vào giữa mà không ai phát
+   * hiện được. Khi có `manager`: đọc trước/sau dùng bản khoá (`getCardByIdIncludingInactiveForUpdate`,
+   * SELECT ... FOR UPDATE) thay vì bản đọc thường, và revision cũng ghi qua CHÍNH manager đó — nên
+   * nếu bất cứ bước nào ném lỗi, transaction của caller rollback TOÀN BỘ (không có "place đã đổi
+   * nhưng revision chưa ghi" hay ngược lại). Bỏ trống giữ nguyên hành vi cho mọi caller hiện có
+   * (route PATCH /places/:id) — không caller nào khác cần đổi.
    */
-  async update(id: string, dto: UpdatePlaceDto, userId: string, origin: RevisionOrigin = RevisionOrigin.COMMUNITY_EDIT) {
-    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+  async update(
+    id: string,
+    dto: UpdatePlaceDto,
+    userId: string,
+    origin: RevisionOrigin = RevisionOrigin.COMMUNITY_EDIT,
+    manager?: EntityManager,
+  ) {
+    const existing = manager
+      ? await this.placesRepo.getCardByIdIncludingInactiveForUpdate(id, manager)
+      : await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
@@ -431,25 +451,30 @@ export class PlacesService {
     if (dto.short_description !== undefined) patch.shortDescription = dto.short_description;
     if (dto.opening_hours !== undefined) patch.openingHours = dto.opening_hours;
     if (dto.price_range !== undefined) patch.priceRange = dto.price_range;
-    await this.placesRepo.updateScalars(id, patch);
+    await this.placesRepo.updateScalars(id, patch, manager);
     if (dto.location) {
       await this.placesRepo.updateLocation(id, dto.location.lng, dto.location.lat);
     }
-    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
+    const row = manager
+      ? await this.placesRepo.getCardByIdIncludingInactiveForUpdate(id, manager)
+      : await this.placesRepo.getCardByIdIncludingInactive(id);
     const card = toPlaceCard(row!);
     // WF-14: ghi vết phiên bản. Ở giai đoạn này bản sửa được áp trực tiếp → revision
     // `approved`; Sprint 4 sẽ chuyển sang luồng `pending` chờ duyệt trước khi materialize.
     const changedFields = REVISABLE_FIELDS.filter((f) => dto[f] !== undefined);
     if (changedFields.length > 0) {
-      await this.revisionsService.recordPlaceRevision({
-        placeId: id,
-        snapshot: card,
-        diff: { fields: changedFields },
-        origin,
-        changeNote: null,
-        editorId: userId,
-        status: RevisionStatus.APPROVED,
-      });
+      await this.revisionsService.recordPlaceRevision(
+        {
+          placeId: id,
+          snapshot: card,
+          diff: { fields: changedFields },
+          origin,
+          changeNote: null,
+          editorId: userId,
+          status: RevisionStatus.APPROVED,
+        },
+        manager,
+      );
     }
     return card;
   }

@@ -63,13 +63,29 @@ export class PlaceEditProposalsService {
 
     let localeCode: string | null = null;
     if (dto.locale_code) {
+      let locale: Awaited<ReturnType<LocalesService['getKnownLocale']>> | null = null;
       try {
-        await this.localesService.getKnownLocale(dto.locale_code);
-        localeCode = dto.locale_code;
+        locale = await this.localesService.getKnownLocale(dto.locale_code);
       } catch {
-        // Informational field only (xem entity/migration comment) — mã locale không nhận diện
-        // được không được phép chặn cả đề xuất, chỉ bỏ qua giá trị đó.
-        localeCode = null;
+        // Mã locale không tồn tại: field chỉ mang tính thông tin (xem entity/migration comment),
+        // không được phép chặn cả đề xuất vì một chuỗi rác — bỏ qua giá trị đó, coi như không gửi.
+        locale = null;
+      }
+      if (locale) {
+        // `short_description` là field CÓ dịch (place_translations) — write target của MVP này
+        // LUÔN LUÔN là cột gốc `places.short_description` (tiếng Việt), KHÔNG BAO GIỜ một bản dịch
+        // (xem migration header). Một đề xuất khai rõ locale KHÔNG PHẢI locale gốc cho field này
+        // nghĩa là người dùng đang sửa bản DỊCH họ đang xem — nếu ta lặng lẽ ghi giá trị đó vào cột
+        // gốc, nội dung ngôn ngữ khác sẽ đè lên nguồn tiếng Việt (và mọi bản dịch tương lai dịch từ
+        // đó). Task requirement "không silently ignore locale": từ chối rõ ràng thay vì đoán hoặc
+        // âm thầm bỏ qua locale khi nó THỰC SỰ ảnh hưởng tới việc ghi. `address`/`opening_hours`
+        // không có bảng dịch nào — không áp dụng chặn này.
+        if (dto.field_key === PlaceEditProposalFieldKey.SHORT_DESCRIPTION && !locale.isDefault) {
+          throw new BadRequestException(
+            'MVP hiện chỉ nhận đề xuất sửa mô tả ngắn cho bản gốc (locale mặc định) — chưa hỗ trợ đề xuất áp dụng cho một bản dịch cụ thể.',
+          );
+        }
+        localeCode = locale.localeCode;
       }
     }
 
@@ -134,8 +150,16 @@ export class PlaceEditProposalsService {
       } else if (dto.decision === PlaceEditProposalDecision.NEEDS_CHANGES) {
         proposal.status = PlaceEditProposalStatus.NEEDS_CHANGES;
       } else {
-        // APPROVE — re-check the live current value BEFORE applying anything.
-        const place = await this.placesRepo.getCardByIdIncludingInactive(proposal.placeId);
+        // APPROVE — lock the PLACE row itself for the rest of THIS transaction (same manager, same
+        // duration as the proposal row's own lock above), THEN re-check the live value against
+        // base_value_hash. Locking is what actually makes "check, then apply" atomic: a plain read
+        // here (as before) would let a second decide() on a DIFFERENT pending proposal for the
+        // SAME (place, field) read the same pre-change value, pass its own check, and overwrite
+        // this write after it lands — both proposals marked APPROVED, one silently lost. With the
+        // lock, a concurrent decide() on the same place blocks on this SELECT ... FOR UPDATE until
+        // THIS transaction commits or rolls back, then re-reads the ALREADY-updated value — so its
+        // own hash check correctly sees the mismatch and reports CONFLICT instead of overwriting.
+        const place = await this.placesRepo.getCardByIdIncludingInactiveForUpdate(proposal.placeId, manager);
         if (!place) {
           throw new NotFoundException('Không tìm thấy địa điểm (đã bị xoá?)');
         }
@@ -152,14 +176,19 @@ export class PlaceEditProposalsService {
         }
 
         // Áp dụng qua ĐÚNG service/gate hiện có — KHÔNG ghi trực tiếp `places`, KHÔNG chạm
-        // verification_status/evidence. `RevisionOrigin.COMMUNITY_EDIT`: nội dung xuất phát từ
-        // cộng đồng, dù người bấm duyệt là staff — origin ghi kênh phát sinh nội dung, không phải
-        // ai thực hiện thao tác ghi (đúng phân biệt update()'s own doc comment đã nêu).
+        // verification_status/evidence. `manager` truyền xuống để update()'s đọc/ghi/ghi-revision
+        // chạy TRONG CHÍNH transaction này (cùng khoá ở trên) — không phải một connection riêng mà
+        // ta "coi như" atomic; nếu update() ném lỗi, toàn bộ transaction (kể cả trạng thái
+        // proposal) rollback, không để lại một proposal APPROVED mà nội dung chưa thật sự đổi.
+        // `RevisionOrigin.COMMUNITY_EDIT`: nội dung xuất phát từ cộng đồng, dù người bấm duyệt là
+        // staff — origin ghi kênh phát sinh nội dung, không phải ai thực hiện thao tác ghi (đúng
+        // phân biệt update()'s own doc comment đã nêu).
         await this.placesService.update(
           proposal.placeId,
           { [proposal.fieldKey]: proposal.proposedValue } as never,
           reviewerId,
           RevisionOrigin.COMMUNITY_EDIT,
+          manager,
         );
         proposal.status = PlaceEditProposalStatus.APPROVED;
       }

@@ -56,6 +56,7 @@ describe('PlaceEditProposalsService', () => {
     });
     placesRepo = createMock<PlacesRepository>({
       getCardByIdIncludingInactive: jest.fn(),
+      getCardByIdIncludingInactiveForUpdate: jest.fn(),
     });
     placesService = createMock<PlacesService>({ update: jest.fn() });
     localesService = createMock<LocalesService>({ getKnownLocale: jest.fn() });
@@ -150,6 +151,51 @@ describe('PlaceEditProposalsService', () => {
       const savedArg = proposalsRepo.create.mock.calls[0][0];
       expect(savedArg.localeCode).toBeNull();
     });
+
+    // short_description CÓ bảng dịch (place_translations) — write target LUÔN LUÔN là cột gốc
+    // (locale mặc định). Một đề xuất khai rõ locale không phải mặc định cho field này nghĩa là
+    // người dùng đang muốn sửa bản DỊCH họ đang xem — chặn rõ ràng, không lặng lẽ ghi đè cột gốc
+    // bằng nội dung ngôn ngữ khác (task requirement: "không silently ignore locale").
+    it('short_description + locale_code KHÔNG PHẢI mặc định → BadRequest rõ ràng, không tạo proposal', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, short_description: 'Cũ' } as never);
+      localesService.getKnownLocale.mockResolvedValue({ localeCode: 'en', isDefault: false } as never);
+
+      await expect(
+        service.submit(
+          'p1',
+          { field_key: PlaceEditProposalFieldKey.SHORT_DESCRIPTION, proposed_value: 'New EN text', reason: 'fix EN', locale_code: 'en' } as never,
+          'user-1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(proposalsRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('short_description + locale_code LÀ mặc định (vi) → cho phép, ghi đúng locale', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, short_description: 'Cũ' } as never);
+      localesService.getKnownLocale.mockResolvedValue({ localeCode: 'vi', isDefault: true } as never);
+
+      await service.submit(
+        'p1',
+        { field_key: PlaceEditProposalFieldKey.SHORT_DESCRIPTION, proposed_value: 'Mới', reason: 'sai', locale_code: 'vi' } as never,
+        'user-1',
+      );
+
+      const savedArg = proposalsRepo.create.mock.calls[0][0];
+      expect(savedArg.localeCode).toBe('vi');
+    });
+
+    it('address (KHÔNG có bảng dịch) + locale_code không phải mặc định → KHÔNG bị chặn (hạn chế chỉ áp dụng cho field có translation)', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, address: 'Cũ' } as never);
+      localesService.getKnownLocale.mockResolvedValue({ localeCode: 'en', isDefault: false } as never);
+
+      await service.submit(
+        'p1',
+        { field_key: PlaceEditProposalFieldKey.ADDRESS, proposed_value: 'New address', reason: 'sai', locale_code: 'en' } as never,
+        'user-1',
+      );
+
+      expect(proposalsRepo.save).toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -199,16 +245,24 @@ describe('PlaceEditProposalsService', () => {
         baseValueHash: computeFieldValueHash('Địa chỉ cũ'),
       });
       proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
-      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ address: 'Địa chỉ cũ' } as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ cũ' } as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
 
+      // 5 tham số: manager (cuối) PHẢI là CHÍNH manager của transaction decide() đang chạy — đây là
+      // điều làm cho check-rồi-ghi thực sự atomic (cùng khoá, cùng connection), không phải một
+      // connection riêng mà ta "coi như" atomic.
       expect(placesService.update).toHaveBeenCalledWith(
         'place-1',
         { address: 'Địa chỉ mới' },
         'staff-1',
         expect.anything(),
+        manager,
       );
+      // Việc khoá hàng place phải xảy ra qua ĐÚNG manager của transaction — không phải bản đọc
+      // thường (getCardByIdIncludingInactive), nếu không "khoá" chỉ là ảo.
+      expect(placesRepo.getCardByIdIncludingInactiveForUpdate).toHaveBeenCalledWith('place-1', manager);
+      expect(placesRepo.getCardByIdIncludingInactive).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.APPROVED);
     });
 
@@ -220,7 +274,7 @@ describe('PlaceEditProposalsService', () => {
       });
       proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
       // Địa chỉ đã bị người khác đổi thành "Địa chỉ khác" sau khi đề xuất được gửi.
-      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ address: 'Địa chỉ khác' } as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ khác' } as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
 
@@ -237,7 +291,7 @@ describe('PlaceEditProposalsService', () => {
         baseValueHash: computeFieldValueHash(currentHours),
       });
       proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
-      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ opening_hours: currentHours } as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ opening_hours: currentHours } as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
 
@@ -246,6 +300,7 @@ describe('PlaceEditProposalsService', () => {
         { opening_hours: proposedHours },
         'staff-1',
         expect.anything(),
+        manager,
       );
       expect(result.status).toBe(PlaceEditProposalStatus.APPROVED);
       // Kiến trúc, không chỉ hành vi: service này KHÔNG được inject EvidenceService/
