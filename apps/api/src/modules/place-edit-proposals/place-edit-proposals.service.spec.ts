@@ -5,6 +5,7 @@ import { PlaceEditProposalsRepository } from './repositories/place-edit-proposal
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { PlacesService } from '../places/places.service';
 import { LocalesService } from '../locales/locales.service';
+import { PlaceTranslationsService } from '../place-translations/place-translations.service';
 import { PlaceEditProposalDecision, PlaceEditProposalFieldKey, PlaceEditProposalStatus } from './place-edit-proposals.enums';
 import { PlaceStatus } from '../places/place.enums';
 import { computeFieldValueHash } from '../evidence/field-value-hash';
@@ -36,6 +37,7 @@ describe('PlaceEditProposalsService', () => {
   let placesRepo: LooseMock<PlacesRepository>;
   let placesService: LooseMock<PlacesService>;
   let localesService: LooseMock<LocalesService>;
+  let placeTranslationsService: LooseMock<PlaceTranslationsService>;
   let dataSource: LooseMock<DataSource>;
   let manager: EntityManager;
   let service: PlaceEditProposalsService;
@@ -59,11 +61,27 @@ describe('PlaceEditProposalsService', () => {
       getCardByIdIncludingInactiveForUpdate: jest.fn(),
     });
     placesService = createMock<PlacesService>({ update: jest.fn() });
-    localesService = createMock<LocalesService>({ getKnownLocale: jest.fn() });
+    localesService = createMock<LocalesService>({
+      getKnownLocale: jest.fn(),
+      getDefaultLocale: jest.fn().mockResolvedValue({ localeCode: 'vi', isDefault: true }),
+    });
+    // Mặc định: KHÔNG có overlay bản dịch (null) — mọi test address/opening_hours hiện có không
+    // gọi tới đường này (guard chỉ kích hoạt cho SHORT_DESCRIPTION), và test short_description "vi,
+    // không overlay" bên dưới dựa đúng vào giá trị mặc định null này.
+    placeTranslationsService = createMock<PlaceTranslationsService>({
+      getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
+    });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
-    service = new PlaceEditProposalsService(proposalsRepo, placesRepo, placesService, localesService, dataSource);
+    service = new PlaceEditProposalsService(
+      proposalsRepo,
+      placesRepo,
+      placesService,
+      localesService,
+      placeTranslationsService,
+      dataSource,
+    );
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -184,6 +202,58 @@ describe('PlaceEditProposalsService', () => {
       expect(savedArg.localeCode).toBe('vi');
     });
 
+    // Bug tìm thấy ở review: một overlay `place_translations` CÓ THỂ tồn tại cho CHÍNH locale mặc
+    // định (vi) — không chỉ cho locale khác — vì PlacesService.getBySlug() ghi đè cột gốc bằng
+    // overlay bất kể locale nào được yêu cầu. Không có locale_code nào (kể cả 'vi' hoặc bỏ trống)
+    // là "an toàn" nếu overlay đang tồn tại: base_value_hash tính từ cột gốc sẽ KHÔNG khớp giá trị
+    // người dùng thực sự thấy trên trang, và áp dụng sau này sẽ không đổi gì trên trang công khai dù
+    // proposal báo APPROVED. Guard locale_code (test ở trên) KHÔNG bắt được trường hợp này.
+    it('short_description CÓ overlay place_translations cho locale mặc định (dù không khai locale_code) → BadRequest, không tạo proposal', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, short_description: 'Bản gốc cũ' } as never);
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue('Bản dịch vi hiện hành (khác cột gốc)');
+
+      await expect(
+        service.submit(
+          'p1',
+          { field_key: PlaceEditProposalFieldKey.SHORT_DESCRIPTION, proposed_value: 'Đề xuất mới', reason: 'sai mô tả' } as never,
+          'user-1',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(proposalsRepo.save).not.toHaveBeenCalled();
+      // Xác nhận đúng seam được dùng để phát hiện overlay: default locale, đúng field_key.
+      expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+        'p1',
+        PlaceEditProposalFieldKey.SHORT_DESCRIPTION,
+        'vi',
+      );
+    });
+
+    it('short_description KHÔNG có overlay (getCurrentPublicTranslatedText trả null) → cho phép bình thường', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, short_description: 'Bản gốc' } as never);
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+      await service.submit(
+        'p1',
+        { field_key: PlaceEditProposalFieldKey.SHORT_DESCRIPTION, proposed_value: 'Đề xuất mới', reason: 'sai mô tả' } as never,
+        'user-1',
+      );
+
+      expect(proposalsRepo.save).toHaveBeenCalled();
+    });
+
+    it('address (KHÔNG có bảng dịch) — overlay short_description không liên quan → không gọi getCurrentPublicTranslatedText, không bị chặn', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, address: 'Cũ' } as never);
+
+      await service.submit(
+        'p1',
+        { field_key: PlaceEditProposalFieldKey.ADDRESS, proposed_value: 'Địa chỉ mới', reason: 'sai' } as never,
+        'user-1',
+      );
+
+      expect(proposalsRepo.save).toHaveBeenCalled();
+      expect(placeTranslationsService.getCurrentPublicTranslatedText).not.toHaveBeenCalled();
+    });
+
     it('address (KHÔNG có bảng dịch) + locale_code không phải mặc định → KHÔNG bị chặn (hạn chế chỉ áp dụng cho field có translation)', async () => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ status: PlaceStatus.PUBLISHED, address: 'Cũ' } as never);
       localesService.getKnownLocale.mockResolvedValue({ localeCode: 'en', isDefault: false } as never);
@@ -280,6 +350,49 @@ describe('PlaceEditProposalsService', () => {
 
       expect(placesService.update).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.CONFLICT);
+    });
+
+    // Safety net cho proposal đã tồn tại TRƯỚC guard này (hoặc overlay xuất hiện trong lúc proposal
+    // còn PENDING) — submit() đã chặn đề xuất MỚI, nhưng một proposal short_description PENDING có
+    // sẵn (tạo trước khi guard tồn tại, hoặc trước khi một overlay place_translations xuất hiện) vẫn
+    // phải được bắt lại Ở ĐÂY khi duyệt — nếu không, áp dụng sẽ không đổi gì trên trang công khai
+    // (overlay vẫn che cột gốc) trong khi proposal báo APPROVED (báo thành công giả).
+    it('approve short_description nhưng place HIỆN CÓ overlay place_translations (locale mặc định) → từ chối, KHÔNG gọi update(), đề xuất vẫn PENDING (rollback toàn bộ transaction)', async () => {
+      const proposal = makeProposal({
+        fieldKey: PlaceEditProposalFieldKey.SHORT_DESCRIPTION,
+        proposedValue: 'Mô tả mới',
+        baseValueHash: computeFieldValueHash('Mô tả cũ (cột gốc)'),
+      });
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
+      placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue('Bản dịch vi hiện hành che cột gốc');
+
+      await expect(
+        service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(placesService.update).not.toHaveBeenCalled();
+      // KHÔNG gọi tới bản đọc/khoá place — bị chặn TRƯỚC bước đó, không cần lock một hàng sẽ không
+      // được ghi.
+      expect(placesRepo.getCardByIdIncludingInactiveForUpdate).not.toHaveBeenCalled();
+      // proposalsRepo.save KHÔNG được gọi trong nhánh này (exception ném ra trước khi tới đó) —
+      // toàn bộ transaction rollback, proposal vẫn nguyên trạng PENDING trong DB thật (chứng minh
+      // bằng throwaway Postgres ở phần review CI, cùng cơ chế rollback đã dùng cho Scenario 3).
+      expect(proposalsRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('approve address (KHÔNG có bảng dịch) → KHÔNG gọi getCurrentPublicTranslatedText, không bị guard overlay ảnh hưởng', async () => {
+      const proposal = makeProposal({
+        fieldKey: PlaceEditProposalFieldKey.ADDRESS,
+        proposedValue: 'Địa chỉ mới',
+        baseValueHash: computeFieldValueHash('Địa chỉ cũ'),
+      });
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ cũ' } as never);
+
+      const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
+
+      expect(placeTranslationsService.getCurrentPublicTranslatedText).not.toHaveBeenCalled();
+      expect(result.status).toBe(PlaceEditProposalStatus.APPROVED);
     });
 
     it('approve opening_hours: áp dụng qua placesService.update() giống mọi field khác — KHÔNG tự tạo evidence_reviews/place_field_evidence_links hay đổi verification_status (không có gate nào bị vượt qua, vì service này không có đường ghi nào tới các bảng đó)', async () => {

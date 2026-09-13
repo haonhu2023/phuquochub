@@ -9,6 +9,7 @@ import { PlacesRepository } from '../places/repositories/places.repository';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
 import { LocalesService } from '../locales/locales.service';
+import { PlaceTranslationsService } from '../place-translations/place-translations.service';
 import { RevisionOrigin } from '../revisions/revision.enums';
 import { computeFieldValueHash } from '../evidence/field-value-hash';
 import { openingHoursErrors } from '../../common/opening-hours';
@@ -28,8 +29,35 @@ export class PlaceEditProposalsService {
     private readonly placesRepo: PlacesRepository,
     private readonly placesService: PlacesService,
     private readonly localesService: LocalesService,
+    private readonly placeTranslationsService: PlaceTranslationsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * short_description is publicly readable via a `place_translations` overlay row — and, unlike
+   * every other locale, that overlay CAN exist for the default locale ('vi') too (no schema/service
+   * rule forbids a translation row whose locale_code equals the source locale — e.g. an editorial/
+   * AI-reviewed VI rewrite that supersedes the legacy base column, see PlacesService.getBySlug():
+   * `short_description: localizedShortDescription ?? row.short_description` — the overlay wins
+   * whenever one exists, REGARDLESS of which locale was requested). This service's apply path only
+   * ever writes `places.short_description` (the base column) — it does not touch `place_translations`
+   * and has no gate/service integration with the translation pipeline. So whenever an overlay is in
+   * play, base_value_hash (read from the base column) is not what the proposer actually saw, and
+   * approving would silently no-op from the public's point of view: the overlay keeps shadowing the
+   * base column's new value, yet the proposal would report APPROVED. Detected via the SAME seam the
+   * public read path uses (`getCurrentPublicTranslatedText` against the default locale) — a non-null
+   * result means an overlay is active, regardless of whether its text happens to match the base
+   * column right now (a coincidental match today is not a guarantee it stays that way).
+   */
+  private async shortDescriptionHasTranslationOverlay(placeId: string): Promise<boolean> {
+    const defaultLocale = await this.localesService.getDefaultLocale();
+    const overlay = await this.placeTranslationsService.getCurrentPublicTranslatedText(
+      placeId,
+      PlaceEditProposalFieldKey.SHORT_DESCRIPTION,
+      defaultLocale.localeCode,
+    );
+    return overlay !== null;
+  }
 
   /**
    * Gửi đề xuất — CHỈ ghi vào `place_edit_proposals` với status PENDING. KHÔNG BAO GIỜ gọi
@@ -49,6 +77,18 @@ export class PlaceEditProposalsService {
     }
 
     this.validateProposedValue(dto.field_key, dto.proposed_value);
+
+    // Chặn TRƯỚC KHI tính base_value_hash — xem doc comment của shortDescriptionHasTranslationOverlay():
+    // nếu một overlay đang che cột gốc (kể cả cho locale mặc định), hash tính từ cột gốc không phải
+    // giá trị người đề xuất thực sự đang thấy, và áp dụng sau này sẽ không đổi gì trên trang công khai.
+    if (
+      dto.field_key === PlaceEditProposalFieldKey.SHORT_DESCRIPTION &&
+      (await this.shortDescriptionHasTranslationOverlay(placeId))
+    ) {
+      throw new BadRequestException(
+        'Mô tả ngắn của địa điểm này hiện được quản lý qua hệ thống bản dịch — MVP chưa hỗ trợ đề xuất chỉnh sửa cho trường hợp này.',
+      );
+    }
 
     const existingPending = await this.proposalsRepo.findPendingByProposerFieldPlace(
       placeId,
@@ -150,6 +190,21 @@ export class PlaceEditProposalsService {
       } else if (dto.decision === PlaceEditProposalDecision.NEEDS_CHANGES) {
         proposal.status = PlaceEditProposalStatus.NEEDS_CHANGES;
       } else {
+        // Safety net for proposals that predate this guard (or where an overlay appears WHILE one
+        // is pending) — submit() already refuses new short_description proposals under an active
+        // translation overlay, but an existing PENDING one must be re-checked here too, or approving
+        // it would silently no-op on the public page while still reporting APPROVED (xem doc comment
+        // shortDescriptionHasTranslationOverlay()). Throwing here rolls back the whole transaction
+        // (proven: Scenario 3 in code review) — the proposal is left exactly PENDING, not decided.
+        if (
+          proposal.fieldKey === PlaceEditProposalFieldKey.SHORT_DESCRIPTION &&
+          (await this.shortDescriptionHasTranslationOverlay(proposal.placeId))
+        ) {
+          throw new ConflictException(
+            'Mô tả ngắn của địa điểm này hiện được quản lý qua hệ thống bản dịch — không thể tự động áp dụng đề xuất này. Đề xuất vẫn ở trạng thái chờ xử lý.',
+          );
+        }
+
         // APPROVE — lock the PLACE row itself for the rest of THIS transaction (same manager, same
         // duration as the proposal row's own lock above), THEN re-check the live value against
         // base_value_hash. Locking is what actually makes "check, then apply" atomic: a plain read
