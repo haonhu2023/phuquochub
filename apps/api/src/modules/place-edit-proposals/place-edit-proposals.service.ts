@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { PlaceEditProposalsRepository, ListProposalsFilter } from './repositories/place-edit-proposals.repository';
 import { PlaceEditProposalDecision, PlaceEditProposalFieldKey, PlaceEditProposalStatus } from './place-edit-proposals.enums';
 import { CreatePlaceEditProposalDto, DecidePlaceEditProposalDto } from './dto/place-edit-proposal.dto';
-import { toPlaceEditProposalView } from './place-edit-proposals.mapper';
+import { toPlaceEditProposalView, toMyPlaceEditProposalView } from './place-edit-proposals.mapper';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
@@ -150,6 +150,33 @@ export class PlaceEditProposalsService {
   async list(filter: ListProposalsFilter): Promise<ReturnType<typeof toPlaceEditProposalView>[]> {
     const rows = await this.proposalsRepo.list(filter);
     return rows.map(toPlaceEditProposalView);
+  }
+
+  /**
+   * "Đóng góp của tôi" — CHỈ trả về đề xuất của CHÍNH proposerId truyền vào (luôn lấy từ
+   * @CurrentUser() ở controller, KHÔNG BAO GIỜ từ query param — một user không thể tự truyền
+   * proposer_id của người khác). Dùng lại `list()`'s filter thay vì viết truy vấn riêng.
+   *
+   * Enrich `place_name`/`place_slug` bằng cách gọi lại ĐÚNG `PlacesRepository.getCardByIdIncludingInactive()`
+   * đã có (không viết query mới) cho từng place_id KHÁC NHAU trong kết quả — số lượng nhỏ trong
+   * thực tế (một người dùng hiếm khi có hàng chục đề xuất đang chờ cùng lúc; submit() đã giới hạn
+   * 5 request/phút và chặn trùng PENDING cùng field/place), nên N+1 ở đây là đánh đổi chấp nhận
+   * được để không phải thêm một JOIN/repository method mới chỉ cho MVP này.
+   */
+  async listMine(
+    proposerId: string,
+    filter: { status?: PlaceEditProposalStatus; placeId?: string } = {},
+  ): Promise<ReturnType<typeof toMyPlaceEditProposalView>[]> {
+    const rows = await this.proposalsRepo.list({ ...filter, proposerId });
+    const uniquePlaceIds = [...new Set(rows.map((row) => row.placeId))];
+    const places = await Promise.all(
+      uniquePlaceIds.map((id) => this.placesRepo.getCardByIdIncludingInactive(id)),
+    );
+    const placeById = new Map(uniquePlaceIds.map((id, index) => [id, places[index]]));
+    return rows.map((row) => {
+      const place = placeById.get(row.placeId) ?? null;
+      return toMyPlaceEditProposalView(row, place ? { name: place.name, slug: place.slug } : null);
+    });
   }
 
   async getById(id: string): Promise<ReturnType<typeof toPlaceEditProposalView>> {

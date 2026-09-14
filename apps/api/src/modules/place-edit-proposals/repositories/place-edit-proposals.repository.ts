@@ -7,6 +7,7 @@ import { PlaceEditProposalStatus } from '../place-edit-proposals.enums';
 export interface ListProposalsFilter {
   status?: PlaceEditProposalStatus;
   placeId?: string;
+  proposerId?: string;
 }
 
 @Injectable()
@@ -62,6 +63,7 @@ export class PlaceEditProposalsRepository {
     const where: FindOptionsWhere<PlaceEditProposal> = {};
     if (filter.status) where.status = filter.status;
     if (filter.placeId) where.placeId = filter.placeId;
+    if (filter.proposerId) where.proposerId = filter.proposerId;
     return this.repo.find({ where, order: { createdAt: 'DESC' } });
   }
 }

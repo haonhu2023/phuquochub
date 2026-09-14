@@ -35,6 +35,17 @@ export class PlaceEditProposalsController {
     return this.proposalsService.list({ status: query.status, placeId: query.place_id });
   }
 
+  // "Đóng góp của tôi" — cùng quyền `PlaceEditProposal.Create` như submit() (bất kỳ member nào
+  // gửi được đề xuất đều xem được đề xuất CỦA CHÍNH MÌNH), KHÔNG cần `.Moderate`. Phải khai TRƯỚC
+  // route `:id` bên dưới — Nest/Express khớp route theo đúng thứ tự khai báo trong controller,
+  // nếu để sau thì chuỗi "mine" sẽ rơi vào `:id` (ParseUUIDPipe) và bị từ chối 400 trước khi tới
+  // được đây.
+  @Get('place-edit-proposals/mine')
+  @RequirePermissions('PlaceEditProposal.Create')
+  listMine(@Query() query: ListPlaceEditProposalsQueryDto, @CurrentUser() user: AuthPrincipal) {
+    return this.proposalsService.listMine(user.sub, { status: query.status, placeId: query.place_id });
+  }
+
   @Get('place-edit-proposals/:id')
   @RequirePermissions('PlaceEditProposal.Moderate')
   getById(@Param('id', ParseUUIDPipe) id: string) {

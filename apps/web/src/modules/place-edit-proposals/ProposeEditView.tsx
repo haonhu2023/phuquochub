@@ -69,7 +69,10 @@ export function ProposeEditView() {
             Cảm ơn bạn đã đóng góp cho <strong>{placeName}</strong>. Kiểm duyệt viên sẽ xem xét — đề
             xuất chưa áp dụng ngay và chưa hiển thị công khai.
           </p>
-          <Link href="/places" className={placeStyles.btn}>
+          <Link href="/dashboard/places/edit-proposals/mine" className={placeStyles.btn}>
+            Xem trạng thái đề xuất của tôi →
+          </Link>
+          <Link href="/places" className={placeStyles.btn} style={{ marginLeft: '0.5rem' }}>
             Duyệt địa điểm →
           </Link>
         </div>

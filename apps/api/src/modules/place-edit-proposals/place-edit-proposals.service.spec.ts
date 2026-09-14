@@ -436,4 +436,76 @@ describe('PlaceEditProposalsService', () => {
       expect(proposalsRepo.findByIdForUpdate).toHaveBeenCalledWith('proposal-1', manager);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // listMine — "Đóng góp của tôi": CHỈ đề xuất của chính proposerId truyền vào, không lộ
+  // reviewer_id, có kèm place_name/place_slug
+  // -------------------------------------------------------------------------
+  describe('listMine', () => {
+    it('luôn lọc theo đúng proposerId truyền vào, kể cả khi filter khác trống', async () => {
+      proposalsRepo.list.mockResolvedValue([]);
+
+      await service.listMine('user-1', {});
+
+      expect(proposalsRepo.list).toHaveBeenCalledWith({ proposerId: 'user-1' });
+    });
+
+    it('giữ nguyên status/place_id filter tuỳ chọn, luôn cộng thêm proposerId', async () => {
+      proposalsRepo.list.mockResolvedValue([]);
+
+      await service.listMine('user-1', { status: PlaceEditProposalStatus.PENDING, placeId: 'place-9' });
+
+      expect(proposalsRepo.list).toHaveBeenCalledWith({
+        status: PlaceEditProposalStatus.PENDING,
+        placeId: 'place-9',
+        proposerId: 'user-1',
+      });
+    });
+
+    it('enrich place_name/place_slug qua getCardByIdIncludingInactive, KHÔNG có reviewer_id trong kết quả', async () => {
+      proposalsRepo.list.mockResolvedValue([
+        makeProposal({ id: 'p1', placeId: 'place-1', reviewerId: 'staff-9', reviewNote: 'Đã duyệt' }),
+      ] as never);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({
+        name: 'La Veranda Resort',
+        slug: 'la-veranda-resort',
+      } as never);
+
+      const [result] = await service.listMine('user-1');
+
+      expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledWith('place-1');
+      expect(result).toMatchObject({
+        id: 'p1',
+        place_id: 'place-1',
+        place_name: 'La Veranda Resort',
+        place_slug: 'la-veranda-resort',
+        review_note: 'Đã duyệt',
+      });
+      expect(result).not.toHaveProperty('reviewer_id');
+      expect(result).not.toHaveProperty('proposer_id');
+    });
+
+    it('place đã bị xoá (không còn tồn tại) → place_name/place_slug = null, KHÔNG throw', async () => {
+      proposalsRepo.list.mockResolvedValue([makeProposal({ id: 'p1', placeId: 'place-deleted' })] as never);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+
+      const [result] = await service.listMine('user-1');
+
+      expect(result.place_name).toBeNull();
+      expect(result.place_slug).toBeNull();
+    });
+
+    it('nhiều đề xuất cùng một place → chỉ gọi getCardByIdIncludingInactive MỘT LẦN cho place đó (N+1 chỉ theo số place duy nhất, không theo số hàng)', async () => {
+      proposalsRepo.list.mockResolvedValue([
+        makeProposal({ id: 'p1', placeId: 'place-1' }),
+        makeProposal({ id: 'p2', placeId: 'place-1' }),
+      ] as never);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ name: 'X', slug: 'x' } as never);
+
+      const results = await service.listMine('user-1');
+
+      expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(2);
+    });
+  });
 });
