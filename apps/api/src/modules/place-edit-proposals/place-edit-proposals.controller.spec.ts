@@ -23,6 +23,7 @@ describe('PlaceEditProposalsController — ranh giới quyền', () => {
     const EXPECTED: Array<[Handler, string]> = [
       ['submit', 'PlaceEditProposal.Create'],
       ['list', 'PlaceEditProposal.Moderate'],
+      ['listMine', 'PlaceEditProposal.Create'],
       ['getById', 'PlaceEditProposal.Moderate'],
       ['decide', 'PlaceEditProposal.Moderate'],
     ];
@@ -55,6 +56,23 @@ describe('PlaceEditProposalsController — ranh giới quyền', () => {
       expect(Reflect.getMetadata(PATH_METADATA, handlerOf('getById'))).toBe('place-edit-proposals/:id');
       expect(Reflect.getMetadata(PATH_METADATA, handlerOf('decide'))).toBe('place-edit-proposals/:id/decide');
     });
+
+    it("listMine khai đúng 'place-edit-proposals/mine'", () => {
+      expect(Reflect.getMetadata(PATH_METADATA, handlerOf('listMine'))).toBe('place-edit-proposals/mine');
+    });
+
+    // Regression thật, không chỉ khai path đúng: Nest/Express khớp route THEO ĐÚNG THỨ TỰ khai
+    // báo trong class. Nếu `listMine` (literal 'mine') bị khai SAU `getById` (':id'), request tới
+    // GET /place-edit-proposals/mine sẽ rơi vào getById trước, và ParseUUIDPipe từ chối 'mine'
+    // bằng 400 trước khi bao giờ chạm tới listMine — bug thật, không phải lý thuyết.
+    it("listMine được khai TRƯỚC getById trong class (route literal 'mine' không bị nuốt bởi ':id')", () => {
+      const order = Object.getOwnPropertyNames(PlaceEditProposalsController.prototype);
+      const mineIndex = order.indexOf('listMine');
+      const getByIdIndex = order.indexOf('getById');
+      expect(mineIndex).toBeGreaterThanOrEqual(0);
+      expect(getByIdIndex).toBeGreaterThanOrEqual(0);
+      expect(mineIndex).toBeLessThan(getByIdIndex);
+    });
   });
 
   describe('uỷ quyền xuống service', () => {
@@ -66,6 +84,7 @@ describe('PlaceEditProposalsController — ranh giới quyền', () => {
       proposalsService = createMock<Ctor[0]>({
         submit: jest.fn(),
         list: jest.fn(),
+        listMine: jest.fn(),
         getById: jest.fn(),
         decide: jest.fn(),
       });
@@ -83,6 +102,11 @@ describe('PlaceEditProposalsController — ranh giới quyền', () => {
     it('list → proposalsService.list({ status, placeId }) — snake_case query chuyển sang camelCase', () => {
       controller.list({ status: 'pending', place_id: 'p1' } as never);
       expect(proposalsService.list).toHaveBeenCalledWith({ status: 'pending', placeId: 'p1' });
+    });
+
+    it('listMine → proposalsService.listMine(user.sub, { status, placeId }) — LUÔN dùng user.sub, không phải query param nào', () => {
+      controller.listMine({ status: 'pending', place_id: 'p1' } as never, user);
+      expect(proposalsService.listMine).toHaveBeenCalledWith('u1', { status: 'pending', placeId: 'p1' });
     });
 
     it('getById → proposalsService.getById(id)', () => {

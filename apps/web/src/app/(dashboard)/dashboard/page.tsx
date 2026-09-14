@@ -3,10 +3,11 @@
 // Trang bảng điều khiển tối thiểu — minh chứng phiên đăng nhập + route guard hoạt động.
 // Nội dung tính năng dashboard đầy đủ thuộc các Sprint sau (ngoài phạm vi Sprint 1).
 //
-// Ba liên kết đầu hiện cho MỌI người dùng đã đăng nhập: GET /places/mine, POST /business-claims và
-// GET /business-claims/mine đều mở cho mọi tài khoản (Business.Claim là permission nền mọi `member`
-// có — xem SeedRbac1720000300000; GET /business-claims/mine không khai permission nào, chỉ cần đã
-// xác thực) nên không có rủi ro mời gọi một thao tác sẽ bị 403.
+// Bốn liên kết đầu hiện cho MỌI người dùng đã đăng nhập: GET /places/mine, GET /place-edit-proposals/mine,
+// POST /business-claims và GET /business-claims/mine đều mở cho mọi tài khoản (Business.Claim và
+// PlaceEditProposal.Create đều là permission nền mọi `member` có — xem SeedRbac1720000300000 và
+// SeedPlaceEditProposalPermissions1720005800000; GET /business-claims/mine không khai permission
+// nào, chỉ cần đã xác thực) nên không có rủi ro mời gọi một thao tác sẽ bị 403.
 //
 // Hai liên kết đặc quyền (Biên tập nội dung, Hàng chờ kiểm duyệt) thì CÓ ĐIỀU KIỆN — Operator
 // Bootstrap & Editorial Place Content (2026-08-12). Trước milestone này liên kết kiểm duyệt bị ẩn
@@ -60,6 +61,11 @@ export default function DashboardPage() {
       <p style={{ marginTop: '1rem' }}>
         <Link href="/dashboard/places" style={{ color: 'var(--accent)' }}>
           Địa điểm của tôi →
+        </Link>
+      </p>
+      <p style={{ marginTop: '0.5rem' }}>
+        <Link href="/dashboard/places/edit-proposals/mine" style={{ color: 'var(--accent)' }}>
+          Đề xuất chỉnh sửa của tôi →
         </Link>
       </p>
       <p style={{ marginTop: '0.5rem' }}>
