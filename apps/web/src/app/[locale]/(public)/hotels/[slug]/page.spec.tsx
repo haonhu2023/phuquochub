@@ -168,3 +168,80 @@ describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route 
     expect(mockGetHotel).toHaveBeenCalledWith(h.slug, 'vi');
   });
 });
+
+// Fix A (2026-09-16): gallery công khai trang hotel — trước đây hotel.media không được render ở
+// bất kỳ đâu trên trang, dù API đã trả đúng dữ liệu. Dùng lại đúng hệ thống gallery của
+// places/[slug]/page.tsx (MediaCredit + places.module.css .gallery/.galleryFigure/.galleryImg),
+// không dựng bộ hiển thị thứ hai.
+describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
+  function media(overrides: Partial<import('@/modules/places/types').PlaceMedia> = {}) {
+    return {
+      id: 'm1',
+      type: 'image',
+      url: 'https://phuquochub.com/api/media/m1/file',
+      thumbnail_url: null,
+      caption: 'Chú thích ảnh',
+      alt_text: 'Alt ảnh',
+      status: 'published',
+      attribution: null,
+      license_type: null,
+      license_url: null,
+      ...overrides,
+    };
+  }
+
+  it('không có ảnh nào → không render khối gallery, không có ảnh vỡ', async () => {
+    await renderPage(hotel({ media: [] }));
+    expect(screen.queryAllByRole('img')).toHaveLength(0);
+  });
+
+  it('đúng MỘT ảnh → render đúng 1 <img>, đúng src', async () => {
+    await renderPage(hotel({ media: [media({ id: 'm1', url: 'https://phuquochub.com/api/media/m1/file' })] }));
+    const imgs = screen.getAllByRole('img');
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0]).toHaveAttribute('src', 'https://phuquochub.com/api/media/m1/file');
+  });
+
+  it('nhiều ảnh → render đủ, ĐÚNG THỨ TỰ server trả về (không tự sắp lại ở client)', async () => {
+    await renderPage(
+      hotel({
+        media: [
+          media({ id: 'm1', url: 'https://x/1' }),
+          media({ id: 'm2', url: 'https://x/2' }),
+          media({ id: 'm3', url: 'https://x/3' }),
+        ],
+      }),
+    );
+    const imgs = screen.getAllByRole('img');
+    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['https://x/1', 'https://x/2', 'https://x/3']);
+  });
+
+  it('alt_text có giá trị → dùng alt_text, không rơi về caption/tên khách sạn', async () => {
+    await renderPage(hotel({ name: 'Khách sạn X', media: [media({ alt_text: 'Alt thật', caption: 'Caption khác' })] }));
+    expect(screen.getByAltText('Alt thật')).toBeInTheDocument();
+  });
+
+  it('alt_text null, có caption → dùng caption', async () => {
+    await renderPage(hotel({ name: 'Khách sạn X', media: [media({ alt_text: null, caption: 'Caption dự phòng' })] }));
+    expect(screen.getByAltText('Caption dự phòng')).toBeInTheDocument();
+  });
+
+  it('alt_text và caption đều null → dùng tên khách sạn làm alt', async () => {
+    await renderPage(hotel({ name: 'Khách sạn Cuối Cùng', media: [media({ alt_text: null, caption: null })] }));
+    expect(screen.getByAltText('Khách sạn Cuối Cùng')).toBeInTheDocument();
+  });
+
+  it('VI và EN cùng render một giá trị caption/alt duy nhất (giới hạn schema một-giá-trị, không phải thiếu bản dịch)', async () => {
+    const sharedAlt = 'Toàn cảnh trên cao La Veranda Resort Phú Quốc bên bờ biển Dương Đông, có hồ bơi và hàng dừa';
+    const h = hotel({ slug: 'la-veranda-resort', media: [media({ alt_text: sharedAlt, caption: sharedAlt })] });
+
+    mockGetHotel.mockResolvedValueOnce(h);
+    const { unmount } = render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'vi' }) }));
+    expect(screen.getByAltText(sharedAlt)).toBeInTheDocument();
+    unmount();
+
+    mockGetHotel.mockResolvedValueOnce(h);
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'en' }) }));
+    expect(screen.getByAltText(sharedAlt)).toBeInTheDocument();
+  });
+});

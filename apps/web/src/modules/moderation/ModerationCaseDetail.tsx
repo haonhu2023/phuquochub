@@ -15,16 +15,20 @@ import {
   labelOf,
 } from './labels';
 import type { ModerationCaseDetail as CaseDetail, ModerationTargetPreview } from './types';
+import { AuthenticatedMediaPreview } from './AuthenticatedMediaPreview';
 
 // Trình bày chi tiết case (presentational). KHÔNG hiện dữ liệu riêng tư người báo cáo (bỏ qua
 // reporter_id), KHÔNG dựng lại URL storage, KHÔNG hiện field ngoài response. `decisionSlot` là form
-// quyết định (client) do view cha truyền vào.
+// quyết định (client) do view cha truyền vào. `accessToken` chỉ dùng để tải ảnh xem trước qua
+// `AuthenticatedMediaPreview` (xem file đó) — không log, không đặt vào URL.
 export function ModerationCaseDetail({
   detail,
   decisionSlot,
+  accessToken,
 }: {
   detail: CaseDetail;
   decisionSlot: ReactNode;
+  accessToken: string;
 }) {
   return (
     <article>
@@ -61,7 +65,7 @@ export function ModerationCaseDetail({
 
       <section className={placeStyles.section}>
         <h2 className={placeStyles.sectionTitle}>Nội dung bị kiểm duyệt</h2>
-        <TargetPreview preview={detail.target_preview} />
+        <TargetPreview preview={detail.target_preview} accessToken={accessToken} />
       </section>
 
       <section className={placeStyles.section}>
@@ -104,7 +108,7 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TargetPreview({ preview }: { preview: ModerationTargetPreview }) {
+function TargetPreview({ preview, accessToken }: { preview: ModerationTargetPreview; accessToken: string }) {
   if (!preview.found) {
     return (
       <div className={modStyles.previewBox}>
@@ -126,13 +130,7 @@ function TargetPreview({ preview }: { preview: ModerationTargetPreview }) {
             phân giải ảnh ở MỌI trạng thái, nên kiểm duyệt viên thấy được ảnh CHỜ DUYỆT. Endpoint
             công khai `/media/{id}/file` không hề bị nới lỏng. */}
         {preview.preview_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- ảnh phục vụ qua redirect có ký; next/image cần remotePatterns (ngoài phạm vi).
-          <img
-            className={modStyles.previewImage}
-            src={preview.preview_url}
-            alt="Ảnh đang chờ kiểm duyệt"
-            loading="lazy"
-          />
+          <AuthenticatedMediaPreview src={preview.preview_url} alt="Ảnh đang chờ kiểm duyệt" accessToken={accessToken} />
         ) : (
           <p className={modStyles.previewEmpty}>Không có ảnh xem trước.</p>
         )}

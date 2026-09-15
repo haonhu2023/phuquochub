@@ -108,11 +108,17 @@ export function ModerationCaseView({ id }: { id: string }) {
     );
   }
 
+  // Chỉ tới nhánh 'ready' khi `readSession()` đã trả về session hợp lệ ở effect phía trên (nếu
+  // không đã rẽ sang 'forbidden' rồi) — nên đọc lại ở đây để lấy accessToken cho ảnh xem trước là
+  // an toàn, không cần thêm state.
+  const session = readSession();
+
   return (
     <main>
       <ModerationCaseDetail
         detail={state.detail}
         decisionSlot={<ModerationDecisionForm detail={state.detail} onDecided={reload} />}
+        accessToken={session?.accessToken ?? ''}
       />
     </main>
   );

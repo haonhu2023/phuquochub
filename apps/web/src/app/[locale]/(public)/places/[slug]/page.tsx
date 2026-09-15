@@ -16,8 +16,9 @@ import {
   TRUST_BADGE_LABEL,
 } from '@/modules/places/trust';
 import { ApiError } from '@/lib/http';
-import type { PlaceContact, PlaceDetail, PlaceMedia, VerificationStatusValue } from '@/modules/places/types';
+import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
 import styles from '@/modules/places/places.module.css';
+import { MediaCredit } from '@/modules/places/MediaCredit';
 import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
@@ -377,34 +378,6 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       <ReviewsSection placeId={place.id} initialReviews={reviews} />
     </article>
-  );
-}
-
-/**
- * Dòng ghi công ảnh.
- *
- * Với `license_type = 'open_license'` (CC BY/BY-SA), hiển thị credit + link giấy phép LÀ điều kiện
- * được phép dùng ảnh — không phải chi tiết trang trí. Vì thế nó render ngay dưới ảnh, luôn nhìn
- * thấy được, không giấu trong `title`/tooltip.
- *
- * Không có `attribution` thì không render gì: các cơ sở khác (ảnh do chủ cơ sở cung cấp, ảnh
- * người dùng đăng, ảnh thuộc phạm vi công cộng) không đòi ghi công, và bịa ra một dòng credit
- * trống chỉ làm nhiễu.
- */
-function MediaCredit({ media }: { media: PlaceMedia }) {
-  if (!media.attribution) return null;
-  return (
-    <figcaption className={styles.mediaCredit}>
-      {media.attribution}
-      {media.license_url && (
-        <>
-          {' · '}
-          <a href={media.license_url} target="_blank" rel="noopener noreferrer nofollow">
-            Giấy phép
-          </a>
-        </>
-      )}
-    </figcaption>
   );
 }
 
