@@ -136,3 +136,35 @@ describe('HotelDetailPage — generateMetadata EN indexation gate', () => {
     expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/hotels/khach-san-bien-xanh');
   });
 });
+
+// 2026-09 rà lỗi UI mobile: `locale` được đọc từ route param nhưng trước đây KHÔNG BAO GIỜ được
+// truyền vào getHotel() — nên /en/hotels/:slug và /vi/hotels/:slug luôn fetch (và hiển thị) CÙNG
+// một nội dung. Regression guard cho cả hai lệnh gọi getHotel() trong file này (generateMetadata
+// VÀ component chính) — không chỉ path string, mà đúng cặp tham số (slug, locale).
+describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route (cả hai lệnh gọi)', () => {
+  const h = hotel({ slug: 'khach-san-bien-xanh' });
+
+  it('generateMetadata({ locale: "en" }) → getHotel(slug, "en")', async () => {
+    mockGetHotel.mockResolvedValueOnce(h);
+    await generateMetadata({ params: Promise.resolve({ slug: h.slug, locale: 'en' }) });
+    expect(mockGetHotel).toHaveBeenCalledWith(h.slug, 'en');
+  });
+
+  it('generateMetadata({ locale: "vi" }) → getHotel(slug, "vi")', async () => {
+    mockGetHotel.mockResolvedValueOnce(h);
+    await generateMetadata({ params: Promise.resolve({ slug: h.slug, locale: 'vi' }) });
+    expect(mockGetHotel).toHaveBeenCalledWith(h.slug, 'vi');
+  });
+
+  it('HotelDetailPage({ locale: "en" }) → getHotel(slug, "en")', async () => {
+    mockGetHotel.mockResolvedValueOnce(h);
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'en' }) }));
+    expect(mockGetHotel).toHaveBeenCalledWith(h.slug, 'en');
+  });
+
+  it('HotelDetailPage({ locale: "vi" }) → getHotel(slug, "vi")', async () => {
+    mockGetHotel.mockResolvedValueOnce(h);
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'vi' }) }));
+    expect(mockGetHotel).toHaveBeenCalledWith(h.slug, 'vi');
+  });
+});
