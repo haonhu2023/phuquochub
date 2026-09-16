@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
+import { createHash } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { TransformInterceptor } from '../src/common/interceptors/transform.interceptor';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
@@ -91,6 +92,49 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
     );
     caseIds.push(rows[0].id);
     return rows[0].id;
+  }
+
+  // Luồng THẬT presign -> PUT lên MinIO thật -> register (2026-09-17, requirement 6): "chạy thật
+  // luồng owner upload" -- cùng khuôn media.e2e-spec.ts's `putToPresignedUrl` (MinIO có thật trong
+  // môi trường e2e ở đây, khác quy ước "không có MinIO trong CI" của place-media.e2e-spec.ts, nên
+  // dùng đường thật thay vì seed thẳng bằng SQL). `register()` tự mở moderation case (severity
+  // LOW, source NEW_CONTENT, xem MediaService.register()) -- KHÔNG cần seedOpenCase() nữa.
+  function sha256(buf: Buffer): string {
+    return createHash('sha256').update(buf).digest('hex');
+  }
+  function fakeJpegBytes(seed: string): Buffer {
+    return Buffer.from(`e2e-content-owner-real-upload-${seed}-${Date.now()}-${Math.random()}`);
+  }
+  function putToPresignedUrl(uploadUrl: string, content: Buffer): Promise<Response> {
+    return fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: content as BodyInit });
+  }
+  async function realUploadPendingMedia(placeId: string, accessToken: string): Promise<string> {
+    const content = fakeJpegBytes(placeId);
+    const checksum = sha256(content);
+    const presignRes = await request(app.getHttpServer())
+      .post(`/api/places/${placeId}/media/presign`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content_type: 'image/jpeg', size: content.length, checksum_sha256: checksum });
+    if (presignRes.status !== 201) {
+      throw new Error(`presign thất bại (status ${presignRes.status}): ${JSON.stringify(presignRes.body)}`);
+    }
+    const { key, upload_url: uploadUrl } = presignRes.body.data;
+
+    const putRes = await putToPresignedUrl(uploadUrl, content);
+    if (putRes.status !== 200) {
+      throw new Error(`PUT lên MinIO thất bại (status ${putRes.status})`);
+    }
+
+    const registerRes = await request(app.getHttpServer())
+      .post(`/api/places/${placeId}/media`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ key, caption: 'Ảnh e2e content_owner thật', alt: 'ảnh test upload thật' });
+    if (registerRes.status !== 201) {
+      throw new Error(`register thất bại (status ${registerRes.status}): ${JSON.stringify(registerRes.body)}`);
+    }
+    const mediaId: string = registerRes.body.data.id;
+    mediaIds.push(mediaId);
+    return mediaId;
   }
 
   beforeAll(async () => {
@@ -316,12 +360,35 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
   // ---- 4/5. Media self-approve: content_owner thành công + audit; moderator thường vẫn 403 -----
 
   describe('Media self-approve wrapper (INV-12 exception)', () => {
-    it('content_owner tự duyệt ẢNH CHÍNH MÌNH tải lên -> published, audit moderation.self_approved + role.assigned', async () => {
+    // Luồng THẬT đầy đủ (requirement 6, 2026-09-17): upload thật qua MinIO (không seed SQL) ->
+    // xem trước (kênh nội bộ, ảnh pending không có URL công khai) -> KHÔNG lộ ra gallery công khai
+    // trước khi duyệt -> tự duyệt -> ảnh công khai thật -> audit.
+    it('luồng thật: upload (presign+PUT MinIO+register) -> xem trước -> CHƯA công khai -> tự duyệt -> công khai + audit', async () => {
       const owner = await createUser('media_owner');
       await assignRole(owner.userId, 'content_owner');
       const placeId = await mkPlace('media');
-      const mediaId = await seedPlaceMedia(placeId, owner.userId, 'pending');
-      await seedOpenCase(mediaId);
+
+      const mediaId = await realUploadPendingMedia(placeId, owner.accessToken);
+
+      // register() tự mở case kiểm duyệt thật (MediaService.register) — xác nhận trước khi tự duyệt.
+      const [openCase] = await ds.query(
+        `SELECT id, status FROM moderation_cases WHERE target_type = 'media' AND target_id = $1`,
+        [mediaId],
+      );
+      expect(openCase.status).toBe('open');
+      caseIds.push(openCase.id);
+
+      // Xem trước (kênh nội bộ theo cơ sở) — ảnh pending vẫn phải xem được bởi chính chủ.
+      const preview = await request(app.getHttpServer())
+        .get(`/api/places/${placeId}/media/${mediaId}/file`)
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(preview.status).toBe(302);
+      expect(preview.headers.location).toEqual(expect.stringContaining('http'));
+
+      // CHƯA công khai — danh sách ảnh công khai của place (getBySlug's media) không được có ảnh này.
+      const beforeApprove = await request(app.getHttpServer()).get(`/api/hotels/${(await ds.query('SELECT slug FROM places WHERE id=$1', [placeId]))[0].slug}`);
+      const beforeMediaIds = (beforeApprove.body.data.media ?? []).map((m: { id: string }) => m.id);
+      expect(beforeMediaIds).not.toContain(mediaId);
 
       const res = await request(app.getHttpServer())
         .post(`/api/places/${placeId}/media/${mediaId}/self-approve`)
@@ -332,12 +399,17 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
       const [media] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
       expect(media.status).toBe('published');
 
+      // Công khai thật sau khi duyệt — khách (không token) thấy đúng ảnh vừa duyệt trong gallery.
+      const afterApprove = await request(app.getHttpServer()).get(`/api/hotels/${(await ds.query('SELECT slug FROM places WHERE id=$1', [placeId]))[0].slug}`);
+      const afterMediaIds = (afterApprove.body.data.media ?? []).map((m: { id: string }) => m.id);
+      expect(afterMediaIds).toContain(mediaId);
+
       const auditRows = await ds.query(
         `SELECT event FROM audit_logs WHERE entity_id = $1 AND event = 'moderation.self_approved'`,
         [mediaId],
       );
       expect(auditRows).toHaveLength(1);
-    });
+    }, 20_000);
 
     it('moderator THƯỜNG (Media.Moderate, không có .Own) vẫn KHÔNG tự duyệt được ảnh của chính mình', async () => {
       const moderatorWhoUploads = await createUser('media_moderator_self');
