@@ -1437,4 +1437,40 @@ describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (
     expect(sql(query)).toContain('"opening_hours" = $3::jsonb');
     expect(params[2]).toBe(JSON.stringify(openingHours));
   });
+
+  // location (2026-09-17) — nhánh RIÊNG, không nằm trong COLUMN_MAP: cột geography cần biểu thức
+  // ST_SetSRID(ST_MakePoint(lng,lat),4326), KHÔNG phải một giá trị scalar đơn.
+  describe('location (2026-09-17) — nhánh CAS riêng cho cột geography', () => {
+    it('CHỈ location trong patch -> vẫn gọi query (không early-return dù không có key nào khớp COLUMN_MAP)', async () => {
+      repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
+
+      const result = await sut.updateScalarsIfUnchanged('p1', { location: { lat: 10.05, lng: 104.0 } }, '100');
+
+      expect(result).toBe(true);
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('"location" = ST_SetSRID(ST_MakePoint($3,$4),4326)::geography');
+      expect(sql(query)).toContain('xmin::text = $2');
+      expect(params).toEqual(['p1', '100', 104.0, 10.05]);
+    });
+
+    it('location CÙNG với trường scalar khác -> location luôn ở CUỐI danh sách tham số, index đúng', async () => {
+      repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
+
+      await sut.updateScalarsIfUnchanged(
+        'p1',
+        { address: 'Địa chỉ mới', location: { lat: 10.05, lng: 104.0 } },
+        '100',
+      );
+
+      const [query, params] = repo.query.mock.calls[0];
+      expect(sql(query)).toContain('"address" = $3');
+      expect(sql(query)).toContain('"location" = ST_SetSRID(ST_MakePoint($4,$5),4326)::geography');
+      expect(params).toEqual(['p1', '100', 'Địa chỉ mới', 104.0, 10.05]);
+    });
+
+    it('patch rỗng thật sự (không có location, không có key hợp lệ nào) -> true NGAY, không gọi query', async () => {
+      await expect(sut.updateScalarsIfUnchanged('p1', { notARealColumn: 'x' }, '100')).resolves.toBe(true);
+      expect(repo.query).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -23,6 +23,8 @@ import {
   ListPlacesQueryDto,
   RightNowQueryDto,
   SaveDescriptionDraftDto,
+  SaveNameDraftDto,
+  SaveShortDescriptionDraftDto,
   UpdatePlaceDto,
 } from './dto/places.dto';
 
@@ -122,6 +124,58 @@ export class PlacesController {
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   publishDescriptionDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
     return this.placesService.publishDescriptionDraft(id, user.sub);
+  }
+
+  // Tên hiển thị VI/EN (2026-09-17) — CÙNG khuôn nhóm description ở trên, field_key `display_name`.
+  @Get(':id/name/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getNameDraft(@Param('id', ParseUUIDPipe) id: string) {
+    return this.placesService.getNameDraft(id);
+  }
+
+  @Post(':id/name/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  saveNameDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveNameDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.saveNameDraft(id, dto, user.sub);
+  }
+
+  @Post(':id/name/publish')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  publishNameDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.placesService.publishNameDraft(id, user.sub);
+  }
+
+  // Mô tả ngắn VI/EN (2026-09-17) — CÙNG khuôn nhóm description ở trên, field_key `short_description`.
+  @Get(':id/short-description/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getShortDescriptionDraft(@Param('id', ParseUUIDPipe) id: string) {
+    return this.placesService.getShortDescriptionDraft(id);
+  }
+
+  @Post(':id/short-description/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  saveShortDescriptionDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveShortDescriptionDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.saveShortDescriptionDraft(id, dto, user.sub);
+  }
+
+  @Post(':id/short-description/publish')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  publishShortDescriptionDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.placesService.publishShortDescriptionDraft(id, user.sub);
   }
 
   // Public Place i18n Read Path (2026-09-02): `?locale=vi|en` tuỳ chọn — không đổi shape phản

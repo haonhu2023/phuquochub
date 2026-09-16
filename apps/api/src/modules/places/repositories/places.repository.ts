@@ -367,8 +367,12 @@ export class PlacesRepository {
    * i18n (PlacesService.getBySlug() ưu tiên place_translations nếu có bản dịch hiện hành) — sửa
    * chúng qua đường scalar này sẽ ghi vào `places.<col>` nhưng có thể KHÔNG hiển thị công khai nếu
    * đã tồn tại một bản dịch override cho locale đó, một lỗi im lặng dễ gây hiểu nhầm. Ba trường đó
-   * PHẢI đi qua PlacesService.saveDescriptionDraft()/publishDescriptionDraft() (place_translations
-   * thật), không qua đây.
+   * PHẢI đi qua PlacesService.save{Name,ShortDescription,Description}Draft()/publish...Draft()
+   * (place_translations thật), không qua đây.
+   *
+   * `location` (2026-09-17) KHÔNG còn bị loại trừ — toạ độ không có lớp phủ i18n nào (nguy cơ trên
+   * chỉ áp dụng cho ba trường dịch được), nên giờ CÓ CAS thật qua nhánh riêng bên dưới thay vì mãi
+   * là "chưa thiết kế" (PlacesService.saveDraft() không còn từ chối `dto.location` nữa).
    */
   async updateScalarsIfUnchanged(
     id: string,
@@ -385,14 +389,27 @@ export class PlacesRepository {
       priceRange: 'price_range',
       updatedBy: 'updated_by',
     };
+    // `location` (2026-09-17, xem PlacesService.saveDraft()'s ghi chú đầy đủ về vì sao toạ độ nay
+    // CÓ CAS) là TRƯỜNG HỢP RIÊNG: cột `location` là `geography`, không nhận giá trị scalar trực
+    // tiếp như các cột khác — cần biểu thức `ST_SetSRID(ST_MakePoint(lng,lat),4326)` (cùng
+    // updateLocation() bên dưới), KHÔNG nằm trong COLUMN_MAP vì nó ánh xạ 1 khoá patch -> 2 tham số.
+    const hasLocation = 'location' in patch && patch.location !== undefined;
+    const location = hasLocation ? (patch.location as { lat: number; lng: number }) : null;
     const keys = Object.keys(patch).filter((k) => k in COLUMN_MAP);
-    if (keys.length === 0) {
+    if (keys.length === 0 && !hasLocation) {
       return true;
     }
-    const setClauses = keys
-      .map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}${k === 'openingHours' ? '::jsonb' : ''}`)
-      .join(', ');
-    const values = keys.map((k) => (k === 'openingHours' ? JSON.stringify(patch[k]) : patch[k]));
+    const setClauseParts = keys.map(
+      (k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}${k === 'openingHours' ? '::jsonb' : ''}`,
+    );
+    const values: unknown[] = keys.map((k) => (k === 'openingHours' ? JSON.stringify(patch[k]) : patch[k]));
+    if (location) {
+      const lngIndex = values.length + 3;
+      const latIndex = lngIndex + 1;
+      setClauseParts.push(`"location" = ST_SetSRID(ST_MakePoint($${lngIndex},$${latIndex}),4326)::geography`);
+      values.push(location.lng, location.lat);
+    }
+    const setClauses = setClauseParts.join(', ');
     // BUG THẬT phát hiện qua e2e trên Postgres thật (2026-09-16), không phải unit test (mock
     // repository nên không bao giờ chạm hình dạng trả về thật): TypeORM's `Repository.query()` trả
     // về TRỰC TIẾP mảng rows cho INSERT...RETURNING, nhưng trả về TUPLE `[rows, affectedCount]` cho

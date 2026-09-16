@@ -6,7 +6,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import placeStyles from '@/modules/places/places.module.css';
 import { PlaceForm } from './PlaceForm';
-import { listMyPlaces, publishPlaceDraft, saveDraftPlace, updatePlaceLegacyFields } from './api/place-management.api';
+import { listMyPlaces, publishPlaceDraft, saveDraftPlace } from './api/place-management.api';
 import type { ManagedPlace, PlaceFormInput } from './types';
 
 type State =
@@ -57,26 +57,21 @@ export function EditPlaceView({ placeId }: Props) {
   }, [placeId]);
 
   /**
-   * BẢNG CHỨC NĂNG — chống ghi đè theo TỪNG trường của PlaceForm (2026-09-17). Không phải toàn bộ
-   * form có cùng mức bảo vệ; đây là danh sách đầy đủ, không giấu trường nào:
+   * BẢNG CHỨC NĂNG — chống ghi đè theo TỪNG trường của PlaceForm (2026-09-16, hoàn tất 2026-09-17).
+   * Không phải toàn bộ form đi qua CÙNG một cơ chế; đây là danh sách đầy đủ, không giấu trường nào:
    *
-   * | Trường                      | Bảo vệ ghi đè (CAS)        | Cơ chế                                    |
-   * |------------------------------|----------------------------|--------------------------------------------|
-   * | category_id/ward/address/    | CÓ — 409 nếu bị trôi        | saveDraftPlace() -> publishPlaceDraft()     |
-   * | price_range/opening_hours    |                             | (PlacesService.saveDraft/publishDraft)      |
-   * | description                  | KHÔNG qua form này          | CHẶN nếu đổi — dùng nút ✏️ (PlaceDescriptionEditor,
-   * |                               |                             | place_translations thật, có xem trước+nháp) |
-   * | name / short_description     | KHÔNG (hồi:pre-existing gap)| PATCH trực tiếp, không CAS — i18n-overlaid  |
-   * |                               |                             | (place_translations CÓ THỂ che giá trị này  |
-   * |                               |                             | ở locale khác) nhưng CHƯA có drawer an toàn |
-   * |                               |                             | nào được xây cho hai trường này (khác       |
-   * |                               |                             | description) — cố ý hoãn, không phải quên.  |
-   * | location (lat/lng)           | KHÔNG — saveDraft() từ chối | PATCH trực tiếp, không CAS                  |
-   * |                               | tường minh                 |                                              |
+   * | Trường                                          | Bảo vệ ghi đè (CAS) | Cơ chế                                  |
+   * |--------------------------------------------------|----------------------|-------------------------------------------|
+   * | category_id/ward/address/price_range/            | CÓ — 409 nếu bị trôi | saveDraftPlace() -> publishPlaceDraft()    |
+   * | opening_hours/location                            | (xmin, không phải    | (PlacesService.saveDraft/publishDraft —    |
+   * |                                                    | timestamp)           | location tham gia từ 2026-09-17)           |
+   * | name / short_description / description            | KHÔNG qua form này   | CHẶN nếu đổi ở đây — dùng nút ✏️ trên trang |
+   * |                                                    | (route riêng có CAS  | (PlaceDescriptionEditor, mở rộng cả ba     |
+   * |                                                    | thật ở tầng dịch)    | trường, place_translations thật, có xem    |
+   * |                                                    |                      | trước + nháp + công khai)                  |
    *
-   * Vì sao KHÔNG chặn cả name/short_description như description: chưa có đường ghi an toàn nào
-   * thay thế cho hai trường đó (chặn sẽ chỉ xoá mất khả năng sửa, không có gì tốt hơn để hướng
-   * người dùng tới) — khác description, nơi nút ✏️ đã tồn tại và được kiểm chứng end-to-end.
+   * KHÔNG còn trường nào ghi qua PATCH không-CAS nữa — `updatePlaceLegacyFields()` (tồn tại tới
+   * 2026-09-17) đã bị GỠ vì không còn caller nào cần đường ghi không bảo vệ đó.
    */
   async function handleSubmit(input: PlaceFormInput): Promise<void> {
     const session = readSession();
@@ -86,9 +81,9 @@ export function EditPlaceView({ placeId }: Props) {
     if (state.kind !== 'ready') {
       throw new Error('Không tải được địa điểm hiện tại — tải lại trang và thử lại.');
     }
-    if (input.description !== state.place.description) {
+    if (input.name !== state.place.name || input.short_description !== state.place.short_description || input.description !== state.place.description) {
       throw new Error(
-        'Sửa mô tả chi tiết ở đây chưa được bảo vệ khỏi ghi đè — dùng nút ✏️ trên trang địa điểm để sửa mô tả (có xem trước, lưu nháp, không bị mất khi người khác sửa cùng lúc).',
+        'Sửa tên/mô tả ngắn/mô tả chi tiết ở đây chưa được bảo vệ khỏi ghi đè — dùng nút ✏️ trên trang địa điểm (có xem trước, lưu nháp, không bị mất khi người khác sửa cùng lúc).',
       );
     }
 
@@ -101,6 +96,7 @@ export function EditPlaceView({ placeId }: Props) {
           ward: input.ward,
           price_range: input.price_range,
           opening_hours: input.opening_hours,
+          location: input.location,
         },
         session.accessToken,
       );
@@ -111,14 +107,6 @@ export function EditPlaceView({ placeId }: Props) {
       }
       throw err;
     }
-
-    // name/short_description/location: không có CAS (xem bảng chức năng ở trên) — vẫn ghi trực
-    // tiếp như hành vi cũ, KHÔNG phải hồi quy mới.
-    await updatePlaceLegacyFields(
-      placeId,
-      { name: input.name, short_description: input.short_description, location: input.location },
-      session.accessToken,
-    );
   }
 
   if (state.kind === 'signed-out') {

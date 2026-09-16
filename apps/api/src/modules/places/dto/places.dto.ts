@@ -173,3 +173,23 @@ export class SaveDescriptionDraftDto {
   @IsOptional() @IsString()
   en?: string;
 }
+
+// Body của POST /places/:id/name/draft (2026-09-17) — CÙNG khuôn SaveDescriptionDraftDto,
+// field_key `display_name` phía service.
+export class SaveNameDraftDto {
+  @IsOptional() @IsString()
+  vi?: string;
+
+  @IsOptional() @IsString()
+  en?: string;
+}
+
+// Body của POST /places/:id/short-description/draft (2026-09-17) — CÙNG khuôn
+// SaveDescriptionDraftDto, field_key `short_description` phía service.
+export class SaveShortDescriptionDraftDto {
+  @IsOptional() @IsString()
+  vi?: string;
+
+  @IsOptional() @IsString()
+  en?: string;
+}

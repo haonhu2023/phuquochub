@@ -259,6 +259,132 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
     });
   });
 
+  // ---- Requirement 1 (2026-09-17): name/short_description dùng ĐÚNG cơ chế place_translations,
+  // KHÔNG chỉ cập nhật cột places.<col> — cùng ma trận draft-không-lộ/publish-đúng đã kiểm cho
+  // description ở trên, generalize sang field_key display_name/short_description. Không lặp lại
+  // TOÀN BỘ ma trận (đã kiểm hết ở mức unit cho phần dùng chung) — chỉ smoke-test đủ để xác nhận
+  // route/field_key ĐÚNG trên Postgres thật.
+  describe('Tên hiển thị + mô tả ngắn VI/EN: CÙNG cơ chế place_translations như mô tả chi tiết', () => {
+    it('name: draft không lộ public, publish xong khách thấy đúng tên VI/EN', async () => {
+      const owner = await createUser('name_owner');
+      await assignRole(owner.userId, 'content_owner');
+      const placeId = await mkPlace('name_field');
+      const [{ slug, name: originalName }] = await ds.query(`SELECT slug, name FROM places WHERE id = $1`, [placeId]);
+
+      const draft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/name/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ vi: 'Tên VI mới', en: 'New EN name' });
+      expect(draft.status).toBe(201);
+
+      const beforePublish = await request(app.getHttpServer()).get(`/api/places/${slug}`);
+      expect(beforePublish.body.data.name).toBe(originalName);
+
+      const publish = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/name/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publish.status).toBe(201);
+
+      const publicVi = await request(app.getHttpServer()).get(`/api/places/${slug}?locale=vi`);
+      expect(publicVi.body.data.name).toBe('Tên VI mới');
+      const publicEn = await request(app.getHttpServer()).get(`/api/places/${slug}?locale=en`);
+      expect(publicEn.body.data.name).toBe('New EN name');
+    });
+
+    it('short_description: draft không lộ public, publish xong khách thấy đúng VI/EN', async () => {
+      const owner = await createUser('shortdesc_owner');
+      await assignRole(owner.userId, 'content_owner');
+      const placeId = await mkPlace('shortdesc_field');
+      const [{ slug }] = await ds.query(`SELECT slug FROM places WHERE id = $1`, [placeId]);
+
+      const draft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/short-description/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ vi: 'Ngắn VI mới', en: 'New EN short' });
+      expect(draft.status).toBe(201);
+
+      const publish = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/short-description/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publish.status).toBe(201);
+
+      const publicVi = await request(app.getHttpServer()).get(`/api/places/${slug}?locale=vi`);
+      expect(publicVi.body.data.short_description).toBe('Ngắn VI mới');
+      const publicEn = await request(app.getHttpServer()).get(`/api/places/${slug}?locale=en`);
+      expect(publicEn.body.data.short_description).toBe('New EN short');
+    });
+
+    it('member thường không lưu nháp/publish được tên lẫn mô tả ngắn', async () => {
+      const member = await createUser('name_member');
+      const placeId = await mkPlace('name_member_place');
+
+      const nameDraft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/name/draft`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ vi: 'không được phép' });
+      expect(nameDraft.status).toBe(403);
+
+      const shortDraft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/short-description/draft`)
+        .set('Authorization', `Bearer ${member.accessToken}`)
+        .send({ vi: 'không được phép' });
+      expect(shortDraft.status).toBe(403);
+    });
+  });
+
+  // ---- Requirement 1 (2026-09-17): location nay CÓ CAS thật (trước đây saveDraft() từ chối tường
+  // minh) — kiểm cả đường thành công lẫn 409 xung đột thật trên Postgres/PostGIS thật. ------------
+  describe('Vị trí (location): CAS thật qua saveDraft/publishDraft (2026-09-17, trước đây bị từ chối)', () => {
+    it('publishDraft location KHÔNG xung đột -> áp thành công, toạ độ mới phản ánh đúng qua ST_Y/ST_X', async () => {
+      const owner = await createUser('loc_owner_ok');
+      await assignRole(owner.userId, 'content_owner');
+      const placeId = await mkPlace('loc_ok');
+
+      const draft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ location: { lat: 10.2, lng: 104.05 } });
+      expect(draft.status).toBe(201);
+
+      const publish = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/revisions/${draft.body.data.id}/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publish.status).toBe(201);
+      expect(publish.body.data.location.lat).toBeCloseTo(10.2, 5);
+      expect(publish.body.data.location.lng).toBeCloseTo(104.05, 5);
+    });
+
+    it('publishDraft location XUNG ĐỘT (ai đó sửa toạ độ sau khi lưu nháp) -> 409, KHÔNG âm thầm ghi đè', async () => {
+      const owner = await createUser('loc_owner_conflict');
+      await assignRole(owner.userId, 'content_owner');
+      const placeId = await mkPlace('loc_conflict');
+
+      const draft = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ location: { lat: 10.3, lng: 104.1 } });
+      expect(draft.status).toBe(201);
+
+      // Một tác nhân KHÁC sửa toạ độ TRỰC TIẾP sau khi nháp được tạo.
+      await ds.query(
+        `UPDATE places SET location = ST_SetSRID(ST_MakePoint(103.5,10.0),4326)::geography, updated_at = now() WHERE id = $1`,
+        [placeId],
+      );
+
+      const publish = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/revisions/${draft.body.data.id}/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publish.status).toBe(409);
+
+      const [row] = await ds.query(`SELECT ST_X(location::geometry) AS lng FROM places WHERE id = $1`, [placeId]);
+      expect(Number(row.lng)).toBeCloseTo(103.5, 5);
+    });
+  });
+
   // ---- 3. Xung đột ghi đồng thời trên trường scalar -> 409 --------------------------------------
 
   describe('Xung đột ghi đồng thời (CAS) trên place scalar draft/publish', () => {
@@ -457,6 +583,106 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
 
       const [media] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
       expect(media.status).toBe('pending');
+    });
+  });
+
+  // ---- Yêu cầu 2 (2026-09-17): phạm vi kiểm duyệt content_owner — tự duyệt VÀ duyệt của người
+  // khác là HAI năng lực khác nhau (Media.Moderate.Own vs Media.Moderate), kiểm thử RIÊNG. --------
+  describe('content_owner — kiểm duyệt ẢNH CỦA NGƯỜI KHÁC qua luồng thường (GrantContentOwnerMediaModerationScope, KHÁC wrapper self-approve)', () => {
+    it('content_owner duyệt (approve) ảnh của NGƯỜI KHÁC qua POST /moderation/cases/:id/decide -> 200, published, audit moderation.decided (KHÔNG phải self_approved)', async () => {
+      const owner = await createUser('mod_scope_owner');
+      await assignRole(owner.userId, 'content_owner');
+      const otherUploader = await createUser('mod_scope_other');
+      const placeId = await mkPlace('mod_scope');
+      const mediaId = await seedPlaceMedia(placeId, otherUploader.userId, 'pending');
+      const caseId = await seedOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ decision: 'approve' });
+      expect(res.status).toBe(200);
+
+      const [media] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(media.status).toBe('published');
+
+      // Duyệt ảnh CỦA NGƯỜI KHÁC không đi qua nhánh INV-12 self-approve -> chỉ audit
+      // moderation.decided thường, KHÔNG có moderation.self_approved cho case này.
+      const decidedAudit = await ds.query(
+        `SELECT event FROM audit_logs WHERE entity_id = $1 AND event = 'moderation.decided'`,
+        [mediaId],
+      );
+      expect(decidedAudit.length).toBeGreaterThanOrEqual(1);
+      const selfApprovedAudit = await ds.query(
+        `SELECT event FROM audit_logs WHERE entity_id = $1 AND event = 'moderation.self_approved'`,
+        [mediaId],
+      );
+      expect(selfApprovedAudit).toHaveLength(0);
+    });
+
+    it('content_owner từ chối (reject) ảnh của NGƯỜI KHÁC qua decide -> 200, rejected', async () => {
+      const owner = await createUser('mod_scope_owner_reject');
+      await assignRole(owner.userId, 'content_owner');
+      const otherUploader = await createUser('mod_scope_other_reject');
+      const placeId = await mkPlace('mod_scope_reject');
+      const mediaId = await seedPlaceMedia(placeId, otherUploader.userId, 'pending');
+      const caseId = await seedOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${caseId}/decide`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ decision: 'reject', reason: 'không liên quan', reason_code: 'unrelated_to_place' });
+      expect(res.status).toBe(200);
+
+      const [media] = await ds.query(`SELECT status FROM media WHERE id = $1`, [mediaId]);
+      expect(media.status).toBe('rejected');
+    });
+
+    it('content_owner xem được hàng chờ kiểm duyệt (Moderation.Queue.View) -> 200, thấy case vừa tạo', async () => {
+      const owner = await createUser('mod_scope_owner_queue');
+      await assignRole(owner.userId, 'content_owner');
+      const otherUploader = await createUser('mod_scope_other_queue');
+      const placeId = await mkPlace('mod_scope_queue');
+      const mediaId = await seedPlaceMedia(placeId, otherUploader.userId, 'pending');
+      const caseId = await seedOpenCase(mediaId);
+
+      const res = await request(app.getHttpServer())
+        .get('/api/moderation/cases')
+        .set('Authorization', `Bearer ${owner.accessToken}`);
+      expect(res.status).toBe(200);
+      const ids = (res.body.data.items ?? res.body.data).map((c: { id: string }) => c.id);
+      expect(ids).toContain(caseId);
+    });
+
+    // Đối chứng: MỘT tài khoản content_owner KHÁC (chưa từng chạm case này) vẫn tự duyệt được ảnh
+    // CỦA CHÍNH MÌNH qua wrapper self-approve — hai năng lực (tự duyệt vs duyệt người khác) độc lập,
+    // không cái nào che khuất cái kia.
+    it('CÙNG một content_owner: tự duyệt ảnh CỦA MÌNH (wrapper) VÀ duyệt ảnh NGƯỜI KHÁC (decide thường) đều hoạt động độc lập', async () => {
+      const owner = await createUser('mod_scope_both');
+      await assignRole(owner.userId, 'content_owner');
+      const otherUploader = await createUser('mod_scope_both_other');
+      const placeId = await mkPlace('mod_scope_both');
+
+      // (a) Ảnh CỦA CHÍNH owner -> qua wrapper self-approve.
+      const ownMediaId = await seedPlaceMedia(placeId, owner.userId, 'pending');
+      await seedOpenCase(ownMediaId);
+      const selfRes = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/media/${ownMediaId}/self-approve`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(selfRes.status).toBe(200);
+
+      // (b) Ảnh CỦA NGƯỜI KHÁC -> qua decide thường (Media.Moderate, không phải wrapper).
+      const otherMediaId = await seedPlaceMedia(placeId, otherUploader.userId, 'pending');
+      const otherCaseId = await seedOpenCase(otherMediaId);
+      const decideRes = await request(app.getHttpServer())
+        .post(`/api/moderation/cases/${otherCaseId}/decide`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ decision: 'approve' });
+      expect(decideRes.status).toBe(200);
+
+      const rows = await ds.query(`SELECT id, status FROM media WHERE id = ANY($1)`, [[ownMediaId, otherMediaId]]);
+      expect(rows.every((r: { status: string }) => r.status === 'published')).toBe(true);
     });
   });
 });

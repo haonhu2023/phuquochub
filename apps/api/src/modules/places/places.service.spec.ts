@@ -498,8 +498,13 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       await expect(service.saveDraft('p1', { address: 'X' } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('có dto.location → BadRequest, chưa hỗ trợ nháp cho vị trí', async () => {
-      await expect(service.saveDraft('p1', { location: VALID_LOCATION } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+    // location (2026-09-17): KHÔNG còn bị từ chối — toạ độ không có lớp phủ i18n nào, nay có CAS
+    // thật qua cùng cơ chế xmin. Ghi vào diff.fields và snapshot như mọi trường scalar khác.
+    it('có dto.location → LƯU NHÁP THÀNH CÔNG (không còn BadRequest), ghi vào diff.fields', async () => {
+      await service.saveDraft('p1', { location: VALID_LOCATION } as UpdatePlaceDto, 'u1');
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.diff.fields).toContain('location');
+      expect(revision.snapshot.location).toEqual(VALID_LOCATION);
     });
 
     it('có dto.name/short_description/description → BadRequest, PHẢI qua route description/draft riêng', async () => {
@@ -694,6 +699,66 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
       expect(translationReviewService.reviewTranslation).toHaveBeenCalledTimes(1);
       expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-en', 'u1', 'APPROVED', null);
+    });
+  });
+
+  // name/short_description draft/publish (2026-09-17) — CÙNG implementation dùng chung với
+  // description (đã kiểm hết mọi nhánh ở trên: thiếu vi/en, NotFound, partial-failure, bỏ qua
+  // APPROVED...) — test ở đây CHỈ xác nhận field_key/fallback ĐÚNG cho từng trường, không lặp lại
+  // toàn bộ ma trận.
+  describe('getNameDraft / saveNameDraft / publishNameDraft — field_key display_name', () => {
+    it('getNameDraft: fallback_name = places.name gốc, gọi getCurrentTranslation với field_key display_name', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', name: 'Tên gốc' });
+      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
+
+      const result = await service.getNameDraft('p1');
+
+      expect(result.fallback_name).toBe('Tên gốc');
+      expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'display_name', 'vi');
+      expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'display_name', 'en');
+    });
+
+    it('saveNameDraft: publishTranslationBundle nhận field_key display_name', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', name: 'Tên gốc' });
+      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+
+      await service.saveNameDraft('p1', { vi: 'Tên mới' }, 'u1');
+
+      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
+      expect(input.items[0].fieldKey).toBe('display_name');
+    });
+
+    it('publishNameDraft: đọc/duyệt field_key display_name; không có nháp -> thông điệp riêng cho tên', async () => {
+      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
+      await expect(service.publishNameDraft('p1', 'u1')).rejects.toThrow(/tên/);
+      expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'display_name', 'vi');
+    });
+  });
+
+  describe('getShortDescriptionDraft / saveShortDescriptionDraft / publishShortDescriptionDraft — field_key short_description', () => {
+    it('getShortDescriptionDraft: fallback_short_description = places.short_description gốc', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', short_description: 'Ngắn gốc' });
+      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
+
+      const result = await service.getShortDescriptionDraft('p1');
+
+      expect(result.fallback_short_description).toBe('Ngắn gốc');
+      expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'short_description', 'vi');
+    });
+
+    it('saveShortDescriptionDraft: publishTranslationBundle nhận field_key short_description', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', short_description: 'Ngắn gốc' });
+      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+
+      await service.saveShortDescriptionDraft('p1', { vi: 'Ngắn mới' }, 'u1');
+
+      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
+      expect(input.items[0].fieldKey).toBe('short_description');
+    });
+
+    it('publishShortDescriptionDraft: không có nháp -> thông điệp riêng cho mô tả ngắn', async () => {
+      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
+      await expect(service.publishShortDescriptionDraft('p1', 'u1')).rejects.toThrow(/mô tả ngắn/);
     });
   });
 

@@ -39,13 +39,15 @@ describe('capabilitiesFromRoles', () => {
     },
   );
 
-  // content_owner (2026-09-16) — role RIÊNG cho ngoại lệ INV-12 + duyệt bản dịch. Biên tập được
-  // (kế thừa qua contributor) VÀ tự duyệt được ảnh/bản dịch của mình, nhưng KHÔNG mở lối vào Hàng
-  // chờ kiểm duyệt chung (content_owner không có Media.Moderate/Review.Moderate — chỉ .Own).
-  it('content_owner: biên tập + duyệt bản dịch + tự duyệt ảnh của mình, nhưng KHÔNG thấy hàng chờ kiểm duyệt chung', () => {
+  // content_owner (2026-09-16, mở rộng 2026-09-17) — role RIÊNG cho ngoại lệ INV-12 + duyệt bản
+  // dịch + (mới) kiểm duyệt ẢNH của người khác qua GrantContentOwnerMediaModerationScope (cấp
+  // TRỰC TIẾP Media.Moderate + Moderation.Queue.View, không kế thừa moderator). Biên tập được (qua
+  // contributor), tự duyệt ảnh/bản dịch CỦA MÌNH, VÀ giờ thấy được Hàng chờ kiểm duyệt chung (quyết
+  // định trên case KHÔNG PHẢI ảnh vẫn 403 ở backend — content_owner không có Review.Moderate).
+  it('content_owner: biên tập + duyệt bản dịch + tự duyệt ảnh của mình + thấy hàng chờ kiểm duyệt (ảnh người khác)', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
-      canModerate: false,
+      canModerate: true,
       canReviewTranslations: true,
       canSelfApproveOwnMedia: true,
     });

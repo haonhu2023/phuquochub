@@ -31,17 +31,18 @@ export async function archivePlace(id: string, accessToken: string): Promise<nul
   return apiDeleteAuth<null>(`/places/${encodeURIComponent(id)}`, accessToken);
 }
 
-// Draft/publish + CAS cho các trường SCALAR (2026-09-17) — KHÔNG bao gồm name/short_description/
-// description (i18n-overlaid, xem PlacesService.DRAFT_SCALAR_FIELDS's ghi chú đầy đủ) hay location
-// (saveDraft() từ chối tường minh, chưa có CAS). Hai hàm dưới đây khớp `POST /places/:id/draft` +
-// `POST /places/:id/revisions/:revisionId/publish` — xem PlaceForm capability table trong
-// EditPlaceView.tsx để biết trường nào thật sự được bảo vệ.
+// Draft/publish + CAS cho các trường SCALAR (2026-09-16, mở rộng `location` 2026-09-17) — KHÔNG
+// bao gồm name/short_description/description (i18n-overlaid, xem PlacesService.DRAFT_SCALAR_FIELDS's
+// ghi chú đầy đủ — ba trường đó đi qua saveNameDraft/saveShortDescriptionDraft/saveDescriptionDraft
+// bên dưới thay vì đây). Hai hàm dưới đây khớp `POST /places/:id/draft` + `POST /places/:id/
+// revisions/:revisionId/publish` — xem PlaceForm capability table trong EditPlaceView.tsx.
 export interface PlaceDraftScalarInput {
   category_id?: string;
   address?: string | null;
   ward?: string | null;
   price_range?: PriceRangeValue | null;
   opening_hours?: OpeningHours;
+  location?: GeoPoint;
 }
 
 export async function saveDraftPlace(
@@ -57,25 +58,4 @@ export async function publishPlaceDraft(id: string, revisionId: string, accessTo
     `/places/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/publish`,
     accessToken,
   );
-}
-
-/**
- * Các trường KHÔNG có CAS (2026-09-17): `name`/`short_description` (i18n-overlaid, chưa có
- * draft/publish an toàn nào được xây — KHÁC `description` đã có nút ✏️ trên trang công khai) và
- * `location` (saveDraft() từ chối tường minh). Vẫn ghi trực tiếp qua PATCH /places/:id như hành vi
- * cũ — KHÔNG phải một hồi quy mới, chỉ thu hẹp lại đúng phạm vi của đường ghi không bảo vệ này sau
- * khi category/ward/address/price_range/opening_hours đã chuyển sang saveDraftPlace/publishPlaceDraft.
- */
-export interface PlaceLegacyFieldsInput {
-  name: string;
-  short_description: string | null;
-  location: GeoPoint;
-}
-
-export async function updatePlaceLegacyFields(
-  id: string,
-  payload: PlaceLegacyFieldsInput,
-  accessToken: string,
-): Promise<ManagedPlace> {
-  return apiPatchAuth<ManagedPlace>(`/places/${encodeURIComponent(id)}`, accessToken, payload);
 }

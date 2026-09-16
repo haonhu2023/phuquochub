@@ -467,12 +467,14 @@ export class PlacesService {
   }
 
   // Trường DRAFT-ABLE qua saveDraft()/publishDraft() (content_owner scalar draft/publish,
-  // 2026-09-16) — CHỦ Ý KHÔNG bao gồm name/short_description/description: ba trường đó có lớp phủ
-  // i18n (place_translations, xem getBySlug()/resolveLocalizedField()) — sửa chúng phải đi qua
-  // saveDescriptionDraft()/publishDescriptionDraft() (thật sự ghi vào place_translations), không
-  // phải patch cột `places.<col>` ở đây (một patch scalar cho `description` có thể hoàn toàn
-  // KHÔNG hiển thị công khai nếu đã có bản dịch override cho locale đó — lỗi im lặng, không được
-  // phép). `location` cũng loại trừ như update() — CAS cho toạ độ chưa được thiết kế ở vòng này.
+  // 2026-09-16, mở rộng `location` 2026-09-17) — CHỦ Ý KHÔNG bao gồm name/short_description/
+  // description: ba trường đó có lớp phủ i18n (place_translations, xem getBySlug()/
+  // resolveLocalizedField()) — sửa chúng phải đi qua save{Name,ShortDescription,Description}
+  // Draft()/publish...Draft() (thật sự ghi vào place_translations), không phải patch cột
+  // `places.<col>` ở đây (một patch scalar cho các trường đó có thể hoàn toàn KHÔNG hiển thị công
+  // khai nếu đã có bản dịch override cho locale đó — lỗi im lặng, không được phép). `location`
+  // KHÔNG có lớp phủ i18n nào (toạ độ không được dịch) nên không có nguy cơ đó — nay CÓ CAS thật
+  // qua nhánh riêng trong PlacesRepository.updateScalarsIfUnchanged().
   private readonly DRAFT_SCALAR_FIELDS = [
     'category_id',
     'address',
@@ -481,6 +483,7 @@ export class PlacesService {
     'admin_area',
     'opening_hours',
     'price_range',
+    'location',
   ] as const;
 
   private buildDraftScalarPatch(dto: UpdatePlaceDto, userId: string): Record<string, unknown> {
@@ -506,14 +509,9 @@ export class PlacesService {
    * content_owner, đúng chủ trương "backend-enforced bằng permission thật".
    */
   async saveDraft(id: string, dto: UpdatePlaceDto, userId: string) {
-    if (dto.location) {
-      throw new BadRequestException(
-        'Lưu nháp cho vị trí (location) chưa được hỗ trợ — dùng PATCH /places/:id để áp ngay.',
-      );
-    }
     if (dto.name !== undefined || dto.short_description !== undefined || dto.description !== undefined) {
       throw new BadRequestException(
-        'Lưu nháp cho tên/mô tả ngắn/mô tả phải qua POST /places/:id/description/draft (place_translations), không qua đường này.',
+        'Lưu nháp cho tên/mô tả ngắn/mô tả phải qua POST /places/:id/{name,short-description,description}/draft (place_translations), không qua đường này.',
       );
     }
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
@@ -526,6 +524,9 @@ export class PlacesService {
         throw new BadRequestException('category_id không tồn tại');
       }
     }
+    // Cùng tín hiệu giám sát mà update() đã phát khi location đổi (F-1/OD-F-1) — thuần log, không
+    // chặn lưu nháp; phát TẠI ĐÂY (lúc đề xuất) hợp lý hơn lúc publish.
+    this.signalOutOfProvisionalBounds(dto.location, { action: 'update', placeId: id, actorId: userId });
     const changedFields = this.DRAFT_SCALAR_FIELDS.filter((f) => (dto as unknown as Record<string, unknown>)[f] !== undefined);
     if (changedFields.length === 0) {
       throw new BadRequestException('Không có trường nào để lưu nháp.');
@@ -593,6 +594,9 @@ export class PlacesService {
       admin_area: 'adminArea',
       opening_hours: 'openingHours',
       price_range: 'priceRange',
+      // `location` (2026-09-17) — khoá patch TRÙNG khoá field (không camelCase riêng): repository
+      // nhận diện đặc biệt bằng chính tên `location`, xem updateScalarsIfUnchanged()'s ghi chú.
+      location: 'location',
     };
     const patch: Record<string, unknown> = {};
     for (const field of fields) {
@@ -616,12 +620,44 @@ export class PlacesService {
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
+    const draft = await this.getFieldTranslationDraft(id, DESCRIPTION_FIELD_KEY);
+    return { fallback_description: existing.description, ...draft };
+  }
+
+  /**
+   * Xem trước bản nháp tên hiển thị VI/EN (2026-09-17) — CÙNG khuôn getDescriptionDraft(), field_key
+   * `display_name` (DISPLAY_NAME_FIELD_KEY). `fallback_name` là `places.name` gốc (dùng khi chưa có
+   * bản dịch nào current+public+production — xem getBySlug()'s resolveLocalizedField()).
+   */
+  async getNameDraft(id: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    const draft = await this.getFieldTranslationDraft(id, DISPLAY_NAME_FIELD_KEY);
+    return { fallback_name: existing.name, ...draft };
+  }
+
+  /**
+   * Xem trước bản nháp mô tả ngắn VI/EN (2026-09-17) — CÙNG khuôn getDescriptionDraft(), field_key
+   * `short_description` (SHORT_DESCRIPTION_FIELD_KEY).
+   */
+  async getShortDescriptionDraft(id: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    const draft = await this.getFieldTranslationDraft(id, SHORT_DESCRIPTION_FIELD_KEY);
+    return { fallback_short_description: existing.short_description, ...draft };
+  }
+
+  /** Phần dùng chung của getDescriptionDraft/getNameDraft/getShortDescriptionDraft (2026-09-17). */
+  private async getFieldTranslationDraft(id: string, fieldKey: string) {
     const [vi, en] = await Promise.all([
-      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'vi'),
-      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'en'),
+      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'vi'),
+      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'en'),
     ]);
     return {
-      fallback_description: existing.description,
       vi: vi
         ? { id: vi.id, text: vi.translatedText, human_review_status: vi.humanReviewStatus, is_public: vi.isPublic }
         : null,
@@ -644,17 +680,50 @@ export class PlacesService {
    * "đây LÀ ngôn ngữ nguồn", không phải một bản dịch của gì khác.
    */
   async saveDescriptionDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
-    if (dto.vi === undefined && dto.en === undefined) {
-      throw new BadRequestException('Cần ít nhất một trong hai trường vi/en.');
-    }
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
+    return this.saveFieldTranslationDraft(id, DESCRIPTION_FIELD_KEY, dto, existing.description, userId);
+  }
+
+  /** Lưu nháp TÊN HIỂN THỊ VI/EN (2026-09-17) — CÙNG khuôn saveDescriptionDraft(), field_key `display_name`. */
+  async saveNameDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    return this.saveFieldTranslationDraft(id, DISPLAY_NAME_FIELD_KEY, dto, existing.name, userId);
+  }
+
+  /** Lưu nháp MÔ TẢ NGẮN VI/EN (2026-09-17) — CÙNG khuôn saveDescriptionDraft(), field_key `short_description`. */
+  async saveShortDescriptionDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    return this.saveFieldTranslationDraft(id, SHORT_DESCRIPTION_FIELD_KEY, dto, existing.short_description, userId);
+  }
+
+  /**
+   * Phần dùng chung của saveDescriptionDraft/saveNameDraft/saveShortDescriptionDraft (2026-09-17).
+   * `fallbackForEnSource` — giá trị VI gốc dùng làm `sourceText` cho bản EN khi caller không gửi vi
+   * trong CÙNG lần gọi này (giữ đúng hành vi cũ của saveDescriptionDraft).
+   */
+  private async saveFieldTranslationDraft(
+    id: string,
+    fieldKey: string,
+    dto: { vi?: string; en?: string },
+    fallbackForEnSource: string | null,
+    userId: string,
+  ) {
+    if (dto.vi === undefined && dto.en === undefined) {
+      throw new BadRequestException('Cần ít nhất một trong hai trường vi/en.');
+    }
     const items: PublishTranslationItem[] = [];
     if (dto.vi !== undefined) {
       items.push({
-        fieldKey: DESCRIPTION_FIELD_KEY,
+        fieldKey,
         localeCode: 'vi',
         sourceLocaleCode: 'vi',
         translatedText: dto.vi,
@@ -671,11 +740,11 @@ export class PlacesService {
     }
     if (dto.en !== undefined) {
       items.push({
-        fieldKey: DESCRIPTION_FIELD_KEY,
+        fieldKey,
         localeCode: 'en',
         sourceLocaleCode: 'vi',
         translatedText: dto.en,
-        sourceText: dto.vi ?? existing.description ?? '',
+        sourceText: dto.vi ?? fallbackForEnSource ?? '',
         textFormat: TextFormat.PLAIN_TEXT,
         translationMethod: TranslationMethod.HUMAN,
         translationStatus: TranslationApprovalStatus.PENDING,
@@ -711,16 +780,36 @@ export class PlacesService {
    * để caller biết và có thể thử lại đúng phần còn thiếu.
    */
   async publishDescriptionDraft(id: string, userId: string) {
+    return this.publishFieldTranslationDraft(id, DESCRIPTION_FIELD_KEY, userId, 'Không có bản nháp mô tả nào đang chờ công khai.');
+  }
+
+  /** Công khai bản nháp TÊN HIỂN THỊ VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
+  async publishNameDraft(id: string, userId: string) {
+    return this.publishFieldTranslationDraft(id, DISPLAY_NAME_FIELD_KEY, userId, 'Không có bản nháp tên nào đang chờ công khai.');
+  }
+
+  /** Công khai bản nháp MÔ TẢ NGẮN VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
+  async publishShortDescriptionDraft(id: string, userId: string) {
+    return this.publishFieldTranslationDraft(
+      id,
+      SHORT_DESCRIPTION_FIELD_KEY,
+      userId,
+      'Không có bản nháp mô tả ngắn nào đang chờ công khai.',
+    );
+  }
+
+  /** Phần dùng chung của publishDescriptionDraft/publishNameDraft/publishShortDescriptionDraft (2026-09-17). */
+  private async publishFieldTranslationDraft(id: string, fieldKey: string, userId: string, emptyMessage: string) {
     const [vi, en] = await Promise.all([
-      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'vi'),
-      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'en'),
+      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'vi'),
+      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'en'),
     ]);
     const targets = [vi, en].filter(
       (t): t is NonNullable<typeof t> =>
         t !== null && (t.humanReviewStatus === HumanReviewStatus.PENDING || t.humanReviewStatus === HumanReviewStatus.NEEDS_CHANGES),
     );
     if (targets.length === 0) {
-      throw new NotFoundException('Không có bản nháp mô tả nào đang chờ công khai.');
+      throw new NotFoundException(emptyMessage);
     }
     const results: Array<{ locale_code: string; ok: boolean; error?: string }> = [];
     for (const t of targets) {

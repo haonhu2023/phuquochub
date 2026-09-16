@@ -20,8 +20,15 @@
  *  SeedContentOwnerRole1720005700000's own comment). */
 const EDITORIAL_ROLES = ['content_owner', 'contributor', 'moderator', 'administrator', 'super_administrator'];
 
-/** Vai trò giữ `Moderation.Queue.View` + `Media.Moderate`/`Review.Moderate` (SeedModerationPermissions). */
-const MODERATION_ROLES = ['moderator', 'administrator', 'super_administrator'];
+/**
+ * Vai trò giữ `Moderation.Queue.View` (SeedModerationPermissions cho moderator+; content_owner
+ * 2026-09-17 qua GrantContentOwnerMediaModerationScope — TRỰC TIẾP, không kế thừa từ moderator, xem
+ * ghi chú đầy đủ tại migration đó). content_owner CHỈ giữ `Media.Moderate` (không `Review.Moderate`/
+ * `Report.Resolve`/...) — hàng chờ vẫn hiện MỌI loại case (cùng hành vi trang `/dashboard/moderation`
+ * đã có từ trước cho mọi vai trò), nhưng quyết định trên case KHÔNG PHẢI ảnh sẽ 403 ở backend, đúng
+ * hợp đồng "hiển thị chỉ để không mời gọi thao tác chắc chắn bị từ chối, không phải lớp bảo mật".
+ */
+const MODERATION_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
 
 /** Vai trò giữ `PlaceTranslation.Review.Any` (SeedPlaceTranslationReviewPermission,
  *  human-translation-review 2026-09-04) — cùng tập vai trò với kiểm duyệt hôm nay (cấp cho

@@ -5,7 +5,17 @@ import { useAuth } from '@/modules/auth/AuthProvider';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { NO_CAPABILITIES, type UserCapabilities } from '@/modules/auth/capabilities';
-import { getDescriptionDraft, publishDescriptionDraft, saveDescriptionDraft } from './api/place-description.api';
+import {
+  getDescriptionDraft,
+  getNameDraft,
+  getShortDescriptionDraft,
+  publishDescriptionDraft,
+  publishNameDraft,
+  publishShortDescriptionDraft,
+  saveDescriptionDraft,
+  saveNameDraft,
+  saveShortDescriptionDraft,
+} from './api/place-description.api';
 import { ApiError } from '@/lib/http';
 
 jest.mock('@/modules/auth/AuthProvider');
@@ -16,9 +26,15 @@ jest.mock('./api/place-description.api');
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockReadSession = readSession as jest.MockedFunction<typeof readSession>;
 const mockFetchCapabilities = fetchCapabilities as jest.MockedFunction<typeof fetchCapabilities>;
-const mockGetDraft = getDescriptionDraft as jest.MockedFunction<typeof getDescriptionDraft>;
-const mockSaveDraft = saveDescriptionDraft as jest.MockedFunction<typeof saveDescriptionDraft>;
-const mockPublishDraft = publishDescriptionDraft as jest.MockedFunction<typeof publishDescriptionDraft>;
+const mockGetName = getNameDraft as jest.MockedFunction<typeof getNameDraft>;
+const mockGetShortDescription = getShortDescriptionDraft as jest.MockedFunction<typeof getShortDescriptionDraft>;
+const mockGetDescription = getDescriptionDraft as jest.MockedFunction<typeof getDescriptionDraft>;
+const mockSaveName = saveNameDraft as jest.MockedFunction<typeof saveNameDraft>;
+const mockSaveShortDescription = saveShortDescriptionDraft as jest.MockedFunction<typeof saveShortDescriptionDraft>;
+const mockSaveDescription = saveDescriptionDraft as jest.MockedFunction<typeof saveDescriptionDraft>;
+const mockPublishName = publishNameDraft as jest.MockedFunction<typeof publishNameDraft>;
+const mockPublishShortDescription = publishShortDescriptionDraft as jest.MockedFunction<typeof publishShortDescriptionDraft>;
+const mockPublishDescription = publishDescriptionDraft as jest.MockedFunction<typeof publishDescriptionDraft>;
 
 const SESSION = {
   accessToken: 'token-abc',
@@ -46,7 +62,19 @@ function authed() {
   mockReadSession.mockReturnValue(SESSION);
 }
 
-describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa mô tả VI/EN (content_owner, 2026-09-16)', () => {
+function mockEmptyDrafts() {
+  mockGetName.mockResolvedValue({ fallback_name: null, vi: null, en: null });
+  mockGetShortDescription.mockResolvedValue({ fallback_short_description: null, vi: null, en: null });
+  mockGetDescription.mockResolvedValue({ fallback_description: null, vi: null, en: null });
+  mockSaveName.mockResolvedValue([]);
+  mockSaveShortDescription.mockResolvedValue([]);
+  mockSaveDescription.mockResolvedValue([]);
+  mockPublishName.mockResolvedValue([{ locale_code: 'vi', ok: true }, { locale_code: 'en', ok: true }]);
+  mockPublishShortDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }, { locale_code: 'en', ok: true }]);
+  mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }, { locale_code: 'en', ok: true }]);
+}
+
+describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên/mô tả ngắn/mô tả, VI/EN) (content_owner)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -81,114 +109,113 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa mô tả VI/EN (
 
     render(<PlaceDescriptionEditor placeId="p1" />);
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Sửa mô tả' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sửa nội dung' })).toBeInTheDocument());
   });
 
-  it('bấm ✏️ -> tải bản nháp, điền sẵn vi/en (vi rơi về fallback_description nếu chưa có bản dịch)', async () => {
+  it('bấm ✏️ -> tải CẢ BA bản nháp (name/short_description/description), điền sẵn vi theo fallback tương ứng', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockResolvedValue({
-      fallback_description: 'Mô tả gốc places.description',
-      vi: null,
-      en: null,
-    });
+    mockGetName.mockResolvedValue({ fallback_name: 'Tên gốc', vi: null, en: null });
+    mockGetShortDescription.mockResolvedValue({ fallback_short_description: 'Ngắn gốc', vi: null, en: null });
+    mockGetDescription.mockResolvedValue({ fallback_description: 'Mô tả gốc', vi: null, en: null });
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    await waitFor(() => screen.getByRole('button', { name: 'Sửa mô tả' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Sửa mô tả' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
 
-    await waitFor(() => expect(mockGetDraft).toHaveBeenCalledWith('p1', 'token-abc'));
-    const viField = await screen.findByDisplayValue('Mô tả gốc places.description');
-    expect(viField).toBeInTheDocument();
+    await waitFor(() => expect(mockGetName).toHaveBeenCalledWith('p1', 'token-abc'));
+    expect(mockGetShortDescription).toHaveBeenCalledWith('p1', 'token-abc');
+    expect(mockGetDescription).toHaveBeenCalledWith('p1', 'token-abc');
+    expect(await screen.findByDisplayValue('Tên gốc')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Ngắn gốc')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Mô tả gốc')).toBeInTheDocument();
   });
 
-  it('Lưu nháp -> gọi saveDescriptionDraft, hiện thông báo "CHƯA hiển thị công khai", KHÔNG gọi publish', async () => {
+  it('Lưu nháp -> gọi CẢ BA saveXDraft, hiện thông báo "CHƯA hiển thị công khai", KHÔNG gọi publish nào', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockResolvedValue({ fallback_description: null, vi: null, en: null });
-    mockSaveDraft.mockResolvedValue([]);
+    mockEmptyDrafts();
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sửa mô tả' }));
-    await screen.findByLabelText('Mô tả (Tiếng Việt)');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
 
-    fireEvent.change(screen.getByLabelText('Mô tả (Tiếng Việt)'), { target: { value: 'VI mới' } });
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI mới' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
 
     await waitFor(() =>
-      expect(mockSaveDraft).toHaveBeenCalledWith('p1', { vi: 'VI mới', en: undefined }, 'token-abc'),
+      expect(mockSaveDescription).toHaveBeenCalledWith('p1', { vi: 'VI mới', en: undefined }, 'token-abc'),
     );
+    expect(mockSaveName).toHaveBeenCalled();
+    expect(mockSaveShortDescription).toHaveBeenCalled();
     expect(await screen.findByText(/CHƯA hiển thị công khai/)).toBeInTheDocument();
-    expect(mockPublishDraft).not.toHaveBeenCalled();
+    expect(mockPublishName).not.toHaveBeenCalled();
+    expect(mockPublishShortDescription).not.toHaveBeenCalled();
+    expect(mockPublishDescription).not.toHaveBeenCalled();
   });
 
-  it('Lưu và công khai -> lưu nháp RỒI publish, hiện thông báo thành công khi mọi locale ok', async () => {
+  it('Lưu và công khai -> lưu nháp RỒI publish CẢ BA trường, hiện thông báo thành công khi mọi trường/locale ok', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockResolvedValue({ fallback_description: null, vi: null, en: null });
-    mockSaveDraft.mockResolvedValue([]);
-    mockPublishDraft.mockResolvedValue([
-      { locale_code: 'vi', ok: true },
-      { locale_code: 'en', ok: true },
-    ]);
+    mockEmptyDrafts();
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sửa mô tả' }));
-    await screen.findByLabelText('Mô tả (Tiếng Việt)');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
 
-    fireEvent.change(screen.getByLabelText('Mô tả (Tiếng Việt)'), { target: { value: 'VI công khai' } });
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI công khai' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
 
-    await waitFor(() => expect(mockSaveDraft).toHaveBeenCalled());
-    await waitFor(() => expect(mockPublishDraft).toHaveBeenCalledWith('p1', 'token-abc'));
+    await waitFor(() => expect(mockSaveDescription).toHaveBeenCalled());
+    await waitFor(() => expect(mockPublishName).toHaveBeenCalledWith('p1', 'token-abc'));
+    expect(mockPublishShortDescription).toHaveBeenCalledWith('p1', 'token-abc');
+    expect(mockPublishDescription).toHaveBeenCalledWith('p1', 'token-abc');
     expect(await screen.findByText(/Đã công khai/)).toBeInTheDocument();
   });
 
-  it('publish MỘT PHẦN lỗi (vd en fail) -> báo RÕ locale nào lỗi, không nói "đã công khai" chung chung', async () => {
+  it('publish MỘT PHẦN lỗi (vd EN của mô tả chi tiết fail) -> báo RÕ trường + locale nào lỗi', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockResolvedValue({ fallback_description: null, vi: null, en: null });
-    mockSaveDraft.mockResolvedValue([]);
-    mockPublishDraft.mockResolvedValue([
+    mockEmptyDrafts();
+    mockPublishDescription.mockResolvedValue([
       { locale_code: 'vi', ok: true },
       { locale_code: 'en', ok: false, error: 'boom' },
     ]);
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sửa mô tả' }));
-    await screen.findByLabelText('Mô tả (Tiếng Việt)');
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
     fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
 
-    expect(await screen.findByText(/Công khai MỘT PHẦN.*EN/)).toBeInTheDocument();
+    expect(await screen.findByText(/Công khai MỘT PHẦN.*Mô tả chi tiết.*EN/)).toBeInTheDocument();
   });
 
-  it('lỗi 403 khi tải bản nháp -> báo đúng "không có quyền", không crash', async () => {
+  it('một trường lỗi khi tải (vd getNameDraft 403) -> báo đúng "không có quyền", không crash', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockRejectedValue(new ApiError('Thiếu quyền', 403));
+    mockGetName.mockRejectedValue(new ApiError('Thiếu quyền', 403));
+    mockGetShortDescription.mockResolvedValue({ fallback_short_description: null, vi: null, en: null });
+    mockGetDescription.mockResolvedValue({ fallback_description: null, vi: null, en: null });
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sửa mô tả' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
 
-    expect(await screen.findByText(/không có quyền sửa mô tả/)).toBeInTheDocument();
+    expect(await screen.findByText(/không có quyền sửa nội dung/)).toBeInTheDocument();
   });
 
-  it('Xem trước -> hiện đúng nội dung vi/en hiện tại trong ô soạn thảo, không gọi API nào thêm', async () => {
+  it('Xem trước -> hiện đúng nội dung vi/en hiện tại của CẢ BA trường, không gọi API ghi nào', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
-    mockGetDraft.mockResolvedValue({ fallback_description: null, vi: null, en: null });
+    mockEmptyDrafts();
 
     render(<PlaceDescriptionEditor placeId="p1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Sửa mô tả' }));
-    await screen.findByLabelText('Mô tả (Tiếng Việt)');
-    fireEvent.change(screen.getByLabelText('Mô tả (Tiếng Việt)'), { target: { value: 'Xem thử VI' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'Xem thử VI' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Xem trước' }));
 
-    // "Xem thử VI" now appears twice (the textarea's own value + the preview box) — scope to the
-    // preview paragraph specifically rather than a bare getByText (which would fail on ambiguity).
-    expect(screen.getByText((_, el) => el?.textContent === 'VI: Xem thử VI')).toBeInTheDocument();
-    expect(mockSaveDraft).not.toHaveBeenCalled();
-    expect(mockPublishDraft).not.toHaveBeenCalled();
+    expect(screen.getByText((_, el) => el?.textContent === 'Mô tả chi tiết — VI: Xem thử VI')).toBeInTheDocument();
+    expect(mockSaveDescription).not.toHaveBeenCalled();
+    expect(mockPublishDescription).not.toHaveBeenCalled();
   });
 });

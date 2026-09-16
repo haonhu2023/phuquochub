@@ -5,7 +5,6 @@ import {
   publishPlaceDraft,
   saveDraftPlace,
   updatePlace,
-  updatePlaceLegacyFields,
 } from './place-management.api';
 import { apiDeleteAuth, apiGetAuth, apiPatchAuth, apiPost } from '@/lib/http';
 import type { PlaceFormInput } from '../types';
@@ -96,17 +95,15 @@ describe('publishPlaceDraft', () => {
   });
 });
 
-describe('updatePlaceLegacyFields', () => {
-  it('PATCH /places/:id CHỈ với name/short_description/location (không CAS, xem bảng chức năng)', async () => {
-    await updatePlaceLegacyFields(
-      'place 1',
-      { name: 'Tên mới', short_description: 'Ngắn', location: { lat: 1, lng: 2 } },
-      'tok',
-    );
-    expect(mockPatch).toHaveBeenCalledWith('/places/place%201', 'tok', {
-      name: 'Tên mới',
-      short_description: 'Ngắn',
-      location: { lat: 1, lng: 2 },
+// location (2026-09-17) — nay tham gia CÙNG saveDraftPlace/publishPlaceDraft như các trường scalar
+// khác, KHÔNG còn đường PATCH riêng không-CAS nào (updatePlaceLegacyFields đã bị gỡ).
+describe('saveDraftPlace — location', () => {
+  it('gửi location CÙNG các trường scalar khác trong MỘT payload', async () => {
+    mockPost.mockResolvedValueOnce({ id: 'rev1', revisionNumber: 1 });
+    await saveDraftPlace('place 1', { address: 'X', location: { lat: 10.2, lng: 104.0 } }, 'tok');
+    expect(mockPost).toHaveBeenCalledWith('/places/place%201/draft', 'tok', {
+      address: 'X',
+      location: { lat: 10.2, lng: 104.0 },
     });
   });
 });

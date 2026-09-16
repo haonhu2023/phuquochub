@@ -37,21 +37,26 @@ const PRIVILEGED_METHOD = 'getCardByIdIncludingInactive';
 // privilege boundary as `update`, just re-derived per row instead of taken from a route param.
 //
 // content_owner draft/publish (2026-09-16): `saveDraft`/`publishDraft` (scalar fields) and
-// `getDescriptionDraft`/`saveDescriptionDraft` (place_translations description) all added. EVERY
-// one is wired to a route carrying `@RequirePermissions('Place.Edit.Managed')` + the SAME
-// `@AuthorizationContext` as `update` (places.controller.ts) — exactly the same privilege
-// boundary, not a new/broader one. None is `@Public`. (`publishDescriptionDraft` does NOT call
-// the privileged method at all — it only reads via PlaceTranslationsService.getCurrentTranslation()
-// — so it is deliberately absent from this list.)
+// `getDescriptionDraft`/`saveDescriptionDraft` (place_translations description) all added, and
+// (2026-09-17) their `name`/`short_description` siblings — SAME pattern, same field-key overlay
+// concern. EVERY one is wired to a route carrying `@RequirePermissions('Place.Edit.Managed')` +
+// the SAME `@AuthorizationContext` as `update` (places.controller.ts) — exactly the same privilege
+// boundary, not a new/broader one. None is `@Public`. (`publish{Description,Name,ShortDescription}
+// Draft` do NOT call the privileged method at all — they only read via
+// PlaceTranslationsService.getCurrentTranslation() — so they are deliberately absent from this list.)
 const APPROVED_SERVICE_CALLERS = [
   'archive',
   'approve',
   'create',
   'getDescriptionDraft',
+  'getNameDraft',
+  'getShortDescriptionDraft',
   'listMine',
   'publishDraft',
   'saveDescriptionDraft',
   'saveDraft',
+  'saveNameDraft',
+  'saveShortDescriptionDraft',
   'update',
 ].sort();
 

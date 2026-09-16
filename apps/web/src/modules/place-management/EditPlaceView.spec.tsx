@@ -3,12 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { EditPlaceView } from './EditPlaceView';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
-import {
-  listMyPlaces,
-  publishPlaceDraft,
-  saveDraftPlace,
-  updatePlaceLegacyFields,
-} from './api/place-management.api';
+import { listMyPlaces, publishPlaceDraft, saveDraftPlace } from './api/place-management.api';
 import { listCategories } from '@/modules/categories/api/categories.api';
 import type { Category } from '@/modules/categories/api/categories.api';
 import type { ManagedPlace } from './types';
@@ -18,7 +13,6 @@ jest.mock('./api/place-management.api', () => ({
   listMyPlaces: jest.fn(),
   saveDraftPlace: jest.fn(),
   publishPlaceDraft: jest.fn(),
-  updatePlaceLegacyFields: jest.fn(),
 }));
 jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
 
@@ -26,7 +20,6 @@ const mockSession = readSession as jest.Mock;
 const mockListMyPlaces = listMyPlaces as jest.Mock;
 const mockSaveDraft = saveDraftPlace as jest.Mock;
 const mockPublishDraft = publishPlaceDraft as jest.Mock;
-const mockUpdateLegacy = updatePlaceLegacyFields as jest.Mock;
 const mockListCategories = listCategories as jest.Mock;
 
 const SESSION = {
@@ -70,7 +63,6 @@ beforeEach(() => {
   mockListCategories.mockReset().mockResolvedValue(CATEGORIES);
   mockSaveDraft.mockReset().mockResolvedValue({ id: 'rev1', revisionNumber: 1 });
   mockPublishDraft.mockReset().mockResolvedValue(PLACE);
-  mockUpdateLegacy.mockReset().mockResolvedValue(PLACE);
 });
 
 async function renderReady() {
@@ -78,8 +70,8 @@ async function renderReady() {
   await waitFor(() => expect(screen.getByRole('button', { name: 'Lưu thay đổi' })).toBeInTheDocument());
 }
 
-describe('EditPlaceView — chống ghi đè theo bảng chức năng (2026-09-17)', () => {
-  it('sửa trường scalar (địa chỉ) -> saveDraftPlace rồi publishPlaceDraft, ĐÚNG payload scalar, KHÔNG kèm name/description', async () => {
+describe('EditPlaceView — chống ghi đè theo bảng chức năng (hoàn tất 2026-09-17: mọi trường đều có CAS hoặc bị chặn)', () => {
+  it('sửa trường scalar (địa chỉ) -> saveDraftPlace rồi publishPlaceDraft, kèm location hiện có', async () => {
     await renderReady();
 
     fireEvent.change(screen.getByLabelText(/Địa chỉ/), { target: { value: 'Địa chỉ mới' } });
@@ -88,14 +80,14 @@ describe('EditPlaceView — chống ghi đè theo bảng chức năng (2026-09-1
     await waitFor(() =>
       expect(mockSaveDraft).toHaveBeenCalledWith(
         'p1',
-        expect.objectContaining({ address: 'Địa chỉ mới', category_id: 'c1' }),
+        expect.objectContaining({ address: 'Địa chỉ mới', category_id: 'c1', location: { lat: 10.05, lng: 104.0 } }),
         'tok',
       ),
     );
     await waitFor(() => expect(mockPublishDraft).toHaveBeenCalledWith('p1', 'rev1', 'tok'));
   });
 
-  it('publishPlaceDraft trả 409 -> thông điệp rõ ràng, KHÔNG gọi updatePlaceLegacyFields', async () => {
+  it('publishPlaceDraft trả 409 -> thông điệp rõ ràng', async () => {
     mockPublishDraft.mockRejectedValueOnce(new ApiError('conflict', 409));
     await renderReady();
 
@@ -104,40 +96,42 @@ describe('EditPlaceView — chống ghi đè theo bảng chức năng (2026-09-1
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('Địa điểm đã được người khác cập nhật — tải lại trang và thử lại.'),
     );
-    expect(mockUpdateLegacy).not.toHaveBeenCalled();
   });
 
-  it('sửa mô tả chi tiết -> CHẶN submit, KHÔNG gọi bất kỳ API ghi nào, hướng dẫn dùng nút ✏️', async () => {
+  it.each([
+    ['Mô tả chi tiết', 'Mô tả mới'],
+    ['Mô tả ngắn', 'Ngắn mới'],
+    ['Tên địa điểm', 'Tên mới'],
+  ])('sửa %s -> CHẶN submit, KHÔNG gọi bất kỳ API ghi nào, hướng dẫn dùng nút ✏️', async (label, value) => {
     await renderReady();
 
-    fireEvent.change(screen.getByLabelText('Mô tả chi tiết'), { target: { value: 'Mô tả mới' } });
+    fireEvent.change(screen.getByLabelText(new RegExp(label)), { target: { value } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/nút ✏️/));
     expect(mockSaveDraft).not.toHaveBeenCalled();
     expect(mockPublishDraft).not.toHaveBeenCalled();
-    expect(mockUpdateLegacy).not.toHaveBeenCalled();
   });
 
-  it('không đổi mô tả -> submit vẫn chạy bình thường (so sánh không tự dương tính giả)', async () => {
+  it('không đổi tên/mô tả ngắn/mô tả -> submit vẫn chạy bình thường (so sánh không tự dương tính giả)', async () => {
     await renderReady();
 
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
 
     await waitFor(() => expect(mockSaveDraft).toHaveBeenCalled());
-    await waitFor(() => expect(mockUpdateLegacy).toHaveBeenCalled());
+    await waitFor(() => expect(mockPublishDraft).toHaveBeenCalled());
   });
 
-  it('sửa tên -> vẫn ghi qua updatePlaceLegacyFields (không CAS, hành vi cũ không đổi)', async () => {
+  it('sửa toạ độ (location) -> đi qua saveDraftPlace/publishPlaceDraft như mọi trường scalar khác (CAS thật, không còn PATCH trực tiếp)', async () => {
     await renderReady();
 
-    fireEvent.change(screen.getByLabelText(/Tên địa điểm/), { target: { value: 'Tên mới' } });
+    fireEvent.change(screen.getByLabelText(/Vĩ độ/), { target: { value: '10.2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
 
     await waitFor(() =>
-      expect(mockUpdateLegacy).toHaveBeenCalledWith(
+      expect(mockSaveDraft).toHaveBeenCalledWith(
         'p1',
-        { name: 'Tên mới', short_description: 'Ngắn cũ', location: { lat: 10.05, lng: 104.0 } },
+        expect.objectContaining({ location: { lat: 10.2, lng: 104.0 } }),
         'tok',
       ),
     );
