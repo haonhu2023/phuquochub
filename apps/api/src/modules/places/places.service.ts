@@ -237,6 +237,9 @@ export class PlacesService {
         is_primary: c.isPrimary,
         verification_status: c.verificationStatus,
         display_order: c.displayOrder,
+        // CAS token (2026-09-16) — cùng hình dạng ContactsService.toResponse(); giữ PlaceContact
+        // (shared-types) nhất quán ở cả kênh công khai lẫn kênh chủ cơ sở, không tạo hai biến thể.
+        updated_at: c.updatedAt.toISOString(),
       })),
       // Public Beta price trust gate (2026-08-28): mỗi dòng `price_history` mang
       // `verification_status` RIÊNG của chính bản ghi giá đó — dùng ĐÚNG field đó

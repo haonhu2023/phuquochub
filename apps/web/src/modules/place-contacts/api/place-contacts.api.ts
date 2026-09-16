@@ -19,13 +19,24 @@ export async function createPlaceContact(
   await apiPost(`/places/${encodeURIComponent(placeId)}/contacts`, accessToken, input);
 }
 
-/** PATCH /contacts/{id} — Contact.Edit.Managed, cơ sở suy từ CHÍNH contact (contact-authz.resolver). */
+/**
+ * PATCH /contacts/{id} — Contact.Edit.Managed, cơ sở suy từ CHÍNH contact (contact-authz.resolver).
+ *
+ * `expectedUpdatedAt` (2026-09-16) — CAS token thật: `PlaceContact.updated_at` đọc được ngay từ
+ * danh sách hiện có (ContactsService.toResponse()), gửi lại NGUYÊN VĂN qua `expected_updated_at`.
+ * TUỲ CHỌN để không phá client cũ nào còn gọi hàm này mà chưa truyền — thiếu thì backend ghi trực
+ * tiếp qua `save()` (hành vi cũ, không bảo vệ concurrency).
+ */
 export async function updatePlaceContact(
   contactId: string,
   input: ContactFormInput,
   accessToken: string,
+  expectedUpdatedAt?: string,
 ): Promise<void> {
-  await apiPatchAuth(`/contacts/${encodeURIComponent(contactId)}`, accessToken, input);
+  await apiPatchAuth(`/contacts/${encodeURIComponent(contactId)}`, accessToken, {
+    ...input,
+    ...(expectedUpdatedAt !== undefined ? { expected_updated_at: expectedUpdatedAt } : {}),
+  });
 }
 
 /** DELETE /contacts/{id} — Contact.Edit.Managed, cùng cơ chế phân quyền với update. */

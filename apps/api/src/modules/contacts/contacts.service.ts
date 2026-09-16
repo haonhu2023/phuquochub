@@ -121,6 +121,11 @@ export class ContactsService {
       is_primary: c.isPrimary,
       verification_status: c.verificationStatus,
       display_order: c.displayOrder,
+      // CAS token (2026-09-16) — client gửi lại NGUYÊN VĂN qua `UpdateContactDto.expected_updated_at`
+      // để bảo vệ optimistic-concurrency thật (updateScalarsIfUnchanged() phía dưới), không phải chỉ
+      // hiển thị. Trước milestone này, danh sách liên hệ không lộ trường này -> form sửa không có gì
+      // để gửi lại, "bảo vệ concurrency" chỉ tồn tại ở backend mà FE không dùng được.
+      updated_at: c.updatedAt.toISOString(),
     };
   }
 }

@@ -44,9 +44,17 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
     service = new ContactsService(repo, audit);
   });
 
+  // `save()` thật (TypeORM `@UpdateDateColumn`) luôn điền `updatedAt` sau khi ghi — mock ở đây mô
+  // phỏng đúng điều đó, không phải chỉ thêm `id`, để `toResponse()`'s `updated_at` (CAS token,
+  // 2026-09-16) có giá trị thật thay vì `undefined`.
+  function savedWith(overrides: Partial<Contact> = {}) {
+    return (c: Contact) =>
+      Promise.resolve(Object.assign(c, { id: 'ct1', updatedAt: new Date('2026-09-01T00:00:00Z'), ...overrides }));
+  }
+
   describe('createForPlace', () => {
     it('ghi audit contact.created với actorId thật khi HTTP truyền', async () => {
-      repo.save.mockImplementation((c: Contact) => Promise.resolve(Object.assign(c, { id: 'ct1' })));
+      repo.save.mockImplementation(savedWith());
 
       await service.createForPlace('p1', { contact_type: 'PHONE', value: '0900000000' } as never, 'u1');
 
@@ -62,7 +70,7 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
     });
 
     it('actorId mặc định null — caller hệ thống (batch ingestion) không bị phá', async () => {
-      repo.save.mockImplementation((c: Contact) => Promise.resolve(Object.assign(c, { id: 'ct1' })));
+      repo.save.mockImplementation(savedWith());
 
       await service.createForPlace('p1', { contact_type: 'PHONE', value: '0900000000' } as never);
 
@@ -70,7 +78,7 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
     });
 
     it('is_primary=true -> clearPrimary gọi TRƯỚC khi tạo (bất biến 1 primary/loại)', async () => {
-      repo.save.mockImplementation((c: Contact) => Promise.resolve(Object.assign(c, { id: 'ct1' })));
+      repo.save.mockImplementation(savedWith());
 
       await service.createForPlace('p1', { contact_type: 'PHONE', value: 'x', is_primary: true } as never, 'u1');
 

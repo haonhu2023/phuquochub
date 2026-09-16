@@ -46,7 +46,16 @@ describe('listPlaceContacts', () => {
 
   it('trả về ĐÚNG dữ liệu apiGet trả', async () => {
     const contacts: PlaceContact[] = [
-      { id: 'c1', contact_type: 'PHONE', value: '0909123456', label: null, is_primary: true, verification_status: 'pending', display_order: 0 },
+      {
+        id: 'c1',
+        contact_type: 'PHONE',
+        value: '0909123456',
+        label: null,
+        is_primary: true,
+        verification_status: 'pending',
+        display_order: 0,
+        updated_at: '2026-01-01T00:00:00.000Z',
+      },
     ];
     mockGet.mockResolvedValue(contacts);
     await expect(listPlaceContacts('place-1')).resolves.toEqual(contacts);
@@ -61,9 +70,19 @@ describe('createPlaceContact', () => {
 });
 
 describe('updatePlaceContact', () => {
-  it('PATCH /contacts/{id} (encode id) với payload + token', async () => {
+  it('PATCH /contacts/{id} (encode id) với payload + token, KHÔNG kèm expected_updated_at khi không truyền', async () => {
     await updatePlaceContact('contact 1', INPUT, 'tok');
     expect(mockPatch).toHaveBeenCalledWith('/contacts/contact%201', 'tok', INPUT);
+  });
+
+  // CAS (2026-09-16): có truyền expectedUpdatedAt -> gửi kèm expected_updated_at trong body, giữ
+  // nguyên các trường khác của ContactFormInput.
+  it('có expectedUpdatedAt -> gửi kèm expected_updated_at trong payload', async () => {
+    await updatePlaceContact('contact 1', INPUT, 'tok', '2026-09-16T00:00:00.000Z');
+    expect(mockPatch).toHaveBeenCalledWith('/contacts/contact%201', 'tok', {
+      ...INPUT,
+      expected_updated_at: '2026-09-16T00:00:00.000Z',
+    });
   });
 });
 

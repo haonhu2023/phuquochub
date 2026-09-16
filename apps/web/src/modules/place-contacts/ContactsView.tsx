@@ -93,12 +93,25 @@ export function ContactsView({ placeId }: Props) {
     reload();
   }
 
-  async function handleUpdate(contactId: string, input: ContactFormInput) {
+  /**
+   * `contact.updated_at` (CAS token, 2026-09-16) đọc từ CHÍNH bản ghi đang sửa — luôn là giá trị
+   * đã tải khi form mở, nên 409 ở đây nghĩa đúng là "ai đó khác đã sửa liên hệ này sau khi bạn mở
+   * form". `throw` (không setState) để `ContactEditor` tự hiển thị lỗi NGAY DƯỚI form đang sửa,
+   * cùng khuôn `handleCreate`/`PhotosView.handleMetadataSave`.
+   */
+  async function handleUpdate(contact: PlaceContact, input: ContactFormInput) {
     const session = readSession();
     if (!session) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
-    await updatePlaceContact(contactId, input, session.accessToken);
+    try {
+      await updatePlaceContact(contact.id, input, session.accessToken, contact.updated_at);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        throw new Error('Liên hệ này đã được người khác cập nhật. Vui lòng tải lại trang và thử lại.');
+      }
+      throw err;
+    }
     setEditingId(null);
     reload();
   }
@@ -221,7 +234,7 @@ export function ContactsView({ placeId }: Props) {
                           initial={contact}
                           submitLabel="Lưu"
                           submittingLabel="Đang lưu…"
-                          onSubmit={(input) => handleUpdate(contact.id, input)}
+                          onSubmit={(input) => handleUpdate(contact, input)}
                           onCancel={() => setEditingId(null)}
                         />
                       </div>

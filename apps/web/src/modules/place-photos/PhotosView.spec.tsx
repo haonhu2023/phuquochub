@@ -7,10 +7,13 @@ import {
   presignPlacePhoto,
   registerPlacePhoto,
   reorderPlacePhotos,
+  selfApproveMedia,
   setPlacePhotoCover,
   updatePlacePhotoMetadata,
 } from './api/place-photos.api';
 import { readSession } from '@/modules/auth/session';
+import { fetchCapabilities } from '@/modules/auth/api/me.api';
+import { NO_CAPABILITIES } from '@/modules/auth/capabilities';
 import { ApiError } from '@/lib/http';
 import type { PlacePhoto } from './types';
 
@@ -22,8 +25,10 @@ jest.mock('./api/place-photos.api', () => ({
   reorderPlacePhotos: jest.fn(),
   setPlacePhotoCover: jest.fn(),
   updatePlacePhotoMetadata: jest.fn(),
+  selfApproveMedia: jest.fn(),
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
+jest.mock('@/modules/auth/api/me.api', () => ({ fetchCapabilities: jest.fn() }));
 jest.mock('@/lib/sha256', () => ({ sha256Hex: jest.fn().mockResolvedValue('a'.repeat(64)) }));
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -41,7 +46,9 @@ const mockDelete = deletePlacePhoto as jest.Mock;
 const mockReorder = reorderPlacePhotos as jest.Mock;
 const mockSetCover = setPlacePhotoCover as jest.Mock;
 const mockUpdateMetadata = updatePlacePhotoMetadata as jest.Mock;
+const mockSelfApprove = selfApproveMedia as jest.Mock;
 const mockSession = readSession as jest.Mock;
+const mockCapabilities = fetchCapabilities as jest.Mock;
 
 const PLACE_ID = 'place-1';
 const SESSION = {
@@ -84,6 +91,8 @@ beforeEach(() => {
   mockReorder.mockReset().mockResolvedValue([]);
   mockSetCover.mockReset().mockResolvedValue([]);
   mockUpdateMetadata.mockReset().mockResolvedValue([]);
+  mockSelfApprove.mockReset().mockResolvedValue(null);
+  mockCapabilities.mockReset().mockResolvedValue(NO_CAPABILITIES);
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
   window.confirm = jest.fn().mockReturnValue(true);
 });
@@ -391,6 +400,57 @@ describe('PhotosView — ảnh bìa', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền quản lý ảnh của cơ sở này.'),
     );
+  });
+});
+
+// content_owner self-approve (INV-12 exception, 2026-09-16). Nút THUẦN TUÝ hiển thị theo
+// `caps.canSelfApproveOwnMedia` — backend (`ModerationService.selfApproveOwnMedia()`) vẫn là nơi
+// quyết định duy nhất, kể cả khi nút hiện mà ảnh không thực sự do actor tải lên (403).
+describe('PhotosView — tự duyệt ảnh (content_owner)', () => {
+  it('KHÔNG có năng lực tự duyệt -> không có nút "Duyệt ngay" dù ảnh đang pending', async () => {
+    mockList.mockResolvedValueOnce([photo({ status: 'pending' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Duyệt ngay' })).not.toBeInTheDocument();
+  });
+
+  it('có năng lực tự duyệt + ảnh pending -> có nút "Duyệt ngay"; bấm -> gọi API rồi nạp lại', async () => {
+    mockCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canSelfApproveOwnMedia: true });
+    mockList.mockResolvedValueOnce([photo({ status: 'pending' })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Duyệt ngay' })).toBeInTheDocument());
+
+    mockList.mockResolvedValueOnce([photo({ status: 'published' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Duyệt ngay' }));
+
+    await waitFor(() => expect(mockSelfApprove).toHaveBeenCalledWith(PLACE_ID, 'm1', 'tok'));
+    await waitFor(() => expect(screen.getByText('Đã tự duyệt ảnh — ảnh hiển thị công khai ngay.')).toBeInTheDocument());
+    expect(screen.getByText('Đã hiển thị')).toBeInTheDocument();
+  });
+
+  it('có năng lực nhưng ảnh KHÔNG do chính mình tải lên -> API 403, thông điệp rõ ràng, danh sách không đổi', async () => {
+    mockCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canSelfApproveOwnMedia: true });
+    mockList.mockResolvedValue([photo({ status: 'pending' })]);
+    mockSelfApprove.mockRejectedValueOnce(new ApiError('Chỉ được tự duyệt ảnh CHÍNH MÌNH đã tải lên.', 403));
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Duyệt ngay' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Duyệt ngay' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('Bạn chỉ có thể tự duyệt ảnh CHÍNH MÌNH đã tải lên.'),
+    );
+    expect(screen.getByText('Đang chờ duyệt')).toBeInTheDocument();
+  });
+
+  it('ảnh đã published -> KHÔNG có nút "Duyệt ngay" dù có năng lực', async () => {
+    mockCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canSelfApproveOwnMedia: true });
+    mockList.mockResolvedValueOnce([published('m1')]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
+
+    expect(screen.queryByRole('button', { name: 'Duyệt ngay' })).not.toBeInTheDocument();
   });
 });
 

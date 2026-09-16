@@ -213,6 +213,7 @@ describe('buildPlaceJsonLd — telephone', () => {
           is_primary: true,
           verification_status: 'pending' as const,
           display_order: 0,
+          updated_at: '2026-01-01T00:00:00.000Z',
         },
       ],
     };
@@ -231,6 +232,7 @@ describe('buildPlaceJsonLd — telephone', () => {
           is_primary: true,
           verification_status: 'pending' as const,
           display_order: 0,
+          updated_at: '2026-01-01T00:00:00.000Z',
         },
       ],
     };

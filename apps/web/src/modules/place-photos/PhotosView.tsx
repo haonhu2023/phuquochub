@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
+import { fetchCapabilities } from '@/modules/auth/api/me.api';
+import { NO_CAPABILITIES, type UserCapabilities } from '@/modules/auth/capabilities';
 import { ApiError } from '@/lib/http';
 import { runImageUpload, UploadValidationError } from '@/modules/media/uploadPipeline';
 import { mediaModerationReasonCodeLabel } from '@/modules/media/moderationReasonCodes';
@@ -15,6 +17,7 @@ import {
   presignPlacePhoto,
   registerPlacePhoto,
   reorderPlacePhotos,
+  selfApproveMedia,
   setPlacePhotoCover,
   updatePlacePhotoMetadata,
 } from './api/place-photos.api';
@@ -77,6 +80,22 @@ function galleryErrorMessage(err: unknown, action: 'order' | 'cover'): string {
     : 'Không lưu được thứ tự ảnh. Vui lòng thử lại.';
 }
 
+/**
+ * Lỗi tự duyệt ảnh (INV-12 exception, content_owner, 2026-09-16). 403 ở đây có HAI nguồn khác
+ * nhau backend không phân biệt qua mã lỗi riêng — thông điệp gộp chung cả hai, vẫn đúng trong mọi
+ * trường hợp: hoặc thiếu `Media.Moderate.Own` (không phải content_owner), hoặc ảnh không phải do
+ * chính actor tải lên (xem `ModerationService.selfApproveOwnMedia()`).
+ */
+function selfApproveErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) return 'Bạn chỉ có thể tự duyệt ảnh CHÍNH MÌNH đã tải lên.';
+    if (err.status === 404) return 'Không có case kiểm duyệt đang mở cho ảnh này. Vui lòng tải lại trang.';
+    if (err.status === 429) return 'Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.';
+    if (err.status < 500) return err.message;
+  }
+  return 'Không tự duyệt được ảnh này. Vui lòng thử lại.';
+}
+
 /** Đổi chỗ ảnh ở `index` với ảnh liền kề. Trả về `null` nếu đã ở biên (không có gì để đổi). */
 function swapped(photos: PlacePhoto[], index: number, direction: -1 | 1): PlacePhoto[] | null {
   const target = index + direction;
@@ -103,6 +122,8 @@ export function PhotosView({ placeId }: Props) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selfApprovingId, setSelfApprovingId] = useState<string | null>(null);
+  const [caps, setCaps] = useState<UserCapabilities>(NO_CAPABILITIES);
   // Một cờ DUY NHẤT cho cả sắp xếp lẫn đặt bìa: hai thao tác cùng ghi lên một tài nguyên (thứ tự
   // gallery), nên cho chạy song song sẽ khiến hai response ghi đè nhau và giao diện nhấp nháy về
   // trạng thái cũ. Trong lúc chờ, MỌI nút của gallery bị vô hiệu hoá.
@@ -123,6 +144,10 @@ export function PhotosView({ placeId }: Props) {
         cancelled = true;
       };
     }
+
+    void fetchCapabilities(session.accessToken).then((c) => {
+      if (!cancelled) setCaps(c);
+    });
 
     void Promise.resolve()
       .then(() => {
@@ -268,6 +293,34 @@ export function PhotosView({ placeId }: Props) {
       setUploadError(uploadErrorMessage(err));
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  /**
+   * INV-12 exception (content_owner, 2026-09-16). Nút chỉ ẨN theo `caps.canSelfApproveOwnMedia` —
+   * THUẦN TUÝ hiển thị: nếu ảnh không thực sự do actor tải lên, backend vẫn 403 (xem
+   * `selfApproveErrorMessage`), nút không cấp thêm quyền nào.
+   */
+  async function onSelfApprove(photo: PlacePhoto) {
+    if (selfApprovingId || busy) return;
+
+    const session = readSession();
+    if (!session) {
+      setUploadError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    setUploadError(null);
+    setNotice(null);
+    setSelfApprovingId(photo.id);
+    try {
+      await selfApproveMedia(placeId, photo.id, session.accessToken);
+      setNotice('Đã tự duyệt ảnh — ảnh hiển thị công khai ngay.');
+      reload();
+    } catch (err) {
+      setUploadError(selfApproveErrorMessage(err));
+    } finally {
+      setSelfApprovingId(null);
     }
   }
 
@@ -460,6 +513,17 @@ export function PhotosView({ placeId }: Props) {
                       disabled={busy}
                     >
                       Đặt làm ảnh bìa
+                    </button>
+                  )}
+
+                  {caps.canSelfApproveOwnMedia && photo.status === 'pending' && (
+                    <button
+                      type="button"
+                      className={styles.coverBtn}
+                      onClick={() => onSelfApprove(photo)}
+                      disabled={busy || selfApprovingId === photo.id}
+                    >
+                      {selfApprovingId === photo.id ? 'Đang duyệt…' : 'Duyệt ngay'}
                     </button>
                   )}
 

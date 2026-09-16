@@ -69,6 +69,7 @@ function contact(overrides: Partial<PlaceContact> = {}): PlaceContact {
     is_primary: false,
     verification_status: 'pending',
     display_order: 0,
+    updated_at: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -253,8 +254,29 @@ describe('ContactsView — sửa liên hệ', () => {
         'c1',
         { contact_type: 'PHONE', value: '0912345678', label: 'Lễ tân', is_primary: false },
         'tok',
+        '2026-01-01T00:00:00.000Z',
       ),
     );
+  });
+
+  // CAS (2026-09-16): `updated_at` đọc từ CHÍNH bản ghi đang sửa, gửi lại nguyên văn — 409 từ
+  // backend nghĩa là ai đó khác đã sửa liên hệ này SAU khi form mở.
+  it('lưu bị 409 (đã bị người khác sửa) -> thông điệp rõ ràng NGAY dưới form, KHÔNG đóng form', async () => {
+    mockListContacts.mockResolvedValue([contact({ id: 'c1' })]);
+    mockUpdate.mockRejectedValueOnce(new ApiError('conflict', 409));
+    render(<ContactsView placeId="place-1" />);
+    await waitFor(() => expect(screen.getAllByText('0909123456')[0]).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Liên hệ này đã được người khác cập nhật. Vui lòng tải lại trang và thử lại.',
+      ),
+    );
+    // Form sửa vẫn còn — KHÔNG âm thầm đóng lại như khi lưu thành công.
+    expect(screen.getByRole('button', { name: 'Lưu' })).toBeInTheDocument();
   });
 
   it('bấm "Huỷ" trong lúc sửa -> quay lại hiển thị bình thường, KHÔNG gọi updatePlaceContact', async () => {

@@ -87,3 +87,16 @@ export async function deletePlacePhoto(
     accessToken,
   );
 }
+
+/**
+ * Tự duyệt ảnh CHÍNH MÌNH đã tải lên (INV-12 exception, content_owner, 2026-09-16) —
+ * `PlaceMediaSelfApproveController`. Không gửi `case_id`: backend tự tra case kiểm duyệt đang mở
+ * cho ảnh này, client không cần biết case tồn tại. Không trả về gì (204) — gọi lại `listPlacePhotos`
+ * để lấy trạng thái mới (đúng khuôn `deletePlacePhoto` ở trên).
+ */
+export async function selfApproveMedia(placeId: string, mediaId: string, accessToken: string): Promise<null> {
+  return apiPost<null>(
+    `/places/${encodeURIComponent(placeId)}/media/${encodeURIComponent(mediaId)}/self-approve`,
+    accessToken,
+  );
+}

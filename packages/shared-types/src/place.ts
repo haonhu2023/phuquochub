@@ -79,6 +79,8 @@ export interface PlaceContact {
   is_primary: boolean;
   verification_status: VerificationStatusValue;
   display_order: number;
+  /** CAS token (2026-09-16) — gửi lại nguyên văn qua `UpdateContactDto.expected_updated_at`. */
+  updated_at: string;
 }
 
 export interface PlacePrice {
