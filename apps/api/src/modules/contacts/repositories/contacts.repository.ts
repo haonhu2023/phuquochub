@@ -21,6 +21,29 @@ export class ContactsRepository {
     return this.repo.findOne({ where: { id, deletedAt: IsNull() } });
   }
 
+  /**
+   * Token phiên bản (2026-09-17) cho CAS — `xmin::text` của Postgres, KHÔNG PHẢI cột mới (system
+   * column có sẵn trên mọi dòng). `repo.find()`/`findOne()` không thể trả cột này (không phải
+   * `@Column` khai trên entity), nên đọc riêng qua raw SQL — xem ContactsService.toResponse().
+   */
+  async getVersion(id: string): Promise<string | null> {
+    const rows: Array<{ version: string }> = await this.repo.query(
+      `SELECT xmin::text AS version FROM contacts WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.version ?? null;
+  }
+
+  /** Bản gộp của getVersion() cho danh sách — một round-trip thay vì N+1 cho listByOwner(). */
+  async getVersions(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows: Array<{ id: string; version: string }> = await this.repo.query(
+      `SELECT id, xmin::text AS version FROM contacts WHERE id = ANY($1)`,
+      [ids],
+    );
+    return new Map(rows.map((r) => [r.id, r.version]));
+  }
+
   create(data: Partial<Contact>): Contact {
     return this.repo.create(data);
   }
@@ -53,15 +76,15 @@ export class ContactsRepository {
   }
 
   /**
-   * CAS (Compare-And-Swap) cho ContactsService.update() (audit+conflict hardening, 2026-09-16) —
-   * áp patch CHỈ KHI `updated_at` vẫn khớp giá trị đã đọc lúc gọi update() (`@UpdateDateColumn`
-   * có sẵn trên entity — không thêm cột). 0 dòng khớp -> false, caller ném ConflictException
-   * (409). Cùng khuôn PlacesRepository.updateScalarsIfUnchanged().
+   * CAS (Compare-And-Swap) cho ContactsService.update() (audit+conflict hardening, 2026-09-16;
+   * sửa lại dùng xmin 2026-09-17) — áp patch CHỈ KHI `xmin::text` vẫn khớp giá trị đã đọc lúc gọi
+   * update() (system column có sẵn, không thêm cột). 0 dòng khớp -> false, caller ném
+   * ConflictException (409). Cùng khuôn PlacesRepository.updateScalarsIfUnchanged().
    */
   async updateScalarsIfUnchanged(
     id: string,
     patch: Record<string, unknown>,
-    expectedUpdatedAt: Date,
+    expectedVersion: string,
   ): Promise<boolean> {
     const COLUMN_MAP: Record<string, string> = {
       contactType: 'contact_type',
@@ -80,14 +103,17 @@ export class ContactsRepository {
     // `[rows, affectedCount]` cho UPDATE...RETURNING (khác INSERT...RETURNING, trả rows trực
     // tiếp) — `rows.length > 0` trên tuple đó LUÔN đúng, khiến CAS "luôn thành công" bất kể xung
     // đột thật. Phải destructure đúng phần tử [0].
-    // Cắt về độ phân giải milli-giây ở CẢ HAI vế — xem PlacesRepository.updateScalarsIfUnchanged()'s
-    // ghi chú đầy đủ: `expectedUpdatedAt` (thường là chuỗi ISO do client gửi) chỉ có độ phân giải
-    // milli-giây, so trực tiếp với cột timestamptz (micro-giây) gần như luôn lệch, gây 409 giả.
+    //
+    // BUG THẬT thứ hai (2026-09-17, tự phát hiện lại khi rà soát): vòng sửa trước dùng
+    // `date_trunc('milliseconds', ...)` ở cả hai vế để bù việc JS Date chỉ giữ được độ phân giải
+    // mili-giây — nhưng làm tròn CÙNG một đơn vị ở cả hai vế mở đúng cửa sổ đua mà CAS phải chặn:
+    // hai ghi THẬT SỰ đồng thời rơi cùng mili-giây vẫn có thể cùng "khớp" và đè mất nhau (lost
+    // update). Bỏ hẳn timestamp, dùng `xmin::text` — đổi ở MỌI lần UPDATE bất kể đồng hồ hệ thống.
     const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE contacts SET ${setClauses}, updated_at = now()
-        WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz) AND deleted_at IS NULL
+        WHERE id = $1 AND xmin::text = $2 AND deleted_at IS NULL
         RETURNING id`,
-      [id, expectedUpdatedAt, ...keys.map((k) => patch[k])],
+      [id, expectedVersion, ...keys.map((k) => patch[k])],
     );
     return rows.length > 0;
   }

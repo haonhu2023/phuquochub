@@ -54,6 +54,18 @@ export class PricesRepository {
     return this.repo.findOne({ where: { id, deletedAt: IsNull() } });
   }
 
+  /**
+   * Token phiên bản (2026-09-17) cho CAS — `xmin::text` của Postgres, KHÔNG PHẢI cột mới. Cùng
+   * khuôn ContactsRepository.getVersion() — xem đó để biết lý do không dùng `updated_at`.
+   */
+  async getVersion(id: string): Promise<string | null> {
+    const rows: Array<{ version: string }> = await this.repo.query(
+      `SELECT xmin::text AS version FROM price_history WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.version ?? null;
+  }
+
   create(data: Partial<PriceHistory>): PriceHistory {
     return this.repo.create(data);
   }
@@ -77,14 +89,14 @@ export class PricesRepository {
   }
 
   /**
-   * CAS (2026-09-16) — cùng khuôn ContactsRepository.updateScalarsIfUnchanged()/
-   * PlacesRepository.updateScalarsIfUnchanged(). `updated_at` đã có sẵn trên entity
-   * (`@UpdateDateColumn`), không thêm cột.
+   * CAS (2026-09-16, sửa lại dùng xmin 2026-09-17) — cùng khuôn
+   * ContactsRepository.updateScalarsIfUnchanged()/PlacesRepository.updateScalarsIfUnchanged().
+   * `xmin` là system column có sẵn trên mọi dòng, không thêm cột.
    */
   async updateScalarsIfUnchanged(
     id: string,
     patch: Record<string, unknown>,
-    expectedUpdatedAt: Date,
+    expectedVersion: string,
   ): Promise<boolean> {
     const COLUMN_MAP: Record<string, string> = {
       serviceName: 'service_name',
@@ -104,14 +116,16 @@ export class PricesRepository {
     // updateScalarsIfUnchanged()'s ghi chú đầy đủ): TypeORM's Repository.query() trả về TUPLE
     // `[rows, affectedCount]` cho UPDATE...RETURNING — `rows.length > 0` trên tuple đó LUÔN đúng,
     // khiến CAS "luôn thành công" bất kể xung đột thật. Phải destructure đúng phần tử [0].
-    // Cắt về độ phân giải milli-giây ở CẢ HAI vế — xem PlacesRepository.updateScalarsIfUnchanged()'s
-    // ghi chú đầy đủ: `expectedUpdatedAt` (thường là chuỗi ISO do client gửi) chỉ có độ phân giải
-    // milli-giây, so trực tiếp với cột timestamptz (micro-giây) gần như luôn lệch, gây 409 giả.
+    //
+    // BUG THẬT thứ hai (2026-09-17): làm tròn timestamp về mili-giây ở cả hai vế (cách sửa trước)
+    // vẫn để lọt lost update giữa hai ghi THẬT SỰ đồng thời rơi cùng mili-giây — xem
+    // PlacesRepository.updateScalarsIfUnchanged()'s ghi chú đầy đủ. Dùng `xmin::text` thay vì bất
+    // kỳ giá trị nào lấy từ JS Date: đổi ở MỌI lần UPDATE, không phụ thuộc đồng hồ hệ thống.
     const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE price_history SET ${setClauses}, updated_at = now()
-        WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz) AND deleted_at IS NULL
+        WHERE id = $1 AND xmin::text = $2 AND deleted_at IS NULL
         RETURNING id`,
-      [id, expectedUpdatedAt, ...keys.map((k) => patch[k])],
+      [id, expectedVersion, ...keys.map((k) => patch[k])],
     );
     return rows.length > 0;
   }

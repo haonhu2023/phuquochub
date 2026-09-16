@@ -245,6 +245,52 @@ describe('content_owner — self-approve + description draft/publish (e2e)', () 
       expect(row.address).toBe('Ai đó khác vừa sửa');
     });
 
+    // Đây chính là bài test độ chính xác token yêu cầu bởi requirement 5 (2026-09-17): sửa lại
+    // trước dùng `date_trunc('milliseconds', ...)` để bù việc JS Date chỉ giữ được độ phân giải
+    // mili-giây — NHƯNG làm tròn cùng đơn vị ở cả hai vế mở đúng cửa sổ đua: hai bản nháp đọc CÙNG
+    // trạng thái gốc rồi publish hai lần LIÊN TIẾP (không delay nhân tạo, cùng tick sự kiện, gần
+    // như chắc chắn rơi cùng mili-giây trên một DB test cục bộ) — lần publish THỨ HAI phải 409 dù
+    // đồng hồ hệ thống không phân biệt được hai lần ghi. Test này sẽ ĐỎ nếu quay lại so sánh
+    // timestamp làm tròn: `xmin` là mã giao dịch, đổi ở MỌI lần UPDATE bất kể tốc độ ghi.
+    it('hai bản nháp cùng đọc trạng thái gốc, publish LIÊN TIẾP không delay -> bản THỨ HAI vẫn 409 (không lost update dù trùng mili-giây)', async () => {
+      const owner = await createUser('cas_race_owner');
+      await assignRole(owner.userId, 'content_owner');
+      const placeId = await mkPlace('cas_race');
+
+      // Cả hai nháp đọc CÙNG một trạng thái gốc (getCardByIdIncludingInactive chưa bị ai đụng vào)
+      // -> cùng mang theo baseVersion CŨ.
+      const draftA = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ address: 'Nháp A' });
+      expect(draftA.status).toBe(201);
+      const draftB = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/draft`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send({ address: 'Nháp B' });
+      expect(draftB.status).toBe(201);
+
+      // Publish A ngay lập tức — đổi xmin của dòng `places`, KHÔNG chờ gì cả (không setTimeout,
+      // không cách nhau một mili-giây nào theo đồng hồ hệ thống là điều CÓ THỂ xảy ra ở đây).
+      const publishA = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/revisions/${draftA.body.data.id}/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publishA.status).toBe(201);
+
+      // Publish B NGAY SAU đó, cùng tick — B vẫn mang baseVersion đọc TRƯỚC publish A, nên phải
+      // 409 dù khoảng cách thời gian giữa hai request có thể dưới 1ms.
+      const publishB = await request(app.getHttpServer())
+        .post(`/api/places/${placeId}/revisions/${draftB.body.data.id}/publish`)
+        .set('Authorization', `Bearer ${owner.accessToken}`)
+        .send();
+      expect(publishB.status).toBe(409);
+
+      // Giá trị của A (ghi thành công đầu tiên) PHẢI còn nguyên — B thất bại không được ghi đè.
+      const [row] = await ds.query(`SELECT address FROM places WHERE id = $1`, [placeId]);
+      expect(row.address).toBe('Nháp A');
+    });
+
     it('publishDraft KHÔNG có xung đột -> áp thành công, 200/201', async () => {
       const owner = await createUser('cas_owner_ok');
       await assignRole(owner.userId, 'content_owner');

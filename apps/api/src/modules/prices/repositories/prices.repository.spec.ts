@@ -96,7 +96,7 @@ describe('PricesRepository', () => {
   });
 });
 
-describe('PricesRepository.updateScalarsIfUnchanged — CAS (audit+conflict hardening, 2026-09-16)', () => {
+describe('PricesRepository.updateScalarsIfUnchanged — CAS (audit+conflict hardening, 2026-09-16; xmin 2026-09-17)', () => {
   let repo: LooseMock<Repository<PriceHistory>>;
   let sut: PricesRepository;
 
@@ -109,25 +109,45 @@ describe('PricesRepository.updateScalarsIfUnchanged — CAS (audit+conflict hard
   // Repository.query() trả về TUPLE `[rows, affectedCount]` cho UPDATE...RETURNING (khác
   // INSERT...RETURNING, trả rows trực tiếp) — mock ở đây CỐ Ý mô phỏng đúng hình dạng đó.
   it('patch rỗng -> true NGAY, không gọi query', async () => {
-    await expect(sut.updateScalarsIfUnchanged('pr1', {}, new Date())).resolves.toBe(true);
+    await expect(sut.updateScalarsIfUnchanged('pr1', {}, '100')).resolves.toBe(true);
     expect(repo.query).not.toHaveBeenCalled();
   });
 
-  it('UPDATE khớp 1 dòng (tuple đúng hình dạng thật) -> true, cắt về milli-giây ở cả hai vế so sánh', async () => {
+  it('UPDATE khớp 1 dòng (tuple đúng hình dạng thật) -> true, so sánh bằng xmin::text (không phải timestamp)', async () => {
     repo.query.mockResolvedValue([[{ id: 'pr1' }], 1]);
-    const expectedUpdatedAt = new Date('2026-09-16T00:00:00.123Z');
+    const expectedVersion = '100';
 
-    const result = await sut.updateScalarsIfUnchanged('pr1', { amount: '99000' }, expectedUpdatedAt);
+    const result = await sut.updateScalarsIfUnchanged('pr1', { amount: '99000' }, expectedVersion);
 
     expect(result).toBe(true);
     const [query, params] = repo.query.mock.calls[0];
     expect(sql(query)).toContain('UPDATE price_history SET "amount" = $3, updated_at = now()');
-    expect(sql(query)).toContain("date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)");
-    expect(params).toEqual(['pr1', expectedUpdatedAt, '99000']);
+    expect(sql(query)).toContain('xmin::text = $2');
+    expect(sql(query)).not.toContain('date_trunc');
+    expect(params).toEqual(['pr1', expectedVersion, '99000']);
   });
 
   it('UPDATE khớp 0 dòng (tuple [[], 0] — CAS thất bại thật) -> false, KHÔNG throw', async () => {
     repo.query.mockResolvedValue([[], 0]);
-    await expect(sut.updateScalarsIfUnchanged('pr1', { amount: '1' }, new Date())).resolves.toBe(false);
+    await expect(sut.updateScalarsIfUnchanged('pr1', { amount: '1' }, '100')).resolves.toBe(false);
+  });
+});
+
+describe('PricesRepository.getVersion (2026-09-17)', () => {
+  let repo: LooseMock<Repository<PriceHistory>>;
+  let sut: PricesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<PriceHistory>>({ query: jest.fn() });
+    sut = new PricesRepository(repo);
+  });
+
+  it('SELECT xmin::text đúng id, trả version hoặc null nếu không có dòng', async () => {
+    repo.query.mockResolvedValueOnce([{ version: '100' }]);
+    await expect(sut.getVersion('pr1')).resolves.toBe('100');
+    expect(sql(repo.query.mock.calls[0][0])).toContain('SELECT xmin::text AS version FROM price_history WHERE id = $1');
+
+    repo.query.mockResolvedValueOnce([]);
+    await expect(sut.getVersion('missing')).resolves.toBeNull();
   });
 });

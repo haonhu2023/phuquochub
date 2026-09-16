@@ -6,7 +6,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import placeStyles from '@/modules/places/places.module.css';
 import { PlaceForm } from './PlaceForm';
-import { listMyPlaces, updatePlace } from './api/place-management.api';
+import { listMyPlaces, publishPlaceDraft, saveDraftPlace, updatePlaceLegacyFields } from './api/place-management.api';
 import type { ManagedPlace, PlaceFormInput } from './types';
 
 type State =
@@ -56,12 +56,69 @@ export function EditPlaceView({ placeId }: Props) {
     };
   }, [placeId]);
 
+  /**
+   * BẢNG CHỨC NĂNG — chống ghi đè theo TỪNG trường của PlaceForm (2026-09-17). Không phải toàn bộ
+   * form có cùng mức bảo vệ; đây là danh sách đầy đủ, không giấu trường nào:
+   *
+   * | Trường                      | Bảo vệ ghi đè (CAS)        | Cơ chế                                    |
+   * |------------------------------|----------------------------|--------------------------------------------|
+   * | category_id/ward/address/    | CÓ — 409 nếu bị trôi        | saveDraftPlace() -> publishPlaceDraft()     |
+   * | price_range/opening_hours    |                             | (PlacesService.saveDraft/publishDraft)      |
+   * | description                  | KHÔNG qua form này          | CHẶN nếu đổi — dùng nút ✏️ (PlaceDescriptionEditor,
+   * |                               |                             | place_translations thật, có xem trước+nháp) |
+   * | name / short_description     | KHÔNG (hồi:pre-existing gap)| PATCH trực tiếp, không CAS — i18n-overlaid  |
+   * |                               |                             | (place_translations CÓ THỂ che giá trị này  |
+   * |                               |                             | ở locale khác) nhưng CHƯA có drawer an toàn |
+   * |                               |                             | nào được xây cho hai trường này (khác       |
+   * |                               |                             | description) — cố ý hoãn, không phải quên.  |
+   * | location (lat/lng)           | KHÔNG — saveDraft() từ chối | PATCH trực tiếp, không CAS                  |
+   * |                               | tường minh                 |                                              |
+   *
+   * Vì sao KHÔNG chặn cả name/short_description như description: chưa có đường ghi an toàn nào
+   * thay thế cho hai trường đó (chặn sẽ chỉ xoá mất khả năng sửa, không có gì tốt hơn để hướng
+   * người dùng tới) — khác description, nơi nút ✏️ đã tồn tại và được kiểm chứng end-to-end.
+   */
   async function handleSubmit(input: PlaceFormInput): Promise<void> {
     const session = readSession();
     if (!session) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
-    await updatePlace(placeId, input, session.accessToken);
+    if (state.kind !== 'ready') {
+      throw new Error('Không tải được địa điểm hiện tại — tải lại trang và thử lại.');
+    }
+    if (input.description !== state.place.description) {
+      throw new Error(
+        'Sửa mô tả chi tiết ở đây chưa được bảo vệ khỏi ghi đè — dùng nút ✏️ trên trang địa điểm để sửa mô tả (có xem trước, lưu nháp, không bị mất khi người khác sửa cùng lúc).',
+      );
+    }
+
+    try {
+      const draft = await saveDraftPlace(
+        placeId,
+        {
+          category_id: input.category_id,
+          address: input.address,
+          ward: input.ward,
+          price_range: input.price_range,
+          opening_hours: input.opening_hours,
+        },
+        session.accessToken,
+      );
+      await publishPlaceDraft(placeId, draft.id, session.accessToken);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        throw new Error('Địa điểm đã được người khác cập nhật — tải lại trang và thử lại.');
+      }
+      throw err;
+    }
+
+    // name/short_description/location: không có CAS (xem bảng chức năng ở trên) — vẫn ghi trực
+    // tiếp như hành vi cũ, KHÔNG phải hồi quy mới.
+    await updatePlaceLegacyFields(
+      placeId,
+      { name: input.name, short_description: input.short_description, location: input.location },
+      session.accessToken,
+    );
   }
 
   if (state.kind === 'signed-out') {

@@ -40,6 +40,7 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-01T00:00:00Z'),
     verified_at: null,
+    row_version: '100',
     ...overrides,
   };
 }
@@ -1380,37 +1381,40 @@ describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (
   // sẽ không bao giờ bắt được lỗi "CAS luôn báo thành công" đã từng lọt qua unit test ở tầng
   // service (nơi repository bị mock hoàn toàn, không chạm hình dạng trả về thật của driver).
   it('patch rỗng -> true NGAY, không gọi query (không có gì để CAS)', async () => {
-    await expect(sut.updateScalarsIfUnchanged('p1', {}, new Date())).resolves.toBe(true);
+    await expect(sut.updateScalarsIfUnchanged('p1', {}, '100')).resolves.toBe(true);
     expect(repo.query).not.toHaveBeenCalled();
   });
 
   it('patch chỉ có key lạ (không trong COLUMN_MAP) -> lọc hết, coi như rỗng, không gọi query', async () => {
     await expect(
-      sut.updateScalarsIfUnchanged('p1', { notARealColumn: 'x' }, new Date()),
+      sut.updateScalarsIfUnchanged('p1', { notARealColumn: 'x' }, '100'),
     ).resolves.toBe(true);
     expect(repo.query).not.toHaveBeenCalled();
   });
 
-  it('UPDATE khớp 1 dòng (driver trả TUPLE [rows, count] đúng hình dạng thật) -> true', async () => {
+  it('UPDATE khớp 1 dòng (driver trả TUPLE [rows, count] đúng hình dạng thật) -> true, so sánh bằng xmin::text (không phải timestamp)', async () => {
     repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
-    const expectedUpdatedAt = new Date('2026-09-16T00:00:00.123Z');
+    const expectedVersion = '100';
 
     // `address` (không phải `name`) — name/short_description/description CHỦ Ý bị loại khỏi
     // COLUMN_MAP của phương thức này (đi qua place_translations, không phải scalar draft).
-    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'Địa chỉ mới', updatedBy: 'u1' }, expectedUpdatedAt);
+    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'Địa chỉ mới', updatedBy: 'u1' }, expectedVersion);
 
     expect(result).toBe(true);
     const [query, params] = repo.query.mock.calls[0];
     expect(sql(query)).toContain('UPDATE places SET "address" = $3, "updated_by" = $4, updated_at = now()');
-    expect(sql(query)).toContain("date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)");
+    expect(sql(query)).toContain('xmin::text = $2');
+    // KHÔNG còn so sánh timestamp làm tròn — xem ghi chú đầy đủ tại updateScalarsIfUnchanged() về
+    // vì sao date_trunc(milliseconds) vẫn để lọt một cửa sổ đua thật giữa hai ghi cùng mili-giây.
+    expect(sql(query)).not.toContain('date_trunc');
     expect(sql(query)).toContain('RETURNING id');
-    expect(params).toEqual(['p1', expectedUpdatedAt, 'Địa chỉ mới', 'u1']);
+    expect(params).toEqual(['p1', expectedVersion, 'Địa chỉ mới', 'u1']);
   });
 
   it('UPDATE khớp 0 dòng (driver trả TUPLE [[], 0] — CAS thất bại thật) -> false, KHÔNG throw', async () => {
     repo.query.mockResolvedValue([[], 0]);
 
-    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'X' }, new Date('2026-01-01'));
+    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'X' }, '100');
 
     expect(result).toBe(false);
   });
@@ -1420,14 +1424,14 @@ describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (
     // `tuple.length > 0` thay vì `tuple[0].length > 0`, test 'UPDATE khớp 0 dòng' ở trên đã đủ để
     // bắt lỗi đó (mong đợi false, sẽ nhận true nếu bug tái xuất hiện). Test này chỉ nói rõ Ý ĐỊNH.
     repo.query.mockResolvedValue([[], 0]);
-    await expect(sut.updateScalarsIfUnchanged('p1', { address: 'X' }, new Date())).resolves.toBe(false);
+    await expect(sut.updateScalarsIfUnchanged('p1', { address: 'X' }, '100')).resolves.toBe(false);
   });
 
   it('opening_hours (jsonb) được JSON.stringify + ép ::jsonb trong SQL, không truyền object JS trần', async () => {
     repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
     const openingHours = { is_24h: true };
 
-    await sut.updateScalarsIfUnchanged('p1', { openingHours }, new Date('2026-01-01'));
+    await sut.updateScalarsIfUnchanged('p1', { openingHours }, '100');
 
     const [query, params] = repo.query.mock.calls[0];
     expect(sql(query)).toContain('"opening_hours" = $3::jsonb');

@@ -169,7 +169,7 @@ describe('PricesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('CAS (2026-09-16): CÓ expected_updated_at khớp → updateScalarsIfUnchanged áp thành công, ghi audit price.updated before/after', async () => {
+    it('CAS (2026-09-16, sửa lại dùng xmin 2026-09-17): CÓ expected_version khớp → updateScalarsIfUnchanged áp thành công (đúng version, KHÔNG phải timestamp), ghi audit price.updated before/after', async () => {
       const existing = priceRow({ amount: '50000', updatedAt: new Date('2026-09-16T00:00:00Z') } as never);
       repo.findById
         .mockResolvedValueOnce(existing as never)
@@ -178,15 +178,11 @@ describe('PricesService', () => {
 
       await service.update(
         'pr1',
-        { amount: 99000, expected_updated_at: '2026-09-16T00:00:00.000Z' } as Parameters<typeof service.update>[1],
+        { amount: 99000, expected_version: '100' } as Parameters<typeof service.update>[1],
         'u1',
       );
 
-      expect(repo.updateScalarsIfUnchanged).toHaveBeenCalledWith(
-        'pr1',
-        { amount: '99000' },
-        new Date('2026-09-16T00:00:00.000Z'),
-      );
+      expect(repo.updateScalarsIfUnchanged).toHaveBeenCalledWith('pr1', { amount: '99000' }, '100');
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'price.updated',
@@ -198,21 +194,21 @@ describe('PricesService', () => {
       );
     });
 
-    it('CAS (2026-09-16): CÓ expected_updated_at nhưng ĐÃ TRÔI → Conflict, KHÔNG audit', async () => {
+    it('CAS: CÓ expected_version nhưng ĐÃ TRÔI → Conflict, KHÔNG audit', async () => {
       repo.findById.mockResolvedValue(priceRow() as never);
       repo.updateScalarsIfUnchanged.mockResolvedValue(false);
 
       await expect(
         service.update(
           'pr1',
-          { amount: 99000, expected_updated_at: '2026-09-16T00:00:00.000Z' } as Parameters<typeof service.update>[1],
+          { amount: 99000, expected_version: '100' } as Parameters<typeof service.update>[1],
           'u1',
         ),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(audit.record).not.toHaveBeenCalled();
     });
 
-    it('KHÔNG expected_updated_at → ghi trực tiếp qua save() (hành vi cũ, không phá client cũ), vẫn ghi audit', async () => {
+    it('KHÔNG expected_version → ghi trực tiếp qua save() (hành vi cũ, không phá client cũ), vẫn ghi audit', async () => {
       repo.findById.mockResolvedValue(priceRow() as never);
       repo.save.mockResolvedValue(undefined as never);
 

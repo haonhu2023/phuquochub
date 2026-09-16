@@ -58,7 +58,7 @@ export class PricesService {
     return this.toResponse(saved);
   }
 
-  /** CAS — cùng khuôn ContactsService.update() (dto.expected_updated_at tuỳ chọn). */
+  /** CAS — cùng khuôn ContactsService.update() (dto.expected_version tuỳ chọn, KHÔNG PHẢI timestamp). */
   async update(id: string, dto: UpdatePriceDto, actorId: string | null = null) {
     const price = await this.repo.findById(id);
     if (!price) {
@@ -74,8 +74,8 @@ export class PricesService {
     if (dto.valid_to !== undefined) patch.validTo = new Date(dto.valid_to);
     if (dto.display_order !== undefined) patch.displayOrder = dto.display_order;
 
-    if (dto.expected_updated_at) {
-      const applied = await this.repo.updateScalarsIfUnchanged(id, patch, new Date(dto.expected_updated_at));
+    if (dto.expected_version) {
+      const applied = await this.repo.updateScalarsIfUnchanged(id, patch, dto.expected_version);
       if (!applied) {
         throw new ConflictException('Bản giá đã được người khác cập nhật — tải lại và thử lại.');
       }

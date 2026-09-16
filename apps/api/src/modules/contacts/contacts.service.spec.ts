@@ -39,14 +39,17 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
       clearPrimary: jest.fn(),
       updateScalars: jest.fn(),
       updateScalarsIfUnchanged: jest.fn(),
+      getVersion: jest.fn().mockResolvedValue('100'),
+      getVersions: jest.fn().mockResolvedValue(new Map()),
     });
     audit = createMock<Ctor[1]>({ record: jest.fn() });
     service = new ContactsService(repo, audit);
   });
 
   // `save()` thật (TypeORM `@UpdateDateColumn`) luôn điền `updatedAt` sau khi ghi — mock ở đây mô
-  // phỏng đúng điều đó, không phải chỉ thêm `id`, để `toResponse()`'s `updated_at` (CAS token,
-  // 2026-09-16) có giá trị thật thay vì `undefined`.
+  // phỏng đúng điều đó, không phải chỉ thêm `id`, để `toResponse()` có giá trị thật thay vì
+  // `undefined`. `version` (CAS token, sửa lại dùng xmin 2026-09-17) đến từ `repo.getVersion()`
+  // (mock mặc định '100' ở beforeEach), KHÔNG PHẢI từ entity.
   function savedWith(overrides: Partial<Contact> = {}) {
     return (c: Contact) =>
       Promise.resolve(Object.assign(c, { id: 'ct1', updatedAt: new Date('2026-09-01T00:00:00Z'), ...overrides }));
@@ -96,7 +99,7 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
       expect(audit.record).not.toHaveBeenCalled();
     });
 
-    it('KHÔNG có expected_updated_at -> ghi trực tiếp qua save() (hành vi cũ, không phá client cũ)', async () => {
+    it('KHÔNG có expected_version -> ghi trực tiếp qua save() (hành vi cũ, không phá client cũ)', async () => {
       const existing = makeContact();
       repo.findById.mockResolvedValueOnce(existing).mockResolvedValueOnce(makeContact({ value: 'moi' }));
       repo.save.mockResolvedValue(undefined as never);
@@ -107,22 +110,14 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
       expect(repo.updateScalarsIfUnchanged).not.toHaveBeenCalled();
     });
 
-    it('CÓ expected_updated_at khớp -> updateScalarsIfUnchanged áp thành công, ghi audit before/after', async () => {
+    it('CÓ expected_version khớp -> updateScalarsIfUnchanged áp thành công (đúng version, KHÔNG phải timestamp), ghi audit before/after', async () => {
       const existing = makeContact();
       repo.findById.mockResolvedValueOnce(existing).mockResolvedValueOnce(makeContact({ value: 'moi' }));
       repo.updateScalarsIfUnchanged.mockResolvedValue(true);
 
-      await service.update(
-        'ct1',
-        { value: 'moi', expected_updated_at: existing.updatedAt.toISOString() } as never,
-        'u1',
-      );
+      await service.update('ct1', { value: 'moi', expected_version: '100' } as never, 'u1');
 
-      expect(repo.updateScalarsIfUnchanged).toHaveBeenCalledWith(
-        'ct1',
-        { value: 'moi' },
-        new Date(existing.updatedAt.toISOString()),
-      );
+      expect(repo.updateScalarsIfUnchanged).toHaveBeenCalledWith('ct1', { value: 'moi' }, '100');
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({
           event: 'contact.updated',
@@ -134,17 +129,13 @@ describe('ContactsService — audit (ADR-016) + CAS (2026-09-16)', () => {
       );
     });
 
-    it('CÓ expected_updated_at nhưng ĐÃ TRÔI (ai đó sửa trước) -> Conflict, KHÔNG audit', async () => {
+    it('CÓ expected_version nhưng ĐÃ TRÔI (ai đó sửa trước) -> Conflict, KHÔNG audit', async () => {
       const existing = makeContact();
       repo.findById.mockResolvedValue(existing);
       repo.updateScalarsIfUnchanged.mockResolvedValue(false);
 
       await expect(
-        service.update(
-          'ct1',
-          { value: 'moi', expected_updated_at: existing.updatedAt.toISOString() } as never,
-          'u1',
-        ),
+        service.update('ct1', { value: 'moi', expected_version: '100' } as never, 'u1'),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(audit.record).not.toHaveBeenCalled();
     });

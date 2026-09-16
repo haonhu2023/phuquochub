@@ -69,7 +69,7 @@ function contact(overrides: Partial<PlaceContact> = {}): PlaceContact {
     is_primary: false,
     verification_status: 'pending',
     display_order: 0,
-    updated_at: '2026-01-01T00:00:00.000Z',
+    version: '100',
     ...overrides,
   };
 }
@@ -254,7 +254,7 @@ describe('ContactsView — sửa liên hệ', () => {
         'c1',
         { contact_type: 'PHONE', value: '0912345678', label: 'Lễ tân', is_primary: false },
         'tok',
-        '2026-01-01T00:00:00.000Z',
+        '100',
       ),
     );
   });

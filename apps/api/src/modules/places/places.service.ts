@@ -229,6 +229,9 @@ export class PlacesService {
       // đổi giá trị trong DB, không 404 place, không ẩn field nào khác.
       opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
       trust_sources: trustSources,
+      // KHÔNG kèm `version` (CAS token) — trường TUỲ CHỌN trên PlaceContact (shared-types), chỉ
+      // ContactsService.toResponse() (kênh chủ cơ sở) trả; kênh công khai chỉ đọc, thêm một round-
+      // trip đọc `xmin` ở đây là lãng phí không cần thiết trên đường đọc tần suất cao.
       contacts: contacts.map((c) => ({
         id: c.id,
         contact_type: c.contactType,
@@ -237,9 +240,6 @@ export class PlacesService {
         is_primary: c.isPrimary,
         verification_status: c.verificationStatus,
         display_order: c.displayOrder,
-        // CAS token (2026-09-16) — cùng hình dạng ContactsService.toResponse(); giữ PlaceContact
-        // (shared-types) nhất quán ở cả kênh công khai lẫn kênh chủ cơ sở, không tạo hai biến thể.
-        updated_at: c.updatedAt.toISOString(),
       })),
       // Public Beta price trust gate (2026-08-28): mỗi dòng `price_history` mang
       // `verification_status` RIÊNG của chính bản ghi giá đó — dùng ĐÚNG field đó
@@ -499,8 +499,8 @@ export class PlacesService {
    * Lưu nháp (content_owner draft/publish, 2026-09-16) — ghi MỘT wiki_revisions row mới
    * (origin=OWNER_UPDATE, status=pending) mang snapshot ỨNG VIÊN cho các trường SCALAR (không bao
    * gồm name/short_description/description — xem DRAFT_SCALAR_FIELDS ở trên); dòng `places` LIVE
-   * KHÔNG bị đụng tới. CAS token cho publishDraft() sau này (`places.updated_at` đọc TẠI ĐÂY) đi
-   * kèm trong `diff` (cột jsonb tự do đã có sẵn, không cần cột mới).
+   * KHÔNG bị đụng tới. CAS token cho publishDraft() sau này (`places.xmin::text` đọc TẠI ĐÂY, xem
+   * `row_version`) đi kèm trong `diff` (cột jsonb tự do đã có sẵn, không cần cột mới).
    *
    * Cùng permission/scope với PATCH /places/:id (Place.Edit.Managed) — không phải quyền riêng cho
    * content_owner, đúng chủ trương "backend-enforced bằng permission thật".
@@ -538,7 +538,11 @@ export class PlacesService {
     return this.revisionsService.recordPlaceRevision({
       placeId: id,
       snapshot: candidateSnapshot,
-      diff: { fields: changedFields, baseUpdatedAt: existing.updated_at },
+      // `baseVersion` (2026-09-17) — `places.xmin::text` đọc TẠI ĐÂY, KHÔNG PHẢI `updated_at`. Xem
+      // PlacesRepository.updateScalarsIfUnchanged()'s ghi chú đầy đủ: một token lấy từ JS `Date`
+      // (kể cả làm tròn mili-giây) để lọt một cửa sổ đua thật giữa hai ghi cùng mili-giây — `xmin`
+      // đổi ở MỌI lần UPDATE bất kể đồng hồ hệ thống, đóng cửa sổ đó triệt để.
+      diff: { fields: changedFields, baseVersion: existing.row_version },
       origin: RevisionOrigin.OWNER_UPDATE,
       changeNote: dto.change_note ?? null,
       editorId: userId,
@@ -548,9 +552,10 @@ export class PlacesService {
 
   /**
    * Công khai một bản nháp: đọc lại revision `pending` ĐÚNG place này, áp patch lên dòng live
-   * CHỈ KHI `places.updated_at` vẫn khớp giá trị đã đọc lúc lưu nháp (CAS) — 409 nếu đã trôi
-   * (nơi khác cập nhật place sau khi nháp được tạo). Đánh dấu revision `approved` CHỈ khi áp
-   * thành công.
+   * CHỈ KHI `places.xmin` vẫn khớp giá trị đã đọc lúc lưu nháp (CAS) — 409 nếu đã trôi (nơi khác
+   * cập nhật place sau khi nháp được tạo, KỂ CẢ khi lần ghi đó xảy ra trong cùng mili-giây với lúc
+   * đọc nháp — xem PlacesRepository.updateScalarsIfUnchanged()'s ghi chú đầy đủ). Đánh dấu
+   * revision `approved` CHỈ khi áp thành công.
    */
   async publishDraft(id: string, revisionId: string, userId: string) {
     const revision = await this.revisionsService.getPendingPlaceRevision(id, revisionId);
@@ -560,13 +565,13 @@ export class PlacesService {
     if (revision.status !== RevisionStatus.PENDING) {
       throw new ConflictException('Bản nháp đã được xử lý (công khai hoặc từ chối) — tải lại.');
     }
-    const diff = revision.diff as { fields?: string[]; baseUpdatedAt?: string } | null;
-    const baseUpdatedAt = diff?.baseUpdatedAt;
-    if (!baseUpdatedAt) {
+    const diff = revision.diff as { fields?: string[]; baseVersion?: string } | null;
+    const baseVersion = diff?.baseVersion;
+    if (!baseVersion) {
       throw new ConflictException('Bản nháp thiếu mốc đối chiếu — không thể công khai an toàn, tạo nháp mới.');
     }
     const patch = this.extractDraftPatchFromSnapshot(revision.snapshot as Record<string, unknown>, diff?.fields ?? []);
-    const applied = await this.placesRepo.updateScalarsIfUnchanged(id, { ...patch, updatedBy: userId }, baseUpdatedAt);
+    const applied = await this.placesRepo.updateScalarsIfUnchanged(id, { ...patch, updatedBy: userId }, baseVersion);
     if (!applied) {
       throw new ConflictException('Địa điểm đã được người khác cập nhật từ khi tạo bản nháp — tải lại và thử lại.');
     }

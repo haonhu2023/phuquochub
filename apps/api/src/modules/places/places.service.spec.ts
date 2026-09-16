@@ -486,7 +486,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   // saveDraft / publishDraft — content_owner scalar draft/publish qua wiki_revisions (2026-09-16)
   // -------------------------------------------------------------------------
   describe('saveDraft', () => {
-    const EXISTING_ROW = { id: 'p1', status: PlaceStatus.PUBLISHED, address: 'cũ', updated_at: new Date('2026-09-16T00:00:00Z') };
+    const EXISTING_ROW = { id: 'p1', status: PlaceStatus.PUBLISHED, address: 'cũ', updated_at: new Date('2026-09-16T00:00:00Z'), row_version: '100' };
 
     beforeEach(() => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue(EXISTING_ROW);
@@ -514,17 +514,20 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(placesRepo.updateScalarsIfUnchanged).not.toHaveBeenCalled();
     });
 
-    it('ghi revision origin=OWNER_UPDATE, status=PENDING, mang baseUpdatedAt', async () => {
+    it('ghi revision origin=OWNER_UPDATE, status=PENDING, mang baseVersion (xmin::text, KHÔNG phải updated_at)', async () => {
       await service.saveDraft('p1', { address: 'mới' } as UpdatePlaceDto, 'u1');
       const [revision] = revisions.recordPlaceRevision.mock.calls[0];
       expect(revision.origin).toBe(RevisionOrigin.OWNER_UPDATE);
       expect(revision.status).toBe(RevisionStatus.PENDING);
-      expect(revision.diff).toEqual({ fields: ['address'], baseUpdatedAt: EXISTING_ROW.updated_at });
+      expect(revision.diff).toEqual({ fields: ['address'], baseVersion: EXISTING_ROW.row_version });
     });
   });
 
   describe('publishDraft', () => {
-    const BASE_UPDATED_AT = new Date('2026-09-16T00:00:00Z');
+    // CAS token (2026-09-17) — `xmin::text` của Postgres, KHÔNG phải timestamp: một token lấy từ
+    // JS Date (kể cả làm tròn mili-giây) để lọt cửa sổ đua thật giữa hai ghi cùng mili-giây, xem
+    // PlacesRepository.updateScalarsIfUnchanged()'s ghi chú đầy đủ.
+    const BASE_VERSION = '100';
 
     it('không tìm thấy revision → NotFound', async () => {
       revisions.getPendingPlaceRevision.mockResolvedValue(null);
@@ -534,7 +537,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     it('revision không còn PENDING → Conflict', async () => {
       revisions.getPendingPlaceRevision.mockResolvedValue({
         id: 'rev1', status: RevisionStatus.APPROVED,
-        diff: { fields: ['address'], baseUpdatedAt: BASE_UPDATED_AT }, snapshot: { address: 'X' },
+        diff: { fields: ['address'], baseVersion: BASE_VERSION }, snapshot: { address: 'X' },
       });
       await expect(service.publishDraft('p1', 'rev1', 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
@@ -542,7 +545,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     it('CAS thất bại → Conflict, revision KHÔNG bị đánh dấu approved', async () => {
       revisions.getPendingPlaceRevision.mockResolvedValue({
         id: 'rev1', status: RevisionStatus.PENDING,
-        diff: { fields: ['address'], baseUpdatedAt: BASE_UPDATED_AT }, snapshot: { address: 'mới' },
+        diff: { fields: ['address'], baseVersion: BASE_VERSION }, snapshot: { address: 'mới' },
       });
       placesRepo.updateScalarsIfUnchanged.mockResolvedValue(false);
       await expect(service.publishDraft('p1', 'rev1', 'u1')).rejects.toBeInstanceOf(ConflictException);
@@ -552,7 +555,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     it('thành công: áp đúng patch (chỉ trường trong diff.fields) với CAS token, đánh dấu approved', async () => {
       revisions.getPendingPlaceRevision.mockResolvedValue({
         id: 'rev1', status: RevisionStatus.PENDING,
-        diff: { fields: ['address', 'ward'], baseUpdatedAt: BASE_UPDATED_AT },
+        diff: { fields: ['address', 'ward'], baseVersion: BASE_VERSION },
         snapshot: { address: 'mới', ward: 'khu mới', price_range: 'low' },
       });
       placesRepo.updateScalarsIfUnchanged.mockResolvedValue(true);
@@ -561,11 +564,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
       await service.publishDraft('p1', 'rev1', 'u1');
 
-      const [id, patch, baseUpdatedAt] = placesRepo.updateScalarsIfUnchanged.mock.calls[0];
+      const [id, patch, baseVersion] = placesRepo.updateScalarsIfUnchanged.mock.calls[0];
       expect(id).toBe('p1');
       expect(patch).toEqual({ address: 'mới', ward: 'khu mới', updatedBy: 'u1' });
       expect(patch).not.toHaveProperty('priceRange');
-      expect(baseUpdatedAt).toBe(BASE_UPDATED_AT);
+      expect(baseVersion).toBe(BASE_VERSION);
       expect(revisions.markApproved).toHaveBeenCalledWith('rev1', 'u1');
     });
   });

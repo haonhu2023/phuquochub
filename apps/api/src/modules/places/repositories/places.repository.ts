@@ -84,6 +84,15 @@ export interface PlaceDetailRow extends PlaceCardRow {
    * Place Trust & Freshness Surface — không có gì phải backfill, chỉ cần đọc ra.
    */
   verified_at: Date | null;
+  /**
+   * CAS/optimistic-locking token (2026-09-17) — `xmin::text` của Postgres (mã giao dịch ghi dòng
+   * này lần cuối), KHÔNG PHẢI cột mới, KHÔNG BAO GIỜ lộ ra `toPlaceCard()`/response công khai (xem
+   * places.mapper.ts — ánh xạ liệt kê tường minh từng trường, không spread). CHỈ dùng nội bộ trong
+   * `PlacesService.saveDraft()`/`publishDraft()` làm token cho `updateScalarsIfUnchanged()` — xem
+   * ghi chú đầy đủ tại đó về lý do KHÔNG dùng `updated_at` (JS Date mất độ phân giải micro-giây,
+   * và làm tròn mili-giây vẫn để lọt một cửa sổ đua thật giữa hai ghi cùng mili-giây).
+   */
+  row_version: string;
 }
 
 // FAQ published của Place (đọc cho trang chi tiết).
@@ -157,7 +166,8 @@ const RIGHT_NOW_CANDIDATE_CAP = 60;
 const DETAIL_EXTRA_COLS = `
   (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
   p.address, p.ward, p.province, p.admin_area, p.description, p.opening_hours, p.osm_id,
-  p.created_at, p.updated_at, p.verified_at
+  p.created_at, p.updated_at, p.verified_at,
+  p.xmin::text AS row_version
 `;
 
 @Injectable()
@@ -363,7 +373,7 @@ export class PlacesRepository {
   async updateScalarsIfUnchanged(
     id: string,
     patch: Record<string, unknown>,
-    expectedUpdatedAt: Date | string,
+    expectedVersion: string,
   ): Promise<boolean> {
     const COLUMN_MAP: Record<string, string> = {
       categoryId: 'category_id',
@@ -390,19 +400,29 @@ export class PlacesRepository {
     // `rows.length > 0` trên CHÍNH tuple đó luôn đúng (tuple có 2 phần tử), khiến CAS "luôn thành
     // công" bất kể có xung đột thật hay không — một lỗi bảo mật/tính đúng đắn NGHIÊM TRỌNG mà unit
     // test (repository bị mock) không bao giờ bắt được. Phải destructure đúng phần tử [0].
-    // BUG THẬT thứ hai phát hiện qua e2e (2026-09-16): `expectedUpdatedAt` đi qua JS `Date` ->
-    // `JSON.stringify()` (khi lưu vào wiki_revisions.diff) chỉ giữ được ĐỘ PHÂN GIẢI MILLI-GIÂY
-    // (`Date.toISOString()`), trong khi cột `updated_at` (timestamptz) của Postgres lưu tới MICRO-
-    // GIÂY. So sánh trực tiếp `updated_at = $2` do đó gần như LUÔN LỆCH (giá trị thật có phần dư
-    // micro-giây khác 0), gây "xung đột giả" (409) NGAY CẢ KHI không ai khác đụng vào — xác minh
-    // trực tiếp: publish() một bản nháp vừa lưu, không có ghi nào khác chen vào, vẫn 409. Cắt cả
-    // hai vế về đúng độ phân giải milli-giây (mức mà JS Date có thể biểu diễn được) là mức khớp
-    // TỐI ĐA có ý nghĩa cho token này — một ghi đồng thời THẬT hầu như luôn lệch nhau hơn 1ms.
+    //
+    // BUG THẬT thứ hai (2026-09-16, tự phát hiện lại khi rà soát): vòng sửa trước dùng
+    // `date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2)` để bù cho việc JS
+    // `Date` chỉ giữ được độ phân giải milli-giây (`toISOString()`) trong khi cột `updated_at` lưu
+    // micro-giây — nhưng cắt về CÙNG một đơn vị làm tròn ở CẢ HAI vế mở ra đúng lỗ hổng mà CAS phải
+    // chặn: hai lần ghi THẬT SỰ đồng thời rơi vào CÙNG một mili-giây (hoàn toàn có thể xảy ra trên
+    // localhost/cùng transaction batch) sẽ khiến `updated_at` SAU ghi thứ nhất vẫn khớp `date_trunc`
+    // của giá trị bản đọc CŨ mà ghi thứ hai đang mang theo — ghi thứ hai "thắng" một cách sai, đè
+    // mất ghi thứ nhất (lost update), đúng thứ CAS được xây ra để ngăn. Test giả lập trong
+    // `updateScalarsIfUnchanged.spec.ts`/`places-cas-race.e2e-spec.ts` xác nhận điều này.
+    //
+    // Sửa TRIỆT ĐỂ (2026-09-17): bỏ hẳn so sánh timestamp — không token nào lấy từ JS `Date` có thể
+    // khớp chính xác cột micro-giây, và làm tròn ở bất kỳ độ phân giải nào vẫn để lại một cửa sổ
+    // trùng token giữa hai ghi thật. Dùng cột hệ thống `xmin` của Postgres (mã giao dịch đã ghi
+    // dòng này lần cuối) làm token phiên bản: LUÔN đổi ở MỌI lần UPDATE, không phụ thuộc đồng hồ hệ
+    // thống hay độ phân giải nào — đây là khuôn mẫu optimistic-locking chuẩn của chính Postgres,
+    // không phải một cơ chế tự chế. Token đọc qua `PlacesRepository`'s `row_version` (xem
+    // `DETAIL_EXTRA_COLS`), không phải cột mới — không cần migration.
     const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE places SET ${setClauses}, updated_at = now()
-        WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)
+        WHERE id = $1 AND xmin::text = $2
         RETURNING id`,
-      [id, expectedUpdatedAt, ...values],
+      [id, expectedVersion, ...values],
     );
     return rows.length > 0;
   }

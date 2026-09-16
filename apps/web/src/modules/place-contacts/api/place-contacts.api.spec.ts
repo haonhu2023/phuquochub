@@ -54,7 +54,7 @@ describe('listPlaceContacts', () => {
         is_primary: true,
         verification_status: 'pending',
         display_order: 0,
-        updated_at: '2026-01-01T00:00:00.000Z',
+        version: '100',
       },
     ];
     mockGet.mockResolvedValue(contacts);
@@ -70,18 +70,19 @@ describe('createPlaceContact', () => {
 });
 
 describe('updatePlaceContact', () => {
-  it('PATCH /contacts/{id} (encode id) với payload + token, KHÔNG kèm expected_updated_at khi không truyền', async () => {
+  it('PATCH /contacts/{id} (encode id) với payload + token, KHÔNG kèm expected_version khi không truyền', async () => {
     await updatePlaceContact('contact 1', INPUT, 'tok');
     expect(mockPatch).toHaveBeenCalledWith('/contacts/contact%201', 'tok', INPUT);
   });
 
-  // CAS (2026-09-16): có truyền expectedUpdatedAt -> gửi kèm expected_updated_at trong body, giữ
-  // nguyên các trường khác của ContactFormInput.
-  it('có expectedUpdatedAt -> gửi kèm expected_updated_at trong payload', async () => {
-    await updatePlaceContact('contact 1', INPUT, 'tok', '2026-09-16T00:00:00.000Z');
+  // CAS (2026-09-16, sửa lại dùng xmin 2026-09-17): có truyền expectedVersion -> gửi kèm
+  // expected_version trong body (KHÔNG PHẢI timestamp), giữ nguyên các trường khác của
+  // ContactFormInput.
+  it('có expectedVersion -> gửi kèm expected_version trong payload', async () => {
+    await updatePlaceContact('contact 1', INPUT, 'tok', '100');
     expect(mockPatch).toHaveBeenCalledWith('/contacts/contact%201', 'tok', {
       ...INPUT,
-      expected_updated_at: '2026-09-16T00:00:00.000Z',
+      expected_version: '100',
     });
   });
 });

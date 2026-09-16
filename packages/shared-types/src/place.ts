@@ -79,8 +79,15 @@ export interface PlaceContact {
   is_primary: boolean;
   verification_status: VerificationStatusValue;
   display_order: number;
-  /** CAS token (2026-09-16) — gửi lại nguyên văn qua `UpdateContactDto.expected_updated_at`. */
-  updated_at: string;
+  /**
+   * CAS token (2026-09-16, sửa lại dùng xmin 2026-09-17) — gửi lại nguyên văn qua
+   * `UpdateContactDto.expected_version`. TUỲ CHỌN: chỉ có mặt ở kênh chủ cơ sở
+   * (`ContactsService.listByPlace/toResponse`) — kênh công khai (`PlacesService.getBySlug`'s
+   * mapping contacts) KHÔNG cần bảo vệ ghi đè (chỉ đọc) nên không trả trường này, tránh một round-
+   * trip đọc `xmin` thêm trên đường đọc công khai tần suất cao. KHÔNG PHẢI timestamp — xem
+   * ContactsRepository.updateScalarsIfUnchanged() (apps/api) để biết lý do.
+   */
+  version?: string;
 }
 
 export interface PlacePrice {

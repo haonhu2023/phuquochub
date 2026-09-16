@@ -16,7 +16,8 @@ export class ContactsService {
 
   async listByPlace(placeId: string) {
     const contacts = await this.repo.listByOwner(OWNER_PLACE, placeId);
-    return contacts.map(this.toResponse);
+    const versions = await this.repo.getVersions(contacts.map((c) => c.id));
+    return contacts.map((c) => this.toResponse(c, versions.get(c.id) ?? ''));
   }
 
   // `actorId` TUỲ CHỌN (2026-09-16, ADR-016 audit hardening) — giữ nguyên chữ ký cho caller hệ
@@ -45,21 +46,24 @@ export class ContactsService {
       permission: 'Contact.Edit.Managed',
       context: { place_id: placeId, contact_type: saved.contactType },
     });
-    return this.toResponse(saved);
+    const version = await this.repo.getVersion(saved.id);
+    return this.toResponse(saved, version ?? '');
   }
 
   /**
-   * CAS (2026-09-16) — `dto.expected_updated_at`, khi có, được đối chiếu với `contact.updatedAt`
-   * đọc TẠI ĐÂY qua updateScalarsIfUnchanged() (conditional UPDATE, 0 dòng khớp -> 409). KHÔNG
-   * bắt buộc: caller cũ (nếu có, không truyền field này) giữ nguyên hành vi ghi trực tiếp — chỉ
-   * client biết đọc trường CAS mới mới tự nguyện được bảo vệ, không phá client cũ.
+   * CAS (2026-09-16, sửa lại dùng xmin 2026-09-17) — `dto.expected_version`, khi có, được đối
+   * chiếu với `xmin::text` đọc TẠI ĐÂY qua updateScalarsIfUnchanged() (conditional UPDATE, 0 dòng
+   * khớp -> 409). KHÔNG bắt buộc: caller cũ (nếu có, không truyền field này) giữ nguyên hành vi
+   * ghi trực tiếp — chỉ client biết đọc trường CAS mới mới tự nguyện được bảo vệ, không phá client
+   * cũ.
    */
   async update(id: string, dto: UpdateContactDto, actorId: string | null = null) {
     const contact = await this.repo.findById(id);
     if (!contact) {
       throw new NotFoundException('Không tìm thấy liên hệ');
     }
-    const before = this.toResponse(contact);
+    const beforeVersion = await this.repo.getVersion(id);
+    const before = this.toResponse(contact, beforeVersion ?? '');
     const contactType = dto.contact_type ?? contact.contactType;
     if (dto.is_primary) {
       await this.repo.clearPrimary(contact.ownerType, contact.ownerId, contactType);
@@ -71,8 +75,8 @@ export class ContactsService {
     if (dto.is_primary !== undefined) patch.isPrimary = dto.is_primary;
     if (dto.display_order !== undefined) patch.displayOrder = dto.display_order;
 
-    if (dto.expected_updated_at) {
-      const applied = await this.repo.updateScalarsIfUnchanged(id, patch, new Date(dto.expected_updated_at));
+    if (dto.expected_version) {
+      const applied = await this.repo.updateScalarsIfUnchanged(id, patch, dto.expected_version);
       if (!applied) {
         throw new ConflictException('Liên hệ đã được người khác cập nhật — tải lại và thử lại.');
       }
@@ -82,6 +86,7 @@ export class ContactsService {
     }
 
     const updated = await this.repo.findById(id);
+    const afterVersion = await this.repo.getVersion(id);
     await this.audit.record({
       event: 'contact.updated',
       entityType: 'contact',
@@ -89,9 +94,9 @@ export class ContactsService {
       actorId,
       permission: 'Contact.Edit.Managed',
       before,
-      after: this.toResponse(updated!),
+      after: this.toResponse(updated!, afterVersion ?? ''),
     });
-    return this.toResponse(updated!);
+    return this.toResponse(updated!, afterVersion ?? '');
   }
 
   async remove(id: string, actorId: string | null = null) {
@@ -99,6 +104,7 @@ export class ContactsService {
     if (!contact) {
       throw new NotFoundException('Không tìm thấy liên hệ');
     }
+    const version = await this.repo.getVersion(id);
     await this.repo.softDelete(id);
     await this.audit.record({
       event: 'contact.removed',
@@ -106,12 +112,12 @@ export class ContactsService {
       entityId: id,
       actorId,
       permission: 'Contact.Edit.Managed',
-      before: this.toResponse(contact),
+      before: this.toResponse(contact, version ?? ''),
     });
     return null;
   }
 
-  private toResponse(c: Contact) {
+  private toResponse(c: Contact, version: string) {
     return {
       id: c.id,
       owner_type: c.ownerType,
@@ -121,11 +127,15 @@ export class ContactsService {
       is_primary: c.isPrimary,
       verification_status: c.verificationStatus,
       display_order: c.displayOrder,
-      // CAS token (2026-09-16) — client gửi lại NGUYÊN VĂN qua `UpdateContactDto.expected_updated_at`
-      // để bảo vệ optimistic-concurrency thật (updateScalarsIfUnchanged() phía dưới), không phải chỉ
-      // hiển thị. Trước milestone này, danh sách liên hệ không lộ trường này -> form sửa không có gì
-      // để gửi lại, "bảo vệ concurrency" chỉ tồn tại ở backend mà FE không dùng được.
-      updated_at: c.updatedAt.toISOString(),
+      /**
+       * CAS token (2026-09-16, sửa lại dùng xmin 2026-09-17) — client gửi lại NGUYÊN VĂN qua
+       * `UpdateContactDto.expected_version` để bảo vệ optimistic-concurrency thật
+       * (updateScalarsIfUnchanged() phía dưới), không phải chỉ hiển thị. KHÔNG PHẢI timestamp
+       * (đổi tên từ `updated_at`): xem ContactsRepository.updateScalarsIfUnchanged()'s ghi chú đầy
+       * đủ về vì sao một token lấy từ JS Date (kể cả làm tròn mili-giây) vẫn để lọt lost update
+       * giữa hai ghi cùng mili-giây — `xmin::text` đổi ở MỌI lần UPDATE, không phụ thuộc đồng hồ.
+       */
+      version,
     };
   }
 }

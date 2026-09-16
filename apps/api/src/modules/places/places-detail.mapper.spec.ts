@@ -28,6 +28,7 @@ describe('toPlaceDetail', () => {
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-02T00:00:00Z'),
     verified_at: null,
+    row_version: '100',
   };
 
   it('mở rộng card + scalar chi tiết; osm_id string → number', () => {

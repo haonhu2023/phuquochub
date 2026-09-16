@@ -22,20 +22,22 @@ export async function createPlaceContact(
 /**
  * PATCH /contacts/{id} — Contact.Edit.Managed, cơ sở suy từ CHÍNH contact (contact-authz.resolver).
  *
- * `expectedUpdatedAt` (2026-09-16) — CAS token thật: `PlaceContact.updated_at` đọc được ngay từ
- * danh sách hiện có (ContactsService.toResponse()), gửi lại NGUYÊN VĂN qua `expected_updated_at`.
- * TUỲ CHỌN để không phá client cũ nào còn gọi hàm này mà chưa truyền — thiếu thì backend ghi trực
- * tiếp qua `save()` (hành vi cũ, không bảo vệ concurrency).
+ * `expectedVersion` (2026-09-16, sửa lại dùng xmin 2026-09-17) — CAS token thật: `PlaceContact.
+ * version` đọc được ngay từ danh sách hiện có (ContactsService.toResponse()), gửi lại NGUYÊN VĂN
+ * qua `expected_version`. KHÔNG PHẢI timestamp — xem ContactsRepository.updateScalarsIfUnchanged()
+ * (apps/api) để biết lý do đổi từ `updated_at`. TUỲ CHỌN để không phá client cũ nào còn gọi hàm
+ * này mà chưa truyền — thiếu thì backend ghi trực tiếp qua `save()` (hành vi cũ, không bảo vệ
+ * concurrency).
  */
 export async function updatePlaceContact(
   contactId: string,
   input: ContactFormInput,
   accessToken: string,
-  expectedUpdatedAt?: string,
+  expectedVersion?: string,
 ): Promise<void> {
   await apiPatchAuth(`/contacts/${encodeURIComponent(contactId)}`, accessToken, {
     ...input,
-    ...(expectedUpdatedAt !== undefined ? { expected_updated_at: expectedUpdatedAt } : {}),
+    ...(expectedVersion !== undefined ? { expected_version: expectedVersion } : {}),
   });
 }
 

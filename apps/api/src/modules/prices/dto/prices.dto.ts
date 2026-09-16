@@ -61,7 +61,9 @@ export class UpdatePriceDto {
   @IsOptional() @IsInt()
   display_order?: number;
 
-  // CAS (2026-09-16) — TUỲ CHỌN, cùng khuôn UpdateContactDto.expected_updated_at.
-  @IsOptional() @IsISO8601()
-  expected_updated_at?: string;
+  // CAS (2026-09-16, sửa lại dùng xmin 2026-09-17) — TUỲ CHỌN, cùng khuôn
+  // UpdateContactDto.expected_version. KHÔNG PHẢI timestamp — xem
+  // PricesRepository.updateScalarsIfUnchanged() để biết lý do.
+  @IsOptional() @IsString()
+  expected_version?: string;
 }
