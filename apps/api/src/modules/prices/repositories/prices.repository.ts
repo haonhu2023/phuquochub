@@ -100,9 +100,16 @@ export class PricesRepository {
       return true;
     }
     const setClauses = keys.map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}`).join(', ');
-    const rows = await this.repo.query(
+    // BUG THẬT phát hiện qua e2e trên Postgres thật (2026-09-16, xem PlacesRepository.
+    // updateScalarsIfUnchanged()'s ghi chú đầy đủ): TypeORM's Repository.query() trả về TUPLE
+    // `[rows, affectedCount]` cho UPDATE...RETURNING — `rows.length > 0` trên tuple đó LUÔN đúng,
+    // khiến CAS "luôn thành công" bất kể xung đột thật. Phải destructure đúng phần tử [0].
+    // Cắt về độ phân giải milli-giây ở CẢ HAI vế — xem PlacesRepository.updateScalarsIfUnchanged()'s
+    // ghi chú đầy đủ: `expectedUpdatedAt` (thường là chuỗi ISO do client gửi) chỉ có độ phân giải
+    // milli-giây, so trực tiếp với cột timestamptz (micro-giây) gần như luôn lệch, gây 409 giả.
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE price_history SET ${setClauses}, updated_at = now()
-        WHERE id = $1 AND updated_at = $2 AND deleted_at IS NULL
+        WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz) AND deleted_at IS NULL
         RETURNING id`,
       [id, expectedUpdatedAt, ...keys.map((k) => patch[k])],
     );

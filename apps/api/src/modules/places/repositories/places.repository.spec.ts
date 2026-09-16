@@ -1363,3 +1363,74 @@ describe('PlacesRepository.rightNow — "Right Now" MVP', () => {
     expect(rows[0].opening_hours).toEqual(oh);
   });
 });
+
+describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (content_owner, 2026-09-16)', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo, MEDIA_URL);
+  });
+
+  // BUG THẬT đã xảy ra (phát hiện qua e2e trên Postgres thật, 2026-09-16): TypeORM's
+  // Repository.query() trả về TUPLE `[rows, affectedCount]` cho UPDATE...RETURNING (khác
+  // INSERT...RETURNING, trả rows trực tiếp) — một mock trả PHẲNG mảng rows (như test này CỐ Ý mô
+  // phỏng hình dạng THẬT) là điều kiện BẮT BUỘC để test này có ý nghĩa; mock trả nhầm mảng phẳng
+  // sẽ không bao giờ bắt được lỗi "CAS luôn báo thành công" đã từng lọt qua unit test ở tầng
+  // service (nơi repository bị mock hoàn toàn, không chạm hình dạng trả về thật của driver).
+  it('patch rỗng -> true NGAY, không gọi query (không có gì để CAS)', async () => {
+    await expect(sut.updateScalarsIfUnchanged('p1', {}, new Date())).resolves.toBe(true);
+    expect(repo.query).not.toHaveBeenCalled();
+  });
+
+  it('patch chỉ có key lạ (không trong COLUMN_MAP) -> lọc hết, coi như rỗng, không gọi query', async () => {
+    await expect(
+      sut.updateScalarsIfUnchanged('p1', { notARealColumn: 'x' }, new Date()),
+    ).resolves.toBe(true);
+    expect(repo.query).not.toHaveBeenCalled();
+  });
+
+  it('UPDATE khớp 1 dòng (driver trả TUPLE [rows, count] đúng hình dạng thật) -> true', async () => {
+    repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
+    const expectedUpdatedAt = new Date('2026-09-16T00:00:00.123Z');
+
+    // `address` (không phải `name`) — name/short_description/description CHỦ Ý bị loại khỏi
+    // COLUMN_MAP của phương thức này (đi qua place_translations, không phải scalar draft).
+    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'Địa chỉ mới', updatedBy: 'u1' }, expectedUpdatedAt);
+
+    expect(result).toBe(true);
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('UPDATE places SET "address" = $3, "updated_by" = $4, updated_at = now()');
+    expect(sql(query)).toContain("date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)");
+    expect(sql(query)).toContain('RETURNING id');
+    expect(params).toEqual(['p1', expectedUpdatedAt, 'Địa chỉ mới', 'u1']);
+  });
+
+  it('UPDATE khớp 0 dòng (driver trả TUPLE [[], 0] — CAS thất bại thật) -> false, KHÔNG throw', async () => {
+    repo.query.mockResolvedValue([[], 0]);
+
+    const result = await sut.updateScalarsIfUnchanged('p1', { address: 'X' }, new Date('2026-01-01'));
+
+    expect(result).toBe(false);
+  });
+
+  it('REGRESSION: nếu code đọc rows.length trên CHÍNH tuple (thay vì rows[0]) sẽ luôn true dù 0 dòng khớp — test này khoá KẾT QUẢ ĐÚNG, không phải khoá cách đọc', async () => {
+    // 0 dòng khớp NHƯNG tuple bản thân nó có 2 phần tử ([[], 0]) — nếu implementation vô tình đọc
+    // `tuple.length > 0` thay vì `tuple[0].length > 0`, test 'UPDATE khớp 0 dòng' ở trên đã đủ để
+    // bắt lỗi đó (mong đợi false, sẽ nhận true nếu bug tái xuất hiện). Test này chỉ nói rõ Ý ĐỊNH.
+    repo.query.mockResolvedValue([[], 0]);
+    await expect(sut.updateScalarsIfUnchanged('p1', { address: 'X' }, new Date())).resolves.toBe(false);
+  });
+
+  it('opening_hours (jsonb) được JSON.stringify + ép ::jsonb trong SQL, không truyền object JS trần', async () => {
+    repo.query.mockResolvedValue([[{ id: 'p1' }], 1]);
+    const openingHours = { is_24h: true };
+
+    await sut.updateScalarsIfUnchanged('p1', { openingHours }, new Date('2026-01-01'));
+
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('"opening_hours" = $3::jsonb');
+    expect(params[2]).toBe(JSON.stringify(openingHours));
+  });
+});

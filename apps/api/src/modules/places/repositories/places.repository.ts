@@ -383,9 +383,24 @@ export class PlacesRepository {
       .map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}${k === 'openingHours' ? '::jsonb' : ''}`)
       .join(', ');
     const values = keys.map((k) => (k === 'openingHours' ? JSON.stringify(patch[k]) : patch[k]));
-    const rows = await this.repo.query(
+    // BUG THẬT phát hiện qua e2e trên Postgres thật (2026-09-16), không phải unit test (mock
+    // repository nên không bao giờ chạm hình dạng trả về thật): TypeORM's `Repository.query()` trả
+    // về TRỰC TIẾP mảng rows cho INSERT...RETURNING, nhưng trả về TUPLE `[rows, affectedCount]` cho
+    // UPDATE...RETURNING — đã xác minh trực tiếp bằng script độc lập chạy chính câu UPDATE này.
+    // `rows.length > 0` trên CHÍNH tuple đó luôn đúng (tuple có 2 phần tử), khiến CAS "luôn thành
+    // công" bất kể có xung đột thật hay không — một lỗi bảo mật/tính đúng đắn NGHIÊM TRỌNG mà unit
+    // test (repository bị mock) không bao giờ bắt được. Phải destructure đúng phần tử [0].
+    // BUG THẬT thứ hai phát hiện qua e2e (2026-09-16): `expectedUpdatedAt` đi qua JS `Date` ->
+    // `JSON.stringify()` (khi lưu vào wiki_revisions.diff) chỉ giữ được ĐỘ PHÂN GIẢI MILLI-GIÂY
+    // (`Date.toISOString()`), trong khi cột `updated_at` (timestamptz) của Postgres lưu tới MICRO-
+    // GIÂY. So sánh trực tiếp `updated_at = $2` do đó gần như LUÔN LỆCH (giá trị thật có phần dư
+    // micro-giây khác 0), gây "xung đột giả" (409) NGAY CẢ KHI không ai khác đụng vào — xác minh
+    // trực tiếp: publish() một bản nháp vừa lưu, không có ghi nào khác chen vào, vẫn 409. Cắt cả
+    // hai vế về đúng độ phân giải milli-giây (mức mà JS Date có thể biểu diễn được) là mức khớp
+    // TỐI ĐA có ý nghĩa cho token này — một ghi đồng thời THẬT hầu như luôn lệch nhau hơn 1ms.
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE places SET ${setClauses}, updated_at = now()
-        WHERE id = $1 AND updated_at = $2
+        WHERE id = $1 AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)
         RETURNING id`,
       [id, expectedUpdatedAt, ...values],
     );

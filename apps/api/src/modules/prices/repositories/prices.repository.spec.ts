@@ -95,3 +95,39 @@ describe('PricesRepository', () => {
     });
   });
 });
+
+describe('PricesRepository.updateScalarsIfUnchanged — CAS (audit+conflict hardening, 2026-09-16)', () => {
+  let repo: LooseMock<Repository<PriceHistory>>;
+  let sut: PricesRepository;
+
+  beforeEach(() => {
+    repo = createMock<Repository<PriceHistory>>({ query: jest.fn() });
+    sut = new PricesRepository(repo);
+  });
+
+  // BUG THẬT đã xảy ra (phát hiện qua e2e trên Postgres thật, 2026-09-16): TypeORM's
+  // Repository.query() trả về TUPLE `[rows, affectedCount]` cho UPDATE...RETURNING (khác
+  // INSERT...RETURNING, trả rows trực tiếp) — mock ở đây CỐ Ý mô phỏng đúng hình dạng đó.
+  it('patch rỗng -> true NGAY, không gọi query', async () => {
+    await expect(sut.updateScalarsIfUnchanged('pr1', {}, new Date())).resolves.toBe(true);
+    expect(repo.query).not.toHaveBeenCalled();
+  });
+
+  it('UPDATE khớp 1 dòng (tuple đúng hình dạng thật) -> true, cắt về milli-giây ở cả hai vế so sánh', async () => {
+    repo.query.mockResolvedValue([[{ id: 'pr1' }], 1]);
+    const expectedUpdatedAt = new Date('2026-09-16T00:00:00.123Z');
+
+    const result = await sut.updateScalarsIfUnchanged('pr1', { amount: '99000' }, expectedUpdatedAt);
+
+    expect(result).toBe(true);
+    const [query, params] = repo.query.mock.calls[0];
+    expect(sql(query)).toContain('UPDATE price_history SET "amount" = $3, updated_at = now()');
+    expect(sql(query)).toContain("date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $2::timestamptz)");
+    expect(params).toEqual(['pr1', expectedUpdatedAt, '99000']);
+  });
+
+  it('UPDATE khớp 0 dòng (tuple [[], 0] — CAS thất bại thật) -> false, KHÔNG throw', async () => {
+    repo.query.mockResolvedValue([[], 0]);
+    await expect(sut.updateScalarsIfUnchanged('pr1', { amount: '1' }, new Date())).resolves.toBe(false);
+  });
+});

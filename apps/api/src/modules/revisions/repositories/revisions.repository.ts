@@ -113,7 +113,11 @@ export class RevisionsRepository {
    * TranslationReviewService.reviewTranslation(), không qua đây.
    */
   async markApproved(id: string, reviewedBy: string): Promise<boolean> {
-    const rows = await this.repo.query(
+    // BUG THẬT phát hiện qua e2e trên Postgres thật (2026-09-16, xem PlacesRepository.
+    // updateScalarsIfUnchanged()'s ghi chú đầy đủ): TypeORM's Repository.query() trả về TUPLE
+    // `[rows, affectedCount]` cho UPDATE...RETURNING — `rows.length > 0` trên tuple đó LUÔN đúng,
+    // khiến CAS "luôn thành công" bất kể xung đột thật. Phải destructure đúng phần tử [0].
+    const [rows]: [Array<{ id: string }>, number] = await this.repo.query(
       `UPDATE wiki_revisions SET status = 'approved'::revision_status, reviewed_by = $2, reviewed_at = now()
         WHERE id = $1 AND status = 'pending'::revision_status
         RETURNING id`,
