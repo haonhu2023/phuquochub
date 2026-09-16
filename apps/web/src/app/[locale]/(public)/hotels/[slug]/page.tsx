@@ -8,6 +8,7 @@ import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { MediaCredit } from '@/modules/places/MediaCredit';
+import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import placeStyles from '@/modules/places/places.module.css';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -86,7 +87,10 @@ export default async function HotelDetailPage({ params }: Params) {
         {' / '}
         <span aria-current="page">{h.name}</span>
       </nav>
-      <h1>{h.name}</h1>
+      <h1 style={{ display: 'inline-flex', alignItems: 'center' }}>
+        {h.name}
+        <PlaceDescriptionEditor placeId={h.id} />
+      </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
 
       {/* Cùng hệ thống gallery với places/[slug]/page.tsx (MediaCredit + places.module.css) — không

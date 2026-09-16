@@ -5,6 +5,12 @@ import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import HotelDetailPage, { generateMetadata } from './page';
 
 jest.mock('@/modules/hotels/api/hotels.api', () => ({ getHotel: jest.fn() }));
+// PlaceDescriptionEditor cần AuthProvider context (useAuth) — không liên quan tới hành vi được
+// test ở đây (gallery/preview), mock để tách rời, cùng cách places/[slug]/page.spec.tsx mock
+// ReviewsSection.
+jest.mock('@/modules/place-inline-edit/PlaceDescriptionEditor', () => ({
+  PlaceDescriptionEditor: () => null,
+}));
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (

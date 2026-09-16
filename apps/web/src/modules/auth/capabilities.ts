@@ -14,8 +14,11 @@
 
 /** Vai trò giữ năng lực BIÊN TẬP nội dung mọi địa điểm (`*.Any` — xem SeedRbac/SeedPlacePermissions
  *  và migration SeedEditorialMediaPermission). Trùng khớp với chuỗi kế thừa thực tế:
- *  contributor → moderator → administrator → super_administrator. */
-const EDITORIAL_ROLES = ['contributor', 'moderator', 'administrator', 'super_administrator'];
+ *  contributor → moderator → administrator → super_administrator, và (2026-09-16) content_owner
+ *  → contributor (SeedContentOwnerRole) — content_owner kế thừa CHÍNH XÁC cùng năng lực biên tập
+ *  contributor mang lại, không hơn (đã đối chiếu trực tiếp từng migration seed, xem
+ *  SeedContentOwnerRole1720005700000's own comment). */
+const EDITORIAL_ROLES = ['content_owner', 'contributor', 'moderator', 'administrator', 'super_administrator'];
 
 /** Vai trò giữ `Moderation.Queue.View` + `Media.Moderate`/`Review.Moderate` (SeedModerationPermissions). */
 const MODERATION_ROLES = ['moderator', 'administrator', 'super_administrator'];
@@ -23,8 +26,21 @@ const MODERATION_ROLES = ['moderator', 'administrator', 'super_administrator'];
 /** Vai trò giữ `PlaceTranslation.Review.Any` (SeedPlaceTranslationReviewPermission,
  *  human-translation-review 2026-09-04) — cùng tập vai trò với kiểm duyệt hôm nay (cấp cho
  *  `moderator`, kế thừa lên `administrator`/`super_administrator`), tách riêng cờ vì đây là một
- *  năng lực khái niệm khác (duyệt bản dịch, không phải duyệt case kiểm duyệt) dù trùng vai trò. */
-const TRANSLATION_REVIEW_ROLES = ['moderator', 'administrator', 'super_administrator'];
+ *  năng lực khái niệm khác (duyệt bản dịch, không phải duyệt case kiểm duyệt) dù trùng vai trò.
+ *  (2026-09-16) `content_owner` THÊM vào đây qua một grant TRỰC TIẾP RIÊNG
+ *  (SeedContentOwnerModerationPermissions) — KHÔNG kế thừa được từ contributor, đây là năng lực
+ *  MỚI THẬT SỰ cho content_owner, không phải một phần của "biên tập nội dung" nói chung. */
+const TRANSLATION_REVIEW_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
+
+/**
+ * Vai trò giữ NGOẠI LỆ INV-12 (`Media.Moderate.Own`, SeedContentOwnerModerationPermissions,
+ * 2026-09-16) — CHỈ `content_owner`. Cố tình KHÔNG suy ra từ `MODERATION_ROLES`: một
+ * moderator/administrator KHÔNG giữ permission `.Own` này (xem canSelfApproveOwnMedia() ở
+ * moderation.service.ts — rank "any" của Media.Moderate KHÔNG được phép ngầm thoả mãn yêu cầu
+ * .Own một cách hiển thị ở đây, đúng bất biến backend đã cưỡng chế). Đây THUẦN TUÝ là hiển thị nút
+ * "Duyệt ngay" — backend vẫn là nơi quyết định duy nhất.
+ */
+const SELF_APPROVE_MEDIA_ROLES = ['content_owner'];
 
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
@@ -33,12 +49,15 @@ export interface UserCapabilities {
   canModerate: boolean;
   /** Hiện lối vào "Duyệt bản dịch". */
   canReviewTranslations: boolean;
+  /** Hiện nút "Duyệt ngay" trên ẢNH CHÍNH MÌNH tải lên (INV-12 exception, content_owner). */
+  canSelfApproveOwnMedia: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
   canEditorial: false,
   canModerate: false,
   canReviewTranslations: false,
+  canSelfApproveOwnMedia: false,
 };
 
 /**
@@ -53,5 +72,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canEditorial: codes.some((c) => EDITORIAL_ROLES.includes(c)),
     canModerate: codes.some((c) => MODERATION_ROLES.includes(c)),
     canReviewTranslations: codes.some((c) => TRANSLATION_REVIEW_ROLES.includes(c)),
+    canSelfApproveOwnMedia: codes.some((c) => SELF_APPROVE_MEDIA_ROLES.includes(c)),
   };
 }
