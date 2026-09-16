@@ -121,17 +121,26 @@ describe('ModerationService', () => {
       findReviewForUpdate: jest.fn(),
       updateReviewStatus: jest.fn(),
       resolve: jest.fn(),
+      findOpenCaseForTarget: jest.fn(),
     });
     reportsRepo = createMock<ReportsRepository>({ findByCaseId: jest.fn(), resolveByCaseId: jest.fn() });
     mediaRepo = createMock<MediaRepository>({
       findByIdForUpdate: jest.fn(),
       updateStatus: jest.fn(),
       clearCoverImageByMedia: jest.fn(),
+      existsForPlace: jest.fn(),
+      findById: jest.fn(),
     });
     placesRepo = createMock<PlacesRepository>({ recalculateRating: jest.fn() });
     // Mặc định CHO PHÉP mọi permission — các test về phân quyền (M4) tự override `can` khi cần
     // kiểm tra đúng nhánh 403, giữ mọi test decide() hiện có (M3) không phải sửa gì thêm.
-    authz = createMock<AuthorizationService>({ can: jest.fn().mockResolvedValue(true) });
+    // `getEffectivePermissions` mặc định RỖNG (không allow/deny nào) -> canSelfApproveOwnMedia()
+    // mặc định trả false, giữ nguyên hành vi INV-12 baseline cho mọi test hiện có; chỉ các test
+    // self-approve (content_owner) tự override để cấp đúng Media.Moderate.Own.
+    authz = createMock<AuthorizationService>({
+      can: jest.fn().mockResolvedValue(true),
+      getEffectivePermissions: jest.fn().mockResolvedValue({ allow: [], deny: [] }),
+    });
     audit = createMock<AuditService>({ record: jest.fn() });
     // M7 — no-op mặc định: mọi test decide() hiện có (M3/M4) không quan tâm AI shadow mode; các
     // test dành riêng cho hành vi này override `evaluateModeratorDecision` khi cần.
@@ -381,6 +390,145 @@ describe('ModerationService', () => {
       await expect(service.decide('c1', { decision: ModerationDecision.DISMISS }, 'self-uploader')).rejects.toThrow(
         ForbiddenException,
       );
+    });
+
+    describe('INV-12 self-approve exception (content_owner, Media.Moderate.Own)', () => {
+      it('actor giữ Media.Moderate.Own + là chính người upload -> approve THÀNH CÔNG, selfApproved audit riêng được ghi', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING, uploadedBy: 'content-owner-1' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['Media.Moderate.Own'], deny: [] });
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, 'content-owner-1');
+
+        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'moderation.decided', actorId: 'content-owner-1' }),
+        );
+        expect(audit.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'moderation.self_approved',
+            entityType: 'media',
+            entityId: 'm1',
+            actorId: 'content-owner-1',
+            permission: 'Media.Moderate.Own',
+            context: expect.objectContaining({ caseId: 'c1', decision: ModerationDecision.APPROVE }),
+          }),
+        );
+      });
+
+      it('actor giữ Media.Moderate.Own + tự dismiss case của chính mình -> THÀNH CÔNG (ngoại lệ áp cho cả dismiss)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['Media.Moderate.Own'], deny: [] });
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.DISMISS }, 'content-owner-1'),
+        ).resolves.toBeUndefined();
+      });
+
+      it('REGRESSION-CRITICAL: actor chỉ giữ Media.Moderate (không hậu tố, hình dạng của moderator) + là chính người upload -> VẪN 403 (không rank-thoả mãn ngoại lệ .Own)', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ uploadedBy: 'moderator-self' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['Media.Moderate'], deny: [] });
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.APPROVE }, 'moderator-self'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('REGRESSION-CRITICAL: actor giữ wildcard toàn cục "*" (hình dạng của super_administrator) + là chính người upload -> VẪN 403', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ uploadedBy: 'super-admin-self' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['*'], deny: [] });
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.APPROVE }, 'super-admin-self'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('deny trên Media.Moderate.Own thắng allow -> vẫn 403 dù actor có allow', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        authz.getEffectivePermissions!.mockResolvedValue({
+          allow: ['Media.Moderate.Own'],
+          deny: ['Media.Moderate.Own'],
+        });
+
+        await expect(
+          service.decide('c1', { decision: ModerationDecision.APPROVE }, 'content-owner-1'),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('actor giữ Media.Moderate.Own nhưng KHÔNG phải người upload -> đường bình thường, không cần ngoại lệ, không ghi self_approved audit', async () => {
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase());
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING, uploadedBy: 'someone-else' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['Media.Moderate.Own'], deny: [] });
+
+        await service.decide('c1', { decision: ModerationDecision.APPROVE }, 'content-owner-1');
+
+        expect(audit.record).not.toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'moderation.self_approved' }),
+        );
+      });
+    });
+
+    describe('selfApproveOwnMedia — wrapper server-side (2026-09-16, giữ case_id nội bộ)', () => {
+      it('ảnh không thuộc cơ sở (hoặc đã xoá mềm) -> NotFound, KHÔNG chạm tới decide()', async () => {
+        mediaRepo.existsForPlace.mockResolvedValue(false);
+
+        await expect(service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1')).rejects.toThrow(
+          NotFoundException,
+        );
+        expect(casesRepo.findOpenCaseForTarget).not.toHaveBeenCalled();
+      });
+
+      it('không phải người upload -> Forbidden RÕ RÀNG, KHÔNG tới decide()', async () => {
+        mediaRepo.existsForPlace.mockResolvedValue(true);
+        mediaRepo.findById.mockResolvedValue(makeMedia({ uploadedBy: 'someone-else' }));
+
+        await expect(service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(casesRepo.findOpenCaseForTarget).not.toHaveBeenCalled();
+      });
+
+      it('không có case đang mở cho ảnh này -> NotFound', async () => {
+        mediaRepo.existsForPlace.mockResolvedValue(true);
+        mediaRepo.findById.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        casesRepo.findOpenCaseForTarget.mockResolvedValue(null);
+
+        await expect(service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1')).rejects.toThrow(
+          NotFoundException,
+        );
+      });
+
+      it('mọi kiểm tra đều qua -> tra ĐÚNG case_id rồi uỷ quyền hoàn toàn cho decide() thật (approve + audit self_approved)', async () => {
+        mediaRepo.existsForPlace.mockResolvedValue(true);
+        mediaRepo.findById.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        casesRepo.findOpenCaseForTarget.mockResolvedValue(makeCase({ id: 'case-found' }));
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ id: 'case-found' }));
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING, uploadedBy: 'content-owner-1' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: ['Media.Moderate.Own'], deny: [] });
+
+        await service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1');
+
+        expect(casesRepo.findOpenCaseForTarget).toHaveBeenCalledWith(ModerationTargetType.MEDIA, 'm1');
+        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'moderation.self_approved' }));
+      });
+
+      it('actor thiếu Media.Moderate.Own (vd business_manager thường) -> decide() thật vẫn 403 (route/wrapper KHÔNG bỏ qua INV-12)', async () => {
+        mediaRepo.existsForPlace.mockResolvedValue(true);
+        mediaRepo.findById.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        casesRepo.findOpenCaseForTarget.mockResolvedValue(makeCase({ id: 'case-found' }));
+        casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ id: 'case-found' }));
+        mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ uploadedBy: 'content-owner-1' }));
+        authz.getEffectivePermissions!.mockResolvedValue({ allow: [], deny: [] });
+
+        await expect(service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1')).rejects.toThrow(
+          ForbiddenException,
+        );
+      });
     });
 
     it('pending + approve -> published, case resolved, reports dismissed', async () => {

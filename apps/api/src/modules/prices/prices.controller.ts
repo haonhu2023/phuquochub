@@ -14,6 +14,7 @@ import {
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { PRICE_AUTHZ_RESOLVER } from './resolvers/price-authz.resolver';
 import { PricesService } from './prices.service';
 import { CreatePriceDto, UpdatePriceDto } from './dto/prices.dto';
@@ -37,8 +38,12 @@ export class PricesController {
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Price.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreatePriceDto) {
-    return this.pricesService.createForPlace(id, dto);
+  create(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreatePriceDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.pricesService.createForPlace(id, dto, user.sub);
   }
 
   @Patch('prices/:id')
@@ -48,7 +53,11 @@ export class PricesController {
     resource: { from: 'param', name: 'id' },
     resolver: PRICE_AUTHZ_RESOLVER,
   })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePriceDto) {
-    return this.pricesService.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePriceDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.pricesService.update(id, dto, user.sub);
   }
 }

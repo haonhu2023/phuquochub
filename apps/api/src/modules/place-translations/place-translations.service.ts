@@ -309,6 +309,17 @@ export class PlaceTranslationsService {
     return row ? row.translatedText : null;
   }
 
+  /**
+   * Bản dịch HIỆN HÀNH bất kể trạng thái công khai (content_owner draft preview/publish,
+   * 2026-09-16) — dùng cho PlacesService.saveDescriptionDraft()/publishDescriptionDraft(), nơi
+   * chủ sở hữu cần thấy/đối chiếu CHÍNH bản nháp họ vừa lưu (thường isPublic=false), không phải
+   * bản công khai. KHÔNG dùng cho bất kỳ đường công khai nào — chỉ getCurrentPublicTranslatedText()
+   * ở trên mới được phép phục vụ khách.
+   */
+  getCurrentTranslation(placeId: string, fieldKey: string, localeCode: string): Promise<PlaceTranslation | null> {
+    return this.translationsRepo.findCurrent(placeId, fieldKey, localeCode);
+  }
+
   // Backfill source_id/evidence_id onto an EXISTING current translation row without touching its
   // content (2026-09-02 data-SSOT remediation, Phase 4.7). "không UPDATE trực tiếp tùy tiện" — this
   // is the governed path: idempotent (already-matching provenance is a no-op, no revision written),

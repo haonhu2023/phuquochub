@@ -35,7 +35,25 @@ const PRIVILEGED_METHOD = 'getCardByIdIncludingInactive';
 // `business_id`s the CALLING user already holds an effective `Place.Edit.Managed` grant for
 // (PlacesService.listMine, verified via the same AuthorizationService PDP the guard uses) — same
 // privilege boundary as `update`, just re-derived per row instead of taken from a route param.
-const APPROVED_SERVICE_CALLERS = ['archive', 'approve', 'create', 'listMine', 'update'].sort();
+//
+// content_owner draft/publish (2026-09-16): `saveDraft`/`publishDraft` (scalar fields) and
+// `getDescriptionDraft`/`saveDescriptionDraft` (place_translations description) all added. EVERY
+// one is wired to a route carrying `@RequirePermissions('Place.Edit.Managed')` + the SAME
+// `@AuthorizationContext` as `update` (places.controller.ts) — exactly the same privilege
+// boundary, not a new/broader one. None is `@Public`. (`publishDescriptionDraft` does NOT call
+// the privileged method at all — it only reads via PlaceTranslationsService.getCurrentTranslation()
+// — so it is deliberately absent from this list.)
+const APPROVED_SERVICE_CALLERS = [
+  'archive',
+  'approve',
+  'create',
+  'getDescriptionDraft',
+  'listMine',
+  'publishDraft',
+  'saveDescriptionDraft',
+  'saveDraft',
+  'update',
+].sort();
 
 const PLACES_DIR = __dirname;
 const serviceSrc = readFileSync(join(PLACES_DIR, 'places.service.ts'), 'utf8');

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ModerationService } from './moderation.service';
 import { ModerationController } from './moderation.controller';
+import { PlaceMediaSelfApproveController } from './place-media-self-approve.controller';
 import { ModerationCoreModule } from './moderation-core.module';
 import { AiRecommendationsModule } from './ai-recommendations.module';
 import { MediaModule } from '../media/media.module';
@@ -33,7 +34,7 @@ import { RbacModule } from '../rbac/rbac.module';
 // `ModerationModule` back, so this stays a one-way edge, not a cycle.
 @Module({
   imports: [ModerationCoreModule, AiRecommendationsModule, MediaModule, PlacesModule, RbacModule],
-  controllers: [ModerationController],
+  controllers: [ModerationController, PlaceMediaSelfApproveController],
   providers: [ModerationService],
 })
 export class ModerationModule {}

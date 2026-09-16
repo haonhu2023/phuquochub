@@ -22,6 +22,7 @@ import {
   GetPlaceDetailQueryDto,
   ListPlacesQueryDto,
   RightNowQueryDto,
+  SaveDescriptionDraftDto,
   UpdatePlaceDto,
 } from './dto/places.dto';
 
@@ -66,6 +67,61 @@ export class PlacesController {
   @Get(':id/revisions')
   listRevisions(@Param('id', ParseUUIDPipe) id: string) {
     return this.revisionsService.listByPlace(id);
+  }
+
+  // Lưu nháp (content_owner draft/publish, 2026-09-16) — CÙNG permission/scope với PATCH ở dưới
+  // (Place.Edit.Managed theo placeId): không phải quyền riêng cho một vai trò. KHÔNG bao gồm
+  // name/short_description/description — ba trường đó CHỈ qua nhóm route .../description/... bên
+  // dưới (place_translations thật, không phải cột places.<col>). Đặt TRƯỚC ':slug'.
+  @Post(':id/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  saveDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePlaceDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.saveDraft(id, dto, user.sub);
+  }
+
+  @Post(':id/revisions/:revisionId/publish')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  publishDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('revisionId', ParseUUIDPipe) revisionId: string,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.publishDraft(id, revisionId, user.sub);
+  }
+
+  // Mô tả VI/EN thật sự đi qua place_translations (Public Place i18n Read Path) — KHÔNG phải
+  // cột places.description. Ba route này là cách DUY NHẤT được hỗ trợ để sửa mô tả có kiểm soát
+  // bản nháp/công khai; PATCH :id (update() ở dưới) vẫn ghi trực tiếp places.description cho
+  // luồng community-edit cũ, KHÔNG đổi hành vi đó.
+  @Get(':id/description/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getDescriptionDraft(@Param('id', ParseUUIDPipe) id: string) {
+    return this.placesService.getDescriptionDraft(id);
+  }
+
+  @Post(':id/description/draft')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  saveDescriptionDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SaveDescriptionDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.saveDescriptionDraft(id, dto, user.sub);
+  }
+
+  @Post(':id/description/publish')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  publishDescriptionDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.placesService.publishDescriptionDraft(id, user.sub);
   }
 
   // Public Place i18n Read Path (2026-09-02): `?locale=vi|en` tuỳ chọn — không đổi shape phản

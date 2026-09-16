@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 
 // Mapper đã có test riêng (places.mapper.spec / places-detail.mapper.spec) → mock để test
 // thuần logic điều phối của service, giống events.service.spec.ts.
@@ -60,7 +60,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let sourceAttributionsRepo: LooseMock<Ctor[10]>;
   let sourcesRepo: LooseMock<Ctor[11]>;
   let placeTranslationsService: LooseMock<Ctor[12]>;
-  let localesService: LooseMock<Ctor[13]>;
+  let translationReviewService: LooseMock<Ctor[13]>;
+  let localesService: LooseMock<Ctor[14]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -77,6 +78,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       hasCurrentQualifiedOpeningHoursEvidence: jest.fn().mockResolvedValue(false),
       listFaqs: jest.fn(),
       updateScalars: jest.fn(),
+      updateScalarsIfUnchanged: jest.fn(),
       updateLocation: jest.fn(),
       archive: jest.fn(),
       setStatus: jest.fn(),
@@ -86,7 +88,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     contactsRepo = createMock<Ctor[2]>({ listByOwner: jest.fn() });
     pricesRepo = createMock<Ctor[3]>({ current: jest.fn() });
     mediaRepo = createMock<Ctor[4]>({ listPublishedByPlace: jest.fn() });
-    revisions = createMock<Ctor[5]>({ recordPlaceRevision: jest.fn() });
+    revisions = createMock<Ctor[5]>({
+      recordPlaceRevision: jest.fn(),
+      getPendingPlaceRevision: jest.fn(),
+      markApproved: jest.fn(),
+    });
     audit = createMock<Ctor[6]>({ record: jest.fn() });
     mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
     userRolesRepo = createMock<Ctor[8]>({ getScopedGrants: jest.fn() });
@@ -99,8 +105,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     // dedicated 'locale overlay' describe block below overrides these per-test.
     placeTranslationsService = createMock<Ctor[12]>({
       getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
+      getCurrentTranslation: jest.fn().mockResolvedValue(null),
+      publishTranslationBundle: jest.fn(),
     });
-    localesService = createMock<Ctor[13]>({
+    translationReviewService = createMock<Ctor[13]>({ reviewTranslation: jest.fn() });
+    localesService = createMock<Ctor[14]>({
       resolveRequestLocale: jest.fn().mockResolvedValue({ localeCode: 'vi' }),
     });
 
@@ -118,6 +127,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       sourceAttributionsRepo,
       sourcesRepo,
       placeTranslationsService,
+      translationReviewService,
       localesService,
     );
   });
@@ -469,6 +479,218 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       // updatedBy vẫn được ghi — dấu vết người sửa không phụ thuộc revision.
       const [, patch] = placesRepo.updateScalars.mock.calls[0];
       expect(patch).toEqual({ updatedBy: 'u1' });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // saveDraft / publishDraft — content_owner scalar draft/publish qua wiki_revisions (2026-09-16)
+  // -------------------------------------------------------------------------
+  describe('saveDraft', () => {
+    const EXISTING_ROW = { id: 'p1', status: PlaceStatus.PUBLISHED, address: 'cũ', updated_at: new Date('2026-09-16T00:00:00Z') };
+
+    beforeEach(() => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(EXISTING_ROW);
+      revisions.recordPlaceRevision.mockResolvedValue({ id: 'rev1', revisionNumber: 2 });
+    });
+
+    it('không tìm thấy place → NotFound', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+      await expect(service.saveDraft('p1', { address: 'X' } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('có dto.location → BadRequest, chưa hỗ trợ nháp cho vị trí', async () => {
+      await expect(service.saveDraft('p1', { location: VALID_LOCATION } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('có dto.name/short_description/description → BadRequest, PHẢI qua route description/draft riêng', async () => {
+      await expect(service.saveDraft('p1', { name: 'X' } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.saveDraft('p1', { short_description: 'X' } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.saveDraft('p1', { description: 'X' } as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('KHÔNG đụng tới dòng live — không gọi updateScalars/updateScalarsIfUnchanged', async () => {
+      await service.saveDraft('p1', { address: 'mới' } as UpdatePlaceDto, 'u1');
+      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalarsIfUnchanged).not.toHaveBeenCalled();
+    });
+
+    it('ghi revision origin=OWNER_UPDATE, status=PENDING, mang baseUpdatedAt', async () => {
+      await service.saveDraft('p1', { address: 'mới' } as UpdatePlaceDto, 'u1');
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.origin).toBe(RevisionOrigin.OWNER_UPDATE);
+      expect(revision.status).toBe(RevisionStatus.PENDING);
+      expect(revision.diff).toEqual({ fields: ['address'], baseUpdatedAt: EXISTING_ROW.updated_at });
+    });
+  });
+
+  describe('publishDraft', () => {
+    const BASE_UPDATED_AT = new Date('2026-09-16T00:00:00Z');
+
+    it('không tìm thấy revision → NotFound', async () => {
+      revisions.getPendingPlaceRevision.mockResolvedValue(null);
+      await expect(service.publishDraft('p1', 'rev1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('revision không còn PENDING → Conflict', async () => {
+      revisions.getPendingPlaceRevision.mockResolvedValue({
+        id: 'rev1', status: RevisionStatus.APPROVED,
+        diff: { fields: ['address'], baseUpdatedAt: BASE_UPDATED_AT }, snapshot: { address: 'X' },
+      });
+      await expect(service.publishDraft('p1', 'rev1', 'u1')).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('CAS thất bại → Conflict, revision KHÔNG bị đánh dấu approved', async () => {
+      revisions.getPendingPlaceRevision.mockResolvedValue({
+        id: 'rev1', status: RevisionStatus.PENDING,
+        diff: { fields: ['address'], baseUpdatedAt: BASE_UPDATED_AT }, snapshot: { address: 'mới' },
+      });
+      placesRepo.updateScalarsIfUnchanged.mockResolvedValue(false);
+      await expect(service.publishDraft('p1', 'rev1', 'u1')).rejects.toBeInstanceOf(ConflictException);
+      expect(revisions.markApproved).not.toHaveBeenCalled();
+    });
+
+    it('thành công: áp đúng patch (chỉ trường trong diff.fields) với CAS token, đánh dấu approved', async () => {
+      revisions.getPendingPlaceRevision.mockResolvedValue({
+        id: 'rev1', status: RevisionStatus.PENDING,
+        diff: { fields: ['address', 'ward'], baseUpdatedAt: BASE_UPDATED_AT },
+        snapshot: { address: 'mới', ward: 'khu mới', price_range: 'low' },
+      });
+      placesRepo.updateScalarsIfUnchanged.mockResolvedValue(true);
+      revisions.markApproved.mockResolvedValue(true);
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1' });
+
+      await service.publishDraft('p1', 'rev1', 'u1');
+
+      const [id, patch, baseUpdatedAt] = placesRepo.updateScalarsIfUnchanged.mock.calls[0];
+      expect(id).toBe('p1');
+      expect(patch).toEqual({ address: 'mới', ward: 'khu mới', updatedBy: 'u1' });
+      expect(patch).not.toHaveProperty('priceRange');
+      expect(baseUpdatedAt).toBe(BASE_UPDATED_AT);
+      expect(revisions.markApproved).toHaveBeenCalledWith('rev1', 'u1');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // saveDescriptionDraft / publishDescriptionDraft / getDescriptionDraft — mô tả VI/EN THẬT qua
+  // place_translations (content_owner, 2026-09-16) — KHÔNG places.description
+  // -------------------------------------------------------------------------
+  describe('saveDescriptionDraft', () => {
+    beforeEach(() => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', description: 'mô tả gốc' });
+    });
+
+    it('không có vi lẫn en → BadRequest', async () => {
+      await expect(service.saveDescriptionDraft('p1', {}, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('không tìm thấy place → NotFound', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+      await expect(service.saveDescriptionDraft('p1', { vi: 'X' }, 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('gọi publishTranslationBundle với origin=OWNER_UPDATE, cả vi lẫn en khi cả hai được truyền', async () => {
+      placeTranslationsService.publishTranslationBundle.mockResolvedValue([
+        { id: 't-vi', localeCode: 'vi', humanReviewStatus: 'PENDING' },
+        { id: 't-en', localeCode: 'en', humanReviewStatus: 'PENDING' },
+      ]);
+
+      await service.saveDescriptionDraft('p1', { vi: 'Mô tả mới', en: 'New description' }, 'u1');
+
+      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
+      expect(input.placeId).toBe('p1');
+      expect(input.origin).toBe(RevisionOrigin.OWNER_UPDATE);
+      expect(input.editorId).toBe('u1');
+      expect(input.items).toHaveLength(2);
+      const viItem = input.items.find((i: { localeCode: string }) => i.localeCode === 'vi');
+      const enItem = input.items.find((i: { localeCode: string }) => i.localeCode === 'en');
+      expect(viItem).toMatchObject({ translatedText: 'Mô tả mới', sourceLocaleCode: 'vi', isPublic: false, isProductionData: false });
+      expect(enItem).toMatchObject({ translatedText: 'New description', sourceLocaleCode: 'vi', isPublic: false, isProductionData: false });
+    });
+
+    it('chỉ vi được truyền → items chỉ có MỘT phần tử (vi)', async () => {
+      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't-vi', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+
+      await service.saveDescriptionDraft('p1', { vi: 'Chỉ VI' }, 'u1');
+
+      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
+      expect(input.items).toHaveLength(1);
+      expect(input.items[0].localeCode).toBe('vi');
+    });
+  });
+
+  describe('getDescriptionDraft', () => {
+    it('không tìm thấy place → NotFound', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+      await expect(service.getDescriptionDraft('p1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('trả về fallback_description (places.description gốc) + bản nháp vi/en hiện hành', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', description: 'gốc' });
+      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _field: string, locale: string) =>
+        locale === 'vi'
+          ? Promise.resolve({ id: 't-vi', translatedText: 'nháp VI', humanReviewStatus: 'PENDING', isPublic: false })
+          : Promise.resolve(null),
+      );
+
+      const result = await service.getDescriptionDraft('p1');
+
+      expect(result.fallback_description).toBe('gốc');
+      expect(result.vi).toEqual({ id: 't-vi', text: 'nháp VI', human_review_status: 'PENDING', is_public: false });
+      expect(result.en).toBeNull();
+    });
+  });
+
+  describe('publishDescriptionDraft', () => {
+    it('không có bản nháp PENDING/NEEDS_CHANGES nào → NotFound', async () => {
+      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
+      await expect(service.publishDescriptionDraft('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('duyệt qua TranslationReviewService.reviewTranslation() với decision=APPROVED cho từng locale PENDING', async () => {
+      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
+        Promise.resolve({ id: `t-${locale}`, localeCode: locale, humanReviewStatus: 'PENDING' }),
+      );
+      translationReviewService.reviewTranslation.mockResolvedValue(undefined);
+
+      const results = await service.publishDescriptionDraft('p1', 'u1');
+
+      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-vi', 'u1', 'APPROVED', null);
+      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-en', 'u1', 'APPROVED', null);
+      expect(results).toEqual([
+        { locale_code: 'vi', ok: true },
+        { locale_code: 'en', ok: true },
+      ]);
+    });
+
+    it('một locale lỗi (vd actor thiếu PlaceTranslation.Review.Any) → locale còn lại VẪN được công khai, kết quả báo đúng locale lỗi', async () => {
+      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
+        Promise.resolve({ id: `t-${locale}`, localeCode: locale, humanReviewStatus: 'PENDING' }),
+      );
+      translationReviewService.reviewTranslation.mockImplementation((id: string) =>
+        id === 't-en' ? Promise.reject(new Error('boom')) : Promise.resolve(undefined),
+      );
+
+      const results = await service.publishDescriptionDraft('p1', 'u1');
+
+      expect(results).toEqual(
+        expect.arrayContaining([
+          { locale_code: 'vi', ok: true },
+          { locale_code: 'en', ok: false, error: 'boom' },
+        ]),
+      );
+    });
+
+    it('bỏ qua bản dịch đã APPROVED từ trước (chỉ duyệt PENDING/NEEDS_CHANGES)', async () => {
+      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
+        locale === 'vi'
+          ? Promise.resolve({ id: 't-vi', localeCode: 'vi', humanReviewStatus: 'APPROVED' })
+          : Promise.resolve({ id: 't-en', localeCode: 'en', humanReviewStatus: 'PENDING' }),
+      );
+
+      await service.publishDescriptionDraft('p1', 'u1');
+
+      expect(translationReviewService.reviewTranslation).toHaveBeenCalledTimes(1);
+      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-en', 'u1', 'APPROVED', null);
     });
   });
 

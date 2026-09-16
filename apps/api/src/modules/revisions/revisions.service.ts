@@ -87,4 +87,13 @@ export class RevisionsService {
       manager,
     );
   }
+
+  /** Đọc một bản nháp (draft) CHÍNH XÁC theo placeId+revisionId cho publishDraft() (PLACE scalar). */
+  getPendingPlaceRevision(placeId: string, revisionId: string) {
+    return this.revisionsRepo.findByIdForEntity(revisionId, RevisionEntityType.PLACE, placeId);
+  }
+
+  markApproved(revisionId: string, reviewedBy: string): Promise<boolean> {
+    return this.revisionsRepo.markApproved(revisionId, reviewedBy);
+  }
 }

@@ -13,6 +13,7 @@ import {
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { CONTACT_AUTHZ_RESOLVER } from './resolvers/contact-authz.resolver';
 import { ContactsService } from './contacts.service';
 import { CreateContactDto, UpdateContactDto } from './dto/contacts.dto';
@@ -34,8 +35,12 @@ export class ContactsController {
   @HttpCode(HttpStatus.CREATED)
   @RequirePermissions('Contact.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  create(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CreateContactDto) {
-    return this.contactsService.createForPlace(id, dto);
+  create(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateContactDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.contactsService.createForPlace(id, dto, user.sub);
   }
 
   @Patch('contacts/:id')
@@ -45,8 +50,12 @@ export class ContactsController {
     resource: { from: 'param', name: 'id' },
     resolver: CONTACT_AUTHZ_RESOLVER,
   })
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateContactDto) {
-    return this.contactsService.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateContactDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.contactsService.update(id, dto, user.sub);
   }
 
   @Delete('contacts/:id')
@@ -56,7 +65,7 @@ export class ContactsController {
     resource: { from: 'param', name: 'id' },
     resolver: CONTACT_AUTHZ_RESOLVER,
   })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.contactsService.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.contactsService.remove(id, user.sub);
   }
 }

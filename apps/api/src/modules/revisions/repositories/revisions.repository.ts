@@ -91,4 +91,34 @@ export class RevisionsRepository {
       [entityType, entityId],
     );
   }
+
+  /**
+   * Đọc MỘT revision cụ thể của MỘT entity — khoá cả entityType/entityId (không chỉ id) để
+   * publishDraft() không thể vô tình áp snapshot của place A lên place B nếu id revision bị gửi
+   * sai (WikiRevision không FK cứng tới entity đích — đa hình tầng app, ADR-014).
+   */
+  async findByIdForEntity(
+    id: string,
+    entityType: RevisionEntityType,
+    entityId: string,
+  ): Promise<WikiRevision | null> {
+    return this.repo.findOne({ where: { id, entityType, entityId } });
+  }
+
+  /**
+   * publishDraft() (content_owner draft/publish PLACE scalar, 2026-09-16) — chỉ chuyển
+   * pending -> approved, KHÔNG BAO GIỜ ghi đè một revision đã approved/rejected khác (CAS trên
+   * chính status). 0 dòng khớp -> caller ném ConflictException (revision đã được xử lý ở nơi khác
+   * từ khi đọc). CHỈ dùng cho PLACE scalar revisions — revision của PLACE_TRANSLATION đi qua
+   * TranslationReviewService.reviewTranslation(), không qua đây.
+   */
+  async markApproved(id: string, reviewedBy: string): Promise<boolean> {
+    const rows = await this.repo.query(
+      `UPDATE wiki_revisions SET status = 'approved'::revision_status, reviewed_by = $2, reviewed_at = now()
+        WHERE id = $1 AND status = 'pending'::revision_status
+        RETURNING id`,
+      [id, reviewedBy],
+    );
+    return rows.length > 0;
+  }
 }

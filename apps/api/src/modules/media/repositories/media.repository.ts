@@ -470,6 +470,16 @@ export class MediaRepository {
     return manager.getRepository(Media).findOne({ where: { id } });
   }
 
+  /**
+   * Đọc thuần, KHÔNG khoá (content_owner self-approve wrapper, 2026-09-16) — dùng cho các kiểm
+   * tra TRƯỚC khi mở transaction thật của `ModerationService.decide()` (uploaded_by, deleted_at),
+   * để trả lỗi rõ ràng SỚM thay vì để decide() tự ném lỗi chung chung. KHÔNG dùng cho bất kỳ
+   * quyết định ghi nào — mọi ghi vẫn đi qua `findByIdForUpdate()` bên trong transaction thật.
+   */
+  findById(id: string): Promise<Media | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
   /** T2 — ghi status ĐÃ ĐƯỢC XÁC NHẬN hợp lệ bởi FSM (`assertValidMediaTransition`). Repository
    * KHÔNG tự kiểm tra transition — cùng nguyên tắc `BookingsRepository.updateStatus()`. */
   async updateStatus(manager: EntityManager, id: string, status: MediaStatus): Promise<void> {

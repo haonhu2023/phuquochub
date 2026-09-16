@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PricesService } from './prices.service';
 import { VerificationStatus } from '../places/place.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
@@ -26,6 +26,7 @@ function priceRow(overrides: Record<string, unknown> = {}) {
 describe('PricesService', () => {
   type Deps = ConstructorParameters<typeof PricesService>;
   let repo: LooseMock<Deps[0]>;
+  let audit: LooseMock<Deps[1]>;
   let service: PricesService;
 
   beforeEach(() => {
@@ -35,8 +36,10 @@ describe('PricesService', () => {
       findById: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
+      updateScalarsIfUnchanged: jest.fn(),
     });
-    service = new PricesService(repo);
+    audit = createMock<Deps[1]>({ record: jest.fn() });
+    service = new PricesService(repo, audit);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -124,6 +127,27 @@ describe('PricesService', () => {
 
       expect(res.amount).toBe(SECRET_PLACE_PRICE);
     });
+
+    it('ghi audit price.created (ADR-016, 2026-09-16) với place_id/service_name trong context', async () => {
+      repo.create.mockReturnValue({ id: 'pr1' });
+      repo.save.mockResolvedValue(priceRow({ id: 'pr1', serviceName: 'Vé vào cổng' }));
+
+      await service.createForPlace(
+        'p1',
+        { service_name: 'Vé vào cổng', amount: 50000 } as Parameters<typeof service.createForPlace>[1],
+        'u1',
+      );
+
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'price.created',
+          entityType: 'price',
+          entityId: 'pr1',
+          actorId: 'u1',
+          context: expect.objectContaining({ place_id: 'p1', service_name: 'Vé vào cổng' }),
+        }),
+      );
+    });
   });
 
   describe('update (đặc quyền, KHÔNG redact — actor xem chính giá vừa sửa)', () => {
@@ -143,6 +167,60 @@ describe('PricesService', () => {
       await expect(
         service.update('missing', {} as Parameters<typeof service.update>[1]),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('CAS (2026-09-16): CÓ expected_updated_at khớp → updateScalarsIfUnchanged áp thành công, ghi audit price.updated before/after', async () => {
+      const existing = priceRow({ amount: '50000', updatedAt: new Date('2026-09-16T00:00:00Z') } as never);
+      repo.findById
+        .mockResolvedValueOnce(existing as never)
+        .mockResolvedValueOnce(priceRow({ amount: '99000' }) as never);
+      repo.updateScalarsIfUnchanged.mockResolvedValue(true);
+
+      await service.update(
+        'pr1',
+        { amount: 99000, expected_updated_at: '2026-09-16T00:00:00.000Z' } as Parameters<typeof service.update>[1],
+        'u1',
+      );
+
+      expect(repo.updateScalarsIfUnchanged).toHaveBeenCalledWith(
+        'pr1',
+        { amount: '99000' },
+        new Date('2026-09-16T00:00:00.000Z'),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'price.updated',
+          entityId: 'pr1',
+          actorId: 'u1',
+          before: expect.objectContaining({ amount: 50000 }),
+          after: expect.objectContaining({ amount: 99000 }),
+        }),
+      );
+    });
+
+    it('CAS (2026-09-16): CÓ expected_updated_at nhưng ĐÃ TRÔI → Conflict, KHÔNG audit', async () => {
+      repo.findById.mockResolvedValue(priceRow() as never);
+      repo.updateScalarsIfUnchanged.mockResolvedValue(false);
+
+      await expect(
+        service.update(
+          'pr1',
+          { amount: 99000, expected_updated_at: '2026-09-16T00:00:00.000Z' } as Parameters<typeof service.update>[1],
+          'u1',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('KHÔNG expected_updated_at → ghi trực tiếp qua save() (hành vi cũ, không phá client cũ), vẫn ghi audit', async () => {
+      repo.findById.mockResolvedValue(priceRow() as never);
+      repo.save.mockResolvedValue(undefined as never);
+
+      await service.update('pr1', { amount: 99000 } as Parameters<typeof service.update>[1], 'u1');
+
+      expect(repo.save).toHaveBeenCalled();
+      expect(repo.updateScalarsIfUnchanged).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'price.updated' }));
     });
   });
 });

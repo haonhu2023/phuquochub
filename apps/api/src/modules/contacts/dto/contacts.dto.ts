@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
 
 const CONTACT_TYPES = [
   'HOTLINE', 'PHONE', 'EMAIL', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM', 'TIKTOK', 'ZALO', 'YOUTUBE', 'OTHER',
@@ -36,4 +36,10 @@ export class UpdateContactDto {
 
   @IsOptional() @IsInt()
   display_order?: number;
+
+  // CAS (2026-09-16) — TUỲ CHỌN. Khi có, ContactsService.update() chỉ áp thay đổi nếu
+  // contact.updated_at vẫn khớp đúng giá trị này (409 nếu đã trôi). Không gửi = hành vi ghi trực
+  // tiếp như trước (không đổi client cũ).
+  @IsOptional() @IsISO8601()
+  expected_updated_at?: string;
 }

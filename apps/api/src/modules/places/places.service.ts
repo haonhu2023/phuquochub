@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { slugify } from '@phuquochub/utils';
 import { PlacesRepository } from './repositories/places.repository';
@@ -10,6 +10,14 @@ import { toMedia } from '../media/media.mapper';
 import { SourceAttributionsRepository } from '../sources/repositories/source-attributions.repository';
 import { SourcesRepository } from '../sources/repositories/sources.repository';
 import { PlaceTranslationsService } from '../place-translations/place-translations.service';
+import { TranslationReviewService } from '../place-translations/translation-review.service';
+import { TextFormat, TranslationMethod } from '../place-translations/place-translations.enums';
+import type { PublishTranslationItem } from '../place-translations/dto/place-translation.dto';
+import {
+  HumanReviewStatus,
+  QualityGateStatus,
+  TranslationApprovalStatus,
+} from '../multilingual-import/multilingual-import.enums';
 import { LocalesService } from '../locales/locales.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
@@ -102,6 +110,7 @@ export class PlacesService {
     private readonly sourceAttributionsRepo: SourceAttributionsRepository,
     private readonly sourcesRepo: SourcesRepository,
     private readonly placeTranslationsService: PlaceTranslationsService,
+    private readonly translationReviewService: TranslationReviewService,
     private readonly localesService: LocalesService,
   ) {}
 
@@ -452,6 +461,269 @@ export class PlacesService {
       });
     }
     return card;
+  }
+
+  // Trường DRAFT-ABLE qua saveDraft()/publishDraft() (content_owner scalar draft/publish,
+  // 2026-09-16) — CHỦ Ý KHÔNG bao gồm name/short_description/description: ba trường đó có lớp phủ
+  // i18n (place_translations, xem getBySlug()/resolveLocalizedField()) — sửa chúng phải đi qua
+  // saveDescriptionDraft()/publishDescriptionDraft() (thật sự ghi vào place_translations), không
+  // phải patch cột `places.<col>` ở đây (một patch scalar cho `description` có thể hoàn toàn
+  // KHÔNG hiển thị công khai nếu đã có bản dịch override cho locale đó — lỗi im lặng, không được
+  // phép). `location` cũng loại trừ như update() — CAS cho toạ độ chưa được thiết kế ở vòng này.
+  private readonly DRAFT_SCALAR_FIELDS = [
+    'category_id',
+    'address',
+    'ward',
+    'province',
+    'admin_area',
+    'opening_hours',
+    'price_range',
+  ] as const;
+
+  private buildDraftScalarPatch(dto: UpdatePlaceDto, userId: string): Record<string, unknown> {
+    const patch: Record<string, unknown> = { updatedBy: userId };
+    if (dto.category_id !== undefined) patch.categoryId = dto.category_id;
+    if (dto.address !== undefined) patch.address = dto.address;
+    if (dto.ward !== undefined) patch.ward = dto.ward;
+    if (dto.province !== undefined) patch.province = dto.province;
+    if (dto.admin_area !== undefined) patch.adminArea = dto.admin_area;
+    if (dto.opening_hours !== undefined) patch.openingHours = dto.opening_hours;
+    if (dto.price_range !== undefined) patch.priceRange = dto.price_range;
+    return patch;
+  }
+
+  /**
+   * Lưu nháp (content_owner draft/publish, 2026-09-16) — ghi MỘT wiki_revisions row mới
+   * (origin=OWNER_UPDATE, status=pending) mang snapshot ỨNG VIÊN cho các trường SCALAR (không bao
+   * gồm name/short_description/description — xem DRAFT_SCALAR_FIELDS ở trên); dòng `places` LIVE
+   * KHÔNG bị đụng tới. CAS token cho publishDraft() sau này (`places.updated_at` đọc TẠI ĐÂY) đi
+   * kèm trong `diff` (cột jsonb tự do đã có sẵn, không cần cột mới).
+   *
+   * Cùng permission/scope với PATCH /places/:id (Place.Edit.Managed) — không phải quyền riêng cho
+   * content_owner, đúng chủ trương "backend-enforced bằng permission thật".
+   */
+  async saveDraft(id: string, dto: UpdatePlaceDto, userId: string) {
+    if (dto.location) {
+      throw new BadRequestException(
+        'Lưu nháp cho vị trí (location) chưa được hỗ trợ — dùng PATCH /places/:id để áp ngay.',
+      );
+    }
+    if (dto.name !== undefined || dto.short_description !== undefined || dto.description !== undefined) {
+      throw new BadRequestException(
+        'Lưu nháp cho tên/mô tả ngắn/mô tả phải qua POST /places/:id/description/draft (place_translations), không qua đường này.',
+      );
+    }
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    if (dto.category_id) {
+      const category = await this.categoriesRepo.findById(dto.category_id);
+      if (!category) {
+        throw new BadRequestException('category_id không tồn tại');
+      }
+    }
+    const changedFields = this.DRAFT_SCALAR_FIELDS.filter((f) => (dto as unknown as Record<string, unknown>)[f] !== undefined);
+    if (changedFields.length === 0) {
+      throw new BadRequestException('Không có trường nào để lưu nháp.');
+    }
+    const dtoSnapshotFields: Record<string, unknown> = {};
+    for (const field of changedFields) {
+      dtoSnapshotFields[field] = (dto as unknown as Record<string, unknown>)[field];
+    }
+    const candidateSnapshot = { ...existing, ...dtoSnapshotFields };
+    return this.revisionsService.recordPlaceRevision({
+      placeId: id,
+      snapshot: candidateSnapshot,
+      diff: { fields: changedFields, baseUpdatedAt: existing.updated_at },
+      origin: RevisionOrigin.OWNER_UPDATE,
+      changeNote: dto.change_note ?? null,
+      editorId: userId,
+      status: RevisionStatus.PENDING,
+    });
+  }
+
+  /**
+   * Công khai một bản nháp: đọc lại revision `pending` ĐÚNG place này, áp patch lên dòng live
+   * CHỈ KHI `places.updated_at` vẫn khớp giá trị đã đọc lúc lưu nháp (CAS) — 409 nếu đã trôi
+   * (nơi khác cập nhật place sau khi nháp được tạo). Đánh dấu revision `approved` CHỈ khi áp
+   * thành công.
+   */
+  async publishDraft(id: string, revisionId: string, userId: string) {
+    const revision = await this.revisionsService.getPendingPlaceRevision(id, revisionId);
+    if (!revision) {
+      throw new NotFoundException('Không tìm thấy bản nháp');
+    }
+    if (revision.status !== RevisionStatus.PENDING) {
+      throw new ConflictException('Bản nháp đã được xử lý (công khai hoặc từ chối) — tải lại.');
+    }
+    const diff = revision.diff as { fields?: string[]; baseUpdatedAt?: string } | null;
+    const baseUpdatedAt = diff?.baseUpdatedAt;
+    if (!baseUpdatedAt) {
+      throw new ConflictException('Bản nháp thiếu mốc đối chiếu — không thể công khai an toàn, tạo nháp mới.');
+    }
+    const patch = this.extractDraftPatchFromSnapshot(revision.snapshot as Record<string, unknown>, diff?.fields ?? []);
+    const applied = await this.placesRepo.updateScalarsIfUnchanged(id, { ...patch, updatedBy: userId }, baseUpdatedAt);
+    if (!applied) {
+      throw new ConflictException('Địa điểm đã được người khác cập nhật từ khi tạo bản nháp — tải lại và thử lại.');
+    }
+    const marked = await this.revisionsService.markApproved(revisionId, userId);
+    if (!marked) {
+      this.logger.warn(`publishDraft: revision ${revisionId} đã đổi status trước khi markApproved (đua hiếm)`);
+    }
+    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
+    return toPlaceCard(row!);
+  }
+
+  /** Trích patch camelCase từ snapshot đã lưu trong revision, chỉ cho các trường thực sự đổi. */
+  private extractDraftPatchFromSnapshot(snapshot: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+    const FIELD_TO_PATCH_KEY: Record<string, string> = {
+      category_id: 'categoryId',
+      address: 'address',
+      ward: 'ward',
+      province: 'province',
+      admin_area: 'adminArea',
+      opening_hours: 'openingHours',
+      price_range: 'priceRange',
+    };
+    const patch: Record<string, unknown> = {};
+    for (const field of fields) {
+      const patchKey = FIELD_TO_PATCH_KEY[field];
+      if (patchKey && field in snapshot) {
+        patch[patchKey] = snapshot[field];
+      }
+    }
+    return patch;
+  }
+
+  /**
+   * Xem trước bản nháp mô tả VI/EN (content_owner, 2026-09-16) — trả về bản dịch HIỆN HÀNH của
+   * `description` cho mỗi locale, bất kể đã công khai hay chưa (owner cần thấy CHÍNH nháp mình
+   * vừa lưu, không phải bản công khai — PlaceTranslationsService.getCurrentTranslation(), KHÁC
+   * getCurrentPublicTranslatedText() mà route công khai dùng). `null` cho locale chưa từng có bản
+   * dịch nào — khi đó giá trị hiệu lực là `places.description` gốc (xem getBySlug()).
+   */
+  async getDescriptionDraft(id: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    const [vi, en] = await Promise.all([
+      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'vi'),
+      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'en'),
+    ]);
+    return {
+      fallback_description: existing.description,
+      vi: vi
+        ? { id: vi.id, text: vi.translatedText, human_review_status: vi.humanReviewStatus, is_public: vi.isPublic }
+        : null,
+      en: en
+        ? { id: en.id, text: en.translatedText, human_review_status: en.humanReviewStatus, is_public: en.isPublic }
+        : null,
+    };
+  }
+
+  /**
+   * Lưu nháp mô tả VI/EN (content_owner, 2026-09-16) — ĐI QUA place_translations THẬT
+   * (PlaceTranslationsService.publishTranslationBundle()), KHÔNG đụng tới cột `places.description`.
+   * Đây chính là "Public Place i18n Read Path" mà getBySlug() đã đọc — một bản dịch mới luôn bắt
+   * đầu ở `human_review_status=PENDING`/`is_public=false` (GOVERNANCE HARDENING, cưỡng chế BÊN
+   * TRONG publishOneTranslation() bất kể gì được truyền vào đây), nên gọi hàm này KHÔNG làm gì đó
+   * hiển thị công khai ngay — đúng ngữ nghĩa "lưu nháp, không ảnh hưởng public".
+   *
+   * `vi`/`en` đều TUỲ CHỌN nhưng phải có ÍT NHẤT MỘT. `sourceLocaleCode` luôn `'vi'` (ngôn ngữ gốc
+   * của nền tảng) cho CẢ HAI mục — với chính bản ghi `vi`, `TranslationMethod.ORIGINAL` đúng nghĩa
+   * "đây LÀ ngôn ngữ nguồn", không phải một bản dịch của gì khác.
+   */
+  async saveDescriptionDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+    if (dto.vi === undefined && dto.en === undefined) {
+      throw new BadRequestException('Cần ít nhất một trong hai trường vi/en.');
+    }
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    const items: PublishTranslationItem[] = [];
+    if (dto.vi !== undefined) {
+      items.push({
+        fieldKey: DESCRIPTION_FIELD_KEY,
+        localeCode: 'vi',
+        sourceLocaleCode: 'vi',
+        translatedText: dto.vi,
+        sourceText: dto.vi,
+        textFormat: TextFormat.PLAIN_TEXT,
+        translationMethod: TranslationMethod.ORIGINAL,
+        translationStatus: TranslationApprovalStatus.PENDING,
+        humanReviewStatus: HumanReviewStatus.PENDING,
+        qualityGate: QualityGateStatus.PASS,
+        isPublic: false,
+        isProductionData: false,
+        productionEligible: false,
+      });
+    }
+    if (dto.en !== undefined) {
+      items.push({
+        fieldKey: DESCRIPTION_FIELD_KEY,
+        localeCode: 'en',
+        sourceLocaleCode: 'vi',
+        translatedText: dto.en,
+        sourceText: dto.vi ?? existing.description ?? '',
+        textFormat: TextFormat.PLAIN_TEXT,
+        translationMethod: TranslationMethod.HUMAN,
+        translationStatus: TranslationApprovalStatus.PENDING,
+        humanReviewStatus: HumanReviewStatus.PENDING,
+        qualityGate: QualityGateStatus.PASS,
+        isPublic: false,
+        isProductionData: false,
+        productionEligible: false,
+      });
+    }
+    const rows = await this.placeTranslationsService.publishTranslationBundle({
+      placeId: id,
+      items,
+      origin: RevisionOrigin.OWNER_UPDATE,
+      editorId: userId,
+      changeNote: null,
+    });
+    return rows.map((r) => ({ id: r.id, locale_code: r.localeCode, human_review_status: r.humanReviewStatus }));
+  }
+
+  /**
+   * Công khai bản nháp mô tả VI/EN — duyệt CHÍNH bản nháp hiện hành cho mỗi locale qua
+   * TranslationReviewService.reviewTranslation() (đường THẬT, duy nhất được tin cậy để đặt
+   * is_public/is_production_data=true — xem GOVERNANCE HARDENING trong place-translations.service.ts).
+   * `reviewTranslation()` tự kiểm tra actor giữ PlaceTranslation.Review.Any (content_owner có qua
+   * SeedContentOwnerModerationPermissions) — route này KHÔNG tự đặt is_public, KHÔNG bỏ qua kiểm
+   * duyệt, KHÔNG có đường tắt nào khác.
+   *
+   * KHÔNG PHẢI một giao dịch DUY NHẤT giữa vi/en (mỗi review() là transaction RIÊNG của chính nó,
+   * translation-review.service.ts không hỗ trợ manager dùng chung) — nếu vi thành công nhưng en
+   * lỗi, vi VẪN được công khai (không rollback). Đây là một GIỚI HẠN THẬT của thiết kế vòng này,
+   * không phải một giả định che giấu — kết quả trả về liệt kê CHÍNH XÁC locale nào thành công/lỗi
+   * để caller biết và có thể thử lại đúng phần còn thiếu.
+   */
+  async publishDescriptionDraft(id: string, userId: string) {
+    const [vi, en] = await Promise.all([
+      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'vi'),
+      this.placeTranslationsService.getCurrentTranslation(id, DESCRIPTION_FIELD_KEY, 'en'),
+    ]);
+    const targets = [vi, en].filter(
+      (t): t is NonNullable<typeof t> =>
+        t !== null && (t.humanReviewStatus === HumanReviewStatus.PENDING || t.humanReviewStatus === HumanReviewStatus.NEEDS_CHANGES),
+    );
+    if (targets.length === 0) {
+      throw new NotFoundException('Không có bản nháp mô tả nào đang chờ công khai.');
+    }
+    const results: Array<{ locale_code: string; ok: boolean; error?: string }> = [];
+    for (const t of targets) {
+      try {
+        await this.translationReviewService.reviewTranslation(t.id, userId, HumanReviewStatus.APPROVED, null);
+        results.push({ locale_code: t.localeCode, ok: true });
+      } catch (err) {
+        results.push({ locale_code: t.localeCode, ok: false, error: (err as Error).message });
+      }
+    }
+    return results;
   }
 
   async archive(id: string, actorId: string) {

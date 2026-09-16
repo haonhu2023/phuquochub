@@ -51,4 +51,36 @@ export class ContactsRepository {
     const repo = manager ? manager.getRepository(Contact) : this.repo;
     await repo.update({ id }, patch);
   }
+
+  /**
+   * CAS (Compare-And-Swap) cho ContactsService.update() (audit+conflict hardening, 2026-09-16) —
+   * áp patch CHỈ KHI `updated_at` vẫn khớp giá trị đã đọc lúc gọi update() (`@UpdateDateColumn`
+   * có sẵn trên entity — không thêm cột). 0 dòng khớp -> false, caller ném ConflictException
+   * (409). Cùng khuôn PlacesRepository.updateScalarsIfUnchanged().
+   */
+  async updateScalarsIfUnchanged(
+    id: string,
+    patch: Record<string, unknown>,
+    expectedUpdatedAt: Date,
+  ): Promise<boolean> {
+    const COLUMN_MAP: Record<string, string> = {
+      contactType: 'contact_type',
+      value: 'value',
+      label: 'label',
+      isPrimary: 'is_primary',
+      displayOrder: 'display_order',
+    };
+    const keys = Object.keys(patch).filter((k) => k in COLUMN_MAP);
+    if (keys.length === 0) {
+      return true;
+    }
+    const setClauses = keys.map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}`).join(', ');
+    const rows = await this.repo.query(
+      `UPDATE contacts SET ${setClauses}, updated_at = now()
+        WHERE id = $1 AND updated_at = $2 AND deleted_at IS NULL
+        RETURNING id`,
+      [id, expectedUpdatedAt, ...keys.map((k) => patch[k])],
+    );
+    return rows.length > 0;
+  }
 }

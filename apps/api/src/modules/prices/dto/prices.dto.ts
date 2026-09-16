@@ -60,4 +60,8 @@ export class UpdatePriceDto {
 
   @IsOptional() @IsInt()
   display_order?: number;
+
+  // CAS (2026-09-16) — TUỲ CHỌN, cùng khuôn UpdateContactDto.expected_updated_at.
+  @IsOptional() @IsISO8601()
+  expected_updated_at?: string;
 }

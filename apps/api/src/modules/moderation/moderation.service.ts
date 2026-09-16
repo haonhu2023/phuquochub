@@ -15,6 +15,7 @@ import { ReportsRepository } from './repositories/reports.repository';
 import { MediaRepository } from '../media/repositories/media.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuthorizationService } from '../authz/authorization.service';
+import { grantSatisfies } from '../authz/authorization.util';
 import { AuditService } from '../../core/audit/audit.service';
 import {
   CaseResolvedEvent,
@@ -41,6 +42,10 @@ const PERMISSION_BY_TARGET_TYPE: Partial<Record<ModerationTargetType, string>> =
   [ModerationTargetType.REVIEW]: 'Review.Moderate',
 };
 
+// INV-12 self-approve exception (2026-09-16, SeedContentOwnerModerationPermissions migration).
+// Permission THẬT, hẹp — không phải một trường hợp đặc biệt theo tên vai trò giấu trong service này.
+const SELF_APPROVE_MEDIA_PERMISSION = 'Media.Moderate.Own';
+
 interface MediaDecisionOutcome {
   targetType: ModerationTargetType.MEDIA;
   actorId: string;
@@ -50,6 +55,7 @@ interface MediaDecisionOutcome {
   previousStatus: MediaStatus;
   newStatus: MediaStatus;
   contentChanged: boolean;
+  selfApproved: boolean;
 }
 
 interface ReviewDecisionOutcome {
@@ -119,6 +125,43 @@ export class ModerationService {
   }
 
   /**
+   * POST /places/:placeId/media/:mediaId/self-approve (content_owner self-approve wrapper,
+   * 2026-09-16). GIỮ case_id NỘI BỘ — client chỉ biết placeId/mediaId (thứ họ đã biết từ màn hình
+   * quản lý ảnh), KHÔNG BAO GIỜ thấy case_id (OwnerPlacePhoto's shape cố tình không lộ case_id —
+   * xem MediaService.listForPlaceOwner()'s own comment, "KHÔNG BAO GIỜ thêm case_id"). Route này
+   * tôn trọng đúng ranh giới đó: nó chỉ NHẬN mediaId, tự tra case_id bên trong.
+   *
+   * KHÔNG cập nhật status trực tiếp ở đây — hoàn toàn uỷ quyền cho `decide()` thật ở dưới, nên mọi
+   * bất biến (INV-12 exception check chính xác theo permission, FSM transition hợp lệ, audit
+   * moderation.decided + moderation.self_approved, INV-9 post-commit) đều được cưỡng chế NGUYÊN
+   * VẸN — đây chỉ là một lớp tra cứu + kiểm tra sớm, không phải một đường ghi thứ hai.
+   *
+   * Bốn kiểm tra SỚM (trước khi chạm `decide()`), theo đúng yêu cầu: quan hệ place/media
+   * (existsForPlace — cũng lọc deleted_at), uploaded_by (đúng actor), trạng thái case (phải có
+   * case đang mở). decide() TỰ kiểm tra lại permission (Media.Moderate rank-satisfied qua
+   * Media.Moderate.Own) và INV-12 exact-match — không có gì ở đây thay thế các kiểm tra đó, chỉ
+   * cho phép trả lỗi RÕ RÀNG hơn (404/403 cụ thể) trước khi vào transaction thật.
+   */
+  async selfApproveOwnMedia(placeId: string, mediaId: string, actorId: string): Promise<void> {
+    const belongs = await this.mediaRepo.existsForPlace(placeId, mediaId);
+    if (!belongs) {
+      throw new NotFoundException('Không tìm thấy ảnh của cơ sở này');
+    }
+    const media = await this.mediaRepo.findById(mediaId);
+    if (!media) {
+      throw new NotFoundException('Không tìm thấy ảnh của cơ sở này');
+    }
+    if (media.uploadedBy === null || media.uploadedBy !== actorId) {
+      throw new ForbiddenException('Chỉ được tự duyệt ảnh CHÍNH MÌNH đã tải lên.');
+    }
+    const openCase = await this.casesRepo.findOpenCaseForTarget(ModerationTargetType.MEDIA, mediaId);
+    if (!openCase) {
+      throw new NotFoundException('Không có case kiểm duyệt đang mở cho ảnh này.');
+    }
+    await this.decide(openCase.id, { decision: ModerationDecision.APPROVE }, actorId);
+  }
+
+  /**
    * POST /moderation/cases/{id}/decide (M3: media; M4: review — ADR-018 T2). `place` case tồn tại
    * được (enum đã dự trù) nhưng KHÔNG có FSM đăng ký (MR-4, ngoài phạm vi M1–M7) — từ chối tường
    * minh (422). Toàn bộ transition đi qua FSM thuần tương ứng (`assertValidMediaTransition` /
@@ -176,10 +219,20 @@ export class ModerationService {
       throw new UnprocessableEntityException('Media của case này không còn tồn tại.');
     }
 
-    // Bước 4 (INV-12): không tự kiểm duyệt nội dung của chính mình. Áp dụng cho MỌI decision kể
-    // cả dismiss (dismiss vẫn là một phán quyết về nội dung của chính bạn).
+    // Bước 4 (INV-12): không tự kiểm duyệt nội dung của chính mình — TRỪ content_owner tự duyệt
+    // ẢNH CHÍNH MÌNH tải lên (Media.Moderate.Own, khớp permission CHÍNH XÁC theo chuỗi — xem
+    // canSelfApproveOwnMedia(), KHÔNG qua authz.can()/grantSatisfies vì grant không hậu tố như
+    // Media.Moderate của moderator hay '*' của super_administrator SẼ rank-thoả mãn yêu cầu
+    // '.Own' qua grantSatisfies, vô tình miễn trừ mọi vai trò rộng quyền hơn — chính điều INV-12
+    // tồn tại để ngăn). Áp dụng cho MỌI decision kể cả dismiss (dismiss vẫn là một phán quyết về
+    // nội dung của chính bạn).
+    let selfApproved = false;
     if (media.uploadedBy !== null && media.uploadedBy === actorId) {
-      throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
+      const exempt = await this.canSelfApproveOwnMedia(actorId);
+      if (!exempt) {
+        throw new ForbiddenException('Không thể tự kiểm duyệt nội dung của chính mình.');
+      }
+      selfApproved = true;
     }
 
     const resolvedAt = new Date();
@@ -216,6 +269,7 @@ export class ModerationService {
         previousStatus: media.status,
         newStatus: media.status,
         contentChanged: false,
+        selfApproved,
       };
     }
 
@@ -283,7 +337,27 @@ export class ModerationService {
       previousStatus,
       newStatus,
       contentChanged: true,
+      selfApproved,
     };
+  }
+
+  /**
+   * INV-12 exception check. Deliberately NOT `this.authz.can()`/`grantSatisfies`-based — verified
+   * directly (see SeedContentOwnerModerationPermissions migration + its spec): a moderator's plain
+   * `Media.Moderate` (no suffix, rank "any") or super_administrator's `'*'` would rank-SATISFY a
+   * required `Media.Moderate.Own` via `grantSatisfies`'s scope-rank comparison
+   * (SCOPE_RANK.any=3 >= SCOPE_RANK.own=1) — correct behavior for ordinary permission checks,
+   * wrong here: INV-12 exists specifically to stop broad-rights holders from ruling on their own
+   * content. Only literal possession of this EXACT permission code is exempt — allow-list
+   * membership, not rank satisfaction. Deny still cascades normally via `grantSatisfies` (a deny
+   * on this exact code, 'Media.*', or '*' must still block the exemption).
+   */
+  private async canSelfApproveOwnMedia(actorId: string): Promise<boolean> {
+    const { allow, deny } = await this.authz.getEffectivePermissions(actorId);
+    if (deny.some((d) => grantSatisfies(d, SELF_APPROVE_MEDIA_PERMISSION))) {
+      return false;
+    }
+    return allow.includes(SELF_APPROVE_MEDIA_PERMISSION);
   }
 
   private async decideReview(
@@ -453,6 +527,28 @@ export class ModerationService {
       this.logger.error(
         `Đánh giá gợi ý AI cho case ${outcome.caseId} thất bại: ${(err as Error).message}`,
       );
+    }
+
+    // INV-12 self-approve exception audit (2026-09-16) — RIÊNG, độc lập với ba side-effect ở
+    // trên, cùng khuôn cô lập lỗi. `moderation.decided` là bản ghi hệ thống-của-sự-thật cho "case
+    // này đã xảy ra chuyện gì"; `moderation.self_approved` là dấu vết HẸP HƠN, luôn tra được riêng
+    // cho "ngoại lệ INV-12 có kích hoạt không, do ai, trên gì" — theo đúng yêu cầu kiểm toán mỗi
+    // lần tự duyệt của chủ sở hữu, tách biệt khỏi quyết định kiểm duyệt thông thường.
+    if (outcome.targetType === ModerationTargetType.MEDIA && outcome.selfApproved) {
+      try {
+        await this.audit.record({
+          event: 'moderation.self_approved',
+          entityType: 'media',
+          entityId: outcome.targetId,
+          actorId: outcome.actorId,
+          permission: SELF_APPROVE_MEDIA_PERMISSION,
+          context: { caseId: outcome.caseId, decision: outcome.decision },
+        });
+      } catch (err) {
+        this.logger.error(
+          `Ghi audit moderation.self_approved cho case ${outcome.caseId} thất bại: ${(err as Error).message}`,
+        );
+      }
     }
   }
 }

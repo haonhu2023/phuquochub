@@ -75,4 +75,37 @@ export class PricesRepository {
     const repo = manager ? manager.getRepository(PriceHistory) : this.repo;
     await repo.update({ id }, patch);
   }
+
+  /**
+   * CAS (2026-09-16) — cùng khuôn ContactsRepository.updateScalarsIfUnchanged()/
+   * PlacesRepository.updateScalarsIfUnchanged(). `updated_at` đã có sẵn trên entity
+   * (`@UpdateDateColumn`), không thêm cột.
+   */
+  async updateScalarsIfUnchanged(
+    id: string,
+    patch: Record<string, unknown>,
+    expectedUpdatedAt: Date,
+  ): Promise<boolean> {
+    const COLUMN_MAP: Record<string, string> = {
+      serviceName: 'service_name',
+      amount: 'amount',
+      unit: 'unit',
+      isFree: 'is_free',
+      description: 'description',
+      validTo: 'valid_to',
+      displayOrder: 'display_order',
+    };
+    const keys = Object.keys(patch).filter((k) => k in COLUMN_MAP);
+    if (keys.length === 0) {
+      return true;
+    }
+    const setClauses = keys.map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}`).join(', ');
+    const rows = await this.repo.query(
+      `UPDATE price_history SET ${setClauses}, updated_at = now()
+        WHERE id = $1 AND updated_at = $2 AND deleted_at IS NULL
+        RETURNING id`,
+      [id, expectedUpdatedAt, ...keys.map((k) => patch[k])],
+    );
+    return rows.length > 0;
+  }
 }

@@ -344,6 +344,54 @@ export class PlacesRepository {
     await runner.update({ id }, patch);
   }
 
+  /**
+   * CAS (Compare-And-Swap) cho `publishDraft()` (content_owner draft/publish, 2026-09-16) — áp
+   * một patch CHỈ KHI `updated_at` vẫn đúng giá trị đã đọc lúc lưu nháp (`places.updatedAt` là
+   * `@UpdateDateColumn`, tự bump ở MỌI update kể cả `updateScalars()` thường). 0 dòng khớp ->
+   * false, caller (PlacesService.publishDraft) ném ConflictException (409). Raw query (không phải
+   * `repo.update()`) vì CAS cần affected-row-count đáng tin cậy qua RETURNING, và jsonb
+   * (opening_hours) cần JSON.stringify + ép kiểu tường minh mà repo.update() lo cho ta ở đường
+   * thường nhưng raw query() thì không.
+   *
+   * CHỦ Ý loại `name`/`short_description`/`description` khỏi COLUMN_MAP: ba trường này có lớp phủ
+   * i18n (PlacesService.getBySlug() ưu tiên place_translations nếu có bản dịch hiện hành) — sửa
+   * chúng qua đường scalar này sẽ ghi vào `places.<col>` nhưng có thể KHÔNG hiển thị công khai nếu
+   * đã tồn tại một bản dịch override cho locale đó, một lỗi im lặng dễ gây hiểu nhầm. Ba trường đó
+   * PHẢI đi qua PlacesService.saveDescriptionDraft()/publishDescriptionDraft() (place_translations
+   * thật), không qua đây.
+   */
+  async updateScalarsIfUnchanged(
+    id: string,
+    patch: Record<string, unknown>,
+    expectedUpdatedAt: Date | string,
+  ): Promise<boolean> {
+    const COLUMN_MAP: Record<string, string> = {
+      categoryId: 'category_id',
+      address: 'address',
+      ward: 'ward',
+      province: 'province',
+      adminArea: 'admin_area',
+      openingHours: 'opening_hours',
+      priceRange: 'price_range',
+      updatedBy: 'updated_by',
+    };
+    const keys = Object.keys(patch).filter((k) => k in COLUMN_MAP);
+    if (keys.length === 0) {
+      return true;
+    }
+    const setClauses = keys
+      .map((k, i) => `"${COLUMN_MAP[k]}" = $${i + 3}${k === 'openingHours' ? '::jsonb' : ''}`)
+      .join(', ');
+    const values = keys.map((k) => (k === 'openingHours' ? JSON.stringify(patch[k]) : patch[k]));
+    const rows = await this.repo.query(
+      `UPDATE places SET ${setClauses}, updated_at = now()
+        WHERE id = $1 AND updated_at = $2
+        RETURNING id`,
+      [id, expectedUpdatedAt, ...values],
+    );
+    return rows.length > 0;
+  }
+
   async updateLocation(id: string, lng: number, lat: number): Promise<void> {
     await this.repo.query(
       `UPDATE places SET location = ST_SetSRID(ST_MakePoint($2,$3),4326)::geography, updated_at = now() WHERE id = $1`,

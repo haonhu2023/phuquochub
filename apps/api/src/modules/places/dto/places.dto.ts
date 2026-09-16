@@ -110,6 +110,11 @@ export class UpdatePlaceDto {
 
   @IsOptional() @IsEnum(PriceRange)
   price_range?: PriceRange;
+
+  // Chỉ dùng cho POST /places/:id/draft (saveDraft) — ghi vào wiki_revisions.change_note. Route
+  // PATCH /places/:id (update() trực tiếp) bỏ qua trường này (revision của nó luôn changeNote=null).
+  @IsOptional() @IsString() @MaxLength(300)
+  change_note?: string;
 }
 
 // Query của `GET /api/places` — endpoint công khai (@Public).
@@ -155,4 +160,16 @@ export class RightNowQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   limit?: number;
+}
+
+// Body của POST /places/:id/description/draft (content_owner, 2026-09-16) — mô tả VI/EN đi qua
+// place_translations THẬT, không phải places.description. Ít nhất một trong hai trường; service
+// tự từ chối khi cả hai đều thiếu (không lặp kiểm tra "ít nhất một" ở tầng DTO — cùng chủ trương
+// UpdateContactDto/UpdatePlaceMediaMetadataDto trong codebase này).
+export class SaveDescriptionDraftDto {
+  @IsOptional() @IsString()
+  vi?: string;
+
+  @IsOptional() @IsString()
+  en?: string;
 }
