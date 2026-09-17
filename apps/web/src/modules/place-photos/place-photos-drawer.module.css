@@ -1,0 +1,56 @@
+/* Nút 📷 + drawer "Quản lý ảnh" trên trang công khai — cùng ngôn ngữ hình ảnh với
+   place-description-editor.module.css (nút ✏️ Sửa nội dung), nhưng drawer RỘNG HƠN để đủ chỗ cho
+   lưới ảnh (grid nhiều cột trên desktop) thay vì một cột form văn bản. */
+
+.photosTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #d1d5db;
+  border-radius: 9999px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.photosTrigger:hover {
+  background: #f3f4f6;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 1000;
+}
+
+/* Rộng hơn drawer sửa nội dung (480px): lưới ảnh cần nhiều cột hơn một cột form văn bản mới
+   dùng được thoải mái trên desktop. Vẫn `100vw` trên di động — không tràn màn hình hẹp. */
+.drawer {
+  width: min(900px, 100vw);
+  height: 100%;
+  background: #fff;
+  overflow-y: auto;
+  padding: 1.5rem;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+}
+
+.drawerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.drawerHeader button {
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  cursor: pointer;
+}

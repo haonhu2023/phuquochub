@@ -66,3 +66,17 @@ export const PLACE_PHOTO_STATUS_LABELS: Record<PlacePhotoStatus, string> = {
 export function placePhotoStatusLabel(status: PlacePhotoStatus): string {
   return PLACE_PHOTO_STATUS_LABELS[status] ?? status;
 }
+
+/**
+ * Định danh ngắn, ổn định cho MỘT ảnh — 8 ký tự đầu của `id` (UUID). Dùng để chủ cơ sở phân biệt
+ * chắc chắn tile nào đang thao tác khi nhiều ảnh trông giống nhau (không dựa vào vị trí/thứ tự,
+ * thứ tự đó có thể đổi bất kỳ lúc nào do sắp xếp lại). KHÔNG dùng làm khoá React (vẫn dùng `id`
+ * đầy đủ) — chỉ để hiển thị.
+ */
+export function placePhotoShortId(id: string): string {
+  return id.slice(0, 8);
+}
+
+export function formatPlacePhotoUploadedAt(iso: string): string {
+  return new Date(iso).toLocaleDateString('vi-VN', { year: 'numeric', month: 'short', day: 'numeric' });
+}

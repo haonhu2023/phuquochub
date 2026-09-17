@@ -11,6 +11,11 @@ jest.mock('@/modules/hotels/api/hotels.api', () => ({ getHotel: jest.fn() }));
 jest.mock('@/modules/place-inline-edit/PlaceDescriptionEditor', () => ({
   PlaceDescriptionEditor: () => null,
 }));
+// PlacePhotosButton cần AuthProvider context (useAuth) — cùng lý do mock PlaceDescriptionEditor ở
+// trên, không liên quan tới hành vi được test ở đây (gallery/preview).
+jest.mock('@/modules/place-photos/PlacePhotosButton', () => ({
+  PlacePhotosButton: () => null,
+}));
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (

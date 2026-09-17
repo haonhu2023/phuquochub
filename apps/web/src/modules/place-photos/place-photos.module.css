@@ -48,13 +48,33 @@
   overflow: hidden;
 }
 
-/* aspect-ratio cố định: ảnh chưa tải xong KHÔNG làm nhảy layout. */
+/* aspect-ratio cố định: ảnh chưa tải xong KHÔNG làm nhảy layout. Dùng chung cho <img> thật
+   VÀ hai trạng thái placeholder (đang tải/lỗi) của PhotoThumbnail — cùng kích thước, không giật. */
 .thumb {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: var(--surface-2);
+}
+
+.thumbErrorText {
+  padding: 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* Định danh ảnh (id ngắn + ngày tải lên) — tránh gán nhầm caption theo vị trí khi nhiều ảnh
+   trông giống nhau trong lưới (Owner Photos Manager Drawer, 2026-09-17). Đặt NGAY TRÊN dòng đầu
+   của tileBody, phía trước huy hiệu trạng thái — luôn là dòng đầu tiên người dùng đọc trong ô. */
+.tileIdentifier {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-family: ui-monospace, monospace;
 }
 
 .tileBody {

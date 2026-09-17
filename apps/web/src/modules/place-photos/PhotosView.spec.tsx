@@ -93,7 +93,19 @@ beforeEach(() => {
   mockUpdateMetadata.mockReset().mockResolvedValue([]);
   mockSelfApprove.mockReset().mockResolvedValue(null);
   mockCapabilities.mockReset().mockResolvedValue(NO_CAPABILITIES);
-  global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 }) as unknown as typeof fetch;
+  // Dùng CHUNG cho hai việc: (1) PUT ảnh lên presigned URL (chỉ cần ok:true) và (2) tải thumbnail
+  // qua kênh có xác thực (useAuthenticatedImage — cần thêm .blob()). Gắn thẻ theo URL được gọi để
+  // createObjectURL bên dưới trả về giá trị PHÂN BIỆT được theo từng ảnh (xem `src()` ở nhóm test
+  // sắp xếp ảnh).
+  global.fetch = jest.fn((url: RequestInfo | URL) =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve({ __url: String(url) }),
+    }),
+  ) as unknown as typeof fetch;
+  global.URL.createObjectURL = jest.fn((blob: unknown) => `blob:${(blob as { __url: string }).__url}`);
+  global.URL.revokeObjectURL = jest.fn();
   window.confirm = jest.fn().mockReturnValue(true);
 });
 
@@ -158,13 +170,19 @@ describe('PhotosView — hiển thị trạng thái', () => {
     expect(screen.queryByText('Chưa hiển thị công khai.')).not.toBeInTheDocument();
   });
 
-  // Ảnh chưa duyệt không có URL công khai — src phải là kênh nội bộ theo cơ sở.
-  it('ảnh dùng URL nội bộ theo cơ sở, không phải địa chỉ object storage', async () => {
+  // Ảnh chưa duyệt không có URL công khai — kênh nội bộ theo cơ sở đứng sau JwtAuthGuard (chỉ
+  // nhận header Authorization, không cookie dự phòng). <img src> KHÔNG mang được header đó, nên
+  // component PHẢI tự fetch() (có Bearer) rồi dùng Object URL — không được gắn thẳng URL nội bộ
+  // vào src như một liên kết công khai bình thường.
+  it('ảnh tải qua fetch có xác thực Bearer tới kênh nội bộ theo cơ sở, không gắn thẳng URL đó vào <img src>', async () => {
     mockList.mockResolvedValueOnce([photo()]);
     render(<PhotosView placeId={PLACE_ID} />);
 
     const img = await screen.findByRole('img');
-    expect(img).toHaveAttribute('src', `/api/places/${PLACE_ID}/media/m1/file`);
+    expect(global.fetch).toHaveBeenCalledWith(`/api/places/${PLACE_ID}/media/m1/file`, {
+      headers: { Authorization: 'Bearer tok' },
+    });
+    expect(img.getAttribute('src')).toBe(`blob:/api/places/${PLACE_ID}/media/m1/file`);
     expect(img.getAttribute('src')).not.toContain('minio');
     expect(img).toHaveAttribute('alt');
   });
@@ -311,7 +329,7 @@ describe('PhotosView — gỡ ảnh', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-    expect(screen.getByRole('img')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('img')).toBeInTheDocument());
   });
 });
 
@@ -426,7 +444,9 @@ describe('PhotosView — tự duyệt ảnh (content_owner)', () => {
 
     await waitFor(() => expect(mockSelfApprove).toHaveBeenCalledWith(PLACE_ID, 'm1', 'tok'));
     await waitFor(() => expect(screen.getByText('Đã tự duyệt ảnh — ảnh hiển thị công khai ngay.')).toBeInTheDocument());
-    expect(screen.getByText('Đã hiển thị')).toBeInTheDocument();
+    // Nạp lại danh sách sau khi tự duyệt đi qua trạng thái 'loading' trung gian (khung xương thay
+    // chỗ lưới) trước khi ảnh mới (published) sẵn sàng — chờ thay vì khẳng định ngay lập tức.
+    await waitFor(() => expect(screen.getByText('Đã hiển thị')).toBeInTheDocument());
   });
 
   it('có năng lực nhưng ảnh KHÔNG do chính mình tải lên -> API 403, thông điệp rõ ràng, danh sách không đổi', async () => {
@@ -457,7 +477,8 @@ describe('PhotosView — tự duyệt ảnh (content_owner)', () => {
 describe('PhotosView — sắp xếp ảnh', () => {
   const three = () => [published('m1'), published('m2'), published('m3')];
   const srcs = () => screen.getAllByRole('img').map((img) => img.getAttribute('src'));
-  const src = (id: string) => `/api/places/${PLACE_ID}/media/${id}/file`;
+  // Blob URL trả về bởi mock createObjectURL trong beforeEach (gắn thẻ theo URL nội bộ được fetch).
+  const src = (id: string) => `blob:/api/places/${PLACE_ID}/media/${id}/file`;
 
   it('bấm "Xuống" → gửi TOÀN BỘ danh sách theo thứ tự mới', async () => {
     mockList.mockResolvedValueOnce(three());
@@ -526,7 +547,7 @@ describe('PhotosView — sắp xếp ảnh', () => {
         'Danh sách ảnh đã thay đổi. Vui lòng tải lại trang rồi thử lại.',
       ),
     );
-    expect(srcs()).toEqual([src('m1'), src('m2'), src('m3')]);
+    await waitFor(() => expect(srcs()).toEqual([src('m1'), src('m2'), src('m3')]));
   });
 
   it('lỗi 5xx → thông điệp chung, không lộ chi tiết kỹ thuật', async () => {
@@ -1020,6 +1041,6 @@ describe('PhotosView — phản hồi kiểm duyệt (ảnh bị từ chối)', 
     const captionField = screen.getByLabelText('Mô tả ảnh', { selector: '#photo-caption-m1' }) as HTMLInputElement;
     expect(captionField.value).toBe(dangerous); // hiển thị NGUYÊN VĂN trong input, không parse
     // Không có phần tử <img> THỨ HAI nào được tạo ra từ caption (chỉ đúng 1 <img> = ảnh thật).
-    expect(screen.getAllByRole('img')).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(1));
   });
 });

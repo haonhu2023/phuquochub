@@ -202,7 +202,10 @@ describe('công bố ở các form thu thập dữ liệu', () => {
     // không còn là chuỗi "/terms" cứng.
     ['modules/reviews/ReviewsSection.tsx', 'đánh giá', /localizedHref\(locale, ['"]\/terms['"]\)/],
     ['modules/business-claims/ClaimForm.tsx', 'xác nhận cơ sở', /href="\/(terms|privacy)"/],
-    ['modules/place-photos/PhotosView.tsx', 'tải ảnh', /href="\/(terms|privacy)"/],
+    // 2026-09-17: form tải ảnh (input + disclosure) chuyển từ PhotosView.tsx (chỉ còn breadcrumb/
+    // header) sang PlacePhotosManager.tsx dùng chung với drawer "📷 Quản lý ảnh" trên trang công
+    // khai — quét đúng nơi liên kết THẬT SỰ đang nằm.
+    ['modules/place-photos/PlacePhotosManager.tsx', 'tải ảnh', /href="\/(terms|privacy)"/],
   ] as const)('%s có liên kết tới trang pháp lý (%s)', (rel, _label, pattern) => {
     const src = readSrc(rel);
     expect(src).toMatch(pattern);
