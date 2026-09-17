@@ -34,6 +34,8 @@ const basePlace: PlaceDetail = {
   media: [],
   faqs: [],
   trust_sources: [],
+  en_display_name_approved: false,
+  en_short_description_approved: false,
 };
 
 function addressOf(place: PlaceDetail): Record<string, unknown> | undefined {

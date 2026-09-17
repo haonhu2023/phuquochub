@@ -52,6 +52,16 @@ describe('PlaceCard', () => {
     expect(screen.queryByText('D')).not.toBeInTheDocument();
   });
 
+  it('renders categoryName when provided (mapping category_id to a name is the caller job)', () => {
+    render(<PlaceCard place={BASE_PLACE} categoryName="Điểm tham quan" />);
+    expect(screen.getByText('Điểm tham quan')).toBeInTheDocument();
+  });
+
+  it('omits the category label entirely when not provided (no fabricated category)', () => {
+    render(<PlaceCard place={BASE_PLACE} />);
+    expect(screen.queryByText('Điểm tham quan')).not.toBeInTheDocument();
+  });
+
   it('omits price, distance, verified badge, and rating when absent', () => {
     render(<PlaceCard place={BASE_PLACE} />);
     expect(screen.queryByText(/★/)).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { listTours } from './tours.api';
+import { getTour, listTours } from './tours.api';
 
 const realFetch = global.fetch;
 
@@ -87,5 +87,22 @@ describe('listTours — query parameter construction', () => {
     const res = await listTours({ page: 3 });
     expect(res.data).toEqual([{ id: 't1' }]);
     expect(res.meta).toEqual(meta);
+  });
+});
+
+// 2026-09-17 (real-data pass): trước bản sửa này, getTour() không truyền `?locale=` nên
+// /en/tours/{slug} luôn nhận nội dung mặc định của server bất kể route — API đã hỗ trợ `?locale=`
+// từ trước (xác nhận trực tiếp trên production), chỉ web quên gọi.
+describe('getTour — locale forwarding', () => {
+  it('không truyền locale -> mặc định "vi" (khớp hành vi cũ)', async () => {
+    mockFetchOnce({ success: true, data: { id: 't1' } });
+    await getTour('sunset-cruise-phu-quoc');
+    expect(calledPath()).toBe('/api/tours/sunset-cruise-phu-quoc?locale=vi');
+  });
+
+  it('truyền locale="en" -> gọi đúng ?locale=en', async () => {
+    mockFetchOnce({ success: true, data: { id: 't1' } });
+    await getTour('sunset-cruise-phu-quoc', 'en');
+    expect(calledPath()).toBe('/api/tours/sunset-cruise-phu-quoc?locale=en');
   });
 });

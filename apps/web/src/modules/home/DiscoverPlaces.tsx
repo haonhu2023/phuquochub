@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
 import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
+import { listCategories } from '@/modules/categories/api/categories.api';
+import { categoryNameLookup } from '@/modules/categories/categoryName';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { getHomeCopy } from './home.copy';
 import placeStyles from '@/modules/places/places.module.css';
@@ -11,7 +13,8 @@ import styles from './home.module.css';
 export const DISCOVER_LIMIT = 8;
 
 /**
- * Khối khám phá địa điểm — lời gọi API DUY NHẤT của trang chủ.
+ * Khối khám phá địa điểm — khối DUY NHẤT của trang chủ chạm vào dữ liệu place thật (`MapCta` gọi
+ * thêm một tổng số riêng, xem HomeCtas.tsx).
  *
  * QUY TẮC CHỌN (không có khái niệm "featured" nào ở backend, và cố ý KHÔNG bịa ra một thuật toán
  * xếp hạng): đây đúng là trang đầu tiên của `GET /places` với `limit=8`. Endpoint đó chỉ trả place
@@ -20,15 +23,28 @@ export const DISCOVER_LIMIT = 8;
  * bằng điểm". Thứ tự này xác định (khoá phụ `id` chốt cuối) nên kết quả ổn định giữa các lần tải,
  * và mọi dữ liệu hiển thị đều là dữ liệu thật — không có địa điểm giả, không có xếp hạng bịa.
  *
- * Thất bại được NUỐT TẠI ĐÂY (try/catch) thay vì để nổi lên `error.tsx`: hero, danh mục và các CTA
- * là nội dung tĩnh luôn dùng được, nên một sự cố API chỉ được phép thu nhỏ ĐÚNG khối này lại chứ
- * không được làm hỏng cả trang chủ.
+ * `categoryName` (2026-09-17, real-data pass): `PlaceCard`/`GET /places` chỉ mang `category_id`
+ * (UUID) — tra tên qua `GET /categories` (công khai, không phân trang) song song với truy vấn
+ * places. Lỗi tra tên KHÔNG chặn khối này render (`.catch(() => [])`): thiếu tên danh mục chỉ ẩn
+ * một dòng nhãn nhỏ trên thẻ, không phải lý do để coi cả khối là lỗi.
+ *
+ * Thất bại tải PLACES (không phải categories) được NUỐT TẠI ĐÂY (try/catch) thay vì để nổi lên
+ * `error.tsx`: hero, danh mục và các CTA là nội dung tĩnh luôn dùng được, nên một sự cố API chỉ
+ * được phép thu nhỏ ĐÚNG khối này lại chứ không được làm hỏng cả trang chủ.
  */
 export async function DiscoverPlaces({ locale }: { locale: Locale }) {
   const copy = getHomeCopy(locale);
   let places: PlaceCardType[];
+  let categoryName: (categoryId: string) => string | null;
   try {
-    places = await listPlaces({ limit: DISCOVER_LIMIT });
+    const [placesResult, categories] = await Promise.all([
+      listPlaces({ limit: DISCOVER_LIMIT }),
+      // Tên danh mục là phần trình bày thêm, không phải điều kiện để khối này render — lỗi ở đây
+      // không được kéo cả khối "Địa điểm nổi bật" xuống trạng thái lỗi (`.catch(() => [])`).
+      listCategories().catch(() => []),
+    ]);
+    places = placesResult;
+    categoryName = categoryNameLookup(categories, locale);
   } catch {
     return (
       <Section locale={locale}>
@@ -55,7 +71,13 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
       <div className={placeStyles.grid}>
         {places.map((place) => (
           // titleAs="h3": tiêu đề khối là <h2>, nên tên địa điểm phải nằm DƯỚI nó một bậc.
-          <PlaceCard key={place.id} place={place} titleAs="h3" locale={locale} />
+          <PlaceCard
+            key={place.id}
+            place={place}
+            titleAs="h3"
+            locale={locale}
+            categoryName={categoryName(place.category_id)}
+          />
         ))}
       </div>
     </Section>

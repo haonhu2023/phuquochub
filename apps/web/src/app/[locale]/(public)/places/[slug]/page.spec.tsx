@@ -55,6 +55,8 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     media: [],
     faqs: [],
     trust_sources: [],
+    en_display_name_approved: false,
+    en_short_description_approved: false,
     ...overrides,
   };
 }
@@ -64,6 +66,38 @@ async function renderPage(p: PlaceDetail) {
   mockListReviews.mockResolvedValueOnce([]);
   render(await PlaceDetailPage({ params: Promise.resolve({ slug: p.slug, locale: 'vi' }) }));
 }
+
+// 2026-09-17 (real-data pass): gallery được tách ra `PlaceGallery` (dùng chung với
+// hotels/restaurants/tours) — test lại HÀNH VI render, không phải chi tiết cài đặt, để đảm bảo
+// refactor không lặng lẽ làm mất gallery khỏi trang này.
+describe('PlaceDetailPage — gallery ảnh công khai (dùng chung PlaceGallery)', () => {
+  it('có media đã published -> render ảnh thật', async () => {
+    await renderPage(
+      place({
+        media: [
+          {
+            id: 'm1',
+            type: 'image',
+            url: 'https://api.example/api/media/m1/file',
+            thumbnail_url: null,
+            caption: null,
+            alt_text: 'Ảnh thật',
+            status: 'published',
+            attribution: null,
+            license_type: null,
+            license_url: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+  });
+
+  it('media rỗng -> không render <img> nào', async () => {
+    await renderPage(place({ media: [] }));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
 
 describe('PlaceDetailPage — Public Beta trust disclosure', () => {
   describe('pending disclosure', () => {
@@ -362,6 +396,48 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
           params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }),
         });
         expect(metadataVi.robots).toBeUndefined();
+      });
+
+      // EN indexation gate v2 (H): một place đã có CẢ HAI field EN thật sự duyệt/công khai (giống
+      // VinWonders sau khi chủ cơ sở duyệt qua UI) → bản /en phải index được, có hreflang="en"
+      // thật, và canonical tự trỏ về chính nó (không còn trỏ về /vi).
+      it('EN indexation gate v2 (H): place có display_name + short_description EN đã duyệt/công khai → indexable', async () => {
+        const fullyApprovedEnPlace = {
+          ...enPlace,
+          en_display_name_approved: true,
+          en_short_description_approved: true,
+        };
+        mockGetPlace.mockResolvedValueOnce(fullyApprovedEnPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.robots).toBeUndefined();
+        expect(metadataEn.alternates?.canonical).toBe(
+          'http://localhost:3000/en/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.en).toBe(
+          'http://localhost:3000/en/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.vi).toBe(
+          'http://localhost:3000/vi/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.['x-default']).toBe(
+          'http://localhost:3000/vi/places/vinwonders-phu-quoc',
+        );
+      });
+
+      it('EN indexation gate v2: chỉ MỘT trong hai field EN đã duyệt (tên duyệt, mô tả còn PENDING) → vẫn noindex', async () => {
+        const partiallyApprovedEnPlace = {
+          ...enPlace,
+          en_display_name_approved: true,
+          en_short_description_approved: false,
+        };
+        mockGetPlace.mockResolvedValueOnce(partiallyApprovedEnPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.robots).toEqual({ index: false, follow: true });
+        expect(metadataEn.alternates?.languages?.en).toBeUndefined();
       });
     });
 

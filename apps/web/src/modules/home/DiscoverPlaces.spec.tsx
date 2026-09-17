@@ -2,9 +2,11 @@
 import { render, screen } from '@testing-library/react';
 import { DISCOVER_LIMIT, DiscoverPlaces, DiscoverPlacesSkeleton } from './DiscoverPlaces';
 import { listPlaces } from '@/modules/places/api/places.api';
+import { listCategories } from '@/modules/categories/api/categories.api';
 import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
 
 jest.mock('@/modules/places/api/places.api', () => ({ listPlaces: jest.fn() }));
+jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -15,6 +17,7 @@ jest.mock('next/link', () => ({
 }));
 
 const mockListPlaces = listPlaces as jest.Mock;
+const mockListCategories = listCategories as jest.Mock;
 
 function place(overrides: Partial<PlaceCardType> = {}): PlaceCardType {
   return {
@@ -36,6 +39,25 @@ function place(overrides: Partial<PlaceCardType> = {}): PlaceCardType {
 
 beforeEach(() => {
   mockListPlaces.mockReset().mockResolvedValue([]);
+  mockListCategories.mockReset().mockResolvedValue([]);
+});
+
+describe('DiscoverPlaces — tên danh mục thật (2026-09-17)', () => {
+  it('tra tên danh mục qua GET /categories và gắn lên từng thẻ', async () => {
+    mockListPlaces.mockResolvedValue([place({ category_id: 'c1' })]);
+    mockListCategories.mockResolvedValue([
+      { id: 'c1', slug: 'attraction', name_vi: 'Điểm tham quan', name_en: 'Attraction', icon: null, parent_id: null },
+    ]);
+    render(await DiscoverPlaces({ locale: 'vi' }));
+    expect(screen.getByText('Điểm tham quan')).toBeInTheDocument();
+  });
+
+  it('lỗi tra tên danh mục -> khối vẫn render bình thường, chỉ thiếu nhãn danh mục', async () => {
+    mockListPlaces.mockResolvedValue([place()]);
+    mockListCategories.mockRejectedValue(new Error('network'));
+    render(await DiscoverPlaces({ locale: 'vi' }));
+    expect(screen.getByText('Dinh Cậu')).toBeInTheDocument();
+  });
 });
 
 describe('DiscoverPlaces — truy vấn', () => {

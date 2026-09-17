@@ -1,4 +1,4 @@
-import { apiGet } from '@/lib/http';
+import { apiGet, apiGetPaginated } from '@/lib/http';
 import type { PlaceCard, PlaceDetail } from '../types';
 
 export interface ListPlacesParams {
@@ -18,6 +18,17 @@ export async function listPlaces(params: ListPlacesParams = {}): Promise<PlaceCa
   if (params.limit) qs.set('limit', String(params.limit));
   const q = qs.toString();
   return apiGet<PlaceCard[]>(`/places${q ? `?${q}` : ''}`, { cache: 'no-store' });
+}
+
+/**
+ * Tổng số place đã `published` — dùng cho tín hiệu "freshness" trên trang chủ (MapCta), KHÔNG
+ * phải để phân trang. `limit=1` để lấy `meta.total` với chi phí gần như bằng không (CÙNG endpoint
+ * `GET /places` đã dùng ở `listPlaces`, không phải API mới); `apiGetPaginated` (khác `apiGet`) là
+ * hàm DUY NHẤT trong `lib/http.ts` còn giữ `meta`.
+ */
+export async function countPublishedPlaces(): Promise<number> {
+  const { meta } = await apiGetPaginated<PlaceCard>('/places?limit=1', { cache: 'no-store' });
+  return meta.total;
 }
 
 // Public Place i18n Read Path (2026-09-02): `locale` TÙY CHỌN, khớp `?locale=` API vừa hỗ trợ ở

@@ -425,6 +425,13 @@
   font-size: 0.9rem;
 }
 
+.mapCount {
+  margin: -0.5rem 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 /* ---------- Bản đồ: khối CTA nâng cấp thành "bản xem trước" (Phase 6/10) ---------- */
 /* `.mapCta` xếp cạnh nhau trên màn rộng, chồng dọc trên màn hẹp (auto-fit không cần media query
    riêng cho breakpoint này vì minmax buộc `.mapPreview` xuống hàng khi không đủ ~220px). */

@@ -50,7 +50,7 @@ describe('CategoryLinks', () => {
     const tiles = screen
       .getByRole('region', { name: getHomeCopy('vi').categoriesTitle })
       .querySelectorAll('a');
-    // 6 lối vào danh mục + 1 liên kết "Tất cả địa điểm".
+    // 5 lối vào danh mục (2026-09-17: '/events' đã gỡ, 0 sự kiện published) + 1 liên kết "Tất cả địa điểm".
     expect(tiles).toHaveLength(EXPECTED.length + 1);
   });
 });

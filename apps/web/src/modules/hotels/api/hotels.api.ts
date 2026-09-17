@@ -19,8 +19,15 @@ export type HotelDetail = PlaceDetail & {
   amenities: string[];
 };
 
-export async function getHotel(slug: string): Promise<HotelDetail> {
-  return apiGet<HotelDetail>(`/hotels/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+// `locale` TÙY CHỌN (2026-09-17 real-data pass, cùng mẫu `places.api.ts`'s `getPlace()`):
+// `GET /hotels/:slug` đã hỗ trợ `?locale=` từ trước ở API (xác nhận trực tiếp trên production —
+// `?locale=en` trả tên/mô tả tiếng Anh thật khác bản `vi` cho hotel đã có bản dịch duyệt), nhưng
+// hàm này trước đây KHÔNG BAO GIỜ truyền query đó — trang `/en/hotels/{slug}` luôn nhận nội dung
+// mặc định của server bất kể route là `/en` hay `/vi`. Mặc định `'vi'` để lời gọi cũ (nếu còn) vẫn
+// giữ nguyên hành vi.
+export async function getHotel(slug: string, locale: string = 'vi'): Promise<HotelDetail> {
+  const qs = new URLSearchParams({ locale });
+  return apiGet<HotelDetail>(`/hotels/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
 // Sitemap-only slug list (apps/web/src/app/sitemap.ts).

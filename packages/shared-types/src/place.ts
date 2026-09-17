@@ -220,4 +220,12 @@ export interface PlaceDetail extends PlaceCard {
   faqs: PlaceFaq[];
   /** Nguồn đã đối chiếu cho các trường của place này. Mảng rỗng = chưa trường nào được đối chiếu. */
   trust_sources: PlaceTrustSource[];
+  /**
+   * EN indexation gate v2 — LUÔN phản ánh trạng thái công khai THẬT của bản dịch locale 'en' cho
+   * đúng field này (current + is_public + is_production_data), bất kể `?locale=` của request là
+   * gì. `true` chỉ khi có một translation ĐÃ DUYỆT/công khai thật — không suy ra từ việc CÓ hàng
+   * translation (một hàng PENDING/REJECTED vẫn trả `false`).
+   */
+  en_display_name_approved: boolean;
+  en_short_description_approved: boolean;
 }

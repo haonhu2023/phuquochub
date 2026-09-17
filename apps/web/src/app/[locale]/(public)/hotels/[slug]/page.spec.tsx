@@ -46,6 +46,8 @@ function hotel(overrides: Partial<HotelDetail> = {}): HotelDetail {
     media: [],
     faqs: [],
     trust_sources: [],
+    en_display_name_approved: false,
+    en_short_description_approved: false,
     hotel_details: null,
     rooms: [],
     amenities: [],
@@ -57,6 +59,53 @@ async function renderPage(h: HotelDetail) {
   mockGetHotel.mockResolvedValueOnce(h);
   render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'vi' }) }));
 }
+
+// 2026-09-17 (real-data pass): trước bản sửa này, getHotel() được gọi KHÔNG kèm locale nên
+// /en/hotels/{slug} luôn nhận nội dung mặc định của server bất kể route — xác nhận trực tiếp trên
+// production rằng API đã hỗ trợ ?locale= (trả nội dung en THẬT), lỗi chỉ ở phía web.
+describe('HotelDetailPage/generateMetadata — getHotel() phải nhận đúng locale từ route', () => {
+  it('generateMetadata({ locale: "en" }) → getHotel(slug, "en")', async () => {
+    mockGetHotel.mockResolvedValueOnce(hotel());
+    await generateMetadata({ params: Promise.resolve({ slug: 'khach-san-bien-xanh', locale: 'en' }) });
+    expect(mockGetHotel).toHaveBeenCalledWith('khach-san-bien-xanh', 'en');
+  });
+
+  it('HotelDetailPage({ locale: "vi" }) → getHotel(slug, "vi")', async () => {
+    await renderPage(hotel());
+    expect(mockGetHotel).toHaveBeenCalledWith('khach-san-bien-xanh', 'vi');
+  });
+});
+
+describe('HotelDetailPage — gallery ảnh công khai (real-data pass)', () => {
+  it('có media đã published -> render ảnh thật (không còn trang trống dù ảnh có thật)', async () => {
+    await renderPage(
+      hotel({
+        media: [
+          {
+            id: 'm1',
+            type: 'image',
+            url: 'https://api.example/api/media/m1/file',
+            thumbnail_url: null,
+            caption: null,
+            alt_text: 'Toàn cảnh khách sạn',
+            status: 'published',
+            attribution: null,
+            license_type: null,
+            license_url: null,
+          },
+        ],
+      }),
+    );
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+    expect(img).toHaveAttribute('alt', 'Toàn cảnh khách sạn');
+  });
+
+  it('media rỗng -> không render <img> nào (không phải lỗi, chỉ chưa có ảnh)', async () => {
+    await renderPage(hotel({ media: [] }));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
 
 // Public Beta price trust gate (2026-08-28) — `hotel_room_types.price_ref` has NO
 // verification/trust column at the DB level (migration InitHotel never added one), so this page

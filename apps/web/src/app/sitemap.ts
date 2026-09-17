@@ -59,10 +59,19 @@ function staticEntriesFor(site: string, locales: readonly Locale[]): MetadataRou
   return entries;
 }
 
-// Trang chi tiết thực thể (Phase 20 — EN indexation gate): bản `vi` LUÔN vào sitemap (nội dung gốc
-// thật). Bản `en` CHỈ vào khi `isEnDetailIndexable(slug)` — hôm nay khoá `false` toàn bộ vì chưa có
-// bản dịch nào ở trạng thái APPROVED/PUBLIC (xem chú thích đầy đủ tại định nghĩa hàm đó); KHÔNG
-// đưa `/en/places/{slug}` vào sitemap chỉ vì route trả 200 trong khi nội dung vẫn là tiếng Việt.
+// Trang chi tiết thực thể (Phase 20/v2 — EN indexation gate): bản `vi` LUÔN vào sitemap (nội dung
+// gốc thật). Bản `en` CHỈ vào khi `isEnDetailIndexable(...)` trả `true`.
+//
+// LƯU Ý PHẠM VI (v2): `isEnDetailIndexable` giờ cần hai cờ công khai thật theo TỪNG entity
+// (`en_display_name_approved`/`en_short_description_approved`), nhưng sitemap chỉ có SLUG từ các
+// list endpoint (`listPlaces`, `listHotelSlugs`, …) — các endpoint đó KHÔNG trả hai cờ này (chỉ
+// endpoint chi tiết từng entity mới tính, xem `PlacesService.getBySlug`). Gọi chi tiết riêng cho
+// từng slug ở đây (có thể hàng trăm entity) sẽ biến sitemap thành hàng trăm round-trip API mỗi
+// request — ngoài phạm vi thay đổi tối thiểu của gate v2. Truyền `undefined` ở đây CỐ Ý: hàm luôn
+// trả `false` khi thiếu input, nên hành vi vẫn AN TOÀN như trước (không đưa `/en/{slug}` nào vào
+// sitemap) — kể cả cho một entity đã thật sự đủ điều kiện (vd VinWonders); trang CHI TIẾT của entity
+// đó vẫn tự index đúng qua robots/canonical/hreflang của chính nó, sitemap chỉ là một kênh khám phá
+// phụ. Dạy list endpoint trả hai cờ này (để sitemap phản ánh đúng) là một việc riêng, chưa làm ở đây.
 function detailEntries(
   site: string,
   slugs: string[],
@@ -73,7 +82,7 @@ function detailEntries(
   for (const slug of slugs) {
     const path = `${pathPrefix}/${slug}`;
     entries.push({ url: `${site}${localizedHref('vi', path)}`, ...opts });
-    if (isEnDetailIndexable(slug)) {
+    if (isEnDetailIndexable(undefined)) {
       entries.push({ url: `${site}${localizedHref('en', path)}`, ...opts });
     }
   }

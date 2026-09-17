@@ -5,6 +5,7 @@ import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 
@@ -22,9 +23,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const h = await getHotel(slug);
+    const h = await getHotel(slug, locale);
     const path = `/hotels/${h.slug}`;
-    const enIndexable = isEnDetailIndexable(h.slug);
+    const enIndexable = isEnDetailIndexable({
+      displayNameEnApproved: h.en_display_name_approved,
+      shortDescriptionEnApproved: h.en_short_description_approved,
+    });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
@@ -44,7 +48,7 @@ export default async function HotelDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let h: HotelDetail;
   try {
-    h = await getHotel(slug);
+    h = await getHotel(slug, locale);
   } catch (err) {
     // PLACE-041: phân biệt 404 (không tồn tại) với lỗi khác (mạng/5xx) — trước đây mọi lỗi đều
     // bị coi là 404, khiến sự cố server/mạng hiển thị sai thành "không tồn tại" (khớp
@@ -86,6 +90,9 @@ export default async function HotelDetailPage({ params }: Params) {
       </nav>
       <h1>{h.name}</h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
+
+      <PlaceGallery media={h.media} placeName={h.name} />
+
       {h.description && <p>{h.description}</p>}
 
       {h.amenities.length > 0 && (

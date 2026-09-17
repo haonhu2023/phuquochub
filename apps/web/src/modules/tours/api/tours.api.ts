@@ -25,8 +25,12 @@ export interface TourSchedule {
 
 export type TourDetail = PlaceDetail & { tour_details: Record<string, unknown> | null };
 
-export async function getTour(slug: string): Promise<TourDetail> {
-  return apiGet<TourDetail>(`/tours/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+// `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
+// pass) — trước đây hàm này không truyền `?locale=` nên `/en/tours/{slug}` luôn nhận nội dung mặc
+// định của server bất kể route.
+export async function getTour(slug: string, locale: string = 'vi'): Promise<TourDetail> {
+  const qs = new URLSearchParams({ locale });
+  return apiGet<TourDetail>(`/tours/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
 export async function getItinerary(placeId: string): Promise<TourStop[]> {

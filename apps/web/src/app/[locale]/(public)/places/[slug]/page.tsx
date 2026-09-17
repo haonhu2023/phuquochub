@@ -16,7 +16,8 @@ import {
   TRUST_BADGE_LABEL,
 } from '@/modules/places/trust';
 import { ApiError } from '@/lib/http';
-import type { PlaceContact, PlaceDetail, PlaceMedia, VerificationStatusValue } from '@/modules/places/types';
+import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
+import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import styles from '@/modules/places/places.module.css';
 import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
@@ -77,7 +78,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   // chưa có bản dịch). `isEnDetailIndexable` là NGUỒN SỰ THẬT DUY NHẤT cho quyết định này. Chưa đủ
   // điều kiện → KHÔNG phát hreflang="en" (không quảng cáo một bản thay thế chưa thật sự tồn tại),
   // chỉ giữ `vi` (nguồn gốc) + `x-default` trỏ về `vi`.
-  const enIndexable = isEnDetailIndexable(place.slug);
+  const enIndexable = isEnDetailIndexable({
+    displayNameEnApproved: place.en_display_name_approved,
+    shortDescriptionEnApproved: place.en_short_description_approved,
+  });
   const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
   const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
 
@@ -241,22 +245,7 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       <ClaimCta placeId={place.id} placeName={place.name} />
 
-      {place.media.length > 0 && (
-        <div className={styles.gallery}>
-          {place.media.map((m) => (
-            <figure key={m.id} className={styles.galleryFigure}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài; next/image cần remotePatterns (ngoài phạm vi). */}
-              <img
-                className={styles.galleryImg}
-                src={m.thumbnail_url ?? m.url}
-                alt={m.alt_text ?? m.caption ?? place.name}
-                loading="lazy"
-              />
-              <MediaCredit media={m} />
-            </figure>
-          ))}
-        </div>
-      )}
+      <PlaceGallery media={place.media} placeName={place.name} />
 
       {place.description && (
         <section className={styles.section}>
@@ -377,34 +366,6 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       <ReviewsSection placeId={place.id} initialReviews={reviews} />
     </article>
-  );
-}
-
-/**
- * Dòng ghi công ảnh.
- *
- * Với `license_type = 'open_license'` (CC BY/BY-SA), hiển thị credit + link giấy phép LÀ điều kiện
- * được phép dùng ảnh — không phải chi tiết trang trí. Vì thế nó render ngay dưới ảnh, luôn nhìn
- * thấy được, không giấu trong `title`/tooltip.
- *
- * Không có `attribution` thì không render gì: các cơ sở khác (ảnh do chủ cơ sở cung cấp, ảnh
- * người dùng đăng, ảnh thuộc phạm vi công cộng) không đòi ghi công, và bịa ra một dòng credit
- * trống chỉ làm nhiễu.
- */
-function MediaCredit({ media }: { media: PlaceMedia }) {
-  if (!media.attribution) return null;
-  return (
-    <figcaption className={styles.mediaCredit}>
-      {media.attribution}
-      {media.license_url && (
-        <>
-          {' · '}
-          <a href={media.license_url} target="_blank" rel="noopener noreferrer nofollow">
-            Giấy phép
-          </a>
-        </>
-      )}
-    </figcaption>
   );
 }
 

@@ -102,6 +102,8 @@ describe('PlaceForm — điền sẵn khi sửa', () => {
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     verified_at: null,
+    en_display_name_approved: false,
+    en_short_description_approved: false,
   };
 
   it('điền đúng giá trị hiện có vào từng trường', async () => {
@@ -223,6 +225,8 @@ describe('PlaceForm — giờ mở cửa', () => {
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     verified_at: null,
+    en_display_name_approved: false,
+    en_short_description_approved: false,
   };
 
   async function renderFresh(onSubmit = jest.fn().mockResolvedValue(undefined)) {

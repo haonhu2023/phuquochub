@@ -17,10 +17,18 @@ export function PlaceCard({
   place,
   titleAs: TitleTag = 'h2',
   locale = DEFAULT_LOCALE,
+  categoryName = null,
 }: {
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
   locale?: Locale;
+  /**
+   * Tên danh mục (vd. "Khách sạn") — `PlaceCard` chỉ nhận `category_id` (UUID), không tự tra cứu
+   * tên: nơi gọi phải tự map qua `GET /categories` (đã công khai, không phân trang — xem
+   * `listCategories()`) rồi truyền xuống. Tuỳ chọn và mặc định `null` để không phá vỡ nơi gọi nào
+   * chưa có map này (vd. `NearbyDiscovery`, chỉ tải khi người dùng bấm nút).
+   */
+  categoryName?: string | null;
 }) {
   // Public Beta price trust gate (2026-08-28): giá thật CHỈ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
@@ -49,6 +57,7 @@ export function PlaceCard({
       )}
 
       <div className={styles.cardBody}>
+        {categoryName && <span className={styles.cardCategory}>{categoryName}</span>}
         <TitleTag className={styles.cardTitle}>{place.name}</TitleTag>
         {place.short_description && <p className={styles.cardDesc}>{place.short_description}</p>}
 

@@ -1,4 +1,4 @@
-import { listRestaurants } from './restaurants.api';
+import { getRestaurant, listRestaurants } from './restaurants.api';
 
 const realFetch = global.fetch;
 
@@ -52,5 +52,22 @@ describe('listRestaurants — query parameter construction', () => {
     const res = await listRestaurants({ page: 3 });
     expect(res.data).toEqual([{ id: 'r1' }]);
     expect(res.meta).toEqual(meta);
+  });
+});
+
+// 2026-09-17 (real-data pass): trước bản sửa này, getRestaurant() không truyền `?locale=` nên
+// /en/restaurants/{slug} luôn nhận nội dung mặc định của server bất kể route — API đã hỗ trợ
+// `?locale=` từ trước (xác nhận trực tiếp trên production), chỉ web quên gọi.
+describe('getRestaurant — locale forwarding', () => {
+  it('không truyền locale -> mặc định "vi" (khớp hành vi cũ)', async () => {
+    mockFetchOnce({ success: true, data: { id: 'r1' } });
+    await getRestaurant('sailing-club-phu-quoc');
+    expect(calledPath()).toBe('/api/restaurants/sailing-club-phu-quoc?locale=vi');
+  });
+
+  it('truyền locale="en" -> gọi đúng ?locale=en', async () => {
+    mockFetchOnce({ success: true, data: { id: 'r1' } });
+    await getRestaurant('sailing-club-phu-quoc', 'en');
+    expect(calledPath()).toBe('/api/restaurants/sailing-club-phu-quoc?locale=en');
   });
 });

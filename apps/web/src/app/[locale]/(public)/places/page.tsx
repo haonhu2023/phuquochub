@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
+import { listCategories } from '@/modules/categories/api/categories.api';
+import { categoryNameLookup } from '@/modules/categories/categoryName';
 import { type Locale } from '@/lib/locale';
 import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
@@ -33,7 +35,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PlacesPage({ params }: Props) {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
-  const places = await listPlaces({ limit: 50 });
+  const [places, categories] = await Promise.all([
+    listPlaces({ limit: 50 }),
+    // Tên danh mục là phần trình bày thêm trên mỗi thẻ, không phải điều kiện để trang render —
+    // lỗi tra tên không được kéo cả trang xuống error.tsx (cùng lý do DiscoverPlaces.tsx).
+    listCategories().catch(() => []),
+  ]);
+  const categoryName = categoryNameLookup(categories, locale);
   const copy = getHubPageCopy(locale, 'places');
 
   return (
@@ -57,7 +65,7 @@ export default async function PlacesPage({ params }: Props) {
       ) : (
         <div className={styles.grid}>
           {places.map((p) => (
-            <PlaceCard key={p.id} place={p} locale={locale} />
+            <PlaceCard key={p.id} place={p} locale={locale} categoryName={categoryName(p.category_id)} />
           ))}
         </div>
       )}

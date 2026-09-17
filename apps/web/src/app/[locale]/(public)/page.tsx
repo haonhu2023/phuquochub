@@ -4,7 +4,7 @@ import { HomeHero } from '@/modules/home/HomeHero';
 import { CategoryLinks } from '@/modules/home/CategoryLinks';
 import { SmartDiscovery } from '@/modules/home/SmartDiscovery';
 import { DiscoverPlaces, DiscoverPlacesSkeleton } from '@/modules/home/DiscoverPlaces';
-import { MapCta, OwnerCta } from '@/modules/home/HomeCtas';
+import { MapCta, MapCtaSkeleton, OwnerCta } from '@/modules/home/HomeCtas';
 import { TrustSection } from '@/modules/home/TrustSection';
 import { getHomeCopy } from '@/modules/home/home.copy';
 import { buildWebSiteJsonLd, serializeJsonLd } from '@/lib/structured-data';
@@ -61,9 +61,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * → bản đồ → vì sao tin PhuQuocHub → chủ cơ sở (mục phụ, cuối cùng — trang này ưu tiên khách tham
  * quan, không phải doanh nghiệp).
  *
- * CHỈ `DiscoverPlaces` chạm API. Nó được bọc `Suspense` để phần tĩnh hiển thị ngay, và tự bắt lỗi
- * bên trong (xem chú thích trong chính component) — nên một sự cố API chỉ thu nhỏ đúng khối đó,
- * không bao giờ đẩy cả trang chủ sang `error.tsx`.
+ * `DiscoverPlaces` và `MapCta` là hai khối DUY NHẤT chạm API (danh sách nổi bật, và tổng số place
+ * cho dòng freshness ở CTA bản đồ) — cả hai tự bắt lỗi bên trong (xem chú thích trong từng file)
+ * và đều bọc `<Suspense>` riêng với khung chờ bám sát bố cục thật, nên một sự cố API chỉ thu nhỏ
+ * đúng khối đó, không bao giờ đẩy cả trang chủ sang `error.tsx`.
  */
 export default async function HomePage({ params }: Props) {
   const { locale: localeParam } = await params;
@@ -86,7 +87,9 @@ export default async function HomePage({ params }: Props) {
         <DiscoverPlaces locale={locale} />
       </Suspense>
 
-      <MapCta locale={locale} />
+      <Suspense fallback={<MapCtaSkeleton locale={locale} />}>
+        <MapCta locale={locale} />
+      </Suspense>
       <TrustSection locale={locale} />
       <OwnerCta locale={locale} />
     </>

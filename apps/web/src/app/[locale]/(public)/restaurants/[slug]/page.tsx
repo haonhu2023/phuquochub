@@ -10,6 +10,7 @@ import {
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 
@@ -26,9 +27,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const r = await getRestaurant(slug);
+    const r = await getRestaurant(slug, locale);
     const path = `/restaurants/${r.slug}`;
-    const enIndexable = isEnDetailIndexable(r.slug);
+    const enIndexable = isEnDetailIndexable({
+      displayNameEnApproved: r.en_display_name_approved,
+      shortDescriptionEnApproved: r.en_short_description_approved,
+    });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
@@ -48,7 +52,7 @@ export default async function RestaurantDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let r: RestaurantDetail;
   try {
-    r = await getRestaurant(slug);
+    r = await getRestaurant(slug, locale);
   } catch (err) {
     // PLACE-041: phân biệt 404 với lỗi khác — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ.
     if (err instanceof ApiError && err.isNotFound) {
@@ -95,6 +99,9 @@ export default async function RestaurantDetailPage({ params }: Params) {
       </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
+
+      <PlaceGallery media={r.media} placeName={r.name} />
+
       {r.description && <p>{r.description}</p>}
       {r.cuisines.length > 0 && <p style={{ color: '#6b7280' }}>Ẩm thực: {r.cuisines.join(' · ')}</p>}
 

@@ -12,6 +12,7 @@ import {
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildTourJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 
@@ -28,9 +29,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const t = await getTour(slug);
+    const t = await getTour(slug, locale);
     const path = `/tours/${t.slug}`;
-    const enIndexable = isEnDetailIndexable(t.slug);
+    const enIndexable = isEnDetailIndexable({
+      displayNameEnApproved: t.en_display_name_approved,
+      shortDescriptionEnApproved: t.en_short_description_approved,
+    });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
@@ -50,7 +54,7 @@ export default async function TourDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let t: TourDetail;
   try {
-    t = await getTour(slug);
+    t = await getTour(slug, locale);
   } catch (err) {
     // PLACE-041: phân biệt 404 với lỗi khác — xem hotels/[slug]/page.tsx cho ghi chú đầy đủ.
     if (err instanceof ApiError && err.isNotFound) {
@@ -96,6 +100,9 @@ export default async function TourDetailPage({ params }: Params) {
         <span aria-current="page">{t.name}</span>
       </nav>
       <h1>{t.name}</h1>
+
+      <PlaceGallery media={t.media} placeName={t.name} />
+
       {t.description && <p>{t.description}</p>}
 
       {itinerary.length > 0 && (
