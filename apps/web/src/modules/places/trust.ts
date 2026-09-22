@@ -1,4 +1,5 @@
 import type { PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
+import type { Locale } from '@/lib/locale';
 
 /**
  * Đọc `verification_status`/`verified_at`/`trust_sources` thành thứ hiển thị được (Place Trust &
@@ -45,6 +46,15 @@ export function getTrustBadge(status: VerificationStatusValue): TrustBadge {
  *  `pending` mới đổi sang câu này. */
 export const PENDING_DISCLOSURE_TEXT = 'Thông tin đang được xác minh';
 
+// X1 (2026-09-22, G10) — biến thể theo locale, ADDITIVE: `PENDING_DISCLOSURE_TEXT` ở trên GIỮ
+// NGUYÊN (9 nơi gọi khác — mọi thẻ/trang chi tiết hotel/restaurant/tour — vẫn dùng đúng hằng số cũ,
+// không đổi hành vi). Hàm mới này chỉ dùng ở `places/[slug]/page.tsx`, nơi G10 yêu cầu sửa; các
+// mặt công khai khác (thẻ, hub) vẫn còn tiếng Việt dưới `/en` — một khoảng trống i18n riêng, rộng
+// hơn, cố ý CHƯA sửa trong đợt này (xem ghi chú "chưa làm" ở checkpoint kế hoạch).
+export function pendingDisclosureText(locale: Locale): string {
+  return locale === 'en' ? 'This information is being verified' : PENDING_DISCLOSURE_TEXT;
+}
+
 export function isPendingVerification(status: VerificationStatusValue): boolean {
   return status === 'pending';
 }
@@ -52,6 +62,12 @@ export function isPendingVerification(status: VerificationStatusValue): boolean 
 /** Nhãn thay thế khi ẩn `price_range` thật của một place chưa qua xác minh (Public Beta price
  *  trust gate, 2026-08-28) — KHÔNG bao giờ chứa giá trị thật. */
 export const PRICE_VERIFYING_TEXT = 'Giá đang được xác minh';
+
+// X1 (2026-09-22, G10) — cùng lý do pendingDisclosureText() ở trên: additive, chỉ dùng ở trang chi
+// tiết địa điểm.
+export function priceVerifyingText(locale: Locale): string {
+  return locale === 'en' ? 'Price is being verified' : PRICE_VERIFYING_TEXT;
+}
 
 /**
  * Cổng hiển thị giá công khai (Public Beta price trust gate, 2026-08-28) — MỘT hàm DUY NHẤT mà
@@ -95,9 +111,23 @@ export const TRUST_BADGE_LABEL: Record<TrustBadge, string> = {
   unverified: 'Chưa xác minh',
 };
 
-/** Định dạng ngày theo vi-VN (cùng quy ước `reviews/format.ts` — không giờ, MVP không cần phút giây). */
-export function formatVerifiedAt(iso: string): string {
-  return new Date(iso).toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+// X1 (2026-09-22, G10) — additive, cùng lý do các hàm *Text() ở trên.
+const TRUST_BADGE_LABEL_EN: Record<TrustBadge, string> = {
+  verified: 'Verified',
+  stale: 'Needs re-verification',
+  unverified: 'Unverified',
+};
+
+export function trustBadgeLabel(badge: TrustBadge, locale: Locale): string {
+  return locale === 'en' ? TRUST_BADGE_LABEL_EN[badge] : TRUST_BADGE_LABEL[badge];
+}
+
+/** Định dạng ngày theo vi-VN (cùng quy ước `reviews/format.ts` — không giờ, MVP không cần phút giây).
+ *  `locale` TUỲ CHỌN, mặc định `'vi'` — GIỮ NGUYÊN hành vi cho lời gọi cũ duy nhất còn lại
+ *  (`places/[slug]/page.tsx` trước khi sửa G10); trang đó nay truyền `locale` tường minh. */
+export function formatVerifiedAt(iso: string, locale: Locale = 'vi'): string {
+  const localeTag = locale === 'en' ? 'en-US' : 'vi-VN';
+  return new Date(iso).toLocaleDateString(localeTag, { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 /** Tên hiển thị cho một trường đã được đối chiếu nguồn — KHÔNG lộ tên cột kỹ thuật ra UI. */
@@ -127,7 +157,10 @@ export interface TrustSourceSummary {
  * phóng đại số nguồn thật sự đứng sau. Nếu có publisher trống (`null`) và có publisher đặt tên, ưu
  * tiên hiển thị publisher có tên (một nguồn đã ghi publisher hữu ích hơn để hiện ra người đọc).
  */
-export function summarizeTrustSources(sources: readonly PlaceTrustSource[]): TrustSourceSummary {
+// `locale` tuỳ chọn, mặc định `'vi'` — chỉ có MỘT nơi gọi hàm này (`places/[slug]/page.tsx`),
+// nay truyền `locale` tường minh (G10, X1 2026-09-22); mặc định giữ hành vi cũ nếu có nơi gọi mới
+// nào quên truyền.
+export function summarizeTrustSources(sources: readonly PlaceTrustSource[], locale: Locale = 'vi'): TrustSourceSummary {
   if (sources.length === 0) return { label: null, url: null };
 
   const named = sources.filter((s) => s.publisher);
@@ -135,18 +168,30 @@ export function summarizeTrustSources(sources: readonly PlaceTrustSource[]): Tru
 
   if (distinctPublishers.length === 0) {
     // Có attribution nhưng không nguồn nào ghi publisher — không bịa tên, chỉ nói có đối chiếu.
-    return { label: 'Một số thông tin đã được đối chiếu với nguồn tham khảo.', url: null };
+    return {
+      label: locale === 'en' ? 'Some information has been cross-checked against a reference source.' : 'Một số thông tin đã được đối chiếu với nguồn tham khảo.',
+      url: null,
+    };
   }
 
   if (distinctPublishers.length === 1) {
     const match = named.find((s) => s.publisher === distinctPublishers[0])!;
     return {
-      label: `Thông tin được đối chiếu với nguồn: ${distinctPublishers[0]}.`,
+      label:
+        locale === 'en'
+          ? `Cross-checked against: ${distinctPublishers[0]}.`
+          : `Thông tin được đối chiếu với nguồn: ${distinctPublishers[0]}.`,
       url: match.url,
     };
   }
 
-  return { label: `Thông tin được đối chiếu với ${distinctPublishers.length} nguồn khác nhau.`, url: null };
+  return {
+    label:
+      locale === 'en'
+        ? `Cross-checked against ${distinctPublishers.length} different sources.`
+        : `Thông tin được đối chiếu với ${distinctPublishers.length} nguồn khác nhau.`,
+    url: null,
+  };
 }
 
 /** Nhãn tiếng Việt cho tên trường kỹ thuật — dùng nếu cần liệt kê field cụ thể; fallback trung tính. */

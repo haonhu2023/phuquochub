@@ -9,12 +9,13 @@ import {
   formatVerifiedAt,
   getTrustBadge,
   isPendingVerification,
-  PENDING_DISCLOSURE_TEXT,
-  PRICE_VERIFYING_TEXT,
+  pendingDisclosureText,
+  priceVerifyingText,
   resolvePriceDisplay,
   summarizeTrustSources,
-  TRUST_BADGE_LABEL,
+  trustBadgeLabel,
 } from '@/modules/places/trust';
+import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
@@ -134,8 +135,8 @@ export default async function PlaceDetailPage({ params }: Params) {
   // An toàn vì `getPlace` fetch với `cache: 'no-store'` — Server Component chạy lại mỗi request,
   // nên "đang mở cửa" không bị đóng băng theo cache trang.
   const hasHours = hasOpeningHours(place.opening_hours);
-  const openingToday = getOpeningToday(place.opening_hours);
-  const openingWeek = getOpeningWeek(place.opening_hours);
+  const openingToday = getOpeningToday(place.opening_hours, new Date(), locale);
+  const openingWeek = getOpeningWeek(place.opening_hours, new Date(), locale);
   // Public Beta price trust gate (2026-08-28): price_range của MỌI place — bất kể category — chỉ
   // hiển thị giá trị THẬT khi verification_status đã tin cậy (canDisplayPrice, places/trust.ts).
   // Chưa tin cậy thì thay bằng PRICE_VERIFYING_TEXT (không bao giờ giá trị thật), CHỈ khi thật sự
@@ -144,7 +145,7 @@ export default async function PlaceDetailPage({ params }: Params) {
   // mại" (isCommercialCategory) — rủi ro rò giá sai của một attraction/beach/market chưa xác minh
   // là như nhau, gate này không được phép đoán qua category.
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(place.price_range),
+    formatPriceRange(place.price_range, locale),
     place.verification_status,
   );
   // Trust & Freshness Surface: badge suy từ verification_status theo CHÍNH SÁCH đã có ở backend
@@ -153,8 +154,8 @@ export default async function PlaceDetailPage({ params }: Params) {
   // KHÔNG hiện badge cạnh tiêu đề (cùng nguyên tắc opening-hours 'unknown' bên dưới) — chỉ hiện
   // một dòng giải thích nhẹ trong trustNote.
   const trustBadge = getTrustBadge(place.verification_status);
-  const trustSource = summarizeTrustSources(place.trust_sources);
-  const verifiedAtLabel = place.verified_at ? formatVerifiedAt(place.verified_at) : null;
+  const trustSource = summarizeTrustSources(place.trust_sources, locale);
+  const verifiedAtLabel = place.verified_at ? formatVerifiedAt(place.verified_at, locale) : null;
   const hasInfo = place.address || place.ward || priceLabel || showPriceVerifying || hasHours;
   const mapHref = `https://www.google.com/maps?q=${place.location.lat},${place.location.lng}`;
   // Public Beta price trust gate — "Giá dịch vụ" (2026-08-28): mỗi dòng `PlacePrice` đã mang sẵn
@@ -164,6 +165,7 @@ export default async function PlaceDetailPage({ params }: Params) {
   // disclosure DÙNG CHUNG cho cả mục thay vì lặp lại cho từng dòng giá chưa xác minh.
   const trustedPrices = place.prices.filter((p) => canDisplayPrice(p.verification_status));
   const hasUnverifiedPrices = place.prices.some((p) => !canDisplayPrice(p.verification_status));
+  const copy = getPlaceDetailCopy(locale);
 
   return (
     <article className={styles.detail}>
@@ -218,7 +220,7 @@ export default async function PlaceDetailPage({ params }: Params) {
                 trustBadge === 'verified' ? styles.badgeVerified : styles.badgeStale
               }`}
             >
-              {TRUST_BADGE_LABEL[trustBadge]}
+              {trustBadgeLabel(trustBadge, locale)}
             </span>
           )}
           {/* Đang mở / đã đóng đứng cạnh tên: đây là thứ quyết định "có đi bây giờ không". Khi
@@ -240,6 +242,7 @@ export default async function PlaceDetailPage({ params }: Params) {
           verifiedAtLabel={verifiedAtLabel}
           sourceLabel={trustSource.label}
           sourceUrl={trustSource.url}
+          locale={locale}
         />
       </header>
 
@@ -249,38 +252,38 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       {place.description && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Giới thiệu</h2>
+          <h2 className={styles.sectionTitle}>{copy.sectionAbout}</h2>
           <p>{place.description}</p>
         </section>
       )}
 
       {hasInfo && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Thông tin</h2>
+          <h2 className={styles.sectionTitle}>{copy.sectionInfo}</h2>
           <dl className={styles.infoGrid}>
             {place.address && (
               <div className={styles.infoItem}>
-                <dt className={styles.infoLabel}>Địa chỉ</dt>
+                <dt className={styles.infoLabel}>{copy.labelAddress}</dt>
                 <dd className={styles.infoValue}>{place.address}</dd>
               </div>
             )}
             {place.ward && (
               <div className={styles.infoItem}>
-                <dt className={styles.infoLabel}>Khu vực</dt>
+                <dt className={styles.infoLabel}>{copy.labelWard}</dt>
                 <dd className={styles.infoValue}>{place.ward}</dd>
               </div>
             )}
             {(priceLabel || showPriceVerifying) && (
               <div className={styles.infoItem}>
-                <dt className={styles.infoLabel}>Mức giá</dt>
-                <dd className={styles.infoValue}>{priceLabel ?? PRICE_VERIFYING_TEXT}</dd>
+                <dt className={styles.infoLabel}>{copy.labelPrice}</dt>
+                <dd className={styles.infoValue}>{priceLabel ?? priceVerifyingText(locale)}</dd>
               </div>
             )}
             {hasHours && (
               <div className={styles.infoItem}>
-                <dt className={styles.infoLabel}>Giờ mở cửa</dt>
+                <dt className={styles.infoLabel}>{copy.labelHours}</dt>
                 <dd className={styles.infoValue}>
-                  {openingToday.hours ?? 'Chưa có thông tin'}
+                  {openingToday.hours ?? copy.noHoursInfo}
                   {openingToday.note && ` — ${openingToday.note}`}
                 </dd>
               </div>
@@ -291,7 +294,7 @@ export default async function PlaceDetailPage({ params }: Params) {
               đang lên kế hoạch cho ngày khác. Mặc định đóng để khối Thông tin không bị đẩy dài. */}
           {openingWeek.length > 0 && (
             <details className={styles.faq}>
-              <summary>Giờ mở cửa cả tuần</summary>
+              <summary>{copy.weekHoursSummary}</summary>
               <ul className={styles.hoursWeek}>
                 {openingWeek.map((row) => (
                   <li
@@ -306,14 +309,14 @@ export default async function PlaceDetailPage({ params }: Params) {
             </details>
           )}
           <a className={styles.mapLink} href={mapHref} target="_blank" rel="noopener noreferrer">
-            Xem trên bản đồ →
+            {copy.viewOnMap}
           </a>
         </section>
       )}
 
       {place.contacts.length > 0 && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Liên hệ</h2>
+          <h2 className={styles.sectionTitle}>{copy.sectionContact}</h2>
           <ul className={styles.list}>
             {place.contacts.map((c) => (
               <li key={c.id} className={styles.listItem}>
@@ -327,7 +330,7 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       {place.prices.length > 0 && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Giá dịch vụ</h2>
+          <h2 className={styles.sectionTitle}>{copy.sectionPrices}</h2>
           {trustedPrices.length > 0 && (
             <ul className={styles.list}>
               {trustedPrices.map((p) => (
@@ -335,7 +338,7 @@ export default async function PlaceDetailPage({ params }: Params) {
                   <span>{p.service_name}</span>
                   <span>
                     {p.is_free
-                      ? 'Miễn phí'
+                      ? copy.free
                       // `trustedPrices` đã lọc canDisplayPrice() ở trên nên `amount` LUÔN có giá trị
                       // thật ở đây — API chỉ trả null cho bản ghi CHƯA tin cậy (đã bị lọc ra). Guard
                       // `!== null` chỉ để khớp kiểu `number | null` của contract, không phải một
@@ -348,13 +351,13 @@ export default async function PlaceDetailPage({ params }: Params) {
               ))}
             </ul>
           )}
-          {hasUnverifiedPrices && <p className={styles.trustNote}>{PRICE_VERIFYING_TEXT}</p>}
+          {hasUnverifiedPrices && <p className={styles.trustNote}>{priceVerifyingText(locale)}</p>}
         </section>
       )}
 
       {place.faqs.length > 0 && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Câu hỏi thường gặp</h2>
+          <h2 className={styles.sectionTitle}>{copy.sectionFaq}</h2>
           {place.faqs.map((f) => (
             <details key={f.id} className={styles.faq}>
               <summary>{f.question}</summary>
@@ -387,13 +390,17 @@ function TrustNote({
   verifiedAtLabel,
   sourceLabel,
   sourceUrl,
+  locale,
 }: {
   badge: 'verified' | 'stale' | 'unverified';
   rawStatus: VerificationStatusValue;
   verifiedAtLabel: string | null;
   sourceLabel: string | null;
   sourceUrl: string | null;
+  locale: Locale;
 }) {
+  const copy = getPlaceDetailCopy(locale);
+
   if (badge === 'verified') {
     if (!sourceLabel && !verifiedAtLabel) return null;
     return (
@@ -405,36 +412,30 @@ function TrustNote({
               <>
                 {' '}
                 <a href={sourceUrl} target="_blank" rel="noopener noreferrer nofollow">
-                  Xem nguồn
+                  {copy.viewSource}
                 </a>
               </>
             )}
           </>
         )}
         {sourceLabel && verifiedAtLabel && ' '}
-        {verifiedAtLabel && `Kiểm tra lần cuối: ${verifiedAtLabel}.`}
+        {verifiedAtLabel && copy.lastChecked(verifiedAtLabel)}
       </p>
     );
   }
 
   if (badge === 'stale') {
-    return (
-      <p className={styles.trustNote}>
-        {verifiedAtLabel
-          ? `Lần xác minh gần nhất: ${verifiedAtLabel} — thông tin có thể đã thay đổi từ đó.`
-          : 'Thông tin cần được kiểm tra lại.'}
-      </p>
-    );
+    return <p className={styles.trustNote}>{verifiedAtLabel ? copy.staleWithDate(verifiedAtLabel) : copy.staleNoDate}</p>;
   }
 
   // Public Beta trust disclosure (2026-08-27): `pending` ĐÚNG NGHĨA (chưa ai xem tới) đổi sang câu
   // này — `rejected` (đã bị từ chối, một trạng thái thật khác) VẪN giữ câu cũ bên dưới, không gộp
   // chung dù cả hai cùng rơi vào badge "unverified".
   if (isPendingVerification(rawStatus)) {
-    return <p className={styles.trustNote}>{PENDING_DISCLOSURE_TEXT}</p>;
+    return <p className={styles.trustNote}>{pendingDisclosureText(locale)}</p>;
   }
 
-  return <p className={styles.trustNote}>Chưa xác minh — thông tin do cộng đồng đóng góp.</p>;
+  return <p className={styles.trustNote}>{copy.unverifiedNote}</p>;
 }
 
 function contactHref(type: string, value: string): string | null {
