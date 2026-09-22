@@ -106,22 +106,42 @@ const staticMaps = allMaps.filter((f) => f.startsWith(STATIC_DIR));
 // route, including shared framework chunks — this is the same "chunks referenced by the route's
 // module graph" concept the old webpack-era "First Load JS" column measured, just read directly
 // from the RSC manifest since Turbopack's `next build` output no longer prints that table.
+// PERF1 (2026-09-22) — fixed: every public route moved under `app/[locale]/(public)/...` when
+// locale routing (`[locale]` dynamic segment) was introduced, but this map still pointed at the
+// pre-locale `app/(public)/...` paths — every entry except `/dashboard` silently resolved to
+// "manifest not found" (confirmed by re-running this script after that change: only `/dashboard`
+// ever reported real numbers). Verified against the actual build output
+// (`.next/server/app/[locale]/(public)/**`) before fixing, not guessed. `/` maps to `(public)`
+// itself with NO further `/page` segment: the root of a route group has no URL segment name of
+// its own, so Turbopack writes `page_client-reference-manifest.js` directly under `(public)/`
+// (every OTHER route's manifest sits under its own named subdirectory, e.g. `(public)/search/`).
 const ROUTE_DIRS = {
-  '/': 'app',
-  '/search': 'app/(public)/search',
-  '/explore': 'app/(public)/explore',
-  '/map': 'app/(public)/map',
-  '/hotels': 'app/(public)/hotels',
-  '/restaurants': 'app/(public)/restaurants',
-  '/tours': 'app/(public)/tours',
+  '/': 'app/[locale]/(public)',
+  '/search': 'app/[locale]/(public)/search',
+  '/explore': 'app/[locale]/(public)/explore',
+  '/map': 'app/[locale]/(public)/map',
+  '/hotels': 'app/[locale]/(public)/hotels',
+  '/restaurants': 'app/[locale]/(public)/restaurants',
+  '/tours': 'app/[locale]/(public)/tours',
+  '/guide': 'app/[locale]/(public)/guide',
   '/dashboard': 'app/(dashboard)/dashboard',
+  '/dashboard/content': 'app/(dashboard)/dashboard/content',
 };
 
 function routeChunkSet(dir) {
   const manifestPath = path.join(SERVER_DIR, dir, 'page_client-reference-manifest.js');
   if (!existsSync(manifestPath)) return null;
   const content = readFileSync(manifestPath, 'utf8');
-  const match = content.match(/globalThis\.__RSC_MANIFEST\[[^\]]+\]\s*=\s*(\{.*\});?\s*$/s);
+  // PERF1 (2026-09-22) — fixed: every route under the `[locale]` dynamic segment has a manifest
+  // key like `globalThis.__RSC_MANIFEST["/[locale]/(public)/search/page"] = {...}` — the literal
+  // `]` closing `[locale]` inside that quoted key made the original `[^\]]+` (character class
+  // EXCLUDING `]`, cannot backtrack past one) stop right after `[locale`, so the regex never
+  // matched `] = {` for ANY locale-scoped route and every one of them silently fell through to
+  // "manifest not found" (confirmed by comparing this exact file's content for a locale route
+  // against /dashboard's, which has no `]` in its key and always worked). `.+?` (lazy, matches
+  // any char including `]`) can backtrack past an inner `]` to find the real outer one followed
+  // by `] = {`, which a negated character class fundamentally cannot do.
+  const match = content.match(/globalThis\.__RSC_MANIFEST\[.+?\]\s*=\s*(\{.*\});?\s*$/s);
   if (!match) return null;
   const parsed = JSON.parse(match[1]);
   const set = new Set();
