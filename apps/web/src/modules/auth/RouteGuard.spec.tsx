@@ -16,6 +16,7 @@ function authValue(overrides: Partial<ReturnType<typeof useAuth>> = {}): ReturnT
     user: null,
     initializing: false,
     isAuthenticated: false,
+    sessionExpired: false,
     login: jest.fn(),
     register: jest.fn(),
     logout: jest.fn(),

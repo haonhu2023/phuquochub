@@ -23,7 +23,12 @@ function LoginForm() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Phiên trước vừa bị đóng do refresh token hỏng/hết hạn (AuthProvider → RouteGuard →
+  // ?reason=expired), KHÔNG PHẢI "chưa đăng nhập" hay "sai mật khẩu" — hiện đúng nguyên nhân thay
+  // vì để trống, tránh người dùng tưởng mình gõ sai gì đó.
+  const [error, setError] = useState<string | null>(
+    params.get('reason') === 'expired' ? 'Phiên đăng nhập đã hết hạn — vui lòng đăng nhập lại.' : null,
+  );
   const [submitting, setSubmitting] = useState(false);
 
   // Đã đăng nhập thì không ở lại trang login.

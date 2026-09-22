@@ -217,6 +217,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
       DB_NAME: phuquochub
       DB_SSL: "false"
+      # data-source.ts refuses to connect without this exact "<db_name>@<host>:<port>" match
+      # (fail-closed guard against migrating the wrong database). Fixed 2026-09-22 (B2): this was
+      # missing here entirely, so `docker compose --profile tools run migrate` would exit 1 before
+      # ever reaching Postgres — see docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md.
+      MIGRATION_EXPECTED_TARGET: "phuquochub@postgres:5432"
 
   api:
     build:

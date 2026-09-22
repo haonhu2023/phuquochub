@@ -21,8 +21,18 @@ import { AuditResult } from '../../core/audit/audit.enums';
  * `moderator` → `contributor` (duyệt kiểm duyệt + toàn bộ năng lực biên tập). `contributor` được
  * cho phép để bootstrap NGƯỜI BIÊN TẬP THUẦN — biên tập nội dung, KHÔNG duyệt kiểm duyệt, KHÔNG
  * cấp vai trò; đây chính là tài khoản thứ hai mà quy trình hai-người ở §Media cần.
+ *
+ * `content_owner` (SeedContentOwnerRole1720006200000, 2026-09-22) thêm vào allowlist cùng lý do:
+ * người vận hành nội dung thực tế của site (địa điểm/ảnh/cẩm nang/bản dịch) cần một cách cấp
+ * quyền không phải chờ một `administrator` khác cấp qua API — và vai trò đó tự nó KHÔNG giữ
+ * `Role.Assign`, nên không mở lại thế bí ngược (không tự cấp thêm quyền cho ai khác qua nó).
  */
-export const BOOTSTRAPPABLE_ROLE_CODES = ['administrator', 'moderator', 'contributor'] as const;
+export const BOOTSTRAPPABLE_ROLE_CODES = [
+  'administrator',
+  'moderator',
+  'contributor',
+  'content_owner',
+] as const;
 export type BootstrappableRoleCode = (typeof BOOTSTRAPPABLE_ROLE_CODES)[number];
 
 export const DEFAULT_BOOTSTRAP_ROLE: BootstrappableRoleCode = 'administrator';

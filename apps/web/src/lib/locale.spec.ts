@@ -70,6 +70,7 @@ describe('PUBLIC_ROUTE_ROOTS', () => {
       'beaches',
       'attractions',
       'events',
+      'guide',
       'about',
       'contact',
       'privacy',
