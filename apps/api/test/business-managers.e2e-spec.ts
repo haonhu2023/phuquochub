@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -265,7 +266,10 @@ describe('Business Manager Assignment/Revocation (live Postgres)', () => {
     const beforeRevoke = await request(app.getHttpServer())
       .patch(`/api/places/${owner.placeId}`)
       .set('Authorization', `Bearer ${target.accessToken}`)
-      .send({ name: 'Place — edited by manager before revoke' });
+      .send({
+        name: 'Place — edited by manager before revoke',
+        expected_content_version: await currentPlaceContentVersion(ds, owner.placeId),
+      });
     expect(beforeRevoke.status).toBe(200);
 
     const revokeRes = await request(app.getHttpServer())
@@ -361,7 +365,10 @@ describe('Business Manager Assignment/Revocation (live Postgres)', () => {
     const stillWorksAtB = await request(app.getHttpServer())
       .patch(`/api/places/${ownerB.placeId}`)
       .set('Authorization', `Bearer ${target.accessToken}`)
-      .send({ name: 'Place B — still managed after revoke at A' });
+      .send({
+        name: 'Place B — still managed after revoke at A',
+        expected_content_version: await currentPlaceContentVersion(ds, ownerB.placeId),
+      });
     expect(stillWorksAtB.status).toBe(200);
   });
 

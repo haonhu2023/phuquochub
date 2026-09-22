@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -259,7 +260,10 @@ describe('Editorial Operator (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/places/${place}`)
         .set('Authorization', `Bearer ${editor.accessToken}`)
-        .send({ short_description: 'Mô tả do đội vận hành biên tập' });
+        .send({
+          short_description: 'Mô tả do đội vận hành biên tập',
+          expected_content_version: await currentPlaceContentVersion(ds, place),
+        });
 
       expect(res.status).toBe(200);
       const [row] = await ds.query(`SELECT short_description FROM places WHERE id = $1`, [place]);
@@ -282,6 +286,7 @@ describe('Editorial Operator (e2e)', () => {
               tue: [], wed: [], thu: [], fri: [], sat: [], sun: [],
             },
           },
+          expected_content_version: await currentPlaceContentVersion(ds, place),
         });
 
       expect(res.status).toBe(200);
@@ -320,7 +325,10 @@ describe('Editorial Operator (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/api/places/${owner.placeId}`)
         .set('Authorization', `Bearer ${owner.accessToken}`)
-        .send({ short_description: 'chủ cơ sở tự sửa' });
+        .send({
+          short_description: 'chủ cơ sở tự sửa',
+          expected_content_version: await currentPlaceContentVersion(ds, owner.placeId),
+        });
 
       expect(res.status).toBe(200);
     });

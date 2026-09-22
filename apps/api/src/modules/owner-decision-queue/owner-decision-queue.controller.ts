@@ -7,11 +7,9 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
-import { JwtAuthGuard } from '../authz/guards/jwt-auth.guard';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { OwnerDecisionQueueService } from './owner-decision-queue.service';
@@ -73,7 +71,16 @@ export class OwnerDecisionQueueController {
     return item;
   }
 
-  @UseGuards(JwtAuthGuard)
+  // Fixed 2026-09-22: `@UseGuards(JwtAuthGuard)` here was redundant AND broken —
+  // JwtAuthGuard is already a global APP_GUARD (auth.module.ts), so every route is
+  // JWT-gated by default with no per-route decorator needed (same convention
+  // places.controller.ts's `GET /places/mine` documents: "no @RequirePermissions →
+  // authenticated-only"). Re-applying it here via @UseGuards forces Nest to resolve
+  // JwtAuthGuard's constructor deps (JwtService) INSIDE OwnerDecisionQueueModule's own
+  // DI scope — which never imported AuthModule — so the whole AppModule failed to boot
+  // ("Nest can't resolve dependencies of the JwtAuthGuard... JwtService"), taking every
+  // e2e test down with it. Scope enforcement (Place.Approve global OR Place.Edit.Managed
+  // scoped to item.placeId) still happens inside the service, unchanged.
   @Post(':id/resolve')
   async resolve(
     @Param('id', ParseUUIDPipe) id: string,
@@ -83,7 +90,6 @@ export class OwnerDecisionQueueController {
     return this.odqService.resolve({ id, resolvedBy: user.sub, resolution: dto.resolution ?? {} });
   }
 
-  @UseGuards(JwtAuthGuard)
   @Post(':id/withdraw')
   async withdraw(
     @Param('id', ParseUUIDPipe) id: string,
