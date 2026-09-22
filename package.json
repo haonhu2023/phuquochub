@@ -17,7 +17,8 @@
     "db:up": "docker compose up -d postgres redis minio",
     "db:down": "docker compose down",
     "test:e2e:browser": "playwright test --config=e2e/playwright.config.ts",
-    "test:e2e:browser:ui": "playwright test --config=e2e/playwright.config.ts --ui"
+    "test:e2e:browser:ui": "playwright test --config=e2e/playwright.config.ts --ui",
+    "test:e2e:browser:release": "playwright test --config=e2e/playwright.release.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

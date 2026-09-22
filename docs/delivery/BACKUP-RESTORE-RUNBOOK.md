@@ -479,3 +479,39 @@ a read-only bind mount (`./backups:/repo/backups:ro`) and `BACKUP_STATUS_DB_DIR`
 automatically on the next deploy of this compose file, with no separate `.env` edit required unless
 a non-default path is wanted. **This has not been deployed** — see Mốc B in the launch-readiness
 plan for the gate before any production change.
+
+## 10. Recorded LOCAL media restore rehearsal — 2026-09-22
+
+Real object-level restore rehearsal against the **local dev MinIO** (`phuquoc-minio` container),
+NOT production. `scripts/restore-media-rehearsal.sh` is built for `docker-compose.prod.yml`'s exact
+network topology (`mc-docker.sh`'s ephemeral container joined to the PRODUCTION compose network) and
+doesn't attach to the local dev stack's network as-is — same class of gap §9's DB rehearsal already
+disclosed for `restore.sh`. Rather than adapt the production-shaped script, this rehearsal ran the
+same underlying `mc` operations directly against local dev MinIO, joined to its real Docker network
+(`phuquochub_default`) via an ephemeral `minio/mc` container — proving the RESTORE mechanism itself
+(copy from a bucket into an isolated target, verify byte-identical), not a literal invocation of the
+wrapper script.
+
+**What was verified, using a real object already in local dev MinIO** (a real cover photo uploaded
+during this session's earlier browser testing, `media/a8e71fb7-d37c-491c-bf64-0e117d668db5.jpg` in
+bucket `phuquochub`):
+
+1. Confirmed the object's `bucket`/`object_key` as recorded in Postgres (`SELECT object_key, bucket
+   FROM media WHERE id = '…'`) match EXACTLY the path used against MinIO — the DB reference and the
+   real object are not out of sync.
+2. Created an isolated scratch bucket (`phuquochub-restore-test-<timestamp>`) — never the real
+   `phuquochub` bucket as a write target.
+3. Copied ("restored") the object from `phuquochub` into the scratch bucket.
+4. Compared SHA256 of the source and restored copies (`mc cat | sha256sum` on each side, not just
+   MinIO's own ETag, though that matched too): **byte-identical** —
+   `bf7b111808a2bcdf0aa6c48cbc5f533fa5507a5dc3840267ddac4a6a775d4c44` on both sides.
+   `mc stat` on the restored copy confirmed `Content-Type: image/jpeg` and the same size (6.7 KiB) —
+   the restored object opens as a valid image, not just a byte blob with a matching hash.
+5. Deleted the scratch bucket and its one object immediately after. The real `phuquochub` bucket was
+   only ever read from, never written to or deleted from, during this rehearsal.
+
+**Not rehearsed in this pass:** restoring an ENTIRE media snapshot directory as `backup-media.sh`
+actually produces one (a full `mc mirror` pass across every object) — this rehearsal proved the
+single-object copy-and-verify mechanism `restore-media-rehearsal.sh` also relies on, not a
+multi-object mirror. Media backup itself is **not yet scheduled on production** (see §0/§8.4 — cron
+entry not added), so there is no real production media snapshot to rehearse against yet regardless.
