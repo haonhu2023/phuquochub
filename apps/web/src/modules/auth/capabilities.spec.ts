@@ -4,14 +4,16 @@ import { capabilitiesFromRoles, NO_CAPABILITIES } from './capabilities';
 // THẤY lối vào đặc quyền. Nó KHÔNG cấp quyền (backend cưỡng chế), nhưng hiện nhầm lối vào cho
 // người thường là một lỗi UX tệ (bấm vào chỉ để nhận 403), nên từng vai trò được khoá tường minh.
 //
-// canReviewTranslations (human-translation-review, 2026-09-04) thêm sau, dùng CÙNG tập vai trò với
-// canModerate hôm nay — mọi assertion dưới đây cập nhật để phản ánh cả ba cờ.
+// canReviewTranslations (human-translation-review, 2026-09-04) và canEditGuides (Guide CMS
+// candidate, 2026-09-18) thêm sau, dùng CÙNG tập vai trò với canModerate hôm nay — mọi assertion
+// dưới đây cập nhật để phản ánh cả bốn cờ.
 describe('capabilitiesFromRoles', () => {
-  it('member thường: KHÔNG thấy lối vào biên tập, kiểm duyệt, hay duyệt bản dịch', () => {
+  it('member thường: KHÔNG thấy lối vào biên tập, kiểm duyệt, duyệt bản dịch, hay biên tập cẩm nang', () => {
     expect(capabilitiesFromRoles(['member'])).toEqual({
       canEditorial: false,
       canModerate: false,
       canReviewTranslations: false,
+      canEditGuides: false,
     });
   });
 
@@ -22,34 +24,50 @@ describe('capabilitiesFromRoles', () => {
         canEditorial: false,
         canModerate: false,
         canReviewTranslations: false,
+        canEditGuides: false,
       });
     },
   );
 
-  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt/duyệt bản dịch (đúng bộ quyền thật của vai trò này)', () => {
+  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt/duyệt bản dịch/biên tập cẩm nang (đúng bộ quyền thật của vai trò này)', () => {
     expect(capabilitiesFromRoles(['contributor'])).toEqual({
       canEditorial: true,
       canModerate: false,
       canReviewTranslations: false,
+      canEditGuides: false,
     });
   });
 
   it.each([['moderator'], ['administrator'], ['super_administrator']])(
-    'vai trò "%s": thấy CẢ biên tập, kiểm duyệt, lẫn duyệt bản dịch',
+    'vai trò "%s": thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, lẫn biên tập cẩm nang',
     (role) => {
       expect(capabilitiesFromRoles([role])).toEqual({
         canEditorial: true,
         canModerate: true,
         canReviewTranslations: true,
+        canEditGuides: true,
       });
     },
   );
+
+  // content_owner (SeedContentOwnerRole, launch-readiness 2026-09-22) giữ trực tiếp cả 4 permission
+  // đằng sau 4 cờ này — phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu dòng này khiến
+  // owner có đủ quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, lẫn biên tập cẩm nang', () => {
+    expect(capabilitiesFromRoles(['content_owner'])).toEqual({
+      canEditorial: true,
+      canModerate: true,
+      canReviewTranslations: true,
+      canEditGuides: true,
+    });
+  });
 
   it('nhiều vai trò: hợp nhất theo kiểu "có ít nhất một là đủ"', () => {
     expect(capabilitiesFromRoles(['member', 'contributor'])).toEqual({
       canEditorial: true,
       canModerate: false,
       canReviewTranslations: false,
+      canEditGuides: false,
     });
   });
 
@@ -72,6 +90,7 @@ describe('capabilitiesFromRoles', () => {
         canEditorial: true,
         canModerate: false,
         canReviewTranslations: false,
+        canEditGuides: false,
       });
     });
 
