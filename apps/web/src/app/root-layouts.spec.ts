@@ -67,3 +67,16 @@ describe('cả 3 root layout dùng chung DEFAULT_METADATA (không lặp lại me
     },
   );
 });
+
+// N1 (2026-09-22) — shell điều hướng quản trị 5 mục. Đặt BÊN TRONG RouteGuard (không bọc ngoài):
+// bọc ngoài sẽ khiến nav nháy lên rồi biến mất cho khách chưa đăng nhập trong lúc RouteGuard đang
+// chuyển hướng sang /login. Test nguồn (không RTL) cùng lý do các test layout khác ở trên.
+describe('(dashboard)/layout.tsx có DashboardNav BÊN TRONG RouteGuard', () => {
+  it('DashboardNav xuất hiện SAU <RouteGuard> mở, không phải trước', () => {
+    const src = readSrc('app/(dashboard)/layout.tsx');
+    const routeGuardOpenIndex = src.indexOf('<RouteGuard>');
+    const navIndex = src.indexOf('<DashboardNav');
+    expect(routeGuardOpenIndex).toBeGreaterThan(-1);
+    expect(navIndex).toBeGreaterThan(routeGuardOpenIndex);
+  });
+});
