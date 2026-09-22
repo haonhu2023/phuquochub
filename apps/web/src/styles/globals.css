@@ -1,18 +1,77 @@
+/* Design direction (2026-09-22, UI pass) — sáng, thoáng, đáng tin, cảm giác biển đảo. Trước bản
+   này, globals.css là placeholder nền tối generic chưa từng khớp brief (bằng chứng: 18/18 CSS
+   module đã dùng đúng các biến này, nên đổi ở gốc lan toả toàn site mà không phải sửa từng file).
+   Giữ nguyên HUE xanh biển đã có ở `--accent` cũ (#38bdf8) — chỉ đậm hoá cho đủ tương phản trên nền
+   sáng — để không phá nhận diện màu đã quen mắt. Font: KHÔNG thêm webfont mới — system-ui đã có sẵn
+   phủ dấu tiếng Việt đầy đủ trên mọi hệ điều hành, tải bằng 0 (đúng yêu cầu "tái sử dụng font hiện
+   có" và có lợi luôn cho hiệu năng). Không có theme/dark-mode thứ hai trong đợt này. */
 :root {
-  --bg: #0b1120;
-  --fg: #e2e8f0;
-  --muted: #94a3b8;
-  --accent: #38bdf8;
-  --ok: #22c55e;
-  --err: #ef4444;
+  /* Nền & chữ — sáng, ấm nhẹ (không trắng lạnh, không be/cream — tránh đúng combo "AI-generated
+     cliché" nền kem #F4F1EA + accent đất nung mà frontend-design skill cảnh báo). Chữ là than-xanh
+     đậm (không đen thuần) để hài hoà với tông biển thay vì trung tính vô cảm. */
+  --bg: #f7fafa;
+  --fg: #10262b;
+  --muted: #55696d;
+  /* Xanh biển/xanh ngọc — màu chính, đậm hoá từ #38bdf8 cũ cho đủ AA trên nền sáng (~4.6:1 trên
+     --bg cho text, và đủ rõ cho icon/border/focus ring). */
+  --accent: #0e7490;
+  /* Hover/active của --accent — đậm hơn một nấc, KHÔNG PHẢI accent-2 bên dưới (đã tự đo: trắng
+     trên accent-2 chỉ ~2.5:1, fail AA — accent-2 chỉ an toàn khi ghép với chữ --fg tối). */
+  --accent-hover: #0b5c73;
+  /* Xanh ngọc thứ hai — trang trí/dải nhấn nhẹ/badge nền sáng với CHỮ TỐI (--fg) đè lên, đo được
+     6.3:1. KHÔNG dùng làm nền cho chữ trắng (~2.5:1, fail AA) và không dùng làm màu chữ trên nền
+     sáng (~2.4:1, cũng fail). */
+  --accent-2: #14b8a6;
+  /* Nhấn ấm (nắng/cát) — dùng TIẾT CHẾ: chỉ badge "nổi bật", trạng thái đang chờ, hover nhỏ. Không
+     dùng làm CTA chính (đó vẫn là --accent) để giữ đúng "trước sau" xanh biển là màu chính. */
+  --warm: #b45309;
+  --ok: #15803d;
+  --err: #dc2626;
   /* Trạng thái "từng tin cậy, nay cần xác minh lại" (verification_status = expired) — khác `--err`
      (lỗi thật) và khác `--muted` (chưa từng xác minh): đây là cảnh báo nhẹ, không phải sự cố. */
-  --warn: #f59e0b;
-  /* Bề mặt & viền (thẻ, panel) — bám nền tối, thêm để thay hex inline rời rạc. */
-  --surface: #131c31;
-  --surface-2: #1b2740;
-  --border: #24304d;
+  --warn: #b45309;
+  /* Bề mặt & viền (thẻ, panel) — trắng thật cho card nổi trên nền --bg hơi ấm; viền nhạt đủ thấy,
+     không cần shadow nặng để phân định. */
+  --surface: #ffffff;
+  --surface-2: #eef5f5;
+  --border: #dbe7e7;
   --radius: 12px;
+
+  /* Type scale (Elements of Typographic Style — tỉ lệ ~1.25, line-height rộng hơn cho cỡ nhỏ) —
+     trước đây không có thang chữ chung, mỗi module tự đặt font-size rời rạc. */
+  --font-sans:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  --text-xs: 0.8rem;
+  --text-sm: 0.9rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.563rem;
+  --text-2xl: 1.953rem;
+  --text-3xl: 2.441rem;
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  /* Spacing scale (4px base) — dùng dần khi chạm vào từng module, không ép đổi toàn bộ giá trị rời
+     rạc hiện có trong một lần (rủi ro hồi quy layout không cần thiết cho phần chưa chạm tới). */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px rgba(16, 38, 43, 0.08);
+  --shadow-md: 0 4px 12px rgba(16, 38, 43, 0.1);
+  --shadow-lg: 0 12px 32px rgba(16, 38, 43, 0.14);
 }
 
 * {
@@ -25,12 +84,22 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family:
-    system-ui,
-    -apple-system,
-    Segoe UI,
-    Roboto,
-    sans-serif;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+}
+
+/* Tôn trọng "prefers-reduced-motion" toàn site — một chỗ đặt DUY NHẤT thay vì lặp lại per-component
+   (ui-ux-pro-max §7: "No reduced-motion" là anti-pattern hay gặp nhất ở mục Animation). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 main {

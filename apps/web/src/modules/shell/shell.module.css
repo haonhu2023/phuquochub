@@ -105,7 +105,9 @@
 }
 .langLinkActive {
   background: var(--accent);
-  color: #06202e;
+  /* --accent đậm (đủ AA làm chữ trên nền sáng) → chữ TRÊN accent phải là trắng, không phải than
+     đậm cũ (#06202e chỉ đúng khi accent còn là xanh nhạt trước bản UI pass này). */
+  color: #ffffff;
 }
 .langLink:focus-visible {
   outline: 2px solid var(--accent);
@@ -165,7 +167,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
 }
 
 .mobileNavLink {
@@ -214,7 +216,7 @@
   padding: 0.6rem 1rem;
   border-radius: 8px;
   background: var(--accent);
-  color: #06202e;
+  color: #ffffff;
   font-weight: 700;
   text-decoration: none;
   transition: top 0.15s ease;
