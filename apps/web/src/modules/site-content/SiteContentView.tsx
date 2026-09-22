@@ -39,7 +39,12 @@ const EMPTY_SOCIAL: SocialLinksValue = { facebook: null, zalo: null, instagram: 
  * — không tồn tại ở đâu trong code trước tính năng này, nên không có bất biến CI nào để va chạm.
  *
  * Mỗi khối có content_version CAS RIÊNG (một hàng site_content) — lưu một khối không ảnh hưởng
- * khối khác, và một 409 chỉ chặn đúng khối đó (không mất dữ liệu bạn đang nhập ở các khối khác).
+ * khối khác, và một xung đột chỉ chặn đúng khối đó (không mất dữ liệu bạn đang nhập ở các khối khác).
+ *
+ * KHÔNG có bước nháp/duyệt riêng cho site_content (owner tự quyết định đăng gì, đây không phải nội
+ * dung cộng đồng cần kiểm duyệt) — nút "Cập nhật công khai" áp dụng NGAY lên trang chủ thật, không
+ * có "Lưu nháp" khác nó. Nhãn nút nói đúng điều đó thay vì "Lưu" chung chung dễ hiểu nhầm là còn một
+ * bước xuất bản riêng.
  */
 export function SiteContentView() {
   const [status, setStatus] = useState<'loading' | 'signed-out' | 'forbidden' | 'ready' | 'error'>('loading');
@@ -97,6 +102,10 @@ export function SiteContentView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: 720 }}>
+      <p style={{ color: 'var(--muted)', marginTop: 0 }} role="note">
+        Mỗi khối dưới đây cập nhật NGAY lên trang chủ công khai khi bạn bấm &quot;Cập nhật công
+        khai&quot; — không có bản nháp riêng, không có bước xuất bản thứ hai.
+      </p>
       <HeroSection locale="vi" row={rows.get(rowKey('home_hero', 'vi'))} accessToken={accessToken!} onSaved={applySaved} />
       <HeroSection locale="en" row={rows.get(rowKey('home_hero', 'en'))} accessToken={accessToken!} onSaved={applySaved} />
       <AboutSection locale="vi" row={rows.get(rowKey('home_about', 'vi'))} accessToken={accessToken!} onSaved={applySaved} />
@@ -107,21 +116,41 @@ export function SiteContentView() {
   );
 }
 
-function saveErrorMessage(err: unknown): string {
+// `conflict: true` means someone else's save landed between this editor loading the row and this
+// click — the OTHER person's newer content must never be silently overwritten. We deliberately do
+// NOT auto-retry: SectionShell surfaces a "Tải phiên bản mới nhất" action that refreshes only the
+// CAS token (via onSaved(), same path a successful save uses) WITHOUT touching what the owner is
+// currently typing, so re-clicking "Cập nhật công khai" afterwards is an informed decision, not a
+// blind overwrite — this is what keeps "dữ liệu mới không mất" true without a draft/review layer.
+// Refetches ONE row's current server state after a CAS conflict — used only to refresh the CAS
+// token (`contentVersion`) a section's next save attempt sends, never to overwrite what the owner
+// is currently typing. A full `listSiteContent()` call is cheap here (six rows total today); no
+// need for a narrower single-row endpoint.
+async function reloadLatestRow(key: SiteContentKey, locale: string, accessToken: string): Promise<SiteContentRow | undefined> {
+  const rows = await listSiteContent(accessToken).catch(() => []);
+  return rows.find((r) => r.key === key && r.locale === locale);
+}
+
+function saveErrorMessage(err: unknown): { message: string; conflict: boolean } {
   if (err instanceof ApiError) {
     if (err.isConflict) {
-      return 'Nội dung này vừa được người khác lưu. Tải lại trang để lấy bản mới nhất, rồi nhập lại thay đổi của bạn.';
+      return {
+        conflict: true,
+        message: 'Chưa cập nhật được: nội dung này vừa được người khác cập nhật công khai trước bạn.',
+      };
     }
-    if (err.status === 403) return 'Bạn không có quyền sửa nội dung này.';
-    if (err.status < 500) return err.message;
+    if (err.status === 403) return { conflict: false, message: 'Bạn không có quyền sửa nội dung này.' };
+    if (err.status < 500) return { conflict: false, message: err.message };
   }
-  return 'Không lưu được. Vui lòng thử lại.';
+  return { conflict: false, message: 'Không cập nhật được. Vui lòng thử lại.' };
 }
 
 function SectionShell({
   title,
   saving,
   error,
+  conflict,
+  onReloadVersion,
   saved,
   onSave,
   children,
@@ -129,6 +158,8 @@ function SectionShell({
   title: string;
   saving: boolean;
   error: string | null;
+  conflict?: boolean;
+  onReloadVersion?: () => void;
   saved: boolean;
   onSave: () => void;
   children: ReactNode;
@@ -137,12 +168,17 @@ function SectionShell({
     <section style={{ border: '1px solid #1e293b', borderRadius: 8, padding: '1rem' }}>
       <h2 style={{ marginTop: 0 }}>{title}</h2>
       {children}
-      <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+      <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <button type="button" onClick={onSave} disabled={saving} className={placeStyles.submitBtn}>
-          {saving ? 'Đang lưu…' : 'Lưu'}
+          {saving ? 'Đang cập nhật…' : 'Cập nhật công khai'}
         </button>
-        {saved && !error && <span style={{ color: 'var(--ok, green)' }}>Đã lưu.</span>}
+        {saved && !error && <span style={{ color: 'var(--ok, green)' }}>Đã cập nhật công khai.</span>}
         {error && <span role="alert" style={{ color: 'var(--err, red)' }}>{error}</span>}
+        {conflict && onReloadVersion && (
+          <button type="button" onClick={onReloadVersion} style={{ fontSize: '0.85rem' }}>
+            Tải phiên bản mới nhất (giữ nguyên nội dung bạn đang nhập)
+          </button>
+        )}
       </div>
     </section>
   );
@@ -163,11 +199,13 @@ function HeroSection({
   const [value, setValue] = useState<HomeHeroValue>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function onSave() {
     setSaving(true);
     setError(null);
+    setConflict(false);
     setSaved(false);
     try {
       const savedRow = await upsertSiteContent(
@@ -177,14 +215,30 @@ function HeroSection({
       onSaved(savedRow);
       setSaved(true);
     } catch (err) {
-      setError(saveErrorMessage(err));
+      const { message, conflict } = saveErrorMessage(err);
+      setError(message);
+      setConflict(conflict);
     } finally {
       setSaving(false);
     }
   }
 
+  async function onReloadVersion() {
+    const latest = await reloadLatestRow('home_hero', locale, accessToken);
+    if (latest) onSaved(latest);
+    setConflict(false);
+  }
+
   return (
-    <SectionShell title={`Hero trang chủ — ${locale === 'vi' ? 'Tiếng Việt' : 'English'}`} saving={saving} error={error} saved={saved} onSave={onSave}>
+    <SectionShell
+      title={`Hero trang chủ — ${locale === 'vi' ? 'Tiếng Việt' : 'English'}`}
+      saving={saving}
+      error={error}
+      conflict={conflict}
+      onReloadVersion={onReloadVersion}
+      saved={saved}
+      onSave={onSave}
+    >
       <label style={{ display: 'block', marginBottom: '0.5rem' }}>
         Eyebrow
         <input
@@ -236,11 +290,13 @@ function AboutSection({
   const [value, setValue] = useState<HomeAboutValue>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function onSave() {
     setSaving(true);
     setError(null);
+    setConflict(false);
     setSaved(false);
     try {
       const savedRow = await upsertSiteContent(
@@ -250,14 +306,30 @@ function AboutSection({
       onSaved(savedRow);
       setSaved(true);
     } catch (err) {
-      setError(saveErrorMessage(err));
+      const { message, conflict } = saveErrorMessage(err);
+      setError(message);
+      setConflict(conflict);
     } finally {
       setSaving(false);
     }
   }
 
+  async function onReloadVersion() {
+    const latest = await reloadLatestRow('home_about', locale, accessToken);
+    if (latest) onSaved(latest);
+    setConflict(false);
+  }
+
   return (
-    <SectionShell title={`Giới thiệu — ${locale === 'vi' ? 'Tiếng Việt' : 'English'}`} saving={saving} error={error} saved={saved} onSave={onSave}>
+    <SectionShell
+      title={`Giới thiệu — ${locale === 'vi' ? 'Tiếng Việt' : 'English'}`}
+      saving={saving}
+      error={error}
+      conflict={conflict}
+      onReloadVersion={onReloadVersion}
+      saved={saved}
+      onSave={onSave}
+    >
       <label style={{ display: 'block', marginBottom: '0.5rem' }}>
         Tiêu đề
         <input
@@ -293,16 +365,18 @@ function FeaturedSection({
   const [slugsText, setSlugsText] = useState(initial.placeSlugs.join('\n'));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function onSave() {
     setSaving(true);
     setError(null);
+    setConflict(false);
     setSaved(false);
-    const placeSlugs = slugsText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+    // Trim/dedupe cũng được validate lại phía server (SiteContentService.validateAndNormalizePlaceSlugs)
+    // — làm ở đây chỉ để người dùng thấy ngay danh sách sẽ trông như thế nào, không thay cho kiểm
+    // tra tồn tại/đã xuất bản mà chỉ server mới xác nhận được.
+    const placeSlugs = [...new Set(slugsText.split('\n').map((s) => s.trim()).filter((s) => s.length > 0))];
     try {
       const savedRow = await upsertSiteContent(
         {
@@ -316,17 +390,34 @@ function FeaturedSection({
       onSaved(savedRow);
       setSaved(true);
     } catch (err) {
-      setError(saveErrorMessage(err));
+      const { message, conflict } = saveErrorMessage(err);
+      setError(message);
+      setConflict(conflict);
     } finally {
       setSaving(false);
     }
   }
 
+  async function onReloadVersion() {
+    const latest = await reloadLatestRow('home_featured', GLOBAL_LOCALE, accessToken);
+    if (latest) onSaved(latest);
+    setConflict(false);
+  }
+
   return (
-    <SectionShell title="Địa điểm nổi bật" saving={saving} error={error} saved={saved} onSave={onSave}>
+    <SectionShell
+      title="Địa điểm nổi bật"
+      saving={saving}
+      error={error}
+      conflict={conflict}
+      onReloadVersion={onReloadVersion}
+      saved={saved}
+      onSave={onSave}
+    >
       <p style={{ color: 'var(--muted)', marginTop: 0 }}>
-        Mỗi dòng một slug địa điểm đã xuất bản (ví dụ <code>bai-sao</code>). Để trống để trang chủ tự
-        hiển thị địa điểm đánh giá cao nhất như mặc định. Tối đa 12 địa điểm.
+        Mỗi dòng một slug địa điểm ĐÃ XUẤT BẢN (ví dụ <code>bai-sao</code>). Để trống để trang chủ tự
+        hiển thị địa điểm đánh giá cao nhất như mặc định. Tối đa 12 địa điểm — slug sai hoặc chưa
+        xuất bản sẽ bị từ chối ngay khi cập nhật, không âm thầm bỏ qua.
       </p>
       <textarea
         value={slugsText}
@@ -351,11 +442,13 @@ function SocialSection({
   const [value, setValue] = useState<SocialLinksValue>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
 
   async function onSave() {
     setSaving(true);
     setError(null);
+    setConflict(false);
     setSaved(false);
     try {
       const savedRow = await upsertSiteContent(
@@ -365,10 +458,18 @@ function SocialSection({
       onSaved(savedRow);
       setSaved(true);
     } catch (err) {
-      setError(saveErrorMessage(err));
+      const { message, conflict } = saveErrorMessage(err);
+      setError(message);
+      setConflict(conflict);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onReloadVersion() {
+    const latest = await reloadLatestRow('social_links', GLOBAL_LOCALE, accessToken);
+    if (latest) onSaved(latest);
+    setConflict(false);
   }
 
   const fields: Array<{ key: keyof SocialLinksValue; label: string; placeholder: string }> = [
@@ -380,9 +481,19 @@ function SocialSection({
   ];
 
   return (
-    <SectionShell title="Liên hệ / mạng xã hội" saving={saving} error={error} saved={saved} onSave={onSave}>
+    <SectionShell
+      title="Liên hệ / mạng xã hội"
+      saving={saving}
+      error={error}
+      conflict={conflict}
+      onReloadVersion={onReloadVersion}
+      saved={saved}
+      onSave={onSave}
+    >
       <p style={{ color: 'var(--muted)', marginTop: 0 }}>
-        Kênh công khai hiển thị ở chân trang — để trống một trường để ẩn kênh đó.
+        Kênh công khai hiển thị ở chân trang — để trống một trường để ẩn kênh đó. Facebook/Zalo/
+        Instagram/WhatsApp phải là URL bắt đầu bằng <code>https://</code>; điện thoại chỉ gồm số,
+        dấu cách, +, -, ().
       </p>
       {fields.map((f) => (
         <label key={f.key} style={{ display: 'block', marginBottom: '0.5rem' }}>

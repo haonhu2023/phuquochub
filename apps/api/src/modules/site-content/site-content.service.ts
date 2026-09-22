@@ -114,7 +114,7 @@ export class SiteContentService {
     actorId: string,
   ): Promise<SiteContentRow> {
     const locale = this.resolveLocale(key, requestedLocale);
-    this.validateValue(key, value);
+    const normalizedValue = await this.validateAndNormalizeValue(key, value);
 
     const rows = await this.dataSource.query(
       `INSERT INTO site_content (key, locale, value, content_version, updated_by, updated_at)
@@ -123,7 +123,7 @@ export class SiteContentService {
          SET value = $3::jsonb, content_version = site_content.content_version + 1, updated_by = $4, updated_at = now()
          WHERE site_content.content_version = $5
        RETURNING key, locale, value, content_version, updated_at`,
-      [key, locale, JSON.stringify(value), actorId, expectedContentVersion],
+      [key, locale, JSON.stringify(normalizedValue), actorId, expectedContentVersion],
     );
 
     if (rows.length === 0) {
@@ -159,45 +159,142 @@ export class SiteContentService {
     return GLOBAL_LOCALE;
   }
 
-  // Enforces the closed per-key content shape — same "DTO checks 'is an object', service enforces
-  // the real shape" split GuideArticlesService.validateBlocks() established for guide_blocks.content.
-  private validateValue(key: SiteContentKey, value: Record<string, unknown>): void {
+  // Enforces the closed per-key content shape AND normalizes it (trim/dedupe) before it is ever
+  // written — same "DTO checks 'is an object', service enforces the real shape" split
+  // GuideArticlesService.validateBlocks() established for guide_blocks.content. Async because two
+  // branches (heroMediaId, placeSlugs) now cross-check against real rows in `media`/`places` —
+  // this is the write-time half of "owner picks real content, not fabricated content" (the
+  // read-time half already existed: getHomeContent()'s public callers silently skip a slug/media
+  // that later gets unpublished, see DiscoverPlaces.tsx/HomeHero.tsx — this only makes typos and
+  // stale references surface as a clear error AT SAVE TIME instead of silently degrading later).
+  private async validateAndNormalizeValue(
+    key: SiteContentKey,
+    value: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     switch (key) {
-      case SiteContentKey.HOME_HERO:
-        requireNonEmptyString(value, 'eyebrow');
-        requireNonEmptyString(value, 'title');
-        requireNonEmptyString(value, 'lede');
-        requireOptionalString(value, 'heroMediaId');
-        break;
+      case SiteContentKey.HOME_HERO: {
+        requireNonEmptyString(value, 'eyebrow', 200);
+        requireNonEmptyString(value, 'title', 200);
+        requireNonEmptyString(value, 'lede', 500);
+        const heroMediaId = await this.validateOptionalHeroMediaId(value.heroMediaId);
+        return {
+          eyebrow: (value.eyebrow as string).trim(),
+          title: (value.title as string).trim(),
+          lede: (value.lede as string).trim(),
+          ...(heroMediaId ? { heroMediaId } : {}),
+        };
+      }
       case SiteContentKey.HOME_ABOUT:
-        requireNonEmptyString(value, 'title');
-        requireNonEmptyString(value, 'body');
-        break;
+        requireNonEmptyString(value, 'title', 200);
+        requireNonEmptyString(value, 'body', 2000);
+        return { title: (value.title as string).trim(), body: (value.body as string).trim() };
       case SiteContentKey.HOME_FEATURED:
-        if (!Array.isArray(value.placeSlugs) || !value.placeSlugs.every((v) => typeof v === 'string')) {
-          throw new BadRequestException('home_featured: value.placeSlugs must be an array of strings');
+        return { placeSlugs: await this.validateAndNormalizePlaceSlugs(value.placeSlugs) };
+      case SiteContentKey.SOCIAL_LINKS: {
+        const social: Record<string, string | null> = {};
+        for (const field of ['facebook', 'zalo', 'instagram', 'whatsapp'] as const) {
+          social[field] = validateOptionalUrl(value[field], field);
         }
-        if (value.placeSlugs.length > 12) {
-          throw new BadRequestException('home_featured: value.placeSlugs cannot exceed 12 entries');
-        }
-        break;
-      case SiteContentKey.SOCIAL_LINKS:
-        for (const field of ['facebook', 'zalo', 'instagram', 'whatsapp', 'phone'] as const) {
-          requireOptionalString(value, field);
-        }
-        break;
+        social.phone = validateOptionalPhone(value.phone);
+        return social;
+      }
     }
+  }
+
+  // UUID format + must reference a PUBLISHED media row — same eligibility bar
+  // GuideArticlesService.assertMediaPublishEligible() enforces for guide hero/block images (a
+  // pending/hidden/rejected/nonexistent media id would otherwise silently render as a broken
+  // image on the public homepage with no error anywhere until a human notices).
+  private async validateOptionalHeroMediaId(raw: unknown): Promise<string | null> {
+    if (raw == null || raw === '') return null;
+    if (typeof raw !== 'string' || !UUID_RE.test(raw)) {
+      throw new BadRequestException('value.heroMediaId must be a valid media id (UUID)');
+    }
+    const rows = await this.dataSource.query(`SELECT id FROM media WHERE id = $1 AND status = 'published'`, [raw]);
+    if (rows.length === 0) {
+      throw new BadRequestException('value.heroMediaId does not reference a published media file');
+    }
+    return raw;
+  }
+
+  // Trim + dedupe (preserving first-seen order) + slug-charset check + must reference an existing
+  // PUBLISHED place — a typo'd or already-unpublished slug is rejected HERE, at save time, with a
+  // clear error naming the bad slug(s), instead of silently vanishing from the homepage later (the
+  // read-side already tolerates a slug going stale AFTER being saved — see DiscoverPlaces.tsx — this
+  // only closes the gap for the moment of saving itself).
+  private async validateAndNormalizePlaceSlugs(raw: unknown): Promise<string[]> {
+    if (!Array.isArray(raw) || !raw.every((v) => typeof v === 'string')) {
+      throw new BadRequestException('home_featured: value.placeSlugs must be an array of strings');
+    }
+    const trimmed = raw.map((s) => s.trim()).filter((s) => s.length > 0);
+    const deduped = [...new Set(trimmed)];
+    if (deduped.length > 12) {
+      throw new BadRequestException('home_featured: value.placeSlugs cannot exceed 12 entries');
+    }
+    for (const slug of deduped) {
+      if (!SLUG_RE.test(slug)) {
+        throw new BadRequestException(`home_featured: "${slug}" is not a valid slug`);
+      }
+    }
+    if (deduped.length === 0) return [];
+
+    const rows: Array<{ slug: string }> = await this.dataSource.query(
+      `SELECT slug FROM places WHERE slug = ANY($1) AND status = 'published'`,
+      [deduped],
+    );
+    const found = new Set(rows.map((r) => r.slug));
+    const missing = deduped.filter((s) => !found.has(s));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `home_featured: these slugs are not published places: ${missing.join(', ')}`,
+      );
+    }
+    return deduped;
   }
 }
 
-function requireNonEmptyString(value: Record<string, unknown>, field: string): void {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+// http(s) only — rejects `javascript:`/`data:`/any other scheme. These values are later embedded
+// as raw `href` attributes in SiteFooter (see socialHref()) — blocking a non-http(s) scheme HERE,
+// at the one write path, is what keeps that render trustworthy without the render layer having to
+// re-validate; React already escapes attribute values, so this is a correctness/safety-in-depth
+// gate against a stored `javascript:`/`data:` URL, not a gap in React's own escaping.
+const ALLOWED_URL_PROTOCOLS = new Set(['http:', 'https:']);
+// Digits, spaces, +, -, (), . — matches how the field is later rendered as `tel:${value}`.
+const PHONE_RE = /^[0-9+\-\s().]{6,20}$/;
+
+function requireNonEmptyString(value: Record<string, unknown>, field: string, maxLength: number): void {
   if (typeof value[field] !== 'string' || (value[field] as string).trim() === '') {
     throw new BadRequestException(`value.${field} must be a non-empty string`);
   }
+  if ((value[field] as string).trim().length > maxLength) {
+    throw new BadRequestException(`value.${field} must be at most ${maxLength} characters`);
+  }
 }
 
-function requireOptionalString(value: Record<string, unknown>, field: string): void {
-  if (value[field] != null && typeof value[field] !== 'string') {
+function validateOptionalUrl(raw: unknown, field: string): string | null {
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string') {
     throw new BadRequestException(`value.${field} must be a string or omitted`);
   }
+  const trimmed = raw.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new BadRequestException(`value.${field} must be a valid URL`);
+  }
+  if (!ALLOWED_URL_PROTOCOLS.has(parsed.protocol)) {
+    throw new BadRequestException(`value.${field} must use http:// or https://`);
+  }
+  return trimmed;
+}
+
+function validateOptionalPhone(raw: unknown): string | null {
+  if (raw == null || raw === '') return null;
+  if (typeof raw !== 'string' || !PHONE_RE.test(raw.trim())) {
+    throw new BadRequestException('value.phone must be a valid phone number');
+  }
+  return raw.trim();
 }
