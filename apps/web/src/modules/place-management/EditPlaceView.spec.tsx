@@ -176,4 +176,20 @@ describe('EditPlaceView — xung đột content_version (P2)', () => {
     // Dữ liệu người dùng đang nhập vẫn còn trên form — tên vẫn hiển thị đúng giá trị cũ, chưa mất.
     expect(screen.getByDisplayValue('Bãi Sao')).toBeInTheDocument();
   });
+
+  // Bug thật tìm bằng Playwright T1 (2026-09-22): `<PlaceForm key={content_version} .../>` remount
+  // PlaceForm ngay sau một lần lưu thành công, nên thông điệp "Đã lưu thành công." nội bộ của
+  // PlaceForm (đặt SAU khi `onSubmit` resolve) không bao giờ kịp hiển thị — xác nhận bằng tay qua
+  // trình duyệt thật (lưu thành công, content_version tăng, không thông báo nào hiện). Sửa bằng
+  // cách đặt thông báo Ở EditPlaceView (không bị remount) — test này khoá đúng hành vi đó.
+  it('lưu thành công → "Đã lưu thành công." hiện được (không bị remount PlaceForm nuốt mất)', async () => {
+    mockPreviewPlace.mockResolvedValue(place({ content_version: 5 }));
+    mockUpdatePlace.mockResolvedValue(place({ content_version: 6 }));
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+    await waitFor(() => expect(screen.getByText('Đã lưu thành công.')).toBeInTheDocument());
+  });
 });

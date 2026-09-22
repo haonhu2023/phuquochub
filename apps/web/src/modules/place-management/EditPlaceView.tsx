@@ -43,6 +43,17 @@ export function EditPlaceView({ placeId }: Props) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  // Bug thật tìm thấy bằng Playwright T1 (2026-09-22): `<PlaceForm key={content_version} .../>`
+  // dưới đây CỐ Ý remount PlaceForm sau mỗi lần lưu thành công (để nó nhận `initial` mới nhất mà
+  // không cần người dùng tải lại trang — xem comment ở handleSubmit). Nhưng remount đó xảy ra
+  // NGAY TRONG cùng lượt xử lý PlaceForm's handleSubmit tự đặt `success=true` SAU khi `onSubmit`
+  // (chính là hàm này) resolve — nên thông điệp "Đã lưu thành công." của PlaceForm không bao giờ
+  // kịp hiển thị cho người dùng thật (xác nhận bằng tay qua trình duyệt: lưu thành công thật,
+  // content_version tăng đúng, nhưng KHÔNG có thông báo nào hiện ra). PlaceForm.spec.tsx không bắt
+  // được vì nó test PlaceForm ĐỘC LẬP, không mô phỏng đúng hành vi remount-qua-key của cha thật.
+  // Sửa bằng cách đặt thông báo "đã lưu" Ở CHA (component này KHÔNG bị remount) thay vì tin vào
+  // state nội bộ của con sắp bị thay thế.
+  const [saveNotice, setSaveNotice] = useState(false);
 
   const load = useCallback(() => {
     const session = readSession();
@@ -76,6 +87,7 @@ export function EditPlaceView({ placeId }: Props) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
     if (state.kind !== 'ready') return;
+    setSaveNotice(false);
     const saved = await updatePlace(
       placeId,
       { ...input, expected_content_version: state.place.content_version },
@@ -84,6 +96,7 @@ export function EditPlaceView({ placeId }: Props) {
     // Cập nhật content_version mới nhất tại chỗ — không bắt người dùng tải lại trang mới lưu
     // tiếp được lần nữa (mỗi lần ghi thành công tăng đúng 1, response đã trả giá trị mới).
     setState({ kind: 'ready', place: saved });
+    setSaveNotice(true);
   }
 
   async function handlePublish() {
@@ -229,6 +242,11 @@ export function EditPlaceView({ placeId }: Props) {
           )}
         </div>
       </header>
+      {saveNotice && (
+        <p className={styles.success} role="status">
+          Đã lưu thành công.
+        </p>
+      )}
       <PlaceForm
         key={state.place.content_version}
         initial={state.place}

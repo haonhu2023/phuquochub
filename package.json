@@ -15,9 +15,12 @@
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:up": "docker compose up -d postgres redis minio",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "test:e2e:browser": "playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:browser:ui": "playwright test --config=e2e/playwright.config.ts --ui"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",
