@@ -3,6 +3,7 @@ import { SiteFooter } from '@/modules/legal/SiteFooter';
 import { BetaBanner } from '@/modules/legal/BetaBanner';
 import { Header } from '@/modules/shell/Header';
 import { getNavCopy } from '@/modules/shell/nav.copy';
+import { getHomeContent } from '@/modules/site-content/api/site-content.api';
 import { type Locale } from '@/lib/locale';
 import shellStyles from '@/modules/shell/shell.module.css';
 
@@ -24,6 +25,12 @@ export default async function PublicLayout({ children, params }: Props) {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
   const nav = getNavCopy(locale);
+  // S1 (2026-09-22) — kênh liên hệ/mạng xã hội owner tự đăng qua CMS, hiện ở nhóm "Kết nối" của
+  // footer. Lỗi tải KHÔNG chặn layout (footer luôn phải render) — SiteFooter tự ẩn nhóm khi
+  // `socialLinks` là `undefined`, cùng cách mọi khối tuỳ chọn khác của S1 tự nuốt lỗi.
+  const socialLinks = await getHomeContent(locale)
+    .then((c) => c.social)
+    .catch(() => undefined);
   return (
     <div>
       <a href="#main-content" className={shellStyles.skipLink}>
@@ -34,7 +41,7 @@ export default async function PublicLayout({ children, params }: Props) {
       <main id="main-content" style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
         {children}
       </main>
-      <SiteFooter locale={locale} />
+      <SiteFooter locale={locale} socialLinks={socialLinks} />
     </div>
   );
 }

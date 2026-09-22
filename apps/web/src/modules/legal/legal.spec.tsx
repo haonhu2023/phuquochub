@@ -184,6 +184,52 @@ describe('SiteFooter', () => {
     const osm = screen.getByRole('link', { name: /openstreetmap/i });
     expect(osm).toHaveAttribute('href', expect.stringContaining('openstreetmap.org/copyright'));
   });
+
+  // Phát hiện qua chạy trình duyệt thật (S1, 2026-09-22): `/favicon.ico` (chưa có file tĩnh) rơi
+  // qua route `[locale]` với `locale="favicon.ico"` — KHÔNG PHẢI 'vi'/'en'. Trước bản sửa này,
+  // index thẳng `ABOUT_LINKS[locale]` trả về `undefined`, làm `legal.about` ném lỗi, sập cả SSR
+  // của request đó. Bug có TRƯỚC S1 (không phải do CMS gây ra).
+  it('locale lạ (không phải vi/en, vd rơi từ /favicon.ico) → KHÔNG ném lỗi, nhãn rơi về tiếng Việt', () => {
+    // @ts-expect-error — cố ý truyền giá trị KHÔNG hợp lệ để mô phỏng đúng lỗi đã xảy ra thật.
+    // Chỉ khẳng định KHÔNG sập + nhãn text (phần `ABOUT_LINKS` bug này sửa) — href vẫn mang theo
+    // giá trị locale gốc qua `localizedHref()` (một hành vi rộng hơn, có chủ đích KHÔNG sửa ở đây:
+    // route `/favicon.ico` không phải trang thật người dùng bấm vào, chỉ là request ảnh icon).
+    expect(() => render(<SiteFooter locale="favicon.ico" />)).not.toThrow();
+    expect(screen.getByText('Giới thiệu')).toBeInTheDocument();
+  });
+
+  // S1 (2026-09-22) — nhóm "Kết nối" (social_links, owner tự đăng qua CMS) HOÀN TOÀN tách biệt
+  // khỏi operatorContact/site-identity.ts bị legal.spec.tsx khoá ở trên — không prop nào ở đây
+  // chạm operatorContact. `socialLinks` là prop TUỲ CHỌN: không truyền → không có nhóm này, đúng
+  // hành vi cũ trước S1 (không phá vỡ 2 test render(<SiteFooter />) phía trên).
+  describe('socialLinks (S1)', () => {
+    it('không truyền socialLinks → không có nhóm "Kết nối"', () => {
+      render(<SiteFooter />);
+      expect(screen.queryByText('Kết nối')).not.toBeInTheDocument();
+    });
+
+    it('có socialLinks → chỉ hiện các kênh KHÁC null, href đúng (phone dùng tel:)', () => {
+      render(
+        <SiteFooter
+          socialLinks={{ facebook: 'https://facebook.com/phuquochub', zalo: null, instagram: null, whatsapp: null, phone: '0909123456' }}
+        />,
+      );
+      expect(screen.getByRole('link', { name: 'Facebook' })).toHaveAttribute('href', 'https://facebook.com/phuquochub');
+      expect(screen.getByRole('link', { name: 'Điện thoại' })).toHaveAttribute('href', 'tel:0909123456');
+      expect(screen.queryByRole('link', { name: 'Zalo' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Instagram' })).not.toBeInTheDocument();
+    });
+
+    it('mọi kênh đều null → không có nhóm "Kết nối"', () => {
+      render(<SiteFooter socialLinks={{ facebook: null, zalo: null, instagram: null, whatsapp: null, phone: null }} />);
+      expect(screen.queryByText('Kết nối')).not.toBeInTheDocument();
+    });
+
+    it('locale="en" → nhãn nhóm đổi thành "Connect"', () => {
+      render(<SiteFooter locale="en" socialLinks={{ facebook: 'https://facebook.com/x', zalo: null, instagram: null, whatsapp: null, phone: null }} />);
+      expect(screen.getByText('Connect')).toBeInTheDocument();
+    });
+  });
 });
 
 describe('footer hiện diện ở cả ba root layout', () => {

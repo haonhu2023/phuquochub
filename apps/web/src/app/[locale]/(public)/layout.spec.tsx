@@ -2,6 +2,10 @@
 import { render, screen } from '@testing-library/react';
 import PublicLayout from './layout';
 import { BETA_DISCLOSURE_TEXT } from '@/modules/legal/BetaBanner';
+import { getHomeContent } from '@/modules/site-content/api/site-content.api';
+
+jest.mock('@/modules/site-content/api/site-content.api', () => ({ getHomeContent: jest.fn() }));
+const mockGetHomeContent = getHomeContent as jest.Mock;
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -26,6 +30,12 @@ async function renderPublicLayout(children: React.ReactNode, locale: 'vi' | 'en'
   const jsx = await PublicLayout({ children, params: Promise.resolve({ locale }) });
   return render(jsx);
 }
+
+const NO_OVERRIDE = { hero: null, about: null, featuredPlaceSlugs: [], social: { facebook: null, zalo: null, instagram: null, whatsapp: null, phone: null } };
+
+beforeEach(() => {
+  mockGetHomeContent.mockReset().mockResolvedValue(NO_OVERRIDE);
+});
 
 describe('PublicLayout', () => {
   it('hiển thị banner Public Beta sitewide trên mọi trang công khai', async () => {
@@ -64,5 +74,19 @@ describe('PublicLayout', () => {
   it('có công tắc ngôn ngữ VI/EN nhìn thấy được trong header', async () => {
     await renderPublicLayout(<p>nội dung trang</p>, 'vi');
     expect(screen.getAllByRole('link', { name: 'EN' }).length).toBeGreaterThan(0);
+  });
+
+  // S1 (2026-09-22) — social_links CMS truyền xuống footer qua PublicLayout.
+  it('S1: social_links từ getHomeContent() truyền xuống footer', async () => {
+    mockGetHomeContent.mockResolvedValue({ ...NO_OVERRIDE, social: { facebook: 'https://facebook.com/x', zalo: null, instagram: null, whatsapp: null, phone: null } });
+    await renderPublicLayout(<p>nội dung trang</p>);
+    expect(screen.getByRole('link', { name: 'Facebook' })).toHaveAttribute('href', 'https://facebook.com/x');
+  });
+
+  it('S1: getHomeContent lỗi → layout vẫn render bình thường, không có nhóm "Kết nối"', async () => {
+    mockGetHomeContent.mockRejectedValue(new Error('API down'));
+    await renderPublicLayout(<p>nội dung trang</p>);
+    expect(screen.getByText('nội dung trang')).toBeInTheDocument();
+    expect(screen.queryByText('Kết nối')).not.toBeInTheDocument();
   });
 });

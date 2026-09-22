@@ -42,6 +42,12 @@ const TRANSLATION_REVIEW_ROLES = ['moderator', 'administrator', 'super_administr
  *  thường, vì một guide article xuất bản công khai không qua một bước duyệt riêng nào khác. */
 const GUIDE_EDIT_ROLES = ['moderator', 'administrator', 'super_administrator', 'content_owner'];
 
+/** Vai trò giữ `SiteContent.Edit` (S1, SiteContentSchema1720006400000) — cấp TRỰC TIẾP cho
+ *  `content_owner` ONLY (không qua kế thừa, không cấp cho moderator/administrator như các quyền
+ *  nội dung khác ở trên) — xem migration comment: đây là quyền vận hành nội dung trang chủ, không
+ *  phải một khoảng biên tập/kiểm duyệt mọi vai trò kiểm duyệt cần. */
+const SITE_CONTENT_EDIT_ROLES = ['content_owner'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -51,6 +57,8 @@ export interface UserCapabilities {
   canReviewTranslations: boolean;
   /** Hiện lối vào "Biên tập cẩm nang" (Guide CMS candidate). */
   canEditGuides: boolean;
+  /** Hiện lối vào "Nội dung website" (S1 — hero/về chúng tôi/nổi bật/liên hệ-mạng xã hội trang chủ). */
+  canEditSiteContent: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -58,6 +66,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canModerate: false,
   canReviewTranslations: false,
   canEditGuides: false,
+  canEditSiteContent: false,
 };
 
 /**
@@ -73,5 +82,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canModerate: codes.some((c) => MODERATION_ROLES.includes(c)),
     canReviewTranslations: codes.some((c) => TRANSLATION_REVIEW_ROLES.includes(c)),
     canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
+    canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
   };
 }

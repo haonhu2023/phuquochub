@@ -14,6 +14,7 @@ describe('capabilitiesFromRoles', () => {
       canModerate: false,
       canReviewTranslations: false,
       canEditGuides: false,
+      canEditSiteContent: false,
     });
   });
 
@@ -25,6 +26,7 @@ describe('capabilitiesFromRoles', () => {
         canModerate: false,
         canReviewTranslations: false,
         canEditGuides: false,
+        canEditSiteContent: false,
       });
     },
   );
@@ -35,6 +37,7 @@ describe('capabilitiesFromRoles', () => {
       canModerate: false,
       canReviewTranslations: false,
       canEditGuides: false,
+      canEditSiteContent: false,
     });
   });
 
@@ -46,6 +49,7 @@ describe('capabilitiesFromRoles', () => {
         canModerate: true,
         canReviewTranslations: true,
         canEditGuides: true,
+        canEditSiteContent: false,
       });
     },
   );
@@ -53,13 +57,21 @@ describe('capabilitiesFromRoles', () => {
   // content_owner (SeedContentOwnerRole, launch-readiness 2026-09-22) giữ trực tiếp cả 4 permission
   // đằng sau 4 cờ này — phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu dòng này khiến
   // owner có đủ quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
-  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, lẫn biên tập cẩm nang', () => {
+  // canEditSiteContent (S1, 2026-09-22): content_owner là vai trò DUY NHẤT giữ SiteContent.Edit.
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, lẫn nội dung website', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
       canReviewTranslations: true,
       canEditGuides: true,
+      canEditSiteContent: true,
     });
+  });
+
+  it('moderator/administrator/super_administrator: KHÔNG thấy lối vào nội dung website (SiteContent.Edit chỉ cấp cho content_owner)', () => {
+    for (const role of ['moderator', 'administrator', 'super_administrator']) {
+      expect(capabilitiesFromRoles([role]).canEditSiteContent).toBe(false);
+    }
   });
 
   it('nhiều vai trò: hợp nhất theo kiểu "có ít nhất một là đủ"', () => {
@@ -68,6 +80,7 @@ describe('capabilitiesFromRoles', () => {
       canModerate: false,
       canReviewTranslations: false,
       canEditGuides: false,
+      canEditSiteContent: false,
     });
   });
 
@@ -91,6 +104,7 @@ describe('capabilitiesFromRoles', () => {
         canModerate: false,
         canReviewTranslations: false,
         canEditGuides: false,
+        canEditSiteContent: false,
       });
     });
 

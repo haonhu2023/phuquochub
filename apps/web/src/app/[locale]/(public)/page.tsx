@@ -6,7 +6,9 @@ import { SmartDiscovery } from '@/modules/home/SmartDiscovery';
 import { DiscoverPlaces, DiscoverPlacesSkeleton } from '@/modules/home/DiscoverPlaces';
 import { MapCta, MapCtaSkeleton, OwnerCta } from '@/modules/home/HomeCtas';
 import { TrustSection } from '@/modules/home/TrustSection';
+import { HomeAboutSection } from '@/modules/home/HomeAboutSection';
 import { getHomeCopy } from '@/modules/home/home.copy';
+import { getHomeContent } from '@/modules/site-content/api/site-content.api';
 import { buildWebSiteJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { type Locale } from '@/lib/locale';
 import { buildRouteAlternates } from '@/lib/seo';
@@ -31,14 +33,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
   const copy = getHomeCopy(locale);
+  // S1 (2026-09-22): title/description theo dõi ĐÚNG override CMS hero hiển thị trên trang —
+  // lỗi tải rơi về home.copy.ts tĩnh, cùng cách HomeHero.tsx tự nuốt lỗi.
+  const heroOverride = await getHomeContent(locale)
+    .then((c) => c.hero)
+    .catch(() => null);
+  const title = heroOverride?.title || copy.title;
+  const lede = heroOverride?.lede || copy.lede;
   const alternates = buildRouteAlternates(locale, '/');
   return {
-    title: `${SITE} — ${copy.title}`,
-    description: copy.lede,
+    title: `${SITE} — ${title}`,
+    description: lede,
     alternates,
     openGraph: {
-      title: `${SITE} — ${copy.title}`,
-      description: copy.lede,
+      title: `${SITE} — ${title}`,
+      description: lede,
       type: 'website',
       url: alternates.canonical,
       siteName: SITE,
@@ -46,8 +55,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${SITE} — ${copy.title}`,
-      description: copy.lede,
+      title: `${SITE} — ${title}`,
+      description: lede,
     },
   };
 }
@@ -70,12 +79,17 @@ export default async function HomePage({ params }: Props) {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
   const copy = getHomeCopy(locale);
+  // S1 (2026-09-22): JSON-LD lede theo dõi ĐÚNG override hero hiển thị — lỗi tải rơi về
+  // home.copy.ts tĩnh, cùng cách generateMetadata()/HomeHero.tsx tự nuốt lỗi ở trên.
+  const heroLede = await getHomeContent(locale)
+    .then((c) => c.hero?.lede || copy.lede)
+    .catch(() => copy.lede);
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: serializeJsonLd(buildWebSiteJsonLd(SITE, copy.lede, locale)),
+          __html: serializeJsonLd(buildWebSiteJsonLd(SITE, heroLede, locale)),
         }}
       />
 
@@ -91,6 +105,9 @@ export default async function HomePage({ params }: Props) {
         <MapCta locale={locale} />
       </Suspense>
       <TrustSection locale={locale} />
+      <Suspense fallback={null}>
+        <HomeAboutSection locale={locale} />
+      </Suspense>
       <OwnerCta locale={locale} />
     </>
   );

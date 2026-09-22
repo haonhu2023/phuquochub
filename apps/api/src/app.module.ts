@@ -40,6 +40,9 @@ import { PlaceTranslationsModule } from './modules/place-translations/place-tran
 import { MultilingualImportModule } from './modules/multilingual-import/multilingual-import.module';
 import { PlaceExternalIdentifiersModule } from './modules/place-external-identifiers/place-external-identifiers.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
+import { OwnerDecisionQueueModule } from './modules/owner-decision-queue/owner-decision-queue.module';
+import { GuideArticlesModule } from './modules/guide-articles/guide-articles.module';
+import { SiteContentModule } from './modules/site-content/site-content.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -99,6 +102,14 @@ import { EvidenceModule } from './modules/evidence/evidence.module';
     PlaceExternalIdentifiersModule,
     // 2026-09-03 data-SSOT remediation Phase 2: evidence-artifact capture model.
     EvidenceModule,
+    // 2026-09-18 source-first publish pipeline: structured owner decision queue.
+    OwnerDecisionQueueModule,
+    // 2026-09-18 Phú Quốc Guide CMS candidate: structured (no free-HTML) long-form guide pages,
+    // draft→publish with revision/CAS/audit — see modules/guide-articles/.
+    GuideArticlesModule,
+    // S1 (launch-readiness pass, 2026-09-22): owner-editable homepage hero/about/featured-places +
+    // social channels — see modules/site-content/.
+    SiteContentModule,
   ],
 })
 export class AppModule {}

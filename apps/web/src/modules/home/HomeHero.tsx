@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SearchBox } from '@/modules/search/SearchBox';
 import { listPlaces } from '@/modules/places/api/places.api';
+import { getHomeContent } from '@/modules/site-content/api/site-content.api';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import { getHomeCopy } from './home.copy';
 import { HeroVisual, type HeroVisualPlace } from './HeroVisual';
@@ -14,6 +15,17 @@ async function fetchHeroPlaces(): Promise<HeroVisualPlace[]> {
     return places.slice(0, 3).map((p) => ({ id: p.id, name: p.name }));
   } catch {
     return [];
+  }
+}
+
+/** S1 (2026-09-22) — override CMS cho eyebrow/title/lede/ảnh hero. Lỗi tải KHÔNG chặn hero (khối
+ * quan trọng nhất trang chủ) — rơi về `home.copy.ts` tĩnh như trước tính năng này tồn tại. */
+async function fetchHeroOverride(locale: Locale) {
+  try {
+    const content = await getHomeContent(locale);
+    return content.hero;
+  } catch {
+    return null;
   }
 }
 
@@ -35,16 +47,19 @@ async function fetchHeroPlaces(): Promise<HeroVisualPlace[]> {
  */
 export async function HomeHero({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
   const copy = getHomeCopy(locale);
-  const heroPlaces = await fetchHeroPlaces();
+  const [heroPlaces, heroOverride] = await Promise.all([fetchHeroPlaces(), fetchHeroOverride(locale)]);
+  const eyebrow = heroOverride?.eyebrow || copy.eyebrow;
+  const title = heroOverride?.title || copy.title;
+  const lede = heroOverride?.lede || copy.lede;
   return (
     <section className={styles.hero} aria-labelledby="home-hero-title">
       <div className={styles.heroGrid}>
         <div className={styles.heroContent}>
-          <p className={styles.heroEyebrow}>{copy.eyebrow}</p>
+          <p className={styles.heroEyebrow}>{eyebrow}</p>
           <h1 id="home-hero-title" className={styles.heroTitle}>
-            {copy.title}
+            {title}
           </h1>
-          <p className={styles.heroLede}>{copy.lede}</p>
+          <p className={styles.heroLede}>{lede}</p>
           <div className={styles.heroSearch}>
             <SearchBox
               q=""
@@ -65,7 +80,7 @@ export async function HomeHero({ locale = DEFAULT_LOCALE }: { locale?: Locale })
           <p className={styles.heroTrust}>{copy.trustSignal}</p>
         </div>
 
-        <HeroVisual locale={locale} places={heroPlaces} />
+        <HeroVisual locale={locale} places={heroPlaces} heroImageUrl={heroOverride?.heroImageUrl} />
       </div>
     </section>
   );

@@ -93,6 +93,20 @@ export default function DashboardPage() {
           </Link>
         </p>
       )}
+      {caps.canEditGuides && (
+        <p style={{ marginTop: '0.5rem' }}>
+          <Link href="/dashboard/editorial/guides" style={{ color: 'var(--accent)' }}>
+            Biên tập cẩm nang →
+          </Link>
+        </p>
+      )}
+      {caps.canEditSiteContent && (
+        <p style={{ marginTop: '0.5rem' }}>
+          <Link href="/dashboard/content" style={{ color: 'var(--accent)' }}>
+            Nội dung website →
+          </Link>
+        </p>
+      )}
       <button
         type="button"
         onClick={onLogout}

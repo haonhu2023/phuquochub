@@ -131,6 +131,22 @@ export async function apiPatchAuth<T>(path: string, accessToken: string, payload
   return body.data;
 }
 
+// PUT có xác thực (Bearer) — S1 (site-content CMS, 2026-09-22): `PUT /admin/site-content` luôn
+// thay THẾ TOÀN BỘ `value` (không merge từng trường như apiPatchAuth), cùng envelope/lỗi với
+// apiPost/apiPatchAuth, chỉ khác method.
+export async function apiPutAuth<T>(path: string, accessToken: string, payload?: unknown): Promise<T> {
+  const body = await fetchEnvelope<T>(path, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  });
+  return body.data;
+}
+
 // DELETE có xác thực (Bearer) — Place Content Management MVP (PLACE-041), dùng cho archive
 // (DELETE /places/:id, trả EmptySuccess `null` giống decideModerationCase).
 export async function apiDeleteAuth<T>(path: string, accessToken: string): Promise<T> {

@@ -1,4 +1,4 @@
-import { ApiError, apiDeleteAuth, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost } from './http';
+import { ApiError, apiDeleteAuth, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost, apiPutAuth } from './http';
 
 const realFetch = global.fetch;
 
@@ -123,6 +123,26 @@ describe('apiPatchAuth', () => {
     mockFetchOnce(403, { success: false, error: { code: 'FORBIDDEN', message: 'Thiếu quyền' } });
 
     await expect(apiPatchAuth('/places/p1', 'tok', {})).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe('apiPutAuth', () => {
+  it('gửi Bearer + JSON body bằng method PUT, bóc data từ envelope thành công', async () => {
+    mockFetchOnce(200, { success: true, data: { key: 'home_hero', contentVersion: 2 }, meta: {} });
+
+    const result = await apiPutAuth<{ key: string }>('/admin/site-content', 'tok123', { key: 'home_hero' });
+
+    expect(result).toEqual({ key: 'home_hero', contentVersion: 2 });
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.method).toBe('PUT');
+    expect(init.headers.Authorization).toBe('Bearer tok123');
+    expect(JSON.parse(init.body)).toEqual({ key: 'home_hero' });
+  });
+
+  it('envelope lỗi 409 (CAS) → ApiError.isConflict', async () => {
+    mockFetchOnce(409, { success: false, error: { code: 'CONFLICT', message: 'Xung đột phiên bản' } });
+
+    await expect(apiPutAuth('/admin/site-content', 'tok', {})).rejects.toMatchObject({ status: 409 });
   });
 });
 
