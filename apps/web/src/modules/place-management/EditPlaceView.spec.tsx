@@ -145,7 +145,7 @@ describe('EditPlaceView — xuất bản / gỡ công khai (P1)', () => {
     await waitFor(() => screen.getByRole('button', { name: /Xuất bản/ }));
     fireEvent.click(screen.getByRole('button', { name: /Xuất bản/ }));
 
-    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith({ entityType: 'place', slug: 'bai-sao' }, 'tok'));
   });
 
   it('unpublish thành công → gọi triggerRevalidate với đúng tag places:list + place:<slug>', async () => {
@@ -156,7 +156,7 @@ describe('EditPlaceView — xuất bản / gỡ công khai (P1)', () => {
     await waitFor(() => screen.getByRole('button', { name: /Gỡ công khai/ }));
     fireEvent.click(screen.getByRole('button', { name: /Gỡ công khai/ }));
 
-    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith({ entityType: 'place', slug: 'bai-sao' }, 'tok'));
   });
 
   it('publishPlace thất bại → KHÔNG gọi triggerRevalidate (không invalidate sai khi mutation lỗi)', async () => {
@@ -211,7 +211,7 @@ describe('EditPlaceView — xung đột content_version (P2)', () => {
     await waitFor(() => screen.getByRole('button', { name: 'Lưu thay đổi' }));
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
 
-    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith({ entityType: 'place', slug: 'bai-sao' }, 'tok'));
   });
 
   it('lưu place CÒN draft → KHÔNG gọi triggerRevalidate (chưa từng có trong cache công khai)', async () => {

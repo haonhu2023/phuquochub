@@ -6,6 +6,7 @@ import { slugify } from '@phuquochub/utils';
 import { Place } from '../modules/places/entities/place.entity';
 import { PlacesRepository } from '../modules/places/repositories/places.repository';
 import { PlacesService } from '../modules/places/places.service';
+import { CacheInvalidationService } from '../core/cache-invalidation/cache-invalidation.service';
 import { Category } from '../modules/categories/entities/category.entity';
 import { CategoriesRepository } from '../modules/categories/repositories/categories.repository';
 import { PlaceTranslation } from '../modules/place-translations/entities/place-translation.entity';
@@ -310,9 +311,17 @@ export async function executePromotion(
   const audit = new AuditService(auditRepo);
   // PlacesService: only create()/approve()/archive() are ever called -- other deps unused by them.
   const categoriesRepo = new CategoriesRepository(dataSource.getRepository(Category));
+  // approve() (used below) calls `void this.cacheInvalidation.invalidatePlace(...)` after a
+  // successful write — cannot be `null as any` like the other unused deps above. A real
+  // CacheInvalidationService with an empty config no-ops safely (ConfigService isn't available in
+  // this standalone script context), so constructing one is the correct stand-in.
+  const cacheInvalidation = new CacheInvalidationService({
+    get: () => ({ webInternalUrl: null, sharedSecret: null }),
+  } as unknown as import('@nestjs/config').ConfigService);
   const placesService = new PlacesService(
     placesRepo, categoriesRepo, null as any, null as any, null as any,
     revisionsService, audit, mediaUrl, null as any, null as any, null as any, null as any, null as any, null as any,
+    cacheInvalidation,
   );
 
   const localesRepo = new LocalesRepository(dataSource.getRepository(SupportedLocale));

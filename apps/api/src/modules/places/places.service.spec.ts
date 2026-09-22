@@ -45,6 +45,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let sourcesRepo: LooseMock<Ctor[11]>;
   let placeTranslationsService: LooseMock<Ctor[12]>;
   let localesService: LooseMock<Ctor[13]>;
+  let cacheInvalidation: LooseMock<Ctor[14]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -89,6 +90,12 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     localesService = createMock<Ctor[13]>({
       resolveRequestLocale: jest.fn().mockResolvedValue({ localeCode: 'vi' }),
     });
+    // C1 hardening (2026-09-22) — fire-and-forget in the service (`void this.cacheInvalidation...`),
+    // no test in this file asserts on it directly; a resolved mock keeps every existing test passing
+    // unchanged (see cache-invalidation.service.spec.ts for the service's own behaviour).
+    cacheInvalidation = createMock<Ctor[14]>({
+      invalidatePlace: jest.fn().mockResolvedValue(undefined),
+    });
 
     service = new PlacesService(
       placesRepo,
@@ -105,6 +112,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       sourcesRepo,
       placeTranslationsService,
       localesService,
+      cacheInvalidation,
     );
   });
 

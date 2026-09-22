@@ -101,7 +101,7 @@ export function EditPlaceView({ placeId }: Props) {
     // C1 — chỉ đáng invalidate cache công khai khi place ĐÃ published (sửa một place còn draft
     // không đổi gì trang công khai, vì chưa từng có trong cache đó để mà lệch).
     if (saved.status === 'published') {
-      void triggerRevalidate(['places:list', `place:${saved.slug}`], session.accessToken);
+      void triggerRevalidate({ entityType: 'place', slug: saved.slug }, session.accessToken);
     }
   }
 
@@ -114,7 +114,7 @@ export function EditPlaceView({ placeId }: Props) {
       await publishPlace(placeId, session.accessToken);
       load();
       if (state.kind === 'ready') {
-        void triggerRevalidate(['places:list', `place:${state.place.slug}`], session.accessToken);
+        void triggerRevalidate({ entityType: 'place', slug: state.place.slug }, session.accessToken);
       }
     } catch (err) {
       setPublishError(publishActionErrorMessage(err));
@@ -136,7 +136,7 @@ export function EditPlaceView({ placeId }: Props) {
       await unpublishPlace(placeId, session.accessToken);
       load();
       if (state.kind === 'ready') {
-        void triggerRevalidate(['places:list', `place:${state.place.slug}`], session.accessToken);
+        void triggerRevalidate({ entityType: 'place', slug: state.place.slug }, session.accessToken);
       }
     } catch (err) {
       setPublishError(publishActionErrorMessage(err));

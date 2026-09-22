@@ -108,4 +108,10 @@ export const envValidationSchema = Joi.object({
   // but empty").
   BACKUP_STATUS_DB_DIR: Joi.string().optional(),
   BACKUP_STATUS_MEDIA_DIR: Joi.string().optional(),
+
+  // C1 follow-up (2026-09-22) — server-side cache invalidation (configuration.ts's
+  // `cacheInvalidation` comment). Optional, no default: absent means "not configured", the
+  // service logs and no-ops instead of guessing a URL/secret.
+  WEB_INTERNAL_URL: Joi.string().optional(),
+  REVALIDATE_INTERNAL_SECRET: Joi.string().min(16).optional(),
 }).unknown(true);

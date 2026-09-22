@@ -16,6 +16,7 @@ import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
 import { MediaUrlService } from '../../core/media-url/media-url.service';
+import { CacheInvalidationService } from '../../core/cache-invalidation/cache-invalidation.service';
 import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
 import { AuthorizationService } from '../authz/authorization.service';
 import { grantSatisfies } from '../authz/authorization.util';
@@ -91,6 +92,7 @@ export class PlacesService {
     private readonly sourcesRepo: SourcesRepository,
     private readonly placeTranslationsService: PlaceTranslationsService,
     private readonly localesService: LocalesService,
+    private readonly cacheInvalidation: CacheInvalidationService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -473,6 +475,15 @@ export class PlacesService {
         status: RevisionStatus.APPROVED,
       });
     }
+    // C1 follow-up — server-side, write-boundary invalidation: fires for EVERY caller that reaches
+    // this method (web UI, a direct API write, a future AI agent), not just the one that happens
+    // to also call the web app's revalidate endpoint itself. Only when the edited place is already
+    // public — a draft's cache was never populated, so there's nothing stale to invalidate. Never
+    // awaited into the response — a downstream revalidate failure must not turn this successful
+    // write into an error (see CacheInvalidationService's own comment).
+    if (card.status === PlaceStatus.PUBLISHED) {
+      void this.cacheInvalidation.invalidatePlace(card.slug);
+    }
     return card;
   }
 
@@ -508,6 +519,10 @@ export class PlacesService {
       permission: 'Place.Approve',
       context: { from: existing.status, to: PlaceStatus.PUBLISHED },
     });
+    // C1 follow-up — just became public for the first time (or republished after unpublish): the
+    // public detail page + every listing/sitemap carrying `places:list` must stop serving a stale
+    // 404/absence.
+    void this.cacheInvalidation.invalidatePlace(existing.slug);
     return null;
   }
 
@@ -533,6 +548,9 @@ export class PlacesService {
       permission: 'Place.Approve',
       context: { from: existing.status, to: PlaceStatus.DRAFT },
     });
+    // C1 follow-up — was public a moment ago, must stop being served (detail 404s, drops out of
+    // every listing/sitemap) without waiting for the 60s safety-net window.
+    void this.cacheInvalidation.invalidatePlace(existing.slug);
     return null;
   }
 

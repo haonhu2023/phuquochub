@@ -8,6 +8,7 @@ import { DatabaseModule } from './core/database/database.module';
 import { RedisModule } from './core/redis/redis.module';
 import { StorageModule } from './core/storage/storage.module';
 import { MediaUrlModule } from './core/media-url/media-url.module';
+import { CacheInvalidationModule } from './core/cache-invalidation/cache-invalidation.module';
 import { RateLimitModule } from './core/rate-limit/rate-limit.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -67,6 +68,7 @@ import { OpsModule } from './modules/ops/ops.module';
     RedisModule,
     StorageModule,
     MediaUrlModule,
+    CacheInvalidationModule,
     RateLimitModule,
     HealthModule,
     AuthModule,

@@ -321,6 +321,18 @@ services:
       # empty result) until both are set, see configuration.ts's `backupStatus` comment.
       BACKUP_STATUS_DB_DIR: ${BACKUP_STATUS_DB_DIR:-/repo/backups}
       BACKUP_STATUS_MEDIA_DIR: ${BACKUP_STATUS_MEDIA_DIR:-/repo/backups/media}
+      # C1 hardening (2026-09-22): server-to-server cache invalidation. After every place write
+      # that touches public output (update/publish/unpublish), PlacesService calls the web app's
+      # OWN internal revalidate route directly (see core/cache-invalidation/) — this is what closes
+      # the gap where a caller bypassing the web dashboard (a script, a future AI agent, `curl`)
+      # would otherwise leave the public cache stale with nothing watching. `web` is reached by its
+      # Docker-internal service name (Topology A — never the public domain, no TLS hop needed for a
+      # container-to-container call on the private network).
+      WEB_INTERNAL_URL: ${WEB_INTERNAL_URL:-http://web:3000}
+      # Shared secret — the SAME value MUST also be set on the `web` service below (REVALIDATE_
+      # INTERNAL_SECRET). Server-only (never NEXT_PUBLIC_-prefixed, so it can never reach a client
+      # bundle), never logged; the web-side route compares it in constant time.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
     # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
     # mạng Docker nội bộ bằng tên service `api:4000`.
     volumes:
@@ -358,6 +370,12 @@ services:
       - api
     environment:
       NODE_ENV: production
+      # C1 hardening (2026-09-22): must match the `api` service's REVALIDATE_INTERNAL_SECRET above
+      # exactly — this web app's own internal revalidate route (apps/web/src/app/api/revalidate/
+      # route.ts) authenticates the API's server-to-server calls against this value. Runtime env var
+      # (read in the route handler, a server-only file), NOT a NEXT_PUBLIC_ build arg — it is never
+      # baked into a client bundle.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
     # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
     # service `web:3000`.
     logging:

@@ -7,27 +7,18 @@ describe('triggerRevalidate', () => {
     global.fetch = originalFetch;
   });
 
-  it('tags rỗng → không gọi fetch', async () => {
-    const mockFetch = jest.fn();
-    global.fetch = mockFetch as unknown as typeof fetch;
-
-    await triggerRevalidate([], 'tok');
-
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('gọi đúng route nội bộ với Bearer token và danh sách tag', async () => {
+  it('gọi đúng route nội bộ với Bearer token và { entityType, slug } — không gửi tag thô', async () => {
     const mockFetch = jest.fn().mockResolvedValue({ ok: true });
     global.fetch = mockFetch as unknown as typeof fetch;
 
-    await triggerRevalidate(['places:list', 'place:bai-sao'], 'tok123');
+    await triggerRevalidate({ entityType: 'place', slug: 'bai-sao' }, 'tok123');
 
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/revalidate',
       expect.objectContaining({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer tok123' },
-        body: JSON.stringify({ tags: ['places:list', 'place:bai-sao'] }),
+        body: JSON.stringify({ entityType: 'place', slug: 'bai-sao' }),
       }),
     );
   });
@@ -35,6 +26,6 @@ describe('triggerRevalidate', () => {
   it('fetch lỗi (mất mạng) → nuốt lỗi, không throw', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
 
-    await expect(triggerRevalidate(['places:list'], 'tok')).resolves.toBeUndefined();
+    await expect(triggerRevalidate({ entityType: 'place', slug: 'bai-sao' }, 'tok')).resolves.toBeUndefined();
   });
 });
