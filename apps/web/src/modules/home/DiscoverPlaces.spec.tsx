@@ -31,6 +31,7 @@ function place(overrides: Partial<PlaceCardType> = {}): PlaceCardType {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'pending',
+    content_version: 1,
     status: 'published',
     location: { lat: 10, lng: 104 },
     ...overrides,

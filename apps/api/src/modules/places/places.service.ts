@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { slugify } from '@phuquochub/utils';
 import { PlacesRepository } from './repositories/places.repository';
+import type { PlaceDetailRow } from './repositories/places.repository';
 import { CategoriesRepository } from '../categories/repositories/categories.repository';
 import { ContactsRepository } from '../contacts/repositories/contacts.repository';
 import { PricesRepository } from '../prices/repositories/prices.repository';
@@ -111,6 +112,20 @@ export class PlacesService {
   }
 
   /**
+   * P1 (Owner self-publish, 2026-09-22) — danh sách MỌI place (mọi status) cho đội biên tập toàn
+   * cục. Route gọi hàm này gác bằng `Place.Edit.Any` — không dùng lại `list()` (luôn ép `published`
+   * khi không truyền status) vì route đó là `@Public()`, không phải nơi để mở khoá lọc status theo
+   * quyền. Vẫn áp `redactUntrustedPriceRange` cho nhất quán với mọi đường đọc khác — biên tập viên
+   * không phải một ngoại lệ về price trust gate.
+   */
+  async listEditorial(query: ListPlacesQueryDto) {
+    const page = clampPage(query.page);
+    const limit = clampLimit(query.limit);
+    const { items, total } = await this.placesRepo.listEditorial({ limit, offset: (page - 1) * limit });
+    return paginate(items.map(toPlaceCard).map(redactUntrustedPriceRange), page, limit, total);
+  }
+
+  /**
    * Public Place i18n Read Path (2026-09-02) — `locale` TÙY CHỌN, giữ nguyên hợp đồng phản hồi
    * hiện có (`short_description: string | null`, không thêm khoá mới). Nguồn locale DUY NHẤT là
    * `?locale=` querystring; mọi việc chuẩn hoá/kiểm hợp lệ/fallback đều đi qua
@@ -130,17 +145,62 @@ export class PlacesService {
     if (!row) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
+    return this.buildDetailResponse(row, locale);
+  }
+
+  /**
+   * P3 (Preview riêng tư, 2026-09-22) — ĐÚNG hình dạng PlaceDetail mà `getBySlug` trả cho khách,
+   * nhưng đọc qua `getCardByIdIncludingInactive` (đặc quyền, không lọc status) thay vì
+   * `getDetailBySlug` (chỉ published) — owner xem trước place `draft`/`pending` y hệt cách nó sẽ
+   * hiện ra khi publish, không phải một hình dạng response riêng phải bảo trì song song.
+   * Route đã gác bằng `Place.Edit.Managed` (controller) — hàm này không tự kiểm quyền lần hai.
+   */
+  async preview(id: string) {
+    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!row) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    // Preview không có `?locale=` của request khách — bỏ trống để resolveLocalizedField dùng
+    // locale mặc định hệ thống (đúng seam LocalesService.resolveRequestLocale(undefined) hiện có).
+    return this.buildDetailResponse(row);
+  }
+
+  // Thân của getBySlug/preview — TÁCH RA vì hai route chỉ khác nguồn đọc row (published-only vs
+  // đặc quyền không lọc status), không khác cách ghép response. Một định nghĩa response, hai
+  // đường vào — không lệch được như từng lệch (F-17/F-19 đều là loại lỗi "một cột quên map ở một
+  // trong hai chỗ").
+  private async buildDetailResponse(row: PlaceDetailRow, locale?: string) {
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
-    const [contacts, prices, media, faqs, trustSources, localizedDisplayName, localizedShortDescription] =
-      await Promise.all([
-        this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
-        this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
-        this.mediaRepo.listPublishedByPlace(row.id),
-        this.placesRepo.listFaqs(row.id),
-        this.resolveTrustSources(row.id),
-        this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
-        this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
-      ]);
+    const [
+      contacts,
+      prices,
+      media,
+      faqs,
+      trustSources,
+      localizedDisplayName,
+      localizedShortDescription,
+      enDisplayNameApproved,
+      enShortDescriptionApproved,
+    ] = await Promise.all([
+      this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
+      this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
+      this.mediaRepo.listPublishedByPlace(row.id),
+      this.placesRepo.listFaqs(row.id),
+      this.resolveTrustSources(row.id),
+      this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
+      this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
+      // EN indexation gate (Phase 20 v2) — CỐ Ý luôn tra cứu locale 'en' cố định ở đây, KHÔNG
+      // theo `locale` của request: một trang /vi cũng cần biết bản EN có đủ điều kiện index hay
+      // không để dựng đúng hreflang="en" (xem web `isEnDetailIndexable`). Dùng lại ĐÚNG seam
+      // "current+public+production" đã có (`getCurrentPublicTranslatedText`) — không tự viết một
+      // truy vấn is_public riêng ở đây, để không có hai định nghĩa "công khai" lệch nhau.
+      this.placeTranslationsService
+        .getCurrentPublicTranslatedText(row.id, DISPLAY_NAME_FIELD_KEY, 'en')
+        .then((text) => text !== null),
+      this.placeTranslationsService
+        .getCurrentPublicTranslatedText(row.id, SHORT_DESCRIPTION_FIELD_KEY, 'en')
+        .then((text) => text !== null),
+    ]);
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
       // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
@@ -150,6 +210,8 @@ export class PlacesService {
       // giờ nằm trong overlay này — identity không đổi theo locale.
       name: localizedDisplayName ?? row.name,
       short_description: localizedShortDescription ?? row.short_description,
+      en_display_name_approved: enDisplayNameApproved,
+      en_short_description_approved: enShortDescriptionApproved,
       trust_sources: trustSources,
       contacts: contacts.map((c) => ({
         id: c.id,
@@ -289,8 +351,16 @@ export class PlacesService {
       throw new BadRequestException('category_id không tồn tại');
     }
     const slug = await this.uniqueSlug(dto.name);
-    // Đóng góp cộng đồng → trạng thái pending chờ kiểm duyệt (WF-06/WF-14).
-    // Tích hợp contribution/wiki_revision đầy đủ thuộc Sprint 4 (Moderation).
+
+    // P1 (Owner self-publish, 2026-09-22): người tạo giữ `Place.Approve` (content_owner/moderator+)
+    // KHÔNG chờ ai duyệt — place của họ khởi tạo `draft`, tự bấm "Xuất bản" khi sẵn sàng (§5/§7).
+    // Người tạo KHÔNG giữ quyền đó (member/contributor — đóng góp cộng đồng, WF-06/WF-14) GIỮ
+    // NGUYÊN hành vi cũ: `pending`, chờ một content_owner/moderator duyệt. Kiểm rank thuần global
+    // (không AuthorizationContext) — đúng định nghĩa "tự duyệt được place của CHÍNH MÌNH tạo",
+    // place vừa tạo chưa có business_id nào để scope `.Managed` vào.
+    const canSelfPublish = await this.authz.can(userId, 'Place.Approve');
+    const initialStatus = canSelfPublish ? PlaceStatus.DRAFT : PlaceStatus.PENDING;
+
     const id = await this.placesRepo.createPlace({
       name: dto.name,
       slug,
@@ -305,22 +375,22 @@ export class PlacesService {
       shortDescription: dto.short_description ?? null,
       openingHours: dto.opening_hours ?? null,
       priceRange: dto.price_range ?? null,
-      status: PlaceStatus.PENDING,
+      status: initialStatus,
       createdBy: userId,
     });
     const row = await this.placesRepo.getCardByIdIncludingInactive(id);
     const card = toPlaceCard(row!);
-    // WF-14: mỗi thay đổi nội dung sinh một wiki_revision. Place tạo mới ở trạng thái
-    // `pending` (chờ kiểm duyệt) → revision khởi tạo cũng `pending`. Vòng đời duyệt đầy
-    // đủ (materialize snapshot khi approved) thuộc Sprint 4.
+    // WF-14: mỗi thay đổi nội dung sinh một wiki_revision. `draft` tự-xuất-bản-được → revision
+    // `approved` ngay (không ai khác cần duyệt bản nháp của chính người tạo — cùng lý lẽ `update()`
+    // dùng cho sửa trực tiếp). `pending` (đóng góp cộng đồng) giữ nguyên revision `pending`.
     await this.revisionsService.recordPlaceRevision({
       placeId: id,
       snapshot: card,
       diff: null,
-      origin: RevisionOrigin.COMMUNITY_EDIT,
+      origin: canSelfPublish ? RevisionOrigin.OWNER_UPDATE : RevisionOrigin.COMMUNITY_EDIT,
       changeNote: 'Tạo địa điểm',
       editorId: userId,
-      status: RevisionStatus.PENDING,
+      status: canSelfPublish ? RevisionStatus.APPROVED : RevisionStatus.PENDING,
     });
     return card;
   }
@@ -362,7 +432,19 @@ export class PlacesService {
     if (dto.short_description !== undefined) patch.shortDescription = dto.short_description;
     if (dto.opening_hours !== undefined) patch.openingHours = dto.opening_hours;
     if (dto.price_range !== undefined) patch.priceRange = dto.price_range;
-    await this.placesRepo.updateScalars(id, patch);
+    // CAS (AddPlaceContentVersion, 2026-09-22): conditional UPDATE on content_version, same shape
+    // as GuideArticlesService.saveDraft(). `affected === 0` means either the place vanished between
+    // the read above and here (already ruled out — this is the same request), or someone else's
+    // write already bumped the token — either way, NOT a silent overwrite. Location is applied only
+    // AFTER the CAS succeeds, so a stale caller's location never lands even when the scalar patch
+    // is empty (a location-only edit still runs updateScalarsWithCas with an empty patch to claim
+    // the version bump under the SAME check).
+    const casOk = await this.placesRepo.updateScalarsWithCas(id, patch, dto.expected_content_version);
+    if (!casOk) {
+      throw new ConflictException(
+        `Địa điểm ${id} vừa được người khác sửa (mong đợi content_version=${dto.expected_content_version}) — tải lại và thử lại.`,
+      );
+    }
     if (dto.location) {
       await this.placesRepo.updateLocation(id, dto.location.lng, dto.location.lat);
     }
@@ -416,6 +498,31 @@ export class PlacesService {
       actorId,
       permission: 'Place.Approve',
       context: { from: existing.status, to: PlaceStatus.PUBLISHED },
+    });
+    return null;
+  }
+
+  /**
+   * P1 (Owner self-publish, 2026-09-22) — gỡ công khai (§3: "Gỡ công khai = draft, hồi được",
+   * KHÁC `archive()` là soft-delete không hồi được từ UI). Cùng permission với `approve()`
+   * (`Place.Approve`, symmetric — ai duyệt được thì gỡ được), cùng khuôn audit
+   * `place.status_changed`. `getCardByIdIncludingInactive` đã tự loại place đã `archive()`
+   * (soft-delete đặt `deleted_at`) → gọi unpublish trên một place đã lưu trữ tự động 404, không
+   * cần guard riêng — không có đường nào "hồi sinh" một place đã lưu trữ qua endpoint này.
+   */
+  async unpublish(id: string, actorId: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    await this.placesRepo.setStatus(id, PlaceStatus.DRAFT);
+    await this.audit.record({
+      event: 'place.status_changed',
+      entityType: 'place',
+      entityId: id,
+      actorId,
+      permission: 'Place.Approve',
+      context: { from: existing.status, to: PlaceStatus.DRAFT },
     });
     return null;
   }

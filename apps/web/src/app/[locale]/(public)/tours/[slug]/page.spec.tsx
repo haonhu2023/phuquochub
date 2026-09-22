@@ -42,6 +42,7 @@ function tour(overrides: Partial<TourDetail> = {}): TourDetail {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'verified',
+    content_version: 1,
     status: 'published',
     location: { lat: 10.0, lng: 104.0 },
     address: null,

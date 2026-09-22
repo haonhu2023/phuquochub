@@ -109,6 +109,16 @@ export class Place {
   @Column({ type: 'enum', enum: PlaceStatus, enumName: 'place_status' })
   status!: PlaceStatus;
 
+  /**
+   * Token CAS (AddPlaceContentVersion, 2026-09-22) — tăng đúng 1 mỗi lần `PlacesService.update()`
+   * ghi thành công. Client gửi lại giá trị đã đọc gần nhất qua `expected_content_version`; câu
+   * UPDATE có điều kiện `WHERE content_version = $expected` — không khớp (đã bị người khác sửa
+   * trước) thì `affected = 0` → 409, KHÔNG ghi đè âm thầm. Cùng cơ chế `guide_articles.content_version`
+   * đã dùng, không phải một khái niệm mới trong hệ thống.
+   */
+  @Column({ type: 'int', default: 1 })
+  contentVersion!: number;
+
   @Column({
     type: 'enum',
     enum: VerificationStatus,

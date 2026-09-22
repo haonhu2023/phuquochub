@@ -50,11 +50,16 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   beforeEach(() => {
     placesRepo = createMock<Ctor[0]>({
       list: jest.fn(),
+      listEditorial: jest.fn(),
       createPlace: jest.fn(),
       getCardByIdIncludingInactive: jest.fn(),
       getDetailBySlug: jest.fn(),
       listFaqs: jest.fn(),
       updateScalars: jest.fn(),
+      // CAS (AddPlaceContentVersion, 2026-09-22) — defaults to "succeeded" so every EXISTING test
+      // in this file (none of which cares about conflicts) keeps passing unchanged; the dedicated
+      // CAS describe block below overrides this per-test to exercise the 409 path.
+      updateScalarsWithCas: jest.fn().mockResolvedValue(true),
       updateLocation: jest.fn(),
       archive: jest.fn(),
       setStatus: jest.fn(),
@@ -68,7 +73,10 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     audit = createMock<Ctor[6]>({ record: jest.fn() });
     mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
     userRolesRepo = createMock<Ctor[8]>({ getScopedGrants: jest.fn() });
-    authz = createMock<Ctor[9]>({ canWithGrants: jest.fn() });
+    // P1 (Owner self-publish, 2026-09-22) — mặc định false: giữ nguyên hành vi PENDING cho MỌI
+    // test create() hiện có (community contributor, không giữ Place.Approve). Test riêng bên dưới
+    // override thành true để phủ nhánh tự-xuất-bản.
+    authz = createMock<Ctor[9]>({ canWithGrants: jest.fn(), can: jest.fn().mockResolvedValue(false) });
     sourceAttributionsRepo = createMock<Ctor[10]>({ listByEntity: jest.fn() });
     sourcesRepo = createMock<Ctor[11]>({ findById: jest.fn() });
     // Public Place i18n Read Path — default mocks keep every EXISTING test in this file passing
@@ -225,6 +233,33 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(revision.diff).toBeNull();
     });
 
+    // P1 (Owner self-publish, 2026-09-22) — người tạo giữ Place.Approve tự xuất bản được.
+    describe('người tạo giữ Place.Approve (content_owner/moderator+)', () => {
+      beforeEach(() => {
+        authz.can.mockResolvedValue(true);
+        categoriesRepo.findById.mockResolvedValue({ id: CATEGORY_ID });
+        placesRepo.existsBySlug.mockResolvedValue(false);
+        placesRepo.createPlace.mockResolvedValue('p1');
+        placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.DRAFT });
+      });
+
+      it('khởi tạo `draft`, KHÔNG `pending` — không chờ ai duyệt', async () => {
+        await service.create(dto, 'owner1');
+
+        expect(authz.can).toHaveBeenCalledWith('owner1', 'Place.Approve');
+        const [row] = placesRepo.createPlace.mock.calls[0];
+        expect(row.status).toBe(PlaceStatus.DRAFT);
+      });
+
+      it('ghi wiki_revision khởi tạo APPROVED + origin OWNER_UPDATE — không cần ai duyệt bản nháp của chính mình', async () => {
+        await service.create(dto, 'owner1');
+
+        const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+        expect(revision.status).toBe(RevisionStatus.APPROVED);
+        expect(revision.origin).toBe(RevisionOrigin.OWNER_UPDATE);
+      });
+    });
+
     it('slug trùng → vòng lặp sinh slug khác base', async () => {
       categoriesRepo.findById.mockResolvedValue({ id: CATEGORY_ID });
       // Lần đầu trùng, lần sau rảnh → phải gọi existsBySlug 2 lần và đổi slug.
@@ -242,6 +277,39 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
   });
 
+  // P1 (Owner self-publish, 2026-09-22) — đặc quyền (Place.Edit.Any), KHÔNG chốt status như list().
+  describe('listEditorial', () => {
+    it('gọi placesRepo.listEditorial (KHÔNG phải list) — không lẫn với kênh công khai', async () => {
+      placesRepo.listEditorial.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listEditorial({} as never);
+
+      expect(placesRepo.listEditorial).toHaveBeenCalled();
+      expect(placesRepo.list).not.toHaveBeenCalled();
+    });
+
+    it('phân trang: page/limit → offset và meta.total, giống list()', async () => {
+      placesRepo.listEditorial.mockResolvedValue({ items: [{ id: 'p1' }], total: 1 });
+
+      const res = await service.listEditorial({ page: 2, limit: 10 } as never);
+
+      const [params] = placesRepo.listEditorial.mock.calls[0];
+      expect(params).toEqual({ limit: 10, offset: 10 });
+      expect(res.meta.total).toBe(1);
+    });
+
+    it('vẫn áp price trust gate — không phải ngoại lệ cho biên tập viên', async () => {
+      placesRepo.listEditorial.mockResolvedValue({
+        items: [{ id: 'p1', price_range: 'high', verification_status: 'pending' }],
+        total: 1,
+      });
+
+      const res = await service.listEditorial({} as never);
+
+      expect(res.data[0].price_range).toBeNull();
+    });
+  });
+
   // -------------------------------------------------------------------------
   // update
   // -------------------------------------------------------------------------
@@ -256,7 +324,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       await expect(service.update('p1', {} as UpdatePlaceDto, 'u1')).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalarsWithCas).not.toHaveBeenCalled();
     });
 
     it('category_id mới không tồn tại → BadRequest, KHÔNG ghi', async () => {
@@ -265,7 +333,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       await expect(
         service.update('p1', { category_id: CATEGORY_ID } as UpdatePlaceDto, 'u1'),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(placesRepo.updateScalars).not.toHaveBeenCalled();
+      expect(placesRepo.updateScalarsWithCas).not.toHaveBeenCalled();
     });
 
     it('ánh xạ snake_case (contract) → camelCase (entity) đúng từng trường', async () => {
@@ -278,11 +346,12 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
           short_description: 'ngắn',
           opening_hours: { is_24h: true },
           price_range: 'low',
+          expected_content_version: 1,
         } as UpdatePlaceDto,
         'u1',
       );
 
-      const [, patch] = placesRepo.updateScalars.mock.calls[0];
+      const [, patch] = placesRepo.updateScalarsWithCas.mock.calls[0];
       expect(patch).toMatchObject({
         categoryId: CATEGORY_ID,
         shortDescription: 'ngắn',
@@ -340,8 +409,36 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
       expect(revisions.recordPlaceRevision).not.toHaveBeenCalled();
       // updatedBy vẫn được ghi — dấu vết người sửa không phụ thuộc revision.
-      const [, patch] = placesRepo.updateScalars.mock.calls[0];
+      const [, patch] = placesRepo.updateScalarsWithCas.mock.calls[0];
       expect(patch).toEqual({ updatedBy: 'u1' });
+    });
+
+    // CAS (AddPlaceContentVersion, 2026-09-22) — P2: hai phiên sửa không ghi đè nhau.
+    describe('xung đột content_version (CAS)', () => {
+      it('gửi expected_content_version → chuyển đúng xuống repository', async () => {
+        await service.update('p1', { name: 'Tên mới', expected_content_version: 5 } as UpdatePlaceDto, 'u1');
+
+        expect(placesRepo.updateScalarsWithCas).toHaveBeenCalledWith(
+          'p1',
+          expect.objectContaining({ name: 'Tên mới' }),
+          5,
+        );
+      });
+
+      it('token cũ (updateScalarsWithCas → false) → 409, KHÔNG cập nhật location, KHÔNG ghi revision', async () => {
+        placesRepo.updateScalarsWithCas.mockResolvedValue(false);
+
+        await expect(
+          service.update(
+            'p1',
+            { name: 'Tên mới', location: VALID_LOCATION, expected_content_version: 1 } as UpdatePlaceDto,
+            'u1',
+          ),
+        ).rejects.toMatchObject({ status: 409 });
+
+        expect(placesRepo.updateLocation).not.toHaveBeenCalled();
+        expect(revisions.recordPlaceRevision).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -395,6 +492,56 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         permission: 'Place.Approve',
         context: { from: PlaceStatus.PENDING, to: PlaceStatus.PUBLISHED },
       });
+    });
+  });
+
+  // P1 (Owner self-publish, 2026-09-22) — symmetric to approve(): gỡ công khai về `draft`.
+  describe('unpublish', () => {
+    it('không tìm thấy (kể cả place đã archive, đã bị getCardByIdIncludingInactive tự loại) → NotFound, KHÔNG đổi trạng thái', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+
+      await expect(service.unpublish('p1', 'admin1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(placesRepo.setStatus).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('đặt DRAFT và ghi audit place.status_changed với permission Place.Approve, from = trạng thái cũ', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.PUBLISHED });
+
+      await service.unpublish('p1', 'admin1');
+
+      expect(placesRepo.setStatus).toHaveBeenCalledWith('p1', PlaceStatus.DRAFT);
+      const [event] = audit.record.mock.calls[0];
+      expect(event).toMatchObject({
+        event: 'place.status_changed',
+        permission: 'Place.Approve',
+        context: { from: PlaceStatus.PUBLISHED, to: PlaceStatus.DRAFT },
+      });
+    });
+  });
+
+  // P3 (Preview riêng tư, 2026-09-22) — đúng hình dạng getBySlug, nhưng qua nguồn đọc đặc quyền
+  // (getCardByIdIncludingInactive, không lọc status) thay vì getDetailBySlug (chỉ published).
+  describe('preview', () => {
+    it('không tìm thấy → NotFound', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
+
+      await expect(service.preview('p1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('đọc qua getCardByIdIncludingInactive (đặc quyền), KHÔNG getDetailBySlug (chỉ published) — thấy được place draft/pending', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', status: PlaceStatus.DRAFT });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+
+      const res = await service.preview('p1');
+
+      expect(res).toMatchObject({ id: 'p1', mappedDetail: true });
+      expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledWith('p1');
+      expect(placesRepo.getDetailBySlug).not.toHaveBeenCalled();
     });
   });
 
@@ -913,6 +1060,91 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         const res = await service.getBySlug('vinwonders-phu-quoc', 'en');
 
         expect(res.id).toBe('129cbaeb-8cd2-4254-9ae2-9dc276700bb8');
+      });
+    });
+
+    // EN indexation gate v2 — the web's `isEnDetailIndexable` needs REAL per-field EN
+    // publication state, always for locale 'en' specifically, regardless of which locale the
+    // request itself is for (a /vi page still needs to know if an en hreflang alternate is
+    // real). Keyed by BOTH fieldKey and localeCode (unlike `mockTranslations` above) because a
+    // request for locale=vi must still resolve locale=en separately for these two flags.
+    describe('en_display_name_approved / en_short_description_approved (EN indexation gate v2)', () => {
+      function mockTranslationsByFieldAndLocale(byKey: Record<string, string | null>) {
+        placeTranslationsService.getCurrentPublicTranslatedText.mockImplementation(
+          async (_placeId: string, fieldKey: string, localeCode: string) =>
+            byKey[`${fieldKey}:${localeCode}`] ?? null,
+        );
+      }
+
+      it('both EN fields current+public+production → both flags true', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({
+          id: '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          name: 'VinWonders Phú Quốc',
+          short_description: 'Mô tả gốc',
+        });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslationsByFieldAndLocale({
+          'display_name:en': 'VinWonders Phu Quoc',
+          'short_description:en': 'Explore the largest theme park in Vietnam.',
+        });
+
+        const res = await service.getBySlug('vinwonders-phu-quoc', 'vi');
+
+        expect(res.en_display_name_approved).toBe(true);
+        expect(res.en_short_description_approved).toBe(true);
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          'display_name',
+          'en',
+        );
+        expect(placeTranslationsService.getCurrentPublicTranslatedText).toHaveBeenCalledWith(
+          '129cbaeb-8cd2-4254-9ae2-9dc276700bb8',
+          'short_description',
+          'en',
+        );
+      });
+
+      it('EN display_name approved but EN short_description not eligible → name flag true, description flag false', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', name: 'Tên gốc', short_description: 'Mô tả gốc' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslationsByFieldAndLocale({ 'display_name:en': 'Approved EN name' });
+
+        const res = await service.getBySlug('slug', 'vi');
+
+        expect(res.en_display_name_approved).toBe(true);
+        expect(res.en_short_description_approved).toBe(false);
+      });
+
+      it('neither EN field eligible (e.g. still PENDING) → both flags false', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', name: 'Tên gốc', short_description: 'Mô tả gốc' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+
+        const res = await service.getBySlug('slug', 'vi');
+
+        expect(res.en_display_name_approved).toBe(false);
+        expect(res.en_short_description_approved).toBe(false);
+      });
+
+      it('EN flags are resolved independently of the requested locale — a /vi request still reports real EN state', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', name: 'Tên gốc', short_description: 'Mô tả gốc' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslationsByFieldAndLocale({
+          'display_name:en': 'EN name',
+          'short_description:en': 'EN description',
+          // No vi: entries — the vi overlay itself should just fall back, unrelated to the flags.
+        });
+
+        const res = await service.getBySlug('slug', 'vi');
+
+        expect(res.en_display_name_approved).toBe(true);
+        expect(res.en_short_description_approved).toBe(true);
+        expect(res.name).toBe('Tên gốc');
+        expect(res.short_description).toBe('Mô tả gốc');
       });
     });
   });

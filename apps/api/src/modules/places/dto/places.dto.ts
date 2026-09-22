@@ -110,6 +110,14 @@ export class UpdatePlaceDto {
 
   @IsOptional() @IsEnum(PriceRange)
   price_range?: PriceRange;
+
+  // CAS token (AddPlaceContentVersion, 2026-09-22) — BẮT BUỘC, không phải tùy chọn: client phải
+  // gửi lại đúng `content_version` đã đọc gần nhất (từ PlaceCard/PlaceDetail). PlacesService.update()
+  // ghi có điều kiện WHERE content_version = giá trị này; không khớp → 409, không ghi đè âm thầm.
+  // Cùng nguyên tắc `expectedContentVersion` của guide_articles — KHÔNG có "phiên bản cũ vẫn ghi
+  // được nếu bỏ trống trường này" ở đây.
+  @IsInt() @Min(1)
+  expected_content_version!: number;
 }
 
 // Query của `GET /api/places` — endpoint công khai (@Public).

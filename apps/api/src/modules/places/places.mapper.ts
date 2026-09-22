@@ -21,6 +21,7 @@ export function toPlaceCard(row: PlaceCardRow): PlaceCard {
     verification_status: row.verification_status,
     status: row.status,
     location: { lat: Number(row.lat), lng: Number(row.lng) },
+    content_version: row.content_version,
   };
   if (row.distance_m !== undefined && row.distance_m !== null) {
     card.distance_m = Number(row.distance_m);

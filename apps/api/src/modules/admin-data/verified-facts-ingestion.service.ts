@@ -247,7 +247,13 @@ export class VerifiedFactsIngestionService {
         } else {
           await this.placesService.update(
             place.id,
-            { opening_hours: target.openingHours },
+            {
+              opening_hours: target.openingHours,
+              // CAS token (AddPlaceContentVersion, 2026-09-22) — `place` above was just read by
+              // this same call, so its content_version is current; this is the only update() call
+              // in this function, so no risk of a stale token from an earlier write in the loop.
+              expected_content_version: place.content_version,
+            },
             actorId,
             RevisionOrigin.IMPORT,
           );

@@ -34,6 +34,7 @@ function place(overrides: Partial<ManagedPlace> = {}): ManagedPlace {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'pending',
+    content_version: 1,
     status: 'pending',
     location: { lat: 10.05, lng: 104.0 },
     address: null,

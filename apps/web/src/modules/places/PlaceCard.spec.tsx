@@ -15,6 +15,7 @@ const BASE_PLACE: PlaceCardType = {
   rating_avg: null,
   rating_count: 0,
   verification_status: 'pending',
+  content_version: 1,
   status: 'published',
   location: { lat: 10.0, lng: 104.0 },
 };

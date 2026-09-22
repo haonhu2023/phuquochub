@@ -14,6 +14,7 @@ const baseRow: PlaceCardRow = {
   rating_count: 12,
   verification_status: 'verified',
   status: PlaceStatus.PUBLISHED,
+  content_version: 1,
   lat: 10.05,
   lng: 104.0,
 };
@@ -47,5 +48,12 @@ describe('toPlaceCard', () => {
 
   it('rating_avg null giữ nguyên null', () => {
     expect(toPlaceCard({ ...baseRow, rating_avg: null }).rating_avg).toBeNull();
+  });
+
+  // CAS token (AddPlaceContentVersion, 2026-09-22) — phải luôn có mặt, giữ nguyên giá trị, để
+  // client đọc lại đúng con số cần gửi ở lần PATCH kế tiếp.
+  it('content_version luôn có mặt và giữ nguyên giá trị', () => {
+    expect(toPlaceCard(baseRow).content_version).toBe(1);
+    expect(toPlaceCard({ ...baseRow, content_version: 7 }).content_version).toBe(7);
   });
 });

@@ -21,6 +21,7 @@ function baseRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     rating_count: 0,
     verification_status: 'pending',
     status: PlaceStatus.PUBLISHED,
+    content_version: 1,
     lat: 10.2199,
     lng: 103.959,
     address: null,

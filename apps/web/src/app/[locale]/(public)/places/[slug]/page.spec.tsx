@@ -38,6 +38,7 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'pending',
+    content_version: 1,
     status: 'published',
     location: { lat: 10.0466, lng: 104.0281 },
     address: null,

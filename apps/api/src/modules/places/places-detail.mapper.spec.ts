@@ -16,6 +16,7 @@ describe('toPlaceDetail', () => {
     rating_count: 10,
     verification_status: 'pending',
     status: PlaceStatus.PUBLISHED,
+    content_version: 1,
     lat: 10.0466,
     lng: 104.0281,
     address: 'An Thới',

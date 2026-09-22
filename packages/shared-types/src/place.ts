@@ -57,6 +57,13 @@ export interface PlaceCard {
   location: GeoPoint;
   /** Chỉ có ở kết quả /geo/nearby (mét). */
   distance_m?: number;
+  /**
+   * CAS token (AddPlaceContentVersion, 2026-09-22) — tăng đúng 1 mỗi lần ghi thành công. Client
+   * gửi lại giá trị này qua `UpdatePlaceDto.expected_content_version` khi PATCH; không khớp (đã
+   * bị người khác sửa trước) → 409, KHÔNG ghi đè âm thầm. Cùng vị trí hợp đồng với
+   * `guide_articles`'s `content_version` (GuideArticleView) — một khái niệm, hai entity dùng.
+   */
+  content_version: number;
 }
 
 export interface PlaceContact {

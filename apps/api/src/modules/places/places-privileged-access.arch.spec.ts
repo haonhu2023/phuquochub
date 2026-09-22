@@ -35,7 +35,13 @@ const PRIVILEGED_METHOD = 'getCardByIdIncludingInactive';
 // `business_id`s the CALLING user already holds an effective `Place.Edit.Managed` grant for
 // (PlacesService.listMine, verified via the same AuthorizationService PDP the guard uses) — same
 // privilege boundary as `update`, just re-derived per row instead of taken from a route param.
-const APPROVED_SERVICE_CALLERS = ['archive', 'approve', 'create', 'listMine', 'update'].sort();
+//
+// P1/P3 (Owner self-publish + private preview, 2026-09-22): `unpublish` added — wired to `POST
+// /places/:id/unpublish`, same `Place.Approve` gate as `approve` (symmetric action, same privilege
+// tier). `preview` added — wired to `GET /places/:id/preview`, gated by `Place.Edit.Managed` +
+// `@AuthorizationContext` (the SAME check `update` already uses) so an owner can see their own
+// unpublished place before publishing it, without a public route ever reaching the same data.
+const APPROVED_SERVICE_CALLERS = ['archive', 'approve', 'create', 'listMine', 'preview', 'unpublish', 'update'].sort();
 
 const PLACES_DIR = __dirname;
 const serviceSrc = readFileSync(join(PLACES_DIR, 'places.service.ts'), 'utf8');
