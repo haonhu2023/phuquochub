@@ -155,7 +155,12 @@ describe('ADR-019 M0.3 — Own-scope hardening (live Postgres)', () => {
       const { accessToken, userId } = await createUser('own_media_upload');
       await assignRole(userId, 'member', 'global', null);
 
-      const content = Buffer.from(`m0.3-fixture-${Date.now()}-${Math.random()}`);
+      // M1 (2026-09-22): register() verifies actual magic bytes against declared content_type —
+      // real JPEG bytes required for this to reach a successful register().
+      const content = Buffer.concat([
+        Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]),
+        Buffer.from(`m0.3-fixture-${Date.now()}-${Math.random()}`),
+      ]);
       const checksum = createHash('sha256').update(content).digest('hex');
 
       const presignRes = await request(app.getHttpServer())

@@ -60,8 +60,14 @@ describe('Media Upload Foundation (e2e, live MinIO round-trip)', () => {
     return createHash('sha256').update(buf).digest('hex');
   }
 
+  // M1 (2026-09-22): StorageService.verifyUploadedObject now checks the object's actual magic
+  // bytes against the declared content_type (detectImageSignature) — real JPEG bytes (FF D8 FF…)
+  // are required for every test that expects a successful register(), not just a plausible-looking
+  // string. Tests that expect failure for an UNRELATED reason (checksum tampering, wrong owner,
+  // etc.) are unaffected either way since those checks run before the signature check.
+  const JPEG_MAGIC_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
   function fakeJpegBytes(seed: string): Buffer {
-    return Buffer.from(`fake-jpeg-bytes-${seed}-${Date.now()}-${Math.random()}`);
+    return Buffer.concat([JPEG_MAGIC_BYTES, Buffer.from(`-${seed}-${Date.now()}-${Math.random()}`)]);
   }
 
   function presign(token: string, body: Record<string, unknown>) {

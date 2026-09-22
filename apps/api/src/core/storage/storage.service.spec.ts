@@ -16,7 +16,13 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({
 }));
 
 // Import AFTER the jest.mock calls above so StorageService picks up the mocked S3Client.
-import { StorageService } from './storage.service';
+import { StorageService, detectImageSignature } from './storage.service';
+
+// M1 (2026-09-22) — real magic bytes, reused across the verifyUploadedObject tests below and the
+// dedicated detectImageSignature() tests further down.
+const JPEG_MAGIC_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+const PNG_MAGIC_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+const WEBP_MAGIC_BYTES = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]);
 
 function makeConfig(overrides: Partial<Record<string, unknown>> = {}): ConfigService {
   const values: Record<string, unknown> = {
@@ -135,18 +141,44 @@ describe('StorageService', () => {
       expect(res).toEqual({ ok: false, reason: 'size_mismatch' });
     });
 
-    it('HEAD có ChecksumSHA256 đáng tin cậy, khớp expected → { ok: true }, KHÔNG gọi GetObject', async () => {
+    // M1 (2026-09-22): trước đây test này khẳng định KHÔNG gọi GetObject khi HEAD đã có checksum
+    // đáng tin cậy — đúng ở thời điểm đó, nhưng checksum khớp không còn đủ: verifyUploadedObject
+    // giờ còn phải xác nhận magic byte của chính nội dung object (detectImageSignature), thứ
+    // HeadObject không cung cấp được. Trên nhánh HEAD-checksum (hiện chưa thật sự chạy trong thực
+    // tế — xem doc comment fetchHeaderBytes), việc đó tốn đúng MỘT ranged GET bổ sung.
+    it('HEAD có ChecksumSHA256 đáng tin cậy, khớp expected, magic byte đúng JPEG → { ok: true }', async () => {
       const expectedHex = 'b'.repeat(64);
       const base64OfExpected = Buffer.from(expectedHex, 'hex').toString('base64');
-      mockSend.mockResolvedValueOnce({
-        ContentLength: 1000,
-        ContentType: 'image/jpeg',
-        ChecksumSHA256: base64OfExpected,
-      });
+      const { Readable } = jest.requireActual('stream');
+      mockSend
+        .mockResolvedValueOnce({
+          ContentLength: 1000,
+          ContentType: 'image/jpeg',
+          ChecksumSHA256: base64OfExpected,
+        })
+        .mockResolvedValueOnce({ Body: Readable.from([JPEG_MAGIC_BYTES]) }); // ranged GET cho header
       const sut = new StorageService(makeConfig());
       const res = await sut.verifyUploadedObject({ ...baseParams, expectedChecksumSha256: expectedHex });
       expect(res).toEqual({ ok: true });
-      expect(mockSend).toHaveBeenCalledTimes(1); // chỉ HEAD, không GET, không Delete
+      expect(mockSend).toHaveBeenCalledTimes(2); // HEAD + ranged GET (header), không Delete
+    });
+
+    it('HEAD có ChecksumSHA256 đáng tin cậy, khớp expected, nhưng magic byte KHÔNG khớp JPEG (nội dung thật là PNG) → content_signature_mismatch, object bị xoá', async () => {
+      const expectedHex = 'b'.repeat(64);
+      const base64OfExpected = Buffer.from(expectedHex, 'hex').toString('base64');
+      const { Readable } = jest.requireActual('stream');
+      mockSend
+        .mockResolvedValueOnce({
+          ContentLength: 1000,
+          ContentType: 'image/jpeg',
+          ChecksumSHA256: base64OfExpected,
+        })
+        .mockResolvedValueOnce({ Body: Readable.from([PNG_MAGIC_BYTES]) })
+        .mockResolvedValueOnce({}); // DeleteObject
+      const sut = new StorageService(makeConfig());
+      const res = await sut.verifyUploadedObject({ ...baseParams, expectedChecksumSha256: expectedHex });
+      expect(res).toEqual({ ok: false, reason: 'content_signature_mismatch' });
+      expect(mockSend).toHaveBeenCalledTimes(3);
     });
 
     it('HEAD có ChecksumSHA256 nhưng KHÔNG khớp → { ok: false, reason: checksum_mismatch }, object bị xoá, không GET', async () => {
@@ -160,9 +192,11 @@ describe('StorageService', () => {
       expect(mockSend).toHaveBeenCalledTimes(2); // HEAD + Delete, không GET
     });
 
-    it('HEAD KHÔNG có checksum → fallback GET+stream+SHA-256, khớp → { ok: true }', async () => {
+    it('HEAD KHÔNG có checksum → fallback GET+stream+SHA-256, khớp, magic byte đúng JPEG → { ok: true }', async () => {
       const { Readable } = jest.requireActual('stream');
-      const content = Buffer.from('hello world, this is a fake jpeg body');
+      // M1: nội dung PHẢI mở đầu bằng magic byte JPEG thật (FF D8 FF) — verifyUploadedObject giờ
+      // xác nhận cả chữ ký byte, không chỉ checksum khớp.
+      const content = Buffer.concat([JPEG_MAGIC_BYTES, Buffer.from('… fake jpeg body sau phần header')]);
       const expectedHex = createHash('sha256').update(content).digest('hex');
       const bodyStream = Readable.from([content]);
       mockSend
@@ -346,5 +380,46 @@ describe('StorageService', () => {
       const sut = new StorageService(makeConfig());
       await expect(sut.deleteObjectForCleanup('media/abc.jpg')).rejects.toThrow('delete failed');
     });
+  });
+});
+
+// M1 (launch-readiness pass, 2026-09-22) — pure function, no S3 mock needed.
+describe('detectImageSignature', () => {
+  it('JPEG (FF D8 FF…) → image/jpeg', () => {
+    expect(detectImageSignature(JPEG_MAGIC_BYTES)).toBe('image/jpeg');
+  });
+
+  it('PNG (89 50 4E 47 0D 0A 1A 0A…) → image/png', () => {
+    expect(detectImageSignature(PNG_MAGIC_BYTES)).toBe('image/png');
+  });
+
+  it('WEBP (RIFF….WEBP) → image/webp', () => {
+    expect(detectImageSignature(WEBP_MAGIC_BYTES)).toBe('image/webp');
+  });
+
+  it('RIFF nhưng KHÔNG phải WEBP (vd file .wav, RIFF....WAVE) → null', () => {
+    const wav = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45]);
+    expect(detectImageSignature(wav)).toBeNull();
+  });
+
+  it('PNG đổi tên .jpg (nội dung THẬT vẫn là PNG) → phát hiện đúng image/png, KHÔNG bị đánh lừa bởi tên file/content_type khai báo', () => {
+    // Đây chính là kịch bản M1 phải chặn: kẻ tấn công đổi tên file + khai content_type=image/jpeg
+    // khi presign, nhưng bytes thật của object vẫn là PNG. detectImageSignature chỉ nhìn BYTES,
+    // không biết/không quan tâm content_type nào đã được khai báo.
+    expect(detectImageSignature(PNG_MAGIC_BYTES)).toBe('image/png');
+    expect(detectImageSignature(PNG_MAGIC_BYTES)).not.toBe('image/jpeg');
+  });
+
+  it('nội dung không phải ảnh (vd PDF %PDF-1.4) → null', () => {
+    const pdf = Buffer.from('%PDF-1.4\n%âãÏÓ');
+    expect(detectImageSignature(pdf)).toBeNull();
+  });
+
+  it('buffer rỗng → null, không ném lỗi', () => {
+    expect(detectImageSignature(Buffer.alloc(0))).toBeNull();
+  });
+
+  it('buffer ngắn hơn chữ ký cần thiết (vd 2 byte, gần giống JPEG) → null, không đọc quá độ dài', () => {
+    expect(detectImageSignature(Buffer.from([0xff, 0xd8]))).toBeNull();
   });
 });

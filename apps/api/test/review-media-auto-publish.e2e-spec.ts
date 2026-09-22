@@ -102,8 +102,11 @@ describe('Review creation auto-publishes attached media (e2e)', () => {
     return createHash('sha256').update(buf).digest('hex');
   }
 
+  // M1 (2026-09-22): register() verifies actual magic bytes against declared content_type — real
+  // JPEG bytes required for this to reach a successful register().
+  const JPEG_MAGIC_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
   function fakeJpegBytes(seed: string): Buffer {
-    return Buffer.from(`fake-jpeg-bytes-${seed}-${Date.now()}-${Math.random()}`);
+    return Buffer.concat([JPEG_MAGIC_BYTES, Buffer.from(`-${seed}-${Date.now()}-${Math.random()}`)]);
   }
 
   function presign(token: string, body: Record<string, unknown>, clientIp: string) {

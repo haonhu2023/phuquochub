@@ -249,7 +249,14 @@ export function PhotosView({ placeId }: Props) {
 
   async function onDelete(photo: PlacePhoto) {
     if (deletingId || busy) return;
-    if (!window.confirm('Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.')) return;
+    // M2 (2026-09-22): gỡ đúng ảnh đang là bìa cần một cảnh báo RIÊNG, nêu đúng hậu quả — backend
+    // (removeFromPlace, media.service.ts) tự dọn places.cover_image_id trong cùng transaction nên
+    // dữ liệu không bao giờ treo, nhưng người dùng cần biết TRƯỚC khi bấm rằng cơ sở sẽ tạm thời
+    // không còn ảnh bìa nào, không phải sau khi đã xoá xong.
+    const message = photo.is_cover
+      ? 'Ảnh này đang là ẢNH BÌA của cơ sở. Gỡ sẽ khiến cơ sở tạm thời KHÔNG CÓ ảnh bìa cho tới khi bạn đặt ảnh khác làm bìa. Vẫn gỡ?'
+      : 'Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.';
+    if (!window.confirm(message)) return;
 
     const session = readSession();
     if (!session) {

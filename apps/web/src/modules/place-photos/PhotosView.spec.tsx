@@ -293,6 +293,35 @@ describe('PhotosView — gỡ ảnh', () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  // M2 (2026-09-22) — gỡ đúng ảnh đang là bìa cần cảnh báo RIÊNG nêu đúng hậu quả, không phải
+  // thông điệp chung dùng cho mọi ảnh khác.
+  it('gỡ ảnh ĐANG LÀ BÌA → hộp thoại xác nhận nêu rõ hậu quả mất ảnh bìa (khác thông điệp chung)', async () => {
+    const confirmSpy = jest.fn().mockReturnValue(true);
+    window.confirm = confirmSpy;
+    mockList.mockResolvedValueOnce([photo({ is_cover: true })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gỡ ảnh' })).toBeInTheDocument());
+
+    mockList.mockResolvedValueOnce([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('ẢNH BÌA'));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(PLACE_ID, 'm1', 'tok'));
+  });
+
+  it('gỡ ảnh KHÔNG phải bìa → hộp thoại xác nhận dùng thông điệp chung, KHÔNG nhắc tới ảnh bìa', async () => {
+    const confirmSpy = jest.fn().mockReturnValue(true);
+    window.confirm = confirmSpy;
+    mockList.mockResolvedValueOnce([photo({ is_cover: false })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gỡ ảnh' })).toBeInTheDocument());
+
+    mockList.mockResolvedValueOnce([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.not.stringContaining('ẢNH BÌA'));
+  });
+
   it('gỡ thất bại → hiện lỗi, ảnh vẫn còn', async () => {
     mockList.mockResolvedValue([photo()]);
     mockDelete.mockRejectedValueOnce(new ApiError('Không tìm thấy', 404));

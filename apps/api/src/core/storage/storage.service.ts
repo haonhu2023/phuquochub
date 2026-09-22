@@ -34,7 +34,48 @@ export type ObjectVerificationFailureReason =
   | 'too_large'
   | 'content_type_mismatch'
   | 'size_mismatch'
-  | 'checksum_mismatch';
+  | 'checksum_mismatch'
+  | 'content_signature_mismatch';
+
+// M1 (launch-readiness pass, 2026-09-22) — server-side file-type validation. Until this,
+// `content_type_mismatch` above only compared the CLIENT-DECLARED `content_type` at presign time
+// against the CLIENT-DECLARED `Content-Type` header the browser sent on the actual PUT — both
+// values originate with the uploader, so a PNG renamed `.jpg` and PUT with a forged
+// `Content-Type: image/jpeg` header sailed straight through. This checks the ACTUAL FIRST BYTES OF
+// THE OBJECT, which the uploader does not control once the object is at rest in S3/MinIO.
+//
+// Signatures only for the three MIME types PresignMediaDto.content_type accepts
+// (ALLOWED_MEDIA_MIME_TYPES in modules/media/dto/media.dto.ts) — this module intentionally does
+// not import that feature-module DTO (core/ stays feature-agnostic); the literal union here is the
+// same three strings, kept in sync by the e2e/unit tests that exercise both.
+const WEBP_HEADER_BYTES = 12; // 'RIFF' (0..3) + 4-byte chunk size (4..7) + 'WEBP' (8..11)
+
+export function detectImageSignature(header: Buffer): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+  if (header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    header.length >= 8 &&
+    header[0] === 0x89 &&
+    header[1] === 0x50 &&
+    header[2] === 0x4e &&
+    header[3] === 0x47 &&
+    header[4] === 0x0d &&
+    header[5] === 0x0a &&
+    header[6] === 0x1a &&
+    header[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (
+    header.length >= WEBP_HEADER_BYTES &&
+    header.toString('ascii', 0, 4) === 'RIFF' &&
+    header.toString('ascii', 8, 12) === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
 
 export interface VerifyUploadedObjectParams {
   key: string;
@@ -182,11 +223,17 @@ export class StorageService implements OnModuleInit {
 
     const trustworthyChecksum = this.decodeTrustworthyChecksum(head.ChecksumSHA256);
     let actualChecksum: string;
+    // Populated only on the streaming path (a side effect of bytes already being read there) —
+    // stays null on the HEAD-trustworthy-checksum path until/unless the checksum actually
+    // matches, so a mismatched checksum never pays for a header fetch it won't need.
+    let header: Buffer | null = null;
     if (trustworthyChecksum) {
       actualChecksum = trustworthyChecksum;
     } else {
       try {
-        actualChecksum = await this.computeChecksumByStreaming(params.key);
+        const streamed = await this.computeChecksumByStreaming(params.key);
+        actualChecksum = streamed.checksum;
+        header = streamed.header;
       } catch (err) {
         if (err instanceof StreamSizeExceededError) {
           await this.deleteObject(params.key);
@@ -199,6 +246,18 @@ export class StorageService implements OnModuleInit {
     if (actualChecksum !== params.expectedChecksumSha256) {
       await this.deleteObject(params.key);
       return { ok: false, reason: 'checksum_mismatch' };
+    }
+
+    // M1: the object's ACTUAL bytes now must match the type it claims to be — a check the
+    // client-declared Content-Type comparison above (content_type_mismatch) cannot provide,
+    // because both sides of that comparison are client-supplied. `header` is only still null here
+    // on the HEAD-trustworthy-checksum path (currently dead in practice — see doc comment above).
+    if (!header) {
+      header = await this.fetchHeaderBytes(params.key);
+    }
+    if (detectImageSignature(header) !== params.expectedContentType) {
+      await this.deleteObject(params.key);
+      return { ok: false, reason: 'content_signature_mismatch' };
     }
     return { ok: true };
   }
@@ -246,10 +305,16 @@ export class StorageService implements OnModuleInit {
   // byte count is checked on every chunk so an oversized object aborts mid-stream (defense in
   // depth beyond the HeadObject ContentLength check above, which a malicious/broken client could
   // in principle misreport).
-  private async computeChecksumByStreaming(key: string): Promise<string> {
+  // M1: also captures the first WEBP_HEADER_BYTES bytes for detectImageSignature() — a side
+  // effect of bytes the stream is already reading, not an extra request. This is the path every
+  // real upload takes today (see verifyUploadedObject's doc comment on why the HEAD-checksum
+  // branch is currently dead), so this is where the signature check matters in practice.
+  private async computeChecksumByStreaming(key: string): Promise<{ checksum: string; header: Buffer }> {
     const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     const body = res.Body as Readable;
     const hash = createHash('sha256');
+    const headerChunks: Buffer[] = [];
+    let headerBytes = 0;
     let bytesRead = 0;
     for await (const chunk of body) {
       const buf = chunk as Buffer;
@@ -258,9 +323,29 @@ export class StorageService implements OnModuleInit {
         body.destroy();
         throw new StreamSizeExceededError('Object exceeded the 10 MiB ceiling while streaming');
       }
+      if (headerBytes < WEBP_HEADER_BYTES) {
+        headerChunks.push(buf.subarray(0, WEBP_HEADER_BYTES - headerBytes));
+        headerBytes += buf.length;
+      }
       hash.update(buf);
     }
-    return hash.digest('hex');
+    return { checksum: hash.digest('hex'), header: Buffer.concat(headerChunks) };
+  }
+
+  // M1: only path reached when HeadObject already returned a trustworthy checksum — no stream was
+  // read, so there's no header captured yet. Ranged GET so a signature check never costs a full
+  // second download. Documented as currently-dead in practice (see verifyUploadedObject), so this
+  // has no live test coverage beyond the unit-mocked branch — kept correct for when it does engage.
+  private async fetchHeaderBytes(key: string): Promise<Buffer> {
+    const res = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${WEBP_HEADER_BYTES - 1}` }),
+    );
+    const body = res.Body as Readable;
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
   }
 
   private decodeTrustworthyChecksum(base64ChecksumSha256: string | undefined): string | null {
