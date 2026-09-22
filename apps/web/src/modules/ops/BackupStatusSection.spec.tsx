@@ -91,4 +91,37 @@ describe('BackupStatusSection', () => {
 
     expect(await screen.findAllByText(/đã cấu hình, nhưng chưa thấy bản sao lưu nào/)).toHaveLength(2);
   });
+
+  // Cron DB thật chạy hằng ngày (0 2 * * *) — bản gần nhất quá 30 giờ nghĩa là job có thể đã hỏng/
+  // dừng, không phải chuyện bình thường. Owner phải thấy CẢNH BÁO rõ, không chỉ một con số giờ thô.
+  it('bản gần nhất quá 30 giờ → cảnh báo quá hạn rõ ràng', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue(OWNER_CAPS);
+    mockGetBackupStatus.mockResolvedValue({
+      database: {
+        configured: true,
+        count: 1,
+        oldest: { name: 'phuquochub-20260918T020000Z.sql.gz', timestampUtc: '2026-09-18T02:00:00.000Z', ageHours: 72, sizeBytes: 900_000, hasChecksumSidecar: true },
+        latest: { name: 'phuquochub-20260918T020000Z.sql.gz', timestampUtc: '2026-09-18T02:00:00.000Z', ageHours: 72, sizeBytes: 900_000, hasChecksumSidecar: true },
+      },
+      media: { configured: false, count: 0, latest: null, oldest: null },
+      checkedAtUtc: '2026-09-22T08:00:00.000Z',
+    } satisfies BackupStatusSummary);
+
+    render(<BackupStatusSection />);
+
+    expect(await screen.findByText(/Quá hạn/)).toBeInTheDocument();
+    expect(screen.getByText(/kiểm tra cron\/log sao lưu trên máy chủ/)).toBeInTheDocument();
+  });
+
+  it('bản gần nhất trong hạn (< 30 giờ) → KHÔNG cảnh báo quá hạn', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue(OWNER_CAPS);
+    mockGetBackupStatus.mockResolvedValue(READY_STATUS); // ageHours: 12
+
+    render(<BackupStatusSection />);
+
+    await screen.findByText(/3 bản, gần nhất 12 giờ trước/);
+    expect(screen.queryByText(/Quá hạn/)).not.toBeInTheDocument();
+  });
 });

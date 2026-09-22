@@ -30,6 +30,11 @@ function formatAge(ageHours: number): string {
   return `${Math.round(ageHours / 24)} ngày trước`;
 }
 
+// Cron DB thật chạy 02:00 UTC MỖI NGÀY (scripts/backup.sh, xem BACKUP-RESTORE-RUNBOOK.md §1.1) —
+// 30 giờ = một chu kỳ 24h đầy đủ + đệm 6h cho lần chạy trễ, trước khi coi là "quá hạn". Owner
+// không phải tự nhẩm tính từ con số giờ thô để biết có đang gặp sự cố hay không.
+const STALE_THRESHOLD_HOURS = 30;
+
 /**
  * BK1 (launch-readiness pass, 2026-09-22) — khối "Tình trạng sao lưu" trên trang Hướng dẫn (N2),
  * đọc thật `GET /admin/ops/backup-status` (Ops.BackupStatus.View, chỉ content_owner). KHÔNG chạy
@@ -102,15 +107,18 @@ export function BackupStatusSection() {
 }
 
 function BackupTreeSummary({ title, tree }: { title: string; tree: BackupTreeStatus }) {
+  const isStale = tree.configured && tree.count > 0 && !!tree.latest && tree.latest.ageHours > STALE_THRESHOLD_HOURS;
   return (
     <div style={{ marginTop: '0.75rem' }}>
       <strong>{title}:</strong>{' '}
       {!tree.configured && <span>chưa cấu hình trên máy chủ này.</span>}
       {tree.configured && tree.count === 0 && <span>đã cấu hình, nhưng chưa thấy bản sao lưu nào.</span>}
       {tree.configured && tree.count > 0 && tree.latest && (
-        <span>
+        <span style={isStale ? { color: 'var(--err, crimson)', fontWeight: 600 } : undefined}>
+          {isStale && '⚠ Quá hạn — '}
           {tree.count} bản, gần nhất {formatAge(tree.latest.ageHours)} ({formatBytes(tree.latest.sizeBytes)}
           {tree.latest.hasChecksumSidecar ? ', có checksum' : ''}).
+          {isStale && ' Lịch chạy hằng ngày nhưng bản gần nhất đã quá 30 giờ — kiểm tra cron/log sao lưu trên máy chủ.'}
         </span>
       )}
     </div>
