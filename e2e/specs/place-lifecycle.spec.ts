@@ -53,19 +53,21 @@ test.describe('Vòng đời địa điểm', () => {
     await page.getByRole('button', { name: 'Gỡ công khai' }).click();
     await expect(page.getByText('Nháp')).toBeVisible();
 
-    // KHÔNG kiểm `res?.status() === 404` ở đây — lỗi thật, đã xác nhận (không phải test flaky):
-    // nội dung trang public ĐÚNG hiện "Không tìm thấy địa điểm" (notFound() thực thi đúng, đã xác
-    // nhận qua console.error runtime trực tiếp trong page.tsx), nhưng document HTTP status vẫn trả
-    // 200 thay vì 404 — tái hiện được trên CẢ dev server LẪN production build thật
-    // (`next build` + `next start`), ảnh hưởng ĐÚNG 5 route chi tiết dùng chung khuôn "Place +
-    // satellite" (places/hotels/restaurants/tours/events) nhưng KHÔNG ảnh hưởng /guide/[slug]
-    // (không có loading.tsx/not-found.tsx riêng). Đã loại trừ từng nghi phạm một (loading.tsx,
-    // error.tsx, not-found.tsx, generateStaticParams, độ "nóng" compile) — không phải lỗi ở logic
-    // ứng dụng, có vẻ là tương tác sâu giữa Next.js App Router streaming và `notFound()` cho nhóm
-    // route này. Ảnh hưởng SEO thật (crawler thấy 200 cho nội dung đã gỡ) — đáng một điều tra
-    // riêng, ngoài phạm vi T1. Chỉ kiểm NỘI DUNG (đúng, đã xác nhận), không kiểm status.
+    // Soft-404 SEO bug (2026-09-22) — TÌM và SỬA trong lượt này. Root cause: `places/loading.tsx`
+    // (cấp cha, `/places`) VÀ `places/[slug]/loading.tsx` (cấp con) mỗi cái tự tạo một Suspense
+    // boundary lồng nhau quanh route `[slug]` — Next.js stream sẵn shell với status 200 TRƯỚC KHI
+    // `notFound()` (chạy sau một fetch async) kịp resolve, và status đã gửi thì không đổi lại được
+    // nữa dù nội dung sau đó render đúng "Không tìm thấy địa điểm". Xác nhận bằng repro tối giản
+    // (`notFound()` đồng bộ, không fetch, đặt dưới `places/`): VẪN 200 khi còn `places/loading.tsx`
+    // cấp cha, hết bug khi xoá CẢ HAI cấp. `/guide/[slug]` không dính vì không có `loading.tsx` nào
+    // — đúng khuôn mà 5 route này giờ theo. Đã xoá `loading.tsx` (cả hai cấp) cho cả 5 route dùng
+    // chung khuôn "Place + satellite" (places/hotels/restaurants/tours/events); đổi lại là mất
+    // skeleton loading UI trên các route đó — đánh đổi có chủ đích, đúng hướng ưu tiên status code
+    // SEO chính xác hơn một tiện ích UX nhỏ. Xác nhận lại trên CẢ `next dev` LẪN `next build && next
+    // start` thật (không chỉ dev).
     const publicPageAfter = await page.context().newPage();
-    await publicPageAfter.goto(publicHref!);
+    const res = await publicPageAfter.goto(publicHref!);
+    expect(res?.status()).toBe(404);
     await expect(publicPageAfter.getByRole('alert').filter({ hasText: 'Không tìm thấy địa điểm' })).toBeVisible();
     await publicPageAfter.close();
   });
