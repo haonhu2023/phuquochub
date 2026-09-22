@@ -43,8 +43,9 @@ export async function getSchedule(placeId: string): Promise<TourSchedule[]> {
 
 // Sitemap-only slug list (apps/web/src/app/sitemap.ts) — trang browse dùng listTours() bên dưới
 // vì nó cần cả `meta` để phân trang.
-export async function listTourSlugs(limit = 100): Promise<Array<{ slug: string }>> {
-  return apiGet<Array<{ slug: string }>>(`/tours?limit=${limit}`, { cache: 'no-store' });
+// `id` (SEO1, 2026-09-22) — same reasoning as listHotelSlugs().
+export async function listTourSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {
+  return apiGet<Array<{ slug: string; id: string }>>(`/tours?limit=${limit}`, { cache: 'no-store' });
 }
 
 export interface ListToursParams {

@@ -155,6 +155,15 @@ export class PlacesService {
    * hiện ra khi publish, không phải một hình dạng response riêng phải bảo trì song song.
    * Route đã gác bằng `Place.Edit.Managed` (controller) — hàm này không tự kiểm quyền lần hai.
    */
+  // SEO1 (2026-09-22) — SITEMAP-ONLY batched gate: which of these place ids (place/hotel/
+  // restaurant/tour are all rows in `places`, category-filtered — see hotels.service.ts's own
+  // "Hotel = Place + satellite" comment) have an EN detail page eligible for indexing. Thin
+  // pass-through to PlaceTranslationsService — this method exists so the controller only needs
+  // PlacesService, not a second injected service.
+  async listEnIndexableIds(ids: string[]): Promise<string[]> {
+    return this.placeTranslationsService.listEnIndexablePlaceIds(ids);
+  }
+
   async preview(id: string) {
     const row = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!row) {

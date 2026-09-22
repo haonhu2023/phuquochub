@@ -1,4 +1,4 @@
-import { apiGet, apiGetPaginated } from '@/lib/http';
+import { apiGet, apiGetPaginated, apiPostPublic } from '@/lib/http';
 import type { PlaceCard, PlaceDetail } from '../types';
 
 export interface ListPlacesParams {
@@ -39,4 +39,15 @@ export async function countPublishedPlaces(): Promise<number> {
 export async function getPlace(slug: string, locale: string = 'vi'): Promise<PlaceDetail> {
   const qs = new URLSearchParams({ locale });
   return apiGet<PlaceDetail>(`/places/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
+}
+
+// SEO1 (2026-09-22) — sitemap-only. Given up to hundreds of place/hotel/restaurant/tour ids
+// (they're all rows in `places`, category-filtered — see PlacesService.listEnIndexableIds's
+// comment), returns the subset whose EN detail page is actually eligible for indexing (BOTH
+// display_name AND short_description approved for locale 'en' — matches lib/seo.ts's
+// isEnDetailIndexable()). Empty input → empty output, no request made (never call a public
+// endpoint with a pointless empty body).
+export async function listEnIndexablePlaceIds(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  return apiPostPublic<string[]>('/places/en-indexable-ids', { ids });
 }

@@ -37,9 +37,10 @@ export async function getMenu(placeId: string): Promise<MenuSection[]> {
   return apiGet<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, { cache: 'no-store' });
 }
 
-// Sitemap-only slug list (apps/web/src/app/sitemap.ts).
-export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string }>> {
-  return apiGet<Array<{ slug: string }>>(`/restaurants?limit=${limit}`, { cache: 'no-store' });
+// Sitemap-only slug list (apps/web/src/app/sitemap.ts). `id` (SEO1, 2026-09-22) — same reasoning
+// as listHotelSlugs().
+export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {
+  return apiGet<Array<{ slug: string; id: string }>>(`/restaurants?limit=${limit}`, { cache: 'no-store' });
 }
 
 export interface ListRestaurantsParams {

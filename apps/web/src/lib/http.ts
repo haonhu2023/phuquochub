@@ -74,6 +74,19 @@ export async function apiGetPaginated<T>(
   return { data: body.data, meta: body.meta as PaginationMeta };
 }
 
+// POST công khai (KHÔNG xác thực) — SEO1 (2026-09-22), tiền lệ ĐẦU TIÊN: mọi apiPost hiện có đều
+// đòi accessToken vì mọi route POST trước giờ đều ghi dữ liệu (cần actor). `POST /places/en-
+// indexable-ids` là route @Public() ĐỌC-THUẦN (chỉ đổi phương thức GET→POST vì danh sách id có
+// thể vượt giới hạn độ dài query string an toàn) — không có actor nào để đòi Bearer.
+export async function apiPostPublic<T>(path: string, payload?: unknown): Promise<T> {
+  const body = await fetchEnvelope<T>(path, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: payload !== undefined ? JSON.stringify(payload) : undefined,
+  });
+  return body.data;
+}
+
 // POST có xác thực (Bearer) — dùng cho các luồng ghi đầu tiên của FE (reviews, và các module
 // ghi sau này). Cùng envelope + lỗi với apiGet nên component xử lý ApiError thống nhất một chỗ.
 export async function apiPost<T>(path: string, accessToken: string, payload?: unknown): Promise<T> {

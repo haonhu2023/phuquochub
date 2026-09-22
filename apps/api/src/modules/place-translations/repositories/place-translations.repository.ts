@@ -86,6 +86,27 @@ export class PlaceTranslationsRepository {
     return this.target(manager).findOne({ where: { id } });
   }
 
+  // SEO1 (2026-09-22) — batched version of findCurrentPublic() for the sitemap's EN-indexation
+  // gate: instead of one query per place (hundreds of round trips for up to 100 entities × 4 types
+  // × 2 fields), a single `WHERE place_id = ANY($1)` returns the subset that already has an
+  // approved current+public+production translation for this exact (fieldKey, localeCode) — the
+  // SAME eligibility predicate findCurrentPublic() uses, just evaluated for many places at once.
+  async listPlaceIdsWithCurrentPublicField(
+    placeIds: string[],
+    fieldKey: string,
+    localeCode: string,
+    manager?: EntityManager,
+  ): Promise<Set<string>> {
+    if (placeIds.length === 0) return new Set();
+    const rows: Array<{ place_id: string }> = await this.target(manager).manager.query(
+      `SELECT DISTINCT place_id FROM place_translations
+       WHERE place_id = ANY($1) AND field_key = $2 AND locale_code = $3
+         AND is_current = true AND is_public = true AND is_production_data = true`,
+      [placeIds, fieldKey, localeCode],
+    );
+    return new Set(rows.map((r) => r.place_id));
+  }
+
   // Public Place i18n Read Path — the ONLY query the public read surface may use. Unlike
   // findCurrent() (write-path idempotency check, deliberately ignores publish flags so the
   // importer can compare against its own not-yet-public draft), this ALSO requires isPublic AND

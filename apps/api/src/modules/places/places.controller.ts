@@ -17,7 +17,7 @@ import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.dec
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
-import { CreatePlaceDto, GetPlaceDetailQueryDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
+import { CreatePlaceDto, EnIndexableIdsDto, GetPlaceDetailQueryDto, ListPlacesQueryDto, UpdatePlaceDto } from './dto/places.dto';
 
 // api.md §11. Đọc công khai; ghi qua permission (deny-by-default).
 @Controller('places')
@@ -52,6 +52,17 @@ export class PlacesController {
   @RequirePermissions('Place.Edit.Any')
   listEditorial(@Query() query: ListPlacesQueryDto) {
     return this.placesService.listEditorial(query);
+  }
+
+  // SEO1 (2026-09-22) — sitemap-only batched EN-indexation check (place/hotel/restaurant/tour đều
+  // là hàng `places`, xem PlacesService.listEnIndexableIds's comment). POST (không phải GET) vì
+  // danh sách id có thể vượt giới hạn độ dài query string an toàn của một số hạ tầng trung gian;
+  // không xung đột thứ tự route với ':slug' — khác HTTP method thì không có nguy cơ bị nuốt.
+  @Public()
+  @Post('en-indexable-ids')
+  @HttpCode(HttpStatus.OK)
+  listEnIndexableIds(@Body() body: EnIndexableIdsDto) {
+    return this.placesService.listEnIndexableIds(body.ids);
   }
 
   // openapi listPlaceRevisions — lịch sử wiki_revisions (entity_type='place').

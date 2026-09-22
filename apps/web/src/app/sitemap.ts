@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getSiteUrl } from '@/lib/site';
-import { listPlaces } from '@/modules/places/api/places.api';
+import { listPlaces, listEnIndexablePlaceIds } from '@/modules/places/api/places.api';
 import { listHotelSlugs } from '@/modules/hotels/api/hotels.api';
 import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
@@ -62,29 +62,29 @@ function staticEntriesFor(site: string, locales: readonly Locale[]): MetadataRou
 }
 
 // Trang chi tiết thực thể (Phase 20/v2 — EN indexation gate): bản `vi` LUÔN vào sitemap (nội dung
-// gốc thật). Bản `en` CHỈ vào khi `isEnDetailIndexable(...)` trả `true`.
+// gốc thật). Bản `en` CHỈ vào khi entity đó đủ điều kiện.
 //
-// LƯU Ý PHẠM VI (v2): `isEnDetailIndexable` giờ cần hai cờ công khai thật theo TỪNG entity
-// (`en_display_name_approved`/`en_short_description_approved`), nhưng sitemap chỉ có SLUG từ các
-// list endpoint (`listPlaces`, `listHotelSlugs`, …) — các endpoint đó KHÔNG trả hai cờ này (chỉ
-// endpoint chi tiết từng entity mới tính, xem `PlacesService.getBySlug`). Gọi chi tiết riêng cho
-// từng slug ở đây (có thể hàng trăm entity) sẽ biến sitemap thành hàng trăm round-trip API mỗi
-// request — ngoài phạm vi thay đổi tối thiểu của gate v2. Truyền `undefined` ở đây CỐ Ý: hàm luôn
-// trả `false` khi thiếu input, nên hành vi vẫn AN TOÀN như trước (không đưa `/en/{slug}` nào vào
-// sitemap) — kể cả cho một entity đã thật sự đủ điều kiện (vd VinWonders); trang CHI TIẾT của entity
-// đó vẫn tự index đúng qua robots/canonical/hreflang của chính nó, sitemap chỉ là một kênh khám phá
-// phụ. Dạy list endpoint trả hai cờ này (để sitemap phản ánh đúng) là một việc riêng, chưa làm ở đây.
+// SEO1 (2026-09-22) — SỬA lỗi "luôn false": v2 (comment cũ) cố ý truyền `isEnDetailIndexable(
+// undefined)` vì list endpoint không mang hai cờ approval, và gọi endpoint CHI TIẾT cho hàng trăm
+// entity mỗi lần build sitemap là không chấp nhận được. `enIndexableIds` (tuỳ chọn — SITEMAP CHỦ
+// ĐỘNG gọi MỘT request `POST /places/en-indexable-ids` cho CẢ BỐN loại entity gộp lại, xem
+// sitemap()) giải quyết đúng bài toán đó: một Set các id đã xác nhận đủ điều kiện, tra O(1) cho
+// từng entity thay vì N round trip. `events` KHÔNG truyền `enIndexableIds` (event không phải hàng
+// `places`, không có cơ chế dịch EN nào để tra) — giữ nguyên hành vi CŨ (luôn false, an toàn) cho
+// đúng loại entity đó, không đổi hành vi ngoài phạm vi SEO1.
 function detailEntries(
   site: string,
-  slugs: string[],
+  items: Array<{ slug: string; id?: string }>,
   pathPrefix: string,
   opts: { changeFrequency: MetadataRoute.Sitemap[number]['changeFrequency']; priority: number },
+  enIndexableIds?: Set<string>,
 ): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
-  for (const slug of slugs) {
-    const path = `${pathPrefix}/${slug}`;
+  for (const item of items) {
+    const path = `${pathPrefix}/${item.slug}`;
     entries.push({ url: `${site}${localizedHref('vi', path)}`, ...opts });
-    if (isEnDetailIndexable(undefined)) {
+    const indexable = enIndexableIds && item.id ? enIndexableIds.has(item.id) : isEnDetailIndexable(undefined);
+    if (indexable) {
       entries.push({ url: `${site}${localizedHref('en', path)}`, ...opts });
     }
   }
@@ -127,35 +127,47 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     safeList(() => listGuideArticles('en')),
   ]);
 
+  // SEO1 (2026-09-22) — ONE batched request for all four entity types combined (place/hotel/
+  // restaurant/tour are all rows in `places`, category-filtered on the API side), instead of the
+  // hundreds of round trips a per-entity check would cost. `safeList` still applies: a failure here
+  // must not take down the sitemap, it just means no /en detail page gets listed this run — same
+  // "fail closed, never fail the whole sitemap" contract every other entity fetch above already has.
+  const allIds = [...places, ...hotels, ...restaurants, ...tours].map((e) => e.id);
+  const enIndexableIds = new Set(await safeList(() => listEnIndexablePlaceIds(allIds)));
+
   return [
     ...staticEntriesFor(site, SUPPORTED_LOCALES),
     ...detailEntries(
       site,
-      places.map((p) => p.slug),
+      places.map((p) => ({ slug: p.slug, id: p.id })),
       '/places',
       { changeFrequency: 'weekly', priority: 0.8 },
+      enIndexableIds,
     ),
     ...detailEntries(
       site,
-      hotels.map((h) => h.slug),
+      hotels.map((h) => ({ slug: h.slug, id: h.id })),
       '/hotels',
       { changeFrequency: 'weekly', priority: 0.6 },
+      enIndexableIds,
     ),
     ...detailEntries(
       site,
-      restaurants.map((r) => r.slug),
+      restaurants.map((r) => ({ slug: r.slug, id: r.id })),
       '/restaurants',
       { changeFrequency: 'weekly', priority: 0.6 },
+      enIndexableIds,
     ),
     ...detailEntries(
       site,
-      tours.map((t) => t.slug),
+      tours.map((t) => ({ slug: t.slug, id: t.id })),
       '/tours',
       { changeFrequency: 'weekly', priority: 0.6 },
+      enIndexableIds,
     ),
     ...detailEntries(
       site,
-      events.map((e) => e.slug),
+      events.map((e) => ({ slug: e.slug })),
       '/events',
       { changeFrequency: 'daily', priority: 0.5 },
     ),

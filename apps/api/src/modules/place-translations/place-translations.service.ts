@@ -309,6 +309,22 @@ export class PlaceTranslationsService {
     return row ? row.translatedText : null;
   }
 
+  // SEO1 (2026-09-22) — batched EN-indexation gate for the SITEMAP only (web's `isEnDetailIndexable`
+  // requires BOTH display_name AND short_description approved for locale 'en'; the per-entity
+  // detail endpoint already computes this two-query-per-place, but a sitemap listing up to 100
+  // entities × 4 types cannot afford hundreds of round trips — see sitemap.ts's own comment on why
+  // it previously always passed `isEnDetailIndexable(undefined)`, i.e. never indexed any /en
+  // detail page). Two batched queries (one per field) + a set intersection, regardless of how many
+  // placeIds are passed.
+  async listEnIndexablePlaceIds(placeIds: string[]): Promise<string[]> {
+    if (placeIds.length === 0) return [];
+    const [displayNameApproved, shortDescriptionApproved] = await Promise.all([
+      this.translationsRepo.listPlaceIdsWithCurrentPublicField(placeIds, 'display_name', 'en'),
+      this.translationsRepo.listPlaceIdsWithCurrentPublicField(placeIds, 'short_description', 'en'),
+    ]);
+    return placeIds.filter((id) => displayNameApproved.has(id) && shortDescriptionApproved.has(id));
+  }
+
   // Backfill source_id/evidence_id onto an EXISTING current translation row without touching its
   // content (2026-09-02 data-SSOT remediation, Phase 4.7). "không UPDATE trực tiếp tùy tiện" — this
   // is the governed path: idempotent (already-matching provenance is a no-op, no revision written),

@@ -1,11 +1,13 @@
-import { getPlace, listPlaces } from './places.api';
-import { apiGet } from '@/lib/http';
+import { getPlace, listEnIndexablePlaceIds, listPlaces } from './places.api';
+import { apiGet, apiPostPublic } from '@/lib/http';
 
 jest.mock('@/lib/http', () => ({
   apiGet: jest.fn(),
+  apiPostPublic: jest.fn(),
 }));
 
 const mockGet = apiGet as jest.Mock;
+const mockPostPublic = apiPostPublic as jest.Mock;
 
 beforeEach(() => {
   mockGet.mockReset().mockResolvedValue({ id: 'p1' });
@@ -46,5 +48,24 @@ describe('listPlaces — unaffected by the locale read path (list localization d
     mockGet.mockResolvedValue([]);
     await listPlaces({ category: 'attraction' });
     expect(mockGet).toHaveBeenCalledWith('/places?category=attraction', { cache: 'no-store' });
+  });
+});
+
+describe('listEnIndexablePlaceIds (SEO1, 2026-09-22)', () => {
+  beforeEach(() => {
+    mockPostPublic.mockReset();
+  });
+
+  it('empty input → empty output, no request made', async () => {
+    const result = await listEnIndexablePlaceIds([]);
+    expect(result).toEqual([]);
+    expect(mockPostPublic).not.toHaveBeenCalled();
+  });
+
+  it('POSTs the ids to /places/en-indexable-ids, no auth', async () => {
+    mockPostPublic.mockResolvedValue(['id-1']);
+    const result = await listEnIndexablePlaceIds(['id-1', 'id-2']);
+    expect(mockPostPublic).toHaveBeenCalledWith('/places/en-indexable-ids', { ids: ['id-1', 'id-2'] });
+    expect(result).toEqual(['id-1']);
   });
 });

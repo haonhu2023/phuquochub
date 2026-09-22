@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEnum,
   IsInt,
   IsNumber,
@@ -151,4 +153,13 @@ export class ListPlacesQueryDto {
 export class GetPlaceDetailQueryDto {
   @IsOptional() @IsString() @MaxLength(35)
   locale?: string;
+}
+
+// Body của `POST /api/places/en-indexable-ids` — SEO1 (2026-09-22), sitemap-only. Capped at 500:
+// generously above the sitemap's own per-entity-type fetch cap (100 × 4 types = 400), rejecting
+// anything larger rather than silently truncating.
+export class EnIndexableIdsDto {
+  @IsArray() @ArrayMaxSize(500)
+  @IsUUID('4', { each: true })
+  ids!: string[];
 }
