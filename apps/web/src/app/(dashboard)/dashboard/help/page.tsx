@@ -2,9 +2,13 @@
 // đã có trong sản phẩm (địa điểm, ảnh, bài viết, nội dung website, xung đột) — không phải một hệ
 // thống tài liệu/knowledge-base mới, không CMS, không route con nào khác ngoài trang này. Nội dung
 // khớp với hành vi THẬT của từng màn hình liên quan (PlaceForm.tsx, PhotosView.tsx,
-// GuideArticleEditorView.tsx, SiteContentView.tsx) — không hứa tính năng chưa tồn tại (ví dụ:
-// không nhắc trạng thái sao lưu, vì trang đó chưa được xây — xem BK1 trong kế hoạch).
+// GuideArticleEditorView.tsx, SiteContentView.tsx).
+//
+// Mục 6 (BK1, cùng ngày) thêm SAU N2: <BackupStatusSection /> là component CLIENT riêng (đọc
+// GET /admin/ops/backup-status thật) — trang này vẫn là Server Component, chỉ render nó vào giữa
+// nội dung tĩnh, cùng cách mọi trang (dashboard) khác nhúng một view client vào một shell server.
 import type { ReactNode } from 'react';
+import { BackupStatusSection } from '@/modules/ops/BackupStatusSection';
 
 export const metadata = { title: 'Hướng dẫn — PhuQuocHub' };
 
@@ -93,6 +97,8 @@ export default function DashboardHelpPage() {
           lại các thay đổi của bạn trước khi lưu.
         </p>
       </Section>
+
+      <BackupStatusSection />
     </main>
   );
 }

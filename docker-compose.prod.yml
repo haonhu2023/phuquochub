@@ -312,8 +312,24 @@ services:
       # service nội bộ Docker — trình duyệt không phân giải được) và KHÔNG phải media.phuquochub.com.
       # Default localhost dưới đây CHỈ đúng cho dev; production PHẢI đặt tường minh trong `.env`.
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
+      # BK1 (2026-09-22): scripts/backup.sh / scripts/backup-media.sh run on the HOST, outside any
+      # container, and write to `$PROJECT_DIR/backups` / `$PROJECT_DIR/backups/media` (their own
+      # defaults — see those scripts' headers). Without the bind mount below this container has no
+      # filesystem access to that directory at all; these two paths are where the MOUNTED copy
+      # lands inside the container (see `volumes:` below), not a guess at a host path. Left unset
+      # in dev/staging on purpose — BackupStatusService reports "not configured" (not a guessed
+      # empty result) until both are set, see configuration.ts's `backupStatus` comment.
+      BACKUP_STATUS_DB_DIR: ${BACKUP_STATUS_DB_DIR:-/repo/backups}
+      BACKUP_STATUS_MEDIA_DIR: ${BACKUP_STATUS_MEDIA_DIR:-/repo/backups/media}
     # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
     # mạng Docker nội bộ bằng tên service `api:4000`.
+    volumes:
+      # BK1 (2026-09-22): read-only — this container only REPORTS on backups, it never writes or
+      # deletes them (backup.sh/backup-media.sh/retention run on the host, outside Docker entirely).
+      # Host path matches those scripts' own default ($PROJECT_DIR/backups, where PROJECT_DIR is
+      # this compose file's directory on the host) — do not rename without updating BACKUP_DIR /
+      # MEDIA_BACKUP_DIR overrides for those scripts to match.
+      - ./backups:/repo/backups:ro
     logging:
       driver: json-file
       options:

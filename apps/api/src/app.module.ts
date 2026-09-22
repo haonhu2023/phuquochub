@@ -43,6 +43,7 @@ import { EvidenceModule } from './modules/evidence/evidence.module';
 import { OwnerDecisionQueueModule } from './modules/owner-decision-queue/owner-decision-queue.module';
 import { GuideArticlesModule } from './modules/guide-articles/guide-articles.module';
 import { SiteContentModule } from './modules/site-content/site-content.module';
+import { OpsModule } from './modules/ops/ops.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -110,6 +111,9 @@ import { SiteContentModule } from './modules/site-content/site-content.module';
     // S1 (launch-readiness pass, 2026-09-22): owner-editable homepage hero/about/featured-places +
     // social channels — see modules/site-content/.
     SiteContentModule,
+    // BK1 (launch-readiness pass, 2026-09-22): read-only owner-facing backup/restore status — see
+    // modules/ops/.
+    OpsModule,
   ],
 })
 export class AppModule {}

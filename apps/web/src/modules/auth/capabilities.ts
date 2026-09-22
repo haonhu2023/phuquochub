@@ -48,6 +48,11 @@ const GUIDE_EDIT_ROLES = ['moderator', 'administrator', 'super_administrator', '
  *  phải một khoảng biên tập/kiểm duyệt mọi vai trò kiểm duyệt cần. */
 const SITE_CONTENT_EDIT_ROLES = ['content_owner'];
 
+/** Vai trò giữ `Ops.BackupStatus.View` (BK1, SeedBackupStatusPermission1720006500000) — cấp TRỰC
+ *  TIẾP cho `content_owner` ONLY, cùng nhóm với SiteContent.Edit: đây là siêu dữ liệu vận hành
+ *  (tên/thời gian/kích thước file sao lưu), không phải một khoảng biên tập/kiểm duyệt nội dung. */
+const BACKUP_STATUS_VIEW_ROLES = ['content_owner'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -59,6 +64,8 @@ export interface UserCapabilities {
   canEditGuides: boolean;
   /** Hiện lối vào "Nội dung website" (S1 — hero/về chúng tôi/nổi bật/liên hệ-mạng xã hội trang chủ). */
   canEditSiteContent: boolean;
+  /** Hiện khối "Tình trạng sao lưu" trên trang Hướng dẫn (BK1). */
+  canViewBackupStatus: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -67,6 +74,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canReviewTranslations: false,
   canEditGuides: false,
   canEditSiteContent: false,
+  canViewBackupStatus: false,
 };
 
 /**
@@ -83,5 +91,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canReviewTranslations: codes.some((c) => TRANSLATION_REVIEW_ROLES.includes(c)),
     canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
     canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
+    canViewBackupStatus: codes.some((c) => BACKUP_STATUS_VIEW_ROLES.includes(c)),
   };
 }

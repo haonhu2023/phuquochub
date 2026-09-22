@@ -102,4 +102,10 @@ export const envValidationSchema = Joi.object({
   VERIFICATION_EXPIRY_BATCH_SIZE: Joi.number().positive().default(100),
   VERIFICATION_EXPIRY_MAX_BATCHES: Joi.number().positive().default(50),
   VERIFICATION_EXPIRY_MAX_EXECUTION_MS: Joi.number().positive().default(300000),
+
+  // BK1 (2026-09-22) — optional, no default: absence means "not configured" (see
+  // configuration.ts's comment on backupStatus for why that must stay distinct from "configured
+  // but empty").
+  BACKUP_STATUS_DB_DIR: Joi.string().optional(),
+  BACKUP_STATUS_MEDIA_DIR: Joi.string().optional(),
 }).unknown(true);

@@ -15,6 +15,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewTranslations: false,
       canEditGuides: false,
       canEditSiteContent: false,
+      canViewBackupStatus: false,
     });
   });
 
@@ -27,6 +28,7 @@ describe('capabilitiesFromRoles', () => {
         canReviewTranslations: false,
         canEditGuides: false,
         canEditSiteContent: false,
+        canViewBackupStatus: false,
       });
     },
   );
@@ -38,6 +40,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewTranslations: false,
       canEditGuides: false,
       canEditSiteContent: false,
+      canViewBackupStatus: false,
     });
   });
 
@@ -50,6 +53,7 @@ describe('capabilitiesFromRoles', () => {
         canReviewTranslations: true,
         canEditGuides: true,
         canEditSiteContent: false,
+        canViewBackupStatus: false,
       });
     },
   );
@@ -58,19 +62,21 @@ describe('capabilitiesFromRoles', () => {
   // đằng sau 4 cờ này — phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu dòng này khiến
   // owner có đủ quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
   // canEditSiteContent (S1, 2026-09-22): content_owner là vai trò DUY NHẤT giữ SiteContent.Edit.
-  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, lẫn nội dung website', () => {
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, nội dung website, lẫn tình trạng sao lưu', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
       canReviewTranslations: true,
       canEditGuides: true,
       canEditSiteContent: true,
+      canViewBackupStatus: true,
     });
   });
 
-  it('moderator/administrator/super_administrator: KHÔNG thấy lối vào nội dung website (SiteContent.Edit chỉ cấp cho content_owner)', () => {
+  it('moderator/administrator/super_administrator: KHÔNG thấy lối vào nội dung website hay tình trạng sao lưu (cả hai chỉ cấp cho content_owner)', () => {
     for (const role of ['moderator', 'administrator', 'super_administrator']) {
       expect(capabilitiesFromRoles([role]).canEditSiteContent).toBe(false);
+      expect(capabilitiesFromRoles([role]).canViewBackupStatus).toBe(false);
     }
   });
 
@@ -81,6 +87,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewTranslations: false,
       canEditGuides: false,
       canEditSiteContent: false,
+      canViewBackupStatus: false,
     });
   });
 
@@ -105,6 +112,7 @@ describe('capabilitiesFromRoles', () => {
         canReviewTranslations: false,
         canEditGuides: false,
         canEditSiteContent: false,
+        canViewBackupStatus: false,
       });
     });
 
