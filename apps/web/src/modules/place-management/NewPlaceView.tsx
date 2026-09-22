@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { readSession } from '@/modules/auth/session';
 import placeStyles from '@/modules/places/places.module.css';
 import { PlaceForm } from './PlaceForm';
@@ -9,13 +10,17 @@ import { createPlace } from './api/place-management.api';
 import type { PlaceFormInput } from './types';
 import styles from './place-management.module.css';
 
-// Tạo địa điểm (POST /places, Place.Create — mở cho mọi thành viên đã đăng nhập). QUAN TRỌNG:
-// tạo mới KHÔNG tự cấp quyền quản lý cho người tạo (xem PlacesService.listMine, places.service.ts)
-// — địa điểm vào hàng chờ kiểm duyệt (`pending`) và sẽ KHÔNG xuất hiện ở "Địa điểm của tôi" cho
-// tới khi có quyền quản lý (qua luồng xác nhận sở hữu cơ sở đã được duyệt). Vì vậy màn thành công
-// ở đây GIẢI THÍCH RÕ điều này thay vì chuyển hướng thẳng về danh sách (nơi mục vừa tạo sẽ KHÔNG
-// xuất hiện — im lặng làm vậy sẽ trông như một lỗi).
+// Tạo địa điểm (POST /places, Place.Create — mở cho mọi thành viên đã đăng nhập).
+//
+// P1 (Owner self-publish, 2026-09-22): trạng thái khởi tạo giờ PHỤ THUỘC người tạo (xem
+// PlacesService.create() — actor giữ Place.Approve → `draft`, tự xuất bản được; ngược lại →
+// `pending`, chờ duyệt như trước). Hai kết quả cần hai màn khác nhau:
+//   - `draft`: chuyển THẲNG sang trang Sửa của chính place đó — nơi có nút "Xuất bản" — cùng khuôn
+//     GuideArticleEditorView (`router.replace` sau khi tạo), không dừng ở màn "đã gửi" trung gian.
+//   - `pending`: GIỮ NGUYÊN màn hình cũ — đây là đóng góp cộng đồng, chưa có quyền quản lý, nên
+//     KHÔNG có trang Sửa nào để chuyển tới (listMine()/preview() đều sẽ từ chối).
 export function NewPlaceView() {
+  const router = useRouter();
   const [createdName, setCreatedName] = useState<string | null>(null);
 
   async function handleSubmit(input: PlaceFormInput): Promise<void> {
@@ -23,7 +28,11 @@ export function NewPlaceView() {
     if (!session) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
-    await createPlace(input, session.accessToken);
+    const created = await createPlace(input, session.accessToken);
+    if (created.status === 'draft') {
+      router.replace(`/dashboard/places/${created.id}/edit`);
+      return;
+    }
     setCreatedName(input.name);
   }
 

@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/http';
 import { listCategories, type Category } from '@/modules/categories/api/categories.api';
 import placeStyles from '@/modules/places/places.module.css';
 import { listMyPlaces, archivePlace } from './api/place-management.api';
-import { placeStatusLabel } from './statusLabels';
+import { placeStatusClassKey, placeStatusLabel } from './statusLabels';
 import type { ManagedPlace } from './types';
 import styles from './place-management.module.css';
 
@@ -18,14 +18,7 @@ type State =
   | { kind: 'ready'; places: ManagedPlace[] };
 
 function statusClass(status: ManagedPlace['status']): string {
-  switch (status) {
-    case 'published':
-      return styles.statusPublished;
-    case 'archived':
-      return styles.statusArchived;
-    default:
-      return styles.statusPending;
-  }
+  return styles[placeStatusClassKey(status)];
 }
 
 function formatUpdatedAt(iso: string): string {
