@@ -6,6 +6,7 @@ import type { HotelDetail } from '@/modules/hotels/api/hotels.api';
 import type { RestaurantDetail } from '@/modules/restaurants/api/restaurants.api';
 import type { TourDetail } from '@/modules/tours/api/tours.api';
 import type { EventDetail } from '@/modules/events/api/events.api';
+import type { GuideArticleDetail } from '@/modules/guide/types';
 import { getSiteUrl } from './site';
 import { localizedHref, type Locale } from './locale';
 import { hasOpeningHours, regularOf, validRanges, WEEKDAY_KEYS, type WeekdayKey } from '@/modules/places/openingHours';
@@ -279,4 +280,58 @@ export function buildEventJsonLd(event: EventDetail): JsonLd {
   // own no-speculation-without-evidence discipline. Google's structured-data guidelines tolerate
   // an Event without `location` (the rich-result eligibility is simply reduced, not an error).
   return fields;
+}
+
+/**
+ * `Article` JSON-LD cho một bài cẩm nang đã xuất bản (SEO2, 2026-09-22).
+ *
+ * CỐ Ý KHÔNG có trường `author` — `GuideArticleDetail` không lộ ra tên người viết công khai nào
+ * (chỉ có `authorId` nội bộ, không phải dữ kiện hiển thị được), và khai `author: {"@type":
+ * "Organization", name:"PhuQuocHub"}` sẽ vi phạm đúng kỷ luật "không suy diễn khi không có bằng
+ * chứng" mà `buildWebSiteJsonLd()` đã nêu rõ cho việc CỐ Ý không phát `Organization`/
+ * `LocalBusiness` — không nhất quán nếu bịa ra một Organization CHỈ để làm author ở đây. Google
+ * tolerates một Article thiếu `author` (giảm điều kiện rich-result, không phải lỗi) — cùng cách
+ * `buildEventJsonLd()` đã chấp nhận thiếu `location`.
+ */
+export function buildGuideArticleJsonLd(article: GuideArticleDetail, locale: Locale): JsonLd {
+  const site = getSiteUrl();
+  const fields: JsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    url: `${site}${localizedHref(locale, `/guide/${article.slug}`)}`,
+    inLanguage: SCHEMA_LANGUAGE[locale],
+  };
+  if (article.intro) fields.description = article.intro;
+  if (article.heroImageUrl) fields.image = article.heroImageUrl;
+  // publishedAt luôn có ở đây (hàm chỉ gọi cho bài ĐÃ xuất bản) — updatedAt luôn có sẵn từ API.
+  if (article.publishedAt) fields.datePublished = article.publishedAt;
+  fields.dateModified = article.updatedAt;
+  return fields;
+}
+
+/**
+ * `FAQPage` JSON-LD — CHỈ dựng khi trang THẬT SỰ hiển thị ít nhất một khối FAQ có câu hỏi (khớp
+ * đúng nguyên tắc `buildBreadcrumbJsonLd()` đã nêu: JSON-LD phải khớp nội dung nhìn thấy được,
+ * không phải một cấu trúc chỉ tồn tại trong structured data — khai FAQPage cho một trang không có
+ * FAQ hiển thị là spam schema theo hướng dẫn của Google). Gộp CÂU HỎI từ MỌI khối `faq` trên trang
+ * (một bài có thể có nhiều khối FAQ ở các vị trí khác nhau) — trả `null` khi không có câu hỏi nào,
+ * để nơi gọi biết KHÔNG render thẻ `<script>` này (không phát một FAQPage rỗng).
+ */
+export function buildGuideFaqJsonLd(article: GuideArticleDetail): JsonLd | null {
+  const questions = article.blocks
+    .filter((b) => b.blockType === 'faq')
+    .flatMap((b) => (b.content as { items?: Array<{ question: string; answer: string }> }).items ?? [])
+    .filter((item) => item.question && item.answer);
+  if (questions.length === 0) return null;
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: questions.map((q) => ({
+      '@type': 'Question',
+      name: q.question,
+      acceptedAnswer: { '@type': 'Answer', text: q.answer },
+    })),
+  };
 }

@@ -4,6 +4,7 @@ import { GuideArticleView } from '@/modules/guide/GuideArticleView';
 import { getGuideArticle } from '@/modules/guide/api/guide.api';
 import { ApiError } from '@/lib/http';
 import { buildRouteAlternates } from '@/lib/seo';
+import { buildGuideArticleJsonLd, buildGuideFaqJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import type { Locale } from '@/lib/locale';
 
 // G-A (2026-09-22): reads from the real CMS (GET /guide-articles/:slug, published-only —
@@ -56,5 +57,20 @@ export default async function GuidePage({ params }: Params) {
   const data = await loadArticle(slug, locale);
   if (!data) notFound();
 
-  return <GuideArticleView article={data} locale={locale} />;
+  // SEO2 (2026-09-22) — Article luôn phát; FAQPage CHỈ khi trang thật sự có khối FAQ (xem
+  // buildGuideFaqJsonLd's own comment — không phát FAQPage rỗng/không khớp nội dung nhìn thấy).
+  const faqJsonLd = buildGuideFaqJsonLd(data);
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildGuideArticleJsonLd(data, locale)) }}
+      />
+      {faqJsonLd && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqJsonLd) }} />
+      )}
+      <GuideArticleView article={data} locale={locale} />
+    </>
+  );
 }

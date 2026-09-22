@@ -68,4 +68,55 @@ describe('GuidePage — đọc từ CMS thật (G-A)', () => {
       GuidePage({ params: Promise.resolve({ slug: 'phu-quoc', locale: 'vi' }) }),
     ).rejects.toThrow('server error');
   });
+
+  // SEO2 (2026-09-22) — Article JSON-LD luôn phát; FAQPage CHỈ khi có khối faq thật trên trang.
+  describe('structured data (SEO2)', () => {
+    function jsonLdScripts(container: HTMLElement): Array<Record<string, unknown>> {
+      return Array.from(container.querySelectorAll('script[type="application/ld+json"]')).map((el) =>
+        JSON.parse(el.innerHTML),
+      );
+    }
+
+    it('luôn phát Article JSON-LD đúng dữ liệu bài viết', async () => {
+      mockGetGuideArticle.mockResolvedValueOnce(article());
+      const { container } = render(await GuidePage({ params: Promise.resolve({ slug: 'phu-quoc', locale: 'vi' }) }));
+
+      const scripts = jsonLdScripts(container);
+      const articleLd = scripts.find((s) => s['@type'] === 'Article');
+      expect(articleLd).toBeDefined();
+      expect(articleLd?.headline).toBe('Cẩm nang Phú Quốc');
+      expect(articleLd?.url).toBe('http://localhost:3000/vi/guide/phu-quoc');
+    });
+
+    it('không có khối faq nào → KHÔNG có <script> FAQPage nào', async () => {
+      mockGetGuideArticle.mockResolvedValueOnce(article({ blocks: [] }));
+      const { container } = render(await GuidePage({ params: Promise.resolve({ slug: 'phu-quoc', locale: 'vi' }) }));
+
+      const scripts = jsonLdScripts(container);
+      expect(scripts.some((s) => s['@type'] === 'FAQPage')).toBe(false);
+    });
+
+    it('có khối faq với câu hỏi thật → CÓ <script> FAQPage khớp đúng câu hỏi hiển thị', async () => {
+      mockGetGuideArticle.mockResolvedValueOnce(
+        article({
+          blocks: [
+            {
+              id: 'b1',
+              position: 0,
+              blockType: 'faq',
+              content: { items: [{ question: 'Khi nào nên đi?', answer: 'Tháng 11 đến tháng 4.' }] },
+              needsDecision: false,
+              decisionNote: null,
+            },
+          ],
+        }),
+      );
+      const { container } = render(await GuidePage({ params: Promise.resolve({ slug: 'phu-quoc', locale: 'vi' }) }));
+
+      const scripts = jsonLdScripts(container);
+      const faqLd = scripts.find((s) => s['@type'] === 'FAQPage');
+      expect(faqLd).toBeDefined();
+      expect((faqLd?.mainEntity as Array<{ name: string }>)[0].name).toBe('Khi nào nên đi?');
+    });
+  });
 });
