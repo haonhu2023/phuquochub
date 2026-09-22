@@ -9,6 +9,14 @@ export interface ListPlacesParams {
   limit?: number;
 }
 
+// C1 (2026-09-22) — thay `no-store` bằng cache có tag: đọc công khai được phục vụ từ Next's Data
+// Cache cho tới khi bị invalidate qua tag `places:list` (POST /api/revalidate, gọi SAU khi
+// create/update/publish/unpublish một place thành công — xem EditPlaceView.tsx/NewPlaceView.tsx)
+// HOẶC hết `revalidate: 60` giây — cửa sổ 60s là lưới an toàn cho trường hợp lệch tag/gọi revalidate
+// thất bại, KHÔNG phải cơ chế chính (cơ chế chính là tag, cập nhật gần như tức thời). Tất cả biến
+// thể filter (category/ward/price_range/page/limit) DÙNG CHUNG một tag `places:list` — đơn giản
+// hơn một tag riêng cho từng tổ hợp filter, đánh đổi hợp lý vì filter kết quả không quá nhiều biến
+// thể và một invalidation dư thừa chỉ tốn một lần fetch lại, không sai dữ liệu.
 export async function listPlaces(params: ListPlacesParams = {}): Promise<PlaceCard[]> {
   const qs = new URLSearchParams();
   if (params.category) qs.set('category', params.category);
@@ -17,7 +25,7 @@ export async function listPlaces(params: ListPlacesParams = {}): Promise<PlaceCa
   if (params.page) qs.set('page', String(params.page));
   if (params.limit) qs.set('limit', String(params.limit));
   const q = qs.toString();
-  return apiGet<PlaceCard[]>(`/places${q ? `?${q}` : ''}`, { cache: 'no-store' });
+  return apiGet<PlaceCard[]>(`/places${q ? `?${q}` : ''}`, { next: { tags: ['places:list'], revalidate: 60 } });
 }
 
 /**
@@ -27,7 +35,7 @@ export async function listPlaces(params: ListPlacesParams = {}): Promise<PlaceCa
  * hàm DUY NHẤT trong `lib/http.ts` còn giữ `meta`.
  */
 export async function countPublishedPlaces(): Promise<number> {
-  const { meta } = await apiGetPaginated<PlaceCard>('/places?limit=1', { cache: 'no-store' });
+  const { meta } = await apiGetPaginated<PlaceCard>('/places?limit=1', { next: { tags: ['places:list'], revalidate: 60 } });
   return meta.total;
 }
 
@@ -36,9 +44,14 @@ export async function countPublishedPlaces(): Promise<number> {
 // language selector) — mặc định 'vi' ở ĐÂY chỉ khớp đúng hành vi hiện có (mọi UI hôm nay là tiếng
 // Việt), KHÔNG phải một quyết định UX mới. Việc truyền 'en' hay locale khác thuộc về một tính
 // năng chọn ngôn ngữ chưa tồn tại — xem ghi chú "Known limitations" trong báo cáo tính năng này.
+// Tag theo SLUG (không phải id) — đây là khoá route thật (`/places/[slug]`), và slug bất biến sau
+// khi tạo (UpdatePlaceDto không có trường slug — xem plan §4), nên tag không bao giờ trỏ sai sau
+// khi place đổi tên hiển thị.
 export async function getPlace(slug: string, locale: string = 'vi'): Promise<PlaceDetail> {
   const qs = new URLSearchParams({ locale });
-  return apiGet<PlaceDetail>(`/places/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
+  return apiGet<PlaceDetail>(`/places/${encodeURIComponent(slug)}?${qs.toString()}`, {
+    next: { tags: [`place:${slug}`], revalidate: 60 },
+  });
 }
 
 // SEO1 (2026-09-22) — sitemap-only. Given up to hundreds of place/hotel/restaurant/tour ids

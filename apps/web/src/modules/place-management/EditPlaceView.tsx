@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/http';
 import placeStyles from '@/modules/places/places.module.css';
 import { PlaceForm } from './PlaceForm';
 import { previewPlace, publishPlace, unpublishPlace, updatePlace } from './api/place-management.api';
+import { triggerRevalidate } from '@/lib/revalidate';
 import { placeStatusClassKey, placeStatusLabel } from './statusLabels';
 import type { ManagedPlace, PlaceFormInput } from './types';
 import styles from './place-management.module.css';
@@ -97,6 +98,11 @@ export function EditPlaceView({ placeId }: Props) {
     // tiếp được lần nữa (mỗi lần ghi thành công tăng đúng 1, response đã trả giá trị mới).
     setState({ kind: 'ready', place: saved });
     setSaveNotice(true);
+    // C1 — chỉ đáng invalidate cache công khai khi place ĐÃ published (sửa một place còn draft
+    // không đổi gì trang công khai, vì chưa từng có trong cache đó để mà lệch).
+    if (saved.status === 'published') {
+      void triggerRevalidate(['places:list', `place:${saved.slug}`], session.accessToken);
+    }
   }
 
   async function handlePublish() {
@@ -107,6 +113,9 @@ export function EditPlaceView({ placeId }: Props) {
     try {
       await publishPlace(placeId, session.accessToken);
       load();
+      if (state.kind === 'ready') {
+        void triggerRevalidate(['places:list', `place:${state.place.slug}`], session.accessToken);
+      }
     } catch (err) {
       setPublishError(publishActionErrorMessage(err));
     } finally {
@@ -126,6 +135,9 @@ export function EditPlaceView({ placeId }: Props) {
     try {
       await unpublishPlace(placeId, session.accessToken);
       load();
+      if (state.kind === 'ready') {
+        void triggerRevalidate(['places:list', `place:${state.place.slug}`], session.accessToken);
+      }
     } catch (err) {
       setPublishError(publishActionErrorMessage(err));
     } finally {

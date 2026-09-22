@@ -5,6 +5,7 @@ import { readSession } from '@/modules/auth/session';
 import { previewPlace, publishPlace, unpublishPlace, updatePlace } from './api/place-management.api';
 import { listCategories } from '@/modules/categories/api/categories.api';
 import { ApiError } from '@/lib/http';
+import { triggerRevalidate } from '@/lib/revalidate';
 import type { ManagedPlace } from './types';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
@@ -15,6 +16,7 @@ jest.mock('./api/place-management.api', () => ({
   updatePlace: jest.fn(),
 }));
 jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
+jest.mock('@/lib/revalidate', () => ({ triggerRevalidate: jest.fn() }));
 
 const mockReadSession = readSession as jest.Mock;
 const mockPreviewPlace = previewPlace as jest.Mock;
@@ -22,6 +24,7 @@ const mockPublishPlace = publishPlace as jest.Mock;
 const mockUnpublishPlace = unpublishPlace as jest.Mock;
 const mockUpdatePlace = updatePlace as jest.Mock;
 const mockListCategories = listCategories as jest.Mock;
+const mockTriggerRevalidate = triggerRevalidate as jest.Mock;
 
 const SESSION = { accessToken: 'tok', refreshToken: 'r', expiresAt: 0, user: { id: 'u1', email: 'a@b.c', displayName: 'A', avatarUrl: null } };
 
@@ -64,6 +67,7 @@ beforeEach(() => {
   mockUnpublishPlace.mockReset();
   mockUpdatePlace.mockReset();
   mockListCategories.mockReset().mockResolvedValue([{ id: 'c1', name_vi: 'Bãi biển', slug: 'beach' }]);
+  mockTriggerRevalidate.mockReset();
   jest.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
@@ -130,6 +134,43 @@ describe('EditPlaceView — xuất bản / gỡ công khai (P1)', () => {
     expect(mockUnpublishPlace).not.toHaveBeenCalled();
   });
 
+  // C1 (2026-09-22) — proof thật (curl trên production build thật, xem plan checkpoint) đã xác
+  // nhận toàn bộ chu trình cache→mutate→revalidate→fresh hoạt động đúng; test dưới đây chỉ khoá
+  // ĐÚNG các call site gọi triggerRevalidate với đúng tag, không thay thế cho proof thật đó.
+  it('publish thành công → gọi triggerRevalidate với đúng tag places:list + place:<slug>', async () => {
+    mockPreviewPlace.mockResolvedValueOnce(place({ status: 'draft', slug: 'bai-sao' })).mockResolvedValueOnce(place({ status: 'published', slug: 'bai-sao' }));
+    mockPublishPlace.mockResolvedValue(null);
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: /Xuất bản/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Xuất bản/ }));
+
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+  });
+
+  it('unpublish thành công → gọi triggerRevalidate với đúng tag places:list + place:<slug>', async () => {
+    mockPreviewPlace.mockResolvedValue(place({ status: 'published', slug: 'bai-sao' }));
+    mockUnpublishPlace.mockResolvedValue(null);
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: /Gỡ công khai/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Gỡ công khai/ }));
+
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+  });
+
+  it('publishPlace thất bại → KHÔNG gọi triggerRevalidate (không invalidate sai khi mutation lỗi)', async () => {
+    mockPreviewPlace.mockResolvedValue(place({ status: 'draft', slug: 'bai-sao' }));
+    mockPublishPlace.mockRejectedValue(new ApiError('forbidden', 403));
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: /Xuất bản/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Xuất bản/ }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(mockTriggerRevalidate).not.toHaveBeenCalled();
+  });
+
   it('publishPlace lỗi 403 → thông báo rõ, KHÔNG âm thầm nuốt lỗi', async () => {
     mockPreviewPlace.mockResolvedValue(place({ status: 'draft' }));
     mockPublishPlace.mockRejectedValue(new ApiError('forbidden', 403));
@@ -160,6 +201,29 @@ describe('EditPlaceView — xung đột content_version (P2)', () => {
         'tok',
       ),
     );
+  });
+
+  it('lưu place ĐÃ published → gọi triggerRevalidate (nội dung công khai vừa đổi)', async () => {
+    mockPreviewPlace.mockResolvedValue(place({ content_version: 5, status: 'published', slug: 'bai-sao' }));
+    mockUpdatePlace.mockResolvedValue(place({ content_version: 6, status: 'published', slug: 'bai-sao' }));
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+    await waitFor(() => expect(mockTriggerRevalidate).toHaveBeenCalledWith(['places:list', 'place:bai-sao'], 'tok'));
+  });
+
+  it('lưu place CÒN draft → KHÔNG gọi triggerRevalidate (chưa từng có trong cache công khai)', async () => {
+    mockPreviewPlace.mockResolvedValue(place({ content_version: 5, status: 'draft' }));
+    mockUpdatePlace.mockResolvedValue(place({ content_version: 6, status: 'draft' }));
+    render(<EditPlaceView placeId="p1" />);
+
+    await waitFor(() => screen.getByRole('button', { name: 'Lưu thay đổi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+    await waitFor(() => expect(mockUpdatePlace).toHaveBeenCalled());
+    expect(mockTriggerRevalidate).not.toHaveBeenCalled();
   });
 
   it('409 (token cũ) → thông báo tải lại, KHÔNG throw ra ngoài form', async () => {
