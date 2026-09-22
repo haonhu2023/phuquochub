@@ -3,9 +3,9 @@ import type { AttractionCard as AttractionCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
 import {
   getTrustBadge,
-  PRICE_VERIFYING_TEXT,
+  priceVerifyingText,
   resolvePriceDisplay,
-  TRUST_BADGE_LABEL,
+  trustBadgeLabel,
 } from '@/modules/places/trust';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
@@ -23,7 +23,7 @@ export function AttractionCard({
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public, không phụ thuộc category (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(attraction.price_range),
+    formatPriceRange(attraction.price_range, locale),
     attraction.verification_status,
   );
   const isVerified = getTrustBadge(attraction.verification_status) === 'verified';
@@ -61,10 +61,10 @@ export function AttractionCard({
           {/* Không có giá vé dạng số trong dữ liệu Place — chỉ hiển thị mức giá khi API thực sự
               trả price_range; KHÔNG bịa "Liên hệ để biết giá" cho điểm tham quan chưa có dữ liệu. */}
           {(priceLabel || showPriceVerifying) && (
-            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+            <span className={placesStyles.price}>{priceLabel ?? priceVerifyingText(locale)}</span>
           )}
           {isVerified && (
-            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
+            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{trustBadgeLabel('verified', locale)}</span>
           )}
         </div>
       </div>

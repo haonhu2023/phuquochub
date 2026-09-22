@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { ErrorRetryState, useLogError } from '@/components/ui/ErrorRetryState';
 import styles from '@/modules/places/places.module.css';
 
 // Error boundary cho segment /places (bao cả /places/[slug]).
@@ -12,18 +12,15 @@ export default function PlacesError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    // Ghi log phía client để debug; nội dung không hiển thị cho người dùng.
-    console.error(error);
-  }, [error]);
-
+  useLogError(error);
   return (
-    <div className={styles.state} role="alert">
-      <p className={styles.stateTitle}>Không tải được dữ liệu địa điểm</p>
-      <p>Có thể do sự cố kết nối hoặc máy chủ đang bận. Vui lòng thử lại.</p>
-      <button type="button" className={styles.btn} onClick={() => reset()}>
-        Thử lại
-      </button>
-    </div>
+    <ErrorRetryState
+      titleVi="Không tải được dữ liệu địa điểm"
+      titleEn="Couldn't load place data"
+      onRetry={reset}
+      className={styles.state}
+      titleClassName={styles.stateTitle}
+      buttonClassName={styles.btn}
+    />
   );
 }

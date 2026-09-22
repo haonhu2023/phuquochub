@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
-import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from './trust';
+import { getTrustBadge, priceVerifyingText, resolvePriceDisplay, trustBadgeLabel } from './trust';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import styles from './places.module.css';
 
@@ -34,7 +34,7 @@ export function PlaceCard({
   // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
   // BeachCard, AttractionCard, popup bản đồ). Chưa tin cậy nhưng CÓ giá → PRICE_VERIFYING_TEXT.
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(place.price_range),
+    formatPriceRange(place.price_range, locale),
     place.verification_status,
   );
   // Thẻ chỉ hiện tín hiệu TÍCH CỰC — không hiện gì cho 'stale'/'unverified': một badge trung tính
@@ -69,11 +69,11 @@ export function PlaceCard({
             </span>
           )}
           {(priceLabel || showPriceVerifying) && (
-            <span className={styles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+            <span className={styles.price}>{priceLabel ?? priceVerifyingText(locale)}</span>
           )}
           {typeof place.distance_m === 'number' && <span>{formatDistance(place.distance_m)}</span>}
           {isVerified && (
-            <span className={`${styles.badge} ${styles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
+            <span className={`${styles.badge} ${styles.badgeVerified}`}>{trustBadgeLabel('verified', locale)}</span>
           )}
         </div>
       </div>
