@@ -174,3 +174,41 @@ npm run measure-bundle -- --json    # machine-readable
 npm run start --workspace=apps/web -- -p 3002
 npx lighthouse http://localhost:3002/vi --view   # NOT run as part of this pass
 ```
+
+## 7. Post-C1 re-measurement (2026-09-22, same day, after places caching landed)
+
+C1 (tag-based caching + revalidation for places — see plan checkpoint) is the dependency this
+report's §1 flagged as unmet. Re-measured against a fresh `next build` + `next start` production
+server, same method as §1–§3, this time with the browser tab explicitly fronted (visible) to test
+whether that changes the LCP-measurement limitation from §4 — it does not:
+`document.visibilityState` still reports `"hidden"` even when fronted in this tool's own UI, so
+LCP/FCP remain **NOT MEASURED** here for the same reason as before. Recommendation unchanged: run
+Lighthouse against a real foregrounded browser tab, ideally the actual deployed URL.
+
+Bundle size (`next build`, same method as §2): total client JS gzip **523.9 KB** (was 519.7 KB,
++0.8% — the new `/api/revalidate` route handler, the shared `ErrorRetryState` component, and a
+handful of new EN label dictionaries from this session's C1/X1 passes; not a regression worth
+chasing). Homepage route JS gzip unchanged at 13.4 KB.
+
+| Route | TTFB | DOMContentLoaded | Document transfer | CLS |
+|---|---|---|---|---|
+| `/` (homepage, desktop) | 335 ms (cold) | 411 ms | 14.3 KB | 0 |
+| `/` (homepage, mobile 375×812, Android UA) | 69 ms (warm) | 147 ms | 13.9 KB | 0, no horizontal overflow |
+| `/places` (listing, desktop, warm) | 96 ms | 145 ms | 10.5 KB | 0 |
+| `/places/la-veranda-resort` (detail with a real cover photo, desktop, warm) | 145 ms | 202 ms | 7.7 KB | 0 |
+| `/guide/e2e-guide-…` (article, desktop, warm) | 84 ms | 119 ms | 5.8 KB | 0 |
+
+Image bytes: the one place in the local dataset with a real cover photo
+(`la-veranda-resort`) serves a 6.8 KB JPEG via the existing signed-URL redirect
+(`GET /api/media/{id}/file` → 302 → presigned MinIO URL) — confirmed 200 OK and the real byte count
+via a direct fetch of that redirect chain (the `<img>` element itself never finished loading in this
+automated tab, consistent with §4's hidden-tab resource-deprioritization behavior, not an app bug).
+Production has essentially no place photos yet (0/50 at last audit), so this single test upload is
+the only real image-bytes data point available locally.
+
+INP not recorded — no repeatable, meaningful interaction on these routes to measure it against
+(matches this report's own §10 guidance: record it only when the measurement is meaningful).
+
+**Regression check:** no clear regression found. TTFB/DCL/CLS are all in the same healthy range as
+§3's pre-C1 numbers; the JS bundle grew by well under the +10% advisory threshold this report's §5
+uses. No further optimization attempted — not chasing a number for its own sake.
