@@ -5,6 +5,7 @@ import { listHotelSlugs } from '@/modules/hotels/api/hotels.api';
 import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
+import { listGuideArticles } from '@/modules/guide/api/guide.api';
 import { localizedHref, SUPPORTED_LOCALES, type Locale } from '@/lib/locale';
 import { isEnDetailIndexable } from '@/lib/seo';
 
@@ -33,6 +34,7 @@ const STATIC_ROUTES = [
   '/explore',
   '/map',
   '/events',
+  '/guide',
 ];
 
 // A single entity-type fetch must never take down the whole sitemap -- if one endpoint is
@@ -89,15 +91,40 @@ function detailEntries(
   return entries;
 }
 
+// G-D/SEO1 (2026-09-22) — bài cẩm nang KHÔNG dùng chung shape với detailEntries() ở trên: một
+// place là MỘT thực thể có bản dịch overlay (vi luôn vào, en có điều kiện qua isEnDetailIndexable),
+// còn một guide_articles row LÀ CHÍNH bản ghi của MỘT locale cụ thể (slug+locale là khoá duy nhất)
+// — "bài viết en đủ điều kiện" đơn giản là "có một hàng published với locale='en'", không có cổng
+// EN riêng nào để qua (không giống trường dịch tự động của place).
+function guideEntries(
+  site: string,
+  articles: { slug: string; locale: string; publishedAt: string | null }[],
+): MetadataRoute.Sitemap {
+  return articles
+    .filter((a): a is { slug: string; locale: Locale; publishedAt: string | null } => a.locale === 'vi' || a.locale === 'en')
+    .map((a) => ({
+      url: `${site}${localizedHref(a.locale, `/guide/${a.slug}`)}`,
+      changeFrequency: 'weekly',
+      priority: 0.6,
+      // publishedAt is the only real "last changed" signal listGuideArticles exposes today — a
+      // later save-without-republish doesn't move it, but it's still strictly more honest than no
+      // lastModified at all (the gap the whole sitemap has everywhere else, unaddressed by this
+      // change — that's the broader SEO pass, not this one).
+      ...(a.publishedAt ? { lastModified: a.publishedAt } : {}),
+    }));
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = getSiteUrl();
 
-  const [places, hotels, restaurants, tours, events] = await Promise.all([
+  const [places, hotels, restaurants, tours, events, guidesVi, guidesEn] = await Promise.all([
     safeList(() => listPlaces({ limit: 100 })),
     safeList(() => listHotelSlugs(100)),
     safeList(() => listRestaurantSlugs(100)),
     safeList(() => listTourSlugs(100)),
     safeList(() => listEvents(1, 100)),
+    safeList(() => listGuideArticles('vi')),
+    safeList(() => listGuideArticles('en')),
   ]);
 
   return [
@@ -132,5 +159,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       '/events',
       { changeFrequency: 'daily', priority: 0.5 },
     ),
+    ...guideEntries(site, [...guidesVi, ...guidesEn]),
   ];
 }

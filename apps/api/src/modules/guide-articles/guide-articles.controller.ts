@@ -28,6 +28,15 @@ import { FlagContentGapDto } from './dto/flag-content-gap.dto';
 export class GuideArticlesPublicController {
   constructor(private readonly service: GuideArticlesService) {}
 
+  // G-D (2026-09-22) — public index. Declared BEFORE ':slug' only for readability; there is no
+  // actual routing ambiguity to guard against here (this is a zero-segment path, ':slug' is
+  // one-segment — same non-collision as places.controller.ts's 'mine'/'editorial' vs ':slug',
+  // just without needing the explicit ordering those two required).
+  @Get()
+  async listPublished(@Query('locale') locale: string = 'vi') {
+    return this.service.listPublished(locale);
+  }
+
   @Get(':slug')
   async getPublished(@Param('slug') slug: string, @Query('locale') locale: string = 'vi') {
     return this.service.getPublished(slug, locale);
@@ -80,6 +89,20 @@ export class GuideArticlesAdminController {
     @CurrentUser() user: AuthPrincipal,
   ) {
     return this.service.publish(id, body.expectedContentVersion, user.sub);
+  }
+
+  // G-B (2026-09-22) — đối xứng với /publish ở trên: gỡ công khai về `draft`. Cùng permission
+  // (Guide.Edit.Any), cùng body (PublishGuideArticleDto: chỉ expectedContentVersion — reused,
+  // không tạo DTO trùng cho cùng một hình dạng).
+  @Post(':id/unpublish')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('Guide.Edit.Any')
+  async unpublish(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: PublishGuideArticleDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.service.unpublish(id, body.expectedContentVersion, user.sub);
   }
 
   @Post(':id/flag-gap')

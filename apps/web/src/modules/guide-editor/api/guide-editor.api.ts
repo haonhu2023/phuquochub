@@ -74,6 +74,15 @@ export function publishGuideArticle(
   return apiPost<GuideArticleDetail>(`/admin/guide-articles/${id}/publish`, accessToken, { expectedContentVersion });
 }
 
+// G-B (2026-09-22) — đối xứng publishGuideArticle: gỡ công khai về draft.
+export function unpublishGuideArticle(
+  id: string,
+  expectedContentVersion: number,
+  accessToken: string,
+): Promise<GuideArticleDetail> {
+  return apiPost<GuideArticleDetail>(`/admin/guide-articles/${id}/unpublish`, accessToken, { expectedContentVersion });
+}
+
 export function flagContentGap(
   id: string,
   blockId: string,

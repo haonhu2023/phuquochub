@@ -12,8 +12,10 @@ import {
   getGuideDraft,
   publishGuideArticle,
   saveGuideDraft,
+  unpublishGuideArticle,
 } from './api/guide-editor.api';
 import type { GuideBlockType } from '../guide/types';
+import { GuideMediaPicker } from './GuideMediaPicker';
 import placeStyles from '@/modules/places/places.module.css';
 
 interface EditableBlock {
@@ -29,6 +31,8 @@ interface FormState {
   title: string;
   intro: string;
   heroMediaId: string;
+  /** Chỉ để hiển thị xem trước (G-C) — KHÔNG gửi lên API, backend tự tính lại từ heroMediaId. */
+  heroImageUrl: string | null;
   blocks: EditableBlock[];
 }
 
@@ -82,12 +86,16 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   const [articleId, setArticleId] = useState<string | null>(isNew ? null : id);
   const [contentVersion, setContentVersion] = useState<number | null>(null);
   const [articleStatus, setArticleStatus] = useState<'draft' | 'published' | null>(null);
+  const [flaggingBlockId, setFlaggingBlockId] = useState<string | null>(null);
+  const [flagGapError, setFlagGapError] = useState<string | null>(null);
+  const [flagGapNotice, setFlagGapNotice] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({
     slug: '',
     locale: 'vi',
     title: '',
     intro: '',
     heroMediaId: '',
+    heroImageUrl: null,
     blocks: [],
   });
 
@@ -126,6 +134,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             title: article.title,
             intro: article.intro ?? '',
             heroMediaId: article.heroMediaId ?? '',
+            heroImageUrl: article.heroImageUrl,
             blocks: article.blocks.map((b) => ({
               key: nextKey(),
               blockType: b.blockType,
@@ -246,13 +255,46 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     }
   }
 
-  async function handleFlagGap(blockId: string | undefined) {
+  // G-B (2026-09-22) — đối xứng handlePublish.
+  async function handleUnpublish() {
     const session = readSession();
-    if (!session || !articleId || !blockId) return;
-    const note = window.prompt('Mô tả fact còn thiếu / cần xác nhận:');
-    if (!note) return;
-    await flagContentGap(articleId, blockId, note, session.accessToken);
-    window.alert('Đã gửi vào Owner Decision Queue.');
+    if (!session || !articleId || contentVersion === null) return;
+    if (!window.confirm('Gỡ công khai bài viết này? Trang công khai sẽ không còn hiển thị bài này cho tới khi bạn xuất bản lại.')) return;
+    setSaving(true);
+    setConflict(false);
+    setErrorMessage(null);
+    try {
+      const unpublished = await unpublishGuideArticle(articleId, contentVersion, session.accessToken);
+      setContentVersion(unpublished.contentVersion);
+      setArticleStatus(unpublished.status);
+    } catch (err) {
+      if (err instanceof ApiError && err.isConflict) {
+        setConflict(true);
+      } else {
+        setErrorMessage(err instanceof Error ? err.message : 'Gỡ công khai thất bại.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // G7 (2026-09-22) — thay window.prompt/window.alert bằng form nội tuyến + trạng thái thật
+  // (đang gửi/thành công/lỗi), cùng khuôn mọi thao tác ghi khác trong component này (handlePublish/
+  // handleUnpublish đều setErrorMessage thay vì alert()).
+  async function handleFlagGap(blockId: string, note: string) {
+    const session = readSession();
+    if (!session || !articleId) return;
+    setFlaggingBlockId(blockId);
+    setFlagGapError(null);
+    setFlagGapNotice(null);
+    try {
+      await flagContentGap(articleId, blockId, note, session.accessToken);
+      setFlagGapNotice('Đã gửi vào hàng chờ quyết định của owner.');
+    } catch (err) {
+      setFlagGapError(err instanceof Error ? err.message : 'Gửi thất bại.');
+    } finally {
+      setFlaggingBlockId(null);
+    }
   }
 
   if (status === 'signed-out') {
@@ -348,19 +390,26 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             style={{ display: 'block', width: '100%' }}
           />
         </label>
-        <label style={{ display: 'block' }}>
-          Hero media ID (UUID, phải là ảnh đã published + có quyền)
-          <input
-            type="text"
-            value={form.heroMediaId}
-            onChange={(e) => setForm((f) => ({ ...f, heroMediaId: e.target.value }))}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
+        <GuideMediaPicker
+          label="Ảnh đại diện (hero)"
+          mediaId={form.heroMediaId}
+          existingImageUrl={form.heroImageUrl}
+          onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null }))}
+        />
       </fieldset>
 
       <fieldset style={{ marginBottom: '1.5rem' }}>
         <legend>Các khối nội dung</legend>
+        {flagGapNotice && (
+          <p role="status" style={{ color: 'var(--ok, green)', marginBottom: '0.5rem' }}>
+            {flagGapNotice}
+          </p>
+        )}
+        {flagGapError && (
+          <p role="alert" style={{ color: 'var(--err, red)', marginBottom: '0.5rem' }}>
+            {flagGapError}
+          </p>
+        )}
         {form.blocks.map((block, i) => (
           <BlockEditorRow
             key={block.key}
@@ -370,7 +419,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             onPatch={(patch) => patchBlockContent(i, patch)}
             onRemove={() => removeBlock(i)}
             onMove={(dir) => moveBlock(i, dir)}
-            onFlagGap={() => void handleFlagGap(block.id)}
+            onFlagGap={block.id ? (note) => void handleFlagGap(block.id!, note) : undefined}
+            flagging={flaggingBlockId === block.id}
           />
         ))}
 
@@ -387,9 +437,14 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           </button>
         )}
         {articleId && articleStatus === 'published' && (
-          <Link href={`/${form.locale}/guide/${form.slug}`} className={placeStyles.btn} target="_blank">
-            Xem trang công khai →
-          </Link>
+          <>
+            <Link href={`/${form.locale}/guide/${form.slug}`} className={placeStyles.btn} target="_blank">
+              Xem trang công khai →
+            </Link>
+            <button type="button" onClick={() => void handleUnpublish()} disabled={saving} className={placeStyles.btn}>
+              Gỡ công khai
+            </button>
+          </>
         )}
       </div>
     </main>
@@ -422,6 +477,7 @@ function BlockEditorRow({
   onRemove,
   onMove,
   onFlagGap,
+  flagging,
 }: {
   block: EditableBlock;
   index: number;
@@ -429,8 +485,20 @@ function BlockEditorRow({
   onPatch: (patch: Record<string, unknown>) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
-  onFlagGap: () => void;
+  /** `undefined` khi block chưa có id thật (chưa lưu lần nào) — nút 🚩 tự ẩn trong trường hợp đó. */
+  onFlagGap?: (note: string) => void;
+  flagging: boolean;
 }) {
+  const [flagFormOpen, setFlagFormOpen] = useState(false);
+  const [note, setNote] = useState('');
+
+  function submitFlag() {
+    if (!note.trim() || !onFlagGap) return;
+    onFlagGap(note.trim());
+    setFlagFormOpen(false);
+    setNote('');
+  }
+
   return (
     <div style={{ border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
@@ -444,8 +512,13 @@ function BlockEditorRow({
           <button type="button" onClick={() => onMove(1)} disabled={index === total - 1} aria-label="Di chuyển xuống">
             ↓
           </button>
-          {block.id && (
-            <button type="button" onClick={onFlagGap} title="Đánh dấu thiếu fact">
+          {onFlagGap && (
+            <button
+              type="button"
+              onClick={() => setFlagFormOpen((v) => !v)}
+              title="Đánh dấu thiếu fact"
+              aria-expanded={flagFormOpen}
+            >
               🚩
             </button>
           )}
@@ -454,6 +527,32 @@ function BlockEditorRow({
           </button>
         </span>
       </div>
+      {/* G7 (2026-09-22) — form nội tuyến thay window.prompt: mô tả fact còn thiếu, gửi vào Owner
+          Decision Queue. Trạng thái gửi/thành công/lỗi hiện ở component cha (dùng chung cho mọi
+          block, tránh một banner riêng lặp lại cho từng khối). */}
+      {flagFormOpen && onFlagGap && (
+        <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'var(--surface-2, #f3f4f6)', borderRadius: 6 }}>
+          <label htmlFor={`flag-note-${block.key}`} style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
+            Mô tả fact còn thiếu / cần xác nhận
+          </label>
+          <textarea
+            id={`flag-note-${block.key}`}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            style={{ width: '100%', marginBottom: '0.4rem' }}
+            disabled={flagging}
+          />
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button type="button" onClick={submitFlag} disabled={flagging || !note.trim()}>
+              {flagging ? 'Đang gửi…' : 'Gửi'}
+            </button>
+            <button type="button" onClick={() => setFlagFormOpen(false)} disabled={flagging}>
+              Huỷ
+            </button>
+          </div>
+        </div>
+      )}
       <BlockContentFields block={block} onPatch={onPatch} />
     </div>
   );
@@ -565,19 +664,18 @@ function BlockContentFields({ block, onPatch }: { block: EditableBlock; onPatch:
     case 'image_with_rights':
       return (
         <>
-          <input
-            type="text"
-            placeholder="Media ID (UUID, phải published + có quyền)"
-            value={(c.mediaId as string) ?? ''}
-            onChange={(e) => onPatch({ mediaId: e.target.value })}
-            style={{ width: '100%', marginBottom: '0.4rem' }}
+          <GuideMediaPicker
+            label="Ảnh"
+            mediaId={(c.mediaId as string) ?? ''}
+            existingImageUrl={(c.imageUrl as string) ?? null}
+            onChange={(id) => onPatch({ mediaId: id })}
           />
           <input
             type="text"
             placeholder="Chú thích ảnh (tuỳ chọn)"
             value={(c.caption as string) ?? ''}
             onChange={(e) => onPatch({ caption: e.target.value })}
-            style={{ width: '100%' }}
+            style={{ width: '100%', marginTop: '0.4rem' }}
           />
         </>
       );
