@@ -163,7 +163,7 @@ describe('PlaceForm — gửi form', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Đang tạo…' })).toBeDisabled());
     resolveSubmit();
-    await waitFor(() => expect(screen.getByText('Đã lưu thành công.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Tạo' })).toBeEnabled());
   });
 
   it('onSubmit ném ApiError 403 → hiển thị thông báo không có quyền', async () => {

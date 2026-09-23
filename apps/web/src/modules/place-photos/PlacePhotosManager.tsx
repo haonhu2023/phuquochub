@@ -292,7 +292,13 @@ export function PlacePhotosManager({ placeId }: Props) {
 
   async function onDelete(photo: PlacePhoto) {
     if (deletingId || busy) return;
-    if (!window.confirm('Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.')) return;
+    // M2 (2026-09-22): gỡ đúng ảnh đang là bìa cần cảnh báo RIÊNG nêu đúng hậu quả (cơ sở tạm thời
+    // không còn ảnh đại diện cho tới khi chọn bìa khác) — không dùng chung thông điệp với ảnh
+    // thường, để người dùng không gỡ nhầm ảnh bìa vì tưởng hậu quả giống mọi ảnh khác.
+    const confirmMessage = photo.is_cover
+      ? 'Ảnh này đang là ẢNH BÌA. Gỡ sẽ khiến cơ sở tạm thời không còn ảnh đại diện cho tới khi bạn chọn ảnh bìa khác. Vẫn gỡ?'
+      : 'Gỡ ảnh này khỏi cơ sở? Ảnh sẽ không còn hiển thị ở bất kỳ đâu.';
+    if (!window.confirm(confirmMessage)) return;
 
     const session = readSession();
     if (!session) {

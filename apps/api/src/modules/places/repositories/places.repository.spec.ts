@@ -1463,12 +1463,21 @@ describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (
 
     expect(result).toBe(true);
     const [query, params] = repo.query.mock.calls[0];
-    expect(sql(query)).toContain('UPDATE places SET "address" = $3, "updated_by" = $4, updated_at = now()');
+    // Khoá đúng hình dạng THẬT của SET clause, không chỉ từng mảnh rời — "content_version" = ...+1
+    // PHẢI nằm SAU các cột scalar và TRƯỚC updated_at (tích hợp CAS content_version, 2026-09-22, xem
+    // ghi chú ở updateScalarsIfUnchanged()); một test chỉ `toContain` từng mảnh riêng lẻ sẽ không
+    // phát hiện được nếu dòng bump content_version bị xoá nhầm hoặc bump sai biểu thức (vd `= 1`
+    // thay vì `= "content_version" + 1`, tăng nhầm về 1 thay vì cộng dồn).
+    expect(sql(query)).toContain(
+      'UPDATE places SET "address" = $3, "updated_by" = $4, "content_version" = "content_version" + 1, updated_at = now()',
+    );
     expect(sql(query)).toContain('xmin::text = $2');
     // KHÔNG còn so sánh timestamp làm tròn — xem ghi chú đầy đủ tại updateScalarsIfUnchanged() về
     // vì sao date_trunc(milliseconds) vẫn để lọt một cửa sổ đua thật giữa hai ghi cùng mili-giây.
     expect(sql(query)).not.toContain('date_trunc');
     expect(sql(query)).toContain('RETURNING id');
+    // content_version's "+ 1" là biểu thức SQL literal, không tiêu tốn tham số nào — params vẫn chỉ
+    // gồm đúng 4 giá trị (id, CAS token, 2 cột scalar), không lệch thứ tự do cột mới chen vào giữa.
     expect(params).toEqual(['p1', expectedVersion, 'Địa chỉ mới', 'u1']);
   });
 

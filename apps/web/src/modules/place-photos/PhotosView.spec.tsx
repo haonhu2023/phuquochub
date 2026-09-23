@@ -336,6 +336,20 @@ describe('PhotosView — gỡ ảnh', () => {
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(PLACE_ID, 'm1', 'tok'));
   });
 
+  it('gỡ ảnh ĐANG LÀ BÌA, huỷ hộp thoại → KHÔNG gọi API, ảnh vẫn còn là bìa', async () => {
+    const confirmSpy = jest.fn().mockReturnValue(false);
+    window.confirm = confirmSpy;
+    mockList.mockResolvedValueOnce([photo({ is_cover: true })]);
+    render(<PhotosView placeId={PLACE_ID} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gỡ ảnh' })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gỡ ảnh' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('ẢNH BÌA'));
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Gỡ ảnh' })).toBeInTheDocument();
+  });
+
   it('gỡ ảnh KHÔNG phải bìa → hộp thoại xác nhận dùng thông điệp chung, KHÔNG nhắc tới ảnh bìa', async () => {
     const confirmSpy = jest.fn().mockReturnValue(true);
     window.confirm = confirmSpy;

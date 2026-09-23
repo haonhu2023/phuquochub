@@ -58,7 +58,6 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   function toggleIs24h() {
     setOpeningHours((prev) => ({ ...prev, is24h: !prev.is24h }));
@@ -110,7 +109,6 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
     e.preventDefault();
     if (submitting) return;
     setError(null);
-    setSuccess(false);
 
     const latNum = Number(lat);
     const lngNum = Number(lng);
@@ -143,7 +141,6 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
     setSubmitting(true);
     try {
       await onSubmit(input);
-      setSuccess(true);
     } catch (err) {
       setError(formErrorMessage(err));
     } finally {
@@ -158,11 +155,12 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
           {error}
         </p>
       )}
-      {success && (
-        <p className={styles.success} role="status">
-          Đã lưu thành công.
-        </p>
-      )}
+      {/* Thông báo "Đã lưu thành công." KHÔNG còn ở đây (gỡ 2026-09-23, trùng với EditPlaceView) —
+          caller sở hữu vòng đời của place (EditPlaceView) là nơi hiển thị, vì chỉ nó sống sót qua
+          lần remount `key={content_version}` mà PlaceForm chủ động chịu khi cha tải lại dữ liệu
+          mới sau một lần lưu (xem PlaceForm ở EditPlaceView.tsx). Một `PlaceForm` không có cha quản
+          lý thông báo này (vd NewPlaceView) tự điều hướng đi hoặc tự đổi màn hình sau khi tạo thành
+          công, không bao giờ cần PlaceForm tự báo. */}
 
       <fieldset className={styles.section}>
         <legend className={styles.sectionTitle}>Thông tin cơ bản</legend>
