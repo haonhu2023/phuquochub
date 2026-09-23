@@ -36,7 +36,6 @@ export interface HomeCopy {
   categories: HomeCategoryEntry[];
   smartTitle: string;
   smartSubtitle: string;
-  smartQuickLinks: HomeIntentShortcut[];
   nearbyCta: string;
   nearbyLoading: string;
   nearbyDenied: string;
@@ -100,15 +99,8 @@ const vi: HomeCopy = {
     { href: CATEGORY_HREFS[4], name: 'Bãi biển', hint: 'Bờ biển và điểm tắm đáng ghé' },
     { href: CATEGORY_HREFS[5], name: 'Sự kiện', hint: 'Sự kiện đang và sắp diễn ra' },
   ],
-  smartTitle: 'Khám phá theo nhu cầu',
-  smartSubtitle: 'Gợi ý khám phá nhanh — theo nhu cầu, hoặc theo vị trí thực tế nếu bạn đồng ý chia sẻ.',
-  smartQuickLinks: [
-    { href: '/restaurants', label: 'Ăn uống' },
-    { href: '/beaches', label: 'Bãi biển' },
-    { href: '/attractions', label: 'Vui chơi' },
-    { href: '/tours', label: 'Tour & trải nghiệm' },
-    { href: '/map', label: 'Xem bản đồ' },
-  ],
+  smartTitle: 'Địa điểm gần bạn',
+  smartSubtitle: 'Gợi ý theo vị trí thực tế nếu bạn đồng ý chia sẻ — duyệt theo danh mục ở trên nếu bạn không muốn chia sẻ vị trí.',
   nearbyCta: 'Địa điểm gần bạn',
   nearbyLoading: 'Đang tìm địa điểm gần bạn…',
   nearbyDenied: 'Bạn chưa cho phép truy cập vị trí. Bạn vẫn có thể tìm kiếm hoặc duyệt theo danh mục ở trên.',
@@ -184,15 +176,8 @@ const en: HomeCopy = {
     { href: CATEGORY_HREFS[4], name: 'Beaches', hint: 'Coastline and beaches worth visiting' },
     { href: CATEGORY_HREFS[5], name: 'Events', hint: 'Events happening now and soon' },
   ],
-  smartTitle: 'Discover by need',
-  smartSubtitle: 'Quick picks by need, or by your real location if you choose to share it.',
-  smartQuickLinks: [
-    { href: '/restaurants', label: 'Food' },
-    { href: '/beaches', label: 'Beaches' },
-    { href: '/attractions', label: 'Things to do' },
-    { href: '/tours', label: 'Tours & experiences' },
-    { href: '/map', label: 'View map' },
-  ],
+  smartTitle: 'Places near you',
+  smartSubtitle: 'Suggestions from your real location if you choose to share it — browse by category above if you’d rather not share your location.',
   nearbyCta: 'Places near you',
   nearbyLoading: 'Finding places near you…',
   nearbyDenied: "Location access wasn't allowed. You can still search or browse by category above.",
