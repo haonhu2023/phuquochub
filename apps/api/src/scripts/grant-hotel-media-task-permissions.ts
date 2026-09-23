@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/no-var-requires -- no @types/pg in this project; `pg`
-// is already a real runtime dependency (TypeORM's own driver), this script just uses it directly.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// no @types/pg in this project; `pg` is already a real runtime dependency (TypeORM's own driver),
+// this script just uses it directly.
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any
 const { Client } = require('pg');
-// eslint-disable-next-line @typescript-eslint/no-var-requires -- same rationale as `pg` above:
-// ioredis is already a real runtime dependency (RedisService's own driver), used here ONLY to
-// replicate AuthRevocationService.revokeAllForUser()'s exact key/TTL contract (see revokeTokensForUsers()
-// below) -- this script never touches any OTHER Redis key.
+// same rationale as `pg` above: ioredis is already a real runtime dependency (RedisService's own
+// driver), used here ONLY to replicate AuthRevocationService.revokeAllForUser()'s exact key/TTL
+// contract (see revokeTokensForUsers() below) -- this script never touches any OTHER Redis key.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const IORedis = require('ioredis');
 type PgClient = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>; connect: () => Promise<void>; end: () => Promise<void> };
 
