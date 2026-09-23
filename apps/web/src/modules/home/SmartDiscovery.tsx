@@ -1,17 +1,18 @@
-import Link from 'next/link';
 import { getHomeCopy } from './home.copy';
 import { NearbyDiscovery } from './NearbyDiscovery';
-import { localizedHref, type Locale } from '@/lib/locale';
+import type { Locale } from '@/lib/locale';
 import styles from './home.module.css';
 
 /**
- * "Khám phá theo nhu cầu" V2 (Phase 6) — V1 chỉ có "gần bạn" (đủ THẬT nhưng chưa đủ đa dạng để
- * cảm giác "thông minh"). V2 thêm một hàng lối tắt CỐ ĐỊNH/xác định (route CÓ THẬT, không cần
- * JavaScript) đứng CẠNH widget vị trí thật — không phải danh sách "gợi ý AI", chỉ là điều hướng
- * theo nhu cầu phổ biến, trình bày ở một khối riêng thay vì trộn vào `CategoryLinks` phía trên.
+ * "Địa điểm gần bạn" — trước đây (Phase 6, "Khám phá theo nhu cầu" V2) khối này còn có thêm một
+ * hàng lối tắt cố định (Ăn uống/Bãi biển/Vui chơi/Tour/Bản đồ) đứng cạnh widget vị trí thật. Bỏ đi
+ * (2026-09, rà UI mobile theo ảnh owner gửi): hàng lối tắt đó trỏ ĐÚNG những route mà lưới danh mục
+ * "Bạn đang tìm gì?" (CategoryLinks, phía trên) và chip "Gợi ý nhanh" trong hero đã có — 3 bề mặt
+ * cùng trỏ 1 tập route trên một trang là dư thừa thật, không phải cảm nhận. Giữ nguyên phần còn lại
+ * (không đổi function/logic): widget vị trí thật vẫn là NearbyDiscovery bên dưới.
  *
- * Trusted Nearby + Opening State v0 (Phase 2): `NearbyDiscovery` bên dưới nay hiển thị trạng thái
- * Đang mở cửa / Đã đóng cửa / Chưa có thông tin giờ mở cửa cho từng địa điểm TRUSTED trả về từ
+ * Trusted Nearby + Opening State v0 (Phase 2): `NearbyDiscovery` bên dưới hiển thị trạng thái Đang
+ * mở cửa / Đã đóng cửa / Chưa có thông tin giờ mở cửa cho từng địa điểm TRUSTED trả về từ
  * `GET /geo/nearby-trusted`, đọc trung thực qua `getOpeningToday()` — không suy diễn khi thiếu dữ
  * liệu (Phase 32: "OPEN_NOW requires reliable hours; do not infer" vẫn đúng, chỉ là giờ đã có một
  * đường hiển thị an toàn thay vì bị chặn hoàn toàn).
@@ -26,14 +27,6 @@ export function SmartDiscovery({ locale }: { locale: Locale }) {
         </h2>
       </div>
       <p className={styles.smartSubtitle}>{copy.smartSubtitle}</p>
-
-      <div className={styles.smartQuickRow}>
-        {copy.smartQuickLinks.map((link) => (
-          <Link key={link.href} href={localizedHref(locale, link.href)} className={styles.smartQuickLink}>
-            {link.label}
-          </Link>
-        ))}
-      </div>
 
       <NearbyDiscovery
         locale={locale}
