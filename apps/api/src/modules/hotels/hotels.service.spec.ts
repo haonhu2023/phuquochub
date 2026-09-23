@@ -87,11 +87,40 @@ describe('HotelsService', () => {
 
     const res = await service.getBySlug('ks-a');
 
-    expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a');
+    // Không truyền locale → forward đúng `undefined` xuống PlacesService.getBySlug() (KHÔNG phải
+    // "không truyền tham số thứ hai nào cả" — hai việc khác nhau về mặt spy assertion, dù tương
+    // đương về hành vi runtime; xem describe "locale forwarding" bên dưới cho case có locale).
+    expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a', undefined);
     expect(res.hotel_details).toEqual({ star_rating: 4, hotel_type: 'resort' });
     expect(res.amenities).toEqual(['wifi', 'pool']);
     expect(res.rooms[0]).toMatchObject({ id: 'r1', name: 'Deluxe', price_ref: null });
     expect(JSON.stringify(res)).not.toContain('1500000');
+  });
+
+  // 2026-09 locale forwarding fix: trước đây getBySlug(slug) không nhận/forward locale nào cả, nên
+  // PlacesService luôn thấy `undefined` bất kể client yêu cầu gì. Đây là đúng ranh giới bị vá.
+  describe('getBySlug — locale forwarding', () => {
+    beforeEach(() => {
+      placesService.getBySlug.mockResolvedValue({ id: 'h1', slug: 'ks-a', name: 'Khách sạn A' });
+      repo.detail.mockResolvedValue(null);
+      repo.listRooms.mockResolvedValue([]);
+      repo.listAmenities.mockResolvedValue([]);
+    });
+
+    it('locale="en" → placesService.getBySlug("ks-a", "en")', async () => {
+      await service.getBySlug('ks-a', 'en');
+      expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a', 'en');
+    });
+
+    it('locale="vi" → placesService.getBySlug("ks-a", "vi")', async () => {
+      await service.getBySlug('ks-a', 'vi');
+      expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a', 'vi');
+    });
+
+    it('không truyền locale (0 đối số thứ hai) → forward undefined, KHÔNG tự đặt default "vi" ở tầng này (PlacesService/LocalesService đã lo việc đó, không nhân đôi)', async () => {
+      await service.getBySlug('ks-a');
+      expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a', undefined);
+    });
   });
 
   it('listRooms (mặc định, KHÔNG publicResponse): chuyển price_ref sang Number — đường đặc quyền updateRooms() phản ánh đúng giá actor vừa lưu', async () => {
