@@ -112,6 +112,22 @@ describe('POST /api/revalidate', () => {
       expect(mockRevalidateTag).not.toHaveBeenCalled();
     });
 
+    it('REVALIDATE_INTERNAL_SECRET vẫn là placeholder công khai của compose → bị coi như chưa cấu hình, rơi về JWT path', async () => {
+      // Trước cutover-4569d41, docker-compose.prod.yml mặc định về đúng chuỗi này khi .env thiếu
+      // biến — bất kỳ ai đọc repo cũng biết giá trị này. Route phải từ chối nó dù nó "đúng" theo
+      // nghĩa khớp header, để một lần deploy quên đặt secret thật không mở ra một backdoor công khai.
+      process.env.REVALIDATE_INTERNAL_SECRET = 'change-me-revalidate-secret-min-16-chars';
+      const res = await POST(
+        request(
+          { entityType: 'place', slug: 'bai-sao' },
+          { 'x-internal-revalidate-secret': 'change-me-revalidate-secret-min-16-chars' },
+        ),
+      );
+
+      expect(res.status).toBe(401);
+      expect(mockRevalidateTag).not.toHaveBeenCalled();
+    });
+
     it('server chưa cấu hình REVALIDATE_INTERNAL_SECRET → header secret bị bỏ qua, rơi về JWT path', async () => {
       // REVALIDATE_INTERNAL_SECRET không được set (beforeEach đã xoá) — mô phỏng môi trường
       // dev/test chưa cấu hình đường server-to-server, chỉ còn đường JWT hoạt động.

@@ -332,7 +332,10 @@ services:
       # Shared secret — the SAME value MUST also be set on the `web` service below (REVALIDATE_
       # INTERNAL_SECRET). Server-only (never NEXT_PUBLIC_-prefixed, so it can never reach a client
       # bundle), never logged; the web-side route compares it in constant time.
-      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
+      # No default (cutover-4569d41 hardening, 2026-09-23): a checked-in default is a public secret
+      # — anyone who reads this file knows it and can forge the internal-revalidate header. `:?`
+      # makes `docker compose config`/`up` refuse to start rather than silently fall back to it.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:?REVALIDATE_INTERNAL_SECRET must be set in .env — no default is permitted (min 16 chars, must not be the placeholder from .env.example)}
     # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
     # mạng Docker nội bộ bằng tên service `api:4000`.
     volumes:
@@ -382,7 +385,10 @@ services:
       # route.ts) authenticates the API's server-to-server calls against this value. Runtime env var
       # (read in the route handler, a server-only file), NOT a NEXT_PUBLIC_ build arg — it is never
       # baked into a client bundle.
-      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
+      # No default — see the api service's REVALIDATE_INTERNAL_SECRET comment above. Both services
+      # interpolate the exact same `${REVALIDATE_INTERNAL_SECRET:?...}` so a single `.env` value
+      # (or a single missing value) affects both identically; they cannot drift apart at this layer.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:?REVALIDATE_INTERNAL_SECRET must be set in .env — no default is permitted (min 16 chars, must not be the placeholder from .env.example)}
     # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
     # service `web:3000`.
     logging:

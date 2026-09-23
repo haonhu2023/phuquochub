@@ -110,8 +110,21 @@ export const envValidationSchema = Joi.object({
   BACKUP_STATUS_MEDIA_DIR: Joi.string().optional(),
 
   // C1 follow-up (2026-09-22) — server-side cache invalidation (configuration.ts's
-  // `cacheInvalidation` comment). Optional, no default: absent means "not configured", the
+  // `cacheInvalidation` comment). Optional outside production: absent means "not configured", the
   // service logs and no-ops instead of guessing a URL/secret.
   WEB_INTERNAL_URL: Joi.string().optional(),
-  REVALIDATE_INTERNAL_SECRET: Joi.string().min(16).optional(),
+  // Required in production (cutover-4569d41 hardening, 2026-09-23): the compose file used to fall
+  // back to a checked-in placeholder when this was unset, which is a public secret — anyone who
+  // reads the repo could forge the internal-revalidate header. `.invalid()` closes the other half
+  // of that gap: it rejects that exact placeholder in EVERY environment (not just production), so
+  // an operator who copies .env.example's literal example value fails fast at boot instead of
+  // silently running with a known secret.
+  REVALIDATE_INTERNAL_SECRET: Joi.string()
+    .min(16)
+    .invalid('change-me-revalidate-secret-min-16-chars')
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
 }).unknown(true);

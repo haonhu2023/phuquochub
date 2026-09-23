@@ -15,6 +15,9 @@ describe('envValidationSchema — DB credential fail-fast (PLACE-029)', () => {
     // PLACE-040: REDIS_URL is now also production-required (see the dedicated describe block
     // below) -- included here so this pre-existing DB-focused suite is unaffected by that change.
     REDIS_URL: 'redis://:a-real-redis-secret@redis.example.test:6379',
+    // cutover-4569d41: REVALIDATE_INTERNAL_SECRET is now also production-required (see its own
+    // describe block below) -- included here so this pre-existing DB-focused suite is unaffected.
+    REVALIDATE_INTERNAL_SECRET: 'a-real-revalidate-secret-value',
   };
 
   const validate = (env: Record<string, unknown>) =>
@@ -76,6 +79,9 @@ describe('envValidationSchema — REDIS_URL fail-fast (PLACE-040)', () => {
     DB_PASSWORD: 'a-real-secret',
     DB_NAME: 'phuquochub_prod',
     REDIS_URL: 'redis://:a-real-redis-secret@redis.example.test:6379',
+    // cutover-4569d41: REVALIDATE_INTERNAL_SECRET is now also production-required (see its own
+    // describe block below) -- included here so this pre-existing REDIS-focused suite is unaffected.
+    REVALIDATE_INTERNAL_SECRET: 'a-real-revalidate-secret-value',
   };
 
   const validate = (env: Record<string, unknown>) =>
@@ -102,5 +108,82 @@ describe('envValidationSchema — REDIS_URL fail-fast (PLACE-040)', () => {
     });
     expect(error).toBeUndefined();
     expect(value.REDIS_URL).toBe('redis://localhost:6379');
+  });
+});
+
+// cutover-4569d41 hardening (2026-09-23): docker-compose.prod.yml used to default
+// REVALIDATE_INTERNAL_SECRET to a checked-in placeholder when `.env` left it unset — a value
+// anyone reading the repo already knows, defeating the shared-secret check entirely. Mirrors the
+// DB-credential/REDIS_URL precedent above: required in production, plus `.invalid()` so the exact
+// placeholder string is rejected in every environment, not just production.
+describe('envValidationSchema — REVALIDATE_INTERNAL_SECRET fail-fast (cutover-4569d41)', () => {
+  const baseProdEnv = {
+    NODE_ENV: 'production',
+    JWT_ACCESS_SECRET: 'a'.repeat(16),
+    JWT_REFRESH_SECRET: 'b'.repeat(16),
+    CORS_ALLOWED_ORIGINS: 'https://example.test',
+    DB_HOST: 'db.example.test',
+    DB_USER: 'prod_user',
+    DB_PASSWORD: 'a-real-secret',
+    DB_NAME: 'phuquochub_prod',
+    REDIS_URL: 'redis://:a-real-redis-secret@redis.example.test:6379',
+    REVALIDATE_INTERNAL_SECRET: 'a-real-revalidate-secret-value',
+  };
+
+  const validate = (env: Record<string, unknown>) =>
+    envValidationSchema.validate(env, { abortEarly: false });
+
+  it('passes in production when a real, sufficiently long secret is set', () => {
+    const { error } = validate(baseProdEnv);
+    expect(error).toBeUndefined();
+  });
+
+  it('fails fast in production when REVALIDATE_INTERNAL_SECRET is missing', () => {
+    const env = { ...baseProdEnv } as Record<string, unknown>;
+    delete env.REVALIDATE_INTERNAL_SECRET;
+    const { error } = validate(env);
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REVALIDATE_INTERNAL_SECRET');
+  });
+
+  it('fails fast in production when REVALIDATE_INTERNAL_SECRET is an empty string', () => {
+    const { error } = validate({ ...baseProdEnv, REVALIDATE_INTERNAL_SECRET: '' });
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REVALIDATE_INTERNAL_SECRET');
+  });
+
+  it('fails fast in production when REVALIDATE_INTERNAL_SECRET is still the compose placeholder', () => {
+    const { error } = validate({
+      ...baseProdEnv,
+      REVALIDATE_INTERNAL_SECRET: 'change-me-revalidate-secret-min-16-chars',
+    });
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REVALIDATE_INTERNAL_SECRET');
+  });
+
+  it('fails fast in production when REVALIDATE_INTERNAL_SECRET is under 16 characters', () => {
+    const { error } = validate({ ...baseProdEnv, REVALIDATE_INTERNAL_SECRET: 'short' });
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REVALIDATE_INTERNAL_SECRET');
+  });
+
+  it('rejects the placeholder even outside production (an operator who copies .env.example literally still fails fast)', () => {
+    const { error } = validate({
+      NODE_ENV: 'development',
+      JWT_ACCESS_SECRET: 'a'.repeat(16),
+      JWT_REFRESH_SECRET: 'b'.repeat(16),
+      REVALIDATE_INTERNAL_SECRET: 'change-me-revalidate-secret-min-16-chars',
+    });
+    expect(error).toBeDefined();
+    expect(error?.message).toContain('REVALIDATE_INTERNAL_SECRET');
+  });
+
+  it('does not fail in development when REVALIDATE_INTERNAL_SECRET is unset (feature stays optional outside production)', () => {
+    const { error } = validate({
+      NODE_ENV: 'development',
+      JWT_ACCESS_SECRET: 'a'.repeat(16),
+      JWT_REFRESH_SECRET: 'b'.repeat(16),
+    });
+    expect(error).toBeUndefined();
   });
 });

@@ -28,6 +28,14 @@ import { apiGetAuth, ApiError } from '@/lib/http';
 // (compromised or just buggy) cannot ask to invalidate an arbitrary tag string.
 const ALLOWED_ENTITY_TYPES = new Set(['place']);
 
+// The compose file used to default REVALIDATE_INTERNAL_SECRET to this literal when unset — a
+// value checked into the tracked compose file is a PUBLIC secret. The compose file no longer
+// carries that default (cutover-4569d41 hardening, 2026-09-23), but Next.js has no Joi-style
+// boot-time schema to reject it the way the API does, so this route refuses it here instead: an
+// operator who somehow still ends up with this exact value gets treated as "not configured" (falls
+// through to real JWT auth below) rather than silently trusting a value anyone can read in git history.
+const KNOWN_PLACEHOLDER_SECRET = 'change-me-revalidate-secret-min-16-chars';
+
 function tagsFor(entityType: string, slug: string): string[] {
   if (entityType === 'place') return [`place:${slug}`, 'places:list'];
   return [];
@@ -48,7 +56,12 @@ function timingSafeStringEqual(a: string, b: string): boolean {
 async function authenticate(request: Request): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const internalSecret = process.env.REVALIDATE_INTERNAL_SECRET;
   const providedSecret = request.headers.get('x-internal-revalidate-secret');
-  if (internalSecret && providedSecret && timingSafeStringEqual(providedSecret, internalSecret)) {
+  if (
+    internalSecret &&
+    internalSecret !== KNOWN_PLACEHOLDER_SECRET &&
+    providedSecret &&
+    timingSafeStringEqual(providedSecret, internalSecret)
+  ) {
     return { ok: true };
   }
 
