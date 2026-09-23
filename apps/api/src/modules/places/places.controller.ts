@@ -15,6 +15,7 @@ import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import {
@@ -24,6 +25,7 @@ import {
   RightNowQueryDto,
   UpdatePlaceDto,
 } from './dto/places.dto';
+import { CreateReportDto } from '../moderation/dto/moderation.dto';
 
 // api.md §11. Đọc công khai; ghi qua permission (deny-by-default).
 @Controller('places')
@@ -104,5 +106,20 @@ export class PlacesController {
   @RequirePermissions('Place.Approve')
   approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
     return this.placesService.approve(id, user.sub);
+  }
+
+  // "Báo thông tin sai" (WF-12 shape, cùng T3 mà /reviews/:id/report và /media/:id/report đã dùng)
+  // — throttle 5/phút giống hai route report kia, chưa một chính sách riêng nào cho place.
+  @Post(':id/report')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions('Report.Create')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async report(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateReportDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    await this.placesService.report(id, dto, user.sub);
+    return null;
   }
 }

@@ -16,6 +16,7 @@ import { RbacModule } from '../rbac/rbac.module';
 import { SourcesModule } from '../sources/sources.module';
 import { PlaceTranslationsModule } from '../place-translations/place-translations.module';
 import { LocalesModule } from '../locales/locales.module';
+import { ModerationCoreModule } from '../moderation/moderation-core.module';
 
 // Place Trust & Freshness Surface (2026-08-19): `SourcesModule` cấp SourceAttributionsRepository/
 // SourcesRepository để PlacesService.getBySlug() đọc `trust_sources` (source_attributions +
@@ -37,6 +38,12 @@ import { LocalesModule } from '../locales/locales.module';
     // never the write-side methods. Neither module imports PlacesModule back (no cycle).
     PlaceTranslationsModule,
     LocalesModule,
+    // "Báo thông tin sai" (POST /places/:id/report) — cùng lý do ReviewsModule/MediaModule chỉ
+    // import ModerationCoreModule (không phải ModerationModule đầy đủ): chỉ cần
+    // ModerationReportsService, module lõi không kéo theo MediaModule/RbacModule của
+    // ModerationModule, không có vòng lặp (ModerationCoreModule không import gì ngoài TypeORM
+    // entities — xem comment của chính module đó).
+    ModerationCoreModule,
   ],
   controllers: [PlacesController],
   providers: [PlacesRepository, PlacesService],

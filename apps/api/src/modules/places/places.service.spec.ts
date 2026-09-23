@@ -39,6 +39,7 @@ import { PlaceStatus } from './place.enums';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { CreatePlaceDto, UpdatePlaceDto } from './dto/places.dto';
 import { PHU_QUOC_BOUNDS } from '../../common/geo-bounds';
+import { ModerationTargetType, ReportReason } from '../moderation/moderation.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 type Ctor = ConstructorParameters<typeof PlacesService>;
@@ -61,6 +62,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let sourcesRepo: LooseMock<Ctor[11]>;
   let placeTranslationsService: LooseMock<Ctor[12]>;
   let localesService: LooseMock<Ctor[13]>;
+  let moderationReports: LooseMock<Ctor[14]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -81,6 +83,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       archive: jest.fn(),
       setStatus: jest.fn(),
       existsBySlug: jest.fn(),
+      existsById: jest.fn(),
     });
     categoriesRepo = createMock<Ctor[1]>({ findById: jest.fn() });
     contactsRepo = createMock<Ctor[2]>({ listByOwner: jest.fn() });
@@ -103,6 +106,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     localesService = createMock<Ctor[13]>({
       resolveRequestLocale: jest.fn().mockResolvedValue({ localeCode: 'vi' }),
     });
+    moderationReports = createMock<Ctor[14]>({ report: jest.fn() });
 
     service = new PlacesService(
       placesRepo,
@@ -119,6 +123,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       sourcesRepo,
       placeTranslationsService,
       localesService,
+      moderationReports,
     );
   });
 
@@ -1216,6 +1221,52 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         // nếu description tới từ đó thì sẽ là undefined, không phải chuỗi row gốc.
         expect(res.description).toBe('Từ row, không phải mapper');
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // "Báo thông tin sai" — POST /places/:id/report (cùng T3 mà reviews/media đã dùng)
+  // -------------------------------------------------------------------------
+  describe('report', () => {
+    it('không tìm thấy place → NotFound, KHÔNG gọi moderationReports', async () => {
+      placesRepo.existsById.mockResolvedValue(false);
+
+      await expect(
+        service.report('missing-id', { reason: ReportReason.MISINFORMATION }, 'user-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(moderationReports.report).not.toHaveBeenCalled();
+    });
+
+    it('place tồn tại → gọi moderationReports.report với targetType=PLACE và đúng placeId/reporterId', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+
+      await service.report('p1', { reason: ReportReason.MISINFORMATION, description: 'Giờ mở cửa sai' }, 'user-1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith({
+        targetType: ModerationTargetType.PLACE,
+        targetId: 'p1',
+        reporterId: 'user-1',
+        reason: ReportReason.MISINFORMATION,
+        description: 'Giờ mở cửa sai',
+      });
+    });
+
+    it('không có description → truyền null, không truyền chuỗi rỗng hay undefined', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+
+      await service.report('p1', { reason: ReportReason.OTHER }, 'user-1');
+
+      expect(moderationReports.report).toHaveBeenCalledWith(
+        expect.objectContaining({ description: null }),
+      );
+    });
+
+    it('existsById dùng ĐÚNG mức kiểm tra như ReviewsService.create() — không lọc theo status (place chưa published vẫn báo cáo được, không rò rỉ trạng thái kiểm duyệt qua 404 khác biệt)', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+
+      await service.report('p1', { reason: ReportReason.OTHER }, 'user-1');
+
+      expect(placesRepo.existsById).toHaveBeenCalledWith('p1');
     });
   });
 
