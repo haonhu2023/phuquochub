@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const h = await getHotel(slug);
+    const h = await getHotel(slug, locale);
     const path = `/hotels/${h.slug}`;
     const enIndexable = isEnDetailIndexable(h.slug);
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
@@ -44,7 +44,7 @@ export default async function HotelDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let h: HotelDetail;
   try {
-    h = await getHotel(slug);
+    h = await getHotel(slug, locale);
   } catch (err) {
     // PLACE-041: phân biệt 404 (không tồn tại) với lỗi khác (mạng/5xx) — trước đây mọi lỗi đều
     // bị coi là 404, khiến sự cố server/mạng hiển thị sai thành "không tồn tại" (khớp
