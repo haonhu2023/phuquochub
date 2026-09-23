@@ -217,6 +217,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
       DB_NAME: phuquochub
       DB_SSL: "false"
+      # data-source.ts refuses to connect without this exact "<db_name>@<host>:<port>" match
+      # (fail-closed guard against migrating the wrong database). Fixed 2026-09-22 (B2): this was
+      # missing here entirely, so `docker compose --profile tools run migrate` would exit 1 before
+      # ever reaching Postgres — see docs/delivery/RELEASE-AND-ROLLBACK-CHECKLIST.md.
+      MIGRATION_EXPECTED_TARGET: "phuquochub@postgres:5432"
 
   api:
     build:
@@ -307,8 +312,36 @@ services:
       # service nội bộ Docker — trình duyệt không phân giải được) và KHÔNG phải media.phuquochub.com.
       # Default localhost dưới đây CHỈ đúng cho dev; production PHẢI đặt tường minh trong `.env`.
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:4000}
+      # BK1 (2026-09-22): scripts/backup.sh / scripts/backup-media.sh run on the HOST, outside any
+      # container, and write to `$PROJECT_DIR/backups` / `$PROJECT_DIR/backups/media` (their own
+      # defaults — see those scripts' headers). Without the bind mount below this container has no
+      # filesystem access to that directory at all; these two paths are where the MOUNTED copy
+      # lands inside the container (see `volumes:` below), not a guess at a host path. Left unset
+      # in dev/staging on purpose — BackupStatusService reports "not configured" (not a guessed
+      # empty result) until both are set, see configuration.ts's `backupStatus` comment.
+      BACKUP_STATUS_DB_DIR: ${BACKUP_STATUS_DB_DIR:-/repo/backups}
+      BACKUP_STATUS_MEDIA_DIR: ${BACKUP_STATUS_MEDIA_DIR:-/repo/backups/media}
+      # C1 hardening (2026-09-22): server-to-server cache invalidation. After every place write
+      # that touches public output (update/publish/unpublish), PlacesService calls the web app's
+      # OWN internal revalidate route directly (see core/cache-invalidation/) — this is what closes
+      # the gap where a caller bypassing the web dashboard (a script, a future AI agent, `curl`)
+      # would otherwise leave the public cache stale with nothing watching. `web` is reached by its
+      # Docker-internal service name (Topology A — never the public domain, no TLS hop needed for a
+      # container-to-container call on the private network).
+      WEB_INTERNAL_URL: ${WEB_INTERNAL_URL:-http://web:3000}
+      # Shared secret — the SAME value MUST also be set on the `web` service below (REVALIDATE_
+      # INTERNAL_SECRET). Server-only (never NEXT_PUBLIC_-prefixed, so it can never reach a client
+      # bundle), never logged; the web-side route compares it in constant time.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
     # PLACE-038: KHÔNG publish 4000 ra host — chỉ Caddy (service `caddy` bên dưới) gọi tới qua
     # mạng Docker nội bộ bằng tên service `api:4000`.
+    volumes:
+      # BK1 (2026-09-22): read-only — this container only REPORTS on backups, it never writes or
+      # deletes them (backup.sh/backup-media.sh/retention run on the host, outside Docker entirely).
+      # Host path matches those scripts' own default ($PROJECT_DIR/backups, where PROJECT_DIR is
+      # this compose file's directory on the host) — do not rename without updating BACKUP_DIR /
+      # MEDIA_BACKUP_DIR overrides for those scripts to match.
+      - ./backups:/repo/backups:ro
     logging:
       driver: json-file
       options:
@@ -344,6 +377,12 @@ services:
       # fail-closed in NODE_ENV=production when it is unset, taking down every server-rendered page
       # that fetches place data. See apps/web/src/lib/api.ts for the full explanation.
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000/api}
+      # C1 hardening (2026-09-22): must match the `api` service's REVALIDATE_INTERNAL_SECRET above
+      # exactly — this web app's own internal revalidate route (apps/web/src/app/api/revalidate/
+      # route.ts) authenticates the API's server-to-server calls against this value. Runtime env var
+      # (read in the route handler, a server-only file), NOT a NEXT_PUBLIC_ build arg — it is never
+      # baked into a client bundle.
+      REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:-change-me-revalidate-secret-min-16-chars}
     # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
     # service `web:3000`.
     logging:

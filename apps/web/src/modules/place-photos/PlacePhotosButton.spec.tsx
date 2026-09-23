@@ -32,6 +32,9 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canModerate: false,
   canReviewTranslations: true,
   canSelfApproveOwnMedia: true,
+  canEditGuides: false,
+  canEditSiteContent: false,
+  canViewBackupStatus: false,
 };
 
 function authed() {
@@ -42,6 +45,7 @@ function authed() {
     login: jest.fn(),
     register: jest.fn(),
     logout: jest.fn(),
+    sessionExpired: false,
   });
   mockReadSession.mockReturnValue(SESSION);
 }
@@ -59,6 +63,7 @@ describe('PlacePhotosButton — nút 📷 Quản lý ảnh + drawer (content_own
       login: jest.fn(),
       register: jest.fn(),
       logout: jest.fn(),
+      sessionExpired: false,
     });
 
     const { container } = render(<PlacePhotosButton placeId="p1" />);
@@ -73,6 +78,7 @@ describe('PlacePhotosButton — nút 📷 Quản lý ảnh + drawer (content_own
       login: jest.fn(),
       register: jest.fn(),
       logout: jest.fn(),
+      sessionExpired: false,
     });
 
     const { container } = render(<PlacePhotosButton placeId="p1" />);

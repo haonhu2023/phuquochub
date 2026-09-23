@@ -27,6 +27,7 @@ export const PUBLIC_ROUTE_ROOTS = [
   'beaches',
   'attractions',
   'events',
+  'guide',
   'about',
   'contact',
   'privacy',

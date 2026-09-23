@@ -14,6 +14,9 @@
 // Nay `GET /users/me` (đã trả `roles` từ trước) được đọc để suy ra đúng hai cờ hiển thị — xem
 // modules/auth/capabilities.ts. Đây THUẦN TUÝ là UX: backend vẫn cưỡng chế bằng PermissionsGuard,
 // nên cờ bị giả mạo chỉ dẫn tới một trang trả 403.
+//
+// UI pass (2026-09-22): trình bày đổi từ danh sách <p><Link> sang lưới thẻ (dashboard-home.module.css)
+// — logic hiển thị/quyền (caps.*) và hành vi đăng xuất giữ NGUYÊN, không đổi.
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -22,6 +25,7 @@ import { useAuth } from '@/modules/auth/AuthProvider';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { NO_CAPABILITIES, type UserCapabilities } from '@/modules/auth/capabilities';
+import styles from './dashboard-home.module.css';
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -51,62 +55,36 @@ export default function DashboardPage() {
     router.replace('/login');
   }
 
+  const links: Array<{ href: string; label: string; show: boolean }> = [
+    { href: '/dashboard/places', label: 'Địa điểm của tôi', show: true },
+    { href: '/dashboard/business-claims/new', label: 'Yêu cầu xác nhận quyền quản lý', show: true },
+    { href: '/dashboard/business-claims', label: 'Trạng thái yêu cầu của tôi', show: true },
+    { href: '/dashboard/editorial/places', label: 'Biên tập nội dung địa điểm', show: caps.canEditorial },
+    { href: '/dashboard/moderation', label: 'Hàng chờ kiểm duyệt', show: caps.canModerate },
+    { href: '/dashboard/translations/review', label: 'Duyệt bản dịch', show: caps.canReviewTranslations },
+    { href: '/dashboard/editorial/guides', label: 'Biên tập cẩm nang', show: caps.canEditGuides },
+    { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },
+  ];
+
   return (
     <main>
       <h1>Bảng điều khiển</h1>
-      <p style={{ color: 'var(--muted)' }}>
-        Xin chào, <strong style={{ color: 'var(--fg)' }}>{user?.displayName}</strong> ({user?.email})
+      <p className={styles.greeting}>
+        Xin chào, <strong className={styles.greetingName}>{user?.displayName}</strong> ({user?.email})
       </p>
-      <p style={{ marginTop: '1rem' }}>
-        <Link href="/dashboard/places" style={{ color: 'var(--accent)' }}>
-          Địa điểm của tôi →
-        </Link>
-      </p>
-      <p style={{ marginTop: '0.5rem' }}>
-        <Link href="/dashboard/business-claims/new" style={{ color: 'var(--accent)' }}>
-          Yêu cầu xác nhận quyền quản lý →
-        </Link>
-      </p>
-      <p style={{ marginTop: '0.5rem' }}>
-        <Link href="/dashboard/business-claims" style={{ color: 'var(--accent)' }}>
-          Trạng thái yêu cầu của tôi →
-        </Link>
-      </p>
-      {caps.canEditorial && (
-        <p style={{ marginTop: '0.5rem' }}>
-          <Link href="/dashboard/editorial/places" style={{ color: 'var(--accent)' }}>
-            Biên tập nội dung địa điểm →
-          </Link>
-        </p>
-      )}
-      {caps.canModerate && (
-        <p style={{ marginTop: '0.5rem' }}>
-          <Link href="/dashboard/moderation" style={{ color: 'var(--accent)' }}>
-            Hàng chờ kiểm duyệt →
-          </Link>
-        </p>
-      )}
-      {caps.canReviewTranslations && (
-        <p style={{ marginTop: '0.5rem' }}>
-          <Link href="/dashboard/translations/review" style={{ color: 'var(--accent)' }}>
-            Duyệt bản dịch →
-          </Link>
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={onLogout}
-        disabled={busy}
-        style={{
-          marginTop: '1rem',
-          padding: '0.6rem 1.1rem',
-          borderRadius: 8,
-          border: '1px solid #1e293b',
-          background: 'transparent',
-          color: 'var(--fg)',
-          cursor: 'pointer',
-        }}
-      >
+      <div className={styles.grid}>
+        {links
+          .filter((l) => l.show)
+          .map((l) => (
+            <Link key={l.href} href={l.href} className={styles.card}>
+              <div className={styles.cardTitle}>{l.label}</div>
+              <span className={styles.cardArrow} aria-hidden="true">
+                →
+              </span>
+            </Link>
+          ))}
+      </div>
+      <button type="button" onClick={onLogout} disabled={busy} className={styles.logoutBtn}>
         {busy ? 'Đang đăng xuất…' : 'Đăng xuất'}
       </button>
     </main>

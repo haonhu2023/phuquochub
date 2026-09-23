@@ -6,9 +6,14 @@
 //
 // PLACE_TRANSLATION (ADR-020): mỗi bản dịch/route/seo đa ngôn ngữ là một entity riêng theo dõi
 // revision qua bảng wiki_revisions dùng chung — KHÔNG tạo bảng revision riêng cho i18n.
+// GUIDE_ARTICLE (Phú Quốc Guide CMS candidate, 2026-09-18): one wiki_revisions row per
+// draft-save/publish of a guide_articles row — snapshot is the whole article + its ordered
+// guide_blocks, same "single stable id, in-place update" shape as PLACE (not the insert-only
+// per-locale-row shape PLACE_TRANSLATION uses).
 export enum RevisionEntityType {
   PLACE = 'place',
   PLACE_TRANSLATION = 'place_translation',
+  GUIDE_ARTICLE = 'guide_article',
 }
 
 // Kênh kỹ thuật phát sinh revision (khác `source_attributions` = bằng chứng nội dung).

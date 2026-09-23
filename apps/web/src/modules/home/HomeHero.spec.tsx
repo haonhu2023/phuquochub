@@ -3,8 +3,10 @@ import { render, screen } from '@testing-library/react';
 import { HomeHero } from './HomeHero';
 import { getHomeCopy } from './home.copy';
 import { listPlaces } from '@/modules/places/api/places.api';
+import { getHomeContent } from '@/modules/site-content/api/site-content.api';
 
 jest.mock('@/modules/places/api/places.api', () => ({ listPlaces: jest.fn() }));
+jest.mock('@/modules/site-content/api/site-content.api', () => ({ getHomeContent: jest.fn() }));
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -15,6 +17,9 @@ jest.mock('next/link', () => ({
 }));
 
 const mockListPlaces = listPlaces as jest.Mock;
+const mockGetHomeContent = getHomeContent as jest.Mock;
+
+const NO_OVERRIDE = { hero: null, about: null, featuredPlaceSlugs: [], social: { facebook: null, zalo: null, instagram: null, whatsapp: null, phone: null } };
 
 // HomeHero là async Server Component (V3: gọi listPlaces một lần cho HeroVisual) — cùng quy ước
 // DiscoverPlaces.spec.tsx: gọi trực tiếp như một async function thuần rồi render JSX đã resolve,
@@ -26,6 +31,7 @@ async function renderHero(locale?: 'vi' | 'en') {
 
 beforeEach(() => {
   mockListPlaces.mockReset().mockResolvedValue([]);
+  mockGetHomeContent.mockReset().mockResolvedValue(NO_OVERRIDE);
 });
 
 describe('HomeHero', () => {
@@ -125,6 +131,42 @@ describe('HomeHero', () => {
     it('composition là trang trí (aria-hidden) — không phải nội dung/điều hướng chính', async () => {
       const { container } = await renderHero();
       expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
+    });
+  });
+
+  // S1 (2026-09-22) — CMS site_content.home_hero override eyebrow/title/lede/ảnh hero mặc định.
+  describe('override CMS (S1)', () => {
+    it('có override → eyebrow/title/lede đổi theo CMS, KHÔNG còn giá trị tĩnh của home.copy.ts', async () => {
+      mockGetHomeContent.mockResolvedValue({
+        ...NO_OVERRIDE,
+        hero: { eyebrow: 'Eyebrow CMS', title: 'Tiêu đề CMS', lede: 'Lede CMS', heroImageUrl: null },
+      });
+      await renderHero();
+      expect(screen.getByText('Eyebrow CMS')).toBeInTheDocument();
+      expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent('Tiêu đề CMS');
+      expect(screen.getByText('Lede CMS')).toBeInTheDocument();
+      expect(screen.queryByText(getHomeCopy('vi').title)).not.toBeInTheDocument();
+    });
+
+    it('không có override (hero: null) → giữ nguyên nội dung tĩnh mặc định', async () => {
+      await renderHero();
+      expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent(getHomeCopy('vi').title);
+    });
+
+    it('có heroImageUrl → render ảnh thật thay cho composition CSS thuần', async () => {
+      mockGetHomeContent.mockResolvedValue({
+        ...NO_OVERRIDE,
+        hero: { eyebrow: 'E', title: 'T', lede: 'L', heroImageUrl: 'https://cdn.test/media/m1/file' },
+      });
+      const { container } = await renderHero();
+      const img = container.querySelector('img');
+      expect(img).toHaveAttribute('src', 'https://cdn.test/media/m1/file');
+    });
+
+    it('getHomeContent lỗi → KHÔNG ném ra ngoài, hero vẫn render nội dung tĩnh mặc định', async () => {
+      mockGetHomeContent.mockRejectedValue(new Error('API down'));
+      await renderHero();
+      expect(screen.getAllByRole('heading', { level: 1 })[0]).toHaveTextContent(getHomeCopy('vi').title);
     });
   });
 });

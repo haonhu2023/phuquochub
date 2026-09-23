@@ -6,6 +6,7 @@ import { getDataSourceToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { TransformInterceptor } from '../src/common/interceptors/transform.interceptor';
 import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter';
 
@@ -165,7 +166,10 @@ describe('ADR-019 M0.2 — resource-scoped PEP rollout (red-then-green, live Pos
       const res = await request(app.getHttpServer())
         .patch(`/api/places/${placeAId}`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'Place A — updated by manager A' });
+        .send({
+          name: 'Place A — updated by manager A',
+          expected_content_version: await currentPlaceContentVersion(ds, placeAId),
+        });
 
       expect(res.status).toBe(200);
     });
@@ -328,11 +332,17 @@ describe('ADR-019 M0.2 — resource-scoped PEP rollout (red-then-green, live Pos
       const a = await request(app.getHttpServer())
         .patch(`/api/places/${placeAId}`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'Place A — edited by contributor' });
+        .send({
+          name: 'Place A — edited by contributor',
+          expected_content_version: await currentPlaceContentVersion(ds, placeAId),
+        });
       const b = await request(app.getHttpServer())
         .patch(`/api/places/${placeBId}`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'Place B — edited by contributor' });
+        .send({
+          name: 'Place B — edited by contributor',
+          expected_content_version: await currentPlaceContentVersion(ds, placeBId),
+        });
 
       expect(a.status).toBe(200);
       expect(b.status).toBe(200);
@@ -345,11 +355,17 @@ describe('ADR-019 M0.2 — resource-scoped PEP rollout (red-then-green, live Pos
       const a = await request(app.getHttpServer())
         .patch(`/api/places/${placeAId}`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'Place A — edited by super admin' });
+        .send({
+          name: 'Place A — edited by super admin',
+          expected_content_version: await currentPlaceContentVersion(ds, placeAId),
+        });
       const b = await request(app.getHttpServer())
         .patch(`/api/places/${placeBId}`)
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ name: 'Place B — edited by super admin' });
+        .send({
+          name: 'Place B — edited by super admin',
+          expected_content_version: await currentPlaceContentVersion(ds, placeBId),
+        });
 
       expect(a.status).toBe(200);
       expect(b.status).toBe(200);

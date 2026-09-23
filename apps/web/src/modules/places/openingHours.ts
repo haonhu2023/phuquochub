@@ -1,4 +1,5 @@
 import type { OpeningHours, OpeningHoursRange } from '@phuquochub/shared-types';
+import type { Locale } from '@/lib/locale';
 
 /**
  * Đọc `opening_hours` (JSONB, SSOT docs/data/modules/places.md §4) thành thứ hiển thị được.
@@ -34,6 +35,26 @@ export const WEEKDAY_LABELS: Record<WeekdayKey, string> = {
   fri: 'Thứ Sáu',
   sat: 'Thứ Bảy',
   sun: 'Chủ Nhật',
+};
+
+// X1 (2026-09-22, G10) — additive: `WEEKDAY_LABELS` GIỮ NGUYÊN (dashboard preview VI-only vẫn
+// dùng đúng nhãn cũ). Biến thể EN chỉ dùng khi `locale='en'` được truyền tường minh.
+const WEEKDAY_LABELS_EN: Record<WeekdayKey, string> = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday',
+};
+
+// `closedLabel` ("Đã đóng cửa"/"Closed now") và `closedHours` ("Đóng cửa"/"Closed") là HAI chuỗi
+// KHÁC NHAU trong bản gốc tiếng Việt (label dài hơn cho badge, hours ngắn hơn cho ô giờ) — giữ tách
+// riêng để không lặp lại lỗi gộp hai trường khi thêm bản EN.
+const OPENING_TEXT: Record<Locale, { unknown: string; closedLabel: string; closedHours: string; open: string; allDay: string; noInfo: string }> = {
+  vi: { unknown: 'Chưa có thông tin giờ mở cửa', closedLabel: 'Đã đóng cửa', closedHours: 'Đóng cửa', open: 'Đang mở cửa', allDay: 'Cả ngày', noInfo: 'Chưa có thông tin' },
+  en: { unknown: 'No opening hours information', closedLabel: 'Closed now', closedHours: 'Closed', open: 'Open now', allDay: 'Open 24 hours', noInfo: 'No information' },
 };
 
 /** `Intl` trả nhãn thứ tiếng Anh viết tắt; đổi về khoá dữ liệu. */
@@ -190,10 +211,14 @@ function exceptionFor(oh: OpeningHours, date: string): Record<string, unknown> |
  * `now` tiêm được để test tất định. Trang chi tiết fetch với `cache: 'no-store'` nên Server
  * Component chạy lại mỗi request — kết quả không bị đóng băng theo cache.
  */
-export function getOpeningToday(oh: OpeningHours | null | undefined, now: Date = new Date()): OpeningToday {
+// `locale` tuỳ chọn (mặc định `'vi'`, tham số thứ 3 — GIỮ NGUYÊN mọi lời gọi cũ vốn chỉ truyền tới
+// `now`, xem openingHours.spec.ts) — G10, X1 2026-09-22: `places/[slug]/page.tsx` truyền `locale`
+// tường minh; dashboard preview (`PlacePreviewView.tsx`, VI-only theo thiết kế) không cần đổi.
+export function getOpeningToday(oh: OpeningHours | null | undefined, now: Date = new Date(), locale: Locale = 'vi'): OpeningToday {
+  const t = OPENING_TEXT[locale];
   const unknown: OpeningToday = {
     state: 'unknown',
-    label: 'Chưa có thông tin giờ mở cửa',
+    label: t.unknown,
     hours: null,
     note: null,
   };
@@ -208,11 +233,11 @@ export function getOpeningToday(oh: OpeningHours | null | undefined, now: Date =
 
   // Ngoại lệ THẮNG lịch thường — đó là toàn bộ lý do nó tồn tại (nghỉ lễ, giờ đặc biệt).
   if (exception?.closed === true) {
-    return { state: 'closed', label: 'Đã đóng cửa', hours: 'Đóng cửa', note };
+    return { state: 'closed', label: t.closedLabel, hours: t.closedHours, note };
   }
 
   if (oh.is_24h === true && !exception) {
-    return { state: 'open', label: 'Đang mở cửa', hours: 'Cả ngày', note: null };
+    return { state: 'open', label: t.open, hours: t.allDay, note: null };
   }
 
   const regular = regularOf(oh);
@@ -229,14 +254,14 @@ export function getOpeningToday(oh: OpeningHours | null | undefined, now: Date =
     // liệu HỎNG, không phải lời khai đóng cửa. Trả 'closed' ở đây là bịa ra một khẳng định từ
     // rác — và là khẳng định khiến người đọc không đến nơi.
     return raw.length === 0
-      ? { state: 'closed', label: 'Đã đóng cửa', hours: 'Đóng cửa', note }
+      ? { state: 'closed', label: t.closedLabel, hours: t.closedHours, note }
       : { ...unknown, note };
   }
 
   const open = ranges.some((r) => covers(r, zoned.minutes));
   return {
     state: open ? 'open' : 'closed',
-    label: open ? 'Đang mở cửa' : 'Đã đóng cửa',
+    label: open ? t.open : t.closedLabel,
     hours: formatRanges(ranges),
     note,
   };
@@ -246,12 +271,16 @@ export function getOpeningToday(oh: OpeningHours | null | undefined, now: Date =
  * Lịch TUẦN (giờ thường). Ngoại lệ theo ngày cố ý KHÔNG trộn vào đây — chúng thuộc về một ngày cụ
  * thể, còn bảng này mô tả tuần điển hình; trộn vào sẽ khiến người đọc tưởng lịch tuần đã đổi.
  */
+// `locale` tuỳ chọn — cùng lý do `getOpeningToday` ở trên.
 export function getOpeningWeek(
   oh: OpeningHours | null | undefined,
   now: Date = new Date(),
+  locale: Locale = 'vi',
 ): OpeningWeekRow[] {
   if (!isPlainObject(oh) || !hasOpeningHours(oh)) return [];
 
+  const t = OPENING_TEXT[locale];
+  const weekdayLabels = locale === 'en' ? WEEKDAY_LABELS_EN : WEEKDAY_LABELS;
   const timezone = typeof oh.timezone === 'string' && oh.timezone ? oh.timezone : DEFAULT_TIMEZONE;
   const today = zonedNow(timezone, now)?.weekday ?? null;
   const regular = regularOf(oh);
@@ -260,19 +289,19 @@ export function getOpeningWeek(
   return WEEKDAY_KEYS.map((key) => {
     let hours: string;
     if (allDay) {
-      hours = 'Cả ngày';
+      hours = t.allDay;
     } else {
       const raw = regular?.[key];
       if (!Array.isArray(raw)) {
-        hours = 'Chưa có thông tin';
+        hours = t.noInfo;
       } else {
         const ranges = validRanges(raw);
         // Cùng phân biệt như `getOpeningToday`: rỗng = đóng cửa (lời khai), không đọc được = chưa
         // có thông tin (dữ liệu hỏng). Không gộp.
         if (ranges.length > 0) hours = formatRanges(ranges);
-        else hours = raw.length === 0 ? 'Đóng cửa' : 'Chưa có thông tin';
+        else hours = raw.length === 0 ? t.closedHours : t.noInfo;
       }
     }
-    return { key, label: WEEKDAY_LABELS[key], hours, isToday: key === today };
+    return { key, label: weekdayLabels[key], hours, isToday: key === today };
   });
 }

@@ -54,6 +54,23 @@ export interface AppConfig {
     maxBatches: number;
     maxExecutionMs: number;
   };
+  // BK1 (launch-readiness pass, 2026-09-22) — read-only owner-facing backup status. `null` (not a
+  // guessed default path) when the env var is unset: `scripts/backup.sh` runs on the production
+  // HOST, outside any container, and this API's own container has no filesystem access to that
+  // directory unless it is explicitly bind-mounted (see docker-compose.prod.yml's `api.volumes`) —
+  // guessing a path here would silently report "no backups found" instead of "not configured",
+  // which look identical to an owner unless the two are kept distinct.
+  backupStatus: { dbDir: string | null; mediaDir: string | null };
+  // C1 follow-up (2026-09-22) — server-side cache invalidation. The web app's Next.js server holds
+  // the Data Cache; this API has no access to it directly, so a real place mutation (create/
+  // update/publish/unpublish) tells the web app's `POST /api/revalidate` to invalidate the
+  // affected tags via an authenticated service-to-service call, over HTTP since API and web are
+  // separate processes/containers with no shared memory. `null` (not a guessed URL/secret) when
+  // either is unset — same "not configured" convention as `backupStatus` above — the invalidation
+  // call becomes a logged no-op instead of silently trying (and failing) against a wrong default.
+  // NEVER read from a `NEXT_PUBLIC_`-prefixed or client-visible variable: this secret must never
+  // reach a browser bundle.
+  cacheInvalidation: { webInternalUrl: string | null; sharedSecret: string | null };
 }
 
 // Media Upload Foundation — bucket isolation (design review, 2026-07-30): S3_BUCKET is the ONLY
@@ -142,5 +159,13 @@ export default (): AppConfig => ({
     batchSize: parseInt(process.env.VERIFICATION_EXPIRY_BATCH_SIZE ?? '100', 10),
     maxBatches: parseInt(process.env.VERIFICATION_EXPIRY_MAX_BATCHES ?? '50', 10),
     maxExecutionMs: parseInt(process.env.VERIFICATION_EXPIRY_MAX_EXECUTION_MS ?? '300000', 10),
+  },
+  backupStatus: {
+    dbDir: process.env.BACKUP_STATUS_DB_DIR?.trim() || null,
+    mediaDir: process.env.BACKUP_STATUS_MEDIA_DIR?.trim() || null,
+  },
+  cacheInvalidation: {
+    webInternalUrl: process.env.WEB_INTERNAL_URL?.trim().replace(/\/+$/, '') || null,
+    sharedSecret: process.env.REVALIDATE_INTERNAL_SECRET?.trim() || null,
   },
 });

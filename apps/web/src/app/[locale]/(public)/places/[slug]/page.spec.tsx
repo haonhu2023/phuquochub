@@ -38,6 +38,7 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'pending',
+    content_version: 1,
     status: 'published',
     location: { lat: 10.0466, lng: 104.0281 },
     address: null,
@@ -55,6 +56,8 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     media: [],
     faqs: [],
     trust_sources: [],
+    en_display_name_approved: false,
+    en_short_description_approved: false,
     ...overrides,
   };
 }
@@ -64,6 +67,38 @@ async function renderPage(p: PlaceDetail) {
   mockListReviews.mockResolvedValueOnce([]);
   render(await PlaceDetailPage({ params: Promise.resolve({ slug: p.slug, locale: 'vi' }) }));
 }
+
+// 2026-09-17 (real-data pass): gallery được tách ra `PlaceGallery` (dùng chung với
+// hotels/restaurants/tours) — test lại HÀNH VI render, không phải chi tiết cài đặt, để đảm bảo
+// refactor không lặng lẽ làm mất gallery khỏi trang này.
+describe('PlaceDetailPage — gallery ảnh công khai (dùng chung PlaceGallery)', () => {
+  it('có media đã published -> render ảnh thật', async () => {
+    await renderPage(
+      place({
+        media: [
+          {
+            id: 'm1',
+            type: 'image',
+            url: 'https://api.example/api/media/m1/file',
+            thumbnail_url: null,
+            caption: null,
+            alt_text: 'Ảnh thật',
+            status: 'published',
+            attribution: null,
+            license_type: null,
+            license_url: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+  });
+
+  it('media rỗng -> không render <img> nào', async () => {
+    await renderPage(place({ media: [] }));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
 
 describe('PlaceDetailPage — Public Beta trust disclosure', () => {
   describe('pending disclosure', () => {
@@ -363,6 +398,48 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
         });
         expect(metadataVi.robots).toBeUndefined();
       });
+
+      // EN indexation gate v2 (H): một place đã có CẢ HAI field EN thật sự duyệt/công khai (giống
+      // VinWonders sau khi chủ cơ sở duyệt qua UI) → bản /en phải index được, có hreflang="en"
+      // thật, và canonical tự trỏ về chính nó (không còn trỏ về /vi).
+      it('EN indexation gate v2 (H): place có display_name + short_description EN đã duyệt/công khai → indexable', async () => {
+        const fullyApprovedEnPlace = {
+          ...enPlace,
+          en_display_name_approved: true,
+          en_short_description_approved: true,
+        };
+        mockGetPlace.mockResolvedValueOnce(fullyApprovedEnPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.robots).toBeUndefined();
+        expect(metadataEn.alternates?.canonical).toBe(
+          'http://localhost:3000/en/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.en).toBe(
+          'http://localhost:3000/en/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.vi).toBe(
+          'http://localhost:3000/vi/places/vinwonders-phu-quoc',
+        );
+        expect(metadataEn.alternates?.languages?.['x-default']).toBe(
+          'http://localhost:3000/vi/places/vinwonders-phu-quoc',
+        );
+      });
+
+      it('EN indexation gate v2: chỉ MỘT trong hai field EN đã duyệt (tên duyệt, mô tả còn PENDING) → vẫn noindex', async () => {
+        const partiallyApprovedEnPlace = {
+          ...enPlace,
+          en_display_name_approved: true,
+          en_short_description_approved: false,
+        };
+        mockGetPlace.mockResolvedValueOnce(partiallyApprovedEnPlace);
+        const metadataEn = await generateMetadata({
+          params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'en' }),
+        });
+        expect(metadataEn.robots).toEqual({ index: false, follow: true });
+        expect(metadataEn.alternates?.languages?.en).toBeUndefined();
+      });
     });
 
     describe('page render', () => {
@@ -394,6 +471,78 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
         render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'vinwonders-phu-quoc', locale: 'vi' }) }));
         expect(screen.getByRole('heading', { name: 'VinWonders Phú Quốc' })).toBeInTheDocument();
       });
+    });
+  });
+
+  // G10 (X1, launch-readiness pass 2026-09-22) — phần thân trang (Giới thiệu/Thông tin/Liên hệ/Giá)
+  // trước đây hardcode tiếng Việt bất kể `/en`. Test dưới đây khẳng định KHÔNG còn chữ tiếng Việt
+  // nào của CHÍNH TRANG này (section heading/label) lọt vào bản `/en` — không khẳng định lại toàn
+  // bộ nội dung do getPlace() trả về (đó là dữ liệu, đã có test riêng ở trên).
+  describe('G10 — phần thân trang theo đúng locale', () => {
+    async function renderEn(p: Partial<PlaceDetail> = {}) {
+      mockGetPlace.mockResolvedValueOnce(place(p));
+      mockListReviews.mockResolvedValueOnce([]);
+      render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'en' }) }));
+    }
+
+    it('locale=en → section headings tiếng Anh, KHÔNG còn "Giới thiệu"/"Thông tin"/"Liên hệ"/"Giá dịch vụ"/"Câu hỏi thường gặp"', async () => {
+      await renderEn({
+        description: 'A white sand beach.',
+        address: '123 Main St',
+        contacts: [{ id: 'c1', contact_type: 'phone', label: null, value: '0909123456', is_primary: true, verification_status: 'verified', display_order: 0 }],
+        prices: [{ id: 'pr1', service_name: 'Entry', is_free: true, amount: null, currency: 'VND', unit: null, verification_status: 'verified', valid_from: null, valid_to: null }],
+        faqs: [{ id: 'f1', question: 'Open when?', answer: 'Daily', sort_order: 0, is_ai_generated: false, status: 'published' }],
+      });
+
+      expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Information' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Contact' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Prices' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'FAQ' })).toBeInTheDocument();
+      expect(screen.queryByText('Giới thiệu')).not.toBeInTheDocument();
+      expect(screen.queryByText('Thông tin')).not.toBeInTheDocument();
+      expect(screen.queryByText('Liên hệ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Giá dịch vụ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Câu hỏi thường gặp')).not.toBeInTheDocument();
+    });
+
+    it('locale=en → info labels (Address/Area/Price range) tiếng Anh, không còn "Địa chỉ"/"Khu vực"/"Mức giá"', async () => {
+      await renderEn({ address: '123 Main St', ward: 'An Thoi', price_range: 'mid', verification_status: 'verified' });
+      expect(screen.getByText('Address')).toBeInTheDocument();
+      expect(screen.getByText('Area')).toBeInTheDocument();
+      expect(screen.getByText('Price range')).toBeInTheDocument();
+      expect(screen.getByText('Mid-range')).toBeInTheDocument();
+      expect(screen.queryByText('Địa chỉ')).not.toBeInTheDocument();
+      expect(screen.queryByText('Khu vực')).not.toBeInTheDocument();
+      expect(screen.queryByText('Mức giá')).not.toBeInTheDocument();
+      expect(screen.queryByText('Tầm trung')).not.toBeInTheDocument();
+    });
+
+    it('locale=en → trust badge và trust note tiếng Anh, không còn "Chưa xác minh"/"Đã xác minh"', async () => {
+      await renderEn({ verification_status: 'verified' });
+      expect(screen.getByText('Verified')).toBeInTheDocument();
+      expect(screen.queryByText('Đã xác minh')).not.toBeInTheDocument();
+    });
+
+    it('locale=en → giá "Miễn phí" hiển thị "Free"', async () => {
+      await renderEn({
+        prices: [{ id: 'pr1', service_name: 'Entry', is_free: true, amount: null, currency: 'VND', unit: null, verification_status: 'verified', valid_from: null, valid_to: null }],
+      });
+      expect(screen.getByText('Free')).toBeInTheDocument();
+      expect(screen.queryByText('Miễn phí')).not.toBeInTheDocument();
+    });
+
+    it('locale=en → giá chưa xác minh hiện "Price is being verified", không còn "Giá đang được xác minh"', async () => {
+      await renderEn({ price_range: 'mid', verification_status: 'pending' });
+      expect(screen.getByText('Price is being verified')).toBeInTheDocument();
+      expect(screen.queryByText('Giá đang được xác minh')).not.toBeInTheDocument();
+    });
+
+    it('locale=vi (mặc định) vẫn giữ nguyên section heading tiếng Việt — không đổi hành vi hiện có', async () => {
+      mockGetPlace.mockResolvedValueOnce(place({ description: 'Bãi biển cát trắng.' }));
+      mockListReviews.mockResolvedValueOnce([]);
+      render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'vi' }) }));
+      expect(screen.getByRole('heading', { name: 'Giới thiệu' })).toBeInTheDocument();
     });
   });
 });

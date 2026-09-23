@@ -169,7 +169,10 @@ function validateOpeningHours(opening_hours: unknown) {
 }
 
 function validateUpdateOpeningHours(opening_hours: unknown) {
-  return validate(plainToInstance(UpdatePlaceDto, { opening_hours }), PIPE_OPTIONS);
+  // expected_content_version is REQUIRED (AddPlaceContentVersion, 2026-09-22) but orthogonal to
+  // what this helper tests — a fixed valid value keeps every existing opening_hours-only test
+  // asserting exactly what it says (the CAS field's own validation has its own describe block).
+  return validate(plainToInstance(UpdatePlaceDto, { opening_hours, expected_content_version: 1 }), PIPE_OPTIONS);
 }
 
 // Trích NGUYÊN VĂN từ docs/data/modules/places.md §4 — nếu ca này hỏng thì validator đã
@@ -295,5 +298,32 @@ describe('UpdatePlaceDto.opening_hours — cùng ràng buộc (không để hở
   it('từ chối cấu trúc sai giống Create', async () => {
     const errors = await validateUpdateOpeningHours({ regular: { mon: '08:00' } });
     expect(errors.map((e) => e.property)).toContain('opening_hours');
+  });
+});
+
+// CAS token (AddPlaceContentVersion, 2026-09-22) — BẮT BUỘC trên MỌI PATCH, không phải tùy chọn.
+describe('UpdatePlaceDto.expected_content_version', () => {
+  function validateUpdate(payload: Record<string, unknown>) {
+    return validate(plainToInstance(UpdatePlaceDto, payload), PIPE_OPTIONS);
+  }
+
+  it('thiếu trường → bị từ chối', async () => {
+    const errors = await validateUpdate({ name: 'Tên mới' });
+    expect(errors.map((e) => e.property)).toContain('expected_content_version');
+  });
+
+  it('không phải số nguyên → bị từ chối', async () => {
+    const errors = await validateUpdate({ name: 'X', expected_content_version: 'mới nhất' });
+    expect(errors.map((e) => e.property)).toContain('expected_content_version');
+  });
+
+  it('< 1 → bị từ chối (content_version bắt đầu từ 1, không có phiên bản 0)', async () => {
+    const errors = await validateUpdate({ name: 'X', expected_content_version: 0 });
+    expect(errors.map((e) => e.property)).toContain('expected_content_version');
+  });
+
+  it('số nguyên hợp lệ → chấp nhận', async () => {
+    const errors = await validateUpdate({ name: 'X', expected_content_version: 7 });
+    expect(errors.map((e) => e.property)).not.toContain('expected_content_version');
   });
 });

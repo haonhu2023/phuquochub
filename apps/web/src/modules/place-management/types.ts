@@ -36,3 +36,10 @@ export interface PlaceFormInput {
   // openingHours.ts formStateToOpeningHours().
   opening_hours: OpeningHours;
 }
+
+// PATCH /places/:id body — CAS (AddPlaceContentVersion, 2026-09-22). BẮT BUỘC, không tùy chọn:
+// UpdatePlaceDto.expected_content_version bắt buộc phía API, nên phía client cũng không có một
+// đường "quên gửi" nào — `updatePlace()` chỉ nhận kiểu này, không nhận PlaceFormInput trần.
+export interface UpdatePlaceFormInput extends PlaceFormInput {
+  expected_content_version: number;
+}

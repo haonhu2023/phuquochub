@@ -25,17 +25,22 @@ export type RestaurantDetail = PlaceDetail & {
   cuisines: string[];
 };
 
-export async function getRestaurant(slug: string): Promise<RestaurantDetail> {
-  return apiGet<RestaurantDetail>(`/restaurants/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+// `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
+// pass) — trước đây hàm này không truyền `?locale=` nên `/en/restaurants/{slug}` luôn nhận nội
+// dung mặc định của server bất kể route.
+export async function getRestaurant(slug: string, locale: string = 'vi'): Promise<RestaurantDetail> {
+  const qs = new URLSearchParams({ locale });
+  return apiGet<RestaurantDetail>(`/restaurants/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
 export async function getMenu(placeId: string): Promise<MenuSection[]> {
   return apiGet<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, { cache: 'no-store' });
 }
 
-// Sitemap-only slug list (apps/web/src/app/sitemap.ts).
-export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string }>> {
-  return apiGet<Array<{ slug: string }>>(`/restaurants?limit=${limit}`, { cache: 'no-store' });
+// Sitemap-only slug list (apps/web/src/app/sitemap.ts). `id` (SEO1, 2026-09-22) — same reasoning
+// as listHotelSlugs().
+export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {
+  return apiGet<Array<{ slug: string; id: string }>>(`/restaurants?limit=${limit}`, { cache: 'no-store' });
 }
 
 export interface ListRestaurantsParams {

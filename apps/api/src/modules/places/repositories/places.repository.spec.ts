@@ -28,6 +28,7 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     rating_count: 0,
     verification_status: 'pending',
     status: PlaceStatus.PUBLISHED,
+    content_version: 1,
     lat: 10.05,
     lng: 104.0,
     address: null,
@@ -76,6 +77,34 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
     it('không có dòng khớp (category sai hoặc đã xoá mềm) → false', async () => {
       repo.query.mockResolvedValue([]);
       await expect(sut.existsByIdAndCategorySlug('p1', 'hotel')).resolves.toBe(false);
+    });
+  });
+
+  describe('updateScalarsWithCas (AddPlaceContentVersion, 2026-09-22)', () => {
+    it('affected>0 → true; WHERE gồm content_version mong đợi; SET bump lên +1', async () => {
+      repo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      const ok = await sut.updateScalarsWithCas('p1', { name: 'Tên mới' }, 3);
+
+      expect(ok).toBe(true);
+      expect(repo.update).toHaveBeenCalledWith(
+        { id: 'p1', contentVersion: 3 },
+        { name: 'Tên mới', contentVersion: 4 },
+      );
+    });
+
+    it('affected=0 (token cũ hoặc place không tồn tại) → false, KHÔNG ném lỗi ở tầng repository', async () => {
+      repo.update.mockResolvedValue({ affected: 0, raw: [], generatedMaps: [] });
+
+      await expect(sut.updateScalarsWithCas('p1', { name: 'X' }, 3)).resolves.toBe(false);
+    });
+
+    it('patch rỗng vẫn chạy (edit chỉ location) — vẫn giữ WHERE content_version và bump version', async () => {
+      repo.update.mockResolvedValue({ affected: 1, raw: [], generatedMaps: [] });
+
+      await sut.updateScalarsWithCas('p1', {}, 5);
+
+      expect(repo.update).toHaveBeenCalledWith({ id: 'p1', contentVersion: 5 }, { contentVersion: 6 });
     });
   });
 
@@ -342,6 +371,38 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       expect(sql(countQuery)).toContain('p.ward = $2');
       expect(sql(countQuery)).toContain('p.status = $3');
       expect(countParams).toEqual(['c1', 'An Thới', PlaceStatus.PUBLISHED]);
+    });
+  });
+
+  // P1 (Owner self-publish, 2026-09-22) — đặc quyền, KHÔNG lọc status, khác list() ở trên.
+  describe('listEditorial', () => {
+    beforeEach(() => {
+      repo.query.mockResolvedValueOnce([{ count: 0 }]).mockResolvedValueOnce([]);
+    });
+
+    it('KHÔNG có điều kiện lọc theo p.status trong WHERE (status vẫn được SELECT để hiển thị badge)', async () => {
+      await sut.listEditorial({ limit: 20, offset: 0 });
+
+      const [countQuery] = repo.query.mock.calls[0];
+      const [itemsQuery] = repo.query.mock.calls[1];
+      // Neo vào 'FROM places p WHERE' (không phải 'WHERE' trần) — câu SELECT có subquery
+      // cover_image_url/cover_image_media_id mang WHERE riêng, xuất hiện TRƯỚC mệnh đề WHERE
+      // ngoài cùng trong chuỗi SQL.
+      const countWhere = /FROM places p WHERE (.+)$/.exec(sql(countQuery))?.[1] ?? '';
+      const itemsWhere = /FROM places p WHERE (.+?) ORDER BY/.exec(sql(itemsQuery))?.[1] ?? '';
+      expect(countWhere).not.toContain('p.status');
+      expect(itemsWhere).not.toContain('p.status');
+      expect(countWhere).toContain('p.deleted_at IS NULL');
+      expect(itemsWhere).toContain('p.deleted_at IS NULL');
+      // Cột status VẪN được chọn (client cần nó để hiển thị badge draft/pending/published).
+      expect(sql(itemsQuery)).toContain('p.status,');
+    });
+
+    it('sắp theo updated_at DESC, id ASC làm khoá phụ chốt cuối (phân trang xác định)', async () => {
+      await sut.listEditorial({ limit: 20, offset: 0 });
+
+      const [itemsQuery] = repo.query.mock.calls[1];
+      expect(sql(itemsQuery)).toContain('ORDER BY p.updated_at DESC, p.id ASC');
     });
   });
 });

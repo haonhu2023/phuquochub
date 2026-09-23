@@ -6,6 +6,15 @@ export interface HeroVisualPlace {
   name: string;
 }
 
+export interface HeroVisualProps {
+  locale: Locale;
+  places: HeroVisualPlace[];
+  /** S1 (2026-09-22) — ảnh hero owner tự tải lên qua CMS (`site_content.home_hero.heroMediaId`),
+   *  KHÔNG PHẢI ảnh chụp bên thứ ba (xem đoạn chú thích dưới: composition này vẫn KHÔNG tải ảnh
+   *  chụp từ nguồn ngoài). `null`/không truyền → giữ nguyên composition CSS thuần như trước. */
+  heroImageUrl?: string | null;
+}
+
 /**
  * Composition thị giác bên phải Hero (V3, Phase 3) — làm trang chủ "đáng nhớ ngay cả khi KHÔNG có
  * ảnh nào": một tấm nền gợi hình đảo/biển bằng CSS thuần + vài "mini card" mang DỮ LIỆU THẬT (tên
@@ -19,10 +28,15 @@ export interface HeroVisualPlace {
  * KHÔNG suy diễn vị trí pin từ toạ độ thật — các chấm chỉ trang trí, không tuyên bố đã chiếu toạ độ
  * lên bản đồ này (Phase 9 lưu ý rõ: không ngụ ý toạ độ đã được xác minh/chiếu chính xác ở đây).
  */
-export function HeroVisual({ locale, places }: { locale: Locale; places: HeroVisualPlace[] }) {
+export function HeroVisual({ locale, places, heroImageUrl }: HeroVisualProps) {
   return (
     <div className={styles.heroVisual} aria-hidden="true">
-      <div className={styles.heroVisualIsland} />
+      {heroImageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- runtime-resolved media host, cùng precedent PlaceCard.tsx/GuideMediaPicker.tsx
+        <img src={heroImageUrl} alt="" className={styles.heroVisualPhoto} />
+      ) : (
+        <div className={styles.heroVisualIsland} />
+      )}
       <span className={`${styles.heroVisualPin} ${styles.heroPinA}`} />
       <span className={`${styles.heroVisualPin} ${styles.heroPinB}`} />
       <span className={`${styles.heroVisualPin} ${styles.heroPinC}`} />

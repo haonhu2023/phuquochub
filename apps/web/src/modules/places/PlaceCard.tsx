@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
-import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from './trust';
+import { getTrustBadge, priceVerifyingText, resolvePriceDisplay, trustBadgeLabel } from './trust';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import styles from './places.module.css';
 
@@ -27,18 +27,26 @@ export function PlaceCard({
   locale = DEFAULT_LOCALE,
   showTrustBadge = true,
   showPrice = true,
+  categoryName = null,
 }: {
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
   locale?: Locale;
   showTrustBadge?: boolean;
   showPrice?: boolean;
+  /**
+   * Tên danh mục (vd. "Khách sạn") — `PlaceCard` chỉ nhận `category_id` (UUID), không tự tra cứu
+   * tên: nơi gọi phải tự map qua `GET /categories` (đã công khai, không phân trang — xem
+   * `listCategories()`) rồi truyền xuống. Tuỳ chọn và mặc định `null` để không phá vỡ nơi gọi nào
+   * chưa có map này (vd. `NearbyDiscovery`, chỉ tải khi người dùng bấm nút).
+   */
+  categoryName?: string | null;
 }) {
   // Public Beta price trust gate (2026-08-28): giá thật CHỈ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung cho mọi thẻ public (trang chi tiết, RestaurantCard, TourCard,
   // BeachCard, AttractionCard, popup bản đồ). Chưa tin cậy nhưng CÓ giá → PRICE_VERIFYING_TEXT.
   const { label: priceLabel, verifying: showPriceVerifying } = showPrice
-    ? resolvePriceDisplay(formatPriceRange(place.price_range), place.verification_status)
+    ? resolvePriceDisplay(formatPriceRange(place.price_range, locale), place.verification_status)
     : { label: null, verifying: false };
   // Thẻ chỉ hiện tín hiệu TÍCH CỰC — không hiện gì cho 'stale'/'unverified': một badge trung tính
   // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
@@ -60,6 +68,7 @@ export function PlaceCard({
       )}
 
       <div className={styles.cardBody}>
+        {categoryName && <span className={styles.cardCategory}>{categoryName}</span>}
         <TitleTag className={styles.cardTitle}>{place.name}</TitleTag>
         {place.short_description && <p className={styles.cardDesc}>{place.short_description}</p>}
 
@@ -71,11 +80,11 @@ export function PlaceCard({
             </span>
           )}
           {(priceLabel || showPriceVerifying) && (
-            <span className={styles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+            <span className={styles.price}>{priceLabel ?? priceVerifyingText(locale)}</span>
           )}
           {typeof place.distance_m === 'number' && <span>{formatDistance(place.distance_m)}</span>}
           {isVerified && (
-            <span className={`${styles.badge} ${styles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
+            <span className={`${styles.badge} ${styles.badgeVerified}`}>{trustBadgeLabel('verified', locale)}</span>
           )}
         </div>
       </div>

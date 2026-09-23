@@ -26,7 +26,8 @@ export type HubPageKey =
   | 'beaches'
   | 'events'
   | 'explore'
-  | 'map';
+  | 'map'
+  | 'guide';
 
 const VI: Record<HubPageKey, HubPageCopy> = {
   places: {
@@ -73,6 +74,11 @@ const VI: Record<HubPageKey, HubPageCopy> = {
     title: 'Bản đồ Phú Quốc — Địa điểm theo vị trí',
     description: 'Bản đồ tương tác các địa điểm tại Phú Quốc — bãi biển, nhà hàng, khách sạn, điểm tham quan theo vị trí thực tế.',
     h1: 'Bản đồ Phú Quốc',
+  },
+  guide: {
+    title: 'Cẩm nang Phú Quốc',
+    description: 'Bài viết hướng dẫn du lịch Phú Quốc — nên ở đâu, đi đâu, ăn gì theo từng khu vực.',
+    h1: 'Cẩm nang Phú Quốc',
   },
 };
 
@@ -121,6 +127,11 @@ const EN: Record<HubPageKey, HubPageCopy> = {
     title: 'Phú Quốc Map — Places by Location',
     description: 'An interactive map of places in Phú Quốc — beaches, restaurants, hotels and attractions by real location.',
     h1: 'Phú Quốc Map',
+  },
+  guide: {
+    title: 'Phú Quốc Travel Guide',
+    description: 'Phú Quốc travel guide articles — where to stay, where to go, what to eat by area.',
+    h1: 'Phú Quốc Travel Guide',
   },
 };
 

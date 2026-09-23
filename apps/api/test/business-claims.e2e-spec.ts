@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -389,7 +390,10 @@ describe('ADR-015 Business Claim Foundation (live Postgres)', () => {
     const ownPlace = await request(app.getHttpServer())
       .patch(`/api/places/${placeAId}`)
       .set('Authorization', `Bearer ${ownerToken}`)
-      .send({ name: 'Place A — updated by newly-approved owner' });
+      .send({
+        name: 'Place A — updated by newly-approved owner',
+        expected_content_version: await currentPlaceContentVersion(ds, placeAId),
+      });
     expect(ownPlace.status).toBe(200);
 
     const otherPlace = await request(app.getHttpServer())

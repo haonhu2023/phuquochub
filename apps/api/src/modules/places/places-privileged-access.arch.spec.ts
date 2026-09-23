@@ -44,6 +44,13 @@ const PRIVILEGED_METHOD = 'getCardByIdIncludingInactive';
 // boundary, not a new/broader one. None is `@Public`. (`publish{Description,Name,ShortDescription}
 // Draft` do NOT call the privileged method at all — they only read via
 // PlaceTranslationsService.getCurrentTranslation() — so they are deliberately absent from this list.)
+//
+// P1/P3 (Owner self-publish + private preview, 2026-09-22, merged with the above 2026-09-23):
+// `unpublish` added — wired to `POST /places/:id/unpublish`, same `Place.Approve` gate as
+// `approve` (symmetric action, same privilege tier). `preview` added — wired to
+// `GET /places/:id/preview`, gated by `Place.Edit.Managed` + `@AuthorizationContext` (the SAME
+// check `update` already uses) so an owner can see their own unpublished place before publishing
+// it, without a public route ever reaching the same data.
 const APPROVED_SERVICE_CALLERS = [
   'archive',
   'approve',
@@ -52,11 +59,13 @@ const APPROVED_SERVICE_CALLERS = [
   'getNameDraft',
   'getShortDescriptionDraft',
   'listMine',
+  'preview',
   'publishDraft',
   'saveDescriptionDraft',
   'saveDraft',
   'saveNameDraft',
   'saveShortDescriptionDraft',
+  'unpublish',
   'update',
 ].sort();
 

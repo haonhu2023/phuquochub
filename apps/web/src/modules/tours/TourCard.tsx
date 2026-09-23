@@ -2,19 +2,19 @@ import Link from 'next/link';
 import type { TourCard as TourCardType } from './types';
 import { formatDifficulty, formatDuration, formatTourType } from './format';
 import { formatPriceRange } from '@/modules/places/format';
-import { PRICE_VERIFYING_TEXT, resolvePriceDisplay } from '@/modules/places/trust';
+import { priceVerifyingText, resolvePriceDisplay } from '@/modules/places/trust';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './tours.module.css';
 
 export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType; locale?: Locale }) {
-  const typeLabel = formatTourType(tour.tour_type);
-  const durationLabel = formatDuration(tour.duration_minutes);
-  const difficultyLabel = formatDifficulty(tour.difficulty);
+  const typeLabel = formatTourType(tour.tour_type, locale);
+  const durationLabel = formatDuration(tour.duration_minutes, locale);
+  const difficultyLabel = formatDifficulty(tour.difficulty, locale);
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(tour.price_range),
+    formatPriceRange(tour.price_range, locale),
     tour.verification_status,
   );
 
@@ -32,7 +32,9 @@ export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType
       <div className={placesStyles.cardBody}>
         <h2 className={placesStyles.cardTitle}>{tour.name}</h2>
         {tour.short_description && <p className={placesStyles.cardDesc}>{tour.short_description}</p>}
-        {tour.ward && <p className={styles.departure}>Khởi hành: {tour.ward}</p>}
+        {tour.ward && (
+          <p className={styles.departure}>{locale === 'en' ? 'Departs from' : 'Khởi hành'}: {tour.ward}</p>
+        )}
 
         <div className={placesStyles.cardMeta}>
           {tour.rating_avg !== null && (
@@ -43,12 +45,12 @@ export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType
           )}
           {durationLabel && <span className={styles.duration}>⏱ {durationLabel}</span>}
           {(priceLabel || showPriceVerifying) && (
-            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+            <span className={placesStyles.price}>{priceLabel ?? priceVerifyingText(locale)}</span>
           )}
           {typeLabel && <span className={placesStyles.badge}>{typeLabel}</span>}
           {difficultyLabel && (
             <span className={`${placesStyles.badge} ${styles.difficultyBadge}`}>
-              Độ khó: {difficultyLabel}
+              {locale === 'en' ? 'Difficulty' : 'Độ khó'}: {difficultyLabel}
             </span>
           )}
         </div>

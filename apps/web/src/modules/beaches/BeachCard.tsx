@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { BeachCard as BeachCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
-import { getTrustBadge, PRICE_VERIFYING_TEXT, resolvePriceDisplay, TRUST_BADGE_LABEL } from '@/modules/places/trust';
+import { getTrustBadge, priceVerifyingText, resolvePriceDisplay, trustBadgeLabel } from '@/modules/places/trust';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './beaches.module.css';
@@ -16,7 +16,7 @@ export function BeachCard({ beach, locale = DEFAULT_LOCALE }: { beach: BeachCard
   // Public Beta price trust gate (2026-08-28): raw giá chỉ hiện khi verification_status đã tin
   // cậy — cùng invariant dùng chung mọi thẻ public, không phụ thuộc category (xem places/trust.ts).
   const { label: priceLabel, verifying: showPriceVerifying } = resolvePriceDisplay(
-    formatPriceRange(beach.price_range),
+    formatPriceRange(beach.price_range, locale),
     beach.verification_status,
   );
   const isVerified = getTrustBadge(beach.verification_status) === 'verified';
@@ -54,10 +54,10 @@ export function BeachCard({ beach, locale = DEFAULT_LOCALE }: { beach: BeachCard
           {/* price_range NULL nghĩa là CHƯA BIẾT, không phải "miễn phí" — chỉ hiện nhãn khi API
               thực sự trả giá trị, không suy ra "bãi biển thì luôn miễn phí". */}
           {(priceLabel || showPriceVerifying) && (
-            <span className={placesStyles.price}>{priceLabel ?? PRICE_VERIFYING_TEXT}</span>
+            <span className={placesStyles.price}>{priceLabel ?? priceVerifyingText(locale)}</span>
           )}
           {isVerified && (
-            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{TRUST_BADGE_LABEL.verified}</span>
+            <span className={`${placesStyles.badge} ${placesStyles.badgeVerified}`}>{trustBadgeLabel('verified', locale)}</span>
           )}
         </div>
       </div>

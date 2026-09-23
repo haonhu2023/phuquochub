@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEnum,
   IsInt,
   IsNumber,
@@ -115,6 +117,14 @@ export class UpdatePlaceDto {
   // PATCH /places/:id (update() trực tiếp) bỏ qua trường này (revision của nó luôn changeNote=null).
   @IsOptional() @IsString() @MaxLength(300)
   change_note?: string;
+
+  // CAS token (AddPlaceContentVersion, 2026-09-22) — BẮT BUỘC, không phải tùy chọn: client phải
+  // gửi lại đúng `content_version` đã đọc gần nhất (từ PlaceCard/PlaceDetail). PlacesService.update()
+  // ghi có điều kiện WHERE content_version = giá trị này; không khớp → 409, không ghi đè âm thầm.
+  // Cùng nguyên tắc `expectedContentVersion` của guide_articles — KHÔNG có "phiên bản cũ vẫn ghi
+  // được nếu bỏ trống trường này" ở đây.
+  @IsInt() @Min(1)
+  expected_content_version!: number;
 }
 
 // Query của `GET /api/places` — endpoint công khai (@Public).
@@ -192,4 +202,13 @@ export class SaveShortDescriptionDraftDto {
 
   @IsOptional() @IsString()
   en?: string;
+}
+
+// Body của `POST /api/places/en-indexable-ids` — SEO1 (2026-09-22), sitemap-only. Capped at 500:
+// generously above the sitemap's own per-entity-type fetch cap (100 × 4 types = 400), rejecting
+// anything larger rather than silently truncating.
+export class EnIndexableIdsDto {
+  @IsArray() @ArrayMaxSize(500)
+  @IsUUID('4', { each: true })
+  ids!: string[];
 }

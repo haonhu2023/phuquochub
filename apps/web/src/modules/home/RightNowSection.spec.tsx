@@ -39,6 +39,7 @@ function place(overrides: Partial<PlaceNowCard> = {}): PlaceNowCard {
     status: 'published',
     location: { lat: 10, lng: 104 },
     opening_hours: null,
+    content_version: 1,
     ...overrides,
   };
 }

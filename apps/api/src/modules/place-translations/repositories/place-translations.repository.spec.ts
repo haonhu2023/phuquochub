@@ -193,3 +193,43 @@ describe('PlaceTranslationsRepository.listReviewQueue — keyset pagination corr
     expect(page.hasMore).toBe(false);
   });
 });
+
+describe('PlaceTranslationsRepository.listPlaceIdsWithCurrentPublicField — SEO1 batched EN-indexation gate (2026-09-22)', () => {
+  const PLACE_ID_2 = '22222222-2222-2222-2222-222222222222';
+
+  function buildRepoWithQuery(queryImpl: jest.Mock) {
+    const repo = { manager: { query: queryImpl } } as unknown as Repository<PlaceTranslation>;
+    return new PlaceTranslationsRepository(repo);
+  }
+
+  it('empty placeIds → returns an empty Set without querying', async () => {
+    const query = jest.fn();
+    const translationsRepo = buildRepoWithQuery(query);
+
+    const result = await translationsRepo.listPlaceIdsWithCurrentPublicField([], 'display_name', 'en');
+
+    expect(result).toEqual(new Set());
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('queries with the SAME eligibility predicate as findCurrentPublic (is_current/is_public/is_production_data), batched via ANY($1)', async () => {
+    const query = jest.fn().mockResolvedValue([{ place_id: PLACE_ID }]);
+    const translationsRepo = buildRepoWithQuery(query);
+
+    const result = await translationsRepo.listPlaceIdsWithCurrentPublicField([PLACE_ID, PLACE_ID_2], 'short_description', 'en');
+
+    expect(query.mock.calls[0][0]).toContain('place_id = ANY($1)');
+    expect(query.mock.calls[0][0]).toContain('is_current = true AND is_public = true AND is_production_data = true');
+    expect(query.mock.calls[0][1]).toEqual([[PLACE_ID, PLACE_ID_2], 'short_description', 'en']);
+    expect(result).toEqual(new Set([PLACE_ID]));
+  });
+
+  it('no matching rows → returns an empty Set, not an error', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const translationsRepo = buildRepoWithQuery(query);
+
+    const result = await translationsRepo.listPlaceIdsWithCurrentPublicField([PLACE_ID], 'display_name', 'en');
+
+    expect(result).toEqual(new Set());
+  });
+});

@@ -47,7 +47,11 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: allowedOrigins,
     credentials: corsCredentials,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    // 'PUT' added S1 (2026-09-22) — SiteContentAdminController's whole-value-replace upsert route
+    // is the first PUT endpoint in this app; found missing here by a real browser preflight
+    // failing with "Method PUT is not allowed by Access-Control-Allow-Methods" against the live
+    // dev stack (unit/e2e tests never exercise a real CORS preflight, so this was invisible to them).
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
   app.useGlobalPipes(

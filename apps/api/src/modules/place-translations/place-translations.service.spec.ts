@@ -86,6 +86,7 @@ describe('PlaceTranslationsService', () => {
       markNotCurrent: jest.fn(),
       listCurrentByPlace: jest.fn(),
       updateProvenance: jest.fn(),
+      listPlaceIdsWithCurrentPublicField: jest.fn(),
     } as unknown as jest.Mocked<PlaceTranslationsRepository>;
 
     routesRepo = {
@@ -528,6 +529,46 @@ describe('PlaceTranslationsService', () => {
       const result = await service.getCurrentPublicTranslatedText(PLACE_ID, 'short_description', 'vi');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('listEnIndexablePlaceIds — SEO1 batched sitemap gate (2026-09-22)', () => {
+    const PLACE_ID_2 = '22222222-2222-2222-2222-222222222222';
+    const PLACE_ID_3 = '33333333-3333-3333-3333-333333333333';
+
+    it('empty input → empty output, no repository calls', async () => {
+      const result = await service.listEnIndexablePlaceIds([]);
+      expect(result).toEqual([]);
+      expect(translationsRepo.listPlaceIdsWithCurrentPublicField).not.toHaveBeenCalled();
+    });
+
+    it('queries BOTH display_name and short_description for locale en, in parallel', async () => {
+      translationsRepo.listPlaceIdsWithCurrentPublicField.mockResolvedValue(new Set());
+
+      await service.listEnIndexablePlaceIds([PLACE_ID]);
+
+      expect(translationsRepo.listPlaceIdsWithCurrentPublicField).toHaveBeenCalledWith([PLACE_ID], 'display_name', 'en');
+      expect(translationsRepo.listPlaceIdsWithCurrentPublicField).toHaveBeenCalledWith([PLACE_ID], 'short_description', 'en');
+    });
+
+    it('only a place with BOTH fields approved is returned — matches isEnDetailIndexable()\'s AND semantics', async () => {
+      translationsRepo.listPlaceIdsWithCurrentPublicField.mockImplementation((ids, fieldKey) => {
+        if (fieldKey === 'display_name') return Promise.resolve(new Set([PLACE_ID, PLACE_ID_2]));
+        // PLACE_ID_2 has an approved name but NOT an approved short_description — must be excluded.
+        return Promise.resolve(new Set([PLACE_ID, PLACE_ID_3]));
+      });
+
+      const result = await service.listEnIndexablePlaceIds([PLACE_ID, PLACE_ID_2, PLACE_ID_3]);
+
+      expect(result).toEqual([PLACE_ID]);
+    });
+
+    it('preserves the input order of the eligible ids', async () => {
+      translationsRepo.listPlaceIdsWithCurrentPublicField.mockResolvedValue(new Set([PLACE_ID, PLACE_ID_2]));
+
+      const result = await service.listEnIndexablePlaceIds([PLACE_ID_2, PLACE_ID]);
+
+      expect(result).toEqual([PLACE_ID_2, PLACE_ID]);
     });
   });
 

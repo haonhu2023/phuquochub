@@ -72,7 +72,14 @@ export interface HomeCopy {
   ownerLink: string;
 }
 
-const CATEGORY_HREFS = ['/hotels', '/restaurants', '/tours', '/attractions', '/beaches', '/events'] as const;
+// 2026-09-17 (real-data pass): '/events' đã BỊ GỠ khỏi danh sách này — production hiện có 0 sự
+// kiện đã publish (`GET /events` → `meta.total: 0`, xác nhận trực tiếp qua API, không suy đoán).
+// Đưa một lối vào chắc chắn dẫn tới trang rỗng vào lưới danh mục CHÍNH của trang chủ (nơi phải hữu
+// ích trong 10 giây) vi phạm đúng nguyên tắc "không hard-code danh mục không có dữ liệu". Năm mục
+// còn lại đều xác nhận có ≥3 địa điểm published (hotels 11, restaurants 7, tours 3, attractions 12,
+// beaches 10) tại thời điểm audit. Trang `/events` vẫn tồn tại (không xoá tính năng) — chỉ không
+// còn được quảng bá như một lối khám phá chính khi nó chưa có gì để khám phá.
+const CATEGORY_HREFS = ['/hotels', '/restaurants', '/tours', '/attractions', '/beaches'] as const;
 
 const vi: HomeCopy = {
   eyebrow: 'Trợ lý khám phá Phú Quốc',
@@ -98,7 +105,6 @@ const vi: HomeCopy = {
     { href: CATEGORY_HREFS[2], name: 'Tour', hint: 'Tour đảo và trải nghiệm có hướng dẫn' },
     { href: CATEGORY_HREFS[3], name: 'Điểm tham quan', hint: 'Điểm tham quan và hoạt động vui chơi' },
     { href: CATEGORY_HREFS[4], name: 'Bãi biển', hint: 'Bờ biển và điểm tắm đáng ghé' },
-    { href: CATEGORY_HREFS[5], name: 'Sự kiện', hint: 'Sự kiện đang và sắp diễn ra' },
   ],
   smartTitle: 'Khám phá theo nhu cầu',
   smartSubtitle: 'Gợi ý khám phá nhanh — theo nhu cầu, hoặc theo vị trí thực tế nếu bạn đồng ý chia sẻ.',
@@ -182,7 +188,6 @@ const en: HomeCopy = {
     { href: CATEGORY_HREFS[2], name: 'Tours', hint: 'Island tours and guided experiences' },
     { href: CATEGORY_HREFS[3], name: 'Attractions', hint: 'Attractions and things to do' },
     { href: CATEGORY_HREFS[4], name: 'Beaches', hint: 'Coastline and beaches worth visiting' },
-    { href: CATEGORY_HREFS[5], name: 'Events', hint: 'Events happening now and soon' },
   ],
   smartTitle: 'Discover by need',
   smartSubtitle: 'Quick picks by need, or by your real location if you choose to share it.',

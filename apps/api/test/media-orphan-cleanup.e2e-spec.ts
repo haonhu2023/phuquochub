@@ -53,8 +53,12 @@ describe('Media Orphan Cleanup (e2e, live Postgres + MinIO)', () => {
     return createHash('sha256').update(buf).digest('hex');
   }
 
+  // M1 (2026-09-22): register() now verifies the object's actual magic bytes (detectImageSignature)
+  // against the declared content_type — real JPEG bytes required for seedRealOrphanMedia() below to
+  // successfully register through the real API.
+  const JPEG_MAGIC_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
   function fakeJpegBytes(seed: string): Buffer {
-    return Buffer.from(`orphan-cleanup-e2e-${seed}-${Date.now()}-${Math.random()}`);
+    return Buffer.concat([JPEG_MAGIC_BYTES, Buffer.from(`orphan-cleanup-e2e-${seed}-${Date.now()}-${Math.random()}`)]);
   }
 
   /** Đăng ký một media mồ côi THẬT (real object trên MinIO) qua đúng luồng presign→PUT→register. */

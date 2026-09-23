@@ -19,27 +19,28 @@ export type HotelDetail = PlaceDetail & {
   amenities: string[];
 };
 
-// Locale forwarding (2026-09, mirrors getPlace() in places.api.ts): `hotels/[slug]/page.tsx`
-// resolves `locale` from the route but never passed it into this call, so every hotel page —
-// `/vi/hotels/:slug` AND `/en/hotels/:slug` alike — always fetched (and rendered) the Vietnamese
-// content. `locale` defaults to 'vi' for the same reason getPlace() does: zero behavior change
-// for any existing caller that doesn't pass one.
+// `locale` TÙY CHỌN (2026-09-17 real-data pass, cùng mẫu `places.api.ts`'s `getPlace()`):
+// `GET /hotels/:slug` đã hỗ trợ `?locale=` từ trước ở API (xác nhận trực tiếp trên production —
+// `?locale=en` trả tên/mô tả tiếng Anh thật khác bản `vi` cho hotel đã có bản dịch duyệt), nhưng
+// hàm này trước đây KHÔNG BAO GIỜ truyền query đó — trang `/en/hotels/{slug}` luôn nhận nội dung
+// mặc định của server bất kể route là `/en` hay `/vi`. Mặc định `'vi'` để lời gọi cũ (nếu còn) vẫn
+// giữ nguyên hành vi.
 //
-// KNOWN LIMITATION, not fixed here (backend unchanged, per this task's explicit scope): unlike
-// `GET /places/:slug`, `GET /hotels/:slug` does not read this query param at all —
-// HotelsController.getBySlug() has no @Query() and HotelsService.getBySlug() calls
-// `placesService.getBySlug(slug)` with no second argument, so PlacesService.getBySlug()'s
-// `locale` parameter is always `undefined` (→ its own default) regardless of what this client
-// sends. This change is necessary but NOT sufficient to fix the EN route on its own — see the
-// PR description for the exact 3-line backend change that would complete it.
+// Gộp nhánh 2026-09-23: bản backend đang chạy TẠI ĐÂY (sau merge) đã thật sự forward `locale` —
+// `HotelsService.getBySlug(slug, locale)` → `PlacesService.getBySlug(slug, locale)` (xác nhận trực
+// tiếp trong `apps/api/src/modules/hotels/hotels.service.ts`, dòng đó tự merge sạch, không xung
+// đột) — không còn là "known limitation" như một bản chú thích cũ (đã bỏ) từng ghi.
 export async function getHotel(slug: string, locale: string = 'vi'): Promise<HotelDetail> {
   const qs = new URLSearchParams({ locale });
   return apiGet<HotelDetail>(`/hotels/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
-// Sitemap-only slug list (apps/web/src/app/sitemap.ts).
-export async function listHotelSlugs(limit = 100): Promise<Array<{ slug: string }>> {
-  return apiGet<Array<{ slug: string }>>(`/hotels?limit=${limit}`, { cache: 'no-store' });
+// Sitemap-only slug list (apps/web/src/app/sitemap.ts). `id` (SEO1, 2026-09-22) — the list
+// endpoint's response already includes it (hotels.service.ts's list() mapper), just not
+// previously declared here; needed to batch-check EN indexability via
+// POST /places/en-indexable-ids without a second round trip per entity.
+export async function listHotelSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {
+  return apiGet<Array<{ slug: string; id: string }>>(`/hotels?limit=${limit}`, { cache: 'no-store' });
 }
 
 export interface ListHotelsParams {

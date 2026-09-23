@@ -38,6 +38,7 @@ function restaurant(overrides: Partial<RestaurantDetail> = {}): RestaurantDetail
     rating_avg: null,
     rating_count: 0,
     verification_status: 'verified',
+    content_version: 1,
     status: 'published',
     location: { lat: 10.0, lng: 104.0 },
     address: null,
@@ -55,6 +56,8 @@ function restaurant(overrides: Partial<RestaurantDetail> = {}): RestaurantDetail
     media: [],
     faqs: [],
     trust_sources: [],
+    en_display_name_approved: false,
+    en_short_description_approved: false,
     restaurant_details: null,
     cuisines: [],
     ...overrides,
@@ -66,6 +69,50 @@ async function renderPage(r: RestaurantDetail, menu: MenuSection[] = []) {
   mockGetMenu.mockResolvedValueOnce(menu);
   render(await RestaurantDetailPage({ params: Promise.resolve({ slug: r.slug, locale: 'vi' }) }));
 }
+
+// 2026-09-17 (real-data pass): trước bản sửa này, getRestaurant() được gọi KHÔNG kèm locale nên
+// /en/restaurants/{slug} luôn nhận nội dung mặc định của server bất kể route.
+describe('RestaurantDetailPage/generateMetadata — getRestaurant() phải nhận đúng locale từ route', () => {
+  it('generateMetadata({ locale: "en" }) → getRestaurant(slug, "en")', async () => {
+    mockGetRestaurant.mockResolvedValueOnce(restaurant());
+    await generateMetadata({ params: Promise.resolve({ slug: 'quan-hai-san', locale: 'en' }) });
+    expect(mockGetRestaurant).toHaveBeenCalledWith('quan-hai-san', 'en');
+  });
+
+  it('RestaurantDetailPage({ locale: "vi" }) → getRestaurant(slug, "vi")', async () => {
+    await renderPage(restaurant());
+    expect(mockGetRestaurant).toHaveBeenCalledWith('quan-hai-san', 'vi');
+  });
+});
+
+describe('RestaurantDetailPage — gallery ảnh công khai (real-data pass)', () => {
+  it('có media đã published -> render ảnh thật', async () => {
+    await renderPage(
+      restaurant({
+        media: [
+          {
+            id: 'm1',
+            type: 'image',
+            url: 'https://api.example/api/media/m1/file',
+            thumbnail_url: null,
+            caption: null,
+            alt_text: 'Không gian nhà hàng',
+            status: 'published',
+            attribution: null,
+            license_type: null,
+            license_url: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+  });
+
+  it('media rỗng -> không render <img> nào', async () => {
+    await renderPage(restaurant({ media: [] }));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
 
 // Public Beta price trust gate (2026-08-28) — `restaurant_menu_items.price` has NO
 // verification/trust column at the DB level (migration InitRestaurant never added one), so this

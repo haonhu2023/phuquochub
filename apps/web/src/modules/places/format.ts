@@ -1,3 +1,5 @@
+import type { Locale } from '@/lib/locale';
+
 // Nhãn hiển thị tiếng Việt cho mức giá. Dùng chung cho PlaceCard + trang chi tiết
 // để tránh lặp switch mapping ở nhiều nơi.
 
@@ -16,9 +18,21 @@ const PRICE_RANGE_LABELS: Record<PriceRange, string> = {
   high: 'Cao cấp',
 };
 
+// X1 (2026-09-22, G10) — additive: `PRICE_RANGE_LABELS` ở trên GIỮ NGUYÊN (9 nơi gọi khác — mọi
+// thẻ hub/bản đồ — vẫn tiếng Việt, một khoảng trống i18n rộng hơn cố ý CHƯA sửa trong đợt này).
+const PRICE_RANGE_LABELS_EN: Record<PriceRange, string> = {
+  free: 'Free',
+  low: 'Budget',
+  mid: 'Mid-range',
+  high: 'High-end',
+};
+
 // Nhận input tương thích FE contract (string | null | undefined).
 // Trả null khi không có giá trị hoặc giá trị ngoài whitelist (không hiển thị raw enum).
-export function formatPriceRange(value: string | null | undefined): string | null {
+// `locale` tuỳ chọn, mặc định `'vi'` — GIỮ NGUYÊN hành vi cho 9 nơi gọi khác chưa truyền locale;
+// `places/[slug]/page.tsx` truyền `locale` tường minh (G10).
+export function formatPriceRange(value: string | null | undefined, locale: Locale = 'vi'): string | null {
   if (!value) return null;
-  return PRICE_RANGE_LABELS[value as PriceRange] ?? null;
+  const labels = locale === 'en' ? PRICE_RANGE_LABELS_EN : PRICE_RANGE_LABELS;
+  return labels[value as PriceRange] ?? null;
 }

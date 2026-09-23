@@ -5,12 +5,11 @@ import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
-import { MediaCredit } from '@/modules/places/MediaCredit';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
-import placeStyles from '@/modules/places/places.module.css';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -28,7 +27,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   try {
     const h = await getHotel(slug, locale);
     const path = `/hotels/${h.slug}`;
-    const enIndexable = isEnDetailIndexable(h.slug);
+    const enIndexable = isEnDetailIndexable({
+      displayNameEnApproved: h.en_display_name_approved,
+      shortDescriptionEnApproved: h.en_short_description_approved,
+    });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
@@ -95,27 +97,7 @@ export default async function HotelDetailPage({ params }: Params) {
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
 
-      {/* Cùng hệ thống gallery với places/[slug]/page.tsx (MediaCredit + places.module.css) — không
-          dựng bộ hiển thị thứ hai. `h.media` đã được server sắp xếp (sort_order), nên chỉ cần
-          render theo đúng thứ tự trả về, không tự sắp lại ở client. Batch hiện tại chỉ có một giá
-          trị caption/alt dùng chung cho cả VI/EN (giới hạn schema `media`, không phải lỗi thiếu
-          bản dịch — xem owner-decisions.md mục E). */}
-      {h.media.length > 0 && (
-        <div className={placeStyles.gallery}>
-          {h.media.map((m) => (
-            <figure key={m.id} className={placeStyles.galleryFigure}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài; next/image cần remotePatterns (ngoài phạm vi). */}
-              <img
-                className={placeStyles.galleryImg}
-                src={m.thumbnail_url ?? m.url}
-                alt={m.alt_text ?? m.caption ?? h.name}
-                loading="lazy"
-              />
-              <MediaCredit media={m} />
-            </figure>
-          ))}
-        </div>
-      )}
+      <PlaceGallery media={h.media} placeName={h.name} />
 
       {h.description && <p>{h.description}</p>}
 

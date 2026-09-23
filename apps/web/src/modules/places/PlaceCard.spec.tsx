@@ -15,6 +15,7 @@ const BASE_PLACE: PlaceCardType = {
   rating_avg: null,
   rating_count: 0,
   verification_status: 'pending',
+  content_version: 1,
   status: 'published',
   location: { lat: 10.0, lng: 104.0 },
 };
@@ -50,6 +51,16 @@ describe('PlaceCard', () => {
     expect(img.getAttribute('src')).not.toContain(':9000');
     // Có ảnh bìa thì KHÔNG hiện chữ cái dự phòng nữa.
     expect(screen.queryByText('D')).not.toBeInTheDocument();
+  });
+
+  it('renders categoryName when provided (mapping category_id to a name is the caller job)', () => {
+    render(<PlaceCard place={BASE_PLACE} categoryName="Điểm tham quan" />);
+    expect(screen.getByText('Điểm tham quan')).toBeInTheDocument();
+  });
+
+  it('omits the category label entirely when not provided (no fabricated category)', () => {
+    render(<PlaceCard place={BASE_PLACE} />);
+    expect(screen.queryByText('Điểm tham quan')).not.toBeInTheDocument();
   });
 
   it('omits price, distance, verified badge, and rating when absent', () => {

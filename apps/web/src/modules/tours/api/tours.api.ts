@@ -25,8 +25,12 @@ export interface TourSchedule {
 
 export type TourDetail = PlaceDetail & { tour_details: Record<string, unknown> | null };
 
-export async function getTour(slug: string): Promise<TourDetail> {
-  return apiGet<TourDetail>(`/tours/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+// `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
+// pass) — trước đây hàm này không truyền `?locale=` nên `/en/tours/{slug}` luôn nhận nội dung mặc
+// định của server bất kể route.
+export async function getTour(slug: string, locale: string = 'vi'): Promise<TourDetail> {
+  const qs = new URLSearchParams({ locale });
+  return apiGet<TourDetail>(`/tours/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
 export async function getItinerary(placeId: string): Promise<TourStop[]> {
@@ -39,8 +43,9 @@ export async function getSchedule(placeId: string): Promise<TourSchedule[]> {
 
 // Sitemap-only slug list (apps/web/src/app/sitemap.ts) — trang browse dùng listTours() bên dưới
 // vì nó cần cả `meta` để phân trang.
-export async function listTourSlugs(limit = 100): Promise<Array<{ slug: string }>> {
-  return apiGet<Array<{ slug: string }>>(`/tours?limit=${limit}`, { cache: 'no-store' });
+// `id` (SEO1, 2026-09-22) — same reasoning as listHotelSlugs().
+export async function listTourSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {
+  return apiGet<Array<{ slug: string; id: string }>>(`/tours?limit=${limit}`, { cache: 'no-store' });
 }
 
 export interface ListToursParams {

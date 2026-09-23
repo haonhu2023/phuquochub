@@ -419,3 +419,99 @@ retention, fixed health check), rewrote `restore.sh` (pre-drop verification, `ON
 `--single-transaction`, extension pre-creation, legacy support, post-restore verification, isolated
 rehearsal target), added `backup-media.sh` and `restore-media-rehearsal.sh`, and corrected
 `sync-offsite.sh` from `sync` to `copy`. **None of this has run on production.**
+
+## 9. Recorded LOCAL rehearsal evidence — 2026-09-22 (BK1)
+
+Performed against the **local dev stack** (Docker Postgres on this machine), NOT production, NOT
+staging (no staging environment exists — see `PRE-DEPLOYMENT-CHECKLIST.md`). `restore.sh`/`backup.sh`
+are hardcoded to the `docker-compose.prod.yml` service names (`postgres`), which do not exist as a
+compose project locally, so this rehearsal manually replicated their exact validated commands
+against the local dev database rather than literally invoking the scripts — disclosed here rather
+than presented as a literal script run.
+
+### 9.1 PostgreSQL restore rehearsal — VERIFIED (local)
+
+- Real `pg_dump --format=plain | gzip` against the local dev DB produced
+  `phuquochub-rehearsal-20260922T080555Z.sql.gz` (994,239 bytes).
+- Validated exactly as `backup.sh` does before treating a dump as real: `gzip -t` integrity check
+  passed, uncompressed size well above the 1024-byte floor, `PostgreSQL database dump complete`
+  marker present, SHA256 sidecar written and matches.
+- Restored into an isolated scratch database (`phuquochub_restore_test`), the same isolation
+  `RESTORE_TARGET_DB` gives `restore.sh`'s rehearsal mode — never touched the live dev DB in place.
+- Post-restore comparison against the source dev DB: **67 tables** matched, **67 migrations**
+  matched, both FTS indexes present, `immutable_unaccent` functioning correctly (no repeat of the
+  2026-08-12 unqualified-search-path failure — confirms migration `1720004400000`'s fix holds),
+  exact row-count match for `places` (122=122) and `users` (2779=2779).
+- Scratch database dropped after verification. Local dev DB was never at risk (rehearsal only ever
+  writes to an isolated target, same guarantee `RESTORE_TARGET_DB` gives on production).
+
+### 9.2 Backup-status read endpoint — VERIFIED (local, real files)
+
+New in this pass: `GET /api/admin/ops/backup-status` (`BackupStatusService`,
+`apps/api/src/modules/ops/`) — a READ-ONLY endpoint (gated by `Ops.BackupStatus.View`, granted only
+to `content_owner`) that lists what `backup.sh`/`backup-media.sh` have actually produced on disk,
+for the owner-facing "Tình trạng sao lưu" section on `/dashboard/help` (N2). It never runs a backup,
+never deletes anything, and never touches the database — pure filesystem read of
+`BACKUP_STATUS_DB_DIR`/`BACKUP_STATUS_MEDIA_DIR` (see `configuration.ts`'s comment for why `null`,
+not a guessed path, is the "not configured" signal).
+
+Verified against the REAL rehearsal artifact from §9.1 (a genuine 994 KB gzipped `pg_dump`, not a
+synthetic fixture), two ways:
+
+1. Directly via the service (`ts-node`, real file on disk) — correctly reported `count: 1`,
+   `sizeBytes: 994239`, `hasChecksumSidecar: true`, and a plausible `ageHours`.
+2. **End-to-end through a live browser session**, logged in as a real `content_owner` account,
+   against a running `next dev` + `nest start --watch` local stack: with `BACKUP_STATUS_DB_DIR`
+   unset, the page correctly read "chưa cấu hình trên máy chủ này" (not configured) for both trees;
+   after pointing `BACKUP_STATUS_DB_DIR` at a directory holding a copy of the real rehearsal file,
+   reloading showed "1 bản, gần nhất 30 giờ trước (970.9 KB, có checksum)" — confirmed via
+   `GET /api/admin/ops/backup-status` returning `200 OK` in the browser's network log. Both the env
+   override and the copied file were removed again immediately after this check; the real
+   `.env`/dev DB were left exactly as found.
+
+### 9.3 Production wiring added, NOT YET DEPLOYED
+
+`docker-compose.prod.yml`'s `api` service previously had no `volumes:` section at all, so this
+endpoint would see nothing in production even once deployed — `backup.sh`/`backup-media.sh` write to
+`$PROJECT_DIR/backups`/`$PROJECT_DIR/backups/media` on the HOST, outside any container. Added:
+a read-only bind mount (`./backups:/repo/backups:ro`) and `BACKUP_STATUS_DB_DIR`/
+`BACKUP_STATUS_MEDIA_DIR` env entries defaulting to the mounted path — so the status page activates
+automatically on the next deploy of this compose file, with no separate `.env` edit required unless
+a non-default path is wanted. **This has not been deployed** — see Mốc B in the launch-readiness
+plan for the gate before any production change.
+
+## 10. Recorded LOCAL media restore rehearsal — 2026-09-22
+
+Real object-level restore rehearsal against the **local dev MinIO** (`phuquoc-minio` container),
+NOT production. `scripts/restore-media-rehearsal.sh` is built for `docker-compose.prod.yml`'s exact
+network topology (`mc-docker.sh`'s ephemeral container joined to the PRODUCTION compose network) and
+doesn't attach to the local dev stack's network as-is — same class of gap §9's DB rehearsal already
+disclosed for `restore.sh`. Rather than adapt the production-shaped script, this rehearsal ran the
+same underlying `mc` operations directly against local dev MinIO, joined to its real Docker network
+(`phuquochub_default`) via an ephemeral `minio/mc` container — proving the RESTORE mechanism itself
+(copy from a bucket into an isolated target, verify byte-identical), not a literal invocation of the
+wrapper script.
+
+**What was verified, using a real object already in local dev MinIO** (a real cover photo uploaded
+during this session's earlier browser testing, `media/a8e71fb7-d37c-491c-bf64-0e117d668db5.jpg` in
+bucket `phuquochub`):
+
+1. Confirmed the object's `bucket`/`object_key` as recorded in Postgres (`SELECT object_key, bucket
+   FROM media WHERE id = '…'`) match EXACTLY the path used against MinIO — the DB reference and the
+   real object are not out of sync.
+2. Created an isolated scratch bucket (`phuquochub-restore-test-<timestamp>`) — never the real
+   `phuquochub` bucket as a write target.
+3. Copied ("restored") the object from `phuquochub` into the scratch bucket.
+4. Compared SHA256 of the source and restored copies (`mc cat | sha256sum` on each side, not just
+   MinIO's own ETag, though that matched too): **byte-identical** —
+   `bf7b111808a2bcdf0aa6c48cbc5f533fa5507a5dc3840267ddac4a6a775d4c44` on both sides.
+   `mc stat` on the restored copy confirmed `Content-Type: image/jpeg` and the same size (6.7 KiB) —
+   the restored object opens as a valid image, not just a byte blob with a matching hash.
+5. Deleted the scratch bucket and its one object immediately after. The real `phuquochub` bucket was
+   only ever read from, never written to or deleted from, during this rehearsal.
+
+**Not rehearsed in this pass:** restoring an ENTIRE media snapshot directory as `backup-media.sh`
+actually produces one (a full `mc mirror` pass across every object) — this rehearsal proved the
+single-object copy-and-verify mechanism `restore-media-rehearsal.sh` also relies on, not a
+multi-object mirror. Media backup itself is **not yet scheduled on production** (see §0/§8.4 — cron
+entry not added), so there is no real production media snapshot to rehearse against yet regardless.

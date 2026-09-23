@@ -42,6 +42,7 @@ function tour(overrides: Partial<TourDetail> = {}): TourDetail {
     rating_avg: null,
     rating_count: 0,
     verification_status: 'verified',
+    content_version: 1,
     status: 'published',
     location: { lat: 10.0, lng: 104.0 },
     address: null,
@@ -59,6 +60,8 @@ function tour(overrides: Partial<TourDetail> = {}): TourDetail {
     media: [],
     faqs: [],
     trust_sources: [],
+    en_display_name_approved: false,
+    en_short_description_approved: false,
     tour_details: null,
     ...overrides,
   };
@@ -70,6 +73,50 @@ async function renderPage(t: TourDetail, itinerary: TourStop[] = [], schedule: T
   mockGetSchedule.mockResolvedValueOnce(schedule);
   render(await TourDetailPage({ params: Promise.resolve({ slug: t.slug, locale: 'vi' }) }));
 }
+
+// 2026-09-17 (real-data pass): trước bản sửa này, getTour() được gọi KHÔNG kèm locale nên
+// /en/tours/{slug} luôn nhận nội dung mặc định của server bất kể route.
+describe('TourDetailPage/generateMetadata — getTour() phải nhận đúng locale từ route', () => {
+  it('generateMetadata({ locale: "en" }) → getTour(slug, "en")', async () => {
+    mockGetTour.mockResolvedValueOnce(tour());
+    await generateMetadata({ params: Promise.resolve({ slug: 'tour-lan-bien', locale: 'en' }) });
+    expect(mockGetTour).toHaveBeenCalledWith('tour-lan-bien', 'en');
+  });
+
+  it('TourDetailPage({ locale: "vi" }) → getTour(slug, "vi")', async () => {
+    await renderPage(tour());
+    expect(mockGetTour).toHaveBeenCalledWith('tour-lan-bien', 'vi');
+  });
+});
+
+describe('TourDetailPage — gallery ảnh công khai (real-data pass)', () => {
+  it('có media đã published -> render ảnh thật', async () => {
+    await renderPage(
+      tour({
+        media: [
+          {
+            id: 'm1',
+            type: 'image',
+            url: 'https://api.example/api/media/m1/file',
+            thumbnail_url: null,
+            caption: null,
+            alt_text: 'Đoàn tour ngoài khơi',
+            status: 'published',
+            attribution: null,
+            license_type: null,
+            license_url: null,
+          },
+        ],
+      }),
+    );
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+  });
+
+  it('media rỗng -> không render <img> nào', async () => {
+    await renderPage(tour({ media: [] }));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
 
 // Public Beta price trust gate (2026-08-28) — `tour_schedules.price` has NO verification/trust
 // column at the DB level (migration InitTour never added one), so this page fails closed: raw

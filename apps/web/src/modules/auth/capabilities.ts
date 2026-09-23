@@ -12,6 +12,16 @@
 // chỉ nhìn thấy một liên kết dẫn tới một trang mà API sẽ trả 403 — không có gì bị nới lỏng.
 // Ngược lại cũng đúng: cờ sai/thiếu chỉ làm ẩn liên kết, không bao giờ cấp thêm quyền.
 
+/**
+ * `content_owner` (SeedContentOwnerRole, launch-readiness pass 2026-09-22) thêm vào CẢ BỐN danh
+ * sách bên dưới — role đó giữ trực tiếp (không qua kế thừa) `Place.Edit.Any`, `Media.Moderate`,
+ * `PlaceTranslation.Review.Any` VÀ `Guide.Edit.Any` cùng lúc (xem migration
+ * 1720006200000-SeedContentOwnerRole.ts). Thiếu ở đây không làm mất quyền API nào (mọi endpoint
+ * vẫn tự gác qua PermissionsGuard), nhưng làm chính owner đăng nhập vào KHÔNG THẤY một lối vào
+ * dashboard nào cho quyền họ thực sự có — phát hiện bằng cách đăng nhập thật, không phải suy luận
+ * từ code: role có quyền API đầy đủ nhưng UI vẫn hiện như một `member` trơn.
+ */
+
 /** Vai trò giữ năng lực BIÊN TẬP nội dung mọi địa điểm (`*.Any` — xem SeedRbac/SeedPlacePermissions
  *  và migration SeedEditorialMediaPermission). Trùng khớp với chuỗi kế thừa thực tế:
  *  contributor → moderator → administrator → super_administrator, và (2026-09-16) content_owner
@@ -49,6 +59,23 @@ const TRANSLATION_REVIEW_ROLES = ['content_owner', 'moderator', 'administrator',
  */
 const SELF_APPROVE_MEDIA_ROLES = ['content_owner'];
 
+/** Vai trò giữ `Guide.Edit.Any` (SeedGuideEditPermission, Guide CMS candidate 2026-09-18) —
+ *  cùng tập vai trò với duyệt bản dịch (cấp cho `moderator`, kế thừa lên
+ *  `administrator`/`super_administrator`); KHÔNG cấp cho `contributor` như biên tập địa điểm
+ *  thường, vì một guide article xuất bản công khai không qua một bước duyệt riêng nào khác. */
+const GUIDE_EDIT_ROLES = ['moderator', 'administrator', 'super_administrator', 'content_owner'];
+
+/** Vai trò giữ `SiteContent.Edit` (S1, SiteContentSchema1720006400000) — cấp TRỰC TIẾP cho
+ *  `content_owner` ONLY (không qua kế thừa, không cấp cho moderator/administrator như các quyền
+ *  nội dung khác ở trên) — xem migration comment: đây là quyền vận hành nội dung trang chủ, không
+ *  phải một khoảng biên tập/kiểm duyệt mọi vai trò kiểm duyệt cần. */
+const SITE_CONTENT_EDIT_ROLES = ['content_owner'];
+
+/** Vai trò giữ `Ops.BackupStatus.View` (BK1, SeedBackupStatusPermission1720006500000) — cấp TRỰC
+ *  TIẾP cho `content_owner` ONLY, cùng nhóm với SiteContent.Edit: đây là siêu dữ liệu vận hành
+ *  (tên/thời gian/kích thước file sao lưu), không phải một khoảng biên tập/kiểm duyệt nội dung. */
+const BACKUP_STATUS_VIEW_ROLES = ['content_owner'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -58,6 +85,12 @@ export interface UserCapabilities {
   canReviewTranslations: boolean;
   /** Hiện nút "Duyệt ngay" trên ẢNH CHÍNH MÌNH tải lên (INV-12 exception, content_owner). */
   canSelfApproveOwnMedia: boolean;
+  /** Hiện lối vào "Biên tập cẩm nang" (Guide CMS candidate). */
+  canEditGuides: boolean;
+  /** Hiện lối vào "Nội dung website" (S1 — hero/về chúng tôi/nổi bật/liên hệ-mạng xã hội trang chủ). */
+  canEditSiteContent: boolean;
+  /** Hiện khối "Tình trạng sao lưu" trên trang Hướng dẫn (BK1). */
+  canViewBackupStatus: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -65,6 +98,9 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canModerate: false,
   canReviewTranslations: false,
   canSelfApproveOwnMedia: false,
+  canEditGuides: false,
+  canEditSiteContent: false,
+  canViewBackupStatus: false,
 };
 
 /**
@@ -80,5 +116,8 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canModerate: codes.some((c) => MODERATION_ROLES.includes(c)),
     canReviewTranslations: codes.some((c) => TRANSLATION_REVIEW_ROLES.includes(c)),
     canSelfApproveOwnMedia: codes.some((c) => SELF_APPROVE_MEDIA_ROLES.includes(c)),
+    canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
+    canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
+    canViewBackupStatus: codes.some((c) => BACKUP_STATUS_VIEW_ROLES.includes(c)),
   };
 }

@@ -19,6 +19,7 @@ import { PlacesService } from './places.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import {
   CreatePlaceDto,
+  EnIndexableIdsDto,
   GetPlaceDetailQueryDto,
   ListPlacesQueryDto,
   RightNowQueryDto,
@@ -61,6 +62,26 @@ export class PlacesController {
   @Get('mine')
   listMine(@CurrentUser() user: AuthPrincipal) {
     return this.placesService.listMine(user.sub);
+  }
+
+  // P1 (Owner self-publish, 2026-09-22) — danh sách MỌI place (mọi status), cho đội biên tập toàn
+  // cục (EditorialPlacesView). Đặt TRƯỚC ':slug' cùng lý do 'mine' ở trên — 'editorial' phải
+  // không bị nuốt như thể là một slug.
+  @Get('editorial')
+  @RequirePermissions('Place.Edit.Any')
+  listEditorial(@Query() query: ListPlacesQueryDto) {
+    return this.placesService.listEditorial(query);
+  }
+
+  // SEO1 (2026-09-22) — sitemap-only batched EN-indexation check (place/hotel/restaurant/tour đều
+  // là hàng `places`, xem PlacesService.listEnIndexableIds's comment). POST (không phải GET) vì
+  // danh sách id có thể vượt giới hạn độ dài query string an toàn của một số hạ tầng trung gian;
+  // không xung đột thứ tự route với ':slug' — khác HTTP method thì không có nguy cơ bị nuốt.
+  @Public()
+  @Post('en-indexable-ids')
+  @HttpCode(HttpStatus.OK)
+  listEnIndexableIds(@Body() body: EnIndexableIdsDto) {
+    return this.placesService.listEnIndexableIds(body.ids);
   }
 
   // openapi listPlaceRevisions — lịch sử wiki_revisions (entity_type='place').
@@ -214,5 +235,25 @@ export class PlacesController {
   @RequirePermissions('Place.Approve')
   approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
     return this.placesService.approve(id, user.sub);
+  }
+
+  // P1 (Owner self-publish, 2026-09-22) — symmetric to /approve: gỡ công khai về `draft`, KHÁC
+  // `archive()` (soft-delete). Cùng permission `Place.Approve` — ai duyệt được thì gỡ được.
+  @Post(':id/unpublish')
+  @RequirePermissions('Place.Approve')
+  unpublish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.placesService.unpublish(id, user.sub);
+  }
+
+  // P3 (Preview riêng tư, 2026-09-22) — cho owner xem place CHƯA xuất bản (draft/pending) đúng
+  // hình dạng PlaceDetail trước khi bấm publish. Đặt sau ':id/revisions' và ':id/approve' —
+  // đoạn cuối cố định 'preview' không đụng route tham số nào ở trên (không có tham số một đoạn
+  // nào khác khớp chuỗi này). Dùng CHÍNH `Place.Edit.Managed` + `@AuthorizationContext` mà PATCH
+  // đã dùng — "xem trước được" ĐÚNG BẰNG "sửa được", không phải một khái niệm quyền mới.
+  @Get(':id/preview')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  preview(@Param('id', ParseUUIDPipe) id: string) {
+    return this.placesService.preview(id);
   }
 }

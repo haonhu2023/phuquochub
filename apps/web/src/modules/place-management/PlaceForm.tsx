@@ -433,6 +433,12 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
 
 function formErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
+    if (err.isConflict) {
+      // CAS (AddPlaceContentVersion, 2026-09-22) — P2: ai đó khác đã lưu bản mới hơn trong lúc
+      // bạn đang sửa. KHÔNG ghi đè: dữ liệu bạn vừa nhập vẫn còn nguyên trên form (state của
+      // PlaceForm không bị xoá khi submit lỗi) — chỉ tải lại trang mới thấy bản mới nhất.
+      return 'Địa điểm này vừa được sửa bởi người khác. Tải lại trang để lấy bản mới nhất, rồi nhập lại các thay đổi của bạn.';
+    }
     if (err.status === 403) return 'Bạn không có quyền thực hiện thao tác này trên địa điểm này.';
     if (err.status === 404) return 'Không tìm thấy địa điểm — có thể đã bị xoá.';
     if (err.status < 500) return err.message;

@@ -81,6 +81,7 @@ function makePlace(overrides: Partial<PlaceCardRow> = {}): PlaceCardRow {
     rating_count: 0,
     verification_status: 'pending',
     status: PlaceStatus.PUBLISHED,
+    content_version: 1,
     lat: 10,
     lng: 104,
     ...overrides,

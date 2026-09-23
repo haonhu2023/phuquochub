@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -205,7 +206,10 @@ describe('Business Ownership Transfer (live Postgres)', () => {
     const beforeTransfer = await request(app.getHttpServer())
       .patch(`/api/places/${owner.placeId}`)
       .set('Authorization', `Bearer ${owner.accessToken}`)
-      .send({ name: 'Place — edited by old owner before transfer' });
+      .send({
+        name: 'Place — edited by old owner before transfer',
+        expected_content_version: await currentPlaceContentVersion(ds, owner.placeId),
+      });
     expect(beforeTransfer.status).toBe(200);
 
     const transferRes = await request(app.getHttpServer())
@@ -295,7 +299,10 @@ describe('Business Ownership Transfer (live Postgres)', () => {
     const newOwnerAfter = await request(app.getHttpServer())
       .patch(`/api/places/${owner.placeId}`)
       .set('Authorization', `Bearer ${newOwner.accessToken}`)
-      .send({ name: 'Place — edited by new owner after transfer' });
+      .send({
+        name: 'Place — edited by new owner after transfer',
+        expected_content_version: await currentPlaceContentVersion(ds, owner.placeId),
+      });
     expect(newOwnerAfter.status).toBe(200);
 
     // Manager giữ NGUYÊN — business_members KHÔNG đổi, quyền Managed vẫn hoạt động.
@@ -306,7 +313,10 @@ describe('Business Ownership Transfer (live Postgres)', () => {
     const managerStillWorks = await request(app.getHttpServer())
       .patch(`/api/places/${owner.placeId}`)
       .set('Authorization', `Bearer ${managerToken}`)
-      .send({ name: 'Place — manager unaffected by ownership transfer' });
+      .send({
+        name: 'Place — manager unaffected by ownership transfer',
+        expected_content_version: await currentPlaceContentVersion(ds, owner.placeId),
+      });
     expect(managerStillWorks.status).toBe(200);
   });
 

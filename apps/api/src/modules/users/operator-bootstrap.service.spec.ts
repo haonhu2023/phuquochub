@@ -173,7 +173,15 @@ describe('OperatorBootstrapService', () => {
 
     it('allowlist KHÔNG chứa super_administrator (khoá lại chính danh sách, không chỉ hành vi)', () => {
       expect(BOOTSTRAPPABLE_ROLE_CODES).not.toContain('super_administrator');
-      expect(BOOTSTRAPPABLE_ROLE_CODES).toEqual(['administrator', 'moderator', 'contributor']);
+      // 'content_owner' thêm 2026-09-22 (SeedContentOwnerRole1720006200000) — vai trò vận hành nội
+      // dung thường trực, không giữ Role.Assign nên không mở lại thế bí leo thang mà allowlist này
+      // đang khoá.
+      expect(BOOTSTRAPPABLE_ROLE_CODES).toEqual([
+        'administrator',
+        'moderator',
+        'contributor',
+        'content_owner',
+      ]);
     });
   });
 });

@@ -1,6 +1,6 @@
-import { apiDeleteAuth, apiGetAuth, apiPatchAuth, apiPost } from '@/lib/http';
-import type { GeoPoint, OpeningHours, PriceRangeValue } from '@phuquochub/shared-types';
-import type { ManagedPlace, PlaceFormInput } from '../types';
+import { apiDeleteAuth, apiGetAuth, apiGetPaginatedAuth, apiPatchAuth, apiPost } from '@/lib/http';
+import type { GeoPoint, OpeningHours, PaginationMeta, PlaceCard, PriceRangeValue } from '@phuquochub/shared-types';
+import type { ManagedPlace, PlaceFormInput, UpdatePlaceFormInput } from '../types';
 
 // Client API Place Content Management (PLACE-041) — bốn endpoint: ba đã có sẵn từ trước
 // (POST /places, PATCH /places/:id, DELETE /places/:id — Places module), một mới thêm trong task
@@ -18,9 +18,55 @@ export async function createPlace(payload: PlaceFormInput, accessToken: string) 
   return apiPost<ManagedPlace>('/places', accessToken, payload);
 }
 
-/** PATCH /places/:id — sửa địa điểm đang quản lý (Place.Edit.Managed, phạm vi theo business_id). */
-export async function updatePlace(id: string, payload: PlaceFormInput, accessToken: string) {
+/**
+ * PATCH /places/:id — sửa địa điểm đang quản lý (Place.Edit.Managed — hoặc Place.Edit.Any cho
+ * content_owner/biên tập viên toàn cục). Payload BẮT BUỘC mang `expected_content_version` (CAS,
+ * AddPlaceContentVersion 2026-09-22) — token cũ → 409 (`ApiError.isConflict`), KHÔNG ghi đè.
+ */
+export async function updatePlace(id: string, payload: UpdatePlaceFormInput, accessToken: string) {
   return apiPatchAuth<ManagedPlace>(`/places/${encodeURIComponent(id)}`, accessToken, payload);
+}
+
+/**
+ * GET /places/:id/preview — nội dung place CHƯA xuất bản, y hệt hình dạng sẽ hiện ra khi publish
+ * (P3, 2026-09-22). Cùng permission với PATCH (Place.Edit.Managed/.Any) — dùng làm nguồn tải dữ
+ * liệu form Sửa THAY CHO `listMyPlaces().find()`: listMine() chỉ liệt kê grant scope='managed' có
+ * business_id cụ thể, nên content_owner (giữ Place.Edit.Any, business_id=null) không bao giờ xuất
+ * hiện ở đó dù họ sửa/xuất bản được MỌI place qua đúng route PATCH này.
+ */
+export async function previewPlace(id: string, accessToken: string): Promise<ManagedPlace> {
+  return apiGetAuth<ManagedPlace>(`/places/${encodeURIComponent(id)}/preview`, accessToken, { cache: 'no-store' });
+}
+
+/** POST /places/:id/approve — xuất bản (Place.Approve). Trả `null` (EmptySuccess). */
+export async function publishPlace(id: string, accessToken: string): Promise<null> {
+  return apiPost<null>(`/places/${encodeURIComponent(id)}/approve`, accessToken);
+}
+
+/**
+ * POST /places/:id/unpublish — gỡ công khai về `draft` (Place.Approve). Trả `null` (EmptySuccess).
+ * KHÁC archive(): hồi được — publishPlace() lại là đủ để công khai lại.
+ */
+export async function unpublishPlace(id: string, accessToken: string): Promise<null> {
+  return apiPost<null>(`/places/${encodeURIComponent(id)}/unpublish`, accessToken);
+}
+
+/**
+ * GET /places/editorial — MỌI place (mọi status), cho đội biên tập toàn cục (Place.Edit.Any).
+ * Đây là màn "tìm thấy" cho content_owner: nơi DUY NHẤT họ thấy lại chính place họ vừa tạo
+ * (`draft`) hay place `pending` của người khác — "Địa điểm của tôi" (listMyPlaces) không có gì.
+ * Trả shape THẺ (PlaceCard — cùng `GET /places` công khai, qua toPlaceCard), KHÔNG phải chi tiết
+ * đầy đủ: đủ cho danh sách (tên/slug/status/ảnh bìa), sửa/xuất bản mở trang riêng qua `id`.
+ */
+export async function listEditorialPlaces(
+  accessToken: string,
+  params: { page?: number; limit?: number } = {},
+): Promise<{ data: PlaceCard[]; meta: PaginationMeta }> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.limit) qs.set('limit', String(params.limit));
+  const q = qs.toString();
+  return apiGetPaginatedAuth<PlaceCard>(`/places/editorial${q ? `?${q}` : ''}`, accessToken);
 }
 
 /** DELETE /places/:id — lưu trữ (archive). Trả `null` (EmptySuccess). Yêu cầu `Place.Archive` —

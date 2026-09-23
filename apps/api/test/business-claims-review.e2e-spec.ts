@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
+import { currentPlaceContentVersion } from './helpers/place-content-version';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -385,7 +386,10 @@ describe('Business Claim Review queue (live Postgres)', () => {
       const after = await request(app.getHttpServer())
         .patch(`/api/places/${placeId}`)
         .set('Authorization', `Bearer ${requester.accessToken}`)
-        .send({ name: 'Đã được chủ cơ sở cập nhật' });
+        .send({
+          name: 'Đã được chủ cơ sở cập nhật',
+          expected_content_version: await currentPlaceContentVersion(ds, placeId),
+        });
       expect(after.status).toBe(200);
 
       // Track source do approve sinh ra để afterAll dọn sạch (sources KHÔNG cascade từ places).

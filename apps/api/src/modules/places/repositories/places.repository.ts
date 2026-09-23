@@ -34,6 +34,8 @@ export interface PlaceCardRow extends CoverImageColumns {
   // đã theo tiền lệ tương tự với enum nội bộ PlaceStatus.
   verification_status: VerificationStatusValue;
   status: PlaceStatus;
+  /** CAS token (AddPlaceContentVersion) — client gửi lại qua `expected_content_version` khi PATCH. */
+  content_version: number;
   lat: number;
   lng: number;
   distance_m?: number;
@@ -145,7 +147,7 @@ export interface CreatePlaceRow {
 const CARD_COLS = `
   p.id, p.name, p.slug, p.category_id, p.short_description, p.price_range,
   ${COVER_IMAGE_COLS},
-  p.rating_avg, p.rating_count, p.verification_status, p.status,
+  p.rating_avg, p.rating_count, p.verification_status, p.status, p.content_version,
   ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
 `;
 
@@ -373,6 +375,16 @@ export class PlacesRepository {
    * `location` (2026-09-17) KHÔNG còn bị loại trừ — toạ độ không có lớp phủ i18n nào (nguy cơ trên
    * chỉ áp dụng cho ba trường dịch được), nên giờ CÓ CAS thật qua nhánh riêng bên dưới thay vì mãi
    * là "chưa thiết kế" (PlacesService.saveDraft() không còn từ chối `dto.location` nữa).
+   *
+   * **Tích hợp với `content_version` (AddPlaceContentVersion, 2026-09-22, gộp nhánh production +
+   * candidate):** đường ghi này và `updateScalarsWithCas()` bên dưới bảo vệ CÙNG một tập cột chồng
+   * lấn (category_id/address/ward/.../location) bằng HAI token CAS độc lập (`xmin` ở đây,
+   * `content_version` ở kia) — nếu KHÔNG đồng bộ, một lần publish nháp qua đường này sẽ không bump
+   * `content_version`, khiến `update()` (đường trực tiếp, CAS theo `content_version`) không phát
+   * hiện được thay đổi vừa xảy ra qua đường nháp và có thể ghi đè mất nó (lost update xuyên hai cơ
+   * chế). Cột `content_version` LUÔN được tăng thêm 1 ở SET clause dưới đây, bất kể `patch` có
+   * field nào, để giữ đúng bất biến "mọi UPDATE chạm các cột này đều bump content_version" cho CẢ
+   * HAI đường ghi — không đổi ý nghĩa/behavior của `xmin` CAS đã có, chỉ thêm một cột luôn tăng.
    */
   async updateScalarsIfUnchanged(
     id: string,
@@ -409,6 +421,8 @@ export class PlacesRepository {
       setClauseParts.push(`"location" = ST_SetSRID(ST_MakePoint($${lngIndex},$${latIndex}),4326)::geography`);
       values.push(location.lng, location.lat);
     }
+    // Luôn bump content_version — xem ghi chú tích hợp ở trên. Không phụ thuộc vào keys/location.
+    setClauseParts.push('"content_version" = "content_version" + 1');
     const setClauses = setClauseParts.join(', ');
     // BUG THẬT phát hiện qua e2e trên Postgres thật (2026-09-16), không phải unit test (mock
     // repository nên không bao giờ chạm hình dạng trả về thật): TypeORM's `Repository.query()` trả
@@ -442,6 +456,35 @@ export class PlacesRepository {
       [id, expectedVersion, ...values],
     );
     return rows.length > 0;
+  }
+
+  /**
+   * CAS-gated variant of `updateScalars` (AddPlaceContentVersion, 2026-09-22) — the conditional
+   * `UPDATE ... WHERE id = $1 AND content_version = $2` in one statement (TypeORM `.update()`'s
+   * where-object form: `{ id, contentVersion: expectedVersion }`), incrementing the token on
+   * success. Returns `false` when nothing matched (place gone, or someone else's write already
+   * bumped the token) — caller turns that into a 409, never a silent overwrite. Same shape as
+   * `GuideArticlesService.saveDraft()`'s `articleRepo.update({id, contentVersion: expected}, ...)`.
+   *
+   * `patch` may be empty (a location-only edit) — still worth running to claim the version bump
+   * and prove the caller's expected version was current, so callers don't special-case that.
+   *
+   * See `updateScalarsIfUnchanged()`'s integration note above: that method (the older draft/
+   * publish flow, `xmin`-CAS) also bumps `content_version` on every write, so a write through
+   * either path is visible to a CAS check through the other.
+   */
+  async updateScalarsWithCas(
+    id: string,
+    patch: Record<string, unknown>,
+    expectedVersion: number,
+    manager?: EntityManager,
+  ): Promise<boolean> {
+    const runner = manager ? manager.getRepository(Place) : this.repo;
+    const result = await runner.update(
+      { id, contentVersion: expectedVersion },
+      { ...patch, contentVersion: expectedVersion + 1 },
+    );
+    return (result.affected ?? 0) > 0;
   }
 
   async updateLocation(id: string, lng: number, lat: number): Promise<void> {
@@ -737,6 +780,30 @@ export class PlacesRepository {
       .filter((c) => this.hasVerifiedOpeningHours(c.id, c.opening_hours, verifiedHashesByPlace))
       .slice(0, params.limit);
     return withCoverImageUrl(rows, this.mediaUrl);
+  }
+
+  /**
+   * P1 (Owner self-publish, 2026-09-22) — danh sách ĐẶC QUYỀN cho đội biên tập toàn cục
+   * (`Place.Edit.Any`, `EditorialPlacesView`): KHÔNG lọc `status` (khác `list()` ở trên, luôn ép
+   * `published` khi không truyền). Lý do cần tồn tại RIÊNG: `listMine()` chỉ liệt kê grant
+   * `scope_type='managed'` có `business_id` cụ thể — người giữ `Place.Edit.Any` (global,
+   * `business_id = null`) không bao giờ là ứng viên ở đó (đúng chủ đích chống giả mạo ADR-015),
+   * nên KHÔNG có cách nào khác để họ tự tìm lại chính place họ vừa tạo (`draft`, chưa ai duyệt) hay
+   * duyệt qua danh sách place `pending` của người khác. Route gọi hàm này PHẢI gác bằng
+   * `@RequirePermissions('Place.Edit.Any')` — hàm này tự nó KHÔNG kiểm quyền lần hai.
+   */
+  async listEditorial(params: { limit: number; offset: number }): Promise<{ items: PlaceCardRow[]; total: number }> {
+    const countRows: Array<{ count: string }> = await this.repo.query(
+      `SELECT count(*)::int AS count FROM places p WHERE p.deleted_at IS NULL`,
+    );
+    const total = Number(countRows[0]?.count ?? 0);
+    const items: PlaceCardRow[] = await this.repo.query(
+      `SELECT ${CARD_COLS} FROM places p WHERE p.deleted_at IS NULL
+       ORDER BY p.updated_at DESC, p.id ASC
+       LIMIT $1 OFFSET $2`,
+      [params.limit, params.offset],
+    );
+    return { items: withCoverImageUrl(items, this.mediaUrl), total };
   }
 
   /**

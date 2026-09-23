@@ -9,11 +9,17 @@ import { PricesModule } from '../prices/prices.module';
 import { MediaModule } from '../media/media.module';
 import { ReviewsModule } from '../reviews/reviews.module';
 import { BusinessModule } from '../business/business.module';
+import { CategoriesModule } from '../categories/categories.module';
+import { PlaceExternalIdentifiersModule } from '../place-external-identifiers/place-external-identifiers.module';
+import { OwnerDecisionQueueModule } from '../owner-decision-queue/owner-decision-queue.module';
+import { RbacModule } from '../rbac/rbac.module';
 import { PlaceSeo } from '../places/entities/place-seo.entity';
 import { PlaceAiSummary } from '../places/entities/place-ai-summary.entity';
 import { AdministrativeBackfillService } from './administrative-backfill.service';
 import { DataQualityAuditService } from './data-quality-audit.service';
 import { VerifiedFactsIngestionService } from './verified-facts-ingestion.service';
+import { SourceFirstPublishEvaluator } from './source-first-publish-evaluator.service';
+import { SourceFirstIngestService } from './source-first-ingest.service';
 
 // Administrative Data Backfill (2026-08-18). KHÔNG có controller — chạy qua script CLI
 // (`src/scripts/backfill-administrative-data.ts`, cùng khuôn `verification:expire`/
@@ -32,6 +38,9 @@ import { VerifiedFactsIngestionService } from './verified-facts-ingestion.servic
 // `PlaceAiSummary` chưa có repository wrapper riêng ở đâu trong repo (chưa ai đọc hai bảng này) —
 // đăng ký `TypeOrmModule.forFeature` ngay tại đây thay vì thêm một repository class chỉ để
 // `findOne()` một dòng; nếu sau này có consumer thứ hai, tách repository lúc đó.
+// Source-First Publish Pipeline (2026-09-18): CategoriesModule cấp CategoriesRepository cho slug
+// lookup; PlaceExternalIdentifiersModule cấp PlaceExternalIdentifiersService để đăng ký Google
+// Place ID; OwnerDecisionQueueModule là cross-cutting dependency, không import ngược AdminDataModule.
 @Module({
   imports: [
     PlacesModule,
@@ -43,9 +52,24 @@ import { VerifiedFactsIngestionService } from './verified-facts-ingestion.servic
     MediaModule,
     ReviewsModule,
     BusinessModule,
+    CategoriesModule,
+    PlaceExternalIdentifiersModule,
+    OwnerDecisionQueueModule,
+    RbacModule,
     TypeOrmModule.forFeature([PlaceSeo, PlaceAiSummary]),
   ],
-  providers: [AdministrativeBackfillService, DataQualityAuditService, VerifiedFactsIngestionService],
-  exports: [AdministrativeBackfillService, DataQualityAuditService, VerifiedFactsIngestionService],
+  providers: [
+    AdministrativeBackfillService,
+    DataQualityAuditService,
+    VerifiedFactsIngestionService,
+    SourceFirstPublishEvaluator,
+    SourceFirstIngestService,
+  ],
+  exports: [
+    AdministrativeBackfillService,
+    DataQualityAuditService,
+    VerifiedFactsIngestionService,
+    SourceFirstIngestService,
+  ],
 })
 export class AdminDataModule {}

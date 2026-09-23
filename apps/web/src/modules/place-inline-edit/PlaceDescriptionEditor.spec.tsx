@@ -48,6 +48,9 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canModerate: false,
   canReviewTranslations: true,
   canSelfApproveOwnMedia: true,
+  canEditGuides: false,
+  canEditSiteContent: false,
+  canViewBackupStatus: false,
 };
 
 function authed() {
@@ -58,6 +61,7 @@ function authed() {
     login: jest.fn(),
     register: jest.fn(),
     logout: jest.fn(),
+    sessionExpired: false,
   });
   mockReadSession.mockReturnValue(SESSION);
 }
@@ -87,6 +91,7 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
       login: jest.fn(),
       register: jest.fn(),
       logout: jest.fn(),
+      sessionExpired: false,
     });
 
     const { container } = render(<PlaceDescriptionEditor placeId="p1" />);

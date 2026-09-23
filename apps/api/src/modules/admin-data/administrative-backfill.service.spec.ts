@@ -34,6 +34,7 @@ function makeDetailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow 
     rating_count: 0,
     verification_status: 'pending',
     status: PlaceStatus.PUBLISHED,
+    content_version: 3,
     lat: 10.0466,
     lng: 104.0281,
     address: null,
@@ -194,7 +195,7 @@ describe('AdministrativeBackfillService', () => {
       expect(summary.patched).toBe(1);
       expect(placesService.update).toHaveBeenCalledWith(
         'place-grand-world',
-        { province: 'An Giang', admin_area: 'Đặc khu Phú Quốc' },
+        { province: 'An Giang', admin_area: 'Đặc khu Phú Quốc', expected_content_version: 3 },
         'actor-1',
         RevisionOrigin.IMPORT,
       );
@@ -243,7 +244,7 @@ describe('AdministrativeBackfillService', () => {
       expect(summary.patched).toBe(1);
       expect(placesService.update).toHaveBeenCalledWith(
         'place-1',
-        { province: 'An Giang', admin_area: 'Đặc khu Phú Quốc' },
+        { province: 'An Giang', admin_area: 'Đặc khu Phú Quốc', expected_content_version: 3 },
         'actor-1',
         RevisionOrigin.IMPORT,
       );
@@ -289,11 +290,14 @@ describe('AdministrativeBackfillService', () => {
       });
     });
 
-    it('PATCH payload CHỈ chứa province/admin_area — không có name/category_id/location/ward/address', async () => {
+    it('PATCH payload CHỈ chứa province/admin_area (+ CAS token) — không có name/category_id/location/ward/address', async () => {
       await service.backfill({ actorId: 'actor-1', targets: ONE_TARGET });
 
       const [, patchDto] = placesService.update.mock.calls[0];
-      expect(Object.keys(patchDto)).toEqual(['province', 'admin_area']);
+      // expected_content_version (AddPlaceContentVersion, 2026-09-22) — BẮT BUỘC trên mọi PATCH,
+      // lấy từ chính row vừa đọc trong cùng lần chạy này (không phải một trường "ngoài phạm vi").
+      expect(Object.keys(patchDto)).toEqual(['province', 'admin_area', 'expected_content_version']);
+      expect(patchDto.expected_content_version).toBe(3); // makeDetailRow() mặc định content_version: 3
     });
   });
 

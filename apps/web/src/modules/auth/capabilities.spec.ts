@@ -4,8 +4,10 @@ import { capabilitiesFromRoles, NO_CAPABILITIES } from './capabilities';
 // THẤY lối vào đặc quyền. Nó KHÔNG cấp quyền (backend cưỡng chế), nhưng hiện nhầm lối vào cho
 // người thường là một lỗi UX tệ (bấm vào chỉ để nhận 403), nên từng vai trò được khoá tường minh.
 //
-// canReviewTranslations (human-translation-review, 2026-09-04) và canSelfApproveOwnMedia
-// (content_owner, 2026-09-16) thêm sau — mọi assertion dưới đây cập nhật để phản ánh cả bốn cờ.
+// canReviewTranslations (human-translation-review, 2026-09-04), canSelfApproveOwnMedia
+// (content_owner, 2026-09-16), canEditGuides (Guide CMS candidate, 2026-09-18), canEditSiteContent
+// và canViewBackupStatus (launch-readiness pass, 2026-09-22) thêm sau — mọi assertion dưới đây cập
+// nhật để phản ánh đủ bảy cờ (gộp hai nhánh 2026-09-23).
 describe('capabilitiesFromRoles', () => {
   it('member thường: KHÔNG thấy lối vào nào', () => {
     expect(capabilitiesFromRoles(['member'])).toEqual(NO_CAPABILITIES);
@@ -18,39 +20,56 @@ describe('capabilitiesFromRoles', () => {
     },
   );
 
-  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt/duyệt bản dịch/tự duyệt (đúng bộ quyền thật của vai trò này)', () => {
+  it('contributor: biên tập được, nhưng KHÔNG kiểm duyệt/duyệt bản dịch/tự duyệt/biên tập cẩm nang (đúng bộ quyền thật của vai trò này)', () => {
     expect(capabilitiesFromRoles(['contributor'])).toEqual({
       canEditorial: true,
       canModerate: false,
       canReviewTranslations: false,
       canSelfApproveOwnMedia: false,
+      canEditGuides: false,
+      canEditSiteContent: false,
+      canViewBackupStatus: false,
     });
   });
 
   it.each([['moderator'], ['administrator'], ['super_administrator']])(
-    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ)',
+    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ), KHÔNG nội dung website/tình trạng sao lưu',
     (role) => {
       expect(capabilitiesFromRoles([role])).toEqual({
         canEditorial: true,
         canModerate: true,
         canReviewTranslations: true,
         canSelfApproveOwnMedia: false,
+        canEditGuides: true,
+        canEditSiteContent: false,
+        canViewBackupStatus: false,
       });
     },
   );
 
-  // content_owner (2026-09-16, mở rộng 2026-09-17) — role RIÊNG cho ngoại lệ INV-12 + duyệt bản
-  // dịch + (mới) kiểm duyệt ẢNH của người khác qua GrantContentOwnerMediaModerationScope (cấp
-  // TRỰC TIẾP Media.Moderate + Moderation.Queue.View, không kế thừa moderator). Biên tập được (qua
-  // contributor), tự duyệt ảnh/bản dịch CỦA MÌNH, VÀ giờ thấy được Hàng chờ kiểm duyệt chung (quyết
-  // định trên case KHÔNG PHẢI ảnh vẫn 403 ở backend — content_owner không có Review.Moderate).
-  it('content_owner: biên tập + duyệt bản dịch + tự duyệt ảnh của mình + thấy hàng chờ kiểm duyệt (ảnh người khác)', () => {
+  // content_owner (2026-09-16, mở rộng 2026-09-17, 2026-09-22) — role RIÊNG cho ngoại lệ INV-12 +
+  // duyệt bản dịch + kiểm duyệt ẢNH của người khác qua GrantContentOwnerMediaModerationScope (cấp
+  // TRỰC TIẾP Media.Moderate + Moderation.Queue.View, không kế thừa moderator), CỘNG Guide.Edit.Any/
+  // SiteContent.Edit/Ops.BackupStatus.View (SeedContentOwnerRole, launch-readiness 2026-09-22) —
+  // phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu các dòng sau khiến owner có đủ
+  // quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, lẫn tình trạng sao lưu', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
       canReviewTranslations: true,
       canSelfApproveOwnMedia: true,
+      canEditGuides: true,
+      canEditSiteContent: true,
+      canViewBackupStatus: true,
     });
+  });
+
+  it('moderator/administrator/super_administrator: KHÔNG thấy lối vào nội dung website hay tình trạng sao lưu (cả hai chỉ cấp cho content_owner)', () => {
+    for (const role of ['moderator', 'administrator', 'super_administrator']) {
+      expect(capabilitiesFromRoles([role]).canEditSiteContent).toBe(false);
+      expect(capabilitiesFromRoles([role]).canViewBackupStatus).toBe(false);
+    }
   });
 
   it('nhiều vai trò: hợp nhất theo kiểu "có ít nhất một là đủ"', () => {
@@ -59,6 +78,9 @@ describe('capabilitiesFromRoles', () => {
       canModerate: false,
       canReviewTranslations: false,
       canSelfApproveOwnMedia: false,
+      canEditGuides: false,
+      canEditSiteContent: false,
+      canViewBackupStatus: false,
     });
   });
 
@@ -82,6 +104,9 @@ describe('capabilitiesFromRoles', () => {
         canModerate: false,
         canReviewTranslations: false,
         canSelfApproveOwnMedia: false,
+        canEditGuides: false,
+        canEditSiteContent: false,
+        canViewBackupStatus: false,
       });
     });
 

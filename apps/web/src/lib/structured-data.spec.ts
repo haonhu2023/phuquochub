@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlaceDetail } from '@phuquochub/shared-types';
-import { buildPlaceJsonLd, buildWebSiteJsonLd, serializeJsonLd } from './structured-data';
+import { buildGuideArticleJsonLd, buildGuideFaqJsonLd, buildPlaceJsonLd, buildWebSiteJsonLd, serializeJsonLd } from './structured-data';
+import type { GuideArticleDetail } from '@/modules/guide/types';
 
 // STRUCTURED_DATA_NO_HARDCODED_REGION (Place Information Foundation, 2026-08-18).
 
@@ -17,6 +18,7 @@ const basePlace: PlaceDetail = {
   rating_avg: null,
   rating_count: 0,
   verification_status: 'pending',
+  content_version: 1,
   status: 'published',
   location: { lat: 10.0466, lng: 104.0281 },
   address: 'Bãi Sao, An Thới',
@@ -34,6 +36,8 @@ const basePlace: PlaceDetail = {
   media: [],
   faqs: [],
   trust_sources: [],
+  en_display_name_approved: false,
+  en_short_description_approved: false,
 };
 
 function addressOf(place: PlaceDetail): Record<string, unknown> | undefined {
@@ -326,5 +330,119 @@ describe('buildPlaceJsonLd — openingHoursSpecification giữ nguyên close: "0
       expect(spec.closes).toBe('00:00');
     }
     expect(JSON.stringify(specs)).not.toContain('23:59');
+  });
+});
+
+function baseArticle(overrides: Partial<GuideArticleDetail> = {}): GuideArticleDetail {
+  return {
+    id: 'a1',
+    slug: 'phu-quoc',
+    locale: 'vi',
+    title: 'Cẩm nang Phú Quốc',
+    intro: 'Mọi thứ bạn cần biết.',
+    heroMediaId: null,
+    heroImageUrl: null,
+    status: 'published',
+    contentVersion: 1,
+    updatedAt: '2026-09-20T00:00:00.000Z',
+    publishedAt: '2026-09-15T00:00:00.000Z',
+    blocks: [],
+    ...overrides,
+  };
+}
+
+// SEO2 (2026-09-22) — Article JSON-LD cho bài cẩm nang.
+describe('buildGuideArticleJsonLd', () => {
+  it('dựng đúng headline/url/inLanguage/dates từ dữ liệu bài viết, đúng locale', () => {
+    const jsonLd = buildGuideArticleJsonLd(baseArticle(), 'vi');
+    expect(jsonLd['@type']).toBe('Article');
+    expect(jsonLd.headline).toBe('Cẩm nang Phú Quốc');
+    expect(jsonLd.url).toBe('http://localhost:3000/vi/guide/phu-quoc');
+    expect(jsonLd.inLanguage).toBe('vi-VN');
+    expect(jsonLd.datePublished).toBe('2026-09-15T00:00:00.000Z');
+    expect(jsonLd.dateModified).toBe('2026-09-20T00:00:00.000Z');
+  });
+
+  it('locale=en → url và inLanguage đổi đúng sang bản en', () => {
+    const jsonLd = buildGuideArticleJsonLd(baseArticle(), 'en');
+    expect(jsonLd.url).toBe('http://localhost:3000/en/guide/phu-quoc');
+    expect(jsonLd.inLanguage).toBe('en-US');
+  });
+
+  it('có heroImageUrl → phát trường image; không có → không phát trường image', () => {
+    const withImage = buildGuideArticleJsonLd(baseArticle({ heroImageUrl: 'https://cdn.test/hero.jpg' }), 'vi');
+    expect(withImage.image).toBe('https://cdn.test/hero.jpg');
+
+    const withoutImage = buildGuideArticleJsonLd(baseArticle({ heroImageUrl: null }), 'vi');
+    expect(withoutImage.image).toBeUndefined();
+  });
+
+  it('không có intro → không phát trường description (không bịa mô tả)', () => {
+    const jsonLd = buildGuideArticleJsonLd(baseArticle({ intro: null }), 'vi');
+    expect(jsonLd.description).toBeUndefined();
+  });
+
+  it('KHÔNG có trường author — không có dữ kiện tên người viết công khai để khai, không bịa Organization', () => {
+    const jsonLd = buildGuideArticleJsonLd(baseArticle(), 'vi');
+    expect(jsonLd.author).toBeUndefined();
+  });
+});
+
+// SEO2 (2026-09-22) — FAQPage JSON-LD, CHỈ khi trang thật sự có FAQ hiển thị.
+describe('buildGuideFaqJsonLd', () => {
+  it('không có khối faq nào → trả null (không phát FAQPage rỗng)', () => {
+    const result = buildGuideFaqJsonLd(baseArticle({ blocks: [] }));
+    expect(result).toBeNull();
+  });
+
+  it('có khối faq nhưng items rỗng → vẫn trả null', () => {
+    const result = buildGuideFaqJsonLd(
+      baseArticle({
+        blocks: [{ id: 'b1', position: 0, blockType: 'faq', content: { items: [] }, needsDecision: false, decisionNote: null }],
+      }),
+    );
+    expect(result).toBeNull();
+  });
+
+  it('có khối faq với câu hỏi thật → dựng đúng FAQPage/Question/acceptedAnswer', () => {
+    const result = buildGuideFaqJsonLd(
+      baseArticle({
+        blocks: [
+          {
+            id: 'b1',
+            position: 0,
+            blockType: 'faq',
+            content: { items: [{ question: 'Khi nào nên đi?', answer: 'Tháng 11 đến tháng 4.' }] },
+            needsDecision: false,
+            decisionNote: null,
+          },
+        ],
+      }),
+    );
+    expect(result?.['@type']).toBe('FAQPage');
+    expect(result?.mainEntity).toEqual([
+      { '@type': 'Question', name: 'Khi nào nên đi?', acceptedAnswer: { '@type': 'Answer', text: 'Tháng 11 đến tháng 4.' } },
+    ]);
+  });
+
+  it('gộp câu hỏi từ NHIỀU khối faq trên cùng trang', () => {
+    const result = buildGuideFaqJsonLd(
+      baseArticle({
+        blocks: [
+          { id: 'b1', position: 0, blockType: 'faq', content: { items: [{ question: 'Q1', answer: 'A1' }] }, needsDecision: false, decisionNote: null },
+          { id: 'b2', position: 1, blockType: 'faq', content: { items: [{ question: 'Q2', answer: 'A2' }] }, needsDecision: false, decisionNote: null },
+        ],
+      }),
+    );
+    expect(result?.mainEntity).toHaveLength(2);
+  });
+
+  it('bỏ qua khối KHÔNG phải faq (vd rich_text) dù có shape tương tự', () => {
+    const result = buildGuideFaqJsonLd(
+      baseArticle({
+        blocks: [{ id: 'b1', position: 0, blockType: 'rich_text', content: { paragraphs: [] }, needsDecision: false, decisionNote: null }],
+      }),
+    );
+    expect(result).toBeNull();
   });
 });

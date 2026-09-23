@@ -4,17 +4,27 @@ import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
 import placesStyles from '@/modules/places/places.module.css';
 import styles from './hotels.module.css';
 
-const HOTEL_TYPE_LABELS: Record<string, string> = {
-  resort: 'Resort',
-  hotel: 'Khách sạn',
-  homestay: 'Homestay',
-  villa: 'Villa',
-  guesthouse: 'Nhà nghỉ',
-  apartment: 'Căn hộ',
+const HOTEL_TYPE_LABELS: Record<Locale, Record<string, string>> = {
+  vi: {
+    resort: 'Resort',
+    hotel: 'Khách sạn',
+    homestay: 'Homestay',
+    villa: 'Villa',
+    guesthouse: 'Nhà nghỉ',
+    apartment: 'Căn hộ',
+  },
+  en: {
+    resort: 'Resort',
+    hotel: 'Hotel',
+    homestay: 'Homestay',
+    villa: 'Villa',
+    guesthouse: 'Guesthouse',
+    apartment: 'Apartment',
+  },
 };
 
 export function HotelCard({ hotel, locale = DEFAULT_LOCALE }: { hotel: HotelCardType; locale?: Locale }) {
-  const typeLabel = HOTEL_TYPE_LABELS[hotel.hotel_type] ?? hotel.hotel_type;
+  const typeLabel = HOTEL_TYPE_LABELS[locale][hotel.hotel_type] ?? hotel.hotel_type;
   return (
     <Link href={localizedHref(locale, `/hotels/${hotel.slug}`)} className={placesStyles.card}>
       {hotel.cover_image_url ? (
@@ -43,7 +53,10 @@ export function HotelCard({ hotel, locale = DEFAULT_LOCALE }: { hotel: HotelCard
             </span>
           )}
           {hotel.star_rating !== null && (
-            <span className={styles.stars} aria-label={`${hotel.star_rating} sao`}>
+            <span
+              className={styles.stars}
+              aria-label={locale === 'en' ? `${hotel.star_rating} stars` : `${hotel.star_rating} sao`}
+            >
               {'★'.repeat(hotel.star_rating)}
             </span>
           )}

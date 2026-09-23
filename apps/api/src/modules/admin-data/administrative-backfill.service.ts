@@ -232,7 +232,13 @@ export class AdministrativeBackfillService {
       if (needsPatch && !dryRun) {
         await this.placesService.update(
           place.id,
-          { province: target.province, admin_area: target.adminArea },
+          {
+            province: target.province,
+            admin_area: target.adminArea,
+            // CAS token (AddPlaceContentVersion, 2026-09-22) — `place` above was just read by
+            // this same call, so its content_version is current; no separate fetch needed.
+            expected_content_version: place.content_version,
+          },
           actorId,
           RevisionOrigin.IMPORT,
         );
