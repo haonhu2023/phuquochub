@@ -563,10 +563,15 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       it('gửi expected_content_version → chuyển đúng xuống repository', async () => {
         await service.update('p1', { name: 'Tên mới', expected_content_version: 5 } as UpdatePlaceDto, 'u1');
 
+        // 4 tham số: `manager` (cuối) là `undefined` ở đây vì caller này (PATCH /places/:id, không
+        // qua PlaceEditProposalsService.decide()) không truyền transaction manager — xem
+        // updateScalarsWithCas()'s optional `manager` param, thêm khi tích hợp place-edit-proposals
+        // (2026-09-24) để decide() có thể ghi CAS trong CHÍNH transaction đang khoá place đó.
         expect(placesRepo.updateScalarsWithCas).toHaveBeenCalledWith(
           'p1',
           expect.objectContaining({ name: 'Tên mới' }),
           5,
+          undefined,
         );
       });
 

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EntityManager } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { slugify } from '@phuquochub/utils';
 import { PlacesRepository } from './repositories/places.repository';
@@ -492,9 +493,28 @@ export class PlacesService {
    * thay đổi, dù giá trị cuối cùng có đúng đến đâu. Không thêm giá trị enum mới: `revision_origin`
    * (CSDL) đã sẵn có `import`, đúng ngữ nghĩa cho một đợt backfill có nguồn xác định, chạy hàng
    * loạt, không phải quyết định biên tập của một cá nhân.
+   *
+   * `manager` TÙY CHỌN (Place Edit Proposals atomicity fix) — truyền vào khi caller cần TOÀN BỘ
+   * chuỗi đọc/ghi/ghi-revision này chạy trong MỘT transaction của họ, khoá ĐÚNG hàng place đó cho
+   * suốt thời gian đó. Không có nó, một caller làm "kiểm tra giá trị gốc rồi gọi update()" (như
+   * `PlaceEditProposalsService.decide()`) sẽ kiểm tra trên MỘT connection rồi ghi trên một
+   * connection KHÁC — hai bước tách rời, một writer khác có thể chen vào giữa mà không ai phát
+   * hiện được. Khi có `manager`: đọc trước/sau dùng bản khoá (`getCardByIdIncludingInactiveForUpdate`,
+   * SELECT ... FOR UPDATE) thay vì bản đọc thường, và revision cũng ghi qua CHÍNH manager đó — nên
+   * nếu bất cứ bước nào ném lỗi, transaction của caller rollback TOÀN BỘ (không có "place đã đổi
+   * nhưng revision chưa ghi" hay ngược lại). Bỏ trống giữ nguyên hành vi cho mọi caller hiện có
+   * (route PATCH /places/:id) — không caller nào khác cần đổi.
    */
-  async update(id: string, dto: UpdatePlaceDto, userId: string, origin: RevisionOrigin = RevisionOrigin.COMMUNITY_EDIT) {
-    const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
+  async update(
+    id: string,
+    dto: UpdatePlaceDto,
+    userId: string,
+    origin: RevisionOrigin = RevisionOrigin.COMMUNITY_EDIT,
+    manager?: EntityManager,
+  ) {
+    const existing = manager
+      ? await this.placesRepo.getCardByIdIncludingInactiveForUpdate(id, manager)
+      : await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
@@ -524,7 +544,16 @@ export class PlacesService {
     // AFTER the CAS succeeds, so a stale caller's location never lands even when the scalar patch
     // is empty (a location-only edit still runs updateScalarsWithCas with an empty patch to claim
     // the version bump under the SAME check).
-    const casOk = await this.placesRepo.updateScalarsWithCas(id, patch, dto.expected_content_version);
+    //
+    // `manager` passthrough (PlaceEditProposalsService.decide()): updateScalarsWithCas() already
+    // accepts an optional manager (runs the UPDATE through it instead of the module's own repo) —
+    // the caller there reads the place under `SELECT ... FOR UPDATE` in the SAME transaction just
+    // before calling update(), so it can supply that exact row's live content_version as
+    // `expected_content_version`; the CAS check can't spuriously fail (nothing else can have
+    // changed the row while this transaction holds the lock), and a genuine race is still caught
+    // for free — a second decide() on a different pending proposal for the same field blocks on the
+    // row lock, then re-reads the ALREADY-bumped version and its own CAS check fails correctly.
+    const casOk = await this.placesRepo.updateScalarsWithCas(id, patch, dto.expected_content_version, manager);
     if (!casOk) {
       throw new ConflictException(
         `Địa điểm ${id} vừa được người khác sửa (mong đợi content_version=${dto.expected_content_version}) — tải lại và thử lại.`,
@@ -533,21 +562,26 @@ export class PlacesService {
     if (dto.location) {
       await this.placesRepo.updateLocation(id, dto.location.lng, dto.location.lat);
     }
-    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
+    const row = manager
+      ? await this.placesRepo.getCardByIdIncludingInactiveForUpdate(id, manager)
+      : await this.placesRepo.getCardByIdIncludingInactive(id);
     const card = toPlaceCard(row!);
     // WF-14: ghi vết phiên bản. Ở giai đoạn này bản sửa được áp trực tiếp → revision
     // `approved`; Sprint 4 sẽ chuyển sang luồng `pending` chờ duyệt trước khi materialize.
     const changedFields = REVISABLE_FIELDS.filter((f) => dto[f] !== undefined);
     if (changedFields.length > 0) {
-      await this.revisionsService.recordPlaceRevision({
-        placeId: id,
-        snapshot: card,
-        diff: { fields: changedFields },
-        origin,
-        changeNote: null,
-        editorId: userId,
-        status: RevisionStatus.APPROVED,
-      });
+      await this.revisionsService.recordPlaceRevision(
+        {
+          placeId: id,
+          snapshot: card,
+          diff: { fields: changedFields },
+          origin,
+          changeNote: null,
+          editorId: userId,
+          status: RevisionStatus.APPROVED,
+        },
+        manager,
+      );
     }
     // C1 follow-up — server-side, write-boundary invalidation: fires for EVERY caller that reaches
     // this method (web UI, a direct API write, a future AI agent), not just the one that happens

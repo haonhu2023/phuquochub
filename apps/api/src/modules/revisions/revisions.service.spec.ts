@@ -38,7 +38,17 @@ describe('RevisionsService', () => {
         entityId: 'p1',
         status: RevisionStatus.PENDING,
       }),
+      undefined,
     );
+  });
+
+  it('recordPlaceRevision truyền manager xuống repo khi caller cung cấp (cùng transaction với PlacesService.update())', async () => {
+    const manager = { fakeManager: true } as never;
+    await service.recordPlaceRevision(
+      { placeId: 'p1', snapshot: { name: 'Bãi Sao' }, origin: RevisionOrigin.COMMUNITY_EDIT, status: RevisionStatus.APPROVED },
+      manager,
+    );
+    expect(repo.record).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'p1' }), manager);
   });
 
   it('recordPlaceTranslationRevision ghi vết với entity_type=place_translation, entityId là id của record (không phải placeId)', async () => {
