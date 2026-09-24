@@ -64,6 +64,7 @@ export default function DashboardPage() {
     { href: '/dashboard/translations/review', label: 'Duyệt bản dịch', show: caps.canReviewTranslations },
     { href: '/dashboard/editorial/guides', label: 'Biên tập cẩm nang', show: caps.canEditGuides },
     { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },
+    { href: '/dashboard/todo', label: 'Việc cần làm', show: caps.canViewOwnerTodo },
   ];
 
   return (

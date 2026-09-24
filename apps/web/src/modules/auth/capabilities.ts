@@ -76,6 +76,15 @@ const SITE_CONTENT_EDIT_ROLES = ['content_owner'];
  *  (tên/thời gian/kích thước file sao lưu), không phải một khoảng biên tập/kiểm duyệt nội dung. */
 const BACKUP_STATUS_VIEW_ROLES = ['content_owner'];
 
+/** Vai trò giữ `Place.Approve` (SeedRbac1720000300000 cấp `moderator`, kế thừa lên
+ *  `administrator`/`super_administrator`; `content_owner` giữ TRỰC TIẾP qua
+ *  SeedContentOwnerRole1720006200000 — cùng migration cấp Place.Edit.Any/Media.Moderate/
+ *  Guide.Edit.Any). Trang "Việc cần làm" (`/dashboard/todo`, GET /owner-decisions) dùng permission
+ *  này, KHÔNG dùng lại MODERATION_ROLES dù danh sách vai trò trùng nhau hôm nay — hai permission
+ *  khác nhau về khái niệm (duyệt xuất bản địa điểm vs. duyệt case kiểm duyệt), xem cùng lý do tách
+ *  TRANSLATION_REVIEW_ROLES ở trên. */
+const PLACE_APPROVE_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -91,6 +100,8 @@ export interface UserCapabilities {
   canEditSiteContent: boolean;
   /** Hiện khối "Tình trạng sao lưu" trên trang Hướng dẫn (BK1). */
   canViewBackupStatus: boolean;
+  /** Hiện lối vào "Việc cần làm" (`/dashboard/todo`, GET /owner-decisions — Place.Approve). */
+  canViewOwnerTodo: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -101,6 +112,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canEditGuides: false,
   canEditSiteContent: false,
   canViewBackupStatus: false,
+  canViewOwnerTodo: false,
 };
 
 /**
@@ -119,5 +131,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
     canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
     canViewBackupStatus: codes.some((c) => BACKUP_STATUS_VIEW_ROLES.includes(c)),
+    canViewOwnerTodo: codes.some((c) => PLACE_APPROVE_ROLES.includes(c)),
   };
 }

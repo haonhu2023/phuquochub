@@ -6,8 +6,8 @@ import { capabilitiesFromRoles, NO_CAPABILITIES } from './capabilities';
 //
 // canReviewTranslations (human-translation-review, 2026-09-04), canSelfApproveOwnMedia
 // (content_owner, 2026-09-16), canEditGuides (Guide CMS candidate, 2026-09-18), canEditSiteContent
-// và canViewBackupStatus (launch-readiness pass, 2026-09-22) thêm sau — mọi assertion dưới đây cập
-// nhật để phản ánh đủ bảy cờ (gộp hai nhánh 2026-09-23).
+// và canViewBackupStatus (launch-readiness pass, 2026-09-22), canViewOwnerTodo (trang "Việc cần
+// làm", 2026-09-24) thêm sau — mọi assertion dưới đây cập nhật để phản ánh đủ tám cờ.
 describe('capabilitiesFromRoles', () => {
   it('member thường: KHÔNG thấy lối vào nào', () => {
     expect(capabilitiesFromRoles(['member'])).toEqual(NO_CAPABILITIES);
@@ -29,11 +29,12 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: false,
       canEditSiteContent: false,
       canViewBackupStatus: false,
+      canViewOwnerTodo: false,
     });
   });
 
   it.each([['moderator'], ['administrator'], ['super_administrator']])(
-    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ), KHÔNG nội dung website/tình trạng sao lưu',
+    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, việc cần làm (Place.Approve) — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ), KHÔNG nội dung website/tình trạng sao lưu',
     (role) => {
       expect(capabilitiesFromRoles([role])).toEqual({
         canEditorial: true,
@@ -43,6 +44,7 @@ describe('capabilitiesFromRoles', () => {
         canEditGuides: true,
         canEditSiteContent: false,
         canViewBackupStatus: false,
+        canViewOwnerTodo: true,
       });
     },
   );
@@ -53,7 +55,7 @@ describe('capabilitiesFromRoles', () => {
   // SiteContent.Edit/Ops.BackupStatus.View (SeedContentOwnerRole, launch-readiness 2026-09-22) —
   // phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu các dòng sau khiến owner có đủ
   // quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
-  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, lẫn tình trạng sao lưu', () => {
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, tình trạng sao lưu, lẫn việc cần làm', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
@@ -62,6 +64,7 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: true,
       canEditSiteContent: true,
       canViewBackupStatus: true,
+      canViewOwnerTodo: true,
     });
   });
 
@@ -81,6 +84,7 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: false,
       canEditSiteContent: false,
       canViewBackupStatus: false,
+      canViewOwnerTodo: false,
     });
   });
 
@@ -107,6 +111,7 @@ describe('capabilitiesFromRoles', () => {
         canEditGuides: false,
         canEditSiteContent: false,
         canViewBackupStatus: false,
+        canViewOwnerTodo: false,
       });
     });
 
