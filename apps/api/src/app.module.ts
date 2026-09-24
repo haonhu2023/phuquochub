@@ -45,6 +45,7 @@ import { OwnerDecisionQueueModule } from './modules/owner-decision-queue/owner-d
 import { GuideArticlesModule } from './modules/guide-articles/guide-articles.module';
 import { SiteContentModule } from './modules/site-content/site-content.module';
 import { OpsModule } from './modules/ops/ops.module';
+import { PlaceSuggestionsModule } from './modules/place-suggestions/place-suggestions.module';
 
 // Sprint 0: core+health. Sprint 1: auth/users/rbac/categories.
 // Wave 1: media(entity)/contacts/prices/places/geo/search.
@@ -116,6 +117,9 @@ import { OpsModule } from './modules/ops/ops.module';
     // BK1 (launch-readiness pass, 2026-09-22): read-only owner-facing backup/restore status — see
     // modules/ops/.
     OpsModule,
+    // Ưu tiên 3 (2026-09-24): "Báo thông tin sai / Đề xuất chỉnh sửa" bản tối thiểu — see
+    // modules/place-suggestions/.
+    PlaceSuggestionsModule,
   ],
 })
 export class AppModule {}
