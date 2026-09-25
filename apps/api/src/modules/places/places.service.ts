@@ -589,7 +589,16 @@ export class PlacesService {
     // public — a draft's cache was never populated, so there's nothing stale to invalidate. Never
     // awaited into the response — a downstream revalidate failure must not turn this successful
     // write into an error (see CacheInvalidationService's own comment).
-    if (card.status === PlaceStatus.PUBLISHED) {
+    //
+    // `manager` present → SKIP: found 2026-09-25 (PlaceEditProposalsService.decide() review) —
+    // when a caller supplies `manager`, this write is one step inside THEIR still-open transaction;
+    // invalidating here fires before that transaction COMMITs. The revalidate call reaches the web
+    // app, which re-fetches from the API on a SEPARATE connection that (read-committed) cannot see
+    // the uncommitted row yet — the "freshly revalidated" cache entry ends up caching the OLD value,
+    // and if the caller's transaction later rolls back, a change that never happened just got
+    // invalidated for nothing. The caller owns the transaction boundary, so it owns firing this
+    // AFTER its own commit succeeds — see decide()'s post-transaction invalidatePlace() call.
+    if (card.status === PlaceStatus.PUBLISHED && !manager) {
       void this.cacheInvalidation.invalidatePlace(card.slug);
     }
     return card;

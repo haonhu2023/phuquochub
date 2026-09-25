@@ -13,6 +13,7 @@ import { PlaceTranslationsService } from '../place-translations/place-translatio
 import { RevisionOrigin } from '../revisions/revision.enums';
 import { computeFieldValueHash } from '../evidence/field-value-hash';
 import { openingHoursErrors } from '../../common/opening-hours';
+import { CacheInvalidationService } from '../../core/cache-invalidation/cache-invalidation.service';
 
 const SCALAR_VALUE_MAX_LENGTH = 300; // same limit as UpdatePlaceDto.address/.short_description
 
@@ -30,6 +31,7 @@ export class PlaceEditProposalsService {
     private readonly placesService: PlacesService,
     private readonly localesService: LocalesService,
     private readonly placeTranslationsService: PlaceTranslationsService,
+    private readonly cacheInvalidation: CacheInvalidationService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -176,7 +178,19 @@ export class PlaceEditProposalsService {
     dto: DecidePlaceEditProposalDto,
     reviewerId: string,
   ): Promise<ReturnType<typeof toPlaceEditProposalView>> {
-    return this.dataSource.transaction(async (manager) => {
+    // Slug to invalidate AFTER this transaction commits — set only on a successful APPROVE of a
+    // published place, read below and fired once `dataSource.transaction()` has actually resolved.
+    // Found 2026-09-25: `PlacesService.update()` used to fire its own invalidation internally, but
+    // that runs INSIDE this still-open transaction — before COMMIT, a revalidate fetch on a
+    // separate connection can't see the uncommitted row yet (read-committed), so the "freshly
+    // revalidated" cache ends up caching the OLD value; and if this transaction later rolled back
+    // for any reason, a change that never happened would already have been invalidated. `update()`
+    // now skips its own invalidation whenever a `manager` is passed in (see its comment) — this is
+    // the one caller that does, so this is the one place that must fire it instead, and only once
+    // the transaction below has actually committed.
+    let slugToInvalidateAfterCommit: string | null = null;
+
+    const result = await this.dataSource.transaction(async (manager) => {
       const proposal = await this.proposalsRepo.findByIdForUpdate(proposalId, manager);
       if (!proposal) {
         throw new NotFoundException('Không tìm thấy đề xuất');
@@ -257,6 +271,9 @@ export class PlaceEditProposalsService {
           manager,
         );
         proposal.status = PlaceEditProposalStatus.APPROVED;
+        if (place.status === PlaceStatus.PUBLISHED) {
+          slugToInvalidateAfterCommit = place.slug;
+        }
       }
 
       proposal.reviewerId = reviewerId;
@@ -265,6 +282,14 @@ export class PlaceEditProposalsService {
       const saved = await this.proposalsRepo.save(proposal, manager);
       return toPlaceEditProposalView(saved);
     });
+
+    // Only reached when the transaction above actually committed — a thrown ConflictException/
+    // NotFoundException anywhere inside it (CAS failure, re-checked overlay, missing place) rejects
+    // this `await` and skips the block below entirely, so a rolled-back write is never invalidated.
+    if (slugToInvalidateAfterCommit) {
+      void this.cacheInvalidation.invalidatePlace(slugToInvalidateAfterCommit);
+    }
+    return result;
   }
 
   private validateProposedValue(fieldKey: PlaceEditProposalFieldKey, value: unknown): void {

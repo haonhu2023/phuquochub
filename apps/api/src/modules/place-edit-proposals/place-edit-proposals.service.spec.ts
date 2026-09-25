@@ -6,6 +6,7 @@ import { PlacesRepository } from '../places/repositories/places.repository';
 import { PlacesService } from '../places/places.service';
 import { LocalesService } from '../locales/locales.service';
 import { PlaceTranslationsService } from '../place-translations/place-translations.service';
+import { CacheInvalidationService } from '../../core/cache-invalidation/cache-invalidation.service';
 import { PlaceEditProposalDecision, PlaceEditProposalFieldKey, PlaceEditProposalStatus } from './place-edit-proposals.enums';
 import { PlaceStatus } from '../places/place.enums';
 import { computeFieldValueHash } from '../evidence/field-value-hash';
@@ -38,6 +39,7 @@ describe('PlaceEditProposalsService', () => {
   let placesService: LooseMock<PlacesService>;
   let localesService: LooseMock<LocalesService>;
   let placeTranslationsService: LooseMock<PlaceTranslationsService>;
+  let cacheInvalidation: LooseMock<CacheInvalidationService>;
   let dataSource: LooseMock<DataSource>;
   let manager: EntityManager;
   let service: PlaceEditProposalsService;
@@ -71,6 +73,9 @@ describe('PlaceEditProposalsService', () => {
     placeTranslationsService = createMock<PlaceTranslationsService>({
       getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
     });
+    cacheInvalidation = createMock<CacheInvalidationService>({
+      invalidatePlace: jest.fn().mockResolvedValue(undefined),
+    });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
@@ -80,6 +85,7 @@ describe('PlaceEditProposalsService', () => {
       placesService,
       localesService,
       placeTranslationsService,
+      cacheInvalidation,
       dataSource,
     );
   });
@@ -289,7 +295,7 @@ describe('PlaceEditProposalsService', () => {
       expect(placesService.update).not.toHaveBeenCalled();
     });
 
-    it('reject → status REJECTED, ghi reviewer/thời điểm, KHÔNG gọi placesService.update()', async () => {
+    it('reject → status REJECTED, ghi reviewer/thời điểm, KHÔNG gọi placesService.update(), KHÔNG invalidate cache', async () => {
       proposalsRepo.findByIdForUpdate.mockResolvedValue(makeProposal() as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.REJECT, note: 'không đủ căn cứ' } as never, 'staff-1');
@@ -297,18 +303,20 @@ describe('PlaceEditProposalsService', () => {
       expect(result.status).toBe(PlaceEditProposalStatus.REJECTED);
       expect(result.reviewer_id).toBe('staff-1');
       expect(placesService.update).not.toHaveBeenCalled();
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
     });
 
-    it('needs_changes → status NEEDS_CHANGES, KHÔNG gọi placesService.update()', async () => {
+    it('needs_changes → status NEEDS_CHANGES, KHÔNG gọi placesService.update(), KHÔNG invalidate cache', async () => {
       proposalsRepo.findByIdForUpdate.mockResolvedValue(makeProposal() as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.NEEDS_CHANGES, note: 'cần nguồn' } as never, 'staff-1');
 
       expect(result.status).toBe(PlaceEditProposalStatus.NEEDS_CHANGES);
       expect(placesService.update).not.toHaveBeenCalled();
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
     });
 
-    it('approve, giá trị gốc KHÔNG đổi từ lúc gửi → gọi placesService.update() đúng field/place, status APPROVED', async () => {
+    it('approve, giá trị gốc KHÔNG đổi từ lúc gửi, place PUBLISHED → gọi placesService.update() đúng field/place, status APPROVED, invalidate cache SAU KHI transaction (mock) đã resolve', async () => {
       const proposal = makeProposal({
         fieldKey: PlaceEditProposalFieldKey.ADDRESS,
         proposedValue: 'Địa chỉ mới',
@@ -318,7 +326,19 @@ describe('PlaceEditProposalsService', () => {
       placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({
         address: 'Địa chỉ cũ',
         content_version: 7,
+        status: PlaceStatus.PUBLISHED,
+        slug: 'place-1-slug',
       } as never);
+
+      const callOrder: string[] = [];
+      (dataSource.transaction as jest.Mock).mockImplementationOnce(async (cb: (m: EntityManager) => Promise<unknown>) => {
+        const r = await cb(manager);
+        callOrder.push('transaction-resolved');
+        return r;
+      });
+      (cacheInvalidation.invalidatePlace as jest.Mock).mockImplementationOnce(async () => {
+        callOrder.push('invalidate-called');
+      });
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
 
@@ -338,9 +358,36 @@ describe('PlaceEditProposalsService', () => {
       expect(placesRepo.getCardByIdIncludingInactiveForUpdate).toHaveBeenCalledWith('place-1', manager);
       expect(placesRepo.getCardByIdIncludingInactive).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.APPROVED);
+      // Bug tìm thấy 2026-09-25 (đọc mã trực tiếp): cache invalidation trước đây chạy BÊN TRONG
+      // update(), tức là TRƯỚC KHI transaction này COMMIT — một connection khác đọc lại sau
+      // revalidate có thể vẫn thấy giá trị CŨ (read-committed), và một rollback sau đó vẫn để lại
+      // một invalidation cho thay đổi chưa từng xảy ra. Khoá đúng thứ tự: invalidate chỉ được gọi
+      // SAU KHI `dataSource.transaction()` (mock) đã resolve xong.
+      expect(cacheInvalidation.invalidatePlace).toHaveBeenCalledWith('place-1-slug');
+      expect(callOrder).toEqual(['transaction-resolved', 'invalidate-called']);
     });
 
-    it('approve, giá trị gốc ĐÃ đổi từ lúc gửi (ai khác sửa trong lúc chờ duyệt) → CONFLICT, KHÔNG gọi update(), KHÔNG ghi đè', async () => {
+    it('approve, place CHƯA published (còn draft) → KHÔNG invalidate cache (chưa từng có gì trong cache công khai để mà lệch)', async () => {
+      const proposal = makeProposal({
+        fieldKey: PlaceEditProposalFieldKey.ADDRESS,
+        proposedValue: 'Địa chỉ mới',
+        baseValueHash: computeFieldValueHash('Địa chỉ cũ'),
+      });
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({
+        address: 'Địa chỉ cũ',
+        content_version: 7,
+        status: PlaceStatus.DRAFT,
+        slug: 'place-1-slug',
+      } as never);
+
+      const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
+
+      expect(result.status).toBe(PlaceEditProposalStatus.APPROVED);
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
+    });
+
+    it('approve, giá trị gốc ĐÃ đổi từ lúc gửi (ai khác sửa trong lúc chờ duyệt) → CONFLICT, KHÔNG gọi update(), KHÔNG ghi đè, KHÔNG invalidate cache', async () => {
       const proposal = makeProposal({
         fieldKey: PlaceEditProposalFieldKey.ADDRESS,
         proposedValue: 'Địa chỉ mới',
@@ -348,12 +395,13 @@ describe('PlaceEditProposalsService', () => {
       });
       proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
       // Địa chỉ đã bị người khác đổi thành "Địa chỉ khác" sau khi đề xuất được gửi.
-      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ khác' } as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ khác', status: PlaceStatus.PUBLISHED, slug: 'place-1-slug' } as never);
 
       const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.APPROVE } as never, 'staff-1');
 
       expect(placesService.update).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.CONFLICT);
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
     });
 
     // Safety net cho proposal đã tồn tại TRƯỚC guard này (hoặc overlay xuất hiện trong lúc proposal
@@ -382,6 +430,9 @@ describe('PlaceEditProposalsService', () => {
       // toàn bộ transaction rollback, proposal vẫn nguyên trạng PENDING trong DB thật (chứng minh
       // bằng throwaway Postgres ở phần review CI, cùng cơ chế rollback đã dùng cho Scenario 3).
       expect(proposalsRepo.save).not.toHaveBeenCalled();
+      // decide() ném lỗi TRƯỚC khi gán slugToInvalidateAfterCommit, và `await dataSource.transaction()`
+      // ném lại lỗi đó ra ngoài — dòng invalidate không bao giờ được chạy tới.
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
     });
 
     it('approve address (KHÔNG có bảng dịch) → KHÔNG gọi getCurrentPublicTranslatedText, không bị guard overlay ảnh hưởng', async () => {
