@@ -96,6 +96,10 @@ export function OwnerTodoView() {
           <Link href="/dashboard/moderation" style={{ color: 'var(--accent)' }}>
             Hàng chờ kiểm duyệt
           </Link>
+          , đề xuất chỉnh sửa từ người dùng xem ở{' '}
+          <Link href="/dashboard/edit-proposals" style={{ color: 'var(--accent)' }}>
+            Duyệt đề xuất chỉnh sửa
+          </Link>
           .
         </p>
       </header>

@@ -82,8 +82,7 @@ export function ProposeEditView() {
       <header className={placeStyles.pageHeader}>
         <h1 className={placeStyles.pageTitle}>Đề xuất chỉnh sửa</h1>
         <p className={placeStyles.pageLede}>
-          Cho chúng tôi biết giá trị đúng để kiểm duyệt viên xem xét và áp dụng. Khác với &quot;Báo
-          thông tin sai&quot;: ở đây bạn đề xuất luôn giá trị cụ thể, không chỉ báo có vấn đề.
+          Cho chúng tôi biết giá trị đúng để kiểm duyệt viên xem xét và áp dụng.
         </p>
       </header>
       <ProposeEditForm

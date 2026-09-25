@@ -65,6 +65,11 @@ export default function DashboardPage() {
     { href: '/dashboard/editorial/guides', label: 'Biên tập cẩm nang', show: caps.canEditGuides },
     { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },
     { href: '/dashboard/todo', label: 'Việc cần làm', show: caps.canViewOwnerTodo },
+    {
+      href: '/dashboard/edit-proposals',
+      label: 'Duyệt đề xuất chỉnh sửa',
+      show: caps.canReviewPlaceEditProposals,
+    },
   ];
 
   return (
