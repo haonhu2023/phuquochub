@@ -18,7 +18,19 @@ type State =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; rows: OwnerTodoRow[]; truncated: boolean };
+  | { kind: 'ready'; rows: OwnerTodoRow[]; hasMore: boolean; loadingMore: boolean; loadMoreError: string | null };
+
+async function fetchPage(accessToken: string, offset: number): Promise<OwnerTodoRow[]> {
+  const items = await listPendingOwnerDecisions(accessToken, { limit: QUEUE_LIMIT, offset });
+  const names = await resolvePlaceNames(
+    items.map((i) => i.placeId),
+    accessToken,
+  );
+  return items.map((item) => {
+    const place = item.placeId ? names.get(item.placeId) : undefined;
+    return { ...item, placeName: place?.name ?? null, placeSlug: place?.slug ?? null };
+  });
+}
 
 export function OwnerTodoView() {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -38,19 +50,11 @@ export function OwnerTodoView() {
     void Promise.resolve()
       .then(() => {
         if (!cancelled) setState({ kind: 'loading' });
-        return listPendingOwnerDecisions(session.accessToken, { limit: QUEUE_LIMIT });
+        return fetchPage(session.accessToken, 0);
       })
-      .then(async (items) => {
-        const names = await resolvePlaceNames(
-          items.map((i) => i.placeId),
-          session.accessToken,
-        );
+      .then((rows) => {
         if (cancelled) return;
-        const rows: OwnerTodoRow[] = items.map((item) => {
-          const place = item.placeId ? names.get(item.placeId) : undefined;
-          return { ...item, placeName: place?.name ?? null, placeSlug: place?.slug ?? null };
-        });
-        setState({ kind: 'ready', rows, truncated: items.length >= QUEUE_LIMIT });
+        setState({ kind: 'ready', rows, hasMore: rows.length >= QUEUE_LIMIT, loadingMore: false, loadMoreError: null });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -66,6 +70,36 @@ export function OwnerTodoView() {
   }, [reloadKey]);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // "Tải thêm" (rà soát Gói A, 2026-09-25) — API GET /owner-decisions hỗ trợ offset/skip thật
+  // (owner-decision-queue.repository.ts's findAll: `skip: offset`), trước đây trang này chỉ đọc
+  // trang đầu (200) rồi báo "có thể còn" mà không có cách nào owner tự lấy phần còn lại. Chỉ nối
+  // thêm rows mới vào rows đã có — không tải lại/ghép trùng phần đầu, không resolve lại tên các
+  // place đã biết.
+  const loadMore = useCallback(() => {
+    const session = readSession();
+    if (!session || state.kind !== 'ready' || state.loadingMore || !state.hasMore) return;
+    const offset = state.rows.length;
+    setState({ ...state, loadingMore: true, loadMoreError: null });
+    void fetchPage(session.accessToken, offset)
+      .then((newRows) => {
+        setState((prev) => {
+          if (prev.kind !== 'ready') return prev;
+          return {
+            kind: 'ready',
+            rows: [...prev.rows, ...newRows],
+            hasMore: newRows.length >= QUEUE_LIMIT,
+            loadingMore: false,
+            loadMoreError: null,
+          };
+        });
+      })
+      .catch((err: unknown) => {
+        setState((prev) =>
+          prev.kind === 'ready' ? { ...prev, loadingMore: false, loadMoreError: safeMessage(err) } : prev,
+        );
+      });
+  }, [state]);
 
   if (state.kind === 'forbidden') {
     return (
@@ -132,12 +166,6 @@ export function OwnerTodoView() {
         </div>
       )}
 
-      {state.kind === 'ready' && state.truncated && (
-        <p role="status">
-          Đang hiện {QUEUE_LIMIT} việc đầu tiên — có thể còn nhiều hơn đang chờ.
-        </p>
-      )}
-
       {state.kind === 'ready' && state.rows.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.75rem' }}>
           {state.rows.map((row) => (
@@ -173,6 +201,19 @@ export function OwnerTodoView() {
             </li>
           ))}
         </ul>
+      )}
+
+      {state.kind === 'ready' && state.hasMore && (
+        <div style={{ marginTop: '1rem' }}>
+          {state.loadMoreError && (
+            <p role="alert" style={{ marginBottom: '0.5rem' }}>
+              {state.loadMoreError}
+            </p>
+          )}
+          <button type="button" className={placeStyles.btn} onClick={loadMore} disabled={state.loadingMore}>
+            {state.loadingMore ? 'Đang tải thêm…' : 'Tải thêm'}
+          </button>
+        </div>
       )}
     </main>
   );

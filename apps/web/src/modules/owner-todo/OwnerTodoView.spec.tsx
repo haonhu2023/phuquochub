@@ -72,12 +72,49 @@ it('placeId null NHƯNG có candidateKey -> hiện candidateKey để nhận di�
   expect(await screen.findByText('cand-abc-123')).toBeInTheDocument();
 });
 
-it('gọi listPendingOwnerDecisions với trần API (200), báo khi có thể còn bị cắt bớt', async () => {
+it('gọi listPendingOwnerDecisions với trần API (200) và offset=0, hiện nút "Tải thêm" khi trang đầu đầy', async () => {
   const items = Array.from({ length: 200 }, (_, i) => anItem({ id: `i${i}`, placeId: null }));
   mockList.mockResolvedValue(items);
   render(<OwnerTodoView />);
-  expect(await screen.findByText(/Đang hiện 200 việc đầu tiên/)).toBeInTheDocument();
-  expect(mockList).toHaveBeenCalledWith('tok', { limit: 200 });
+  expect(await screen.findByRole('button', { name: 'Tải thêm' })).toBeInTheDocument();
+  expect(mockList).toHaveBeenCalledWith('tok', { limit: 200, offset: 0 });
+});
+
+it('trang đầu KHÔNG đầy (< 200) -> không hiện "Tải thêm" (không còn gì để tải)', async () => {
+  mockList.mockResolvedValue([anItem()]);
+  render(<OwnerTodoView />);
+  await screen.findByText('Địa chỉ — nguồn không khớp');
+  expect(screen.queryByRole('button', { name: 'Tải thêm' })).not.toBeInTheDocument();
+});
+
+it('bấm "Tải thêm" -> gọi lại API với offset = số dòng đã có, NỐI THÊM dòng mới, không tải lại dòng cũ', async () => {
+  const page1 = Array.from({ length: 200 }, (_, i) => anItem({ id: `p1-${i}`, placeId: null }));
+  const page2 = [anItem({ id: 'p2-0', placeId: null, conflictSummary: 'Trang thứ hai' })];
+  mockList.mockResolvedValueOnce(page1).mockResolvedValueOnce(page2);
+  render(<OwnerTodoView />);
+  const loadMoreBtn = await screen.findByRole('button', { name: 'Tải thêm' });
+
+  fireEvent.click(loadMoreBtn);
+
+  expect(await screen.findByText('Trang thứ hai')).toBeInTheDocument();
+  expect(mockList).toHaveBeenCalledTimes(2);
+  expect(mockList).toHaveBeenLastCalledWith('tok', { limit: 200, offset: 200 });
+  // Trang 2 chỉ có 1 dòng (< 200) -> hết, nút biến mất.
+  expect(screen.queryByRole('button', { name: 'Tải thêm' })).not.toBeInTheDocument();
+});
+
+it('"Tải thêm" lỗi -> báo lỗi riêng, GIỮ NGUYÊN danh sách đã tải, nút quay lại trạng thái bấm được', async () => {
+  const page1 = Array.from({ length: 200 }, (_, i) => anItem({ id: `p1-${i}`, placeId: null }));
+  mockList.mockResolvedValueOnce(page1).mockRejectedValueOnce(new Error('mạng lỗi'));
+  render(<OwnerTodoView />);
+  const loadMoreBtn = await screen.findByRole('button', { name: 'Tải thêm' });
+
+  fireEvent.click(loadMoreBtn);
+
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  // 200 dòng trang 1 vẫn còn nguyên — không bị thay bằng trạng thái lỗi toàn trang.
+  expect(screen.getAllByText('Địa chỉ — nguồn không khớp')).toHaveLength(200);
+  expect(screen.getByRole('button', { name: 'Tải thêm' })).toBeEnabled();
 });
 
 it('hiển thị empty state khi không có việc nào đang chờ', async () => {
