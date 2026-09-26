@@ -5,6 +5,7 @@ import { EditorialPlacesView } from '@/modules/editorial/EditorialPlacesView';
 // kiểm tra thêm trong view, và backend vẫn là nơi cưỡng chế thật.
 export const metadata = { title: 'Biên tập nội dung — PhuQuocHub' };
 
-export default function EditorialPlacesPage() {
-  return <EditorialPlacesView />;
+export default async function EditorialPlacesPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
+  const { category } = await searchParams;
+  return <EditorialPlacesView initialCategory={category ?? ''} />;
 }

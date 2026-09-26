@@ -814,16 +814,21 @@ export class PlacesRepository {
    * duyệt qua danh sách place `pending` của người khác. Route gọi hàm này PHẢI gác bằng
    * `@RequirePermissions('Place.Edit.Any')` — hàm này tự nó KHÔNG kiểm quyền lần hai.
    */
-  async listEditorial(params: { limit: number; offset: number }): Promise<{ items: PlaceCardRow[]; total: number }> {
+  async listEditorial(params: { limit: number; offset: number; category?: string }): Promise<{ items: PlaceCardRow[]; total: number }> {
+    const categoryWhere = params.category
+      ? " AND p.category_id IN (SELECT id FROM categories WHERE slug = $1 OR ($1 = 'hotel' AND slug = 'resort') OR parent_id IN (SELECT id FROM categories WHERE slug = $1))"
+      : '';
+    const categoryArgs = params.category ? [params.category] : [];
     const countRows: Array<{ count: string }> = await this.repo.query(
-      `SELECT count(*)::int AS count FROM places p WHERE p.deleted_at IS NULL`,
+      `SELECT count(*)::int AS count FROM places p WHERE p.deleted_at IS NULL${categoryWhere}`,
+      categoryArgs,
     );
     const total = Number(countRows[0]?.count ?? 0);
     const items: PlaceCardRow[] = await this.repo.query(
-      `SELECT ${CARD_COLS} FROM places p WHERE p.deleted_at IS NULL
+      `SELECT ${CARD_COLS} FROM places p WHERE p.deleted_at IS NULL${categoryWhere}
        ORDER BY p.updated_at DESC, p.id ASC
-       LIMIT $1 OFFSET $2`,
-      [params.limit, params.offset],
+       LIMIT $${categoryArgs.length + 1} OFFSET $${categoryArgs.length + 2}`,
+      [...categoryArgs, params.limit, params.offset],
     );
     return { items: withCoverImageUrl(items, this.mediaUrl), total };
   }

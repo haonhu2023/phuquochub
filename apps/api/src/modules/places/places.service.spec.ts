@@ -424,6 +424,11 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
   // P1 (Owner self-publish, 2026-09-22) — đặc quyền (Place.Edit.Any), KHÔNG chốt status như list().
   describe('listEditorial', () => {
+    it('chuyển category cho repository để lọc toàn DB trước khi phân trang', async () => {
+      placesRepo.listEditorial.mockResolvedValue({ items: [], total: 0 });
+      await service.listEditorial({ category: 'hotel', page: 2, limit: 10 } as never);
+      expect(placesRepo.listEditorial).toHaveBeenCalledWith({ category: 'hotel', limit: 10, offset: 10 });
+    });
     it('gọi placesRepo.listEditorial (KHÔNG phải list) — không lẫn với kênh công khai', async () => {
       placesRepo.listEditorial.mockResolvedValue({ items: [], total: 0 });
 

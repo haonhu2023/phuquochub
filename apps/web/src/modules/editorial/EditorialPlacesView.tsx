@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
@@ -12,6 +13,7 @@ import {
 } from '@/modules/place-management/api/place-management.api';
 import { placeStatusClassKey, placeStatusLabel } from '@/modules/place-management/statusLabels';
 import type { PlaceCard } from '@phuquochub/shared-types';
+import { listCategories, type Category } from '@/modules/categories/api/categories.api';
 import placeStyles from '@/modules/places/places.module.css';
 import placeManagementStyles from '@/modules/place-management/place-management.module.css';
 
@@ -20,7 +22,7 @@ type State =
   | { kind: 'signed-out' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; places: PlaceCard[] };
+  | { kind: 'ready'; places: PlaceCard[]; total: number; totalPages: number };
 
 function actionErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -41,7 +43,11 @@ function actionErrorMessage(err: unknown): string {
  * business_id cụ thể, nên một place họ VỪA TẠO (`draft`, chưa ai giao quản lý) không bao giờ xuất
  * hiện ở đó — không có màn này thì họ tạo xong sẽ không tìm lại được để xuất bản.
  */
-export function EditorialPlacesView() {
+export function EditorialPlacesView({ initialCategory = '' }: { initialCategory?: string }) {
+  const router = useRouter();
+  const [category, setCategory] = useState(initialCategory);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [page, setPage] = useState(1);
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -69,11 +75,12 @@ export function EditorialPlacesView() {
           setState({ kind: 'forbidden' });
           return null;
         }
-        return listEditorialPlaces(session.accessToken, { limit: 50 });
+        void listCategories().then((items) => { if (!cancelled) setCategories(items); }).catch(() => {});
+        return listEditorialPlaces(session.accessToken, { page, limit: 50, category: category || undefined });
       })
       .then((res) => {
         if (cancelled || res === null) return;
-        setState({ kind: 'ready', places: res.data });
+        setState({ kind: 'ready', places: res.data, total: res.meta.total, totalPages: res.meta.totalPages });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -87,7 +94,7 @@ export function EditorialPlacesView() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, page, category]);
 
   async function handlePublish(place: PlaceCard) {
     const session = readSession();
@@ -139,6 +146,19 @@ export function EditorialPlacesView() {
         </p>
       </header>
 
+      <label htmlFor="editorial-category">Loại địa điểm </label>
+      <select id="editorial-category" value={category} onChange={(event) => {
+        const next = event.target.value;
+        setCategory(next);
+        setPage(1);
+        setState({ kind: 'loading' });
+        router.replace(`/dashboard/editorial/places${next ? `?category=${encodeURIComponent(next)}` : ''}`);
+      }}>
+        <option value="">Tất cả địa điểm</option>
+        {categories.map((item) => <option key={item.id} value={item.slug}>{item.name_vi}</option>)}
+      </select>
+      <p className={placeStyles.pageLede}>Nhà hàng, quán ăn, khách sạn, bãi biển và khu vui chơi đều được quản lý như địa điểm. Chỉnh tọa độ trong trang Sửa; xem bản đồ công khai để kiểm tra vị trí.</p>
+
       {actionError && (
         <p className={placeManagementStyles.alert} role="alert" style={{ marginTop: '1rem' }}>
           {actionError}
@@ -177,7 +197,7 @@ export function EditorialPlacesView() {
       )}
 
       {state.kind === 'ready' && state.places.length === 0 && (
-        <p className={placeStyles.stateTitle}>Chưa có địa điểm nào.</p>
+        <p className={placeStyles.stateTitle}>Không có địa điểm nào trong danh mục này.</p>
       )}
 
       {state.kind === 'ready' && state.places.length > 0 && (
@@ -187,7 +207,7 @@ export function EditorialPlacesView() {
               <span className={`${placeManagementStyles.statusBadge} ${placeManagementStyles[placeStatusClassKey(p.status)]}`}>
                 {placeStatusLabel(p.status)}
               </span>{' '}
-              <strong>{p.name}</strong>
+              <strong>{p.name}</strong> <span>· {categories.find((c) => c.id === p.category_id)?.name_vi ?? 'Chưa phân loại'}</span>
               {!p.cover_image_url && (
                 <span style={{ marginLeft: 8, color: 'var(--muted)' }}>· chưa có ảnh bìa</span>
               )}
@@ -224,6 +244,11 @@ export function EditorialPlacesView() {
           ))}
         </ul>
       )}
+      {state.kind === 'ready' && <nav aria-label="Phân trang địa điểm" style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <button type="button" disabled={page <= 1} onClick={() => { setPage((p) => p - 1); setState({ kind: 'loading' }); }}>Trang trước</button>
+        <span>Trang {page}/{Math.max(1, state.totalPages)} · {state.total} địa điểm</span>
+        <button type="button" disabled={page >= state.totalPages} onClick={() => { setPage((p) => p + 1); setState({ kind: 'loading' }); }}>Trang sau</button>
+      </nav>}
     </main>
   );
 }

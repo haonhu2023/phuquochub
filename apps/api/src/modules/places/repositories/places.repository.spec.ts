@@ -404,6 +404,17 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
       const [itemsQuery] = repo.query.mock.calls[1];
       expect(sql(itemsQuery)).toContain('ORDER BY p.updated_at DESC, p.id ASC');
     });
+
+    it('lọc category trên toàn tập trước LIMIT, gồm resort khi chọn hotel', async () => {
+      await sut.listEditorial({ category: 'hotel', limit: 20, offset: 40 });
+      const [countQuery, countArgs] = repo.query.mock.calls[0];
+      const [itemsQuery, itemsArgs] = repo.query.mock.calls[1];
+      expect(sql(countQuery)).toContain('slug = $1');
+      expect(sql(itemsQuery)).toContain("slug = 'resort'");
+      expect(sql(itemsQuery)).toContain('LIMIT $2 OFFSET $3');
+      expect(countArgs).toEqual(['hotel']);
+      expect(itemsArgs).toEqual(['hotel', 20, 40]);
+    });
   });
 });
 

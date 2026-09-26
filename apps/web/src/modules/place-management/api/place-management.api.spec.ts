@@ -151,4 +151,9 @@ describe('listEditorialPlaces', () => {
     await listEditorialPlaces('tok', { page: 2, limit: 10 });
     expect(mockGetPaginated).toHaveBeenCalledWith('/places/editorial?page=2&limit=10', 'tok');
   });
+
+  it('lọc danh mục trên server trước phân trang', async () => {
+    await listEditorialPlaces('tok', { page: 3, limit: 50, category: 'hotel' });
+    expect(mockGetPaginated).toHaveBeenCalledWith('/places/editorial?page=3&limit=50&category=hotel', 'tok');
+  });
 });

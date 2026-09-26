@@ -175,7 +175,7 @@ export class PlacesService {
   async listEditorial(query: ListPlacesQueryDto) {
     const page = clampPage(query.page);
     const limit = clampLimit(query.limit);
-    const { items, total } = await this.placesRepo.listEditorial({ limit, offset: (page - 1) * limit });
+    const { items, total } = await this.placesRepo.listEditorial({ limit, offset: (page - 1) * limit, category: query.category });
     return paginate(items.map(toPlaceCard).map(redactUntrustedPriceRange), page, limit, total);
   }
 

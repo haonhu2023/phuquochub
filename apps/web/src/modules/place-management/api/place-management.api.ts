@@ -60,11 +60,12 @@ export async function unpublishPlace(id: string, accessToken: string): Promise<n
  */
 export async function listEditorialPlaces(
   accessToken: string,
-  params: { page?: number; limit?: number } = {},
+  params: { page?: number; limit?: number; category?: string } = {},
 ): Promise<{ data: PlaceCard[]; meta: PaginationMeta }> {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.limit) qs.set('limit', String(params.limit));
+  if (params.category) qs.set('category', params.category);
   const q = qs.toString();
   return apiGetPaginatedAuth<PlaceCard>(`/places/editorial${q ? `?${q}` : ''}`, accessToken);
 }
