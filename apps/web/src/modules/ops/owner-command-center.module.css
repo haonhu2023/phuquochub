@@ -1,0 +1,15 @@
+.root { margin: 1.5rem 0 2rem; padding: clamp(1rem, 3vw, 2rem); border: 1px solid var(--color-border, #cbd5e1); border-radius: 16px; background: var(--color-surface, #fff); overflow-wrap: anywhere; }
+.header { display: flex; justify-content: space-between; gap: 1rem; align-items: start; flex-wrap: wrap; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
+.metrics > div { padding: 1rem; border: 1px solid var(--color-border, #cbd5e1); border-radius: 10px; }
+.metrics dt { font-size: .9rem; }
+.metrics dd { margin: .4rem 0 0; font-size: 1.7rem; font-weight: 700; }
+.actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 1rem 0; }
+.records { list-style: none; padding: 0; }
+.records > li { border-bottom: 1px solid var(--color-border, #cbd5e1); padding: 1rem 0; }
+.records p { margin: .4rem 0; }
+.badge { display: inline-block; border: 1px solid currentColor; border-radius: 6px; padding: .15rem .4rem; margin-left: .5rem; font-size: .8rem; }
+.root button { min-height: 44px; padding: .5rem 1rem; cursor: pointer; }
+.root button:disabled { cursor: default; opacity: .5; }
+.root summary { cursor: pointer; padding: .5rem 0; }
+.root a { text-decoration: underline; text-underline-offset: 3px; }

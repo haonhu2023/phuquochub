@@ -30,6 +30,7 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: false,
       canEditSiteContent: false,
       canViewBackupStatus: false,
+      canViewCommandCenter: false,
       canViewOwnerTodo: false,
       canReviewPlaceEditProposals: false,
     });
@@ -46,6 +47,7 @@ describe('capabilitiesFromRoles', () => {
         canEditGuides: true,
         canEditSiteContent: false,
         canViewBackupStatus: false,
+        canViewCommandCenter: false,
         canViewOwnerTodo: true,
         canReviewPlaceEditProposals: true,
       });
@@ -67,6 +69,7 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: true,
       canEditSiteContent: true,
       canViewBackupStatus: true,
+      canViewCommandCenter: true,
       canViewOwnerTodo: true,
       canReviewPlaceEditProposals: true,
     });
@@ -88,6 +91,7 @@ describe('capabilitiesFromRoles', () => {
       canEditGuides: false,
       canEditSiteContent: false,
       canViewBackupStatus: false,
+      canViewCommandCenter: false,
       canViewOwnerTodo: false,
       canReviewPlaceEditProposals: false,
     });
@@ -116,6 +120,7 @@ describe('capabilitiesFromRoles', () => {
         canEditGuides: false,
         canEditSiteContent: false,
         canViewBackupStatus: false,
+        canViewCommandCenter: false,
         canViewOwnerTodo: false,
         canReviewPlaceEditProposals: false,
       });

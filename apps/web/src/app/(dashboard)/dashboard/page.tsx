@@ -18,6 +18,7 @@
 // UI pass (2026-09-22): trình bày đổi từ danh sách <p><Link> sang lưới thẻ (dashboard-home.module.css)
 // — logic hiển thị/quyền (caps.*) và hành vi đăng xuất giữ NGUYÊN, không đổi.
 
+import { OwnerCommandCenter } from '@/modules/ops/OwnerCommandCenter';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -80,6 +81,7 @@ export default function DashboardPage() {
       <p className={styles.greeting}>
         Xin chào, <strong className={styles.greetingName}>{user?.displayName}</strong> ({user?.email})
       </p>
+      {caps.canViewCommandCenter && <OwnerCommandCenter />}
       {caps.canEditorial && <section aria-labelledby="editorial-categories-title" className={styles.categorySection}>
         <h2 id="editorial-categories-title">Biên tập theo danh mục</h2>
         <p className={styles.greeting}>Chọn đúng loại địa điểm để xem những thông tin cần hoàn thiện cho khách du lịch.</p>
@@ -99,7 +101,7 @@ export default function DashboardPage() {
         {links
           .filter((l) => l.show)
           .map((l) => (
-            <Link key={l.href} href={l.href} className={styles.card}>
+            <Link key={l.label} href={l.href} className={styles.card}>
               <div className={styles.cardTitle}>{l.label}</div>
               <span className={styles.cardArrow} aria-hidden="true">
                 →

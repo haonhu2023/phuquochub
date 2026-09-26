@@ -107,6 +107,7 @@ export interface UserCapabilities {
   canEditSiteContent: boolean;
   /** Hiện khối "Tình trạng sao lưu" trên trang Hướng dẫn (BK1). */
   canViewBackupStatus: boolean;
+  canViewCommandCenter: boolean;
   /** Hiện lối vào "Việc cần làm" (`/dashboard/todo`, GET /owner-decisions — Place.Approve). */
   canViewOwnerTodo: boolean;
   /** Hiện lối vào "Duyệt đề xuất chỉnh sửa" (`/dashboard/edit-proposals` — PlaceEditProposal.Moderate). */
@@ -121,6 +122,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canEditGuides: false,
   canEditSiteContent: false,
   canViewBackupStatus: false,
+  canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
 };
@@ -141,6 +143,7 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
     canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
     canViewBackupStatus: codes.some((c) => BACKUP_STATUS_VIEW_ROLES.includes(c)),
+    canViewCommandCenter: codes.some((c) => ['content_owner'].includes(c)),
     canViewOwnerTodo: codes.some((c) => PLACE_APPROVE_ROLES.includes(c)),
     canReviewPlaceEditProposals: codes.some((c) => PLACE_EDIT_PROPOSAL_MODERATE_ROLES.includes(c)),
   };
