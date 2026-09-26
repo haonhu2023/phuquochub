@@ -15,7 +15,7 @@ import {
   summarizeTrustSources,
   trustBadgeLabel,
 } from '@/modules/places/trust';
-import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
+import { getPlaceAboutTitle, getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
@@ -254,7 +254,7 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       {place.description && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>{copy.sectionAbout}</h2>
+          <h2 className={styles.sectionTitle}>{getPlaceAboutTitle(locale, place.category_slug)}</h2>
           <p>{place.description}</p>
         </section>
       )}

@@ -17,6 +17,19 @@
   background: #f3f4f6;
 }
 
+.textTrigger {
+  display: inline-flex;
+  padding: 0.6rem 0.9rem;
+  min-height: 44px;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.textTrigger:hover, .textTrigger:focus-visible { border-color: var(--accent); }
+.categoryGuidance { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.45; }
+
 .overlay {
   position: fixed;
   inset: 0;

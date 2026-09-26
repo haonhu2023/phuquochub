@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function NewPlacePage() {
-  return <NewPlaceView />;
+export default async function NewPlacePage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
+  const { category } = await searchParams;
+  return <NewPlaceView initialCategory={category} />;
 }

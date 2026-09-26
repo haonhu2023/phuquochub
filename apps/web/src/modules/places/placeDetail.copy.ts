@@ -71,3 +71,10 @@ const en: PlaceDetailCopy = {
 export function getPlaceDetailCopy(locale: Locale): PlaceDetailCopy {
   return locale === 'en' ? en : vi;
 }
+
+/** Tiêu đề theo danh mục cho phần mô tả CÓ dữ liệu, không tạo văn bản giả khi trống. */
+export function getPlaceAboutTitle(locale: Locale, categorySlug: string | null): string {
+  if (categorySlug === 'beach') return locale === 'en' ? 'About this beach' : 'Về bãi biển này';
+  if (categorySlug === 'attraction') return locale === 'en' ? 'What to see and do' : 'Có gì để tham quan, vui chơi';
+  return getPlaceDetailCopy(locale).sectionAbout;
+}

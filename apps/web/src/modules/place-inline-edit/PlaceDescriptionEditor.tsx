@@ -19,9 +19,12 @@ import {
   type PublishDescriptionResult,
 } from './api/place-description.api';
 import styles from './place-description-editor.module.css';
+import { getEditorialCategory } from '@/modules/editorial/editorialCategories';
 
 interface Props {
   placeId: string;
+  categorySlug?: string | null;
+  triggerLabel?: string;
 }
 
 interface FieldState {
@@ -64,7 +67,8 @@ type PanelState =
  * `Place.Edit.Any`). Đây THUẦN TUÝ là hiển thị — backend vẫn là nơi quyết định duy nhất; cờ sai/
  * thiếu chỉ ẩn nút, API vẫn tự chặn bằng PermissionsGuard nếu ai đó cố gọi thẳng.
  */
-export function PlaceDescriptionEditor({ placeId }: Props) {
+export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: Props) {
+  const editorialGroup = getEditorialCategory(categorySlug);
   const { isAuthenticated, initializing } = useAuth();
   const [caps, setCaps] = useState<UserCapabilities>(NO_CAPABILITIES);
   const [panel, setPanel] = useState<PanelState>({ kind: 'closed' });
@@ -219,8 +223,8 @@ export function PlaceDescriptionEditor({ placeId }: Props) {
 
   return (
     <>
-      <button type="button" className={styles.editTrigger} onClick={() => void open()} aria-label="Sửa nội dung">
-        ✏️
+      <button type="button" className={triggerLabel ? styles.textTrigger : styles.editTrigger} onClick={() => void open()} aria-label={triggerLabel ?? 'Sửa nội dung'}>
+        {triggerLabel ?? '✏️'}
       </button>
       {panel.kind !== 'closed' && (
         <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Sửa nội dung">
@@ -237,9 +241,12 @@ export function PlaceDescriptionEditor({ placeId }: Props) {
 
             {panel.kind === 'ready' && (
               <div className={styles.drawerBody}>
+                {editorialGroup && <p className={styles.categoryGuidance}>Gợi ý cho {editorialGroup.title.toLowerCase()}: {editorialGroup.detailPrompt} Chỉ ghi điều đã kiểm tra; chưa rõ thì để trống.</p>}
                 {FIELDS.map((field) => (
                   <fieldset key={field} className={styles.fieldGroup}>
                     <legend>{FIELD_LABELS[field]}</legend>
+                    {editorialGroup && field === 'short_description' && <p className={styles.categoryGuidance}>{editorialGroup.shortPrompt}</p>}
+                    {editorialGroup && field === 'description' && <p className={styles.categoryGuidance}>{editorialGroup.detailPrompt}</p>}
                     <label className={styles.field}>
                       <span>{FIELD_LABELS[field]} (Tiếng Việt)</span>
                       <textarea

@@ -50,6 +50,26 @@
   color: var(--accent);
 }
 
+.categorySection {
+  margin-bottom: 2rem;
+}
+.categoryCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 1.15rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  text-decoration: none;
+  min-height: 148px;
+}
+.categoryCard:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.categoryCard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.categoryDescription { color: var(--muted); font-size: 0.92rem; line-height: 1.45; }
+
 .logoutBtn {
   margin-top: 2rem;
   min-height: 44px;

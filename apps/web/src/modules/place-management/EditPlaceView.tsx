@@ -11,6 +11,8 @@ import { triggerRevalidate } from '@/lib/revalidate';
 import { placeStatusClassKey, placeStatusLabel } from './statusLabels';
 import type { ManagedPlace, PlaceFormInput } from './types';
 import styles from './place-management.module.css';
+import { getEditorialCategory, editorialPublicDetailHref } from '@/modules/editorial/editorialCategories';
+import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 
 type State =
   | { kind: 'loading' }
@@ -248,6 +250,9 @@ export function EditPlaceView({ placeId }: Props) {
     <main>
       <header className={placeStyles.pageHeader}>
         <h1 className={placeStyles.pageTitle}>Sửa: {state.place.name}</h1>
+        {getEditorialCategory(state.place.category_slug) && <p className={placeStyles.pageLede}>
+          {getEditorialCategory(state.place.category_slug)?.intro}
+        </p>}
         <p style={{ marginTop: '0.5rem' }}>
           Trạng thái:{' '}
           <span className={`${styles.statusBadge} ${styles[placeStatusClassKey(state.place.status)]}`}>
@@ -276,7 +281,7 @@ export function EditPlaceView({ placeId }: Props) {
           {isPublished && (
             <>
               {' · '}
-              <Link href={`/places/${state.place.slug}`} target="_blank" style={{ color: 'var(--accent)' }}>
+              <Link href={editorialPublicDetailHref(state.place.category_slug, state.place.slug)} target="_blank" style={{ color: 'var(--accent)' }}>
                 Xem trang công khai →
               </Link>
             </>
@@ -301,6 +306,11 @@ export function EditPlaceView({ placeId }: Props) {
           )}
         </div>
       </header>
+      <section aria-label="Biên tập tên và mô tả" className={styles.contentEditor}>
+        <h2>Nội dung khách sẽ đọc</h2>
+        <p>Sửa tên và mô tả tiếng Việt/English tại đây. Đọc gợi ý đúng loại địa điểm, chỉ công khai thông tin đã xác minh.</p>
+        <PlaceDescriptionEditor placeId={placeId} categorySlug={state.place.category_slug} triggerLabel="Sửa tên và mô tả VI/EN" />
+      </section>
       {saveNotice && (
         <p className={styles.success} role="status">
           Đã lưu thành công.

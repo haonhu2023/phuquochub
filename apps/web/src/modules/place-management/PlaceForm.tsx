@@ -17,6 +17,7 @@ import {
   type Weekday,
 } from './openingHours';
 import type { ManagedPlace, PlaceFormInput } from './types';
+import { getEditorialCategory } from '@/modules/editorial/editorialCategories';
 
 interface Props {
   /** Có mặt = sửa (điền sẵn dữ liệu hiện tại); vắng mặt = tạo mới. */
@@ -25,6 +26,7 @@ interface Props {
   submittingLabel: string;
   onSubmit: (input: PlaceFormInput) => Promise<void>;
   cancelHref: string;
+  defaultCategorySlug?: string;
 }
 
 const PRICE_RANGES: Array<{ value: PlaceFormInput['price_range']; label: string }> = [
@@ -39,7 +41,7 @@ const PRICE_RANGES: Array<{ value: PlaceFormInput['price_range']; label: string 
 // (places/dto/places.dto.ts). Validate "cơ bản" giao cho HTML5 (required/min/max/maxLength) thay
 // vì lặp lại logic backend — backend vẫn là nguồn quyết định cuối (lỗi 4xx của nó được hiển thị
 // nguyên văn, an toàn cho người dùng theo đúng quy ước decideErrorMessage/ModerationDecisionForm).
-export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, cancelHref }: Props) {
+export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, cancelHref, defaultCategorySlug }: Props) {
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [categoriesError, setCategoriesError] = useState(false);
 
@@ -55,6 +57,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   const [openingHours, setOpeningHours] = useState<OpeningHoursFormState>(() =>
     openingHoursToFormState(initial?.opening_hours),
   );
+  const editorialGroup = getEditorialCategory(categories?.find((c) => c.id === categoryId)?.slug ?? initial?.category_slug);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +98,13 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
     let cancelled = false;
     listCategories()
       .then((list) => {
-        if (!cancelled) setCategories(list);
+        if (!cancelled) {
+          setCategories(list);
+          if (!initial && defaultCategorySlug) {
+            const suggested = list.find((c) => c.slug === defaultCategorySlug);
+            if (suggested) setCategoryId((selected) => selected || suggested.id);
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setCategoriesError(true);
@@ -103,7 +112,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [defaultCategorySlug, initial]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -164,6 +173,8 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
 
       <fieldset className={styles.section}>
         <legend className={styles.sectionTitle}>Thông tin cơ bản</legend>
+        {initial && <p className={styles.fieldHint}>Tên và mô tả được sửa bằng nút “Sửa tên và mô tả VI/EN” ở phía trên để lưu đúng phiên bản. Các ô dưới đây chỉ hiển thị nội dung hiện tại.</p>}
+        {editorialGroup && <p className={styles.fieldHint}>{editorialGroup.intro} Hãy nhập thông tin đã kiểm tra; không điền nội dung mẫu.</p>}
 
         <div className={uiStyles.field}>
           <label className={uiStyles.fieldLabel} htmlFor="pf-name">
@@ -176,6 +187,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
             onChange={(e) => setName(e.target.value)}
             required
             maxLength={200}
+            readOnly={Boolean(initial)}
             disabled={submitting}
           />
         </div>
@@ -234,6 +246,8 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
             value={shortDescription}
             onChange={(e) => setShortDescription(e.target.value)}
             maxLength={300}
+            placeholder={!initial ? editorialGroup?.shortPrompt : undefined}
+            readOnly={Boolean(initial)}
             disabled={submitting}
           />
         </div>
@@ -248,6 +262,8 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={5}
+            placeholder={!initial ? editorialGroup?.detailPrompt : undefined}
+            readOnly={Boolean(initial)}
             disabled={submitting}
           />
         </div>

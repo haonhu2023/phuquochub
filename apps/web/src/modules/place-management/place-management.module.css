@@ -98,6 +98,15 @@
   max-width: 640px;
   margin-top: 1rem;
 }
+.contentEditor {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  max-width: 640px;
+}
+.contentEditor h2 { font-size: 1.15rem; margin: 0 0 0.4rem; }
+.contentEditor p { color: var(--muted); margin: 0 0 0.75rem; }
 .fieldGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

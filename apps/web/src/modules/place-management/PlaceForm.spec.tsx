@@ -117,6 +117,9 @@ describe('PlaceForm — điền sẵn khi sửa', () => {
     expect(screen.getByLabelText(/Vĩ độ/)).toHaveValue(10.05);
     expect(screen.getByLabelText(/Kinh độ/)).toHaveValue(104);
     expect(screen.getByLabelText(/Mô tả ngắn/)).toHaveValue('Bãi biển đẹp');
+    expect(screen.getByLabelText(/Tên địa điểm/)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/Mô tả ngắn/)).toHaveAttribute('readonly');
+    expect(screen.getByText(/Sửa tên và mô tả VI\/EN/)).toBeInTheDocument();
   });
 });
 

@@ -56,6 +56,7 @@ describe('DashboardNav', () => {
     render(<DashboardNav />);
 
     expect(await screen.findByRole('link', { name: 'Bài viết' })).toHaveAttribute('href', '/dashboard/editorial/guides');
+    expect(screen.getByRole('link', { name: 'Quản lý địa điểm' })).toHaveAttribute('href', '/dashboard/editorial/places');
     expect(screen.getByRole('link', { name: 'Nội dung website' })).toHaveAttribute('href', '/dashboard/content');
   });
 

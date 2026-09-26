@@ -26,6 +26,7 @@ import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { NO_CAPABILITIES, type UserCapabilities } from '@/modules/auth/capabilities';
 import styles from './dashboard-home.module.css';
+import { EDITORIAL_CATEGORIES, type EditorialCategory } from '@/modules/editorial/editorialCategories';
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -60,10 +61,6 @@ export default function DashboardPage() {
     { href: '/dashboard/business-claims/new', label: 'Yêu cầu xác nhận quyền quản lý', show: true },
     { href: '/dashboard/business-claims', label: 'Trạng thái yêu cầu của tôi', show: true },
     { href: '/dashboard/editorial/places', label: 'Biên tập nội dung địa điểm', show: caps.canEditorial },
-    { href: '/dashboard/editorial/places?category=hotel', label: 'Khách sạn và resort', show: caps.canEditorial },
-    { href: '/dashboard/editorial/places?category=restaurant', label: 'Nhà hàng và ăn uống', show: caps.canEditorial },
-    { href: '/dashboard/editorial/places?category=attraction', label: 'Điểm tham quan và khu vui chơi', show: caps.canEditorial },
-    { href: '/dashboard/editorial/places?category=beach', label: 'Bãi biển', show: caps.canEditorial },
     { href: '/dashboard/editorial/places', label: 'Bản đồ và tọa độ địa điểm', show: caps.canEditorial },
     { href: '/dashboard/moderation', label: 'Hàng chờ kiểm duyệt', show: caps.canModerate },
     { href: '/dashboard/translations/review', label: 'Duyệt bản dịch', show: caps.canReviewTranslations },
@@ -83,6 +80,21 @@ export default function DashboardPage() {
       <p className={styles.greeting}>
         Xin chào, <strong className={styles.greetingName}>{user?.displayName}</strong> ({user?.email})
       </p>
+      {caps.canEditorial && <section aria-labelledby="editorial-categories-title" className={styles.categorySection}>
+        <h2 id="editorial-categories-title">Biên tập theo danh mục</h2>
+        <p className={styles.greeting}>Chọn đúng loại địa điểm để xem những thông tin cần hoàn thiện cho khách du lịch.</p>
+        <div className={styles.grid}>
+          {(Object.keys(EDITORIAL_CATEGORIES) as EditorialCategory[]).map((slug) => {
+            const group = EDITORIAL_CATEGORIES[slug];
+            return <Link key={slug} href={`/dashboard/editorial/places?category=${slug}`} className={styles.categoryCard}>
+              <strong className={styles.cardTitle}>{group.title}</strong>
+              <span className={styles.categoryDescription}>{group.intro}</span>
+              <span className={styles.cardArrow} aria-hidden="true">Xem danh sách →</span>
+            </Link>;
+          })}
+        </div>
+      </section>}
+      <h2>Công cụ quản trị</h2>
       <div className={styles.grid}>
         {links
           .filter((l) => l.show)

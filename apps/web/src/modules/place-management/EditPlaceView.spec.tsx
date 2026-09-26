@@ -18,6 +18,12 @@ jest.mock('./api/place-management.api', () => ({
 }));
 jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
 jest.mock('@/lib/revalidate', () => ({ triggerRevalidate: jest.fn() }));
+// Drawer dùng AuthProvider ở app thật; spec của PlaceDescriptionEditor kiểm riêng luồng sửa VI/EN.
+jest.mock('@/modules/place-inline-edit/PlaceDescriptionEditor', () => ({
+  PlaceDescriptionEditor: ({ categorySlug, triggerLabel }: { categorySlug?: string; triggerLabel: string }) => (
+    <button type="button" data-category={categorySlug}>{triggerLabel}</button>
+  ),
+}));
 
 const mockReadSession = readSession as jest.Mock;
 const mockPreviewPlace = previewPlace as jest.Mock;

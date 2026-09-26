@@ -9,6 +9,7 @@ import { PlaceForm } from './PlaceForm';
 import { createPlace } from './api/place-management.api';
 import type { PlaceFormInput } from './types';
 import styles from './place-management.module.css';
+import { getEditorialCategory } from '@/modules/editorial/editorialCategories';
 
 // Tạo địa điểm (POST /places, Place.Create — mở cho mọi thành viên đã đăng nhập).
 //
@@ -19,9 +20,10 @@ import styles from './place-management.module.css';
 //     GuideArticleEditorView (`router.replace` sau khi tạo), không dừng ở màn "đã gửi" trung gian.
 //   - `pending`: GIỮ NGUYÊN màn hình cũ — đây là đóng góp cộng đồng, chưa có quyền quản lý, nên
 //     KHÔNG có trang Sửa nào để chuyển tới (listMine()/preview() đều sẽ từ chối).
-export function NewPlaceView() {
+export function NewPlaceView({ initialCategory }: { initialCategory?: string } = {}) {
   const router = useRouter();
   const [createdName, setCreatedName] = useState<string | null>(null);
+  const group = getEditorialCategory(initialCategory);
 
   async function handleSubmit(input: PlaceFormInput): Promise<void> {
     const session = readSession();
@@ -40,7 +42,7 @@ export function NewPlaceView() {
     return (
       <main>
         <header className={placeStyles.pageHeader}>
-          <h1 className={placeStyles.pageTitle}>Thêm địa điểm</h1>
+          <h1 className={placeStyles.pageTitle}>{group ? `Thêm ${group.title.toLowerCase()}` : 'Thêm địa điểm'}</h1>
         </header>
         <div className={placeStyles.state} role="status">
           <p className={placeStyles.stateTitle}>Đã gửi &quot;{createdName}&quot;</p>
@@ -65,13 +67,13 @@ export function NewPlaceView() {
   return (
     <main>
       <header className={placeStyles.pageHeader}>
-        <h1 className={placeStyles.pageTitle}>Thêm địa điểm</h1>
+        <h1 className={placeStyles.pageTitle}>{group ? `Thêm ${group.title.toLowerCase()}` : 'Thêm địa điểm'}</h1>
         <p className={placeStyles.pageLede}>
-          Gửi thông tin một địa điểm mới cho PhuQuocHub. Thông tin sẽ được kiểm duyệt trước khi
-          hiển thị công khai.
+          {group?.intro ?? 'Gửi thông tin một địa điểm mới cho PhuQuocHub.'} Chỉ công khai dữ kiện đã kiểm tra.
         </p>
       </header>
       <PlaceForm
+        defaultCategorySlug={group ? initialCategory : undefined}
         submitLabel="Tạo địa điểm"
         submittingLabel="Đang tạo…"
         onSubmit={handleSubmit}

@@ -494,7 +494,7 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
         faqs: [{ id: 'f1', question: 'Open when?', answer: 'Daily', sort_order: 0, is_ai_generated: false, status: 'published' }],
       });
 
-      expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'About this beach' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Information' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Contact' })).toBeInTheDocument();
       expect(screen.getByRole('heading', { name: 'Prices' })).toBeInTheDocument();
@@ -542,7 +542,7 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
       mockGetPlace.mockResolvedValueOnce(place({ description: 'Bãi biển cát trắng.' }));
       mockListReviews.mockResolvedValueOnce([]);
       render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'vi' }) }));
-      expect(screen.getByRole('heading', { name: 'Giới thiệu' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Về bãi biển này' })).toBeInTheDocument();
     });
   });
 });

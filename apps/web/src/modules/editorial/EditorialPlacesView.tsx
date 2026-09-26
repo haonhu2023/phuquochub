@@ -16,6 +16,8 @@ import type { PlaceCard } from '@phuquochub/shared-types';
 import { listCategories, type Category } from '@/modules/categories/api/categories.api';
 import placeStyles from '@/modules/places/places.module.css';
 import placeManagementStyles from '@/modules/place-management/place-management.module.css';
+import { editorialPublicDetailHref, getEditorialCategory } from './editorialCategories';
+import styles from './editorial.module.css';
 
 type State =
   | { kind: 'loading' }
@@ -52,6 +54,7 @@ export function EditorialPlacesView({ initialCategory = '' }: { initialCategory?
   const [reloadKey, setReloadKey] = useState(0);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const group = getEditorialCategory(category);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -139,12 +142,19 @@ export function EditorialPlacesView({ initialCategory = '' }: { initialCategory?
       </nav>
 
       <header className={placeStyles.pageHeader}>
-        <h1 className={placeStyles.pageTitle}>Biên tập nội dung địa điểm</h1>
+        <h1 className={placeStyles.pageTitle}>{group?.title ?? 'Biên tập nội dung địa điểm'}</h1>
         <p className={placeStyles.pageLede}>
-          Mọi địa điểm — kể cả bản nháp và đang chờ duyệt. Xuất bản, gỡ công khai, bổ sung ảnh và
-          thông tin liên hệ.
+          {group?.intro ?? 'Mọi địa điểm — kể cả bản nháp và đang chờ duyệt. Sửa thông tin, bổ sung ảnh và quản lý trạng thái xuất bản.'}
         </p>
       </header>
+
+      {group && <aside className={styles.guidance} aria-label={`Nội dung cần có cho ${group.title}`}>
+        <h2>Thông tin khách cần khi xem {group.title.toLowerCase()}</h2>
+        <ul>{group.checklist.map((item) => <li key={item}>{item}</li>)}</ul>
+        <p>Chỉ nhập dữ kiện đã kiểm tra. Chưa có nguồn hoặc ảnh hợp lệ thì để trống, không dùng nội dung mẫu.</p>
+      </aside>}
+
+      {group && <p><Link href={`/dashboard/places/new?category=${encodeURIComponent(category)}`} className={placeStyles.btn}>+ Thêm {group.title.toLowerCase()}</Link></p>}
 
       <label htmlFor="editorial-category">Loại địa điểm </label>
       <select id="editorial-category" value={category} onChange={(event) => {
@@ -197,7 +207,7 @@ export function EditorialPlacesView({ initialCategory = '' }: { initialCategory?
       )}
 
       {state.kind === 'ready' && state.places.length === 0 && (
-        <p className={placeStyles.stateTitle}>Không có địa điểm nào trong danh mục này.</p>
+        <p className={placeStyles.stateTitle}>{group ? `Chưa có ${group.title.toLowerCase()} trong danh sách.` : 'Chưa có địa điểm nào.'}</p>
       )}
 
       {state.kind === 'ready' && state.places.length > 0 && (
@@ -208,15 +218,16 @@ export function EditorialPlacesView({ initialCategory = '' }: { initialCategory?
                 {placeStatusLabel(p.status)}
               </span>{' '}
               <strong>{p.name}</strong> <span>· {categories.find((c) => c.id === p.category_id)?.name_vi ?? 'Chưa phân loại'}</span>
-              {!p.cover_image_url && (
-                <span style={{ marginLeft: 8, color: 'var(--muted)' }}>· chưa có ảnh bìa</span>
-              )}
+              <div className={styles.placeSummary}>
+                {p.short_description ? <span>{p.short_description}</span> : <span className={styles.missing}>Cần bổ sung mô tả ngắn</span>}
+                {!p.cover_image_url && <span className={styles.missing}>Cần ảnh bìa có quyền sử dụng</span>}
+              </div>
               <div style={{ marginTop: 4, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Link href={`/dashboard/places/${p.id}/edit`}>Sửa →</Link>
                 <Link href={`/dashboard/places/${p.id}/photos`}>Quản lý ảnh →</Link>
                 <Link href={`/dashboard/places/${p.id}/preview`}>Xem trước →</Link>
                 {p.status === 'published' ? (
-                  <Link href={`/places/${p.slug}`} target="_blank">
+                  <Link href={editorialPublicDetailHref(categories.find((c) => c.id === p.category_id)?.slug ?? category, p.slug)} target="_blank">
                     Xem trang công khai →
                   </Link>
                 ) : (
