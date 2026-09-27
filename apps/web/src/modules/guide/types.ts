@@ -51,6 +51,10 @@ export interface FaqContent {
 export interface ImageWithRightsContent {
   mediaId: string;
   caption?: string;
+  /** Văn bản thay thế cho screen reader — tách khỏi `caption` (chú thích hiển thị công khai).
+   *  Thêm 2026-09-27, JSONB nên không cần migration. Renderer dùng `alt || caption` để ảnh cũ
+   *  (chưa từng có `alt`) vẫn có văn bản thay thế hợp lý thay vì rỗng. */
+  alt?: string | null;
   imageUrl?: string;
   attribution?: string | null;
   licenseUrl?: string | null;

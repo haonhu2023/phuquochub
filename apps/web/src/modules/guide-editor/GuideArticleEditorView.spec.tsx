@@ -17,15 +17,32 @@ jest.mock('./api/guide-editor.api', () => ({
   publishGuideArticle: jest.fn(),
   unpublishGuideArticle: jest.fn(),
   flagContentGap: jest.fn(),
+  listGuideDrafts: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/modules/auth/api/me.api', () => ({ fetchCapabilities: jest.fn() }));
 jest.mock('next/link', () => ({
   __esModule: true,
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  default: ({
+    href,
+    children,
+    onClick,
+  }: {
+    href: string;
+    children: React.ReactNode;
+    onClick?: (e: React.MouseEvent) => void;
+  }) => (
+    <a href={href} onClick={onClick}>
+      {children}
+    </a>
+  ),
 }));
 const replace = jest.fn();
-jest.mock('next/navigation', () => ({ useRouter: () => ({ replace }) }));
+const push = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ replace, push }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 const session = readSession as jest.Mock;
 const caps = fetchCapabilities as jest.Mock;
@@ -38,7 +55,7 @@ beforeEach(() => {
   global.URL.createObjectURL = jest.fn(() => 'blob:mock-preview');
   global.URL.revokeObjectURL = jest.fn();
   session.mockReturnValue({ accessToken: 'tok' });
-  caps.mockResolvedValue({ canEditGuides: true });
+  caps.mockResolvedValue({ canEditGuides: true, canModerate: false });
 });
 
 // Regression coverage for the 2026-09-27 production incident: an owner filled in Title only (Slug
@@ -187,5 +204,121 @@ describe('image upload guards the Save button', () => {
       id: 'media-1', type: 'image', url: 'http://cdn/x.jpg', thumbnail_url: null,
     } as Awaited<ReturnType<typeof registerMedia>>);
     await waitFor(() => expect(saveButton).not.toBeDisabled());
+  });
+});
+
+// Mục tiêu 2/E (2026-09-27): "Xuất bản phải dùng nội dung mới nhất đã lưu... không xuất bản phiên
+// bản cũ khi editor đang có thay đổi chưa lưu." Trước bản này, handlePublish không hề biết tới
+// thay đổi chưa lưu — sửa tiêu đề rồi bấm Xuất bản ngay sẽ xuất bản đúng nội dung ĐÃ LƯU TRƯỚC ĐÓ
+// trong khi UI vẫn hiện chữ mới gõ, một sai lệch âm thầm.
+describe('dirty-state guards Publish', () => {
+  const { getGuideDraft, saveGuideDraft, publishGuideArticle } = jest.requireMock('./api/guide-editor.api');
+  const EXISTING = {
+    id: 'art-1', slug: 'bai-viet', locale: 'vi', title: 'Tiêu đề gốc', intro: null,
+    heroMediaId: null, heroImageUrl: null, blocks: [], contentVersion: 1, status: 'draft',
+  };
+
+  it('disables Xuất bản and explains why while there are unsaved edits, then re-enables after Save', async () => {
+    getGuideDraft.mockResolvedValue(EXISTING);
+    saveGuideDraft.mockResolvedValue({ ...EXISTING, contentVersion: 2 });
+    render(<GuideArticleEditorView id="art-1" />);
+
+    const publishBtn = await screen.findByRole('button', { name: 'Xuất bản' });
+    expect(publishBtn).not.toBeDisabled();
+
+    fireEvent.change(screen.getByDisplayValue('Tiêu đề gốc'), { target: { value: 'Tiêu đề đã sửa' } });
+    expect(publishBtn).toBeDisabled();
+    expect(screen.getByText(/Còn thay đổi chưa lưu/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+    await waitFor(() => expect(publishBtn).not.toBeDisabled());
+    expect(screen.queryByText(/Còn thay đổi chưa lưu/)).not.toBeInTheDocument();
+
+    fireEvent.click(publishBtn);
+    await waitFor(() => expect(publishGuideArticle).toHaveBeenCalledWith('art-1', 2, 'tok'));
+  });
+});
+
+describe('VI/EN translation tab', () => {
+  const { getGuideDraft, listGuideDrafts } = jest.requireMock('./api/guide-editor.api');
+  const EXISTING = {
+    id: 'art-1', slug: 'bai-viet', locale: 'vi', title: 'Bài viết', intro: null,
+    heroMediaId: null, heroImageUrl: null, blocks: [], contentVersion: 1, status: 'draft',
+  };
+
+  it('offers "Tạo bản EN" when no sibling-locale record exists yet', async () => {
+    getGuideDraft.mockResolvedValue(EXISTING);
+    listGuideDrafts.mockResolvedValue([{ id: 'art-1', slug: 'bai-viet', locale: 'vi', title: 'Bài viết', status: 'draft', updatedAt: 't' }]);
+    render(<GuideArticleEditorView id="art-1" />);
+    expect(await screen.findByRole('button', { name: /Tạo bản EN/ })).toBeInTheDocument();
+  });
+
+  it('navigates to the sibling record when one exists, without a confirm prompt when not dirty', async () => {
+    getGuideDraft.mockResolvedValue(EXISTING);
+    listGuideDrafts.mockResolvedValue([
+      { id: 'art-1', slug: 'bai-viet', locale: 'vi', title: 'Bài viết', status: 'draft', updatedAt: 't' },
+      { id: 'art-2', slug: 'bai-viet', locale: 'en', title: 'Article', status: 'draft', updatedAt: 't' },
+    ]);
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<GuideArticleEditorView id="art-1" />);
+    const enTab = await screen.findByRole('tab', { name: 'EN' });
+    expect(enTab).not.toBeDisabled();
+    // Sibling lookup (listGuideDrafts) resolves asynchronously after articleId/slug are known —
+    // wait for it to land (the "+ Tạo bản" CTA disappearing is the observable signal) before
+    // clicking, or the click fires while `sibling` is still null.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Tạo bản/ })).not.toBeInTheDocument());
+    fireEvent.click(enTab);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith('/dashboard/editorial/guides/art-2');
+    confirmSpy.mockRestore();
+  });
+});
+
+// Mục tiêu 2/A,C (2026-09-27): danh sách và các trường ảnh mở rộng (alt/attribution/licenseUrl) đã
+// được backend + public renderer chấp nhận từ trước — chỉ thiếu ô nhập ở editor. Kiểm tra cả hai
+// đi trọn đường tới payload gửi lên API.
+describe('rich text list and extended image fields reach the save payload', () => {
+  it('sends a list paragraph alongside prose paragraphs', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Bài có danh sách' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Loại khối mới' }), { target: { value: 'rich_text' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Thêm khối' }));
+    fireEvent.change(screen.getByPlaceholderText('Mỗi dòng là một đoạn văn'), { target: { value: 'Đoạn mở đầu' } });
+    fireEvent.change(screen.getByPlaceholderText(/Mang giày đi bộ/), { target: { value: 'Mang giày\nMang nước' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const payload = create.mock.calls[0][0];
+    expect(payload.blocks[0]).toEqual({
+      blockType: 'rich_text',
+      content: {
+        paragraphs: [
+          { type: 'p', text: 'Đoạn mở đầu' },
+          { type: 'list', items: ['Mang giày', 'Mang nước'] },
+        ],
+      },
+    });
+  });
+
+  it('saves alt/attribution/licenseUrl for an image_with_rights block', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Bài có ảnh nguồn' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Loại khối mới' }), { target: { value: 'image_with_rights' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Thêm khối' }));
+
+    fireEvent.change(screen.getByPlaceholderText(/Văn bản thay thế/), { target: { value: 'Bãi biển lúc hoàng hôn' } });
+    fireEvent.change(screen.getByPlaceholderText(/Nguồn ảnh/), { target: { value: 'Sở Du lịch Kiên Giang' } });
+    fireEvent.change(screen.getByPlaceholderText(/giấy phép/), { target: { value: 'https://example.com/license' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    const payload = create.mock.calls[0][0];
+    expect(payload.blocks[0].content).toMatchObject({
+      alt: 'Bãi biển lúc hoàng hôn',
+      attribution: 'Sở Du lịch Kiên Giang',
+      licenseUrl: 'https://example.com/license',
+    });
   });
 });

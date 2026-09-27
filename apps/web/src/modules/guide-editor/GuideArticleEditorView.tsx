@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { ApiError } from '@/lib/http';
@@ -11,13 +11,19 @@ import {
   createGuideDraft,
   flagContentGap,
   getGuideDraft,
+  listGuideDrafts,
   publishGuideArticle,
   saveGuideDraft,
   unpublishGuideArticle,
+  type GuideArticleSummary,
 } from './api/guide-editor.api';
 import type { GuideBlockType } from '../guide/types';
+import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
-import placeStyles from '@/modules/places/places.module.css';
+import styles from './guide-editor.module.css';
+
+const INTRO_MAX_LENGTH = 500; // SaveGuideDraftDto.intro @MaxLength(500) — nguồn thật, không tự đặt số riêng.
+const SITE_URL = 'phuquochub.com';
 
 interface EditableBlock {
   key: string; // client-only React key, not sent to the API
@@ -65,7 +71,7 @@ function describeValidationError(message: string): string {
 
 const BLOCK_LABEL: Record<GuideBlockType, string> = {
   section_heading: 'Tiêu đề mục',
-  rich_text: 'Đoạn văn',
+  rich_text: 'Đoạn văn / danh sách',
   place_collection: 'Nhóm địa điểm',
   callout: 'Lưu ý (callout)',
   faq: 'Câu hỏi thường gặp',
@@ -85,7 +91,10 @@ function emptyContentFor(blockType: GuideBlockType): Record<string, unknown> {
     case 'faq':
       return { items: [] };
     case 'image_with_rights':
-      return { mediaId: '', caption: '' };
+      // `attribution`/`licenseUrl` đã được backend + public renderer hỗ trợ từ trước (xem
+      // ImageWithRightsBlock.tsx) — chỉ chưa từng có ô nhập ở editor. `alt` là bổ sung mới (JSONB,
+      // không cần migration) để phân biệt với `caption` (renderer trước đây dùng caption làm alt).
+      return { mediaId: '', caption: '', alt: '', attribution: '', licenseUrl: '' };
   }
 }
 
@@ -95,15 +104,31 @@ function nextKey(): string {
   return `block-${keySeq}`;
 }
 
+/** So sánh nội dung có ý nghĩa (bỏ qua `heroImageUrl` — chỉ để hiển thị, backend tự tính lại; bỏ
+ *  qua `key`/`id` của từng khối — id client-only hoặc do server gán). Dùng để biết editor có đang
+ *  "dirty" (thay đổi chưa lưu) hay không — JSON.stringify là đủ ổn định vì form luôn được dựng lại
+ *  từ đầu mỗi lần set (không có tham chiếu vòng, thứ tự khoá object nhất quán trong cùng phiên). */
+function comparableSnapshot(form: FormState): string {
+  return JSON.stringify({
+    slug: form.slug,
+    locale: form.locale,
+    title: form.title,
+    intro: form.intro,
+    heroMediaId: form.heroMediaId,
+    blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
+  });
+}
+
 /**
- * Guide CMS candidate (2026-09-18) editor. `id === 'new'` creates a draft on first Save; otherwise
- * loads the existing article (any status) and edits in place. CAS-aware: `expectedContentVersion`
- * is always the value from the last successful load/save, and a 409 (ApiError.isConflict) on Save
- * surfaces the same "someone else edited this — reload" message the translation-review UI uses,
- * rather than silently retrying with a guessed version.
+ * Guide CMS candidate (2026-09-18; UI pass 2026-09-27) editor. `id === 'new'` creates a draft on
+ * first Save; otherwise loads the existing article (any status) and edits in place. CAS-aware:
+ * `expectedContentVersion` is always the value from the last successful load/save, and a 409
+ * (ApiError.isConflict) on Save surfaces the same "someone else edited this — reload" message the
+ * translation-review UI uses, rather than silently retrying with a guessed version.
  */
 export function GuideArticleEditorView({ id }: { id: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isNew = id === 'new';
 
   const [status, setStatus] = useState<'loading' | 'signed-out' | 'forbidden' | 'ready' | 'error'>('loading');
@@ -117,6 +142,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   const [flaggingBlockId, setFlaggingBlockId] = useState<string | null>(null);
   const [flagGapError, setFlagGapError] = useState<string | null>(null);
   const [flagGapNotice, setFlagGapNotice] = useState<string | null>(null);
+  const [canModerate, setCanModerate] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   // Theo dõi xem chủ bài viết đã tự gõ vào ô Slug chưa — chỉ auto-gợi ý slug từ Tiêu đề TRƯỚC lần
   // gõ tay đầu tiên (Mục tiêu 2/A: "gợi ý slug từ tiêu đề nhưng cho sửa trước lần lưu đầu"). Sau khi
   // đã lưu (articleId tồn tại), slug bị khoá (`disabled` ở input bên dưới) nên biến này hết tác dụng.
@@ -136,14 +163,41 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     });
   }
   const [form, setForm] = useState<FormState>({
-    slug: '',
-    locale: 'vi',
+    slug: searchParams?.get('slug') ?? '',
+    locale: (searchParams?.get('locale') as 'vi' | 'en' | null) ?? 'vi',
     title: '',
     intro: '',
     heroMediaId: '',
     heroImageUrl: null,
     blocks: [],
   });
+  // Ảnh chụp lần lưu/tải thành công gần nhất — so sánh với form hiện tại để biết "dirty" (2026-09-27,
+  // Mục tiêu 2/E: "Xuất bản phải dùng nội dung mới nhất đã lưu... không xuất bản phiên bản cũ khi
+  // editor đang có thay đổi chưa lưu"). `null` khi chưa từng lưu/tải (bản nháp mới tinh, coi là KHÔNG
+  // dirty — chưa có gì để "xuất bản phiên bản cũ" cả, nút Xuất bản còn ẩn vì chưa có articleId).
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  const isDirty = savedSnapshot !== null && comparableSnapshot(form) !== savedSnapshot;
+
+  // VI/EN: tìm bản ghi cùng slug, khác locale (Mục tiêu 2/A — "Tab VI/EN chuyển được giữa bản dịch
+  // tương ứng, giữ hai bản ghi (slug, locale) hiện có"). Chỉ tra cứu sau khi ĐÃ lưu ít nhất một lần
+  // (có articleId) — trước đó chưa có gì để tìm bản dịch của.
+  const [siblingDrafts, setSiblingDrafts] = useState<GuideArticleSummary[] | null>(null);
+  useEffect(() => {
+    if (!articleId || !form.slug) return;
+    const session = readSession();
+    if (!session) return;
+    let cancelled = false;
+    void listGuideDrafts(session.accessToken).then((list) => {
+      if (!cancelled) setSiblingDrafts(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [articleId, form.slug]);
+  const sibling = useMemo(
+    () => siblingDrafts?.find((d) => d.slug === form.slug && d.locale !== form.locale) ?? null,
+    [siblingDrafts, form.slug, form.locale],
+  );
 
   useEffect(() => {
     const session = readSession();
@@ -164,6 +218,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
         setStatus('forbidden');
         return;
       }
+      setCanModerate(caps.canModerate);
       if (isNew) {
         setStatus('ready');
         return;
@@ -175,7 +230,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           setContentVersion(article.contentVersion);
           setArticleStatus(article.status);
           setSlugTouched(true);
-          setForm({
+          const loaded: FormState = {
             slug: article.slug,
             locale: article.locale as 'vi' | 'en',
             title: article.title,
@@ -188,7 +243,9 @@ export function GuideArticleEditorView({ id }: { id: string }) {
               content: b.content as Record<string, unknown>,
               id: b.id,
             })),
-          });
+          };
+          setForm(loaded);
+          setSavedSnapshot(comparableSnapshot(loaded));
           setStatus('ready');
         })
         .catch(() => {
@@ -203,6 +260,25 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- id/isNew are route params, stable per mount
   }, []);
+
+  // Cảnh báo rời trang khi có thay đổi chưa lưu (Mục 4 — "Cảnh báo khi rời trang... có thay đổi
+  // chưa lưu"). Trình duyệt hiện dialog gốc, không tự đặt văn bản (mọi trình duyệt hiện đại phớt lờ
+  // `returnValue` tuỳ chỉnh — chỉ `preventDefault()`/set `returnValue` là đủ để kích hoạt).
+  useEffect(() => {
+    if (!isDirty) return;
+    function handler(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  /** Chặn điều hướng nội bộ (breadcrumb, tab VI/EN) khi đang dirty — trả `true` nếu được phép đi. */
+  function confirmDiscardIfDirty(): boolean {
+    if (!isDirty) return true;
+    return window.confirm('Bạn có thay đổi chưa lưu. Rời khỏi trang này sẽ mất thay đổi đó. Tiếp tục?');
+  }
 
   function addBlock(blockType: GuideBlockType) {
     setForm((f) => ({ ...f, blocks: [...f.blocks, { key: nextKey(), blockType, content: emptyContentFor(blockType) }] }));
@@ -262,6 +338,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
         setArticleId(created.id);
         setContentVersion(created.contentVersion);
         setArticleStatus(created.status);
+        setSavedSnapshot(comparableSnapshot(form));
         router.replace(`/dashboard/editorial/guides/${created.id}`);
       } else {
         // slug/locale are immutable after creation — the PATCH DTO no longer accepts them
@@ -279,6 +356,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
         );
         setContentVersion(saved.contentVersion);
         setArticleStatus(saved.status);
+        setSavedSnapshot(comparableSnapshot(form));
       }
     } catch (err) {
       if (isCreate && err instanceof ApiError && err.isConflict) {
@@ -297,6 +375,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
       } else {
         setErrorMessage(err instanceof Error ? err.message : 'Lưu thất bại.');
       }
+      // Nội dung form KHÔNG bị xoá ở đây (Mục 4 — "Giữ nội dung khi API lỗi, mất mạng, 401 hoặc CAS
+      // 409"): mọi nhánh lỗi ở trên chỉ set thông điệp, không đụng tới `form`.
     } finally {
       setSaving(false);
     }
@@ -304,7 +384,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
 
   async function handlePublish() {
     const session = readSession();
-    if (!session || !articleId || contentVersion === null) return;
+    if (!session || !articleId || contentVersion === null || isDirty) return;
     setSaving(true);
     setConflict(false);
     setErrorMessage(null);
@@ -317,7 +397,20 @@ export function GuideArticleEditorView({ id }: { id: string }) {
       if (err instanceof ApiError && err.isConflict) {
         setConflict(true);
       } else {
-        setErrorMessage(err instanceof Error ? err.message : 'Xuất bản thất bại.');
+        const message = err instanceof Error ? err.message : 'Xuất bản thất bại.';
+        // "Cannot publish: media not published/rights-cleared: <id>" — thông điệp nghiệp vụ thật từ
+        // GuideArticlesService (xem assertMediaPublishEligible). Diễn giải rõ nguyên nhân THẬT: ảnh
+        // mồ côi (không gắn cơ sở) hiện KHÔNG được tạo hàng chờ kiểm duyệt nào (MediaService.register
+        // chỉ tạo case khi có placeId) — nên hiện KHÔNG có đường nào, kể cả cho content_owner giữ
+        // Media.Moderate, để duyệt ảnh mồ côi qua UI. Không trỏ tới /dashboard/moderation như thể nó
+        // sẽ hiện case đó — sẽ không hiện. Nêu đúng giới hạn và phương án nhỏ nhất thay vì nút giả.
+        if (/media not published|rights-cleared/i.test(message)) {
+          setErrorMessage(
+            'Không xuất bản được: ảnh vừa chọn chưa được duyệt quyền sử dụng, và ảnh cẩm nang (không gắn địa điểm) hiện CHƯA có luồng duyệt nào trong hệ thống — kể cả tài khoản có quyền kiểm duyệt cũng không thấy ảnh này trong hàng chờ. Cách xử lý nhỏ nhất bây giờ: gỡ ảnh này và dùng một ảnh đã từng được duyệt trước đó (hoặc bỏ ảnh), rồi lưu và xuất bản lại. Cần bổ sung tính năng duyệt ảnh cẩm nang mới xuất bản được ảnh mới tải.',
+          );
+        } else {
+          setErrorMessage(message);
+        }
       }
     } finally {
       setSaving(false);
@@ -367,12 +460,23 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     }
   }
 
+  function goToLocale(targetId: string) {
+    if (!confirmDiscardIfDirty()) return;
+    router.push(`/dashboard/editorial/guides/${targetId}`);
+  }
+
+  function createTranslation() {
+    if (!confirmDiscardIfDirty()) return;
+    const otherLocale = form.locale === 'vi' ? 'en' : 'vi';
+    router.push(`/dashboard/editorial/guides/new?slug=${encodeURIComponent(form.slug)}&locale=${otherLocale}`);
+  }
+
   if (status === 'signed-out') {
     return (
       <main>
-        <div className={placeStyles.state} role="alert">
-          <p className={placeStyles.stateTitle}>Cần đăng nhập</p>
-          <Link href="/login" className={placeStyles.btn}>
+        <div className={styles.alert} role="alert">
+          <p>Cần đăng nhập.</p>
+          <Link href="/login" className={styles.btn}>
             Đăng nhập
           </Link>
         </div>
@@ -382,9 +486,9 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   if (status === 'forbidden') {
     return (
       <main>
-        <div className={placeStyles.state} role="alert">
-          <p className={placeStyles.stateTitle}>Không có quyền truy cập</p>
-          <Link href="/dashboard" className={placeStyles.btn}>
+        <div className={styles.alert} role="alert">
+          <p>Không có quyền truy cập.</p>
+          <Link href="/dashboard" className={styles.btn}>
             ← Về bảng điều khiển
           </Link>
         </div>
@@ -394,25 +498,75 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   if (status === 'loading') return <p role="status">Đang tải…</p>;
   if (status === 'error') return <p role="alert">{errorMessage}</p>;
 
+  const introOver = form.intro.length > INTRO_MAX_LENGTH;
+  const publicUrl = form.slug ? `/${form.locale}/guide/${form.slug}` : null;
+  const publishBlockedReason = !articleId
+    ? 'Lưu bản nháp trước khi có thể xuất bản.'
+    : isDirty
+      ? 'Còn thay đổi chưa lưu — lưu bản nháp trước khi xuất bản để không xuất bản nhầm phiên bản cũ.'
+      : uploadingKeys.size > 0
+        ? 'Đợi ảnh tải xong trước khi xuất bản.'
+        : null;
+
   return (
-    <main>
-      <nav className={placeStyles.breadcrumb} aria-label="Breadcrumb">
-        <Link href="/dashboard/editorial/guides">Biên tập cẩm nang</Link>
-        <span className={placeStyles.sep}>/</span>
+    <main className={styles.page}>
+      <nav aria-label="Breadcrumb" style={{ marginBottom: '0.5rem' }}>
+        <Link
+          href="/dashboard/editorial/guides"
+          onClick={(e) => {
+            if (!confirmDiscardIfDirty()) e.preventDefault();
+          }}
+        >
+          Biên tập cẩm nang
+        </Link>
+        <span style={{ margin: '0 0.4rem', color: 'var(--muted)' }}>/</span>
         <span aria-current="page">{isNew ? 'Cẩm nang mới' : form.title || '…'}</span>
       </nav>
 
+      <div className={styles.header}>
+        <h1 className={styles.title}>{isNew ? 'Cẩm nang mới' : form.title || 'Sửa cẩm nang'}</h1>
+        {articleId && (
+          <div className={styles.localeTabs} role="tablist" aria-label="Ngôn ngữ bản dịch">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={form.locale === 'vi'}
+              className={`${styles.localeTab} ${form.locale === 'vi' ? styles.localeTabActive : ''}`}
+              disabled={form.locale === 'vi'}
+              onClick={() => sibling && form.locale !== 'vi' && goToLocale(sibling.id)}
+            >
+              VI{form.locale !== 'vi' && !sibling && siblingDrafts !== null ? ' (chưa có)' : ''}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={form.locale === 'en'}
+              className={`${styles.localeTab} ${form.locale === 'en' ? styles.localeTabActive : ''}`}
+              disabled={form.locale === 'en'}
+              onClick={() => sibling && form.locale !== 'en' && goToLocale(sibling.id)}
+            >
+              EN{form.locale !== 'en' && !sibling && siblingDrafts !== null ? ' (chưa có)' : ''}
+            </button>
+            {siblingDrafts !== null && !sibling && (
+              <button type="button" className={`${styles.localeTab} ${styles.localeTabMissing}`} onClick={createTranslation}>
+                + Tạo bản {form.locale === 'vi' ? 'EN' : 'VI'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {conflict && (
-        <div className={placeStyles.state} role="alert" style={{ marginBottom: '1rem' }}>
-          <p className={placeStyles.stateTitle}>Có người khác vừa sửa cẩm nang này</p>
-          <p>Tải lại trang để lấy bản mới nhất trước khi lưu tiếp.</p>
+        <div className={styles.alert} role="alert">
+          <p style={{ fontWeight: 600, margin: 0 }}>Có người khác vừa sửa cẩm nang này</p>
+          <p style={{ margin: '0.25rem 0 0' }}>Tải lại trang để lấy bản mới nhất trước khi lưu tiếp.</p>
         </div>
       )}
       {errorMessage && (
-        <div role="alert" style={{ color: 'crimson', marginBottom: errorDetails ? '0.25rem' : undefined }}>
-          <p>{errorMessage}</p>
+        <div className={styles.alert} role="alert">
+          <p style={{ margin: 0 }}>{errorMessage}</p>
           {errorDetails && (
-            <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
+            <ul className={styles.alertList}>
               {errorDetails.map((d, i) => (
                 <li key={i}>{d}</li>
               ))}
@@ -420,147 +574,282 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           )}
         </div>
       )}
-      {articleStatus && (
-        <p style={{ marginBottom: '1rem' }}>
-          Trạng thái: <strong>{articleStatus === 'published' ? 'Đã xuất bản' : 'Bản nháp'}</strong>
-          {contentVersion !== null ? ` (content_version=${contentVersion})` : ''}
-        </p>
-      )}
 
-      <fieldset style={{ marginBottom: '1.5rem' }}>
-        <legend>Thông tin bài viết</legend>
-        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-          Tiêu đề
-          <input
-            type="text"
-            value={form.title}
-            onChange={(e) => {
-              const title = e.target.value;
-              setForm((f) => ({
-                ...f,
-                title,
-                // Gợi ý slug từ tiêu đề CHỈ khi đang tạo mới và chủ bài viết chưa tự gõ slug —
-                // gõ tay vào ô Slug (bên dưới) tắt hẳn auto-gợi ý, không bao giờ ghi đè lựa chọn
-                // của người dùng.
-                slug: isNew && !slugTouched ? slugify(title) : f.slug,
-              }));
-            }}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-          Slug {isNew && <span style={{ color: 'var(--muted)', fontWeight: 'normal' }}>(bắt buộc — tự gợi ý từ tiêu đề, có thể sửa trước khi lưu lần đầu)</span>}
-          <input
-            type="text"
-            value={form.slug}
-            onChange={(e) => {
-              setSlugTouched(true);
-              setForm((f) => ({ ...f, slug: e.target.value }));
-            }}
-            disabled={!isNew && !!articleId}
-            required
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-          Ngôn ngữ
-          <select
-            value={form.locale}
-            onChange={(e) => setForm((f) => ({ ...f, locale: e.target.value as 'vi' | 'en' }))}
-            disabled={!isNew && !!articleId}
-          >
-            <option value="vi">Tiếng Việt</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-          Giới thiệu ngắn
-          <textarea
-            value={form.intro}
-            onChange={(e) => setForm((f) => ({ ...f, intro: e.target.value }))}
-            style={{ display: 'block', width: '100%' }}
-          />
-        </label>
-        <GuideMediaPicker
-          label="Ảnh đại diện (hero)"
-          mediaId={form.heroMediaId}
-          existingImageUrl={form.heroImageUrl}
-          onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null }))}
-          onUploadingChange={(u) => setPickerUploading('hero', u)}
-        />
-      </fieldset>
-
-      <fieldset style={{ marginBottom: '1.5rem' }}>
-        <legend>Các khối nội dung</legend>
-        {flagGapNotice && (
-          <p role="status" style={{ color: 'var(--ok, green)', marginBottom: '0.5rem' }}>
-            {flagGapNotice}
-          </p>
-        )}
-        {flagGapError && (
-          <p role="alert" style={{ color: 'var(--err, red)', marginBottom: '0.5rem' }}>
-            {flagGapError}
-          </p>
-        )}
-        {form.blocks.map((block, i) => (
-          <BlockEditorRow
-            key={block.key}
-            block={block}
-            index={i}
-            total={form.blocks.length}
-            onPatch={(patch) => patchBlockContent(i, patch)}
-            onRemove={() => removeBlock(i)}
-            onMove={(dir) => moveBlock(i, dir)}
-            onFlagGap={block.id ? (note) => void handleFlagGap(block.id!, note) : undefined}
-            flagging={flaggingBlockId === block.id}
-            onUploadingChange={(u) => setPickerUploading(block.key, u)}
-          />
-        ))}
-
-        <AddBlockPicker onAdd={addBlock} />
-      </fieldset>
-
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-        <button type="button" onClick={() => void handleSave()} disabled={saving || uploadingKeys.size > 0} className={placeStyles.btn}>
-          {saving ? 'Đang lưu…' : 'Lưu bản nháp'}
-        </button>
-        {articleId && articleStatus === 'draft' && (
-          <button type="button" onClick={() => void handlePublish()} disabled={saving || uploadingKeys.size > 0} className={placeStyles.btn}>
-            Xuất bản
-          </button>
-        )}
-        {articleId && articleStatus === 'published' && (
-          <>
-            <Link href={`/${form.locale}/guide/${form.slug}`} className={placeStyles.btn} target="_blank">
-              Xem trang công khai →
-            </Link>
-            <button type="button" onClick={() => void handleUnpublish()} disabled={saving} className={placeStyles.btn}>
-              Gỡ công khai
-            </button>
-          </>
-        )}
-        {uploadingKeys.size > 0 && (
-          <span role="status" style={{ color: 'var(--muted)' }}>
-            Đang tải {uploadingKeys.size > 1 ? `${uploadingKeys.size} ảnh` : 'ảnh'} lên…
-          </span>
-        )}
+      <div className={styles.statusRow}>
+        <span
+          className={`${styles.statusBadge} ${
+            saving
+              ? styles.statusSaving
+              : errorMessage
+                ? styles.statusError
+                : isDirty
+                  ? styles.statusDirty
+                  : articleStatus === 'published'
+                    ? styles.statusPublished
+                    : styles.statusDraft
+          }`}
+        >
+          {saving
+            ? 'Đang lưu…'
+            : errorMessage
+              ? 'Lỗi'
+              : isDirty
+                ? 'Chưa lưu'
+                : !articleId
+                  ? 'Chưa lưu'
+                  : articleStatus === 'published'
+                    ? 'Đã công khai'
+                    : 'Đã lưu — bản nháp'}
+        </span>
+        {contentVersion !== null && <span>content_version={contentVersion}</span>}
       </div>
+
+      <div className={styles.layout}>
+        <div className={styles.mainCol}>
+          <div className={styles.panel}>
+            <p className={styles.panelTitle}>Nội dung chính</p>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Tiêu đề</span>
+              <input
+                type="text"
+                className={styles.titleInput}
+                value={form.title}
+                onChange={(e) => {
+                  const title = e.target.value;
+                  setForm((f) => ({
+                    ...f,
+                    title,
+                    // Gợi ý slug từ tiêu đề CHỈ khi đang tạo mới và chủ bài viết chưa tự gõ slug —
+                    // gõ tay vào ô Slug (bên dưới) tắt hẳn auto-gợi ý, không bao giờ ghi đè lựa chọn
+                    // của người dùng.
+                    slug: isNew && !slugTouched ? slugify(title) : f.slug,
+                  }));
+                }}
+              />
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Slug
+                {isNew && <span className={styles.fieldHint}>bắt buộc — tự gợi ý từ tiêu đề, có thể sửa trước khi lưu lần đầu</span>}
+              </span>
+              <input
+                type="text"
+                className={styles.input}
+                value={form.slug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  setForm((f) => ({ ...f, slug: e.target.value }));
+                }}
+                disabled={!isNew && !!articleId}
+                required
+              />
+              {publicUrl && (
+                <p className={styles.urlPreview}>
+                  URL công khai dự kiến: <strong>{SITE_URL}{publicUrl}</strong>
+                </p>
+              )}
+            </label>
+            {isNew && (
+              // Chỉ hiện khi tạo mới — sau khi đã lưu, locale bất biến (như slug) và được thay bằng
+              // tab VI/EN ở trên (chuyển SANG bản dịch đã có, không đổi locale của chính bản này).
+              <label className={styles.field}>
+                <span className={styles.fieldLabel}>Ngôn ngữ</span>
+                <select className={styles.select} style={{ width: 'auto' }} value={form.locale} onChange={(e) => setForm((f) => ({ ...f, locale: e.target.value as 'vi' | 'en' }))}>
+                  <option value="vi">Tiếng Việt</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            )}
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Giới thiệu ngắn (tóm tắt — hiển thị riêng với nội dung bài)
+                <span className={`${styles.charCount} ${introOver ? styles.charCountOver : ''}`}>
+                  {form.intro.length}/{INTRO_MAX_LENGTH}
+                </span>
+              </span>
+              <textarea
+                className={styles.textarea}
+                value={form.intro}
+                onChange={(e) => setForm((f) => ({ ...f, intro: e.target.value }))}
+                rows={2}
+              />
+              {introOver && <p className={styles.fieldHint}>Vượt giới hạn {INTRO_MAX_LENGTH} ký tự — lưu sẽ bị từ chối, không tự cắt bớt.</p>}
+            </label>
+          </div>
+
+          <div className={styles.panel}>
+            <p className={styles.panelTitle}>Các khối nội dung bài viết</p>
+            {flagGapNotice && (
+              <p role="status" style={{ color: 'var(--ok)', marginBottom: '0.5rem' }}>
+                {flagGapNotice}
+              </p>
+            )}
+            {flagGapError && (
+              <p role="alert" style={{ color: 'var(--err)', marginBottom: '0.5rem' }}>
+                {flagGapError}
+              </p>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {form.blocks.map((block, i) => (
+                <BlockEditorRow
+                  key={block.key}
+                  block={block}
+                  index={i}
+                  total={form.blocks.length}
+                  onPatch={(patch) => patchBlockContent(i, patch)}
+                  onRemove={() => removeBlock(i)}
+                  onMove={(dir) => moveBlock(i, dir)}
+                  onFlagGap={block.id ? (note) => void handleFlagGap(block.id!, note) : undefined}
+                  flagging={flaggingBlockId === block.id}
+                  onUploadingChange={(u) => setPickerUploading(block.key, u)}
+                />
+              ))}
+            </div>
+            <AddBlockPicker onAdd={addBlock} />
+          </div>
+        </div>
+
+        <div className={styles.sideCol}>
+          <div className={`${styles.panel} ${styles.actionsPanel}`}>
+            <p className={styles.panelTitle}>Xuất bản</p>
+            <div className={styles.actionsRow}>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saving || uploadingKeys.size > 0}
+                className={`${styles.btn} ${styles.btnPrimary}`}
+              >
+                {saving ? 'Đang lưu…' : 'Lưu bản nháp'}
+              </button>
+              <button type="button" className={styles.btn} onClick={() => setPreviewOpen(true)} disabled={!form.title}>
+                Xem trước
+              </button>
+            </div>
+            <div className={styles.actionsRow}>
+              {articleId && articleStatus === 'draft' && (
+                <button
+                  type="button"
+                  onClick={() => void handlePublish()}
+                  disabled={saving || uploadingKeys.size > 0 || isDirty}
+                  className={`${styles.btn} ${styles.btnPrimary}`}
+                >
+                  Xuất bản
+                </button>
+              )}
+              {articleId && articleStatus === 'published' && (
+                <>
+                  <Link href={publicUrl ?? '#'} className={styles.btn} target="_blank">
+                    Xem trang công khai →
+                  </Link>
+                  <button type="button" onClick={() => void handleUnpublish()} disabled={saving} className={`${styles.btn} ${styles.btnDanger}`}>
+                    Gỡ công khai
+                  </button>
+                </>
+              )}
+            </div>
+            {publishBlockedReason && articleStatus !== 'published' && <p className={styles.blockReason}>{publishBlockedReason}</p>}
+            {uploadingKeys.size > 0 && (
+              <p className={styles.blockReason} role="status">
+                Đang tải {uploadingKeys.size > 1 ? `${uploadingKeys.size} ảnh` : 'ảnh'} lên…
+              </p>
+            )}
+          </div>
+
+          <div className={styles.panel}>
+            <p className={styles.panelTitle}>Ảnh đại diện (hero)</p>
+            <GuideMediaPicker
+              label="Ảnh đại diện (hero)"
+              mediaId={form.heroMediaId}
+              existingImageUrl={form.heroImageUrl}
+              onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null }))}
+              onUploadingChange={(u) => setPickerUploading('hero', u)}
+            />
+          </div>
+
+          <div className={styles.panel}>
+            <p className={styles.panelTitle}>Xem trước kết quả tìm kiếm</p>
+            <SerpPreview title={form.title} intro={form.intro} slug={form.slug} locale={form.locale} />
+          </div>
+        </div>
+      </div>
+
+      {previewOpen && (
+        <div className={styles.previewOverlay} role="dialog" aria-modal="true" aria-label="Xem trước cẩm nang">
+          <div className={styles.previewSheet}>
+            <div className={styles.previewBar}>
+              <span className={styles.previewBarLabel}>Xem trước — dùng bản chưa lưu, chưa xuất bản, không ai khác thấy được</span>
+              <button type="button" className={styles.btn} onClick={() => setPreviewOpen(false)}>
+                Đóng
+              </button>
+            </div>
+            <div className={styles.previewBody}>
+              <GuideArticleView
+                article={{
+                  id: articleId ?? 'preview',
+                  slug: form.slug,
+                  locale: form.locale,
+                  title: form.title || '(chưa có tiêu đề)',
+                  intro: form.intro || null,
+                  heroMediaId: form.heroMediaId || null,
+                  heroImageUrl: form.heroImageUrl,
+                  status: articleStatus ?? 'draft',
+                  contentVersion: contentVersion ?? 0,
+                  updatedAt: new Date().toISOString(),
+                  publishedAt: null,
+                  blocks: form.blocks.map((b, i) => ({
+                    id: b.id ?? b.key,
+                    position: i,
+                    blockType: b.blockType,
+                    content: b.content,
+                    needsDecision: false,
+                    decisionNote: null,
+                  })),
+                }}
+                locale={form.locale}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
+  );
+}
+
+function SerpPreview({ title, intro, slug, locale }: { title: string; intro: string; slug: string; locale: 'vi' | 'en' }) {
+  const displayTitle = title ? `${title} · PhuQuocHub` : 'PhuQuocHub';
+  const displayDesc = intro || '(chưa có giới thiệu ngắn — Google sẽ tự chọn đoạn trích từ nội dung bài)';
+  return (
+    <div>
+      <div className={styles.serpPreview}>
+        <p className={styles.serpUrl}>
+          {SITE_URL} › {locale} › guide › {slug || '…'}
+        </p>
+        <p className={styles.serpTitle}>{displayTitle}</p>
+        <p className={styles.serpDesc}>{displayDesc}</p>
+      </div>
+      <p className={styles.serpNote}>Minh hoạ gần đúng — không đảm bảo giống hệt cách Google hiển thị thật.</p>
+    </div>
   );
 }
 
 function AddBlockPicker({ onAdd }: { onAdd: (t: GuideBlockType) => void }) {
   const [choice, setChoice] = useState<GuideBlockType>('section_heading');
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <select value={choice} onChange={(e) => setChoice(e.target.value as GuideBlockType)}>
+    <div className={styles.addBlockRow} style={{ marginTop: '0.85rem' }}>
+      <select
+        aria-label="Loại khối mới"
+        className={styles.select}
+        style={{ width: 'auto' }}
+        value={choice}
+        onChange={(e) => setChoice(e.target.value as GuideBlockType)}
+      >
         {(Object.keys(BLOCK_LABEL) as GuideBlockType[]).map((t) => (
           <option key={t} value={t}>
             {BLOCK_LABEL[t]}
           </option>
         ))}
       </select>
-      <button type="button" onClick={() => onAdd(choice)} style={{ marginLeft: '0.5rem' }}>
+      <button type="button" className={styles.btn} onClick={() => onAdd(choice)}>
         + Thêm khối
       </button>
     </div>
@@ -601,21 +890,22 @@ function BlockEditorRow({
   }
 
   return (
-    <div style={{ border: '1px solid var(--border, #e5e7eb)', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-        <strong>
+    <div className={styles.block}>
+      <div className={styles.blockHead}>
+        <span className={styles.blockLabel}>
           #{index + 1} — {BLOCK_LABEL[block.blockType]}
-        </strong>
-        <span style={{ display: 'flex', gap: '0.4rem' }}>
-          <button type="button" onClick={() => onMove(-1)} disabled={index === 0} aria-label="Di chuyển lên">
+        </span>
+        <span className={styles.blockTools}>
+          <button type="button" className={styles.iconBtn} onClick={() => onMove(-1)} disabled={index === 0} aria-label="Di chuyển lên">
             ↑
           </button>
-          <button type="button" onClick={() => onMove(1)} disabled={index === total - 1} aria-label="Di chuyển xuống">
+          <button type="button" className={styles.iconBtn} onClick={() => onMove(1)} disabled={index === total - 1} aria-label="Di chuyển xuống">
             ↓
           </button>
           {onFlagGap && (
             <button
               type="button"
+              className={styles.iconBtn}
               onClick={() => setFlagFormOpen((v) => !v)}
               title="Đánh dấu thiếu fact"
               aria-expanded={flagFormOpen}
@@ -623,7 +913,7 @@ function BlockEditorRow({
               🚩
             </button>
           )}
-          <button type="button" onClick={onRemove} aria-label="Xoá khối">
+          <button type="button" className={styles.iconBtn} onClick={onRemove} aria-label="Xoá khối">
             ✕
           </button>
         </span>
@@ -632,23 +922,24 @@ function BlockEditorRow({
           Decision Queue. Trạng thái gửi/thành công/lỗi hiện ở component cha (dùng chung cho mọi
           block, tránh một banner riêng lặp lại cho từng khối). */}
       {flagFormOpen && onFlagGap && (
-        <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'var(--surface-2, #f3f4f6)', borderRadius: 6 }}>
+        <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: 'var(--surface-2)', borderRadius: 6 }}>
           <label htmlFor={`flag-note-${block.key}`} style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem' }}>
             Mô tả fact còn thiếu / cần xác nhận
           </label>
           <textarea
             id={`flag-note-${block.key}`}
+            className={styles.textarea}
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            style={{ width: '100%', marginBottom: '0.4rem' }}
+            style={{ marginBottom: '0.4rem' }}
             disabled={flagging}
           />
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button type="button" onClick={submitFlag} disabled={flagging || !note.trim()}>
+            <button type="button" className={styles.btn} onClick={submitFlag} disabled={flagging || !note.trim()}>
               {flagging ? 'Đang gửi…' : 'Gửi'}
             </button>
-            <button type="button" onClick={() => setFlagFormOpen(false)} disabled={flagging}>
+            <button type="button" className={styles.btn} onClick={() => setFlagFormOpen(false)} disabled={flagging}>
               Huỷ
             </button>
           </div>
@@ -674,30 +965,50 @@ function BlockContentFields({
       return (
         <input
           type="text"
+          className={styles.input}
           placeholder="Tiêu đề mục"
           value={(c.text as string) ?? ''}
           onChange={(e) => onPatch({ text: e.target.value })}
-          style={{ width: '100%' }}
         />
       );
     case 'rich_text': {
-      const paragraphs = (c.paragraphs as Array<{ text?: string }>) ?? [];
-      const text = paragraphs.map((p) => p.text ?? '').join('\n');
+      // Khối này lưu MỘT mảng `paragraphs` dùng chung cho cả đoạn văn (type:'p') và danh sách
+      // (type:'list') — public renderer (RichTextBlock.tsx) đã hỗ trợ CẢ HAI từ trước, chỉ chưa có
+      // ô nhập cho danh sách ở editor. Giữ thứ tự đơn giản: mọi đoạn văn trước, một khối danh sách
+      // (nếu có) ở cuối — không phải trình soạn thảo tự do xen kẽ nhiều danh sách, nhưng dùng đúng
+      // contract sẵn có, không cần đổi schema/validation/renderer.
+      const paragraphs = (c.paragraphs as Array<{ type?: string; text?: string; items?: string[] }>) ?? [];
+      const proseText = paragraphs.filter((p) => p.type !== 'list').map((p) => p.text ?? '').join('\n');
+      const listBlock = paragraphs.find((p) => p.type === 'list');
+      const listText = (listBlock?.items ?? []).join('\n');
+
+      function rebuild(nextProse: string, nextList: string) {
+        const proseParas = nextProse
+          .split('\n')
+          .filter((line) => line.trim() !== '')
+          .map((line) => ({ type: 'p', text: line }));
+        const items = nextList.split('\n').filter((line) => line.trim() !== '');
+        onPatch({ paragraphs: items.length > 0 ? [...proseParas, { type: 'list', items }] : proseParas });
+      }
+
       return (
-        <textarea
-          placeholder="Mỗi dòng là một đoạn văn"
-          value={text}
-          onChange={(e) =>
-            onPatch({
-              paragraphs: e.target.value
-                .split('\n')
-                .filter((line) => line.trim() !== '')
-                .map((line) => ({ type: 'p', text: line })),
-            })
-          }
-          rows={4}
-          style={{ width: '100%' }}
-        />
+        <>
+          <textarea
+            className={styles.textarea}
+            placeholder="Mỗi dòng là một đoạn văn"
+            value={proseText}
+            onChange={(e) => rebuild(e.target.value, listText)}
+            rows={4}
+          />
+          <p className={styles.subLabel}>Danh sách (tuỳ chọn — mỗi dòng một mục, hiển thị dạng gạch đầu dòng)</p>
+          <textarea
+            className={styles.textarea}
+            placeholder={'Ví dụ:\nMang giày đi bộ\nMang kem chống nắng'}
+            value={listText}
+            onChange={(e) => rebuild(proseText, e.target.value)}
+            rows={3}
+          />
+        </>
       );
     }
     case 'place_collection':
@@ -705,24 +1016,26 @@ function BlockContentFields({
         <>
           <input
             type="text"
+            className={styles.input}
             placeholder="Tiêu đề nhóm (vd: Ở đâu)"
             value={(c.heading as string) ?? ''}
             onChange={(e) => onPatch({ heading: e.target.value })}
-            style={{ width: '100%', marginBottom: '0.4rem' }}
+            style={{ marginBottom: '0.4rem' }}
           />
           <textarea
+            className={styles.textarea}
             placeholder="Mỗi dòng một slug địa điểm đã published"
             value={((c.placeSlugs as string[]) ?? []).join('\n')}
             onChange={(e) => onPatch({ placeSlugs: e.target.value.split('\n').filter((s) => s.trim() !== '') })}
             rows={3}
-            style={{ width: '100%', marginBottom: '0.4rem' }}
+            style={{ marginBottom: '0.4rem' }}
           />
           <input
             type="text"
+            className={styles.input}
             placeholder="Thông báo khi không có địa điểm nào"
             value={(c.emptyStateText as string) ?? ''}
             onChange={(e) => onPatch({ emptyStateText: e.target.value })}
-            style={{ width: '100%' }}
           />
         </>
       );
@@ -730,20 +1043,21 @@ function BlockContentFields({
       return (
         <>
           <select
+            className={styles.select}
+            style={{ width: 'auto', marginBottom: '0.4rem' }}
             value={(c.variant as string) ?? 'info'}
             onChange={(e) => onPatch({ variant: e.target.value })}
-            style={{ marginBottom: '0.4rem' }}
           >
             <option value="info">Thông tin</option>
             <option value="warning">Cảnh báo</option>
             <option value="tip">Mẹo</option>
           </select>
           <textarea
+            className={styles.textarea}
             placeholder="Nội dung lưu ý"
             value={(c.text as string) ?? ''}
             onChange={(e) => onPatch({ text: e.target.value })}
             rows={2}
-            style={{ width: '100%' }}
           />
         </>
       );
@@ -752,6 +1066,7 @@ function BlockContentFields({
       const text = items.map((it) => `${it.question}::${it.answer}`).join('\n');
       return (
         <textarea
+          className={styles.textarea}
           placeholder={'Mỗi dòng: Câu hỏi::Câu trả lời'}
           value={text}
           onChange={(e) =>
@@ -766,7 +1081,6 @@ function BlockContentFields({
             })
           }
           rows={4}
-          style={{ width: '100%' }}
         />
       );
     }
@@ -782,10 +1096,35 @@ function BlockContentFields({
           />
           <input
             type="text"
-            placeholder="Chú thích ảnh (tuỳ chọn)"
+            className={styles.input}
+            placeholder="Chú thích ảnh hiển thị công khai (tuỳ chọn)"
             value={(c.caption as string) ?? ''}
             onChange={(e) => onPatch({ caption: e.target.value })}
-            style={{ width: '100%', marginTop: '0.4rem' }}
+            style={{ marginTop: '0.4rem' }}
+          />
+          <input
+            type="text"
+            className={styles.input}
+            placeholder="Văn bản thay thế (alt) — mô tả ảnh cho người dùng screen reader"
+            value={(c.alt as string) ?? ''}
+            onChange={(e) => onPatch({ alt: e.target.value })}
+            style={{ marginTop: '0.4rem' }}
+          />
+          <input
+            type="text"
+            className={styles.input}
+            placeholder="Nguồn ảnh (attribution, tuỳ chọn)"
+            value={(c.attribution as string) ?? ''}
+            onChange={(e) => onPatch({ attribution: e.target.value })}
+            style={{ marginTop: '0.4rem' }}
+          />
+          <input
+            type="text"
+            className={styles.input}
+            placeholder="Link giấy phép/nguồn ảnh (tuỳ chọn)"
+            value={(c.licenseUrl as string) ?? ''}
+            onChange={(e) => onPatch({ licenseUrl: e.target.value })}
+            style={{ marginTop: '0.4rem' }}
           />
         </>
       );
