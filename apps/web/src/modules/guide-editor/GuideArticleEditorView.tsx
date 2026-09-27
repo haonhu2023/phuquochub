@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { ApiError } from '@/lib/http';
+import { slugify } from '@phuquochub/utils';
 import {
   createGuideDraft,
   flagContentGap,
@@ -34,6 +35,32 @@ interface FormState {
   /** Chỉ để hiển thị xem trước (G-C) — KHÔNG gửi lên API, backend tự tính lại từ heroMediaId. */
   heroImageUrl: string | null;
   blocks: EditableBlock[];
+}
+
+// Nhãn tiếng Việt cho các trường của SaveGuideDraftDto/UpdateGuideDraftDto — dùng để "dịch" thông
+// điệp lỗi field-level từ ApiError.details (xem describeValidationError bên dưới) thành "Trường
+// nào sai", không chỉ hiện chuỗi chung "Dữ liệu không hợp lệ" (AllExceptionsFilter luôn thay message
+// gốc bằng chuỗi đó cho VALIDATION_ERROR — chi tiết thật nằm ở details, trước đây bị bỏ qua).
+const FIELD_LABEL: Record<string, string> = {
+  slug: 'Slug (đường dẫn URL)',
+  locale: 'Ngôn ngữ',
+  title: 'Tiêu đề',
+  intro: 'Giới thiệu ngắn',
+  heroMediaId: 'Ảnh đại diện',
+  blocks: 'Các khối nội dung',
+};
+
+/**
+ * class-validator luôn đặt tên trường ở đầu thông điệp — dạng thường gặp là "<field> ..." (vd.
+ * "slug must be longer than or equal to 1 characters") hoặc, với forbidNonWhitelisted, "property
+ * <field> should not exist". Trích tên trường để gắn nhãn tiếng Việt; nếu không nhận ra trường nào
+ * (constraint lạ), hiện nguyên văn thông điệp gốc — không bao giờ nuốt mất thông tin.
+ */
+function describeValidationError(message: string): string {
+  const whitelistMatch = message.match(/^property (\w+) /);
+  const field = whitelistMatch ? whitelistMatch[1] : message.split(' ')[0];
+  const label = field ? FIELD_LABEL[field] : undefined;
+  return label ? `${label}: ${message}` : message;
 }
 
 const BLOCK_LABEL: Record<GuideBlockType, string> = {
@@ -81,6 +108,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
 
   const [status, setStatus] = useState<'loading' | 'signed-out' | 'forbidden' | 'ready' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [articleId, setArticleId] = useState<string | null>(isNew ? null : id);
@@ -89,6 +117,24 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   const [flaggingBlockId, setFlaggingBlockId] = useState<string | null>(null);
   const [flagGapError, setFlagGapError] = useState<string | null>(null);
   const [flagGapNotice, setFlagGapNotice] = useState<string | null>(null);
+  // Theo dõi xem chủ bài viết đã tự gõ vào ô Slug chưa — chỉ auto-gợi ý slug từ Tiêu đề TRƯỚC lần
+  // gõ tay đầu tiên (Mục tiêu 2/A: "gợi ý slug từ tiêu đề nhưng cho sửa trước lần lưu đầu"). Sau khi
+  // đã lưu (articleId tồn tại), slug bị khoá (`disabled` ở input bên dưới) nên biến này hết tác dụng.
+  const [slugTouched, setSlugTouched] = useState(false);
+  // Khoá thao tác Lưu trong lúc BẤT KỲ ảnh nào (hero hoặc trong một khối image_with_rights) còn
+  // đang tải lên (2026-09-27) — trước đây bấm Lưu giữa lúc tải xong ngay lập tức mà không đợi
+  // upload xong sẽ lưu THIẾU mediaId mới, không có lỗi nào báo cho chủ bài viết biết ("thành công
+  // giả"). Một Set, không phải boolean đơn: nhiều picker (hero + mỗi khối ảnh) có thể tải song song.
+  const [uploadingKeys, setUploadingKeys] = useState<Set<string>>(new Set());
+  function setPickerUploading(key: string, uploading: boolean) {
+    setUploadingKeys((prev) => {
+      if (uploading === prev.has(key)) return prev;
+      const next = new Set(prev);
+      if (uploading) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }
   const [form, setForm] = useState<FormState>({
     slug: '',
     locale: 'vi',
@@ -128,6 +174,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           setArticleId(article.id);
           setContentVersion(article.contentVersion);
           setArticleStatus(article.status);
+          setSlugTouched(true);
           setForm({
             slug: article.slug,
             locale: article.locale as 'vi' | 'en',
@@ -186,9 +233,15 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   async function handleSave() {
     const session = readSession();
     if (!session) return;
+    if (uploadingKeys.size > 0) {
+      setErrorMessage('Còn ảnh đang tải lên — đợi tải xong rồi lưu lại để không bị thiếu ảnh.');
+      setErrorDetails(null);
+      return;
+    }
     setSaving(true);
     setConflict(false);
     setErrorMessage(null);
+    setErrorDetails(null);
 
     const payload = {
       slug: form.slug,
@@ -198,9 +251,13 @@ export function GuideArticleEditorView({ id }: { id: string }) {
       heroMediaId: form.heroMediaId || undefined,
       blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
     };
+    // Chốt TRƯỚC lúc gọi API — articleId có thể vừa được set trong chính lần gọi này (createDraft
+    // thành công), nên đọc lại trong catch sẽ luôn thấy "đã có id", che mất việc request đang xét
+    // là create hay update.
+    const isCreate = !articleId;
 
     try {
-      if (!articleId) {
+      if (isCreate) {
         const created = await createGuideDraft(payload, session.accessToken);
         setArticleId(created.id);
         setContentVersion(created.contentVersion);
@@ -224,8 +281,19 @@ export function GuideArticleEditorView({ id }: { id: string }) {
         setArticleStatus(saved.status);
       }
     } catch (err) {
-      if (err instanceof ApiError && err.isConflict) {
+      if (isCreate && err instanceof ApiError && err.isConflict) {
+        // createDraft's 409 means "slug đã tồn tại" (guide_articles UNIQUE(slug, locale)) — KHÔNG
+        // phải CAS content-version conflict (draft mới chưa từng có contentVersion nào để lệch).
+        // Bảng "Có người khác vừa sửa..." + "Tải lại trang" bên dưới SAI hoàn toàn ở đây: tải lại
+        // chỉ xoá sạch form, không đổi được việc slug đã bị dùng.
+        setErrorMessage('Slug này đã được dùng cho một cẩm nang khác cùng ngôn ngữ. Đổi sang slug khác rồi lưu lại.');
+      } else if (err instanceof ApiError && err.isConflict) {
         setConflict(true);
+      } else if (err instanceof ApiError && err.details) {
+        // VALIDATION_ERROR: err.message is always the generic "Dữ liệu không hợp lệ"
+        // (AllExceptionsFilter) — the real per-field reason lives in err.details.
+        setErrorMessage(err.message);
+        setErrorDetails(err.details.map((d) => describeValidationError(d.message)));
       } else {
         setErrorMessage(err instanceof Error ? err.message : 'Lưu thất bại.');
       }
@@ -240,6 +308,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     setSaving(true);
     setConflict(false);
     setErrorMessage(null);
+    setErrorDetails(null);
     try {
       const published = await publishGuideArticle(articleId, contentVersion, session.accessToken);
       setContentVersion(published.contentVersion);
@@ -263,6 +332,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     setSaving(true);
     setConflict(false);
     setErrorMessage(null);
+    setErrorDetails(null);
     try {
       const unpublished = await unpublishGuideArticle(articleId, contentVersion, session.accessToken);
       setContentVersion(unpublished.contentVersion);
@@ -339,9 +409,16 @@ export function GuideArticleEditorView({ id }: { id: string }) {
         </div>
       )}
       {errorMessage && (
-        <p role="alert" style={{ color: 'crimson' }}>
-          {errorMessage}
-        </p>
+        <div role="alert" style={{ color: 'crimson', marginBottom: errorDetails ? '0.25rem' : undefined }}>
+          <p>{errorMessage}</p>
+          {errorDetails && (
+            <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
+              {errorDetails.map((d, i) => (
+                <li key={i}>{d}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {articleStatus && (
         <p style={{ marginBottom: '1rem' }}>
@@ -357,17 +434,31 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           <input
             type="text"
             value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+            onChange={(e) => {
+              const title = e.target.value;
+              setForm((f) => ({
+                ...f,
+                title,
+                // Gợi ý slug từ tiêu đề CHỈ khi đang tạo mới và chủ bài viết chưa tự gõ slug —
+                // gõ tay vào ô Slug (bên dưới) tắt hẳn auto-gợi ý, không bao giờ ghi đè lựa chọn
+                // của người dùng.
+                slug: isNew && !slugTouched ? slugify(title) : f.slug,
+              }));
+            }}
             style={{ display: 'block', width: '100%' }}
           />
         </label>
         <label style={{ display: 'block', marginBottom: '0.5rem' }}>
-          Slug
+          Slug {isNew && <span style={{ color: 'var(--muted)', fontWeight: 'normal' }}>(bắt buộc — tự gợi ý từ tiêu đề, có thể sửa trước khi lưu lần đầu)</span>}
           <input
             type="text"
             value={form.slug}
-            onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setForm((f) => ({ ...f, slug: e.target.value }));
+            }}
             disabled={!isNew && !!articleId}
+            required
             style={{ display: 'block', width: '100%' }}
           />
         </label>
@@ -395,6 +486,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
           mediaId={form.heroMediaId}
           existingImageUrl={form.heroImageUrl}
           onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null }))}
+          onUploadingChange={(u) => setPickerUploading('hero', u)}
         />
       </fieldset>
 
@@ -421,18 +513,19 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             onMove={(dir) => moveBlock(i, dir)}
             onFlagGap={block.id ? (note) => void handleFlagGap(block.id!, note) : undefined}
             flagging={flaggingBlockId === block.id}
+            onUploadingChange={(u) => setPickerUploading(block.key, u)}
           />
         ))}
 
         <AddBlockPicker onAdd={addBlock} />
       </fieldset>
 
-      <div style={{ display: 'flex', gap: '0.75rem' }}>
-        <button type="button" onClick={() => void handleSave()} disabled={saving} className={placeStyles.btn}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <button type="button" onClick={() => void handleSave()} disabled={saving || uploadingKeys.size > 0} className={placeStyles.btn}>
           {saving ? 'Đang lưu…' : 'Lưu bản nháp'}
         </button>
         {articleId && articleStatus === 'draft' && (
-          <button type="button" onClick={() => void handlePublish()} disabled={saving} className={placeStyles.btn}>
+          <button type="button" onClick={() => void handlePublish()} disabled={saving || uploadingKeys.size > 0} className={placeStyles.btn}>
             Xuất bản
           </button>
         )}
@@ -445,6 +538,11 @@ export function GuideArticleEditorView({ id }: { id: string }) {
               Gỡ công khai
             </button>
           </>
+        )}
+        {uploadingKeys.size > 0 && (
+          <span role="status" style={{ color: 'var(--muted)' }}>
+            Đang tải {uploadingKeys.size > 1 ? `${uploadingKeys.size} ảnh` : 'ảnh'} lên…
+          </span>
         )}
       </div>
     </main>
@@ -478,6 +576,7 @@ function BlockEditorRow({
   onMove,
   onFlagGap,
   flagging,
+  onUploadingChange,
 }: {
   block: EditableBlock;
   index: number;
@@ -488,6 +587,8 @@ function BlockEditorRow({
   /** `undefined` khi block chưa có id thật (chưa lưu lần nào) — nút 🚩 tự ẩn trong trường hợp đó. */
   onFlagGap?: (note: string) => void;
   flagging: boolean;
+  /** Chỉ dùng cho khối `image_with_rights` — xem GuideMediaPicker's onUploadingChange. */
+  onUploadingChange: (uploading: boolean) => void;
 }) {
   const [flagFormOpen, setFlagFormOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -553,12 +654,20 @@ function BlockEditorRow({
           </div>
         </div>
       )}
-      <BlockContentFields block={block} onPatch={onPatch} />
+      <BlockContentFields block={block} onPatch={onPatch} onUploadingChange={onUploadingChange} />
     </div>
   );
 }
 
-function BlockContentFields({ block, onPatch }: { block: EditableBlock; onPatch: (patch: Record<string, unknown>) => void }) {
+function BlockContentFields({
+  block,
+  onPatch,
+  onUploadingChange,
+}: {
+  block: EditableBlock;
+  onPatch: (patch: Record<string, unknown>) => void;
+  onUploadingChange: (uploading: boolean) => void;
+}) {
   const c = block.content;
   switch (block.blockType) {
     case 'section_heading':
@@ -669,6 +778,7 @@ function BlockContentFields({ block, onPatch }: { block: EditableBlock; onPatch:
             mediaId={(c.mediaId as string) ?? ''}
             existingImageUrl={(c.imageUrl as string) ?? null}
             onChange={(id) => onPatch({ mediaId: id })}
+            onUploadingChange={onUploadingChange}
           />
           <input
             type="text"

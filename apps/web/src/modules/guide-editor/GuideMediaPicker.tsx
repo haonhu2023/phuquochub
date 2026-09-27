@@ -11,6 +11,11 @@ interface Props {
   existingImageUrl?: string | null;
   onChange: (mediaId: string) => void;
   label: string;
+  /** Báo cho form cha biết ảnh NÀY còn đang tải lên hay không — form cha khoá nút Lưu trong lúc
+   *  đó (2026-09-27, sự cố production: lưu trong lúc ảnh còn đang tải bỏ lỡ mediaId mới mà không
+   *  báo lỗi gì — "thành công giả"). Không bắt buộc để các nơi dùng picker này mà không cần theo
+   *  dõi (hiện tại: chỉ GuideArticleEditorView cần). */
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
 // G-C (2026-09-22) — thay ô nhập UUID thô bằng chọn ảnh THẬT: chọn file → tải lên → xem trước
@@ -20,13 +25,25 @@ interface Props {
 // page builder/media library mới); mỗi lần chọn là một upload mới, đúng cách owner-decision-queue
 // và moderation đã quen (ảnh mới luôn vào `pending`, cần published trước khi publish() chấp nhận —
 // assertMediaPublishEligible đã cưỡng chế điều đó, component này không cần lặp lại kiểm tra đó).
-export function GuideMediaPicker({ mediaId, existingImageUrl, onChange, label }: Props) {
+export function GuideMediaPicker({ mediaId, existingImageUrl, onChange, label, onUploadingChange }: Props) {
   const { preview, mediaId: uploadedId, uploading, error, onFileSelected, reset } = useSingleImageUpload();
 
   useEffect(() => {
     if (uploadedId) onChange(uploadedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ phản ứng khi CHÍNH uploadedId đổi, onChange là setter ổn định từ setForm/onPatch.
   }, [uploadedId]);
+
+  useEffect(() => {
+    onUploadingChange?.(uploading);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ phản ứng khi CHÍNH uploading đổi, onUploadingChange là callback ổn định từ form cha.
+  }, [uploading]);
+
+  useEffect(() => {
+    // Dọn khoá khi picker này biến mất (vd. xoá khối) trong lúc đang tải — nếu không, nút Lưu bị
+    // khoá vĩnh viễn dù không còn picker nào thực sự đang tải.
+    return () => onUploadingChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ chạy lúc unmount.
+  }, []);
 
   const displayUrl = preview ?? existingImageUrl ?? null;
 
