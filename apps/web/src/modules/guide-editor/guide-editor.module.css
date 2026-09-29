@@ -445,3 +445,51 @@
     width: 100%;
   }
 }
+
+/* ---------- Place picker ---------- */
+.pickerSuggestList {
+  list-style: none;
+  margin: 0.25rem 0 0.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+.pickerSuggestBtn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fg);
+}
+.pickerSuggestBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.pickerSuggestBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pickerSelectedList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.pickerSelectedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}

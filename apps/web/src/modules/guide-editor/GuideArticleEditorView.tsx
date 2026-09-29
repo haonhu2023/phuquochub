@@ -20,6 +20,7 @@ import {
 import type { GuideBlockType, MediaModerationStatus, RichTextParagraph } from '../guide/types';
 import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
+import { PlacePicker } from './PlacePicker';
 import { lineToParagraph, paragraphToLine } from './richTextSyntax';
 import styles from './guide-editor.module.css';
 
@@ -1045,20 +1046,14 @@ function BlockContentFields({
             onChange={(e) => onPatch({ heading: e.target.value })}
             style={{ marginBottom: '0.4rem' }}
           />
-          <textarea
-            className={styles.textarea}
-            placeholder="Mỗi dòng một slug địa điểm đã published"
-            value={((c.placeSlugs as string[]) ?? []).join('\n')}
-            onChange={(e) => onPatch({ placeSlugs: e.target.value.split('\n').filter((s) => s.trim() !== '') })}
-            rows={3}
-            style={{ marginBottom: '0.4rem' }}
-          />
+          <PlacePicker slugs={(c.placeSlugs as string[]) ?? []} onChange={(slugs) => onPatch({ placeSlugs: slugs })} />
           <input
             type="text"
             className={styles.input}
             placeholder="Thông báo khi không có địa điểm nào"
             value={(c.emptyStateText as string) ?? ''}
             onChange={(e) => onPatch({ emptyStateText: e.target.value })}
+            style={{ marginTop: '0.5rem' }}
           />
         </>
       );
