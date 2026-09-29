@@ -4,7 +4,7 @@ import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { GuideArticle } from './entities/guide-article.entity';
 import { GuideBlock } from './entities/guide-block.entity';
 import { GuideArticlesService } from './guide-articles.service';
-import { GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { GuideArticleCategory, GuideArticleStatus, GuideBlockType } from './guide-article.enums';
 import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { OwnerDecisionQueueService } from '../owner-decision-queue/owner-decision-queue.service';
@@ -35,6 +35,8 @@ function makeArticle(overrides: Partial<GuideArticle> = {}): GuideArticle {
     updatedAt: new Date(),
     publishedAt: null,
     publishedBy: null,
+    category: null,
+    tags: [],
     ...overrides,
   };
 }
@@ -67,8 +69,26 @@ function makeDraftDto(overrides: Record<string, unknown> = {}) {
 
 // ─── Mock factories ───────────────────────────────────────────────────────────
 
+// Chuyên mục/tags lọc công khai (2026-09-29) — listPublished() dùng QueryBuilder (không phải
+// `find()`) cho phần lọc `category`/`tag`, nên mock repo cần một `createQueryBuilder()` chainable
+// trả `getMany()`. `getMany` là điểm duy nhất test cần kiểm soát dữ liệu trả về; các phương thức
+// chain khác (`where`/`andWhere`/`orderBy`/`take`) chỉ cần trả `this` để chain tiếp, NHƯNG vẫn là
+// `jest.fn()` để test có thể assert đã gọi đúng điều kiện lọc.
 function makeArticleRepoMock() {
-  return { findOne: jest.fn(), findOneOrFail: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+  const qb = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue([]),
+  };
+  return {
+    findOne: jest.fn(),
+    findOneOrFail: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
+    createQueryBuilder: jest.fn().mockReturnValue(qb),
+    _qb: qb, // test-only handle — không thuộc Repository thật, chỉ để assert/mock getMany() gọn hơn qua articleRepo.createQueryBuilder().
+  };
 }
 
 function makeBlockRepoMock() {
@@ -300,22 +320,27 @@ describe('GuideArticlesService.listAll', () => {
 describe('GuideArticlesService.listPublished', () => {
   it('queries published-only for the given locale, ordered by publishedAt DESC', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([]);
 
     const service = await buildService({ articleRepo });
     await service.listPublished('vi');
 
-    expect(articleRepo.find).toHaveBeenCalledWith({
-      where: { locale: 'vi', status: GuideArticleStatus.PUBLISHED },
-      order: { publishedAt: 'DESC' },
-      take: 100,
-    });
+    expect(articleRepo.createQueryBuilder).toHaveBeenCalledWith('a');
+    expect(articleRepo._qb.where).toHaveBeenCalledWith('a.locale = :locale', { locale: 'vi' });
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.status = :status', { status: GuideArticleStatus.PUBLISHED });
+    expect(articleRepo._qb.orderBy).toHaveBeenCalledWith('a.publishedAt', 'DESC');
+    expect(articleRepo._qb.take).toHaveBeenCalledWith(100);
   });
 
-  it('trả card shape (slug/locale/title/intro/heroImageUrl/publishedAt) — KHÔNG có blocks', async () => {
+  it('trả card shape (slug/locale/title/intro/heroImageUrl/publishedAt/category/tags) — KHÔNG có blocks', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([
-      makeArticle({ slug: 'phu-quoc', intro: 'Mọi thứ cần biết.', heroMediaId: uuid(500) }),
+    articleRepo._qb.getMany.mockResolvedValue([
+      makeArticle({
+        slug: 'phu-quoc',
+        intro: 'Mọi thứ cần biết.',
+        heroMediaId: uuid(500),
+        category: GuideArticleCategory.AM_THUC,
+        tags: ['bien', 'gia-dinh'],
+      }),
     ]);
     const mediaUrlService = makeMediaUrlServiceMock();
 
@@ -330,6 +355,8 @@ describe('GuideArticlesService.listPublished', () => {
         intro: 'Mọi thứ cần biết.',
         heroImageUrl: `https://api.test/media/${uuid(500)}/file`,
         publishedAt: null,
+        category: GuideArticleCategory.AM_THUC,
+        tags: ['bien', 'gia-dinh'],
       },
     ]);
     expect(result[0]).not.toHaveProperty('blocks');
@@ -337,7 +364,7 @@ describe('GuideArticlesService.listPublished', () => {
 
   it('không có heroMediaId → heroImageUrl null, KHÔNG gọi mediaUrlService', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([makeArticle({ heroMediaId: null })]);
+    articleRepo._qb.getMany.mockResolvedValue([makeArticle({ heroMediaId: null })]);
     const mediaUrlService = makeMediaUrlServiceMock();
 
     const service = await buildService({ articleRepo, mediaUrlService });
@@ -349,10 +376,36 @@ describe('GuideArticlesService.listPublished', () => {
 
   it('không có bài nào published cho locale này → mảng rỗng, không lỗi', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([]);
 
     const service = await buildService({ articleRepo });
     await expect(service.listPublished('en')).resolves.toEqual([]);
+  });
+
+  it('lọc theo category khi truyền filters.category', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi', { category: GuideArticleCategory.LUU_TRU });
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.category = :category', { category: GuideArticleCategory.LUU_TRU });
+  });
+
+  it('lọc theo tag khi truyền filters.tag', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi', { tag: 'bien' });
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.tags @> ARRAY[:tag]::text[]', { tag: 'bien' });
+  });
+
+  it('không lọc category/tag khi filters rỗng', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi');
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledTimes(1); // chỉ status, không category/tag
   });
 });
 
@@ -394,6 +447,30 @@ describe('GuideArticlesService.createDraft', () => {
       blocks: [{ blockType: GuideBlockType.PLACE_COLLECTION, content: { heading: 'Ở đâu', emptyStateText: 'Chưa có' } }],
     });
     await expect(service.createDraft(dto as never, ACTOR)).rejects.toThrow(BadRequestException);
+  });
+
+  it('persists category and normalized tags (trim, lowercase, dedupe)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+
+    const service = await buildService({ articleRepo, dataSource });
+    const dto = makeDraftDto({ category: GuideArticleCategory.AM_THUC, tags: [' Biển ', 'biển', 'gia-dinh'] });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.category).toBe(GuideArticleCategory.AM_THUC);
+    expect(result.tags).toEqual(['biển', 'gia-dinh']);
+  });
+
+  it('defaults category to null and tags to [] when omitted', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const result = await service.createDraft(makeDraftDto() as never, ACTOR);
+
+    expect(result.category).toBeNull();
+    expect(result.tags).toEqual([]);
   });
 });
 
@@ -602,6 +679,47 @@ describe('GuideArticlesService.saveDraft', () => {
     const service = await buildService({ dataSource });
     const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
     await expect(service.saveDraft(uuid(1), dto as never, ACTOR)).rejects.toThrow(NotFoundException);
+  });
+
+  it('updates category/tags — full-replace semantics, normalized, matching intro/heroMediaId', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, category: GuideArticleCategory.LICH_TRINH, tags: ['3-ngay-2-dem'] }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = {
+      ...makeDraftDto(),
+      expectedContentVersion: 1,
+      category: GuideArticleCategory.LICH_TRINH,
+      tags: [' 3-ngay-2-dem ', '3-NGAY-2-DEM'],
+    };
+    const result = await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ category: GuideArticleCategory.LICH_TRINH, tags: ['3-ngay-2-dem'] }),
+    );
+    expect(result.category).toBe(GuideArticleCategory.LICH_TRINH);
+    expect(result.tags).toEqual(['3-ngay-2-dem']);
+  });
+
+  it('clears category to null and tags to [] when omitted from the patch (same convention as intro/heroMediaId)', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(
+      makeArticle({ contentVersion: 1, category: GuideArticleCategory.VUI_CHOI, tags: ['cu'] }),
+    );
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(makeArticle({ contentVersion: 2, category: null, tags: [] }));
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ category: null, tags: [] }),
+    );
   });
 });
 

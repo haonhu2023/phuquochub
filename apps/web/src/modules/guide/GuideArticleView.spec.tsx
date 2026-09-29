@@ -26,6 +26,8 @@ const ARTICLE: GuideArticleDetail = {
   intro: 'Bạn muốn ở đâu, đi đâu?',
   heroMediaId: null,
   heroImageUrl: null,
+  category: null,
+  tags: [],
   status: 'published',
   contentVersion: 3,
   updatedAt: '2026-09-18T00:00:00Z',
@@ -73,5 +75,33 @@ describe('GuideArticleView', () => {
     expect(screen.getByText(INJECTION_PROBE)).toBeInTheDocument();
     // ...and must NEVER have been parsed into a real <script> element.
     expect(container.querySelector('script')).toBeNull();
+  });
+});
+
+// Chuyên mục/tags công khai (2026-09-29)
+describe('GuideArticleView — category/tags', () => {
+  it('renders the category badge when the article has one', async () => {
+    const element = await GuideArticleView({ article: { ...ARTICLE, category: 'am_thuc' }, locale: 'vi' });
+    render(element);
+    expect(screen.getByText('Ẩm thực')).toBeInTheDocument();
+  });
+
+  it('renders no category badge when the article has none', async () => {
+    const element = await GuideArticleView({ article: ARTICLE, locale: 'vi' });
+    render(element);
+    expect(screen.queryByText('Ẩm thực')).not.toBeInTheDocument();
+  });
+
+  it('renders each tag as a link to /guide?tag=<tag>', async () => {
+    const element = await GuideArticleView({ article: { ...ARTICLE, tags: ['bien', 'gia-dinh'] }, locale: 'vi' });
+    render(element);
+    expect(screen.getByRole('link', { name: '#bien' })).toHaveAttribute('href', '/vi/guide?tag=bien');
+    expect(screen.getByRole('link', { name: '#gia-dinh' })).toHaveAttribute('href', '/vi/guide?tag=gia-dinh');
+  });
+
+  it('renders no tag list when the article has no tags', async () => {
+    const element = await GuideArticleView({ article: ARTICLE, locale: 'vi' });
+    render(element);
+    expect(screen.queryByText(/^#/)).not.toBeInTheDocument();
   });
 });

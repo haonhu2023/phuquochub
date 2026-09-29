@@ -17,7 +17,8 @@ import {
   unpublishGuideArticle,
   type GuideArticleSummary,
 } from './api/guide-editor.api';
-import type { GuideBlockType, MediaModerationStatus, RichTextParagraph } from '../guide/types';
+import type { GuideArticleCategory, GuideBlockType, MediaModerationStatus, RichTextParagraph } from '../guide/types';
+import { GUIDE_CATEGORY_LABELS, GUIDE_CATEGORY_VALUES } from '../guide/guideCategory';
 import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
 import { PlacePicker } from './PlacePicker';
@@ -44,6 +45,11 @@ interface FormState {
   heroImageUrl: string | null;
   /** Trạng thái duyệt THẬT của heroMediaId (2026-09-27) — chỉ để hiển thị, không gửi lên API. */
   heroMediaStatus: MediaModerationStatus | null;
+  /** '' = chưa chọn chuyên mục — gửi lên API thành `undefined` (xem buildPayload), lưu thành NULL. */
+  category: GuideArticleCategory | '';
+  /** Nhập bằng MỘT ô, phân tách bởi dấu phẩy — chuẩn hoá (trim/thường hoá/bỏ trùng) THẬT SỰ ở
+   *  service (guide-articles.service.ts's normalizeTags), ô này chỉ tách chuỗi thành mảng thô. */
+  tagsInput: string;
   blocks: EditableBlock[];
 }
 
@@ -57,6 +63,8 @@ const FIELD_LABEL: Record<string, string> = {
   title: 'Tiêu đề',
   intro: 'Giới thiệu ngắn',
   heroMediaId: 'Ảnh đại diện',
+  category: 'Chuyên mục',
+  tags: 'Thẻ',
   blocks: 'Các khối nội dung',
 };
 
@@ -124,8 +132,20 @@ function comparableSnapshot(form: FormState): string {
     title: form.title,
     intro: form.intro,
     heroMediaId: form.heroMediaId,
+    category: form.category,
+    tags: parseTagsInput(form.tagsInput),
     blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
   });
+}
+
+/** Ô nhập một dòng, thẻ phân tách bởi dấu phẩy -> mảng thô gửi lên API. Chuẩn hoá THẬT (trim/
+ *  thường hoá/bỏ trùng) chạy ở service (normalizeTags) — hàm này chỉ tách chuỗi, không chuẩn hoá,
+ *  để `comparableSnapshot` (dirty-check) và payload gửi đi luôn nhất quán với nhau. */
+function parseTagsInput(input: string): string[] {
+  return input
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t !== '');
 }
 
 /**
@@ -179,6 +199,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     heroMediaId: '',
     heroImageUrl: null,
     heroMediaStatus: null,
+    category: '',
+    tagsInput: '',
     blocks: [],
   });
   // Ảnh chụp lần lưu/tải thành công gần nhất — so sánh với form hiện tại để biết "dirty" (2026-09-27,
@@ -248,6 +270,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             heroMediaId: article.heroMediaId ?? '',
             heroImageUrl: article.heroImageUrl,
             heroMediaStatus: article.heroMediaStatus ?? null,
+            category: article.category ?? '',
+            tagsInput: (article.tags ?? []).join(', '),
             blocks: article.blocks.map((b) => ({
               key: nextKey(),
               blockType: b.blockType,
@@ -336,6 +360,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
       title: form.title,
       intro: form.intro || undefined,
       heroMediaId: form.heroMediaId || undefined,
+      category: form.category || undefined,
+      tags: parseTagsInput(form.tagsInput),
       blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
     };
     // Chốt TRƯỚC lúc gọi API — articleId có thể vừa được set trong chính lần gọi này (createDraft
@@ -360,6 +386,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             title: payload.title,
             intro: payload.intro,
             heroMediaId: payload.heroMediaId,
+            category: payload.category,
+            tags: payload.tags,
             blocks: payload.blocks,
             expectedContentVersion: contentVersion!,
           },
@@ -686,6 +714,33 @@ export function GuideArticleEditorView({ id }: { id: string }) {
               />
               {introOver && <p className={styles.fieldHint}>Vượt giới hạn {INTRO_MAX_LENGTH} ký tự — lưu sẽ bị từ chối, không tự cắt bớt.</p>}
             </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Chuyên mục</span>
+              <select
+                className={styles.select}
+                style={{ width: 'auto' }}
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as GuideArticleCategory | '' }))}
+              >
+                <option value="">— Chưa chọn —</option>
+                {GUIDE_CATEGORY_VALUES.map((c) => (
+                  <option key={c} value={c}>
+                    {GUIDE_CATEGORY_LABELS.vi[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>Thẻ (phân tách bởi dấu phẩy)</span>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="vd: bãi biển, gia đình, hoàng hôn"
+                value={form.tagsInput}
+                onChange={(e) => setForm((f) => ({ ...f, tagsInput: e.target.value }))}
+              />
+              <p className={styles.fieldHint}>Thẻ được chuẩn hoá tự động (viết thường, bỏ khoảng trắng thừa, bỏ trùng) khi lưu.</p>
+            </label>
           </div>
 
           <div className={styles.panel}>
@@ -804,6 +859,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
                   intro: form.intro || null,
                   heroMediaId: form.heroMediaId || null,
                   heroImageUrl: form.heroImageUrl,
+                  category: form.category || null,
+                  tags: parseTagsInput(form.tagsInput),
                   status: articleStatus ?? 'draft',
                   contentVersion: contentVersion ?? 0,
                   updatedAt: new Date().toISOString(),

@@ -23,6 +23,8 @@ function article(overrides: Partial<GuideArticleDetail> = {}): GuideArticleDetai
     intro: 'Mọi thứ cần biết trước khi đi.',
     heroMediaId: null,
     heroImageUrl: null,
+    category: null,
+    tags: [],
     status: 'published',
     contentVersion: 1,
     updatedAt: '2026-09-01T00:00:00.000Z',

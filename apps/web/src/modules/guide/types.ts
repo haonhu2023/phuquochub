@@ -17,6 +17,11 @@ export interface PlaceCollectionContent {
 
 export type GuideArticleStatus = 'draft' | 'published';
 
+// Chuyên mục cẩm nang (2026-09-29) — chủ đề bài viết, khác `categories` (loại địa điểm). Giá trị
+// khớp CHÍNH XÁC GuideArticleCategory (guide-article.enums.ts, API) — union string literal thay vì
+// enum TS ở phía web, cùng quy ước MediaModerationStatus ngay dưới đây.
+export type GuideArticleCategory = 'kinh_nghiem' | 'am_thuc' | 'luu_tru' | 'di_chuyen' | 'lich_trinh' | 'vui_choi';
+
 /** Real Media.status values (media.enums.ts MediaStatus) — surfaced 2026-09-27 so the editor can
  *  tell "still pending review" apart from "broken image": the resolved `imageUrl`/`heroImageUrl`
  *  are built from a stable path that 404s for anything not `published`. */
@@ -104,6 +109,8 @@ export interface GuideArticleDetail {
   heroMediaId: string | null;
   heroImageUrl: string | null;
   heroMediaStatus?: MediaModerationStatus | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: string;

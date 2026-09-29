@@ -137,6 +137,35 @@ describe('validation error surfacing on save', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  // Chuyên mục/tags (2026-09-29) — chọn chuyên mục + gõ thẻ phân tách bởi dấu phẩy phải tới đúng
+  // payload gửi lên API (không chỉ "đã có ô nhập" — xem cảnh báo attribution/licenseUrl trước đây).
+  it('sends the selected category and parsed/trimmed tags in the save payload', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Tiêu đề thật' } });
+    fireEvent.change(screen.getByLabelText('Chuyên mục'), { target: { value: 'am_thuc' } });
+    fireEvent.change(screen.getByPlaceholderText('vd: bãi biển, gia đình, hoàng hôn'), {
+      target: { value: ' bãi biển , gia đình ,  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'am_thuc', tags: ['bãi biển', 'gia đình'] }),
+      'tok',
+    );
+  });
+
+  it('defaults category to undefined and tags to [] when left empty', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Tiêu đề thật' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ category: undefined, tags: [] }), 'tok');
+  });
+
   // createDraft's 409 (guide_articles UNIQUE(slug, locale)) and saveGuideDraft's 409 (CAS
   // expectedContentVersion mismatch) are DIFFERENT failures that both surface as
   // ApiError.isConflict — conflating them previously told the owner to "reload the page" for a

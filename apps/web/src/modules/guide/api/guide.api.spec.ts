@@ -26,4 +26,19 @@ describe('listGuideArticles', () => {
     await listGuideArticles('en');
     expect(mockGet).toHaveBeenCalledWith('/guide-articles?locale=en', { cache: 'no-store' });
   });
+
+  it('thêm category vào query khi truyền filters.category', async () => {
+    await listGuideArticles('vi', { category: 'am_thuc' });
+    expect(mockGet).toHaveBeenCalledWith('/guide-articles?locale=vi&category=am_thuc', { cache: 'no-store' });
+  });
+
+  it('thêm tag vào query khi truyền filters.tag', async () => {
+    await listGuideArticles('vi', { tag: 'bien' });
+    expect(mockGet).toHaveBeenCalledWith('/guide-articles?locale=vi&tag=bien', { cache: 'no-store' });
+  });
+
+  it('bỏ qua filters không truyền', async () => {
+    await listGuideArticles('vi', {});
+    expect(mockGet).toHaveBeenCalledWith('/guide-articles?locale=vi', { cache: 'no-store' });
+  });
 });

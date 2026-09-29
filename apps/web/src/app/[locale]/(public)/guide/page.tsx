@@ -1,13 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { listGuideArticles, type GuideArticleCard } from '@/modules/guide/api/guide.api';
+import { GUIDE_CATEGORY_LABELS } from '@/modules/guide/guideCategory';
+import { GuideFilters } from '@/modules/guide/GuideFilters';
+import type { GuideArticleCategory } from '@/modules/guide/types';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
 import placeStyles from '@/modules/places/places.module.css';
+import guideStyles from '@/modules/guide/guide.module.css';
 
 interface Props {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<{ category?: string; tag?: string }>;
 }
 
 const EMPTY_COPY: Record<Locale, { title: string; body: string }> = {
@@ -37,12 +42,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 // G-D (2026-09-22) — danh sách cẩm nang công khai. Lỗi API → danh sách rỗng, cùng khuôn
 // EventsPage/mọi hub page khác (không để một lỗi fetch làm sập cả trang).
-export default async function GuideIndexPage({ params }: Props) {
+export default async function GuideIndexPage({ params, searchParams }: Props) {
   const { locale: localeParam } = await params;
   const locale = localeParam as Locale;
+  const { category, tag } = await searchParams;
   let articles: GuideArticleCard[] = [];
   try {
-    articles = await listGuideArticles(locale);
+    articles = await listGuideArticles(locale, { category: category as GuideArticleCategory | undefined, tag });
   } catch {
     articles = [];
   }
@@ -56,6 +62,14 @@ export default async function GuideIndexPage({ params }: Props) {
         <h1 className={placeStyles.pageTitle}>{copy.h1}</h1>
         <p className={placeStyles.pageLede}>{copy.description}</p>
       </header>
+
+      <GuideFilters total={articles.length} />
+      {tag && (
+        <p className={placeStyles.pageLede} style={{ marginTop: '-0.5rem' }}>
+          {locale === 'vi' ? `Đang lọc theo thẻ: ${tag}` : `Filtered by tag: ${tag}`} —{' '}
+          <Link href={localizedHref(locale, '/guide')}>{locale === 'vi' ? 'Bỏ lọc' : 'Clear filter'}</Link>
+        </p>
+      )}
 
       {articles.length === 0 ? (
         <div className={placeStyles.state}>
@@ -78,6 +92,7 @@ export default async function GuideIndexPage({ params }: Props) {
                 </div>
               )}
               <div className={placeStyles.cardBody}>
+                {a.category && <span className={guideStyles.categoryBadge}>{GUIDE_CATEGORY_LABELS[locale][a.category]}</span>}
                 <h2 className={placeStyles.cardTitle}>{a.title}</h2>
                 {a.intro && <p className={placeStyles.cardDesc}>{a.intro}</p>}
                 {a.publishedAt && (

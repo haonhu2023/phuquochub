@@ -9,7 +9,8 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { GuideArticle } from './entities/guide-article.entity';
 import { GuideBlock } from './entities/guide-block.entity';
-import { GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { GuideArticleCategory, GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { MAX_TAGS } from './dto/guide-tags.constants';
 import { SaveGuideDraftDto } from './dto/save-guide-draft.dto';
 import { UpdateGuideDraftDto } from './dto/update-guide-draft.dto';
 import { Media } from '../media/entities/media.entity';
@@ -51,6 +52,8 @@ export interface PublishedGuideArticleSummary {
   intro: string | null;
   heroImageUrl: string | null;
   publishedAt: Date | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
 }
 
 export interface GuideArticleView {
@@ -61,6 +64,8 @@ export interface GuideArticleView {
   intro: string | null;
   heroMediaId: string | null;
   heroImageUrl: string | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
   /**
    * Real current status of `heroMediaId`'s Media row (2026-09-27) — `null` when no hero is set or
    * the id no longer resolves. `heroImageUrl` alone cannot tell the editor "is this actually
@@ -115,12 +120,29 @@ export class GuideArticlesService {
   // branch to get wrong. No pagination yet (`take: 100`) — matches the scale of every other
   // unpaginated list in this codebase (listAll() above has the same shape); revisit if the guide
   // catalogue ever approaches that ceiling.
-  async listPublished(locale: string): Promise<PublishedGuideArticleSummary[]> {
-    const articles = await this.articleRepo.find({
-      where: { locale, status: GuideArticleStatus.PUBLISHED },
-      order: { publishedAt: 'DESC' },
-      take: 100,
-    });
+  //
+  // `filters.category`/`filters.tag` (2026-09-29) — real public filtering, not just editor-side
+  // metadata. `category` is a straight equality match (closed enum); `tag` uses Postgres array
+  // containment (`tags @> ARRAY[...]`, backed by idx_guide_articles_tags's GIN index) — a
+  // QueryBuilder is used here (not the plain `find()` above) ONLY because TypeORM's `where` object
+  // has no operator for array containment.
+  async listPublished(
+    locale: string,
+    filters: { category?: GuideArticleCategory; tag?: string } = {},
+  ): Promise<PublishedGuideArticleSummary[]> {
+    const qb = this.articleRepo
+      .createQueryBuilder('a')
+      .where('a.locale = :locale', { locale })
+      .andWhere('a.status = :status', { status: GuideArticleStatus.PUBLISHED })
+      .orderBy('a.publishedAt', 'DESC')
+      .take(100);
+    if (filters.category) {
+      qb.andWhere('a.category = :category', { category: filters.category });
+    }
+    if (filters.tag) {
+      qb.andWhere('a.tags @> ARRAY[:tag]::text[]', { tag: filters.tag });
+    }
+    const articles = await qb.getMany();
     return articles.map((a) => ({
       slug: a.slug,
       locale: a.locale,
@@ -128,6 +150,8 @@ export class GuideArticlesService {
       intro: a.intro,
       heroImageUrl: a.heroMediaId ? this.mediaUrlService.fileUrl(a.heroMediaId) : null,
       publishedAt: a.publishedAt,
+      category: a.category,
+      tags: a.tags,
     }));
   }
 
@@ -172,6 +196,8 @@ export class GuideArticlesService {
           title: input.title,
           intro: input.intro ?? null,
           heroMediaId: input.heroMediaId ?? null,
+          category: input.category ?? null,
+          tags: normalizeTags(input.tags),
           status: GuideArticleStatus.DRAFT,
           contentVersion: 1,
           authorId: actorId,
@@ -218,6 +244,8 @@ export class GuideArticlesService {
         title: input.title,
         intro: input.intro ?? null,
         heroMediaId: input.heroMediaId ?? null,
+        category: input.category ?? null,
+        tags: normalizeTags(input.tags),
         contentVersion: nextVersion,
       };
       const newBlocks = await this.replaceBlocks(manager, id, input.blocks);
@@ -243,6 +271,8 @@ export class GuideArticlesService {
           title: input.title,
           intro: input.intro ?? null,
           heroMediaId: input.heroMediaId ?? null,
+          category: input.category ?? null,
+          tags: normalizeTags(input.tags),
           contentVersion: nextVersion,
         },
       );
@@ -475,6 +505,8 @@ export class GuideArticlesService {
       heroMediaId: article.heroMediaId,
       heroImageUrl,
       heroMediaStatus: article.heroMediaId ? (mediaById.get(article.heroMediaId)?.status ?? null) : null,
+      category: article.category,
+      tags: article.tags,
       status: article.status,
       contentVersion: article.contentVersion,
       updatedAt: article.updatedAt,
@@ -573,6 +605,8 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
     title: article.title,
     intro: article.intro,
     heroMediaId: article.heroMediaId,
+    category: article.category,
+    tags: article.tags,
     status: article.status,
     contentVersion: article.contentVersion,
     blocks: blocks
@@ -580,6 +614,23 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
       .sort((a, b) => a.position - b.position)
       .map((b) => ({ position: b.position, blockType: b.blockType, content: b.content })),
   };
+}
+
+// Chuẩn hoá thẻ tự do (2026-09-29) — cắt khoảng trắng, thường hoá, bỏ trùng (không phân biệt hoa
+// thường) và rỗng, giữ thứ tự client gửi cho các thẻ còn lại đầu tiên. Chạy ở SERVICE (không phải
+// DTO/client) để hai thẻ chỉ khác hoa/thường không bao giờ bị coi là hai thẻ khác nhau trong CSDL —
+// nếu không, lọc công khai theo thẻ (`tags @> ARRAY[...]`) sẽ bỏ sót bài do lệch chữ hoa/thường.
+function normalizeTags(tags: string[] | undefined): string[] {
+  if (!tags) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of tags) {
+    const t = raw.trim().toLowerCase();
+    if (t === '' || seen.has(t)) continue;
+    seen.add(t);
+    result.push(t);
+  }
+  return result.slice(0, MAX_TAGS);
 }
 
 // Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic. Vẫn "cấu trúc, không HTML

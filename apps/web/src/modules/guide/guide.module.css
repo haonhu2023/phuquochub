@@ -175,3 +175,36 @@ details[open] .faqQuestion::before {
 .imageBlock img { width: 100%; height: auto; border-radius: var(--radius-sm); }
 .imageCaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.4rem; }
 .section { margin: 2.5rem 0; }
+
+/* Chuyên mục/tags công khai (2026-09-29) */
+.categoryBadge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  list-style: none;
+  padding: 0;
+}
+.tagLink {
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  text-decoration: none;
+}
+.tagLink:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}

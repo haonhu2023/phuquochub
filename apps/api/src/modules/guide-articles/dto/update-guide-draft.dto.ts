@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { GuideBlockDto } from './guide-block.dto';
+import { GuideArticleCategory } from '../guide-article.enums';
+import { MAX_TAGS, MAX_TAG_LENGTH } from './guide-tags.constants';
 
 // PATCH /admin/guide-articles/:id body.
 //
@@ -31,6 +34,13 @@ export class UpdateGuideDraftDto {
 
   @IsOptional() @IsUUID()
   heroMediaId?: string;
+
+  @IsOptional() @IsEnum(GuideArticleCategory)
+  category?: GuideArticleCategory;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(MAX_TAGS)
+  @IsString({ each: true }) @MaxLength(MAX_TAG_LENGTH, { each: true })
+  tags?: string[];
 
   @IsArray() @ArrayMaxSize(60)
   @ValidateNested({ each: true })
