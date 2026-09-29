@@ -5,6 +5,7 @@ import { getGuideArticle } from '@/modules/guide/api/guide.api';
 import { ApiError } from '@/lib/http';
 import { buildRouteAlternates } from '@/lib/seo';
 import { buildGuideArticleJsonLd, buildGuideFaqJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { resolveMetaDescription, resolveMetaTitle } from '@/modules/guide/seoMeta';
 import type { Locale } from '@/lib/locale';
 
 // G-A (2026-09-22): reads from the real CMS (GET /guide-articles/:slug, published-only —
@@ -32,8 +33,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const data = await loadArticle(slug, locale);
   if (!data) return { title: `Cẩm nang · ${SITE}` };
 
-  const title = `${data.title} · ${SITE}`;
-  const description = data.intro ?? undefined;
+  const title = `${resolveMetaTitle(data.metaTitle, data.title)} · ${SITE}`;
+  const description = resolveMetaDescription(data.metaDescription, data.intro);
   const path = `/guide/${data.slug}`;
   const { canonical, languages } = buildRouteAlternates(locale, path);
 

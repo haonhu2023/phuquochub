@@ -19,6 +19,7 @@ import {
 } from './api/guide-editor.api';
 import type { GuideArticleCategory, GuideBlockType, MediaModerationStatus, RichTextParagraph } from '../guide/types';
 import { GUIDE_CATEGORY_LABELS, GUIDE_CATEGORY_VALUES } from '../guide/guideCategory';
+import { resolveMetaDescription, resolveMetaTitle } from '../guide/seoMeta';
 import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
 import { PlacePicker } from './PlacePicker';
@@ -26,6 +27,8 @@ import { lineToParagraph, paragraphToLine } from './richTextSyntax';
 import styles from './guide-editor.module.css';
 
 const INTRO_MAX_LENGTH = 500; // SaveGuideDraftDto.intro @MaxLength(500) — nguồn thật, không tự đặt số riêng.
+const META_TITLE_MAX_LENGTH = 160; // SaveGuideDraftDto.metaTitle @MaxLength(160) — khớp PlaceSeo.metaTitle.
+const META_DESCRIPTION_MAX_LENGTH = 320; // SaveGuideDraftDto.metaDescription @MaxLength(320) — khớp PlaceSeo.metaDescription.
 const SITE_URL = 'phuquochub.com';
 
 interface EditableBlock {
@@ -50,6 +53,10 @@ interface FormState {
   /** Nhập bằng MỘT ô, phân tách bởi dấu phẩy — chuẩn hoá (trim/thường hoá/bỏ trùng) THẬT SỰ ở
    *  service (guide-articles.service.ts's normalizeTags), ô này chỉ tách chuỗi thành mảng thô. */
   tagsInput: string;
+  /** '' = chưa đặt — gửi lên API thành `undefined`, lưu thành NULL, ô Xem trước lùi về `title`. */
+  metaTitle: string;
+  /** '' = chưa đặt — gửi lên API thành `undefined`, lưu thành NULL, ô Xem trước lùi về `intro`. */
+  metaDescription: string;
   blocks: EditableBlock[];
 }
 
@@ -65,6 +72,8 @@ const FIELD_LABEL: Record<string, string> = {
   heroMediaId: 'Ảnh đại diện',
   category: 'Chuyên mục',
   tags: 'Thẻ',
+  metaTitle: 'Tiêu đề SEO',
+  metaDescription: 'Mô tả SEO',
   blocks: 'Các khối nội dung',
 };
 
@@ -134,6 +143,8 @@ function comparableSnapshot(form: FormState): string {
     heroMediaId: form.heroMediaId,
     category: form.category,
     tags: parseTagsInput(form.tagsInput),
+    metaTitle: form.metaTitle,
+    metaDescription: form.metaDescription,
     blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
   });
 }
@@ -201,6 +212,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     heroMediaStatus: null,
     category: '',
     tagsInput: '',
+    metaTitle: '',
+    metaDescription: '',
     blocks: [],
   });
   // Ảnh chụp lần lưu/tải thành công gần nhất — so sánh với form hiện tại để biết "dirty" (2026-09-27,
@@ -272,6 +285,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             heroMediaStatus: article.heroMediaStatus ?? null,
             category: article.category ?? '',
             tagsInput: (article.tags ?? []).join(', '),
+            metaTitle: article.metaTitle ?? '',
+            metaDescription: article.metaDescription ?? '',
             blocks: article.blocks.map((b) => ({
               key: nextKey(),
               blockType: b.blockType,
@@ -362,6 +377,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
       heroMediaId: form.heroMediaId || undefined,
       category: form.category || undefined,
       tags: parseTagsInput(form.tagsInput),
+      metaTitle: form.metaTitle || undefined,
+      metaDescription: form.metaDescription || undefined,
       blocks: form.blocks.map((b) => ({ blockType: b.blockType, content: b.content })),
     };
     // Chốt TRƯỚC lúc gọi API — articleId có thể vừa được set trong chính lần gọi này (createDraft
@@ -388,6 +405,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             heroMediaId: payload.heroMediaId,
             category: payload.category,
             tags: payload.tags,
+            metaTitle: payload.metaTitle,
+            metaDescription: payload.metaDescription,
             blocks: payload.blocks,
             expectedContentVersion: contentVersion!,
           },
@@ -538,6 +557,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   if (status === 'error') return <p role="alert">{errorMessage}</p>;
 
   const introOver = form.intro.length > INTRO_MAX_LENGTH;
+  const metaTitleOver = form.metaTitle.length > META_TITLE_MAX_LENGTH;
+  const metaDescriptionOver = form.metaDescription.length > META_DESCRIPTION_MAX_LENGTH;
   const publicUrl = form.slug ? `/${form.locale}/guide/${form.slug}` : null;
   const publishBlockedReason = !articleId
     ? 'Lưu bản nháp trước khi có thể xuất bản.'
@@ -741,6 +762,36 @@ export function GuideArticleEditorView({ id }: { id: string }) {
               />
               <p className={styles.fieldHint}>Thẻ được chuẩn hoá tự động (viết thường, bỏ khoảng trắng thừa, bỏ trùng) khi lưu.</p>
             </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Tiêu đề SEO (tuỳ chọn — thay cho Tiêu đề bài trên kết quả Google nếu có)
+                <span className={`${styles.charCount} ${metaTitleOver ? styles.charCountOver : ''}`}>
+                  {form.metaTitle.length}/{META_TITLE_MAX_LENGTH}
+                </span>
+              </span>
+              <input
+                type="text"
+                className={styles.input}
+                value={form.metaTitle}
+                onChange={(e) => setForm((f) => ({ ...f, metaTitle: e.target.value }))}
+              />
+              {metaTitleOver && <p className={styles.fieldHint}>Vượt giới hạn {META_TITLE_MAX_LENGTH} ký tự — lưu sẽ bị từ chối.</p>}
+            </label>
+            <label className={styles.field}>
+              <span className={styles.fieldLabel}>
+                Mô tả SEO (tuỳ chọn — thay cho Giới thiệu ngắn trên kết quả Google nếu có)
+                <span className={`${styles.charCount} ${metaDescriptionOver ? styles.charCountOver : ''}`}>
+                  {form.metaDescription.length}/{META_DESCRIPTION_MAX_LENGTH}
+                </span>
+              </span>
+              <textarea
+                className={styles.textarea}
+                value={form.metaDescription}
+                onChange={(e) => setForm((f) => ({ ...f, metaDescription: e.target.value }))}
+                rows={2}
+              />
+              {metaDescriptionOver && <p className={styles.fieldHint}>Vượt giới hạn {META_DESCRIPTION_MAX_LENGTH} ký tự — lưu sẽ bị từ chối.</p>}
+            </label>
           </div>
 
           <div className={styles.panel}>
@@ -835,7 +886,14 @@ export function GuideArticleEditorView({ id }: { id: string }) {
 
           <div className={styles.panel}>
             <p className={styles.panelTitle}>Xem trước kết quả tìm kiếm</p>
-            <SerpPreview title={form.title} intro={form.intro} slug={form.slug} locale={form.locale} />
+            <SerpPreview
+              title={form.title}
+              intro={form.intro}
+              metaTitle={form.metaTitle}
+              metaDescription={form.metaDescription}
+              slug={form.slug}
+              locale={form.locale}
+            />
           </div>
         </div>
       </div>
@@ -861,6 +919,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
                   heroImageUrl: form.heroImageUrl,
                   category: form.category || null,
                   tags: parseTagsInput(form.tagsInput),
+                  metaTitle: form.metaTitle || null,
+                  metaDescription: form.metaDescription || null,
                   status: articleStatus ?? 'draft',
                   contentVersion: contentVersion ?? 0,
                   updatedAt: new Date().toISOString(),
@@ -884,9 +944,29 @@ export function GuideArticleEditorView({ id }: { id: string }) {
   );
 }
 
-function SerpPreview({ title, intro, slug, locale }: { title: string; intro: string; slug: string; locale: 'vi' | 'en' }) {
-  const displayTitle = title ? `${title} · PhuQuocHub` : 'PhuQuocHub';
-  const displayDesc = intro || '(chưa có giới thiệu ngắn — Google sẽ tự chọn đoạn trích từ nội dung bài)';
+function SerpPreview({
+  title,
+  intro,
+  metaTitle,
+  metaDescription,
+  slug,
+  locale,
+}: {
+  title: string;
+  intro: string;
+  metaTitle: string;
+  metaDescription: string;
+  slug: string;
+  locale: 'vi' | 'en';
+}) {
+  // Cùng đúng logic fallback trang thật dùng (generateMetadata, [slug]/page.tsx) — xem seoMeta.ts's
+  // doc. Trước 2026-09-29, ô này chỉ minh hoạ title/intro vì metaTitle/metaDescription chưa tồn
+  // tại; giờ nó phản ánh CHÍNH XÁC cách Google sẽ thấy trang, không chỉ minh hoạ gần đúng.
+  const resolvedTitle = resolveMetaTitle(metaTitle || null, title || '(chưa có tiêu đề)');
+  const resolvedDesc =
+    resolveMetaDescription(metaDescription || null, intro || null) ??
+    '(chưa có mô tả — Google sẽ tự chọn đoạn trích từ nội dung bài)';
+  const displayTitle = `${resolvedTitle} · PhuQuocHub`;
   return (
     <div>
       <div className={styles.serpPreview}>
@@ -894,9 +974,9 @@ function SerpPreview({ title, intro, slug, locale }: { title: string; intro: str
           {SITE_URL} › {locale} › guide › {slug || '…'}
         </p>
         <p className={styles.serpTitle}>{displayTitle}</p>
-        <p className={styles.serpDesc}>{displayDesc}</p>
+        <p className={styles.serpDesc}>{resolvedDesc}</p>
       </div>
-      <p className={styles.serpNote}>Minh hoạ gần đúng — không đảm bảo giống hệt cách Google hiển thị thật.</p>
+      <p className={styles.serpNote}>Đúng thứ tự ưu tiên trang thật dùng — nhưng cách Google cắt/hiển thị thật có thể khác đôi chút.</p>
     </div>
   );
 }

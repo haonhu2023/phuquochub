@@ -344,6 +344,8 @@ function baseArticle(overrides: Partial<GuideArticleDetail> = {}): GuideArticleD
     heroImageUrl: null,
     category: null,
     tags: [],
+    metaTitle: null,
+    metaDescription: null,
     status: 'published',
     contentVersion: 1,
     updatedAt: '2026-09-20T00:00:00.000Z',

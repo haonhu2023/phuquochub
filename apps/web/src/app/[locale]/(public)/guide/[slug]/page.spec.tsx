@@ -25,6 +25,8 @@ function article(overrides: Partial<GuideArticleDetail> = {}): GuideArticleDetai
     heroImageUrl: null,
     category: null,
     tags: [],
+    metaTitle: null,
+    metaDescription: null,
     status: 'published',
     contentVersion: 1,
     updatedAt: '2026-09-01T00:00:00.000Z',
@@ -53,6 +55,19 @@ describe('GuidePage — đọc từ CMS thật (G-A)', () => {
 
     expect(meta.title).toBe('Cẩm nang Phú Quốc · PhuQuocHub');
     expect(meta.description).toBe('Mô tả.');
+  });
+
+  // SEO riêng (2026-09-29) — metaTitle/metaDescription phải ĐƯỢC ƯU TIÊN hơn title/intro khi có,
+  // và lùi về title/intro khi trống — đây là điểm khác biệt duy nhất với test ngay phía trên.
+  it('generateMetadata ưu tiên metaTitle/metaDescription khi bài viết có đặt SEO riêng', async () => {
+    mockGetGuideArticle.mockResolvedValueOnce(
+      article({ title: 'Cẩm nang Phú Quốc', intro: 'Mô tả thường.', metaTitle: 'Tiêu đề SEO riêng', metaDescription: 'Mô tả SEO riêng.' }),
+    );
+
+    const meta = await generateMetadata({ params: Promise.resolve({ slug: 'phu-quoc', locale: 'vi' }) });
+
+    expect(meta.title).toBe('Tiêu đề SEO riêng · PhuQuocHub');
+    expect(meta.description).toBe('Mô tả SEO riêng.');
   });
 
   it('bài viết không tồn tại/chưa published (404 từ API) → generateMetadata KHÔNG ném lỗi, trả tiêu đề mặc định', async () => {

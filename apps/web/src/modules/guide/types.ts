@@ -111,6 +111,10 @@ export interface GuideArticleDetail {
   heroMediaStatus?: MediaModerationStatus | null;
   category: GuideArticleCategory | null;
   tags: string[];
+  /** SEO riêng (2026-09-29) — NULL khi chưa đặt. Fallback title/intro chạy ở tầng render
+   *  (generateMetadata của trang chi tiết), KHÔNG ở đây — xem seoMeta.ts. */
+  metaTitle: string | null;
+  metaDescription: string | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: string;

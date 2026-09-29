@@ -75,6 +75,9 @@ export interface GuideArticleView {
    * "chờ duyệt" + a link, instead of a dead `<img>`.
    */
   heroMediaStatus: MediaStatus | null;
+  /** SEO riêng (2026-09-29) — NULL khi chưa đặt; fallback title/intro sống ở tầng render (web). */
+  metaTitle: string | null;
+  metaDescription: string | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: Date;
@@ -198,6 +201,8 @@ export class GuideArticlesService {
           heroMediaId: input.heroMediaId ?? null,
           category: input.category ?? null,
           tags: normalizeTags(input.tags),
+          metaTitle: input.metaTitle?.trim() || null,
+          metaDescription: input.metaDescription?.trim() || null,
           status: GuideArticleStatus.DRAFT,
           contentVersion: 1,
           authorId: actorId,
@@ -246,6 +251,8 @@ export class GuideArticlesService {
         heroMediaId: input.heroMediaId ?? null,
         category: input.category ?? null,
         tags: normalizeTags(input.tags),
+        metaTitle: input.metaTitle?.trim() || null,
+        metaDescription: input.metaDescription?.trim() || null,
         contentVersion: nextVersion,
       };
       const newBlocks = await this.replaceBlocks(manager, id, input.blocks);
@@ -273,6 +280,8 @@ export class GuideArticlesService {
           heroMediaId: input.heroMediaId ?? null,
           category: input.category ?? null,
           tags: normalizeTags(input.tags),
+          metaTitle: input.metaTitle?.trim() || null,
+          metaDescription: input.metaDescription?.trim() || null,
           contentVersion: nextVersion,
         },
       );
@@ -507,6 +516,8 @@ export class GuideArticlesService {
       heroMediaStatus: article.heroMediaId ? (mediaById.get(article.heroMediaId)?.status ?? null) : null,
       category: article.category,
       tags: article.tags,
+      metaTitle: article.metaTitle,
+      metaDescription: article.metaDescription,
       status: article.status,
       contentVersion: article.contentVersion,
       updatedAt: article.updatedAt,
@@ -607,6 +618,8 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
     heroMediaId: article.heroMediaId,
     category: article.category,
     tags: article.tags,
+    metaTitle: article.metaTitle,
+    metaDescription: article.metaDescription,
     status: article.status,
     contentVersion: article.contentVersion,
     blocks: blocks

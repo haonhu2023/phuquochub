@@ -41,6 +41,14 @@ export class SaveGuideDraftDto {
   @IsString({ each: true }) @MaxLength(MAX_TAG_LENGTH, { each: true })
   tags?: string[];
 
+  // SEO riêng (2026-09-29) — độ dài cột khớp PlaceSeo.metaTitle/metaDescription (guide-article.
+  // entity.ts). Trống → fallback title/intro ở tầng render (web), không phải ở đây.
+  @IsOptional() @IsString() @MaxLength(160)
+  metaTitle?: string;
+
+  @IsOptional() @IsString() @MaxLength(320)
+  metaDescription?: string;
+
   @IsArray() @ArrayMaxSize(60)
   @ValidateNested({ each: true })
   @Type(() => GuideBlockDto)

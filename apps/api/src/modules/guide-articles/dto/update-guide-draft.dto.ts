@@ -42,6 +42,12 @@ export class UpdateGuideDraftDto {
   @IsString({ each: true }) @MaxLength(MAX_TAG_LENGTH, { each: true })
   tags?: string[];
 
+  @IsOptional() @IsString() @MaxLength(160)
+  metaTitle?: string;
+
+  @IsOptional() @IsString() @MaxLength(320)
+  metaDescription?: string;
+
   @IsArray() @ArrayMaxSize(60)
   @ValidateNested({ each: true })
   @Type(() => GuideBlockDto)

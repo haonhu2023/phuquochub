@@ -166,6 +166,33 @@ describe('validation error surfacing on save', () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ category: undefined, tags: [] }), 'tok');
   });
 
+  // SEO riêng (2026-09-29) — nhập Tiêu đề SEO/Mô tả SEO phải tới đúng payload, và trống phải thành
+  // `undefined` (không phải chuỗi rỗng) để service lưu NULL, không phải chuỗi rỗng vô nghĩa.
+  it('sends metaTitle/metaDescription in the save payload when filled', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Tiêu đề thật' } });
+    fireEvent.change(screen.getByLabelText(/Tiêu đề SEO/), { target: { value: 'Tiêu đề SEO riêng' } });
+    fireEvent.change(screen.getByLabelText(/Mô tả SEO/), { target: { value: 'Mô tả SEO riêng.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ metaTitle: 'Tiêu đề SEO riêng', metaDescription: 'Mô tả SEO riêng.' }),
+      'tok',
+    );
+  });
+
+  it('defaults metaTitle/metaDescription to undefined when left empty', async () => {
+    create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Tiêu đề thật' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ metaTitle: undefined, metaDescription: undefined }), 'tok');
+  });
+
   // createDraft's 409 (guide_articles UNIQUE(slug, locale)) and saveGuideDraft's 409 (CAS
   // expectedContentVersion mismatch) are DIFFERENT failures that both surface as
   // ApiError.isConflict — conflating them previously told the owner to "reload the page" for a

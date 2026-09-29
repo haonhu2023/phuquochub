@@ -37,6 +37,8 @@ function makeArticle(overrides: Partial<GuideArticle> = {}): GuideArticle {
     publishedBy: null,
     category: null,
     tags: [],
+    metaTitle: null,
+    metaDescription: null,
     ...overrides,
   };
 }
@@ -472,6 +474,41 @@ describe('GuideArticlesService.createDraft', () => {
     expect(result.category).toBeNull();
     expect(result.tags).toEqual([]);
   });
+
+  it('persists metaTitle/metaDescription, trimmed', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const dto = makeDraftDto({ metaTitle: '  Cẩm nang Phú Quốc — SEO  ', metaDescription: '  Mô tả SEO riêng.  ' });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.metaTitle).toBe('Cẩm nang Phú Quốc — SEO');
+    expect(result.metaDescription).toBe('Mô tả SEO riêng.');
+  });
+
+  it('defaults metaTitle/metaDescription to null when omitted', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const result = await service.createDraft(makeDraftDto() as never, ACTOR);
+
+    expect(result.metaTitle).toBeNull();
+    expect(result.metaDescription).toBeNull();
+  });
+
+  it('treats a whitespace-only metaTitle/metaDescription as absent (null, not blank string)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const dto = makeDraftDto({ metaTitle: '   ', metaDescription: '   ' });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.metaTitle).toBeNull();
+    expect(result.metaDescription).toBeNull();
+  });
 });
 
 // ─── Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic runs ───────────────────
@@ -719,6 +756,44 @@ describe('GuideArticlesService.saveDraft', () => {
     expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
       { id: uuid(1), contentVersion: 1 },
       expect.objectContaining({ category: null, tags: [] }),
+    );
+  });
+
+  it('updates metaTitle/metaDescription — trimmed, full-replace semantics', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, metaTitle: 'Tiêu đề SEO', metaDescription: 'Mô tả SEO' }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1, metaTitle: '  Tiêu đề SEO  ', metaDescription: '  Mô tả SEO  ' };
+    const result = await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ metaTitle: 'Tiêu đề SEO', metaDescription: 'Mô tả SEO' }),
+    );
+    expect(result.metaTitle).toBe('Tiêu đề SEO');
+    expect(result.metaDescription).toBe('Mô tả SEO');
+  });
+
+  it('clears metaTitle/metaDescription to null when omitted from the patch', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(
+      makeArticle({ contentVersion: 1, metaTitle: 'Cũ', metaDescription: 'Cũ' }),
+    );
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, metaTitle: null, metaDescription: null }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ metaTitle: null, metaDescription: null }),
     );
   });
 });

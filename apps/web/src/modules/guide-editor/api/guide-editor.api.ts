@@ -22,6 +22,8 @@ export interface SaveGuideDraftInput {
   heroMediaId?: string;
   category?: GuideArticleCategory;
   tags?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
   blocks: Array<{
     blockType: GuideBlockType;
     content: Record<string, unknown>;
@@ -55,6 +57,8 @@ export interface UpdateGuideDraftInput {
   heroMediaId?: string;
   category?: GuideArticleCategory;
   tags?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
   blocks: SaveGuideDraftInput['blocks'];
   expectedContentVersion: number;
 }

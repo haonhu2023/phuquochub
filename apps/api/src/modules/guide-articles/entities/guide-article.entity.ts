@@ -69,4 +69,12 @@ export class GuideArticle {
 
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   tags!: string[];
+
+  // SEO riêng (2026-09-29) — NULL khi chưa đặt; fallback sang title/intro sống ở tầng render
+  // (web's generateMetadata), không phải ở đây. Cùng độ dài cột PlaceSeo.metaTitle/metaDescription.
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  metaTitle!: string | null;
+
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  metaDescription!: string | null;
 }

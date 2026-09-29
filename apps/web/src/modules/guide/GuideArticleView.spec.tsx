@@ -28,6 +28,8 @@ const ARTICLE: GuideArticleDetail = {
   heroImageUrl: null,
   category: null,
   tags: [],
+  metaTitle: null,
+  metaDescription: null,
   status: 'published',
   contentVersion: 3,
   updatedAt: '2026-09-18T00:00:00Z',
