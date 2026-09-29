@@ -397,6 +397,78 @@ describe('GuideArticlesService.createDraft', () => {
   });
 });
 
+// ─── Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic runs ───────────────────
+describe('GuideArticlesService.createDraft — rich_text paragraph validation', () => {
+  async function tryCreate(paragraphs: unknown[]) {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+    const dto = makeDraftDto({ blocks: [{ blockType: GuideBlockType.RICH_TEXT, content: { paragraphs } }] });
+    return service.createDraft(dto as never, ACTOR);
+  }
+
+  it('accepts old-shape paragraphs (type:p/list with plain text/items, no runs) unchanged', async () => {
+    const result = await tryCreate([
+      { type: 'p', text: 'Đoạn văn thường.' },
+      { type: 'list', items: ['Mục 1', 'Mục 2'] },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('accepts heading2/heading3/blockquote with plain text', async () => {
+    const result = await tryCreate([
+      { type: 'heading2', text: 'Tiêu đề cấp 2' },
+      { type: 'heading3', text: 'Tiêu đề cấp 3' },
+      { type: 'blockquote', text: 'Một câu trích dẫn.' },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('accepts a paragraph with bold/italic runs instead of text', async () => {
+    const result = await tryCreate([
+      { type: 'p', runs: [{ text: 'Bình thường, ' }, { text: 'đậm', bold: true }, { text: ' và ' }, { text: 'nghiêng', italic: true }] },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('rejects an unknown paragraph type', async () => {
+    await expect(tryCreate([{ type: 'heading1', text: 'x' }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a paragraph with neither text nor runs', async () => {
+    await expect(tryCreate([{ type: 'p' }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects an empty runs array', async () => {
+    await expect(tryCreate([{ type: 'p', runs: [] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a run missing text', async () => {
+    await expect(tryCreate([{ type: 'p', runs: [{ bold: true }] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects over-limit paragraph text with a clear error, not silent truncation', async () => {
+    const tooLong = 'a'.repeat(5001);
+    await expect(tryCreate([{ type: 'p', text: tooLong }])).rejects.toThrow(BadRequestException);
+    await expect(tryCreate([{ type: 'p', text: tooLong }])).rejects.toThrow(/5000/);
+  });
+
+  it('rejects over-limit run text', async () => {
+    const tooLong = 'a'.repeat(2001);
+    await expect(tryCreate([{ type: 'p', runs: [{ text: tooLong }] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects too many paragraphs in one block', async () => {
+    const paragraphs = Array.from({ length: 101 }, () => ({ type: 'p', text: 'x' }));
+    await expect(tryCreate(paragraphs)).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a list item exceeding the per-item length limit', async () => {
+    const tooLong = 'a'.repeat(501);
+    await expect(tryCreate([{ type: 'list', items: [tooLong] }])).rejects.toThrow(BadRequestException);
+  });
+});
+
 // ─── P0 fix (2026-09-27): orphan guide media never got a moderation case ──────
 // MediaService.register() only creates one when session.placeId is set (place photos); a guide
 // hero/block image is always orphan (placeId null), so it silently never entered any queue —

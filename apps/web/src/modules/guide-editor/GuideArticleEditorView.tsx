@@ -17,9 +17,10 @@ import {
   unpublishGuideArticle,
   type GuideArticleSummary,
 } from './api/guide-editor.api';
-import type { GuideBlockType, MediaModerationStatus } from '../guide/types';
+import type { GuideBlockType, MediaModerationStatus, RichTextParagraph } from '../guide/types';
 import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
+import { lineToParagraph, paragraphToLine } from './richTextSyntax';
 import styles from './guide-editor.module.css';
 
 const INTRO_MAX_LENGTH = 500; // SaveGuideDraftDto.intro @MaxLength(500) — nguồn thật, không tự đặt số riêng.
@@ -982,13 +983,21 @@ function BlockContentFields({
         />
       );
     case 'rich_text': {
-      // Khối này lưu MỘT mảng `paragraphs` dùng chung cho cả đoạn văn (type:'p') và danh sách
-      // (type:'list') — public renderer (RichTextBlock.tsx) đã hỗ trợ CẢ HAI từ trước, chỉ chưa có
-      // ô nhập cho danh sách ở editor. Giữ thứ tự đơn giản: mọi đoạn văn trước, một khối danh sách
-      // (nếu có) ở cuối — không phải trình soạn thảo tự do xen kẽ nhiều danh sách, nhưng dùng đúng
-      // contract sẵn có, không cần đổi schema/validation/renderer.
-      const paragraphs = (c.paragraphs as Array<{ type?: string; text?: string; items?: string[] }>) ?? [];
-      const proseText = paragraphs.filter((p) => p.type !== 'list').map((p) => p.text ?? '').join('\n');
+      // Khối này lưu MỘT mảng `paragraphs` dùng chung cho cả đoạn văn (type:'p'/'heading2'/
+      // 'heading3'/'blockquote') và danh sách (type:'list') — public renderer (RichTextBlock.tsx)
+      // hỗ trợ tất cả từ trước. Giữ thứ tự đơn giản: mọi đoạn văn trước, một khối danh sách (nếu
+      // có) ở cuối — không phải trình soạn thảo tự do xen kẽ nhiều danh sách, nhưng dùng đúng
+      // contract sẵn có, không cần đổi validation/renderer cho phần danh sách.
+      //
+      // Định dạng (2026-09-29): mỗi dòng là một đoạn văn, diễn giải qua một cú pháp gõ-tay nhẹ
+      // (richTextSyntax.ts) — KHÔNG lưu chuỗi markup này; nó chỉ tồn tại tạm trong ô nhập, được
+      // parse thành `{type,text|runs}` có cấu trúc trước khi lên state/API. Bài cũ (chỉ có `text`,
+      // không có `runs`) hiển thị lại y nguyên qua `paragraphToLine`.
+      const paragraphs = (c.paragraphs as RichTextParagraph[]) ?? [];
+      const proseText = paragraphs
+        .filter((p) => p.type !== 'list')
+        .map((p) => paragraphToLine(p))
+        .join('\n');
       const listBlock = paragraphs.find((p) => p.type === 'list');
       const listText = (listBlock?.items ?? []).join('\n');
 
@@ -996,7 +1005,7 @@ function BlockContentFields({
         const proseParas = nextProse
           .split('\n')
           .filter((line) => line.trim() !== '')
-          .map((line) => ({ type: 'p', text: line }));
+          .map((line) => lineToParagraph(line));
         const items = nextList.split('\n').filter((line) => line.trim() !== '');
         onPatch({ paragraphs: items.length > 0 ? [...proseParas, { type: 'list', items }] : proseParas });
       }
@@ -1010,6 +1019,10 @@ function BlockContentFields({
             onChange={(e) => rebuild(e.target.value, listText)}
             rows={4}
           />
+          <p className={styles.fieldHint} style={{ marginTop: '0.2rem' }}>
+            Định dạng: <code>## </code> tiêu đề lớn, <code>### </code> tiêu đề nhỏ, <code>&gt; </code>{' '}
+            trích dẫn (đầu dòng) — <code>**đậm**</code>, <code>*nghiêng*</code> (trong dòng).
+          </p>
           <p className={styles.subLabel}>Danh sách (tuỳ chọn — mỗi dòng một mục, hiển thị dạng gạch đầu dòng)</p>
           <textarea
             className={styles.textarea}

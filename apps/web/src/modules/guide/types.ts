@@ -34,9 +34,20 @@ export interface SectionHeadingContent {
   text: string;
 }
 
+/** Một đoạn định dạng trong dòng (2026-09-29) — cấu trúc, KHÔNG phải một token markup cần diễn
+ *  giải ở tầng đọc: renderer chỉ bọc `text` bằng `<strong>`/`<em>` theo hai cờ này. */
+export interface RichTextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
 export interface RichTextParagraph {
-  type: 'p' | 'list';
+  type: 'p' | 'list' | 'heading2' | 'heading3' | 'blockquote';
+  /** Bài cũ (trước 2026-09-29) chỉ có trường này, không có `runs` — vẫn hợp lệ nguyên vẹn. */
   text?: string;
+  /** Có mặt khi đoạn văn có định dạng đậm/nghiêng trong dòng; khi có, ưu tiên hơn `text` khi render. */
+  runs?: RichTextRun[];
   items?: string[];
 }
 

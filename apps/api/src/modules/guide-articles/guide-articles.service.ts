@@ -582,6 +582,74 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
   };
 }
 
+// Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic. Vẫn "cấu trúc, không HTML
+// tự do": mỗi đoạn văn là MỘT trong 5 `type` đóng, và định dạng trong dòng là một mảng `runs`
+// ({text,bold?,italic?}) chứ không phải một chuỗi markup cần parse ở tầng đọc — renderer
+// (RichTextBlock.tsx) chỉ ánh xạ field sang JSX, không có gì để diễn giải/làm sạch. Bài cũ (chỉ có
+// `type:'p'|'list'` + `text`/`items`, không có `runs`) vẫn hợp lệ nguyên vẹn — không migration,
+// không re-validate dữ liệu đã lưu (validate chỉ chạy trên GHI mới).
+const RICH_TEXT_PARAGRAPH_TYPES = ['p', 'list', 'heading2', 'heading3', 'blockquote'] as const;
+const MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK = 100;
+const MAX_PARAGRAPH_TEXT_LENGTH = 5000;
+const MAX_RUN_TEXT_LENGTH = 2000;
+const MAX_RUNS_PER_PARAGRAPH = 50;
+const MAX_LIST_ITEMS = 100;
+const MAX_LIST_ITEM_LENGTH = 500;
+
+// Yêu cầu owner: nội dung dài/vượt hạn phải báo lỗi rõ (400 + thông điệp cụ thể), TUYỆT ĐỐI không
+// âm thầm cắt bớt/mất dữ liệu — nên mọi nhánh dưới đây throw thay vì `.slice()`.
+function validateRichTextParagraph(p: Record<string, unknown>, where: string): void {
+  const type = p.type;
+  if (typeof type !== 'string' || !RICH_TEXT_PARAGRAPH_TYPES.includes(type as (typeof RICH_TEXT_PARAGRAPH_TYPES)[number])) {
+    throw new BadRequestException(`${where}: type phải là một trong ${RICH_TEXT_PARAGRAPH_TYPES.join('|')}`);
+  }
+  if (type === 'list') {
+    if (!Array.isArray(p.items)) {
+      throw new BadRequestException(`${where}: list phải có content.items là mảng`);
+    }
+    if (p.items.length > MAX_LIST_ITEMS) {
+      throw new BadRequestException(`${where}: danh sách vượt quá ${MAX_LIST_ITEMS} mục`);
+    }
+    p.items.forEach((item: unknown, i: number) => {
+      if (typeof item !== 'string' || item.length === 0) {
+        throw new BadRequestException(`${where}.items[${i}]: phải là chuỗi không rỗng`);
+      }
+      if (item.length > MAX_LIST_ITEM_LENGTH) {
+        throw new BadRequestException(`${where}.items[${i}]: vượt quá ${MAX_LIST_ITEM_LENGTH} ký tự`);
+      }
+    });
+    return;
+  }
+  // p / heading2 / heading3 / blockquote — cần ĐÚNG MỘT trong hai: `runs` (có định dạng) hoặc
+  // `text` (đoạn văn cũ/không định dạng). Không cho cả hai cùng thiếu (đoạn văn rỗng vô nghĩa).
+  if (p.runs !== undefined) {
+    if (!Array.isArray(p.runs) || p.runs.length === 0) {
+      throw new BadRequestException(`${where}: runs phải là mảng không rỗng`);
+    }
+    if (p.runs.length > MAX_RUNS_PER_PARAGRAPH) {
+      throw new BadRequestException(`${where}: vượt quá ${MAX_RUNS_PER_PARAGRAPH} đoạn định dạng trong một dòng`);
+    }
+    p.runs.forEach((run: unknown, i: number) => {
+      if (typeof run !== 'object' || run === null || typeof (run as Record<string, unknown>).text !== 'string') {
+        throw new BadRequestException(`${where}.runs[${i}]: text phải là chuỗi`);
+      }
+      const runText = (run as Record<string, unknown>).text as string;
+      if (runText.length === 0) {
+        throw new BadRequestException(`${where}.runs[${i}]: text không được rỗng`);
+      }
+      if (runText.length > MAX_RUN_TEXT_LENGTH) {
+        throw new BadRequestException(`${where}.runs[${i}]: vượt quá ${MAX_RUN_TEXT_LENGTH} ký tự`);
+      }
+    });
+  } else if (typeof p.text === 'string') {
+    if (p.text.length > MAX_PARAGRAPH_TEXT_LENGTH) {
+      throw new BadRequestException(`${where}: text vượt quá ${MAX_PARAGRAPH_TEXT_LENGTH} ký tự`);
+    }
+  } else {
+    throw new BadRequestException(`${where}: cần có content.text hoặc content.runs`);
+  }
+}
+
 // Enforces the closed per-blockType content shape declared in the plan — the one place that keeps
 // "structured content, not free HTML" true even though the DTO layer only checks "some object".
 function validateBlocks(blocks: SaveGuideDraftDto['blocks']): void {
@@ -596,6 +664,15 @@ function validateBlocks(blocks: SaveGuideDraftDto['blocks']): void {
         if (!Array.isArray(c.paragraphs)) {
           throw new BadRequestException(`${where}: content.paragraphs must be an array`);
         }
+        if (c.paragraphs.length > MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK) {
+          throw new BadRequestException(`${where}: content.paragraphs vượt quá ${MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK} đoạn`);
+        }
+        c.paragraphs.forEach((p: unknown, pi: number) => {
+          if (typeof p !== 'object' || p === null) {
+            throw new BadRequestException(`${where}.paragraphs[${pi}]: phải là object`);
+          }
+          validateRichTextParagraph(p as Record<string, unknown>, `${where}.paragraphs[${pi}]`);
+        });
         break;
       case GuideBlockType.PLACE_COLLECTION:
         requireString(c, 'heading', where);
