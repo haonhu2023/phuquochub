@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { GuideArticle } from './entities/guide-article.entity';
 import { GuideBlock } from './entities/guide-block.entity';
 import { GuideArticleStatus, GuideBlockType } from './guide-article.enums';
@@ -18,6 +18,9 @@ import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { OwnerDecisionQueueService } from '../owner-decision-queue/owner-decision-queue.service';
+import { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
+import { computePriority } from '../moderation/moderation-severity';
+import { ModerationCaseSeverity, ModerationCaseSource, ModerationTargetType } from '../moderation/moderation.enums';
 
 export interface GuideBlockView {
   id: string;
@@ -58,6 +61,15 @@ export interface GuideArticleView {
   intro: string | null;
   heroMediaId: string | null;
   heroImageUrl: string | null;
+  /**
+   * Real current status of `heroMediaId`'s Media row (2026-09-27) — `null` when no hero is set or
+   * the id no longer resolves. `heroImageUrl` alone cannot tell the editor "is this actually
+   * visible yet": it is built from `MediaUrlService.fileUrl()`, a STABLE path that 404s for
+   * anything not `published` (Secure Private Media) — so a freshly-uploaded pending hero silently
+   * looked broken with no explanation before this field existed. The editor UI uses this to show
+   * "chờ duyệt" + a link, instead of a dead `<img>`.
+   */
+  heroMediaStatus: MediaStatus | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: Date;
@@ -78,6 +90,7 @@ export class GuideArticlesService {
     private readonly mediaUrlService: MediaUrlService,
     private readonly revisionsService: RevisionsService,
     private readonly ownerDecisionQueueService: OwnerDecisionQueueService,
+    private readonly moderationCasesRepo: ModerationCasesRepository,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -179,6 +192,12 @@ export class GuideArticlesService {
         manager,
       );
 
+      await this.ensureModerationCasesForOwnPendingMedia(
+        manager,
+        this.extractImageMediaIds(article.heroMediaId, blocks),
+        actorId,
+      );
+
       return await this.toView(article, blocks);
     });
   }
@@ -234,6 +253,13 @@ export class GuideArticlesService {
       }
 
       const saved = await articleRepo.findOneOrFail({ where: { id } });
+
+      await this.ensureModerationCasesForOwnPendingMedia(
+        manager,
+        this.extractImageMediaIds(saved.heroMediaId, newBlocks),
+        actorId,
+      );
+
       return await this.toView(saved, newBlocks);
     });
   }
@@ -433,9 +459,10 @@ export class GuideArticlesService {
       .filter((b) => b.blockType === GuideBlockType.IMAGE_WITH_RIGHTS)
       .map((b) => (b.content as { mediaId?: string }).mediaId)
       .filter((id): id is string => Boolean(id));
+    const allMediaIds = article.heroMediaId ? [...imageMediaIds, article.heroMediaId] : imageMediaIds;
     const mediaById = new Map<string, Media>();
-    if (imageMediaIds.length > 0) {
-      const rows = await this.mediaRepo.find({ where: imageMediaIds.map((id) => ({ id })) });
+    if (allMediaIds.length > 0) {
+      const rows = await this.mediaRepo.find({ where: allMediaIds.map((id) => ({ id })) });
       for (const row of rows) mediaById.set(row.id, row);
     }
 
@@ -447,6 +474,7 @@ export class GuideArticlesService {
       intro: article.intro,
       heroMediaId: article.heroMediaId,
       heroImageUrl,
+      heroMediaStatus: article.heroMediaId ? (mediaById.get(article.heroMediaId)?.status ?? null) : null,
       status: article.status,
       contentVersion: article.contentVersion,
       updatedAt: article.updatedAt,
@@ -465,6 +493,59 @@ export class GuideArticlesService {
     };
   }
 
+  /**
+   * P0 fix (2026-09-27) — orphan guide media (hero/block images, `placeId IS NULL`) never got a
+   * moderation case created for it: `MediaService.register()` only calls `createOpenCase` when
+   * `session.placeId` is set (place photos), which orphan uploads never have. Confirmed live on
+   * production: a freshly-uploaded guide hero image had zero rows in `moderation_cases`. Result: no
+   * one — not even an account holding `Media.Moderate` — had anywhere to approve it, so
+   * `assertMediaPublishEligible()` blocked every guide-with-a-new-image forever.
+   *
+   * Fix lives HERE, not in MediaService, because `register()` genuinely cannot tell a guide upload
+   * from a review upload at upload time — both go through the exact same orphan presign/register
+   * call (see MediaService.presign()'s own comment). The only place a media id becomes VERIFIABLY
+   * "this is a guide asset" is the moment an authorized (`Guide.Edit.Any`) write references it here
+   * — that server-verified relationship is what gates this, never a client-declared "purpose".
+   *
+   * Ownership-scoped (`uploadedBy === actorId`) on purpose, mirroring the existing INV-12 self-
+   * approve precedent: an editor referencing someone else's media id (already-published reuse is
+   * the normal case and is a no-op here since it only acts on `pending` rows) must not be able to
+   * spawn moderation cases for arbitrary media they do not own. `createOpenCase` is idempotent
+   * (`ON CONFLICT ... DO NOTHING` on the partial unique index), so calling this on every save is
+   * safe — never duplicates a case for a still-pending image across repeat saves/retries.
+   */
+  private async ensureModerationCasesForOwnPendingMedia(
+    manager: EntityManager,
+    mediaIds: string[],
+    actorId: string,
+  ): Promise<void> {
+    if (mediaIds.length === 0) return;
+    const rows = await manager.getRepository(Media).find({ where: mediaIds.map((id) => ({ id })) });
+    for (const media of rows) {
+      if (media.placeId !== null) continue; // place-attached media already gets a case via MediaService.
+      if (media.status !== MediaStatus.PENDING) continue; // already decided (published/rejected/hidden) — nothing to queue.
+      if (media.uploadedBy === null || media.uploadedBy !== actorId) continue; // not this editor's own upload.
+      await this.moderationCasesRepo.createOpenCase(manager, {
+        targetType: ModerationTargetType.MEDIA,
+        targetId: media.id,
+        source: ModerationCaseSource.NEW_CONTENT,
+        severity: ModerationCaseSeverity.LOW,
+        priority: computePriority(ModerationCaseSeverity.LOW, 0),
+      });
+    }
+  }
+
+  private extractImageMediaIds(heroMediaId: string | null, blocks: { blockType: GuideBlockType; content: Record<string, unknown> }[]): string[] {
+    const ids = new Set<string>();
+    if (heroMediaId) ids.add(heroMediaId);
+    for (const block of blocks) {
+      if (block.blockType !== GuideBlockType.IMAGE_WITH_RIGHTS) continue;
+      const mediaId = (block.content as { mediaId?: string }).mediaId;
+      if (mediaId) ids.add(mediaId);
+    }
+    return [...ids];
+  }
+
   private resolveImageBlockContent(
     content: Record<string, unknown>,
     mediaById: Map<string, Media>,
@@ -477,6 +558,8 @@ export class GuideArticlesService {
       imageUrl: this.mediaUrlService.fileUrl(mediaId),
       attribution: media?.attribution ?? null,
       licenseUrl: media?.licenseUrl ?? null,
+      // Same reasoning as GuideArticleView.heroMediaStatus above.
+      mediaStatus: media?.status ?? null,
     };
   }
 }

@@ -487,6 +487,40 @@ export class MediaRepository {
   }
 
   /**
+   * Approve-time status + rights-clearance write, ONE call (2026-09-27, closes a dead-end found
+   * live: `assertMediaPublishEligible` in guide-articles.service.ts requires `license_type IS NOT
+   * NULL` before a media can be published, but no code path anywhere ever set that column —
+   * confirmed by a repo-wide search. Every media approval before this fix left `license_type` NULL
+   * forever, so no guide article with an image could ever satisfy that gate, moderator or not).
+   *
+   * Only fills `licenseType` when the row does not already have one (`license_type IS NULL` in the
+   * WHERE) — an already-classified media (e.g. a moderator previously asserted `open_license` with
+   * real attribution) must never be silently overwritten by a later restore/re-approve defaulting
+   * to `user_submitted`. `attribution`/`licenseUrl` are only set together with a NEW license_type,
+   * for the same reason.
+   */
+  async updateStatusWithLicense(
+    manager: EntityManager,
+    id: string,
+    status: MediaStatus,
+    license: { type: string; attribution?: string | null; licenseUrl?: string | null } | null,
+  ): Promise<void> {
+    const repo = manager.getRepository(Media);
+    if (!license) {
+      await repo.update({ id }, { status });
+      return;
+    }
+    await repo.query(
+      `UPDATE media SET status = $2,
+         license_type = COALESCE(license_type, $3::media_license_type),
+         attribution = CASE WHEN license_type IS NULL THEN $4 ELSE attribution END,
+         license_url = CASE WHEN license_type IS NULL THEN $5 ELSE license_url END
+       WHERE id = $1`,
+      [id, status, license.type, license.attribution ?? null, license.licenseUrl ?? null],
+    );
+  }
+
+  /**
    * Media Orphan Cleanup (2026-08-02, post-implementation review fix): quét theo lô, chỉ đọc
    * (không khoá) — batch cũ nhất trước (`ORDER BY created_at ASC, id ASC`), giới hạn `limit` dòng.
    * An toàn concurrency đến từ `softDeleteOrphanCandidate()` bên dưới (điều kiện đầy đủ lặp lại

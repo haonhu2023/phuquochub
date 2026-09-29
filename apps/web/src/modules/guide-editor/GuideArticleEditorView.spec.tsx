@@ -301,7 +301,7 @@ describe('rich text list and extended image fields reach the save payload', () =
     });
   });
 
-  it('saves alt/attribution/licenseUrl for an image_with_rights block', async () => {
+  it('saves alt for an image_with_rights block', async () => {
     create.mockResolvedValue({ id: 'new-id', contentVersion: 1, status: 'draft' });
     render(<GuideArticleEditorView id="new" />);
     fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Bài có ảnh nguồn' } });
@@ -309,16 +309,26 @@ describe('rich text list and extended image fields reach the save payload', () =
     fireEvent.click(screen.getByRole('button', { name: '+ Thêm khối' }));
 
     fireEvent.change(screen.getByPlaceholderText(/Văn bản thay thế/), { target: { value: 'Bãi biển lúc hoàng hôn' } });
-    fireEvent.change(screen.getByPlaceholderText(/Nguồn ảnh/), { target: { value: 'Sở Du lịch Kiên Giang' } });
-    fireEvent.change(screen.getByPlaceholderText(/giấy phép/), { target: { value: 'https://example.com/license' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu bản nháp' }));
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     const payload = create.mock.calls[0][0];
-    expect(payload.blocks[0].content).toMatchObject({
-      alt: 'Bãi biển lúc hoàng hôn',
-      attribution: 'Sở Du lịch Kiên Giang',
-      licenseUrl: 'https://example.com/license',
-    });
+    expect(payload.blocks[0].content).toMatchObject({ alt: 'Bãi biển lúc hoàng hôn' });
+  });
+
+  // 2026-09-27 — found live: GuideArticlesService.resolveImageBlockContent() always overwrites
+  // attribution/licenseUrl from the Media row, never from the block's own content, so an editable
+  // input for them here would silently discard whatever the owner typed on the next reload (a
+  // "nút giả"). They belong to the moderation-approval step instead (ModerationService.decideMedia)
+  // — the editor must not offer a text field that looks like it saves but never does.
+  it('does not offer attribution/licenseUrl as editable inputs on an image_with_rights block', async () => {
+    render(<GuideArticleEditorView id="new" />);
+    fireEvent.change(await screen.findByLabelText('Tiêu đề'), { target: { value: 'Bài có ảnh nguồn' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Loại khối mới' }), { target: { value: 'image_with_rights' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Thêm khối' }));
+
+    expect(screen.queryByPlaceholderText(/Nguồn ảnh/)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/giấy phép/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Nguồn\/giấy phép ảnh do người duyệt xác nhận/)).toBeInTheDocument();
   });
 });

@@ -25,7 +25,7 @@ import {
   ModerationTargetType,
   ReportStatus,
 } from './moderation.enums';
-import { MediaProvider, MediaStatus, MediaType } from '../media/media.enums';
+import { MediaLicenseType, MediaProvider, MediaStatus, MediaType } from '../media/media.enums';
 import { ReviewStatus } from '../reviews/review.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
@@ -127,6 +127,7 @@ describe('ModerationService', () => {
     mediaRepo = createMock<MediaRepository>({
       findByIdForUpdate: jest.fn(),
       updateStatus: jest.fn(),
+      updateStatusWithLicense: jest.fn(),
       clearCoverImageByMedia: jest.fn(),
       existsForPlace: jest.fn(),
       findById: jest.fn(),
@@ -303,7 +304,52 @@ describe('ModerationService', () => {
       casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ status: ModerationCaseStatus.CLAIMED }));
       mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
       await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
+    });
+
+    it('moderator có thể ghi đúng license_type khi biết rõ hơn mặc định (vd open_license kèm ghi công)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ status: ModerationCaseStatus.OPEN }));
+      mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+      await service.decide(
+        'c1',
+        {
+          decision: ModerationDecision.APPROVE,
+          license_type: MediaLicenseType.OPEN_LICENSE,
+          attribution: 'Nguyễn Văn A / Wikimedia Commons',
+          license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+        },
+        ACTOR,
+      );
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.OPEN_LICENSE,
+        attribution: 'Nguyễn Văn A / Wikimedia Commons',
+        licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      });
+    });
+
+    it('license_type=open_license thiếu attribution/license_url -> 422 (khớp CHECK chk_media_open_license_credit, không để lộ lỗi 500 từ DB)', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ status: ModerationCaseStatus.OPEN }));
+      mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+      await expect(
+        service.decide('c1', { decision: ModerationDecision.APPROVE, license_type: MediaLicenseType.OPEN_LICENSE }, ACTOR),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(mediaRepo.updateStatusWithLicense).not.toHaveBeenCalled();
+    });
+
+    it('reject không đưa media sang published -> không gọi updateStatusWithLicense, chỉ updateStatus thường', async () => {
+      casesRepo.findByIdForUpdate.mockResolvedValue(makeCase({ status: ModerationCaseStatus.OPEN }));
+      mediaRepo.findByIdForUpdate.mockResolvedValue(makeMedia({ status: MediaStatus.PENDING }));
+      await service.decide(
+        'c1',
+        { decision: ModerationDecision.REJECT, reason: 'ảnh mờ', reason_code: MediaModerationReasonCode.LOW_QUALITY },
+        ACTOR,
+      );
+      expect(mediaRepo.updateStatusWithLicense).not.toHaveBeenCalled();
+      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.REJECTED);
     });
 
     it('target_type=place -> 422 (chưa đăng ký FSM, MR-4 — không có quyền nào tương ứng để kiểm tra)', async () => {
@@ -400,7 +446,11 @@ describe('ModerationService', () => {
 
         await service.decide('c1', { decision: ModerationDecision.APPROVE }, 'content-owner-1');
 
-        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+          type: MediaLicenseType.USER_SUBMITTED,
+          attribution: null,
+          licenseUrl: null,
+        });
         expect(audit.record).toHaveBeenCalledWith(
           expect.objectContaining({ event: 'moderation.decided', actorId: 'content-owner-1' }),
         );
@@ -513,7 +563,11 @@ describe('ModerationService', () => {
         await service.selfApproveOwnMedia('place-1', 'm1', 'content-owner-1');
 
         expect(casesRepo.findOpenCaseForTarget).toHaveBeenCalledWith(ModerationTargetType.MEDIA, 'm1');
-        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+          type: MediaLicenseType.USER_SUBMITTED,
+          attribution: null,
+          licenseUrl: null,
+        });
         expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'moderation.self_approved' }));
       });
 
@@ -537,7 +591,11 @@ describe('ModerationService', () => {
 
       await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
 
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
       expect(casesRepo.resolve).toHaveBeenCalledWith(
         manager,
         'c1',
@@ -640,7 +698,11 @@ describe('ModerationService', () => {
 
         await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
 
-        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+          type: MediaLicenseType.USER_SUBMITTED,
+          attribution: null,
+          licenseUrl: null,
+        });
         expect(casesRepo.resolve).toHaveBeenCalledWith(manager, 'c1', expect.objectContaining({ reasonCode: null }));
       });
 
@@ -762,7 +824,11 @@ describe('ModerationService', () => {
         ACTOR,
       );
 
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
     });
 
     it('rejected + restore KHÔNG kèm target_status -> 422 (INV-10)', async () => {
@@ -839,7 +905,11 @@ describe('ModerationService', () => {
       audit.record.mockRejectedValue(new Error('audit DB down'));
 
       await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).resolves.toBeUndefined();
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
     });
 
     it('publish event lỗi SAU commit -> KHÔNG hoàn tác, decide() vẫn resolve bình thường', async () => {
@@ -848,7 +918,11 @@ describe('ModerationService', () => {
       events.publish.mockRejectedValue(new Error('broker down'));
 
       await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).resolves.toBeUndefined();
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
     });
 
     it('approve -> phát ContentApproved + CaseResolved', async () => {
@@ -916,7 +990,11 @@ describe('ModerationService', () => {
         aiRecommendations.evaluateModeratorDecision.mockRejectedValue(new Error('ai db down'));
 
         await expect(service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR)).resolves.toBeUndefined();
-        expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+        expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+          type: MediaLicenseType.USER_SUBMITTED,
+          attribution: null,
+          licenseUrl: null,
+        });
         expect(casesRepo.resolve).toHaveBeenCalled();
       });
 
@@ -1213,7 +1291,11 @@ describe('ModerationService', () => {
 
       await service.decide('c1', { decision: ModerationDecision.APPROVE }, ACTOR);
 
-      expect(mediaRepo.updateStatus).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED);
+      expect(mediaRepo.updateStatusWithLicense).toHaveBeenCalledWith(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: MediaLicenseType.USER_SUBMITTED,
+        attribution: null,
+        licenseUrl: null,
+      });
       expect(casesRepo.findReviewForUpdate).not.toHaveBeenCalled();
       expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
     });

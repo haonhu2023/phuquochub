@@ -10,6 +10,7 @@ import { RevisionsService } from '../revisions/revisions.service';
 import { OwnerDecisionQueueService } from '../owner-decision-queue/owner-decision-queue.service';
 import { MediaStatus, MediaLicenseType } from '../media/media.enums';
 import { Media } from '../media/entities/media.entity';
+import { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,10 @@ function makeOwnerDecisionQueueServiceMock() {
   return { enqueue: jest.fn().mockResolvedValue({ id: uuid(300) }) };
 }
 
+function makeModerationCasesRepoMock() {
+  return { createOpenCase: jest.fn().mockResolvedValue({ id: uuid(400) }) };
+}
+
 function makeDataSourceMock(transactionImpl?: (manager: unknown) => Promise<void>) {
   const managerArticleRepo = {
     findOne: jest.fn(),
@@ -138,6 +143,7 @@ async function buildService(opts: {
   mediaUrlService?: ReturnType<typeof makeMediaUrlServiceMock>;
   revisionsService?: ReturnType<typeof makeRevisionsServiceMock>;
   ownerDecisionQueueService?: ReturnType<typeof makeOwnerDecisionQueueServiceMock>;
+  moderationCasesRepo?: ReturnType<typeof makeModerationCasesRepoMock>;
   dataSource?: ReturnType<typeof makeDataSourceMock>;
 }): Promise<GuideArticlesService> {
   const module: TestingModule = await Test.createTestingModule({
@@ -149,6 +155,7 @@ async function buildService(opts: {
       { provide: MediaUrlService, useValue: opts.mediaUrlService ?? makeMediaUrlServiceMock() },
       { provide: RevisionsService, useValue: opts.revisionsService ?? makeRevisionsServiceMock() },
       { provide: OwnerDecisionQueueService, useValue: opts.ownerDecisionQueueService ?? makeOwnerDecisionQueueServiceMock() },
+      { provide: ModerationCasesRepository, useValue: opts.moderationCasesRepo ?? makeModerationCasesRepoMock() },
       { provide: getDataSourceToken(), useValue: opts.dataSource ?? makeDataSourceMock() },
     ],
   }).compile();
@@ -206,6 +213,48 @@ describe('GuideArticlesService.getPublished', () => {
       attribution: 'Trantuonglam / Wikimedia Commons',
       licenseUrl: 'https://creativecommons.org/licenses/by-sa/4.0/',
     });
+  });
+
+  // 2026-09-27 — `heroImageUrl`/block `imageUrl` are built from the STABLE public file path, which
+  // 404s for anything not `published` (Secure Private Media). Without a real status alongside it,
+  // the editor cannot tell "broken image" apart from "still pending review".
+  it('exposes heroMediaStatus resolved from the real Media row', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(makeArticle({ status: GuideArticleStatus.DRAFT, heroMediaId: uuid(500) }));
+    const mediaRepo = makeMediaRepoMock();
+    mediaRepo.find.mockResolvedValue([{ id: uuid(500), status: MediaStatus.PENDING }]);
+
+    const service = await buildService({ articleRepo, mediaRepo });
+    const result = await service.getDraft(uuid(1));
+
+    expect(result.heroMediaStatus).toBe(MediaStatus.PENDING);
+  });
+
+  it('heroMediaStatus is null when no hero is set', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(makeArticle({ status: GuideArticleStatus.DRAFT, heroMediaId: null }));
+
+    const service = await buildService({ articleRepo });
+    const result = await service.getDraft(uuid(1));
+
+    expect(result.heroMediaStatus).toBeNull();
+  });
+
+  it('exposes mediaStatus on an image_with_rights block content', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const article = makeArticle({ status: GuideArticleStatus.DRAFT });
+    articleRepo.findOne.mockResolvedValue(article);
+    const blockRepo = makeBlockRepoMock();
+    blockRepo.find.mockResolvedValue([
+      { ...makeSectionHeadingBlock(article.id), blockType: GuideBlockType.IMAGE_WITH_RIGHTS, content: { mediaId: uuid(500) } },
+    ]);
+    const mediaRepo = makeMediaRepoMock();
+    mediaRepo.find.mockResolvedValue([{ id: uuid(500), status: MediaStatus.REJECTED }]);
+
+    const service = await buildService({ articleRepo, blockRepo, mediaRepo });
+    const result = await service.getDraft(article.id);
+
+    expect(result.blocks[0]!.content).toMatchObject({ mediaStatus: MediaStatus.REJECTED });
   });
 
   it('VI/EN resolve independently (separate slug+locale rows)', async () => {
@@ -345,6 +394,103 @@ describe('GuideArticlesService.createDraft', () => {
       blocks: [{ blockType: GuideBlockType.PLACE_COLLECTION, content: { heading: 'Ở đâu', emptyStateText: 'Chưa có' } }],
     });
     await expect(service.createDraft(dto as never, ACTOR)).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ─── P0 fix (2026-09-27): orphan guide media never got a moderation case ──────
+// MediaService.register() only creates one when session.placeId is set (place photos); a guide
+// hero/block image is always orphan (placeId null), so it silently never entered any queue —
+// confirmed live on production (zero rows in moderation_cases for a freshly-uploaded guide image).
+describe('GuideArticlesService — moderation case for own pending guide media', () => {
+  function makeMedia(overrides: Partial<Media> = {}): Media {
+    return {
+      id: uuid(500),
+      placeId: null,
+      status: MediaStatus.PENDING,
+      uploadedBy: ACTOR,
+      licenseType: null,
+      attribution: null,
+      licenseUrl: null,
+      ...overrides,
+    } as Media;
+  }
+
+  it('creates an open case for a hero image the actor uploaded, still pending, orphan', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ id: uuid(500) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).toHaveBeenCalledWith(
+      dataSource.manager,
+      expect.objectContaining({ targetType: 'media', targetId: uuid(500) }),
+    );
+  });
+
+  it('does NOT create a case for media the actor does not own', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ uploadedBy: uuid(777) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('does NOT create a case for place-attached media (already handled by MediaService.register)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ placeId: uuid(600) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('does NOT create a case for already-published media (reusing an approved image)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ status: MediaStatus.PUBLISHED })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('checks an image_with_rights block mediaId on saveDraft too', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(makeArticle({ contentVersion: 2 }));
+    dataSource.managerBlockRepo.find.mockResolvedValue([]);
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ id: uuid(500) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ dataSource, moderationCasesRepo });
+    const dto = {
+      ...makeDraftDto({
+        blocks: [{ blockType: GuideBlockType.IMAGE_WITH_RIGHTS, content: { mediaId: uuid(500) } }],
+      }),
+      expectedContentVersion: 1,
+    };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).toHaveBeenCalledWith(
+      dataSource.manager,
+      expect.objectContaining({ targetType: 'media', targetId: uuid(500) }),
+    );
   });
 });
 

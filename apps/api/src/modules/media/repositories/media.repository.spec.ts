@@ -111,6 +111,41 @@ describe('MediaRepository.findByIdForUpdate / updateStatus', () => {
 
     expect(inner.update).toHaveBeenCalledWith({ id: 'm1' }, { status: MediaStatus.PUBLISHED });
   });
+
+  // P0 fix (2026-09-27) — closes the dead end found live: no code path ever set `license_type`,
+  // so `assertMediaPublishEligible()` (guide-articles.service.ts) could never be satisfied by any
+  // media, moderator-approved or not.
+  describe('updateStatusWithLicense', () => {
+    it('license=null → plain status update, no license columns touched', async () => {
+      const inner = createMock<Repository<Media>>({ update: jest.fn() });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+      const sut = new MediaRepository(createMock<Repository<Media>>());
+
+      await sut.updateStatusWithLicense(manager, 'm1', MediaStatus.REJECTED, null);
+
+      expect(inner.update).toHaveBeenCalledWith({ id: 'm1' }, { status: MediaStatus.REJECTED });
+    });
+
+    it('license provided → single UPDATE that COALESCEs license_type (never overwrites an already-classified row)', async () => {
+      const inner = createMock<Repository<Media>>({ query: jest.fn().mockResolvedValue([[], 0]) });
+      const manager = createMock<EntityManager>({ getRepository: jest.fn().mockReturnValue(inner) });
+      const sut = new MediaRepository(createMock<Repository<Media>>());
+
+      await sut.updateStatusWithLicense(manager, 'm1', MediaStatus.PUBLISHED, {
+        type: 'user_submitted',
+        attribution: null,
+        licenseUrl: null,
+      });
+
+      const [query, params] = inner.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain('status = $2');
+      expect(q).toContain('license_type = COALESCE(license_type, $3::media_license_type)');
+      expect(q).toContain("CASE WHEN license_type IS NULL THEN $4 ELSE attribution END");
+      expect(q).toContain("CASE WHEN license_type IS NULL THEN $5 ELSE license_url END");
+      expect(params).toEqual(['m1', MediaStatus.PUBLISHED, 'user_submitted', null, null]);
+    });
+  });
 });
 
 // Media Upload Foundation (2026-07-30) — presign/register support methods.

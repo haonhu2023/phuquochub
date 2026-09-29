@@ -17,7 +17,7 @@ import {
   unpublishGuideArticle,
   type GuideArticleSummary,
 } from './api/guide-editor.api';
-import type { GuideBlockType } from '../guide/types';
+import type { GuideBlockType, MediaModerationStatus } from '../guide/types';
 import { GuideArticleView } from '../guide/GuideArticleView';
 import { GuideMediaPicker } from './GuideMediaPicker';
 import styles from './guide-editor.module.css';
@@ -40,6 +40,8 @@ interface FormState {
   heroMediaId: string;
   /** Chỉ để hiển thị xem trước (G-C) — KHÔNG gửi lên API, backend tự tính lại từ heroMediaId. */
   heroImageUrl: string | null;
+  /** Trạng thái duyệt THẬT của heroMediaId (2026-09-27) — chỉ để hiển thị, không gửi lên API. */
+  heroMediaStatus: MediaModerationStatus | null;
   blocks: EditableBlock[];
 }
 
@@ -91,10 +93,15 @@ function emptyContentFor(blockType: GuideBlockType): Record<string, unknown> {
     case 'faq':
       return { items: [] };
     case 'image_with_rights':
-      // `attribution`/`licenseUrl` đã được backend + public renderer hỗ trợ từ trước (xem
-      // ImageWithRightsBlock.tsx) — chỉ chưa từng có ô nhập ở editor. `alt` là bổ sung mới (JSONB,
-      // không cần migration) để phân biệt với `caption` (renderer trước đây dùng caption làm alt).
-      return { mediaId: '', caption: '', alt: '', attribution: '', licenseUrl: '' };
+      // `alt` bổ sung mới (JSONB, không cần migration) để phân biệt với `caption`. `attribution`/
+      // `licenseUrl` KHÔNG có ở đây dù backend/renderer chấp nhận chúng (ImageWithRightsBlock.tsx)
+      // — 2026-09-27 phát hiện: GuideArticlesService.resolveImageBlockContent() luôn GHI ĐÈ hai
+      // trường đó bằng giá trị trên chính dòng Media (không phải nội dung khối), nên một ô nhập ở
+      // đây từng là "nút giả" — gõ gì cũng bị bỏ qua khi tải lại. Nguồn/giấy phép thật thuộc về
+      // bước duyệt (Media.license_type/attribution/licenseUrl, xem ModerationService.decideMedia) —
+      // đúng thiết kế: chủ bài viết không được tự xác nhận "ảnh này được cấp phép mở" mà không ai
+      // kiểm chứng.
+      return { mediaId: '', caption: '', alt: '' };
   }
 }
 
@@ -169,6 +176,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
     intro: '',
     heroMediaId: '',
     heroImageUrl: null,
+    heroMediaStatus: null,
     blocks: [],
   });
   // Ảnh chụp lần lưu/tải thành công gần nhất — so sánh với form hiện tại để biết "dirty" (2026-09-27,
@@ -237,6 +245,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
             intro: article.intro ?? '',
             heroMediaId: article.heroMediaId ?? '',
             heroImageUrl: article.heroImageUrl,
+            heroMediaStatus: article.heroMediaStatus ?? null,
             blocks: article.blocks.map((b) => ({
               key: nextKey(),
               blockType: b.blockType,
@@ -761,7 +770,8 @@ export function GuideArticleEditorView({ id }: { id: string }) {
               label="Ảnh đại diện (hero)"
               mediaId={form.heroMediaId}
               existingImageUrl={form.heroImageUrl}
-              onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null }))}
+              mediaStatus={form.heroMediaStatus}
+              onChange={(id) => setForm((f) => ({ ...f, heroMediaId: id, heroImageUrl: null, heroMediaStatus: null }))}
               onUploadingChange={(u) => setPickerUploading('hero', u)}
             />
           </div>
@@ -1091,6 +1101,7 @@ function BlockContentFields({
             label="Ảnh"
             mediaId={(c.mediaId as string) ?? ''}
             existingImageUrl={(c.imageUrl as string) ?? null}
+            mediaStatus={(c.mediaStatus as MediaModerationStatus | null) ?? null}
             onChange={(id) => onPatch({ mediaId: id })}
             onUploadingChange={onUploadingChange}
           />
@@ -1110,22 +1121,22 @@ function BlockContentFields({
             onChange={(e) => onPatch({ alt: e.target.value })}
             style={{ marginTop: '0.4rem' }}
           />
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="Nguồn ảnh (attribution, tuỳ chọn)"
-            value={(c.attribution as string) ?? ''}
-            onChange={(e) => onPatch({ attribution: e.target.value })}
-            style={{ marginTop: '0.4rem' }}
-          />
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="Link giấy phép/nguồn ảnh (tuỳ chọn)"
-            value={(c.licenseUrl as string) ?? ''}
-            onChange={(e) => onPatch({ licenseUrl: e.target.value })}
-            style={{ marginTop: '0.4rem' }}
-          />
+          {(c.attribution || c.licenseUrl) && (
+            <p className={styles.fieldHint} style={{ marginTop: '0.4rem' }}>
+              Nguồn: {(c.attribution as string) || '—'}
+              {c.licenseUrl ? (
+                <>
+                  {' · '}
+                  <a href={c.licenseUrl as string} target="_blank" rel="noopener noreferrer">
+                    Giấy phép
+                  </a>
+                </>
+              ) : null}
+            </p>
+          )}
+          <p className={styles.fieldHint} style={{ marginTop: '0.4rem' }}>
+            Nguồn/giấy phép ảnh do người duyệt xác nhận khi duyệt ảnh, không tự nhập ở đây.
+          </p>
         </>
       );
   }

@@ -17,6 +17,11 @@ export interface PlaceCollectionContent {
 
 export type GuideArticleStatus = 'draft' | 'published';
 
+/** Real Media.status values (media.enums.ts MediaStatus) — surfaced 2026-09-27 so the editor can
+ *  tell "still pending review" apart from "broken image": the resolved `imageUrl`/`heroImageUrl`
+ *  are built from a stable path that 404s for anything not `published`. */
+export type MediaModerationStatus = 'pending' | 'published' | 'hidden' | 'rejected';
+
 export type GuideBlockType =
   | 'section_heading'
   | 'rich_text'
@@ -58,6 +63,9 @@ export interface ImageWithRightsContent {
   imageUrl?: string;
   attribution?: string | null;
   licenseUrl?: string | null;
+  /** Real Media.status, resolved by the API — see GuideArticlesService.resolveImageBlockContent()'s
+   *  comment. `undefined` for content that predates this field (treat as unknown, not "fine"). */
+  mediaStatus?: MediaModerationStatus | null;
 }
 
 export interface GuideBlock {
@@ -84,6 +92,7 @@ export interface GuideArticleDetail {
   intro: string | null;
   heroMediaId: string | null;
   heroImageUrl: string | null;
+  heroMediaStatus?: MediaModerationStatus | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: string;
