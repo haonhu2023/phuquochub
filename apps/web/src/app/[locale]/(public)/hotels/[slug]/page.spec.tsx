@@ -234,6 +234,19 @@ describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route 
 // bất kỳ đâu trên trang, dù API đã trả đúng dữ liệu. Dùng lại đúng hệ thống gallery của
 // places/[slug]/page.tsx (MediaCredit + places.module.css .gallery/.galleryFigure/.galleryImg),
 // không dựng bộ hiển thị thứ hai.
+// Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — trang hotel/restaurant riêng
+// (route khách thật sự dùng) hoàn toàn KHÔNG có link "Xem trên bản đồ"/chỉ đường, dù
+// places/[slug]/page.tsx đã có từ trước với cùng toạ độ. Test này khoá lại: link tồn tại VÀ dùng
+// ĐÚNG place.location (không phải toạ độ hard-code/khác nguồn với marker).
+describe('HotelDetailPage — link "Xem trên bản đồ" (chỉ đường, cùng toạ độ với dữ liệu)', () => {
+  it('render link Google Maps đúng toạ độ location của hotel', async () => {
+    await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 } }));
+    const link = screen.getByRole('link', { name: /Xem trên bản đồ/ });
+    expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+});
+
 describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
   function media(overrides: Partial<import('@/modules/places/types').PlaceMedia> = {}) {
     return {

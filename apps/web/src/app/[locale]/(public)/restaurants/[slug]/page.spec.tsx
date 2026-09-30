@@ -85,6 +85,15 @@ describe('RestaurantDetailPage/generateMetadata — getRestaurant() phải nhậ
   });
 });
 
+// Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.spec.tsx's ghi chú đầy đủ, cùng khuôn.
+describe('RestaurantDetailPage — link "Xem trên bản đồ" (chỉ đường, cùng toạ độ với dữ liệu)', () => {
+  it('render link Google Maps đúng toạ độ location của nhà hàng', async () => {
+    await renderPage(restaurant({ location: { lat: 10.2199, lng: 103.9654 } }));
+    const link = screen.getByRole('link', { name: /Xem trên bản đồ/ });
+    expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
+  });
+});
+
 describe('RestaurantDetailPage — gallery ảnh công khai (real-data pass)', () => {
   it('có media đã published -> render ảnh thật', async () => {
     await renderPage(

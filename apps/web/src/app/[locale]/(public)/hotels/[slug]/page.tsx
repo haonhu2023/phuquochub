@@ -15,6 +15,11 @@ import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours'
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
+// Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — chỉ places/[slug]/page.tsx có
+// link "Xem trên bản đồ"/chỉ đường; trang hotel/restaurant riêng (route khách thật sự dùng) hoàn
+// toàn KHÔNG có, dù cùng dữ liệu location. Cùng href pattern places/[slug] đã dùng (Google Maps
+// ?q=lat,lng) — không phải link hai nơi khác toạ độ.
+const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -98,6 +103,15 @@ export default async function HotelDetailPage({ params }: Params) {
         <PlacePhotosButton placeId={h.id} />
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
+      <p>
+        <a
+          href={`https://www.google.com/maps?q=${h.location.lat},${h.location.lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {VIEW_ON_MAP_LABEL[locale]}
+        </a>
+      </p>
 
       <PlaceGallery media={h.media} placeName={h.name} />
 
