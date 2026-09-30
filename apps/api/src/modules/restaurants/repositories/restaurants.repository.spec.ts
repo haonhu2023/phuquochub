@@ -111,4 +111,162 @@ describe('RestaurantsRepository — browse (price_range/cuisine filter, sort, pa
       expect(params).toEqual(['vegetarian']);
     });
   });
+
+  // Bug thật đã sửa (2026-09-30): bản cũ dùng `?? null` rồi CASE WHEN $3::jsonb IS NOT NULL — omit
+  // và "gửi dietary=null để xoá" cùng thành NULL, không thể xoá dietary một khi đã set. Bản mới
+  // đọc-sửa-ghi trong transaction, chỉ đụng cột THỰC SỰ có mặt trong DTO (`!== undefined`).
+  describe('upsertDetails', () => {
+    // CAS thật (2026-09-30): câu đầu tiên trong transaction giờ là CAS UPDATE trên `places` — xem
+    // HotelsRepository.upsertDetails's ghi chú đầy đủ, cùng khuôn.
+    function mockTransaction(existsRows: unknown[], casRow: unknown[] = [{ content_version: 2 }]) {
+      const managerQuery = jest
+        .fn()
+        .mockResolvedValueOnce(casRow)
+        .mockResolvedValueOnce(existsRows)
+        .mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<unknown>) => cb({ query: managerQuery }));
+      return managerQuery;
+    }
+
+    it('CAS không khớp version -> conflict:true, không chạm place_restaurant_details', async () => {
+      const managerQuery = mockTransaction([], []);
+
+      const result = await sut.upsertDetails('p1', { is_local_specialty: true }, 1);
+
+      expect(result).toEqual({ conflict: true });
+      expect(managerQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('chưa có hàng, PATCH is_local_specialty+dietary -> INSERT cả hai, cùng place_id', async () => {
+      const managerQuery = mockTransaction([]);
+
+      const result = await sut.upsertDetails('p1', { is_local_specialty: true, dietary: { vegetarian: true } }, 1);
+
+      const insertCall = managerQuery.mock.calls[2];
+      expect(sql(insertCall[0])).toBe(
+        'INSERT INTO "place_restaurant_details" ("place_id", "is_local_specialty", "dietary") VALUES ($1, $2, $3)',
+      );
+      expect(insertCall[1]).toEqual(['p1', true, JSON.stringify({ vegetarian: true })]);
+      expect(result).toEqual({ conflict: false, newVersion: 2 });
+    });
+
+    it('chưa có hàng, không gửi is_local_specialty -> INSERT tự điền false (khớp DEFAULT DB)', async () => {
+      const managerQuery = mockTransaction([]);
+
+      await sut.upsertDetails('p1', { dietary: { vegan: true } }, 1);
+
+      const insertCall = managerQuery.mock.calls[2];
+      expect(insertCall[1]).toEqual(['p1', false, JSON.stringify({ vegan: true })]);
+    });
+
+    it('đã có hàng, PATCH chỉ is_local_specialty -> UPDATE chỉ đụng cột đó, KHÔNG đụng dietary', async () => {
+      const managerQuery = mockTransaction([{ '?column?': 1 }]);
+
+      await sut.upsertDetails('p1', { is_local_specialty: true }, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_restaurant_details" SET "is_local_specialty" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', true]);
+    });
+
+    it('PATCH dietary=null (xoá tường minh) -> UPDATE ghi NULL cho dietary, không đụng is_local_specialty', async () => {
+      const managerQuery = mockTransaction([{ '?column?': 1 }]);
+
+      await sut.upsertDetails('p1', { dietary: null }, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_restaurant_details" SET "dietary" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', null]);
+    });
+
+    it('đã có hàng, không gửi field nào -> không UPDATE gì (giữ nguyên toàn bộ), version vẫn tăng', async () => {
+      const managerQuery = mockTransaction([{ '?column?': 1 }]);
+
+      const result = await sut.upsertDetails('p1', {}, 1);
+
+      expect(managerQuery).toHaveBeenCalledTimes(2); // CAS UPDATE + SELECT FOR UPDATE
+      expect(result).toEqual({ conflict: false, newVersion: 2 });
+    });
+
+    // Bug thật tìm thấy khi làm CAS (2026-09-30): bản cũ gọi upsertDetails() rồi setCuisines() ở
+    // HAI transaction riêng — mã cuisine không hợp lệ bị từ chối SAU KHI is_local_specialty/dietary
+    // đã commit. Giờ cuisine_codes nằm TRONG CÙNG transaction, mã không hợp lệ rollback toàn bộ.
+    it('cuisine_codes có mặt -> thay toàn bộ gán cuisine TRONG CÙNG transaction với patch scalar', async () => {
+      const managerQuery = mockTransaction([{ '?column?': 1 }]);
+      // mockTransaction() ở trên đã xếp sẵn call #1 (CAS) + #2 (SELECT FOR UPDATE); ba dòng dưới
+      // xếp tiếp #3 (UPDATE scalar patch) + #4 (SELECT cuisines lookup) + #5/#6 (DELETE/INSERT).
+      managerQuery.mockResolvedValueOnce(undefined); // #3 UPDATE scalar patch
+      managerQuery.mockResolvedValueOnce([{ id: 'c1', code: 'seafood' }]); // #4 SELECT cuisines lookup
+      managerQuery.mockResolvedValueOnce(undefined); // #5 DELETE place_cuisines
+      managerQuery.mockResolvedValueOnce(undefined); // #6 INSERT place_cuisines
+
+      const result = await sut.upsertDetails('p1', { is_local_specialty: true, cuisine_codes: ['seafood'] }, 1);
+
+      expect(managerQuery).toHaveBeenCalledWith('DELETE FROM place_cuisines WHERE place_id = $1', ['p1']);
+      expect(managerQuery).toHaveBeenCalledWith('INSERT INTO place_cuisines (place_id, cuisine_id) VALUES ($1, $2)', ['p1', 'c1']);
+      expect(result).toEqual({ conflict: false, newVersion: 2 });
+    });
+
+    it('cuisine_codes chứa mã không tồn tại -> ném BadRequestException, transaction rollback (không audit version bump ở tầng gọi)', async () => {
+      const managerQuery = mockTransaction([{ '?column?': 1 }]);
+      managerQuery.mockResolvedValueOnce(undefined); // #3 UPDATE scalar patch
+      managerQuery.mockResolvedValueOnce([]); // #4 SELECT cuisines lookup — không tìm thấy mã nào
+
+      await expect(sut.upsertDetails('p1', { is_local_specialty: true, cuisine_codes: ['khong_ton_tai'] }, 1)).rejects.toThrow(
+        /khong_ton_tai/,
+      );
+    });
+  });
+
+  describe('setCuisines', () => {
+    it('mã hợp lệ → xoá gán cũ rồi chèn lại trong transaction, trả invalidCodes rỗng', async () => {
+      ds.query.mockResolvedValueOnce([{ id: 'c1', code: 'seafood' }]);
+      const managerQuery = jest.fn().mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+
+      const res = await sut.setCuisines('p1', ['seafood']);
+
+      expect(res).toEqual({ invalidCodes: [] });
+      expect(managerQuery).toHaveBeenCalledWith('DELETE FROM place_cuisines WHERE place_id = $1', ['p1']);
+      expect(managerQuery).toHaveBeenCalledWith('INSERT INTO place_cuisines (place_id, cuisine_id) VALUES ($1, $2)', [
+        'p1',
+        'c1',
+      ]);
+    });
+
+    it('mã không tồn tại → trả invalidCodes, KHÔNG chạm transaction (không âm thầm bỏ qua)', async () => {
+      ds.query.mockResolvedValueOnce([]);
+      const transaction = jest.fn();
+      (ds as unknown as { transaction: jest.Mock }).transaction = transaction;
+
+      const res = await sut.setCuisines('p1', ['khong_ton_tai']);
+
+      expect(res).toEqual({ invalidCodes: ['khong_ton_tai'] });
+      expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('mảng rỗng → xoá toàn bộ gán, không cần tra cuisines', async () => {
+      ds.query.mockResolvedValue(undefined);
+
+      const res = await sut.setCuisines('p1', []);
+
+      expect(res).toEqual({ invalidCodes: [] });
+      expect(ds.query).toHaveBeenCalledWith('DELETE FROM place_cuisines WHERE place_id = $1', ['p1']);
+    });
+  });
+
+  describe('listAllCuisines', () => {
+    it('đọc toàn bộ từ điển cuisines, order theo code', async () => {
+      ds.query.mockResolvedValue([{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }]);
+
+      const res = await sut.listAllCuisines();
+
+      expect(sql(ds.query.mock.calls[0][0])).toBe('SELECT id, code, label_vi, label_en FROM cuisines ORDER BY code');
+      expect(res).toEqual([{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }]);
+    });
+  });
 });

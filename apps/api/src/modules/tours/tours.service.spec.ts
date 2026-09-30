@@ -8,10 +8,12 @@ describe('ToursService', () => {
   type Deps = ConstructorParameters<typeof ToursService>;
   let placesService: LooseMock<Deps[0]>;
   let repo: LooseMock<Deps[1]>;
+  let audit: LooseMock<Deps[2]>;
+  let cacheInvalidation: LooseMock<Deps[3]>;
   let service: ToursService;
 
   beforeEach(() => {
-    placesService = createMock<Deps[0]>({ create: jest.fn(), getBySlug: jest.fn() });
+    placesService = createMock<Deps[0]>({ create: jest.fn(), getBySlug: jest.fn(), getSlugAndStatus: jest.fn() });
     repo = createMock<Deps[1]>({
       listTours: jest.fn(),
       countTours: jest.fn(),
@@ -20,8 +22,12 @@ describe('ToursService', () => {
       schedules: jest.fn(),
       tourCategoryId: jest.fn(),
       createDetails: jest.fn(),
+      updateDetails: jest.fn(),
+      replaceStops: jest.fn(),
     });
-    service = new ToursService(placesService, repo);
+    audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
+    cacheInvalidation = createMock<Deps[3]>({ invalidatePlace: jest.fn().mockResolvedValue(undefined) });
+    service = new ToursService(placesService, repo, audit, cacheInvalidation);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -172,5 +178,41 @@ describe('ToursService', () => {
       expect.objectContaining({ tourType: TourTypeDto.CRUISE, durationMinutes: 120 }),
     );
     expect(res.tour_details).toEqual({ tour_type: 'boat', duration_minutes: 120 });
+  });
+
+  describe('updateDetails (điểm đón/bao gồm-không bao gồm/chính sách hủy)', () => {
+    it('truyền dto nguyên vẹn xuống repo, trả detail đã cập nhật, ghi audit', async () => {
+      repo.updateDetails.mockResolvedValue(undefined);
+      repo.detail.mockResolvedValue({ pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' });
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 't', status: 'draft' });
+
+      const dto = { pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' };
+      const res = await service.updateDetails('t1', dto, 'u1');
+
+      expect(repo.updateDetails).toHaveBeenCalledWith('t1', dto);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.tour_details_updated', entityId: 't1', actorId: 'u1' }),
+      );
+      expect(res).toEqual({ pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' });
+    });
+  });
+
+  describe('updateItinerary (lịch trình theo mốc — thay TOÀN BỘ)', () => {
+    it('replaceStops rồi đọc lại itinerary đã map, ghi audit', async () => {
+      repo.replaceStops.mockResolvedValue(undefined);
+      repo.stops.mockResolvedValue([
+        { id: 's1', name: 'Cảng An Thới', sort_order: 0, time: '08:00', note: null, lat: null, lng: null },
+      ]);
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 't', status: 'draft' });
+
+      const stops = [{ name: 'Cảng An Thới', time: '08:00' }];
+      const res = await service.updateItinerary('t1', { stops }, 'u1');
+
+      expect(repo.replaceStops).toHaveBeenCalledWith('t1', stops);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.tour_itinerary_replaced', entityId: 't1', actorId: 'u1' }),
+      );
+      expect(res[0]).toMatchObject({ id: 's1', name: 'Cảng An Thới', time: '08:00', location: null });
+    });
   });
 });

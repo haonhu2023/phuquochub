@@ -1,4 +1,4 @@
-import { apiGet, apiGetPaginated } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type { PlaceDetail } from '@/modules/places/types';
 import type { RestaurantCard, RestaurantSort } from '../types';
@@ -10,6 +10,8 @@ export interface MenuItem {
   price: number | null;
   currency: string;
   tags: string[] | null;
+  // "Món nổi bật" (product spec, 2026-09-29) — AddRestaurantMenuItemSignature.
+  is_signature: boolean;
   sort_order: number;
 }
 
@@ -20,9 +22,26 @@ export interface MenuSection {
   items: MenuItem[];
 }
 
+// `is_local_specialty`/`dietary` vắng mặt (không phải `null`) khi place_restaurant_details CHƯA
+// từng được tạo — xem HotelDetails's ghi chú tương tự ở hotels.api.ts.
+export interface RestaurantDetails {
+  is_local_specialty?: boolean;
+  dietary?: Record<string, unknown> | null;
+}
+
+// Cùng hình dạng cuisines của Restaurant TRÊN THẺ (label_vi đã dịch), nhưng chi tiết trả OBJECT
+// đầy đủ (RestaurantsRepository.listCuisines) — BUG THẬT đã sửa (2026-09-30): trước đây khai
+// `cuisines: string[]` cho cả detail, sai hình dạng thật của RestaurantsService.getBySlug().
+export interface RestaurantCuisine {
+  id: string;
+  code: string;
+  label_vi: string;
+  label_en: string | null;
+}
+
 export type RestaurantDetail = PlaceDetail & {
-  restaurant_details: Record<string, unknown> | null;
-  cuisines: string[];
+  restaurant_details: RestaurantDetails | null;
+  cuisines: RestaurantCuisine[];
 };
 
 // `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
@@ -63,4 +82,39 @@ export async function listRestaurants(
   if (params.sort) qs.set('sort', params.sort);
   const q = qs.toString();
   return apiGetPaginated<RestaurantCard>(`/restaurants${q ? `?${q}` : ''}`, { cache: 'no-store' });
+}
+
+/** GET /restaurants/cuisines — toàn bộ từ điển (công khai), dùng cho admin UI chọn. */
+export async function listAllCuisines(): Promise<RestaurantCuisine[]> {
+  return apiGet<RestaurantCuisine[]>('/restaurants/cuisines', { cache: 'no-store' });
+}
+
+// PATCH TỪNG PHẦN thật — field bỏ qua giữ nguyên, field `null` xoá (chỉ có ý nghĩa với `dietary`,
+// `is_local_specialty` là boolean không có khái niệm xoá). `cuisine_codes` khi có mặt thay TOÀN BỘ
+// gán hiện có (không patch từng phần tử) — khớp UpdateRestaurantDetailsDto (apps/api).
+// `expected_content_version` (2026-09-30) — CAS thật, BẮT BUỘC: xem UpdateHotelDetailsInput's ghi
+// chú tương tự ở hotels.api.ts. Cùng token bảo vệ CẢ `cuisine_codes` (một lần ghi, một transaction
+// ở backend — xem RestaurantsRepository.upsertDetails).
+export interface UpdateRestaurantDetailsInput {
+  expected_content_version: number;
+  is_local_specialty?: boolean;
+  dietary?: Record<string, unknown> | null;
+  cuisine_codes?: string[];
+}
+
+type RestaurantDetailsResponse = RestaurantDetails & { cuisines: RestaurantCuisine[]; content_version: number };
+
+// Đặc quyền — hoạt động cả khi nhà hàng còn draft/pending (GET /restaurants/:slug @Public() chỉ
+// trả place đã published). Dùng để tải lại giá trị hiện tại cho form sửa. Luôn trả một object (có
+// content_version) — KHÔNG còn `null`.
+export async function getRestaurantDetails(placeId: string, accessToken: string): Promise<RestaurantDetailsResponse> {
+  return apiGetAuth(`/restaurants/${encodeURIComponent(placeId)}/details`, accessToken, { cache: 'no-store' });
+}
+
+export async function updateRestaurantDetails(
+  placeId: string,
+  payload: UpdateRestaurantDetailsInput,
+  accessToken: string,
+): Promise<RestaurantDetailsResponse> {
+  return apiPatchAuth(`/restaurants/${encodeURIComponent(placeId)}/details`, accessToken, payload);
 }

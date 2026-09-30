@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { PriceRange } from '../../places/place.enums';
 import { RestaurantSort } from '../dto/restaurants.dto';
 import { MediaUrlService } from '../../../core/media-url/media-url.service';
@@ -12,7 +12,14 @@ type CardRow = Record<string, unknown> & CoverImageColumns;
 export interface MenuSectionInput {
   name: string;
   sort_order?: number;
-  items: Array<{ name: string; price?: number | null; currency?: string; tags?: unknown; sort_order?: number }>;
+  items: Array<{
+    name: string;
+    price?: number | null;
+    currency?: string;
+    tags?: unknown;
+    is_signature?: boolean;
+    sort_order?: number;
+  }>;
 }
 
 export interface RestaurantListFilters {
@@ -109,6 +116,11 @@ export class RestaurantsRepository {
     );
   }
 
+  /** Toàn bộ từ điển cuisines (cho admin UI chọn — không phải cuisine ĐÃ gán của một place). */
+  listAllCuisines() {
+    return this.ds.query(`SELECT id, code, label_vi, label_en FROM cuisines ORDER BY code`);
+  }
+
   sections(placeId: string) {
     return this.ds.query(
       `SELECT id, name, sort_order FROM restaurant_menu_sections WHERE place_id = $1 ORDER BY sort_order ASC`,
@@ -119,10 +131,127 @@ export class RestaurantsRepository {
   itemsBySection(sectionIds: string[]) {
     if (sectionIds.length === 0) return Promise.resolve([]);
     return this.ds.query(
-      `SELECT id, section_id, name, price, currency, tags, sort_order
+      `SELECT id, section_id, name, price, currency, tags, is_signature, sort_order
        FROM restaurant_menu_items WHERE section_id = ANY($1) ORDER BY sort_order ASC`,
       [sectionIds],
     );
+  }
+
+  /**
+   * UPSERT place_restaurant_details — hàng chưa chắc tồn tại (cùng lý do HotelsRepository.
+   * upsertDetails). PATCH TỪNG PHẦN thật: `dto.<field> !== undefined` phân biệt "không gửi" (giữ
+   * nguyên) với "gửi null" (xoá — chỉ có ý nghĩa với `dietary`, `is_local_specialty` là boolean
+   * không có khái niệm "xoá") với "gửi giá trị". Bug đã sửa: bản cũ dùng `?? null` rồi CASE WHEN
+   * $3::jsonb IS NOT NULL — omit và "gửi dietary=null để xoá" cùng thành NULL, không thể xoá
+   * dietary được nữa một khi đã set.
+   *
+   * CAS thật (2026-09-30, sửa sau góp ý): `UPDATE places SET content_version = content_version + 1
+   * WHERE id = $1 AND content_version = $2` chạy TRƯỚC TIÊN trong transaction — xem ghi chú đầy đủ
+   * ở HotelsRepository.upsertDetails (cùng khuôn, cùng lý do "SELECT ... FOR UPDATE" cũ không đủ).
+   * 0 dòng khớp → 'conflict' ngay, không chạm bảng nào khác.
+   *
+   * `cuisine_codes` (nếu có mặt trong dto) được thay TOÀN BỘ trong CÙNG transaction này — sửa một
+   * lỗi thật tìm thấy khi làm CAS: bản cũ gọi `upsertDetails()` rồi `setCuisines()` RIÊNG (hai
+   * transaction khác nhau) từ RestaurantsService.updateDetails — mã cuisine không hợp lệ bị từ chối
+   * SAU KHI is_local_specialty/dietary đã commit, để lại một ghi nửa vời. Gộp vào một transaction
+   * duy nhất: mã không hợp lệ throw BadRequestException bên trong callback → toàn bộ transaction
+   * (kể cả version bump) tự rollback, không có nội dung nào được ghi.
+   */
+  async upsertDetails(
+    placeId: string,
+    dto: { is_local_specialty?: boolean; dietary?: Record<string, unknown> | null; cuisine_codes?: string[] },
+    expectedVersion: number,
+  ): Promise<{ conflict: boolean; newVersion?: number }> {
+    return this.ds.transaction(async (m) => {
+      const casRows: Array<{ content_version: number }> = await m.query(
+        `UPDATE places SET content_version = content_version + 1
+           WHERE id = $1 AND content_version = $2
+           RETURNING content_version`,
+        [placeId, expectedVersion],
+      );
+      if (casRows.length === 0) {
+        return { conflict: true };
+      }
+      const newVersion = casRows[0].content_version;
+
+      const rows = await m.query(`SELECT 1 FROM place_restaurant_details WHERE place_id = $1 FOR UPDATE`, [placeId]);
+      const exists = rows.length > 0;
+
+      const patch: Record<string, unknown> = {};
+      if (dto.is_local_specialty !== undefined) patch.is_local_specialty = dto.is_local_specialty;
+      if (dto.dietary !== undefined) patch.dietary = dto.dietary != null ? JSON.stringify(dto.dietary) : null;
+
+      if (!exists) {
+        // NOT NULL DEFAULT false ở DB — đặt TRƯỚC dietary trong thứ tự cột cho dễ đọc (Object.keys
+        // giữ thứ tự chèn; nếu patch đã có is_local_specialty từ dto thì giữ nguyên giá trị đó).
+        const insertPatch: Record<string, unknown> = { is_local_specialty: patch.is_local_specialty ?? false, ...patch };
+        const cols = ['place_id', ...Object.keys(insertPatch)];
+        const placeholders = cols.map((_, i) => `$${i + 1}`);
+        await m.query(
+          `INSERT INTO "place_restaurant_details" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')})`,
+          [placeId, ...Object.values(insertPatch)],
+        );
+      } else if (Object.keys(patch).length > 0) {
+        const setClauses = Object.keys(patch)
+          .map((k, i) => `"${k}" = $${i + 2}`)
+          .join(', ');
+        await m.query(`UPDATE "place_restaurant_details" SET ${setClauses} WHERE place_id = $1`, [
+          placeId,
+          ...Object.values(patch),
+        ]);
+      }
+
+      if (dto.cuisine_codes !== undefined) {
+        await this.replaceCuisinesWithManager(m, placeId, dto.cuisine_codes);
+      }
+
+      return { conflict: false, newVersion };
+    });
+  }
+
+  /** Thân dùng chung giữa `upsertDetails` (trong transaction CAS) và `setCuisines` (standalone, không CAS). */
+  private async replaceCuisinesWithManager(m: EntityManager, placeId: string, codes: string[]): Promise<void> {
+    if (codes.length === 0) {
+      await m.query(`DELETE FROM place_cuisines WHERE place_id = $1`, [placeId]);
+      return;
+    }
+    const found: Array<{ id: string; code: string }> = await m.query(`SELECT id, code FROM cuisines WHERE code = ANY($1)`, [codes]);
+    const foundCodes = new Set(found.map((f) => f.code));
+    const invalidCodes = codes.filter((c) => !foundCodes.has(c));
+    if (invalidCodes.length > 0) {
+      throw new BadRequestException(`Mã ẩm thực không tồn tại: ${invalidCodes.join(', ')}`);
+    }
+    await m.query(`DELETE FROM place_cuisines WHERE place_id = $1`, [placeId]);
+    for (const f of found) {
+      await m.query(`INSERT INTO place_cuisines (place_id, cuisine_id) VALUES ($1, $2)`, [placeId, f.id]);
+    }
+  }
+
+  /**
+   * Thay TOÀN BỘ gán cuisine của một place theo danh sách MÃ. Mã không tồn tại trong `cuisines` bị
+   * từ chối (không âm thầm bỏ qua) — trả về mảng mã không hợp lệ để service ném 400 rõ ràng.
+   */
+  async setCuisines(placeId: string, codes: string[]): Promise<{ invalidCodes: string[] }> {
+    if (codes.length === 0) {
+      await this.ds.query(`DELETE FROM place_cuisines WHERE place_id = $1`, [placeId]);
+      return { invalidCodes: [] };
+    }
+    const found: Array<{ id: string; code: string }> = await this.ds.query(
+      `SELECT id, code FROM cuisines WHERE code = ANY($1)`,
+      [codes],
+    );
+    const foundCodes = new Set(found.map((f) => f.code));
+    const invalidCodes = codes.filter((c) => !foundCodes.has(c));
+    if (invalidCodes.length > 0) {
+      return { invalidCodes };
+    }
+    await this.ds.transaction(async (m) => {
+      await m.query(`DELETE FROM place_cuisines WHERE place_id = $1`, [placeId]);
+      for (const f of found) {
+        await m.query(`INSERT INTO place_cuisines (place_id, cuisine_id) VALUES ($1, $2)`, [placeId, f.id]);
+      }
+    });
+    return { invalidCodes: [] };
   }
 
   /** Thay toàn bộ menu (sections + items) của place. */
@@ -142,9 +271,17 @@ export class RestaurantsRepository {
         const sectionId = secRows[0].id;
         for (const [ii, it] of (s.items ?? []).entries()) {
           await m.query(
-            `INSERT INTO restaurant_menu_items (section_id, name, price, currency, tags, sort_order)
-             VALUES ($1,$2,$3,$4,$5,$6)`,
-            [sectionId, it.name, it.price ?? null, it.currency ?? 'VND', it.tags ?? null, it.sort_order ?? ii],
+            `INSERT INTO restaurant_menu_items (section_id, name, price, currency, tags, is_signature, sort_order)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [
+              sectionId,
+              it.name,
+              it.price ?? null,
+              it.currency ?? 'VND',
+              it.tags ?? null,
+              it.is_signature ?? false,
+              it.sort_order ?? ii,
+            ],
           );
         }
       }

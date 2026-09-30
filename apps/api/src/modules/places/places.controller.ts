@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { Public } from '../authz/decorators/public.decorator';
@@ -27,6 +28,7 @@ import {
   SaveNameDraftDto,
   SaveShortDescriptionDraftDto,
   UpdatePlaceDto,
+  UpdatePlaceFaqsDto,
 } from './dto/places.dto';
 
 // api.md §11. Đọc công khai; ghi qua permission (deny-by-default).
@@ -255,5 +257,14 @@ export class PlacesController {
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   preview(@Param('id', ParseUUIDPipe) id: string) {
     return this.placesService.preview(id);
+  }
+
+  // FAQ (product spec, 2026-09-29) — place_faqs đã tồn tại (InitPlaces), đây là đường GHI đầu
+  // tiên. Thay TOÀN BỘ (cùng khuôn PATCH :id/rooms, :id/menu).
+  @Put(':id/faqs')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  updateFaqs(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdatePlaceFaqsDto, @CurrentUser() user: AuthPrincipal) {
+    return this.placesService.updateFaqs(id, dto.faqs, user.sub);
   }
 }

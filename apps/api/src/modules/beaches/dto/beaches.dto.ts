@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { PriceRange } from '../../places/place.enums';
 
 export const BEACH_SORT_VALUES = ['rating_desc', 'name_asc', 'newest'] as const;
@@ -39,4 +39,42 @@ export class ListBeachesQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   limit?: number;
+}
+
+// place_beach_details (InitBeachDetails1720007700000, product spec 2026-09-29). UPSERT — cùng lý
+// do UpdateHotelDetailsDto: hàng này không tự sinh khi place category='beach' ra đời.
+//
+// access_route/characteristics/services: mô tả tĩnh, KHÔNG bắt buộc nguồn.
+// best_season/lifeguard_info/sourced_notes: trường "nhạy thời gian"/an toàn — brief cấm suy đoán
+// ("Không tạo điểm 'an toàn' từ suy đoán"). Mỗi trường có *_source_id TÙY CHỌN; service tự ghi
+// *_verified_at=now() khi có mặt, cùng khuôn UpdateHotelDetailsDto.star_rating_source_id.
+// Field TÙY CHỌN "được phép xoá" khai kiểu `T | null` (không chỉ `T | undefined`) — xem ghi chú
+// đầy đủ ở UpdateHotelDetailsDto.
+export class UpdateBeachDetailsDto {
+  @IsOptional() @IsString() @MaxLength(2000)
+  access_route?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  characteristics?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  services?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  best_season?: string | null;
+
+  @IsOptional() @IsUUID()
+  best_season_source_id?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  lifeguard_info?: string | null;
+
+  @IsOptional() @IsUUID()
+  lifeguard_info_source_id?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  sourced_notes?: string | null;
+
+  @IsOptional() @IsUUID()
+  sourced_notes_source_id?: string | null;
 }

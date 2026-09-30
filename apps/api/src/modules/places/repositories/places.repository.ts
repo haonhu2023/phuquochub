@@ -75,6 +75,10 @@ export interface PlaceDetailRow extends PlaceCardRow {
   admin_area: string | null;
   description: string | null;
   opening_hours: Record<string, unknown> | null;
+  /** "Thời lượng tham quan" (attraction, product spec 2026-09-29) — nullable, cùng lý do province. */
+  visit_duration_minutes: number | null;
+  /** "Quy định" (attraction) — nullable. */
+  rules: string | null;
   osm_id: string | null; // bigint → string qua driver
   created_at: Date;
   updated_at: Date;
@@ -168,6 +172,7 @@ const RIGHT_NOW_CANDIDATE_CAP = 60;
 const DETAIL_EXTRA_COLS = `
   (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
   p.address, p.ward, p.province, p.admin_area, p.description, p.opening_hours, p.osm_id,
+  p.visit_duration_minutes, p.rules,
   p.created_at, p.updated_at, p.verified_at,
   p.xmin::text AS row_version
 `;
@@ -354,6 +359,41 @@ export class PlacesRepository {
        ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
       [placeId],
     );
+  }
+
+  /** MỌI FAQ (mọi status) — cho actor đặc quyền tự sửa lại đúng những gì họ đã nhập, không chỉ bản published. */
+  listFaqsForOwner(placeId: string): Promise<PlaceFaqRow[]> {
+    return this.repo.query(
+      `SELECT id, question, answer, sort_order, is_ai_generated, status
+       FROM place_faqs
+       WHERE place_id = $1
+       ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
+      [placeId],
+    );
+  }
+
+  /**
+   * Thay TOÀN BỘ FAQ của một place (đặc quyền Place.Edit.Managed) — cùng khuôn
+   * HotelsRepository.replaceRooms/RestaurantsRepository.replaceMenu. FAQ do actor đã có quyền sửa
+   * place nhập trực tiếp thì publish ngay (status='published') — cùng mức tin cậy PATCH :id/
+   * update() đang cho phép sửa description/short_description trực tiếp, không dựng thêm một hàng
+   * đợi kiểm duyệt riêng cho tính năng nhỏ này. is_ai_generated luôn false (chỉ FAQ AI tự sinh mới
+   * true — không đường ghi nào ở đây tạo loại đó).
+   */
+  async replaceFaqs(
+    placeId: string,
+    faqs: Array<{ question: string; answer: string; sort_order?: number }>,
+  ): Promise<void> {
+    await this.repo.manager.transaction(async (m) => {
+      await m.query(`DELETE FROM place_faqs WHERE place_id = $1`, [placeId]);
+      for (const [i, f] of faqs.entries()) {
+        await m.query(
+          `INSERT INTO place_faqs (place_id, question, answer, sort_order, is_ai_generated, status)
+           VALUES ($1, $2, $3, $4, false, 'published')`,
+          [placeId, f.question, f.answer, f.sort_order ?? i],
+        );
+      }
+    });
   }
 
   /**

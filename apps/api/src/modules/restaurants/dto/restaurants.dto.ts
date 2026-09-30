@@ -1,5 +1,21 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Min, MaxLength, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+// CAS thật (2026-09-30) — xem ghi chú đầy đủ ở UpdateHotelDetailsDto: token `expected_content_version`
+// tái dùng ĐÚNG `places.content_version` đã có, không dựng hệ version thứ hai cho satellite table.
 import { PriceRange } from '../../places/place.enums';
 
 export class MenuItemDto {
@@ -15,8 +31,35 @@ export class MenuItemDto {
   @IsOptional()
   tags?: unknown;
 
+  // "Món nổi bật" (product spec, 2026-09-29) — AddRestaurantMenuItemSignature.
+  @IsOptional() @IsBoolean()
+  is_signature?: boolean;
+
   @IsOptional()
   sort_order?: number;
+}
+
+// place_restaurant_details.is_local_specialty có DEFAULT false ở DB nên upsert không cần input bắt
+// buộc (khác hotel_type NOT NULL không default) — vẫn cùng lý do UPSERT: hàng này không được tạo
+// tự động khi một place category='restaurant' ra đời.
+export class UpdateRestaurantDetailsDto {
+  @IsInt() @Min(0)
+  expected_content_version!: number;
+
+  @IsOptional() @IsBoolean()
+  is_local_specialty?: boolean;
+
+  // `| null` (không chỉ `| undefined`) để caller diễn đạt tường minh "xoá dietary" — xem ghi chú
+  // đầy đủ ở UpdateHotelDetailsDto.
+  @IsOptional() @IsObject()
+  dietary?: Record<string, unknown> | null;
+
+  // Danh sách MÃ cuisine (bảng cuisines.code) — thay TOÀN BỘ gán hiện có, cùng khuôn
+  // UpdateHotelRoomsDto/UpdateRestaurantMenuDto (replace-all, không patch từng phần tử). Mã không
+  // tồn tại bị từ chối ở service (không âm thầm bỏ qua — "thiếu khác với xác nhận không có").
+  @IsOptional() @IsArray() @ArrayMaxSize(20)
+  @IsString({ each: true }) @MaxLength(60, { each: true })
+  cuisine_codes?: string[];
 }
 
 export class MenuSectionDto {

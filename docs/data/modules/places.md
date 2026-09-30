@@ -30,7 +30,7 @@ users ──────────────┘ (created_by / updated_by)
 >
 > **Nguyên tắc:** Place chỉ chứa **dữ liệu ổn định** hoặc **cache đọc nhanh** (job-synced). Dữ liệu biến động nằm ở entity vệ tinh: `contacts` (ADR-005) · `price_history` (ADR-006) · `media` (ADR-009) · `wiki_revisions` (ADR-014, kiêm lịch sử trạng thái — WF-14) · `reviews` · `verifications` (ADR-008).
 >
-> **Quy ước chống drift (B7):** đây là bảng cột **duy nhất** của Place. **Mọi tài liệu khác** (database.md, api.md, product/*, ADR, discovery…) **PHẢI trỏ về mục này**, **không chép lại** bảng cột. Trường mở rộng theo loại (Hotel/Restaurant/Tour) đăng ký ở **§13**, không thêm cột vào `places`.
+> **Quy ước chống drift (B7):** đây là bảng cột **duy nhất** của Place. **Mọi tài liệu khác** (database.md, api.md, product/*, ADR, discovery…) **PHẢI trỏ về mục này**, **không chép lại** bảng cột. Trường mở rộng theo loại (Hotel/Restaurant/Tour/Beach) đăng ký ở **§13**, không thêm cột vào `places` (Attraction là ngoại lệ nhỏ — xem §13.6).
 
 | Cột | Kiểu | Null | Mô tả |
 |---|---|---|---|
@@ -206,7 +206,7 @@ Tách riêng để lưu **provenance** (nguồn gốc AI) và không trộn lẫ
 
 ## 13. Bảng mở rộng theo loại (Place chuyên biệt — **schema thi hành**)
 
-> **Nguồn sự thật (authoritative) cho phần mở rộng Place.** Hotel/Restaurant/Tour là **Place chuyên biệt** (`category=hotel/restaurant/tour`) — **không** thêm cột vào `places` (§3 bất biến), mà tách **bảng mở rộng** liên kết `place_id` (FK thật + `ON DELETE CASCADE`, **không** polymorphic). Mô hình **satellite** chốt ở **[ADR-002](../../99-decisions/ADR-002-place-extension.md) (Accepted 2026-07-13)** theo [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md). Mọi tài liệu khác (database.md §3.24, erd.md, data-dictionary) **trỏ về mục này**.
+> **Nguồn sự thật (authoritative) cho phần mở rộng Place.** Hotel/Restaurant/Tour/Beach là **Place chuyên biệt** (`category=hotel/restaurant/tour/beach`) — **không** thêm cột vào `places` (§3 bất biến), mà tách **bảng mở rộng** liên kết `place_id` (FK thật + `ON DELETE CASCADE`, **không** polymorphic). Mô hình **satellite** chốt ở **[ADR-002](../../99-decisions/ADR-002-place-extension.md) (Accepted 2026-07-13; mở rộng cho Beach 2026-09-29)** theo [ADR-003](../../99-decisions/ADR-003-no-polymorphic.md). Mọi tài liệu khác (database.md §3.24, erd.md, data-dictionary) **trỏ về mục này**.
 >
 > **Event KHÔNG ở đây** — Event là thực thể **peer** (Hybrid), định nghĩa tại [database.md §3.22–3.23](../database.md).
 
@@ -277,11 +277,59 @@ Tách riêng để lưu **provenance** (nguồn gốc AI) và không trộn lẫ
 **`tour_stops`** — 1:N places — `id` PK, `place_id` FK (`CASCADE`), `name` VARCHAR(160), `location` GEOGRAPHY(Point,4326) (BR-T2), `sort_order` INT, `time` VARCHAR(40), `note` VARCHAR(300), timestamps. **Index:** `(place_id, sort_order)`, `GIST(location)`.
 **`tour_schedules`** — 1:N places — `id` PK, `place_id` FK (`CASCADE`), `date` DATE, `capacity` INT, `price` NUMERIC(12,2), `currency` CHAR(3) default `VND`, `valid_from/valid_to` TIMESTAMPTZ, timestamps. **Index:** `(place_id, date)`.
 
-### 13.4 Nguyên tắc chung (mọi loại)
+Tour cũng có `organizer_id` (FK → places) trên `place_tour_details` — thêm ở 13.3, kèm `pickup_point`
+VARCHAR(300), `inclusions`/`exclusions`/`cancellation_policy` TEXT (Owner Command Center category
+expansion, 2026-09-29) — tất cả nullable, ghi qua `PATCH /tours/:id/details`.
+
+### 13.5 Beach (`category=beach`) — mở rộng ADR-002, 2026-09-29
+
+> **Trước 2026-09-29, Beach KHÔNG có bảng vệ tinh** — chỉ là khung nhìn theo danh mục trên chính
+> `places` (xem `BeachesRepository`/`AttractionsRepository`: JOIN `categories.slug='beach'`, không
+> bảng riêng). Đó là lựa chọn đúng **tại thời điểm đó**, vì beach chưa có trường nào khác Place lõi
+> cần lưu. Sản phẩm nay cần 6 trường chuyên biệt thật (đường vào, đặc điểm bãi, mùa tham khảo, dịch
+> vụ, thông tin cứu hộ, lưu ý có nguồn) — đủ để beach hội đủ điều kiện một bảng vệ tinh, **đúng
+> khuôn Class-Table Inheritance đã chốt ở [ADR-002](../../99-decisions/ADR-002-place-extension.md)**
+> (satellite `place_<type>_details`, PK=FK=`place_id`, `ON DELETE CASCADE`, discriminator =
+> `places.category`, **0 cột thêm vào `places`**) — không phải một mô hình mới, không vi phạm quyết
+> định gốc, mà là ÁP DỤNG quyết định gốc cho category thứ tư khi nó thật sự cần. Luồng ghi vẫn đi
+> qua đúng route chính thống: `PlacesService`/`PlacesController` cho base Place, `BeachesService`
+> ghép thêm `beach_details` — không có bản ghi Place thứ hai, không CMS riêng.
+
+**`place_beach_details`** — 1:1 với `places`:
+
+| Cột | Kiểu | Null | Ghi chú |
+|---|---|---|---|
+| `place_id` | UUID (PK, FK → places) | ✗ | 1:1; `ON DELETE CASCADE` |
+| `access_route` | TEXT | ✓ | đường vào — mô tả tĩnh, không cần nguồn |
+| `characteristics` | TEXT | ✓ | đặc điểm bãi (cát/độ dài/mật độ) — mô tả tĩnh |
+| `services` | TEXT | ✓ | dịch vụ (cho thuê đồ, ăn uống…) — mô tả tĩnh |
+| `best_season` | TEXT | ✓ | mùa tham khảo — trường "nhạy thời gian", tách biệt khỏi cảnh báo thời tiết/an toàn hiện có |
+| `best_season_source_id` | UUID (FK → sources) | ✓ | tái dùng `sources` (đã có) — **không** dựng hệ nguồn thứ hai |
+| `best_season_verified_at` | TIMESTAMPTZ | ✓ | chỉ được set khi `best_season_source_id` có mặt |
+| `lifeguard_info` | TEXT | ✓ | thông tin cứu hộ — **KHÔNG BAO GIỜ** suy diễn trạng thái "an toàn"; chỉ hiển thị nguyên văn kèm nguồn |
+| `lifeguard_info_source_id` | UUID (FK → sources) | ✓ | |
+| `lifeguard_info_verified_at` | TIMESTAMPTZ | ✓ | |
+| `sourced_notes` | TEXT | ✓ | lưu ý có nguồn |
+| `sourced_notes_source_id` | UUID (FK → sources) | ✓ | |
+| `sourced_notes_verified_at` | TIMESTAMPTZ | ✓ | |
+
+Không dùng cỗ máy `evidence_artifacts`/`evidence_reviews` (được xây riêng cho `opening_hours`, có
+policy hết hạn/độ ổn định lịch không áp dụng ở đây) — cặp `(*_source_id, *_verified_at)` là mẫu
+nhẹ, cùng khuôn `price_history.source_id`. Nhất quán giá trị/nguồn: đổi `best_season`/
+`lifeguard_info`/`sourced_notes` mà không kèm nguồn mới cho ĐÚNG giá trị đó → xoá nguồn/verified_at
+cũ (không giữ nhãn "có nguồn" cho một giá trị chưa được xác minh) — thực thi ở
+`BeachesRepository.upsertDetails` (`computeSourcedFieldPatch`), chứng minh bằng e2e Postgres thật
+(`test/beach-details-patch-semantics.e2e-spec.ts`).
+
+Migration: `InitBeachDetails1720007700000`. Đọc: `GET /beaches/:slug` (ghép `beach_details` lên base
+Place). Ghi: `PATCH /beaches/:id/details` (`Place.Edit.Managed`).
+
+### 13.6 Nguyên tắc chung (mọi loại)
 - Base Place (§3) **không đổi** khi thêm loại; discriminator = `places.category`; **0 cột thêm vào `places`**.
 - FK thật + `ON DELETE CASCADE`; **không** polymorphic (ADR-003).
 - Giá **xác minh & lịch sử** dùng `price_history` (ADR-006, `entity_type` `hotel/tour`); `price_ref`/`tour_schedules.price` là **cache hiển thị nhanh** (BR-H2/BR-T6).
-- Media/contacts/verifications/wiki_revisions của Hotel/Restaurant/Tour **tái dùng nguyên trạng** trên `place_id`.
+- Media/contacts/verifications/wiki_revisions của Hotel/Restaurant/Tour/Beach **tái dùng nguyên trạng** trên `place_id`.
+- Attraction (`category=attraction`) **vẫn KHÔNG có bảng vệ tinh** — 2 trường riêng (`visit_duration_minutes`, `rules`) đủ nhỏ để ở thẳng trên `places` (nullable, chỉ attraction điền) thay vì một bảng chỉ có 2 cột; xem migration `AddAttractionFields1720007600000`.
 
 ---
 

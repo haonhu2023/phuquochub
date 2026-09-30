@@ -28,7 +28,7 @@ function permissionsOf(name: Handler): string[] | undefined {
 }
 
 const READ_ROUTES: Handler[] = ['list', 'listRightNow', 'listRevisions', 'getBySlug'];
-const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve'];
+const WRITE_ROUTES: Handler[] = ['create', 'update', 'archive', 'approve', 'updateFaqs'];
 // PLACE-041: `mine` là route THỨ BA — không @Public (đòi hỏi đăng nhập, JwtAuthGuard chặn), nhưng
 // cũng không mang @RequirePermissions tĩnh (nội dung tự lọc theo userId gọi, xem controller +
 // permissions.guard.ts). Tách riêng khỏi READ_ROUTES/WRITE_ROUTES để không âm thầm nới lỏng ý
@@ -61,6 +61,7 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       ['update', 'Place.Edit.Managed'],
       ['archive', 'Place.Archive'],
       ['approve', 'Place.Approve'],
+      ['updateFaqs', 'Place.Edit.Managed'],
     ];
 
     it.each(EXPECTED)('`%s` yêu cầu đúng permission %s', (name, permission) => {

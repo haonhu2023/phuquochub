@@ -3,6 +3,18 @@
 ## Status
 **Accepted** — 2026-07-13 (Wave 2). Hiện thực hóa nguyên tắc [ADR-001](ADR-001-place-is-core.md) (Place là core) cho Hotel/Restaurant/Tour; áp mẫu FK-thật của [ADR-003](ADR-003-no-polymorphic.md). Chuyển stub [places.md §13](../data/modules/places.md) thành schema thi hành.
 
+**Amendment — 2026-09-29 (Owner Command Center category expansion):** áp dụng CÙNG mô hình
+satellite cho **Beach** (`place_beach_details`, xem [places.md §13.5](../data/modules/places.md)).
+Beach trước đó không có bảng vệ tinh (chỉ là khung nhìn theo category trên `places` — xem
+`BeachesRepository`/`AttractionsRepository`), vì tại thời điểm ADR này được chấp thuận, beach/
+attraction chưa có trường nào khác Place lõi cần lưu — đó là kết luận đúng lúc đó, không phải một
+quyết định kiến trúc khác. Sản phẩm nay cần 6 trường chuyên biệt cho beach; áp Decision #1 dưới đây
+(satellite 1:1, PK=FK=`place_id`, `ON DELETE CASCADE`, discriminator=`places.category`, 0 cột thêm
+vào `places`) là ÁP DỤNG quyết định gốc, không phải ngoại lệ hay mô hình song song. Attraction
+KHÔNG nhận bảng vệ tinh trong đợt này — 2 trường của nó (`visit_duration_minutes`, `rules`) đủ nhỏ
+để ở thẳng trên `places` (xem §13.6); ngưỡng "đủ nhỏ để ở trên `places`" so với "đủ lớn để xứng một
+bảng vệ tinh" là đánh giá thực dụng theo số trường, không phải một quy tắc số học cứng.
+
 ## Context
 - Hotel/Restaurant/Tour là các loại **địa điểm chuyên biệt** (đều là POI có tọa độ) cần trường riêng (hạng sao, loại phòng, thực đơn, lộ trình, lịch khởi hành) mà `places` lõi **không** chứa.
 - Nguyên tắc B7/[ADR-001](ADR-001-place-is-core.md): `places` là bảng cột **duy nhất, ổn định** — **không** thêm cột theo loại.
@@ -44,6 +56,7 @@ Chốt **một** cơ chế mở rộng Place cho Hotel/Restaurant/Tour **không 
 ## Migration
 - **Chỉ thêm bảng mới**; **0 ALTER** trên `places`.
 - Bảng mới (12 extension): `place_hotel_details`, `hotel_room_types`, `amenities`, `place_amenities`, `place_restaurant_details`, `restaurant_menu_sections`, `restaurant_menu_items`, `cuisines`, `place_cuisines`, `place_tour_details`, `tour_stops`, `tour_schedules`.
+- Bảng mới (Amendment 2026-09-29): `place_beach_details` (migration `InitBeachDetails1720007700000`).
 - Peer Event (2): `events`, `event_occurrences`.
 - Enum mới: `hotel_type`, `tour_type`, `tour_difficulty`, `event_status`, `event_status_override`.
 - Enum mở rộng: `source_attributions.entity_type += event`; `wiki_revisions.entity_type += event`; **`media` exclusive arc += `event_id`** (ADR-009). `price_history.entity_type` **đã có** `hotel/tour/event`. **Mọi discriminator: lowercase snake_case (B-3).**

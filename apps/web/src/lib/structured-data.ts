@@ -243,7 +243,10 @@ export function buildHotelJsonLd(hotel: HotelDetail): JsonLd {
 export function buildRestaurantJsonLd(restaurant: RestaurantDetail): JsonLd {
   const fields = baseLocationFields(restaurant, `/restaurants/${restaurant.slug}`);
   if (restaurant.cuisines.length > 0) {
-    fields.servesCuisine = restaurant.cuisines;
+    // schema.org servesCuisine muốn chuỗi/mảng chuỗi — BUG THẬT đã sửa (2026-09-30): trước đây gán
+    // thẳng mảng object {id,code,label_vi,label_en} (đúng hình dạng RestaurantsService.getBySlug()
+    // trả về, sai với kiểu JSON-LD kỳ vọng) vào JSON-LD, phát ra structured data sai định dạng.
+    fields.servesCuisine = restaurant.cuisines.map((c) => c.label_vi);
   }
   return {
     '@context': 'https://schema.org',

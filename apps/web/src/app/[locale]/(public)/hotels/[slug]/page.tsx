@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
+import { HOTEL_TYPE_LABELS } from '@/modules/hotels/types';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
@@ -10,6 +11,7 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
+import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -101,10 +103,70 @@ export default async function HotelDetailPage({ params }: Params) {
 
       {h.description && <p>{h.description}</p>}
 
+      {h.hotel_details && (
+        <section>
+          <h2>Thông tin khách sạn</h2>
+          <dl>
+            <dt>Loại hình</dt>
+            <dd>{HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
+            {h.hotel_details.star_rating !== null && (
+              <>
+                <dt>Hạng sao</dt>
+                <dd>
+                  {'★'.repeat(h.hotel_details.star_rating)}
+                  {h.hotel_details.star_rating_source && (
+                    <>
+                      {' — Nguồn: '}
+                      {h.hotel_details.star_rating_source.url ? (
+                        <a href={h.hotel_details.star_rating_source.url} target="_blank" rel="noopener noreferrer">
+                          {h.hotel_details.star_rating_source.title ?? h.hotel_details.star_rating_source.url}
+                        </a>
+                      ) : (
+                        h.hotel_details.star_rating_source.title ?? '(không có tiêu đề)'
+                      )}
+                    </>
+                  )}
+                </dd>
+              </>
+            )}
+            {(h.hotel_details.check_in || h.hotel_details.check_out) && (
+              <>
+                <dt>Giờ nhận/trả phòng</dt>
+                <dd>
+                  {h.hotel_details.check_in ? `Nhận: ${h.hotel_details.check_in.slice(0, 5)}` : 'Chưa có thông tin nhận phòng'}
+                  {' · '}
+                  {h.hotel_details.check_out ? `Trả: ${h.hotel_details.check_out.slice(0, 5)}` : 'Chưa có thông tin trả phòng'}
+                </dd>
+              </>
+            )}
+          </dl>
+        </section>
+      )}
+
       {h.amenities.length > 0 && (
         <section>
           <h2>Tiện nghi</h2>
-          <p>{h.amenities.join(' · ')}</p>
+          <p>{h.amenities.map((a) => a.label_vi).join(' · ')}</p>
+        </section>
+      )}
+
+      {h.contacts.length > 0 && (
+        <section>
+          <h2>Liên hệ</h2>
+          <ul>
+            {h.contacts.map((c) => (
+              <li key={c.id}>
+                {c.label ?? c.contact_type}: {c.value}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {hasOpeningHours(h.opening_hours) && (
+        <section>
+          <h2>Giờ mở cửa</h2>
+          <p>{getOpeningToday(h.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
         </section>
       )}
 

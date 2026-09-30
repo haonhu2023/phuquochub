@@ -6,10 +6,12 @@ describe('RestaurantsService', () => {
   type Deps = ConstructorParameters<typeof RestaurantsService>;
   let placesService: LooseMock<Deps[0]>;
   let repo: LooseMock<Deps[1]>;
+  let audit: LooseMock<Deps[2]>;
+  let cacheInvalidation: LooseMock<Deps[3]>;
   let service: RestaurantsService;
 
   beforeEach(() => {
-    placesService = createMock<Deps[0]>({ getBySlug: jest.fn() });
+    placesService = createMock<Deps[0]>({ getBySlug: jest.fn(), getSlugAndStatus: jest.fn() });
     repo = createMock<Deps[1]>({
       listRestaurants: jest.fn(),
       countRestaurants: jest.fn(),
@@ -18,8 +20,13 @@ describe('RestaurantsService', () => {
       sections: jest.fn(),
       itemsBySection: jest.fn(),
       replaceMenu: jest.fn(),
+      upsertDetails: jest.fn(),
+      setCuisines: jest.fn(),
+      listAllCuisines: jest.fn(),
     });
-    service = new RestaurantsService(placesService, repo);
+    audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
+    cacheInvalidation = createMock<Deps[3]>({ invalidatePlace: jest.fn().mockResolvedValue(undefined) });
+    service = new RestaurantsService(placesService, repo, audit, cacheInvalidation);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -188,6 +195,93 @@ describe('RestaurantsService', () => {
       const menu = await service.updateMenu('r1', dto);
 
       expect(menu[0].items[0].price).toBe(SECRET_MENU_PRICE);
+    });
+  });
+
+  describe('getDetails (đọc đặc quyền — hoạt động cả khi place chưa published)', () => {
+    it('ghép detail + cuisines + content_version (CAS token) từ repo', async () => {
+      repo.detail.mockResolvedValue({ is_local_specialty: true, dietary: null });
+      repo.listCuisines.mockResolvedValue([{ id: 'c1', code: 'seafood' }]);
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'quan-a', status: 'published', content_version: 4 });
+
+      const res = await service.getDetails('r1');
+
+      expect(res).toEqual({
+        is_local_specialty: true,
+        dietary: null,
+        cuisines: [{ id: 'c1', code: 'seafood' }],
+        content_version: 4,
+      });
+    });
+  });
+
+  // CAS thật (2026-09-30) — cuisine_codes giờ đi CHUNG một lần ghi/một transaction với
+  // is_local_specialty/dietary trong RestaurantsRepository.upsertDetails (không còn setCuisines()
+  // tách rời khỏi service.updateDetails — xem repository's ghi chú về lỗi ghi nửa vời đã sửa).
+  describe('updateDetails (loại ẩm thực/đặc sản địa phương/chế độ ăn)', () => {
+    const dtoBase = { expected_content_version: 1 };
+
+    it('upsert details (kèm cuisine_codes trong CÙNG lệnh gọi repo), trả về details ghép cuisines + content_version mới', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, newVersion: 2 });
+      repo.detail.mockResolvedValue({ is_local_specialty: true, dietary: { vegetarian: true } });
+      repo.listCuisines.mockResolvedValue([{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }]);
+
+      const dto = {
+        ...dtoBase,
+        is_local_specialty: true,
+        dietary: { vegetarian: true },
+        cuisine_codes: ['seafood'],
+      };
+      const res = await service.updateDetails('r1', dto, 'u1');
+
+      expect(repo.upsertDetails).toHaveBeenCalledWith('r1', dto, 1);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.restaurant_details_updated', entityId: 'r1', actorId: 'u1' }),
+      );
+      expect(res).toEqual({
+        is_local_specialty: true,
+        dietary: { vegetarian: true },
+        cuisines: [{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }],
+        content_version: 2,
+      });
+    });
+
+    it('không truyền cuisine_codes → repo nhận dto không có field đó (giữ nguyên gán hiện có)', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, newVersion: 2 });
+      repo.detail.mockResolvedValue({ is_local_specialty: false, dietary: null });
+      repo.listCuisines.mockResolvedValue([]);
+
+      const dto = { ...dtoBase, is_local_specialty: false };
+      await service.updateDetails('r1', dto, 'u1');
+
+      expect(repo.upsertDetails).toHaveBeenCalledWith('r1', dto, 1);
+    });
+
+    it('repo ném lỗi mã cuisine không tồn tại (từ transaction) → propagate 400, KHÔNG audit', async () => {
+      repo.upsertDetails.mockRejectedValue(new Error('Mã ẩm thực không tồn tại: khong_ton_tai'));
+
+      await expect(
+        service.updateDetails('r1', { ...dtoBase, cuisine_codes: ['khong_ton_tai'] }, 'u1'),
+      ).rejects.toThrow(/khong_ton_tai/);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    // CAS thật (2026-09-30) — xem HotelsService.updateDetails's ghi chú đầy đủ, cùng khuôn 409.
+    it('repo báo conflict (content_version đã trôi) → ném ConflictException, KHÔNG audit, KHÔNG invalidate cache', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: true });
+
+      await expect(service.updateDetails('r1', { ...dtoBase, is_local_specialty: true }, 'u1')).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listAllCuisines', () => {
+    it('uỷ quyền thẳng cho repo', async () => {
+      repo.listAllCuisines.mockResolvedValue([{ id: 'c1', code: 'seafood' }]);
+      await expect(service.listAllCuisines()).resolves.toEqual([{ id: 'c1', code: 'seafood' }]);
     });
   });
 });

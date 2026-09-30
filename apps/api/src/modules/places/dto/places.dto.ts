@@ -113,6 +113,15 @@ export class UpdatePlaceDto {
   @IsOptional() @IsEnum(PriceRange)
   price_range?: PriceRange;
 
+  // "Thời lượng tham quan"/"quy định" (product spec, 2026-09-29) — attraction. Chỉ ở UpdatePlaceDto
+  // (không ở CreatePlaceDto): đây là chi tiết bổ sung sau khi place đã tồn tại, cùng cách
+  // contacts/prices/faqs/amenities cũng chỉ có đường ghi ở PATCH, không phải POST tạo mới.
+  @IsOptional() @IsInt() @Min(1)
+  visit_duration_minutes?: number;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  rules?: string;
+
   // Chỉ dùng cho POST /places/:id/draft (saveDraft) — ghi vào wiki_revisions.change_note. Route
   // PATCH /places/:id (update() trực tiếp) bỏ qua trường này (revision của nó luôn changeNote=null).
   @IsOptional() @IsString() @MaxLength(300)
@@ -211,4 +220,25 @@ export class EnIndexableIdsDto {
   @IsArray() @ArrayMaxSize(500)
   @IsUUID('4', { each: true })
   ids!: string[];
+}
+
+// FAQ (product spec, 2026-09-29 — attraction, nhưng generic trên Place: place_faqs đã tồn tại từ
+// InitPlaces, chỉ chưa có đường ghi nào). Cùng khuôn UpdateHotelRoomsDto/UpdateRestaurantMenuDto:
+// PUT thay TOÀN BỘ, không patch từng phần tử.
+export class FaqItemDto {
+  @IsString() @MaxLength(300)
+  question!: string;
+
+  @IsString()
+  answer!: string;
+
+  @IsOptional() @IsInt()
+  sort_order?: number;
+}
+
+export class UpdatePlaceFaqsDto {
+  @IsArray() @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => FaqItemDto)
+  faqs!: FaqItemDto[];
 }

@@ -1,15 +1,18 @@
-import { getHotel } from './hotels.api';
-import { apiGet } from '@/lib/http';
+import { getHotel, updateHotelDetails } from './hotels.api';
+import { apiGet, apiPatchAuth } from '@/lib/http';
 
 jest.mock('@/lib/http', () => ({
   apiGet: jest.fn(),
   apiGetPaginated: jest.fn(),
+  apiPatchAuth: jest.fn(),
 }));
 
 const mockGet = apiGet as jest.Mock;
+const mockPatchAuth = apiPatchAuth as jest.Mock;
 
 beforeEach(() => {
   mockGet.mockReset();
+  mockPatchAuth.mockReset();
 });
 
 // Mirrors places.api.spec.ts's `getPlace — locale passthrough` block: getHotel() previously never
@@ -46,5 +49,30 @@ describe('getHotel — locale passthrough', () => {
     await getHotel('la-veranda-resort', 'en');
     expect(mockGet).toHaveBeenNthCalledWith(1, '/hotels/la-veranda-resort?locale=vi', { cache: 'no-store' });
     expect(mockGet).toHaveBeenNthCalledWith(2, '/hotels/la-veranda-resort?locale=en', { cache: 'no-store' });
+  });
+});
+
+// PATCH TỪNG PHẦN thật (product spec, 2026-09-29) — omitted field giữ nguyên, `null` xoá. Client
+// chỉ chuyển tiếp payload nguyên vẹn xuống apiPatchAuth (JSON.stringify tự loại key undefined) —
+// test này khoá lại việc KHÔNG có tầng nào ở client âm thầm chèn `?? null`/mặc định vào giữa.
+describe('updateHotelDetails', () => {
+  it('gửi đúng payload nguyên vẹn (kể cả field vắng mặt), đúng URL/token', async () => {
+    mockPatchAuth.mockResolvedValue({ hotel_type: 'resort', content_version: 2 });
+    await updateHotelDetails('h1', { expected_content_version: 1, hotel_type: 'resort', star_rating: 5 }, 'token-1');
+    expect(mockPatchAuth).toHaveBeenCalledWith('/hotels/h1/details', 'token-1', {
+      expected_content_version: 1,
+      hotel_type: 'resort',
+      star_rating: 5,
+    });
+  });
+
+  it('gửi field=null (xoá tường minh) nguyên vẹn, không bị đổi thành undefined hay bỏ qua', async () => {
+    mockPatchAuth.mockResolvedValue({ hotel_type: 'resort', content_version: 2 });
+    await updateHotelDetails('h1', { expected_content_version: 1, hotel_type: 'resort', check_out: null }, 'token-1');
+    expect(mockPatchAuth).toHaveBeenCalledWith('/hotels/h1/details', 'token-1', {
+      expected_content_version: 1,
+      hotel_type: 'resort',
+      check_out: null,
+    });
   });
 });

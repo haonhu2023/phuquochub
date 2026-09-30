@@ -1,4 +1,5 @@
 import { HotelsService } from './hotels.service';
+import { PlaceStatus } from '../places/place.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 
 // Hotel = Place (category='hotel') + satellite (ADR-002). Mock PlacesService + repo (new + mock).
@@ -6,10 +7,12 @@ describe('HotelsService', () => {
   type Deps = ConstructorParameters<typeof HotelsService>;
   let placesService: LooseMock<Deps[0]>;
   let repo: LooseMock<Deps[1]>;
+  let audit: LooseMock<Deps[2]>;
+  let cacheInvalidation: LooseMock<Deps[3]>;
   let service: HotelsService;
 
   beforeEach(() => {
-    placesService = createMock<Deps[0]>({ getBySlug: jest.fn() });
+    placesService = createMock<Deps[0]>({ getBySlug: jest.fn(), getSlugAndStatus: jest.fn() });
     repo = createMock<Deps[1]>({
       listHotels: jest.fn(),
       countHotels: jest.fn(),
@@ -17,8 +20,11 @@ describe('HotelsService', () => {
       listRooms: jest.fn(),
       listAmenities: jest.fn(),
       replaceRooms: jest.fn(),
+      upsertDetails: jest.fn(),
     });
-    service = new HotelsService(placesService, repo);
+    audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
+    cacheInvalidation = createMock<Deps[3]>({ invalidatePlace: jest.fn().mockResolvedValue(undefined) });
+    service = new HotelsService(placesService, repo, audit, cacheInvalidation);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -79,7 +85,16 @@ describe('HotelsService', () => {
   // publicResponse=true, raw price_ref không có trust column nên fail-closed vô điều kiện.
   it('getBySlug: ghép hotel_details/rooms/amenities lên base Place — rooms.price_ref redact (public detail)', async () => {
     placesService.getBySlug.mockResolvedValue({ id: 'h1', slug: 'ks-a', name: 'Khách sạn A' });
-    repo.detail.mockResolvedValue({ star_rating: 4, hotel_type: 'resort' });
+    repo.detail.mockResolvedValue({
+      star_rating: 4,
+      hotel_type: 'resort',
+      check_in: '14:00',
+      check_out: '12:00',
+      star_rating_source_id: null,
+      star_rating_verified_at: null,
+      star_rating_source_title: null,
+      star_rating_source_url: null,
+    });
     repo.listRooms.mockResolvedValue([
       { id: 'r1', name: 'Deluxe', capacity: 2, price_ref: '1500000', currency: 'VND', valid_from: null, valid_to: null, sort_order: 0 },
     ]);
@@ -91,7 +106,13 @@ describe('HotelsService', () => {
     // "không truyền tham số thứ hai nào cả" — hai việc khác nhau về mặt spy assertion, dù tương
     // đương về hành vi runtime; xem describe "locale forwarding" bên dưới cho case có locale).
     expect(placesService.getBySlug).toHaveBeenCalledWith('ks-a', undefined);
-    expect(res.hotel_details).toEqual({ star_rating: 4, hotel_type: 'resort' });
+    expect(res.hotel_details).toEqual({
+      star_rating: 4,
+      hotel_type: 'resort',
+      check_in: '14:00',
+      check_out: '12:00',
+      star_rating_source: null,
+    });
     expect(res.amenities).toEqual(['wifi', 'pool']);
     expect(res.rooms[0]).toMatchObject({ id: 'r1', name: 'Deluxe', price_ref: null });
     expect(JSON.stringify(res)).not.toContain('1500000');
@@ -144,6 +165,131 @@ describe('HotelsService', () => {
 
     expect(repo.replaceRooms).toHaveBeenCalledWith('h1', dto.rooms);
     expect(res[0]).toMatchObject({ id: 'r9', name: 'Deluxe' });
+  });
+
+  describe('getDetails (đọc đặc quyền — hoạt động cả khi place chưa published)', () => {
+    it('trả detail đã map (có nguồn) kèm content_version từ places (CAS token)', async () => {
+      repo.detail.mockResolvedValue({
+        star_rating: 4,
+        hotel_type: 'resort',
+        check_in: '14:00',
+        check_out: '12:00',
+        star_rating_source_id: null,
+        star_rating_verified_at: null,
+        star_rating_source_title: null,
+        star_rating_source_url: null,
+      });
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'ks-a', status: PlaceStatus.PUBLISHED, content_version: 7 });
+
+      const res = await service.getDetails('h1');
+
+      expect(res).toEqual({
+        star_rating: 4,
+        hotel_type: 'resort',
+        check_in: '14:00',
+        check_out: '12:00',
+        star_rating_source: null,
+        content_version: 7,
+      });
+    });
+
+    it('chưa có hàng place_hotel_details nào -> vẫn trả content_version (token CAS cho lần PATCH đầu tiên)', async () => {
+      repo.detail.mockResolvedValue(null);
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'ks-a', status: PlaceStatus.DRAFT, content_version: 1 });
+      await expect(service.getDetails('h1')).resolves.toEqual({ content_version: 1 });
+    });
+  });
+
+  describe('updateDetails (loại hình/hạng sao có nguồn/check-in-out)', () => {
+    const dtoBase = { expected_content_version: 1 };
+
+    it('upsert đúng input rồi trả lại detail đã map (có nguồn) kèm content_version mới', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, newVersion: 2 });
+      repo.detail.mockResolvedValue({
+        star_rating: 5,
+        hotel_type: 'resort',
+        check_in: '14:00',
+        check_out: '12:00',
+        star_rating_source_id: 'src-1',
+        star_rating_verified_at: new Date('2026-09-29T00:00:00Z'),
+        star_rating_source_title: 'Sở Du lịch Kiên Giang',
+        star_rating_source_url: 'https://example.gov.vn/xep-hang',
+      });
+
+      const dto = {
+        ...dtoBase,
+        hotel_type: 'resort' as const,
+        star_rating: 5,
+        star_rating_source_id: 'src-1',
+        check_in: '14:00',
+        check_out: '12:00',
+      };
+      const res = await service.updateDetails('h1', dto, 'u1');
+
+      expect(repo.upsertDetails).toHaveBeenCalledWith('h1', dto, 1);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.hotel_details_updated', entityId: 'h1', actorId: 'u1', permission: 'Place.Edit.Managed' }),
+      );
+      expect(res).toEqual({
+        star_rating: 5,
+        hotel_type: 'resort',
+        check_in: '14:00',
+        check_out: '12:00',
+        star_rating_source: {
+          title: 'Sở Du lịch Kiên Giang',
+          url: 'https://example.gov.vn/xep-hang',
+          verified_at: new Date('2026-09-29T00:00:00Z'),
+        },
+        content_version: 2,
+      });
+    });
+
+    it('không truyền star_rating_source_id → star_rating_source null (không suy đoán nguồn)', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, newVersion: 2 });
+      repo.detail.mockResolvedValue({
+        star_rating: null,
+        hotel_type: 'homestay',
+        check_in: null,
+        check_out: null,
+        star_rating_source_id: null,
+        star_rating_verified_at: null,
+        star_rating_source_title: null,
+        star_rating_source_url: null,
+      });
+
+      const dto = { ...dtoBase, hotel_type: 'homestay' as const };
+      const res = await service.updateDetails('h1', dto, 'u1');
+
+      expect(repo.upsertDetails).toHaveBeenCalledWith('h1', dto, 1);
+      expect(res?.star_rating_source).toBeNull();
+    });
+
+    it('place đã published → invalidate cache; place còn draft → KHÔNG invalidate (chưa từng được cache)', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, newVersion: 2 });
+      repo.detail.mockResolvedValue({ hotel_type: 'resort' });
+
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'ks-a', status: PlaceStatus.PUBLISHED, content_version: 2 });
+      await service.updateDetails('h1', { ...dtoBase, hotel_type: 'resort' }, 'u1');
+      expect(cacheInvalidation.invalidatePlace).toHaveBeenCalledWith('ks-a');
+
+      cacheInvalidation.invalidatePlace.mockClear();
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'ks-b', status: PlaceStatus.DRAFT, content_version: 2 });
+      await service.updateDetails('h1', { ...dtoBase, hotel_type: 'resort' }, 'u1');
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
+    });
+
+    // CAS thật (2026-09-30) — góp ý chỉ ra "SELECT ... FOR UPDATE" trước đây KHÔNG phải CAS (không
+    // chặn được request đọc dữ liệu đã cũ). Test này khoá lại hành vi 409 ở tầng service khi
+    // repository báo conflict, KHÔNG ghi audit / KHÔNG invalidate cache.
+    it('repo báo conflict (content_version đã trôi) → ném ConflictException, KHÔNG audit, KHÔNG invalidate cache', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: true });
+
+      await expect(service.updateDetails('h1', { ...dtoBase, hotel_type: 'resort' }, 'u1')).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
+    });
   });
 
   // Public Beta price trust gate (2026-08-28)

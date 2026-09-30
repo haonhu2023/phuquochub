@@ -15,9 +15,17 @@ describe('RestaurantsController — ranh giới price trust gate', () => {
       list: jest.fn(),
       getMenu: jest.fn(),
       updateMenu: jest.fn(),
+      getDetails: jest.fn(),
+      updateDetails: jest.fn(),
       getBySlug: jest.fn(),
+      listAllCuisines: jest.fn(),
     });
     controller = new RestaurantsController(restaurantsService);
+  });
+
+  it('GET :id/details (đặc quyền) → getDetails(id)', () => {
+    controller.getDetails('r1');
+    expect(restaurantsService.getDetails).toHaveBeenCalledWith('r1');
   });
 
   it('GET :id/menu (@Public()) → getMenu(id, { publicResponse: true })', () => {
@@ -29,5 +37,16 @@ describe('RestaurantsController — ranh giới price trust gate', () => {
     const dto = { sections: [] } as Parameters<typeof controller.updateMenu>[1];
     controller.updateMenu('r1', dto);
     expect(restaurantsService.updateMenu).toHaveBeenCalledWith('r1', dto);
+  });
+
+  it('PATCH :id/details (đặc quyền) → updateDetails(id, dto, user.sub)', () => {
+    const dto = { is_local_specialty: true, expected_content_version: 1 };
+    controller.updateDetails('r1', dto, { sub: 'u1' } as Parameters<typeof controller.updateDetails>[2]);
+    expect(restaurantsService.updateDetails).toHaveBeenCalledWith('r1', dto, 'u1');
+  });
+
+  it('GET cuisines (@Public()) → listAllCuisines()', () => {
+    controller.listAllCuisines();
+    expect(restaurantsService.listAllCuisines).toHaveBeenCalled();
   });
 });

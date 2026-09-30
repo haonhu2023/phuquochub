@@ -90,6 +90,15 @@ export class Place {
   @Column({ type: 'jsonb', nullable: true })
   openingHours!: Record<string, unknown> | null;
 
+  // "Thời lượng tham quan"/"quy định" (product spec, 2026-09-29) — attraction, nhưng cột chung trên
+  // Place (attraction không có bảng vệ tinh, xem AddAttractionFields1720007600000). Nullable, chỉ
+  // category='attraction' thực sự điền.
+  @Column({ type: 'int', nullable: true })
+  visitDurationMinutes!: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  rules!: string | null;
+
   @Column({ type: 'enum', enum: PriceRange, enumName: 'price_range', nullable: true })
   priceRange!: PriceRange | null;
 

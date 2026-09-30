@@ -129,7 +129,7 @@ describe('RestaurantDetailPage — menu price trust gate', () => {
         name: 'Khai vị',
         sort_order: 0,
         items: [
-          { id: 'i1', name: 'Gỏi hải sản', price: SENTINEL_PRICE, currency: 'VND', tags: null, sort_order: 0 },
+          { id: 'i1', name: 'Gỏi hải sản', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 },
         ],
       },
     ]);
@@ -145,7 +145,7 @@ describe('RestaurantDetailPage — menu price trust gate', () => {
         id: 's1',
         name: 'Món chính',
         sort_order: 0,
-        items: [{ id: 'i1', name: 'Cá nướng', price: SENTINEL_PRICE, currency: 'VND', tags: null, sort_order: 0 }],
+        items: [{ id: 'i1', name: 'Cá nướng', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
       },
     ]);
     expect(document.body.textContent).not.toContain(String(SENTINEL_PRICE));
@@ -157,7 +157,7 @@ describe('RestaurantDetailPage — menu price trust gate', () => {
         id: 's1',
         name: 'Đồ uống',
         sort_order: 0,
-        items: [{ id: 'i1', name: 'Nước dừa', price: null, currency: 'VND', tags: null, sort_order: 0 }],
+        items: [{ id: 'i1', name: 'Nước dừa', price: null, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
       },
     ]);
     expect(screen.getByText('Nước dừa')).toBeInTheDocument();
@@ -171,8 +171,8 @@ describe('RestaurantDetailPage — menu price trust gate', () => {
         name: 'Khai vị',
         sort_order: 0,
         items: [
-          { id: 'i1', name: 'Gỏi', price: SENTINEL_PRICE, currency: 'VND', tags: null, sort_order: 0 },
-          { id: 'i2', name: 'Chả giò', price: SENTINEL_PRICE + 1, currency: 'VND', tags: null, sort_order: 1 },
+          { id: 'i1', name: 'Gỏi', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 },
+          { id: 'i2', name: 'Chả giò', price: SENTINEL_PRICE + 1, currency: 'VND', tags: null, is_signature: false, sort_order: 1 },
         ],
       },
     ]);
@@ -206,5 +206,59 @@ describe('RestaurantDetailPage — generateMetadata EN indexation gate', () => {
     });
     expect(metadataVi.robots).toBeUndefined();
     expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/restaurants/quan-hai-san');
+  });
+});
+
+// Bug thật đã sửa (2026-09-30): cuisines là mảng OBJECT {id,code,label_vi,label_en}, trang trước
+// đây gọi `.join(' · ')` trên đó (đúng cho string[], sai cho object[]) — sẽ render "[object Object]".
+describe('RestaurantDetailPage — ẩm thực/đặc sản/liên hệ/giờ mở cửa/món nổi bật (product spec, 2026-09-29)', () => {
+  it('cuisines render đúng label_vi, KHÔNG BAO GIỜ "[object Object]"', async () => {
+    await renderPage(restaurant({ cuisines: [{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }] }));
+    expect(screen.getByText(/Hải sản/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[object Object]');
+  });
+
+  it('is_local_specialty=true → hiện dòng đặc sản Phú Quốc', async () => {
+    await renderPage(restaurant({ restaurant_details: { is_local_specialty: true, dietary: null } }));
+    expect(screen.getByText(/đặc sản Phú Quốc/)).toBeInTheDocument();
+  });
+
+  it('is_local_specialty=false → KHÔNG hiện dòng đặc sản', async () => {
+    await renderPage(restaurant({ restaurant_details: { is_local_specialty: false, dietary: null } }));
+    expect(document.body.textContent).not.toContain('đặc sản Phú Quốc');
+  });
+
+  it('contacts render đúng nhãn/giá trị', async () => {
+    await renderPage(
+      restaurant({
+        contacts: [{ id: 'c1', contact_type: 'PHONE', value: '0909123456', label: null, is_primary: true, verification_status: 'pending', display_order: 0 }],
+      }),
+    );
+    expect(screen.getByText(/PHONE: 0909123456/)).toBeInTheDocument();
+  });
+
+  it('món nổi bật (is_signature) đánh dấu ★ cạnh tên món', async () => {
+    await renderPage(restaurant(), [
+      {
+        id: 's1',
+        name: 'Món chính',
+        sort_order: 0,
+        items: [{ id: 'i1', name: 'Gỏi cá trích', price: null, currency: 'VND', tags: null, is_signature: true, sort_order: 0 }],
+      },
+    ]);
+    expect(screen.getByText(/★/)).toBeInTheDocument();
+    expect(screen.getByText(/Gỏi cá trích/)).toBeInTheDocument();
+  });
+
+  it('món KHÔNG nổi bật → không có ★', async () => {
+    await renderPage(restaurant(), [
+      {
+        id: 's1',
+        name: 'Món chính',
+        sort_order: 0,
+        items: [{ id: 'i1', name: 'Cơm trắng', price: null, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
+      },
+    ]);
+    expect(document.body.textContent).not.toContain('★');
   });
 });

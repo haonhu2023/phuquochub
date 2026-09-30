@@ -13,6 +13,9 @@ import type { ManagedPlace, PlaceFormInput } from './types';
 import styles from './place-management.module.css';
 import { getEditorialCategory, editorialPublicDetailHref } from '@/modules/editorial/editorialCategories';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
+import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor';
+import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
+import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
 
 type State =
   | { kind: 'loading' }
@@ -57,6 +60,17 @@ export function EditPlaceView({ placeId }: Props) {
   // Sửa bằng cách đặt thông báo "đã lưu" Ở CHA (component này KHÔNG bị remount) thay vì tin vào
   // state nội bộ của con sắp bị thay thế.
   const [saveNotice, setSaveNotice] = useState(false);
+
+  // CAS thật (2026-09-30) — token `places.content_version` dùng chung cho MỌI editor con
+  // (HotelDetailsEditor/RestaurantDetailsEditor/AmenitiesEditor) trên CÙNG một place. Giữ ở cha để
+  // các editor anh em không "dẫm chân" lên nhau bằng version đã cũ: mỗi lần MỘT editor lưu thành
+  // công, nó gọi `onVersionChange` để đồng bộ NGAY cho các editor còn lại — không cần tải lại trang
+  // giữa hai lần lưu liên tiếp (vd sửa hotel_details rồi sửa amenities ngay sau đó).
+  const placeVersion = state.kind === 'ready' ? state.place.content_version : null;
+  const [contentVersion, setContentVersion] = useState<number | null>(placeVersion);
+  useEffect(() => {
+    if (placeVersion !== null) setContentVersion(placeVersion);
+  }, [placeVersion]);
 
   const load = useCallback(() => {
     const session = readSession();
@@ -315,6 +329,18 @@ export function EditPlaceView({ placeId }: Props) {
         <p className={styles.success} role="status">
           Đã lưu thành công.
         </p>
+      )}
+      {state.place.category_slug === 'hotel' && contentVersion !== null && (
+        <>
+          <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+        </>
+      )}
+      {state.place.category_slug === 'restaurant' && contentVersion !== null && (
+        <>
+          <RestaurantDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+        </>
       )}
       <PlaceForm
         key={state.place.content_version}

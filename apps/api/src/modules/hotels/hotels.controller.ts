@@ -2,8 +2,9 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nest
 import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
+import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { HotelsService } from './hotels.service';
-import { ListHotelsQueryDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
+import { ListHotelsQueryDto, UpdateHotelDetailsDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
 // Cùng DTO `PlacesController`/`GET /places/:slug` đã dùng cho `?locale=` — tái sử dụng nguyên vẹn
 // (validation `@IsOptional() @IsString() @MaxLength(35)`), không tự khai một DTO locale riêng cho
 // hotels chỉ để lặp lại đúng 3 dòng đó.
@@ -34,6 +35,28 @@ export class HotelsController {
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
   updateRooms(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateHotelRoomsDto) {
     return this.hotelsService.updateRooms(id, dto);
+  }
+
+  // Đọc đặc quyền — hoạt động cả khi place CHƯA published (form sửa cần tải lại giá trị hiện tại
+  // của một hotel còn draft/pending). Đặt TRƯỚC ':slug' cùng lý do các route 2 đoạn khác.
+  @Get(':id/details')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getDetails(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotelsService.getDetails(id);
+  }
+
+  // loại hình/hạng sao (có nguồn)/check-in-out — xem UpdateHotelDetailsDto. UPSERT: hoạt động cả
+  // khi place_hotel_details chưa tồn tại (hotel vừa tạo).
+  @Patch(':id/details')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  updateDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateHotelDetailsDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.hotelsService.updateDetails(id, dto, user.sub);
   }
 
   @Public()

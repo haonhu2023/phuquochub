@@ -306,3 +306,54 @@ describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
     expect(screen.getByAltText(sharedAlt)).toBeInTheDocument();
   });
 });
+
+// Bug thật đã sửa (2026-09-30): amenities là mảng OBJECT {id,code,label_vi,...}, trang trước đây
+// gọi `.join(' · ')` trên đó (đúng cho string[], sai cho object[]) — sẽ render "[object Object]".
+// Cũng chứng minh hotel_details (loại hình/hạng sao có nguồn/check-in-out) render đúng.
+describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spec, 2026-09-29)', () => {
+  it('amenities render đúng label_vi, KHÔNG BAO GIỜ "[object Object]"', async () => {
+    await renderPage(
+      hotel({ amenities: [{ id: 'a1', code: 'wifi', label_vi: 'Wi-Fi miễn phí', label_en: null, icon: null, group: 'connectivity' }] }),
+    );
+    expect(screen.getByText(/Wi-Fi miễn phí/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[object Object]');
+  });
+
+  it('hotel_details có nguồn hạng sao → hiện link tới nguồn', async () => {
+    await renderPage(
+      hotel({
+        hotel_details: {
+          hotel_type: 'resort',
+          star_rating: 5,
+          check_in: '14:00:00',
+          check_out: '12:00:00',
+          star_rating_source: { title: 'Sở Du lịch Kiên Giang', url: 'https://example.gov.vn/xep-hang', verified_at: '2026-09-29T00:00:00Z' },
+        },
+      }),
+    );
+    expect(screen.getByText('Resort')).toBeInTheDocument();
+    expect(screen.getByText(/★★★★★/)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Sở Du lịch Kiên Giang' });
+    expect(link).toHaveAttribute('href', 'https://example.gov.vn/xep-hang');
+    expect(screen.getByText(/Nhận: 14:00/)).toBeInTheDocument();
+    expect(screen.getByText(/Trả: 12:00/)).toBeInTheDocument();
+  });
+
+  it('hạng sao không có nguồn → KHÔNG hiện dòng "Nguồn:" (không suy đoán/bịa nguồn)', async () => {
+    await renderPage(
+      hotel({ hotel_details: { hotel_type: 'homestay', star_rating: 3, check_in: null, check_out: null, star_rating_source: null } }),
+    );
+    expect(document.body.textContent).not.toContain('Nguồn:');
+  });
+
+  it('contacts render đúng nhãn/giá trị', async () => {
+    await renderPage(
+      hotel({
+        contacts: [
+          { id: 'c1', contact_type: 'PHONE', value: '0909123456', label: null, is_primary: true, verification_status: 'pending', display_order: 0 },
+        ],
+      }),
+    );
+    expect(screen.getByText(/PHONE: 0909123456/)).toBeInTheDocument();
+  });
+});

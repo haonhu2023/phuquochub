@@ -14,10 +14,17 @@ describe('HotelsController — ranh giới price trust gate', () => {
       list: jest.fn(),
       listRooms: jest.fn(),
       updateRooms: jest.fn(),
+      getDetails: jest.fn(),
+      updateDetails: jest.fn(),
       listAmenities: jest.fn(),
       getBySlug: jest.fn(),
     });
     controller = new HotelsController(hotelsService);
+  });
+
+  it('GET :id/details (đặc quyền) → getDetails(id)', () => {
+    controller.getDetails('h1');
+    expect(hotelsService.getDetails).toHaveBeenCalledWith('h1');
   });
 
   it('GET :id/rooms (@Public()) → listRooms(id, { publicResponse: true })', () => {
@@ -29,6 +36,12 @@ describe('HotelsController — ranh giới price trust gate', () => {
     const dto = { rooms: [] } as Parameters<typeof controller.updateRooms>[1];
     controller.updateRooms('h1', dto);
     expect(hotelsService.updateRooms).toHaveBeenCalledWith('h1', dto);
+  });
+
+  it('PATCH :id/details (đặc quyền) → updateDetails(id, dto, user.sub)', () => {
+    const dto = { hotel_type: 'resort' as const, expected_content_version: 1 };
+    controller.updateDetails('h1', dto, { sub: 'u1' } as Parameters<typeof controller.updateDetails>[2]);
+    expect(hotelsService.updateDetails).toHaveBeenCalledWith('h1', dto, 'u1');
   });
 });
 

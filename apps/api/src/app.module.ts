@@ -23,6 +23,7 @@ import { PlaceEditProposalsModule } from './modules/place-edit-proposals/place-e
 import { GeoModule } from './modules/geo/geo.module';
 import { SearchModule } from './modules/search/search.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
+import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { RestaurantsModule } from './modules/restaurants/restaurants.module';
 import { ToursModule } from './modules/tours/tours.module';
 import { AttractionsModule } from './modules/attractions/attractions.module';
@@ -84,6 +85,7 @@ import { OpsModule } from './modules/ops/ops.module';
     GeoModule,
     SearchModule,
     HotelsModule,
+    AmenitiesModule,
     RestaurantsModule,
     ToursModule,
     AttractionsModule,

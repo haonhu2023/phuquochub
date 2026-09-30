@@ -79,6 +79,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       // overrides this per-test to prove the gate's actual PASS/HOLD behavior.
       hasCurrentQualifiedOpeningHoursEvidence: jest.fn().mockResolvedValue(false),
       listFaqs: jest.fn(),
+      listFaqsForOwner: jest.fn(),
+      replaceFaqs: jest.fn(),
       updateScalars: jest.fn(),
       updateScalarsIfUnchanged: jest.fn(),
       // CAS (AddPlaceContentVersion, 2026-09-22) — defaults to "succeeded" so every EXISTING test
@@ -496,6 +498,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
           short_description: 'ngắn',
           opening_hours: { is_24h: true },
           price_range: 'low',
+          visit_duration_minutes: 90,
+          rules: 'Không mang giày cao gót',
           expected_content_version: 1,
         } as UpdatePlaceDto,
         'u1',
@@ -507,6 +511,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         shortDescription: 'ngắn',
         openingHours: { is_24h: true },
         priceRange: 'low',
+        visitDurationMinutes: 90,
+        rules: 'Không mang giày cao gót',
         updatedBy: 'u1',
       });
       // Khoá snake_case KHÔNG được lọt xuống ORM.
@@ -514,6 +520,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(patch).not.toHaveProperty('opening_hours');
       expect(patch).not.toHaveProperty('price_range');
       expect(patch).not.toHaveProperty('category_id');
+      expect(patch).not.toHaveProperty('visit_duration_minutes');
     });
 
     it('updateLocation CHỈ gọi khi có location', async () => {
@@ -1933,6 +1940,28 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
           { id: 'p2', mappedDetail: true },
         ]),
       );
+    });
+  });
+
+  describe('updateFaqs (FAQ, product spec 2026-09-29) — thay toàn bộ, trả bản đã lưu (mọi status)', () => {
+    it('gọi replaceFaqs rồi đọc lại bằng listFaqsForOwner (không lọc published), ghi audit', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', slug: 'p', status: PlaceStatus.DRAFT });
+      placesRepo.replaceFaqs.mockResolvedValue(undefined);
+      placesRepo.listFaqsForOwner.mockResolvedValue([
+        { id: 'f1', question: 'Có chỗ đậu xe không?', answer: 'Có.', sort_order: 0, is_ai_generated: false, status: 'published' },
+      ]);
+
+      const faqs = [{ question: 'Có chỗ đậu xe không?', answer: 'Có.' }];
+      const res = await service.updateFaqs('p1', faqs, 'u1');
+
+      expect(placesRepo.replaceFaqs).toHaveBeenCalledWith('p1', faqs);
+      expect(placesRepo.listFaqsForOwner).toHaveBeenCalledWith('p1');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'place.faqs_replaced', entityId: 'p1', actorId: 'u1' }),
+      );
+      expect(res).toEqual([
+        { id: 'f1', question: 'Có chỗ đậu xe không?', answer: 'Có.', sort_order: 0, is_ai_generated: false, status: 'published' },
+      ]);
     });
   });
 });

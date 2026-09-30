@@ -84,4 +84,112 @@ describe('HotelsRepository — browse (stars filter, sort, pagination)', () => {
       expect(params).toEqual([5]);
     });
   });
+
+  // Bug thật đã sửa (2026-09-30): bản cũ dùng UPSERT tĩnh + COALESCE, xoá mất sự phân biệt
+  // "không gửi field" / "gửi field=null" TRƯỚC KHI tới SQL (cả hai cùng thành tham số NULL). Bản
+  // mới đọc-sửa-ghi trong transaction, chỉ đưa vào SET/INSERT đúng những cột THỰC SỰ có mặt trong
+  // DTO (`!== undefined`) — proof thật trên Postgres nằm ở
+  // test/hotel-details-patch-semantics.e2e-spec.ts; các test dưới đây chỉ khoá lại hành vi ở mức
+  // đơn vị (mock transaction) để bắt regression nhanh.
+  describe('upsertDetails', () => {
+    // CAS thật (2026-09-30): câu đầu tiên MỌI transaction giờ là
+    // `UPDATE places SET content_version = content_version + 1 WHERE ... RETURNING content_version`
+    // — phải resolve khớp version trước khi SELECT FOR UPDATE trên satellite table chạy.
+    function mockTransaction(selectResult: unknown[], casRow: unknown[] = [{ content_version: 2 }]) {
+      const managerQuery = jest
+        .fn()
+        .mockResolvedValueOnce(casRow)
+        .mockResolvedValueOnce(selectResult)
+        .mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<unknown>) => cb({ query: managerQuery }));
+      return managerQuery;
+    }
+
+    it('CAS không khớp version -> conflict:true, không chạm satellite table', async () => {
+      const managerQuery = mockTransaction([], []);
+
+      const result = await sut.upsertDetails('p1', { hotel_type: 'resort' } as never, 1);
+
+      expect(result).toEqual({ conflict: true });
+      expect(managerQuery).toHaveBeenCalledTimes(1); // chỉ CAS UPDATE, không SELECT/INSERT/UPDATE nào khác
+    });
+
+    it('chưa có hàng, PATCH chỉ hotel_type -> INSERT chỉ với cột hotel_type (không tự bịa NULL cho các cột khác)', async () => {
+      const managerQuery = mockTransaction([]);
+
+      const result = await sut.upsertDetails('p1', { hotel_type: 'resort' } as never, 1);
+
+      const insertCall = managerQuery.mock.calls[2];
+      expect(sql(insertCall[0])).toBe('INSERT INTO "place_hotel_details" ("place_id", "hotel_type") VALUES ($1, $2)');
+      expect(insertCall[1]).toEqual(['p1', 'resort']);
+      expect(result).toEqual({ conflict: false, newVersion: 2 });
+    });
+
+    it('đã có hàng, PATCH chỉ hotel_type -> UPDATE chỉ đụng cột hotel_type, KHÔNG đụng star_rating/check_in/check_out', async () => {
+      const managerQuery = mockTransaction([
+        { hotel_type: 'hotel', star_rating: 4, star_rating_source_id: null },
+      ]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'villa' } as never, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_hotel_details" SET "hotel_type" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'villa']);
+    });
+
+    it('PATCH check_in=null (xoá tường minh) -> UPDATE ghi NULL cho đúng cột đó, không đụng cột khác', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: null, star_rating_source_id: null }]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'hotel', check_in: null } as never, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_hotel_details" SET "hotel_type" = $2, "check_in" = $3 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'hotel', null]);
+    });
+
+    it('star_rating đổi giá trị KHÔNG kèm source mới -> xoá source_id/verified_at cũ (nhất quán giá trị-nguồn)', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: 4, star_rating_source_id: 'old-src' }]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'hotel', star_rating: 5 } as never, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      const [sql_, params] = updateCall;
+      expect(sql(sql_)).toContain('"star_rating" = $');
+      expect(sql(sql_)).toContain('"star_rating_source_id" = $');
+      expect(sql(sql_)).toContain('"star_rating_verified_at" = $');
+      const starRatingIdx = params.indexOf(5);
+      expect(starRatingIdx).toBeGreaterThan(0);
+      expect(params).toContain(null); // source_id và verified_at cùng bị xoá về null
+    });
+
+    it('star_rating đổi giá trị KÈM source mới -> ghi source mới + verified_at (Date)', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: 4, star_rating_source_id: null }]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'hotel', star_rating: 5, star_rating_source_id: 'new-src' } as never, 1);
+
+      const [, params] = managerQuery.mock.calls[2];
+      expect(params).toContain('new-src');
+      expect(params.some((p: unknown) => p instanceof Date)).toBe(true);
+    });
+
+    it('star_rating KHÔNG đổi và source KHÔNG được nhắc tới -> không đụng 3 cột star_rating*', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: 4, star_rating_source_id: 'src-1' }]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'villa' } as never, 1);
+
+      const [updateSql] = managerQuery.mock.calls[2];
+      expect(sql(updateSql)).not.toContain('star_rating');
+    });
+
+    it('patch rỗng thật sự (không có key hợp lệ nào ngoài lookup) -> không UPDATE/INSERT gì, nhưng version vẫn tăng (CAS bump luôn xảy ra khi version khớp)', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: 4, star_rating_source_id: null }]);
+
+      const result = await sut.upsertDetails('p1', {} as never, 1);
+
+      expect(managerQuery).toHaveBeenCalledTimes(2); // CAS UPDATE + SELECT FOR UPDATE, không có lệnh ghi nào khác
+      expect(result).toEqual({ conflict: false, newVersion: 2 });
+    });
+  });
 });

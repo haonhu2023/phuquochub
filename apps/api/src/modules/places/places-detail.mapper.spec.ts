@@ -25,6 +25,8 @@ describe('toPlaceDetail', () => {
     admin_area: 'Đặc khu Phú Quốc',
     description: 'Cát trắng',
     opening_hours: null,
+    visit_duration_minutes: null,
+    rules: null,
     osm_id: '123456789',
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-02T00:00:00Z'),
@@ -43,6 +45,15 @@ describe('toPlaceDetail', () => {
 
   it('category_slug được đưa ra hợp đồng chi tiết (điều hướng về đúng trang duyệt)', () => {
     expect(toPlaceDetail(baseRow).category_slug).toBe('beach');
+  });
+
+  // "Thời lượng tham quan"/"quy định" (attraction, product spec 2026-09-29) — cùng chủ trương
+  // province/admin_area: `null` khi vắng, không rơi khỏi payload.
+  it('visit_duration_minutes/rules ra hợp đồng khi có, null khi vắng', () => {
+    expect(toPlaceDetail({ ...baseRow, visit_duration_minutes: 90, rules: 'Không mang giày cao gót' })).toMatchObject(
+      { visit_duration_minutes: 90, rules: 'Không mang giày cao gót' },
+    );
+    expect(toPlaceDetail(baseRow)).toMatchObject({ visit_duration_minutes: null, rules: null });
   });
 
   // Place Information Foundation (2026-08-18) — ADDRESS_MODEL.

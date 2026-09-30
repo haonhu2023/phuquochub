@@ -1,5 +1,19 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { PriceRange } from '../../places/place.enums';
 
 export enum TourTypeDto {
@@ -86,4 +100,62 @@ export class ListToursQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   limit?: number;
+}
+
+// place_tour_details đã có hàng từ lúc tạo (ToursService.create → createDetails), khác
+// hotel/restaurant/beach — UPDATE thẳng, PATCH TỪNG PHẦN thật (xem ToursRepository.updateDetails).
+// organizer_id trỏ tới MỘT place khác (đơn vị tổ chức) — đúng khuôn cột đã có (InitTour), không
+// đổi kiểu dữ liệu chỉ vì "đơn vị tổ chức" thường là tên công ty tự do; nếu công ty đó chưa có
+// place riêng, để trống — không ép người biên tập tạo một place giả chỉ để có ID.
+// Field "được phép xoá" khai `T | null` — xem ghi chú đầy đủ ở UpdateHotelDetailsDto.
+export class UpdateTourDetailsDto {
+  @IsOptional() @IsEnum(TourTypeDto)
+  tour_type?: TourTypeDto;
+
+  @IsOptional() @IsInt() @Min(1)
+  duration_minutes?: number | null;
+
+  @IsOptional() @IsEnum(TourDifficultyDto)
+  difficulty?: TourDifficultyDto | null;
+
+  @IsOptional() @IsUUID()
+  organizer_id?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(300)
+  pickup_point?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  inclusions?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  exclusions?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  cancellation_policy?: string | null;
+}
+
+// tour_stops — "lịch trình theo mốc". Thay TOÀN BỘ, cùng khuôn UpdateHotelRoomsDto/
+// UpdateRestaurantMenuDto — đường ghi ĐẦU TIÊN cho bảng này (trước chỉ đọc).
+export class TourStopDto {
+  @IsString() @MaxLength(160)
+  name!: string;
+
+  @IsOptional() @IsString() @MaxLength(40)
+  time?: string;
+
+  @IsOptional() @IsString() @MaxLength(300)
+  note?: string;
+
+  @IsOptional() @ValidateNested() @Type(() => GeoPointDto)
+  location?: GeoPointDto;
+
+  @IsOptional() @IsInt()
+  sort_order?: number;
+}
+
+export class UpdateTourStopsDto {
+  @IsArray() @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => TourStopDto)
+  stops!: TourStopDto[];
 }

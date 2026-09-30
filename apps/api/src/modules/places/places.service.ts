@@ -221,6 +221,18 @@ export class PlacesService {
     return this.placeTranslationsService.listEnIndexablePlaceIds(ids);
   }
 
+  /**
+   * Đọc TỐI THIỂU (slug + status) — cho các module vệ tinh (Hotels/Restaurants/Beaches/Tours) ghi
+   * xong chi tiết category-specific rồi cần biết có nên `cacheInvalidation.invalidatePlace()` hay
+   * không (chỉ khi đã published) mà KHÔNG phải ghép toàn bộ contacts/prices/media/faqs như
+   * `preview()`. Đặc quyền (không lọc status) — CHỈ dùng sau khi caller đã tự kiểm permission
+   * (route gắn `Place.Edit.Managed`), cùng ranh giới `getCardByIdIncludingInactive` đã ghi ở trên.
+   */
+  async getSlugAndStatus(id: string): Promise<{ slug: string; status: PlaceStatus; content_version: number } | null> {
+    const row = await this.placesRepo.getCardByIdIncludingInactive(id);
+    return row ? { slug: row.slug, status: row.status, content_version: row.content_version } : null;
+  }
+
   async preview(id: string) {
     const row = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!row) {
@@ -537,6 +549,8 @@ export class PlacesService {
     if (dto.short_description !== undefined) patch.shortDescription = dto.short_description;
     if (dto.opening_hours !== undefined) patch.openingHours = dto.opening_hours;
     if (dto.price_range !== undefined) patch.priceRange = dto.price_range;
+    if (dto.visit_duration_minutes !== undefined) patch.visitDurationMinutes = dto.visit_duration_minutes;
+    if (dto.rules !== undefined) patch.rules = dto.rules;
     // CAS (AddPlaceContentVersion, 2026-09-22): conditional UPDATE on content_version, same shape
     // as GuideArticlesService.saveDraft(). `affected === 0` means either the place vanished between
     // the read above and here (already ruled out — this is the same request), or someone else's
@@ -1084,6 +1098,31 @@ export class PlacesService {
       manageableIds.map((id) => this.placesRepo.getCardByIdIncludingInactive(id)),
     );
     return rows.filter((row): row is NonNullable<typeof row> => row !== null).map(toPlaceDetail);
+  }
+
+  // Đặc quyền (Place.Edit.Managed). Thay TOÀN BỘ FAQ — cùng khuôn HotelsService.updateRooms/
+  // RestaurantsService.updateMenu. listFaqsForOwner (không lọc status) để actor thấy đúng cái họ
+  // vừa lưu, không phải bản public đã lọc published.
+  async updateFaqs(placeId: string, faqs: Array<{ question: string; answer: string; sort_order?: number }>, userId: string) {
+    const existing = await this.placesRepo.getCardByIdIncludingInactive(placeId);
+    if (!existing) {
+      throw new NotFoundException('Không tìm thấy địa điểm');
+    }
+    await this.placesRepo.replaceFaqs(placeId, faqs);
+    // ADR-016: thay toàn bộ FAQ là ghi nội dung đặc quyền — ghi audit cùng chủ trương archive/
+    // approve ở trên. Chỉ invalidate cache khi đã published (draft chưa từng được cache).
+    await this.audit.record({
+      event: 'place.faqs_replaced',
+      entityType: 'place',
+      entityId: placeId,
+      actorId: userId,
+      permission: 'Place.Edit.Managed',
+      context: { faq_count: faqs.length },
+    });
+    if (existing.status === PlaceStatus.PUBLISHED) {
+      void this.cacheInvalidation.invalidatePlace(existing.slug);
+    }
+    return this.placesRepo.listFaqsForOwner(placeId);
   }
 
   private async uniqueSlug(name: string): Promise<string> {
