@@ -111,5 +111,43 @@ describe('Restaurant details PATCH semantics (giữ/đổi/xoá dietary) — liv
 
     const row = await readDetails(placeId);
     expect(row.is_local_specialty).toBe(true);
+
+    const [{ content_version: placeVersionAfter }] = await ds.query(`SELECT content_version FROM places WHERE id = $1`, [placeId]);
+    expect(placeVersionAfter).toBe(2);
+  }, 30_000);
+
+  // Bug thật đã sửa khi làm CAS (2026-09-30) — RestaurantsRepository.upsertDetails GỘP cuisine_codes
+  // vào CÙNG transaction với is_local_specialty/dietary chính vì bản cũ ghi hai lần riêng biệt để
+  // lại đúng lỗ hổng này: mã cuisine không hợp lệ bị từ chối SAU KHI is_local_specialty/dietary đã
+  // commit ở lần ghi trước. Test này chứng minh trên DB thật: một request vừa đổi is_local_specialty
+  // VỪA gửi cuisine_codes có mã rác -> TOÀN BỘ request rollback, is_local_specialty giữ nguyên giá
+  // trị CŨ, content_version KHÔNG tăng.
+  it('cuisine_codes có mã không tồn tại -> rollback TOÀN BỘ (không đổi một phần is_local_specialty), content_version không tăng', async () => {
+    const placeId = await mkRestaurantPlace('invalid-cuisine-rollback');
+
+    const created = await restaurantsService.updateDetails(
+      placeId,
+      { expected_content_version: 1, is_local_specialty: false, cuisine_codes: ['seafood'] },
+      actorId,
+    );
+    expect(created.content_version).toBe(2);
+
+    await expect(
+      restaurantsService.updateDetails(
+        placeId,
+        { expected_content_version: 2, is_local_specialty: true, cuisine_codes: ['khong_ton_tai_thuc_su'] },
+        actorId,
+      ),
+    ).rejects.toThrow(/khong_ton_tai_thuc_su/);
+
+    const row = await readDetails(placeId);
+    expect(row.is_local_specialty).toBe(false); // KHÔNG bị đổi thành true — cả request rollback
+    const cuisines: Array<{ code: string }> = await ds.query(
+      `SELECT c.code FROM place_cuisines pc JOIN cuisines c ON c.id = pc.cuisine_id WHERE pc.place_id = $1`,
+      [placeId],
+    );
+    expect(cuisines.map((c) => c.code)).toEqual(['seafood']); // gán cuisine cũ vẫn nguyên
+    const [{ content_version: placeVersionAfter }] = await ds.query(`SELECT content_version FROM places WHERE id = $1`, [placeId]);
+    expect(placeVersionAfter).toBe(2); // KHÔNG bị tăng thêm bởi request thất bại
   }, 30_000);
 });

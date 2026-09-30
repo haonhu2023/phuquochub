@@ -84,10 +84,11 @@ describe('saveDraftPlace', () => {
     mockPost.mockResolvedValueOnce({ id: 'rev1', revisionNumber: 3 });
     const result = await saveDraftPlace(
       'place 1',
-      { category_id: 'c1', address: 'X', ward: null, price_range: 'mid', opening_hours: PAYLOAD.opening_hours },
+      { expected_content_version: 1, category_id: 'c1', address: 'X', ward: null, price_range: 'mid', opening_hours: PAYLOAD.opening_hours },
       'tok',
     );
     expect(mockPost).toHaveBeenCalledWith('/places/place%201/draft', 'tok', {
+      expected_content_version: 1,
       category_id: 'c1',
       address: 'X',
       ward: null,
@@ -110,8 +111,9 @@ describe('publishPlaceDraft', () => {
 describe('saveDraftPlace — location', () => {
   it('gửi location CÙNG các trường scalar khác trong MỘT payload', async () => {
     mockPost.mockResolvedValueOnce({ id: 'rev1', revisionNumber: 1 });
-    await saveDraftPlace('place 1', { address: 'X', location: { lat: 10.2, lng: 104.0 } }, 'tok');
+    await saveDraftPlace('place 1', { expected_content_version: 1, address: 'X', location: { lat: 10.2, lng: 104.0 } }, 'tok');
     expect(mockPost).toHaveBeenCalledWith('/places/place%201/draft', 'tok', {
+      expected_content_version: 1,
       address: 'X',
       location: { lat: 10.2, lng: 104.0 },
     });

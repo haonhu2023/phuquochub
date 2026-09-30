@@ -37,8 +37,10 @@ describe('AmenitiesRepository', () => {
   // transaction với DELETE/INSERT (xem ghi chú đầy đủ ở method). Mã không hợp lệ vẫn được kiểm
   // TRƯỚC khi mở transaction (đọc-only, an toàn tách rời) để không burn version bump vô ích.
   describe('setForPlace', () => {
+    // `query()` trả TUPLE `[rows, affectedCount]` cho UPDATE...RETURNING — mock mô phỏng đúng hình
+    // dạng đó (bug thật đã sửa 2026-09-30, xem repository's ghi chú).
     function mockTransaction(casRow: unknown[] = [{ content_version: 2 }]) {
-      const managerQuery = jest.fn().mockResolvedValueOnce(casRow).mockResolvedValue(undefined);
+      const managerQuery = jest.fn().mockResolvedValueOnce([casRow, casRow.length]).mockResolvedValue(undefined);
       (ds as unknown as { transaction: jest.Mock }).transaction = jest
         .fn()
         .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<unknown>) => cb({ query: managerQuery }));

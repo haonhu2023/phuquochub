@@ -184,5 +184,10 @@ describe('Hotel details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
     // DB phải giữ NGUYÊN kết quả của request thắng (Tab A) — không có gì bị ghi đè bởi request thua.
     const row = await readDetails(placeId);
     expect(row.star_rating).toBe(4);
+
+    // Request thua phải rollback CẢ version lẫn dữ liệu satellite — places.content_version vẫn
+    // đúng bằng 2 (không bị tăng thêm một lần vô ích bởi request thất bại).
+    const [{ content_version: placeVersionAfter }] = await ds.query(`SELECT content_version FROM places WHERE id = $1`, [placeId]);
+    expect(placeVersionAfter).toBe(2);
   }, 30_000);
 });

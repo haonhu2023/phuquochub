@@ -125,7 +125,13 @@ export class HotelsRepository {
     expectedVersion: number,
   ): Promise<{ conflict: boolean; newVersion?: number }> {
     return this.ds.transaction(async (m) => {
-      const casRows: Array<{ content_version: number }> = await m.query(
+      // BUG THẬT (2026-09-30, phát hiện qua e2e trên Postgres thật — không phải mock): `UPDATE ...
+      // RETURNING` qua `query()` trả về TUPLE `[rows, affectedCount]`, KHÔNG PHẢI mảng rows trực
+      // tiếp (khác `INSERT ... RETURNING`) — cùng landmine PlacesRepository.updateScalarsIfUnchanged
+      // đã ghi chú. Không destructure đúng `[casRows]` khiến `casRows.length === 0` KHÔNG BAO GIỜ
+      // đúng (tuple luôn có 2 phần tử) — CAS "luôn thành công" bất kể có khớp version hay không,
+      // đúng lớp lỗi bảo mật/tính đúng đắn nghiêm trọng mà landmine kia đã cảnh báo.
+      const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
         `UPDATE places SET content_version = content_version + 1
            WHERE id = $1 AND content_version = $2
            RETURNING content_version`,

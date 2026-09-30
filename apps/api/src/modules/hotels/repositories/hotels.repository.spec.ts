@@ -94,11 +94,13 @@ describe('HotelsRepository — browse (stars filter, sort, pagination)', () => {
   describe('upsertDetails', () => {
     // CAS thật (2026-09-30): câu đầu tiên MỌI transaction giờ là
     // `UPDATE places SET content_version = content_version + 1 WHERE ... RETURNING content_version`
-    // — phải resolve khớp version trước khi SELECT FOR UPDATE trên satellite table chạy.
+    // — phải resolve khớp version trước khi SELECT FOR UPDATE trên satellite table chạy. `query()`
+    // trả TUPLE `[rows, affectedCount]` cho UPDATE...RETURNING (bug thật đã sửa 2026-09-30, xem
+    // repository's ghi chú) — mock phải mô phỏng ĐÚNG hình dạng đó, không phải mảng rows trần.
     function mockTransaction(selectResult: unknown[], casRow: unknown[] = [{ content_version: 2 }]) {
       const managerQuery = jest
         .fn()
-        .mockResolvedValueOnce(casRow)
+        .mockResolvedValueOnce([casRow, casRow.length])
         .mockResolvedValueOnce(selectResult)
         .mockResolvedValue(undefined);
       (ds as unknown as { transaction: jest.Mock }).transaction = jest

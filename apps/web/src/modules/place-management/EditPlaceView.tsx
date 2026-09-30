@@ -139,6 +139,10 @@ export function EditPlaceView({ placeId }: Props) {
       const draft = await saveDraftPlace(
         placeId,
         {
+          // Bug thật đã sửa (2026-09-30) — xem PlaceDraftScalarInput's ghi chú đầy đủ: thiếu field
+          // này khiến POST /places/:id/draft LUÔN 400 bất kể nội dung form. Dùng `contentVersion`
+          // (đã đồng bộ với các category editor liền kề) làm CAS token dùng chung.
+          expected_content_version: contentVersion ?? state.place.content_version,
           category_id: input.category_id,
           address: input.address,
           ward: input.ward,

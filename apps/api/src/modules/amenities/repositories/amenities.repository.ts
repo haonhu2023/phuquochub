@@ -54,7 +54,9 @@ export class AmenitiesRepository {
       }
     }
     return this.ds.transaction(async (m) => {
-      const casRows: Array<{ content_version: number }> = await m.query(
+      // BUG THẬT (2026-09-30) — xem HotelsRepository.upsertDetails's ghi chú đầy đủ: `UPDATE ...
+      // RETURNING` trả về TUPLE `[rows, affectedCount]`, phải destructure `[casRows]`.
+      const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
         `UPDATE places SET content_version = content_version + 1
            WHERE id = $1 AND content_version = $2
            RETURNING content_version`,

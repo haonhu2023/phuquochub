@@ -117,11 +117,12 @@ describe('RestaurantsRepository — browse (price_range/cuisine filter, sort, pa
   // đọc-sửa-ghi trong transaction, chỉ đụng cột THỰC SỰ có mặt trong DTO (`!== undefined`).
   describe('upsertDetails', () => {
     // CAS thật (2026-09-30): câu đầu tiên trong transaction giờ là CAS UPDATE trên `places` — xem
-    // HotelsRepository.upsertDetails's ghi chú đầy đủ, cùng khuôn.
+    // HotelsRepository.upsertDetails's ghi chú đầy đủ, cùng khuôn. `query()` trả TUPLE
+    // `[rows, affectedCount]` cho UPDATE...RETURNING — mock mô phỏng đúng hình dạng đó.
     function mockTransaction(existsRows: unknown[], casRow: unknown[] = [{ content_version: 2 }]) {
       const managerQuery = jest
         .fn()
-        .mockResolvedValueOnce(casRow)
+        .mockResolvedValueOnce([casRow, casRow.length])
         .mockResolvedValueOnce(existsRows)
         .mockResolvedValue(undefined);
       (ds as unknown as { transaction: jest.Mock }).transaction = jest
