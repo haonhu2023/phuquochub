@@ -245,6 +245,11 @@ describe('HotelDetailPage — link "Xem trên bản đồ" (chỉ đường, cù
     expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
     expect(link).toHaveAttribute('target', '_blank');
   });
+
+  it('toạ độ không hợp lệ (NaN/ngoài phạm vi Trái Đất) -> KHÔNG render link, tránh dẫn khách tới nơi sai', async () => {
+    await renderPage(hotel({ location: { lat: NaN, lng: 103.9654 } }));
+    expect(screen.queryByRole('link', { name: /Xem trên bản đồ/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {

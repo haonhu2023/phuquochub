@@ -14,6 +14,7 @@ import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
@@ -102,15 +103,17 @@ export default async function RestaurantDetailPage({ params }: Params) {
       </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
-      <p>
-        <a
-          href={`https://www.google.com/maps?q=${r.location.lat},${r.location.lng}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {VIEW_ON_MAP_LABEL[locale]}
-        </a>
-      </p>
+      {isValidCoord(r.location.lng, r.location.lat) && (
+        <p>
+          <a
+            href={`https://www.google.com/maps?q=${r.location.lat},${r.location.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {VIEW_ON_MAP_LABEL[locale]}
+          </a>
+        </p>
+      )}
 
       <PlaceGallery media={r.media} placeName={r.name} />
 

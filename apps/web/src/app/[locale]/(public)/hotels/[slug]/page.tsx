@@ -12,6 +12,7 @@ import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
 import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -103,15 +104,17 @@ export default async function HotelDetailPage({ params }: Params) {
         <PlacePhotosButton placeId={h.id} />
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
-      <p>
-        <a
-          href={`https://www.google.com/maps?q=${h.location.lat},${h.location.lng}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {VIEW_ON_MAP_LABEL[locale]}
-        </a>
-      </p>
+      {isValidCoord(h.location.lng, h.location.lat) && (
+        <p>
+          <a
+            href={`https://www.google.com/maps?q=${h.location.lat},${h.location.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {VIEW_ON_MAP_LABEL[locale]}
+          </a>
+        </p>
+      )}
 
       <PlaceGallery media={h.media} placeName={h.name} />
 
