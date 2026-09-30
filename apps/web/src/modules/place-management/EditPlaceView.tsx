@@ -16,6 +16,7 @@ import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescrip
 import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor';
 import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
 import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
+import { PricesEditor } from '@/modules/category-admin/PricesEditor';
 
 type State =
   | { kind: 'loading' }
@@ -338,12 +339,14 @@ export function EditPlaceView({ placeId }: Props) {
         <>
           <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <PricesEditor placeId={placeId} />
         </>
       )}
       {state.place.category_slug === 'restaurant' && contentVersion !== null && (
         <>
           <RestaurantDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <PricesEditor placeId={placeId} />
         </>
       )}
       <PlaceForm

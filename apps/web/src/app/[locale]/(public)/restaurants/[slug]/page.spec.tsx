@@ -94,6 +94,32 @@ describe('RestaurantDetailPage — link "Xem trên bản đồ" (chỉ đường
   });
 });
 
+// Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.spec.tsx's ghi chú đầy đủ, cùng khuôn.
+// price_history ở đây KHÁC menu item price (không có trust column riêng) — đây là bản ghi giá
+// tổng quát (vd "giá/người") với verification_status CỦA CHÍNH nó.
+describe('RestaurantDetailPage — Giá tham khảo (price_history, product spec P2 2026-09-30)', () => {
+  it('giá đã xác minh -> hiện số tiền thật', async () => {
+    await renderPage(
+      restaurant({
+        prices: [{ id: 'p1', service_name: 'Giá/người', amount: 200000, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'verified' }],
+      }),
+    );
+    expect(screen.getByText(/Giá\/người/)).toBeInTheDocument();
+    expect(screen.getByText(/200.000 VND \/ người/)).toBeInTheDocument();
+  });
+
+  it('giá chưa xác minh -> không lộ amount', async () => {
+    const SENTINEL = 987654321;
+    await renderPage(
+      restaurant({
+        prices: [{ id: 'p1', service_name: 'Giá/người', amount: SENTINEL, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' }],
+      }),
+    );
+    expect(document.body.textContent).not.toContain(String(SENTINEL));
+    expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+  });
+});
+
 describe('RestaurantDetailPage — gallery ảnh công khai (real-data pass)', () => {
   it('có media đã published -> render ảnh thật', async () => {
     await renderPage(

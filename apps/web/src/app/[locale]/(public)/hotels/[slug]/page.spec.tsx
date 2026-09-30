@@ -252,6 +252,42 @@ describe('HotelDetailPage — link "Xem trên bản đồ" (chỉ đường, cù
   });
 });
 
+// Bug thật đã sửa (2026-09-30, phát hiện qua rà soát P2) — `h.prices` (price_history, SSOT giá)
+// LUÔN có mặt trong response (HotelDetail kế thừa PlaceDetail) nhưng trang này chưa từng render nó
+// trước đây, dù places/[slug]/page.tsx đã có đúng khối này. Cùng nguyên tắc trust gate: amount chỉ
+// hiện khi bản ghi đã đạt canDisplayPrice(), không phải suy từ verification_status của Place cha.
+describe('HotelDetailPage — Giá tham khảo (price_history, product spec P2 2026-09-30)', () => {
+  it('giá đã xác minh -> hiện số tiền thật kèm đơn vị', async () => {
+    await renderPage(
+      hotel({
+        prices: [
+          { id: 'p1', service_name: 'Giá phòng/đêm', amount: 900000, currency: 'VND', unit: 'đêm', is_free: false, valid_from: null, valid_to: null, verification_status: 'verified' },
+        ],
+      }),
+    );
+    expect(screen.getByText(/Giá phòng\/đêm/)).toBeInTheDocument();
+    expect(screen.getByText(/900.000 VND \/ đêm/)).toBeInTheDocument();
+  });
+
+  it('giá chưa xác minh -> KHÔNG lộ amount, chỉ hiện dòng "đang được xác minh"', async () => {
+    const SENTINEL = 123456789;
+    await renderPage(
+      hotel({
+        prices: [
+          { id: 'p1', service_name: 'Giá phòng/đêm', amount: SENTINEL, currency: 'VND', unit: 'đêm', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
+        ],
+      }),
+    );
+    expect(document.body.textContent).not.toContain(String(SENTINEL));
+    expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+  });
+
+  it('không có giá nào -> không render mục "Giá tham khảo"', async () => {
+    await renderPage(hotel({ prices: [] }));
+    expect(screen.queryByText('Giá tham khảo')).not.toBeInTheDocument();
+  });
+});
+
 describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
   function media(overrides: Partial<import('@/modules/places/types').PlaceMedia> = {}) {
     return {

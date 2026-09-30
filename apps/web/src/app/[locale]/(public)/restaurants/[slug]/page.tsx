@@ -9,7 +9,7 @@ import {
 } from '@/modules/restaurants/api/restaurants.api';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
-import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
@@ -140,6 +140,34 @@ export default async function RestaurantDetailPage({ params }: Params) {
         <section>
           <h2>Giờ mở cửa</h2>
           <p>{getOpeningToday(r.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
+        </section>
+      )}
+
+      {/* Giá tham khảo/người qua price_history (SSOT giá dùng chung mọi category) — bug thật đã sửa
+          (2026-09-30, phát hiện qua rà soát P2): `r.prices` LUÔN có mặt (RestaurantDetail kế thừa
+          PlaceDetail) nhưng trang này chưa từng render, dù places/[slug]/page.tsx đã có khối này.
+          KHÁC với giá món trong menu bên dưới (không có trust column riêng) — đây là bản ghi
+          price_history CÓ verification_status riêng, gate đúng canDisplayPrice() của CHÍNH nó. */}
+      {r.prices.length > 0 && (
+        <section>
+          <h2>Giá tham khảo</h2>
+          {r.prices.filter((p) => canDisplayPrice(p.verification_status)).length > 0 && (
+            <ul>
+              {r.prices
+                .filter((p) => canDisplayPrice(p.verification_status))
+                .map((p) => (
+                  <li key={p.id}>
+                    {p.service_name}:{' '}
+                    {p.is_free
+                      ? 'Miễn phí'
+                      : p.amount !== null
+                        ? `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`
+                        : null}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {r.prices.some((p) => !canDisplayPrice(p.verification_status)) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
 

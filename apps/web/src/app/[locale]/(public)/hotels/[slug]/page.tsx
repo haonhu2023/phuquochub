@@ -5,7 +5,7 @@ import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
 import { HOTEL_TYPE_LABELS } from '@/modules/hotels/types';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
-import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
@@ -205,6 +205,34 @@ export default async function HotelDetailPage({ params }: Params) {
             ))}
           </ul>
           {h.rooms.some((r) => r.price_ref !== null) && <p>{PRICE_VERIFYING_TEXT}</p>}
+        </section>
+      )}
+
+      {/* Giá tham khảo qua price_history (SSOT giá dùng chung mọi category, ADR-006/ADR-019) —
+          bug thật đã sửa (2026-09-30, phát hiện qua rà soát P2): `h.prices` LUÔN có mặt trong
+          response (HotelDetail kế thừa PlaceDetail) nhưng trang này trước đây không render, dù
+          places/[slug]/page.tsx đã có đúng khối này từ trước. Cùng nguyên tắc trust gate: amount
+          chỉ hiện khi bản ghi đã đạt canDisplayPrice(), một dòng "đang xác minh" dùng chung. */}
+      {h.prices.length > 0 && (
+        <section>
+          <h2>Giá tham khảo</h2>
+          {h.prices.filter((p) => canDisplayPrice(p.verification_status)).length > 0 && (
+            <ul>
+              {h.prices
+                .filter((p) => canDisplayPrice(p.verification_status))
+                .map((p) => (
+                  <li key={p.id}>
+                    {p.service_name}:{' '}
+                    {p.is_free
+                      ? 'Miễn phí'
+                      : p.amount !== null
+                        ? `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`
+                        : null}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {h.prices.some((p) => !canDisplayPrice(p.verification_status)) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
     </article>
