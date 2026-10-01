@@ -85,6 +85,15 @@ echo "[deploy]     to the host under this topology, so a bare host-side npm run 
 # ANYWAY because this is the one place in the repo that intentionally runs migrations against a
 # real database, and that intent should be explicit in the command rather than implied by a
 # Compose convenience behaviour that a future version could narrow.
+#
+# Explicit `build` before `run` (found missing 2026-09-26): `docker compose run` does NOT rebuild
+# an already-built service image on its own -- it reuses
+# whatever `phuquochub-prod-migrate:latest` already exists on disk. Step 5 above builds
+# `phuquochub-api:$TAG` directly via `docker build`, which is a DIFFERENT image than compose's own
+# `migrate` build, so that step never refreshes this one. Without this line, a stale migrate image
+# silently reports "No migrations are pending" for a schema-changing release -- exactly the eb63a4b
+# incident this project already hit once, recurring because deploy.sh itself never carried the fix.
+$COMPOSE --profile tools build migrate
 DB_PASSWORD="${DB_PASSWORD:?DB_PASSWORD required}" $COMPOSE --profile tools run --rm migrate \
   || { echo "[deploy] ERROR: migration:run failed. Deploy HALTED -- the previous image is still" >&2; \
        echo "[deploy]        running (docker compose was never touched by this failed run)." >&2; exit 1; }
@@ -96,6 +105,7 @@ docker run -d --rm --name "phuquoc-api-smoketest-$TAG" --network phuquochub-prod
   -e "REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD required}@redis:6379" \
   -e "JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET:?}" -e "JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?}" \
   -e "CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://phuquochub.com}" \
+  -e "REVALIDATE_INTERNAL_SECRET=${REVALIDATE_INTERNAL_SECRET:?REVALIDATE_INTERNAL_SECRET required}" \
   "phuquochub-api:$TAG"
 sleep 5
 if ! docker exec "phuquoc-api-smoketest-$TAG" node -e "require('http').get('http://127.0.0.1:4000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"; then

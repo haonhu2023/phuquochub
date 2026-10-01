@@ -1,10 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
+import { PlaceStatus } from '../places/place.enums';
 import { ToursRepository } from './repositories/tours.repository';
-import { CreateTourDto, ListToursQueryDto } from './dto/tours.dto';
+import { CreateTourDto, ListToursQueryDto, UpdateTourDetailsDto, UpdateTourStopsDto } from './dto/tours.dto';
 import type { CreatePlaceDto } from '../places/dto/places.dto';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 import { redactUntrustedPriceRange } from '../../common/price-trust';
+import { AuditService } from '../../core/audit/audit.service';
+import { CacheInvalidationService } from '../../core/cache-invalidation/cache-invalidation.service';
 
 function mapStop(s: Record<string, unknown>) {
   const lat = s.lat as number | null;
@@ -41,7 +44,18 @@ export class ToursService {
   constructor(
     private readonly placesService: PlacesService,
     private readonly repo: ToursRepository,
+    private readonly audit: AuditService,
+    private readonly cacheInvalidation: CacheInvalidationService,
   ) {}
+
+  /** Xem HotelsService.recordWriteAndInvalidate's ghi chú đầy đủ — cùng khuôn. */
+  private async recordWriteAndInvalidate(event: string, placeId: string, userId: string, context: Record<string, unknown>) {
+    await this.audit.record({ event, entityType: 'place', entityId: placeId, actorId: userId, permission: 'Place.Edit.Managed', context });
+    const place = await this.placesService.getSlugAndStatus(placeId);
+    if (place?.status === PlaceStatus.PUBLISHED) {
+      void this.cacheInvalidation.invalidatePlace(place.slug);
+    }
+  }
 
   async list(query: ListToursQueryDto = {}) {
     const p = clampPage(query.page);
@@ -113,5 +127,28 @@ export class ToursService {
       difficulty: dto.difficulty ?? null,
     });
     return { ...place, tour_details: await this.repo.detail(place.id as string) };
+  }
+
+  // Đặc quyền (Place.Edit.Managed). Xem ToursRepository.updateDetails's ghi chú.
+  async updateDetails(placeId: string, dto: UpdateTourDetailsDto, userId: string) {
+    await this.repo.updateDetails(placeId, dto);
+    await this.recordWriteAndInvalidate('place.tour_details_updated', placeId, userId, {
+      tour_type_changed: dto.tour_type !== undefined,
+      duration_minutes_changed: dto.duration_minutes !== undefined,
+      difficulty_changed: dto.difficulty !== undefined,
+      organizer_id_changed: dto.organizer_id !== undefined,
+      pickup_point_changed: dto.pickup_point !== undefined,
+      inclusions_changed: dto.inclusions !== undefined,
+      exclusions_changed: dto.exclusions !== undefined,
+      cancellation_policy_changed: dto.cancellation_policy !== undefined,
+    });
+    return this.repo.detail(placeId);
+  }
+
+  // Đặc quyền (Place.Edit.Managed). Thay TOÀN BỘ itinerary — cùng khuôn updateRooms/updateMenu.
+  async updateItinerary(placeId: string, dto: UpdateTourStopsDto, userId: string) {
+    await this.repo.replaceStops(placeId, dto.stops);
+    await this.recordWriteAndInvalidate('place.tour_itinerary_replaced', placeId, userId, { stop_count: dto.stops.length });
+    return this.getItinerary(placeId);
   }
 }

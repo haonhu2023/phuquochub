@@ -14,7 +14,7 @@ export function ImageWithRightsBlock({ content }: { content: ImageWithRightsCont
   return (
     <figure className={styles.imageBlock}>
       {/* eslint-disable-next-line @next/next/no-img-element -- runtime-resolved external media host, same precedent as PlaceCard.tsx */}
-      <img src={content.imageUrl} alt={content.caption ?? ''} loading="lazy" />
+      <img src={content.imageUrl} alt={content.alt || content.caption || ''} loading="lazy" />
       {(content.caption || content.attribution) && (
         <figcaption className={styles.imageCaption}>
           {content.caption}

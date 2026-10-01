@@ -1,5 +1,5 @@
 import { apiGetAuth, apiPatchAuth, apiPost } from '@/lib/http';
-import type { GuideArticleDetail, GuideArticleStatus, GuideBlockType } from '../../guide/types';
+import type { GuideArticleCategory, GuideArticleDetail, GuideArticleStatus, GuideBlockType } from '../../guide/types';
 
 export interface GuideArticleSummary {
   id: string;
@@ -20,6 +20,10 @@ export interface SaveGuideDraftInput {
   title: string;
   intro?: string;
   heroMediaId?: string;
+  category?: GuideArticleCategory;
+  tags?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
   blocks: Array<{
     blockType: GuideBlockType;
     content: Record<string, unknown>;
@@ -51,6 +55,10 @@ export interface UpdateGuideDraftInput {
   title: string;
   intro?: string;
   heroMediaId?: string;
+  category?: GuideArticleCategory;
+  tags?: string[];
+  metaTitle?: string;
+  metaDescription?: string;
   blocks: SaveGuideDraftInput['blocks'];
   expectedContentVersion: number;
 }

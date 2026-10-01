@@ -467,15 +467,18 @@ Vật chất hóa từng "occurrence" của sự kiện định kỳ (BR-E5) đ�
 
 **Index:** `(event_id, start_at)`.
 
-### 3.24 Bảng mở rộng Place (Hotel/Restaurant/Tour) — **định nghĩa tại [places.md §13](./modules/places.md)**
+### 3.24 Bảng mở rộng Place (Hotel/Restaurant/Tour/Beach) — **định nghĩa tại [places.md §13](./modules/places.md)**
 
-Theo **[ADR-002](../99-decisions/ADR-002-place-extension.md)** (satellite) + nguyên tắc SSOT/B7: schema đầy đủ (trường/kiểu/index) của **12 bảng mở rộng** là **authoritative tại [places.md §13](./modules/places.md)** — mục này **không** chép lại để tránh drift, chỉ liệt kê để tra cứu:
+Theo **[ADR-002](../99-decisions/ADR-002-place-extension.md)** (satellite; mở rộng cho Beach 2026-09-29) + nguyên tắc SSOT/B7: schema đầy đủ (trường/kiểu/index) của **13 bảng mở rộng** là **authoritative tại [places.md §13](./modules/places.md)** — mục này **không** chép lại để tránh drift, chỉ liệt kê để tra cứu:
 
 | Loại | Bảng | Quan hệ |
 |---|---|---|
 | Hotel | `place_hotel_details` (1:1) · `hotel_room_types` (1:N) · `amenities` (dict) · `place_amenities` (N:N) | `place_id` |
 | Restaurant | `place_restaurant_details` (1:1) · `restaurant_menu_sections` (1:N) · `restaurant_menu_items` (1:N section) · `cuisines` (dict) · `place_cuisines` (N:N) | `place_id` |
 | Tour | `place_tour_details` (1:1) · `tour_stops` (1:N) · `tour_schedules` (1:N) | `place_id` |
+| Beach | `place_beach_details` (1:1) | `place_id` |
+
+> Attraction (`category=attraction`) vẫn **không** có bảng vệ tinh — 2 trường riêng (`visit_duration_minutes`, `rules`) ở thẳng trên `places` (xem [places.md §13.6](./modules/places.md)).
 
 > **Nguyên tắc:** discriminator = `places.category`; **0 cột thêm vào `places`**; FK thật + `ON DELETE CASCADE`; giá xác minh dùng `price_history` (`entity_type` `hotel/tour`), `price_ref` chỉ là cache hiển thị.
 
@@ -577,6 +580,7 @@ Nhóm phân tích (`PageView`, `PlaceView`, `SearchAnalytics`, `PopularPlace`, `
 | `place_tour_details` | [places.md §13](./modules/places.md) | ✅ | **Wave 2** — 1:1 places (`category=tour`); `organizer_id→places` |
 | `tour_stops` | [places.md §13](./modules/places.md) | ✅ | **Wave 2** — 1:N places (lộ trình, PostGIS) |
 | `tour_schedules` | [places.md §13](./modules/places.md) | ✅ | **Wave 2** — 1:N places (lịch khởi hành) |
+| `place_beach_details` | [places.md §13.5](./modules/places.md) | ✅ | **Owner Command Center, 2026-09-29** — 1:1 places (`category=beach`); **ADR-002 amendment** satellite |
 | `events` | database.md §3.22 | ✅ | **Wave 2** — thực thể **peer** (Hybrid), tham chiếu Place (`place_id` nullable); **ADR-002** |
 | `event_occurrences` | database.md §3.23 | ✅ | **Wave 2** — 1:N events (sự kiện định kỳ) |
 | `saved_searches` | database.md §12 | ✅ | **planned** — user-owned; bổ sung cho Search Architecture (sơ đồ ERD cập nhật sau) |

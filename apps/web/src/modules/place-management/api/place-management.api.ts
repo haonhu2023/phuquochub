@@ -60,11 +60,12 @@ export async function unpublishPlace(id: string, accessToken: string): Promise<n
  */
 export async function listEditorialPlaces(
   accessToken: string,
-  params: { page?: number; limit?: number } = {},
+  params: { page?: number; limit?: number; category?: string } = {},
 ): Promise<{ data: PlaceCard[]; meta: PaginationMeta }> {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.limit) qs.set('limit', String(params.limit));
+  if (params.category) qs.set('category', params.category);
   const q = qs.toString();
   return apiGetPaginatedAuth<PlaceCard>(`/places/editorial${q ? `?${q}` : ''}`, accessToken);
 }
@@ -82,7 +83,16 @@ export async function archivePlace(id: string, accessToken: string): Promise<nul
 // ghi chú đầy đủ — ba trường đó đi qua saveNameDraft/saveShortDescriptionDraft/saveDescriptionDraft
 // bên dưới thay vì đây). Hai hàm dưới đây khớp `POST /places/:id/draft` + `POST /places/:id/
 // revisions/:revisionId/publish` — xem PlaceForm capability table trong EditPlaceView.tsx.
+// Bug thật đã sửa (2026-09-30, phát hiện qua kiểm thử CAS): `UpdatePlaceDto` (apps/api) khai
+// `expected_content_version` BẮT BUỘC (không `@IsOptional()`) — dùng chung cho CẢ `PATCH /places/:id`
+// (nơi field này thật sự có ý nghĩa) LẪN `POST /places/:id/draft` (saveDraft, dùng xmin/row_version
+// làm CAS riêng, KHÔNG đọc field này) vì cả hai route cùng nhận `@Body() dto: UpdatePlaceDto`. Do
+// class-validator xác thực TOÀN BỘ shape DTO trước khi vào tới service, thiếu field này khiến MỌI
+// lần lưu nháp qua route `/draft` luôn 400 — bất kể nội dung form đúng hay sai. Gửi lại
+// content_version hiện tại (đã có sẵn ở EditPlaceView) để qua được validation; saveDraft() không
+// dùng giá trị này cho logic CAS của nó (vẫn là xmin), nhưng validation yêu cầu một số nguyên ≥1.
 export interface PlaceDraftScalarInput {
+  expected_content_version: number;
   category_id?: string;
   address?: string | null;
   ward?: string | null;

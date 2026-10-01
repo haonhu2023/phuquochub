@@ -7,7 +7,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { GuideArticleStatus } from '../guide-article.enums';
+import { GuideArticleCategory, GuideArticleStatus } from '../guide-article.enums';
 
 // Phú Quốc Guide CMS candidate (2026-09-18). One row per (slug, locale) — a single, stable,
 // in-place-updated row (same shape as `places`, NOT the insert-only per-locale-row shape
@@ -61,4 +61,20 @@ export class GuideArticle {
 
   @Column({ type: 'uuid', nullable: true })
   publishedBy!: string | null;
+
+  // Chuyên mục/tags (2026-09-29) — xem guide-article.enums.ts's GuideArticleCategory doc cho vì
+  // sao category là enum còn tags là mảng chuỗi tự do.
+  @Column({ type: 'enum', enum: GuideArticleCategory, enumName: 'guide_article_category', nullable: true })
+  category!: GuideArticleCategory | null;
+
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  tags!: string[];
+
+  // SEO riêng (2026-09-29) — NULL khi chưa đặt; fallback sang title/intro sống ở tầng render
+  // (web's generateMetadata), không phải ở đây. Cùng độ dài cột PlaceSeo.metaTitle/metaDescription.
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  metaTitle!: string | null;
+
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  metaDescription!: string | null;
 }

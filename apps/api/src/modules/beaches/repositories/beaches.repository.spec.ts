@@ -178,4 +178,100 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
       await expect(sut.countBeaches()).resolves.toBe(0);
     });
   });
+
+  describe('detail', () => {
+    it('LEFT JOIN sources cho cả 3 trường có nguồn, WHERE theo place_id', async () => {
+      ds.query.mockResolvedValue([]);
+      await sut.detail('p1');
+      const [query, params] = ds.query.mock.calls[0];
+      const q = sql(query);
+      expect(q).toContain('FROM place_beach_details bd');
+      expect(q).toContain('LEFT JOIN sources bs ON bs.id = bd.best_season_source_id');
+      expect(q).toContain('LEFT JOIN sources ls ON ls.id = bd.lifeguard_info_source_id');
+      expect(q).toContain('LEFT JOIN sources ns ON ns.id = bd.sourced_notes_source_id');
+      expect(q).toContain('WHERE bd.place_id = $1');
+      expect(params).toEqual(['p1']);
+    });
+  });
+
+  // Bug thật đã sửa (2026-09-30) — cùng fix HotelsRepository.upsertDetails: đọc-sửa-ghi trong
+  // transaction, chỉ đụng cột THỰC SỰ có mặt trong DTO. Proof thật trên Postgres: xem
+  // test/hotel-details-patch-semantics.e2e-spec.ts (cùng cơ chế `computeSourcedFieldPatch`).
+  describe('upsertDetails', () => {
+    function mockTransaction(selectResult: unknown[]) {
+      const managerQuery = jest.fn().mockResolvedValueOnce(selectResult).mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+      return managerQuery;
+    }
+
+    it('chưa có hàng, PATCH một trường TĨNH (không nguồn) -> INSERT chỉ với cột đó', async () => {
+      const managerQuery = mockTransaction([]);
+
+      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never);
+
+      const insertCall = managerQuery.mock.calls[1];
+      expect(sql(insertCall[0])).toBe('INSERT INTO "place_beach_details" ("place_id", "access_route") VALUES ($1, $2)');
+      expect(insertCall[1]).toEqual(['p1', 'Theo đường ven biển']);
+    });
+
+    it('chưa có hàng, PATCH một trường CÓ NGUỒN không kèm source -> INSERT giá trị + source/verified_at NULL tường minh (không suy đoán nguồn)', async () => {
+      const managerQuery = mockTransaction([]);
+
+      await sut.upsertDetails('p1', { lifeguard_info: 'Có trạm cứu hộ' } as never);
+
+      const insertCall = managerQuery.mock.calls[1];
+      expect(sql(insertCall[0])).toBe(
+        'INSERT INTO "place_beach_details" ("place_id", "lifeguard_info", "lifeguard_info_source_id", "lifeguard_info_verified_at") VALUES ($1, $2, $3, $4)',
+      );
+      expect(insertCall[1]).toEqual(['p1', 'Có trạm cứu hộ', null, null]);
+    });
+
+    it('đã có hàng, PATCH access_route -> UPDATE chỉ đụng access_route, KHÔNG đụng best_season/lifeguard_info/sourced_notes', async () => {
+      const managerQuery = mockTransaction([
+        { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
+      ]);
+
+      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never);
+
+      const updateCall = managerQuery.mock.calls[1];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_beach_details" SET "access_route" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'Theo đường ven biển']);
+    });
+
+    it('best_season đổi giá trị KHÔNG kèm source mới -> xoá best_season_source_id/verified_at cũ', async () => {
+      const managerQuery = mockTransaction([
+        { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
+      ]);
+
+      await sut.upsertDetails('p1', { best_season: 'Tháng 12-3' } as never);
+
+      const [updateSql, params] = managerQuery.mock.calls[1];
+      expect(sql(updateSql)).toContain('"best_season_source_id" = $');
+      expect(sql(updateSql)).toContain('"best_season_verified_at" = $');
+      expect(params).toContain(null);
+    });
+
+    it('best_season KHÔNG đổi, chỉ cập nhật nguồn -> verified_at làm mới (Date), giá trị text không đụng', async () => {
+      const managerQuery = mockTransaction([
+        { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
+      ]);
+
+      await sut.upsertDetails('p1', { best_season_source_id: 'src-1' } as never);
+
+      const [updateSql, params] = managerQuery.mock.calls[1];
+      expect(sql(updateSql)).not.toContain('"best_season" = $2 '); // không SET lại giá trị text
+      expect(params).toContain('src-1');
+      expect(params.some((p: unknown) => p instanceof Date)).toBe(true);
+    });
+
+    it('patch rỗng thật sự -> không UPDATE/INSERT gì', async () => {
+      const managerQuery = mockTransaction([{ best_season: null, lifeguard_info: null, sourced_notes: null }]);
+
+      await sut.upsertDetails('p1', {} as never);
+
+      expect(managerQuery).toHaveBeenCalledTimes(1);
+    });
+  });
 });

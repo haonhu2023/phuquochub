@@ -58,6 +58,7 @@ const APPROVED_SERVICE_CALLERS = [
   'getDescriptionDraft',
   'getNameDraft',
   'getShortDescriptionDraft',
+  'getSlugAndStatus',
   'listMine',
   'preview',
   'publishDraft',
@@ -67,6 +68,7 @@ const APPROVED_SERVICE_CALLERS = [
   'saveShortDescriptionDraft',
   'unpublish',
   'update',
+  'updateFaqs',
 ].sort();
 
 const PLACES_DIR = __dirname;

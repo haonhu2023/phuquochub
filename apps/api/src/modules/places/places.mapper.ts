@@ -60,6 +60,8 @@ export function toPlaceDetail(row: PlaceDetailRow) {
     admin_area: row.admin_area ?? null,
     description: row.description,
     opening_hours: row.opening_hours ?? null,
+    visit_duration_minutes: row.visit_duration_minutes ?? null,
+    rules: row.rules ?? null,
     osm_id: row.osm_id !== null && row.osm_id !== undefined ? Number(row.osm_id) : null,
     // F-19: kiểu trên dây (shared-types PlaceDetail) khai created_at/updated_at là CHUỖI ISO —
     // JSON không có kiểu Date. Trả thẳng Date thì payload vẫn đúng (JSON.stringify(Date) sinh

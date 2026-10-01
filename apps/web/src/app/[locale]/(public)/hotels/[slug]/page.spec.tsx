@@ -234,6 +234,60 @@ describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route 
 // bất kỳ đâu trên trang, dù API đã trả đúng dữ liệu. Dùng lại đúng hệ thống gallery của
 // places/[slug]/page.tsx (MediaCredit + places.module.css .gallery/.galleryFigure/.galleryImg),
 // không dựng bộ hiển thị thứ hai.
+// Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — trang hotel/restaurant riêng
+// (route khách thật sự dùng) hoàn toàn KHÔNG có link "Xem trên bản đồ"/chỉ đường, dù
+// places/[slug]/page.tsx đã có từ trước với cùng toạ độ. Test này khoá lại: link tồn tại VÀ dùng
+// ĐÚNG place.location (không phải toạ độ hard-code/khác nguồn với marker).
+describe('HotelDetailPage — link "Xem trên bản đồ" (chỉ đường, cùng toạ độ với dữ liệu)', () => {
+  it('render link Google Maps đúng toạ độ location của hotel', async () => {
+    await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 } }));
+    const link = screen.getByRole('link', { name: /Xem trên bản đồ/ });
+    expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('toạ độ không hợp lệ (NaN/ngoài phạm vi Trái Đất) -> KHÔNG render link, tránh dẫn khách tới nơi sai', async () => {
+    await renderPage(hotel({ location: { lat: NaN, lng: 103.9654 } }));
+    expect(screen.queryByRole('link', { name: /Xem trên bản đồ/ })).not.toBeInTheDocument();
+  });
+});
+
+// Bug thật đã sửa (2026-09-30, phát hiện qua rà soát P2) — `h.prices` (price_history, SSOT giá)
+// LUÔN có mặt trong response (HotelDetail kế thừa PlaceDetail) nhưng trang này chưa từng render nó
+// trước đây, dù places/[slug]/page.tsx đã có đúng khối này. Cùng nguyên tắc trust gate: amount chỉ
+// hiện khi bản ghi đã đạt canDisplayPrice(), không phải suy từ verification_status của Place cha.
+describe('HotelDetailPage — Giá tham khảo (price_history, product spec P2 2026-09-30)', () => {
+  it('giá đã xác minh -> hiện số tiền thật kèm đơn vị', async () => {
+    await renderPage(
+      hotel({
+        prices: [
+          { id: 'p1', service_name: 'Giá phòng/đêm', amount: 900000, currency: 'VND', unit: 'đêm', is_free: false, valid_from: null, valid_to: null, verification_status: 'verified' },
+        ],
+      }),
+    );
+    expect(screen.getByText(/Giá phòng\/đêm/)).toBeInTheDocument();
+    expect(screen.getByText(/900.000 VND \/ đêm/)).toBeInTheDocument();
+  });
+
+  it('giá chưa xác minh -> KHÔNG lộ amount, chỉ hiện dòng "đang được xác minh"', async () => {
+    const SENTINEL = 123456789;
+    await renderPage(
+      hotel({
+        prices: [
+          { id: 'p1', service_name: 'Giá phòng/đêm', amount: SENTINEL, currency: 'VND', unit: 'đêm', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
+        ],
+      }),
+    );
+    expect(document.body.textContent).not.toContain(String(SENTINEL));
+    expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+  });
+
+  it('không có giá nào -> không render mục "Giá tham khảo"', async () => {
+    await renderPage(hotel({ prices: [] }));
+    expect(screen.queryByText('Giá tham khảo')).not.toBeInTheDocument();
+  });
+});
+
 describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
   function media(overrides: Partial<import('@/modules/places/types').PlaceMedia> = {}) {
     return {
@@ -304,5 +358,56 @@ describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
     mockGetHotel.mockResolvedValueOnce(h);
     render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'en' }) }));
     expect(screen.getByAltText(sharedAlt)).toBeInTheDocument();
+  });
+});
+
+// Bug thật đã sửa (2026-09-30): amenities là mảng OBJECT {id,code,label_vi,...}, trang trước đây
+// gọi `.join(' · ')` trên đó (đúng cho string[], sai cho object[]) — sẽ render "[object Object]".
+// Cũng chứng minh hotel_details (loại hình/hạng sao có nguồn/check-in-out) render đúng.
+describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spec, 2026-09-29)', () => {
+  it('amenities render đúng label_vi, KHÔNG BAO GIỜ "[object Object]"', async () => {
+    await renderPage(
+      hotel({ amenities: [{ id: 'a1', code: 'wifi', label_vi: 'Wi-Fi miễn phí', label_en: null, icon: null, group: 'connectivity' }] }),
+    );
+    expect(screen.getByText(/Wi-Fi miễn phí/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[object Object]');
+  });
+
+  it('hotel_details có nguồn hạng sao → hiện link tới nguồn', async () => {
+    await renderPage(
+      hotel({
+        hotel_details: {
+          hotel_type: 'resort',
+          star_rating: 5,
+          check_in: '14:00:00',
+          check_out: '12:00:00',
+          star_rating_source: { title: 'Sở Du lịch Kiên Giang', url: 'https://example.gov.vn/xep-hang', verified_at: '2026-09-29T00:00:00Z' },
+        },
+      }),
+    );
+    expect(screen.getByText('Resort')).toBeInTheDocument();
+    expect(screen.getByText(/★★★★★/)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'Sở Du lịch Kiên Giang' });
+    expect(link).toHaveAttribute('href', 'https://example.gov.vn/xep-hang');
+    expect(screen.getByText(/Nhận: 14:00/)).toBeInTheDocument();
+    expect(screen.getByText(/Trả: 12:00/)).toBeInTheDocument();
+  });
+
+  it('hạng sao không có nguồn → KHÔNG hiện dòng "Nguồn:" (không suy đoán/bịa nguồn)', async () => {
+    await renderPage(
+      hotel({ hotel_details: { hotel_type: 'homestay', star_rating: 3, check_in: null, check_out: null, star_rating_source: null } }),
+    );
+    expect(document.body.textContent).not.toContain('Nguồn:');
+  });
+
+  it('contacts render đúng nhãn/giá trị', async () => {
+    await renderPage(
+      hotel({
+        contacts: [
+          { id: 'c1', contact_type: 'PHONE', value: '0909123456', label: null, is_primary: true, verification_status: 'pending', display_order: 0 },
+        ],
+      }),
+    );
+    expect(screen.getByText(/PHONE: 0909123456/)).toBeInTheDocument();
   });
 });

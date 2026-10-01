@@ -27,7 +27,7 @@ import {
 import { AiRecommendationsService } from './ai-recommendations.service';
 import { DecideModerationCaseDto, ListModerationCasesQueryDto } from './dto/moderation.dto';
 import { ModerationCaseStatus, ModerationDecision, ModerationTargetType, ReportStatus } from './moderation.enums';
-import { MediaStatus } from '../media/media.enums';
+import { MediaLicenseType, MediaStatus } from '../media/media.enums';
 import { ReviewStatus } from '../reviews/review.enums';
 import { assertValidMediaTransition, MediaTransitionAction } from './media-moderation.transition';
 import { assertValidReviewTransition, ReviewTransitionAction } from './review-moderation.transition';
@@ -299,7 +299,28 @@ export class ModerationService {
     const previousStatus = media.status;
     const newStatus = assertValidMediaTransition(previousStatus, action, dto.target_status);
 
-    await this.mediaRepo.updateStatus(manager, media.id, newStatus);
+    // Rights-clearance fill-in (2026-09-27) — StrengthenPlaceInformationModel1720004500000's own
+    // migration comment says this explicitly: "quy tắc 'không xuất bản ảnh chưa rõ quyền' thuộc
+    // luồng duyệt/seed, không phải bước migrate này." No code ever implemented that follow-up: a
+    // repo-wide search found zero writers of `license_type` anywhere, which meant
+    // GuideArticlesService.assertMediaPublishEligible() (requires license_type IS NOT NULL) could
+    // NEVER be satisfied by any media, moderator-approved or not — a dead end, not a permissions
+    // gap. Only touches media newly reaching `published`; `COALESCE` in the repo query additionally
+    // refuses to overwrite a license_type a moderator already asserted earlier.
+    if (dto.license_type === MediaLicenseType.OPEN_LICENSE && (!dto.attribution || !dto.license_url)) {
+      throw new UnprocessableEntityException(
+        'license_type="open_license" bắt buộc kèm attribution và license_url (ràng buộc CSDL chk_media_open_license_credit).',
+      );
+    }
+    if (newStatus === MediaStatus.PUBLISHED) {
+      await this.mediaRepo.updateStatusWithLicense(manager, media.id, newStatus, {
+        type: dto.license_type ?? MediaLicenseType.USER_SUBMITTED,
+        attribution: dto.attribution ?? null,
+        licenseUrl: dto.license_url ?? null,
+      });
+    } else {
+      await this.mediaRepo.updateStatus(manager, media.id, newStatus);
+    }
     // Ảnh RỜI khỏi `published` (ẩn/từ chối) thì không còn tư cách làm ảnh bìa — dọn con trỏ
     // `places.cover_image_id` trong CÙNG transaction với quyết định (Owner Cover & Photo Ordering,
     // 2026-08-12). Kênh công khai vốn đã an toàn dù không dọn (`COVER_IMAGE_COLS` lọc

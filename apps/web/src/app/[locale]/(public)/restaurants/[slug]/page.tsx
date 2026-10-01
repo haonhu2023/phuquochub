@@ -9,13 +9,17 @@ import {
 } from '@/modules/restaurants/api/restaurants.api';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildRestaurantJsonLd, serializeJsonLd } from '@/lib/structured-data';
-import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
+// Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.tsx's ghi chú đầy đủ, cùng khuôn.
+const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -99,11 +103,73 @@ export default async function RestaurantDetailPage({ params }: Params) {
       </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
+      {isValidCoord(r.location.lng, r.location.lat) && (
+        <p>
+          <a
+            href={`https://www.google.com/maps?q=${r.location.lat},${r.location.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {VIEW_ON_MAP_LABEL[locale]}
+          </a>
+        </p>
+      )}
 
       <PlaceGallery media={r.media} placeName={r.name} />
 
       {r.description && <p>{r.description}</p>}
-      {r.cuisines.length > 0 && <p style={{ color: '#6b7280' }}>Ẩm thực: {r.cuisines.join(' · ')}</p>}
+      {r.cuisines.length > 0 && (
+        <p style={{ color: '#6b7280' }}>Ẩm thực: {r.cuisines.map((c) => c.label_vi).join(' · ')}</p>
+      )}
+      {r.restaurant_details?.is_local_specialty && <p style={{ color: '#6b7280' }}>Có phục vụ đặc sản Phú Quốc</p>}
+
+      {r.contacts.length > 0 && (
+        <section>
+          <h2>Liên hệ</h2>
+          <ul>
+            {r.contacts.map((c) => (
+              <li key={c.id}>
+                {c.label ?? c.contact_type}: {c.value}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {hasOpeningHours(r.opening_hours) && (
+        <section>
+          <h2>Giờ mở cửa</h2>
+          <p>{getOpeningToday(r.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
+        </section>
+      )}
+
+      {/* Giá tham khảo/người qua price_history (SSOT giá dùng chung mọi category) — bug thật đã sửa
+          (2026-09-30, phát hiện qua rà soát P2): `r.prices` LUÔN có mặt (RestaurantDetail kế thừa
+          PlaceDetail) nhưng trang này chưa từng render, dù places/[slug]/page.tsx đã có khối này.
+          KHÁC với giá món trong menu bên dưới (không có trust column riêng) — đây là bản ghi
+          price_history CÓ verification_status riêng, gate đúng canDisplayPrice() của CHÍNH nó. */}
+      {r.prices.length > 0 && (
+        <section>
+          <h2>Giá tham khảo</h2>
+          {r.prices.filter((p) => canDisplayPrice(p.verification_status)).length > 0 && (
+            <ul>
+              {r.prices
+                .filter((p) => canDisplayPrice(p.verification_status))
+                .map((p) => (
+                  <li key={p.id}>
+                    {p.service_name}:{' '}
+                    {p.is_free
+                      ? 'Miễn phí'
+                      : p.amount !== null
+                        ? `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`
+                        : null}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {r.prices.some((p) => !canDisplayPrice(p.verification_status)) && <p>{PRICE_VERIFYING_TEXT}</p>}
+        </section>
+      )}
 
       {/* Public Beta price trust gate (2026-08-28): `restaurant_menu_items.price` KHÔNG có cột
           verification/trust nào ở DB (migration InitRestaurant) — không có bằng chứng nào để
@@ -111,7 +177,8 @@ export default async function RestaurantDetailPage({ params }: Params) {
           (một place đã xác minh không có nghĩa TỪNG giá món trong thực đơn đã được đối chiếu).
           Fail-closed: ẩn raw price ở mọi món, MỘT dòng đang xác minh dùng chung cho cả section
           (không lặp lại cho từng món) khi section có ít nhất một món đã nhập giá. Tên/mô tả món
-          KHÔNG bị ẩn — chỉ giá trị tiền mới là dữ liệu chưa có bằng chứng xác minh. */}
+          KHÔNG bị ẩn — chỉ giá trị tiền mới là dữ liệu chưa có bằng chứng xác minh. "Món nổi bật"
+          (product spec, 2026-09-29) đánh dấu ★ ngay cạnh tên món. */}
       {menu.map((s) => {
         const hasPricedItem = s.items.some((i) => i.price !== null);
         return (
@@ -119,7 +186,10 @@ export default async function RestaurantDetailPage({ params }: Params) {
             <h2>{s.name}</h2>
             <ul>
               {s.items.map((i) => (
-                <li key={i.id}>{i.name}</li>
+                <li key={i.id}>
+                  {i.is_signature && <span aria-label="Món nổi bật">★ </span>}
+                  {i.name}
+                </li>
               ))}
             </ul>
             {hasPricedItem && <p>{PRICE_VERIFYING_TEXT}</p>}

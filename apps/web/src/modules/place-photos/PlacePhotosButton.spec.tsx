@@ -35,8 +35,10 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canEditGuides: false,
   canEditSiteContent: false,
   canViewBackupStatus: false,
+  canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
+  canVerifyPrices: false,
 };
 
 function authed() {

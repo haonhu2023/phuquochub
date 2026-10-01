@@ -30,6 +30,8 @@ function baseRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     admin_area: null,
     description: null,
     opening_hours: null,
+    visit_duration_minutes: null,
+    rules: null,
     osm_id: null,
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-01T00:00:00Z'),

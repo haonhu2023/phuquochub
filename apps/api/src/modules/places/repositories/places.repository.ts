@@ -75,6 +75,10 @@ export interface PlaceDetailRow extends PlaceCardRow {
   admin_area: string | null;
   description: string | null;
   opening_hours: Record<string, unknown> | null;
+  /** "Thời lượng tham quan" (attraction, product spec 2026-09-29) — nullable, cùng lý do province. */
+  visit_duration_minutes: number | null;
+  /** "Quy định" (attraction) — nullable. */
+  rules: string | null;
   osm_id: string | null; // bigint → string qua driver
   created_at: Date;
   updated_at: Date;
@@ -168,6 +172,7 @@ const RIGHT_NOW_CANDIDATE_CAP = 60;
 const DETAIL_EXTRA_COLS = `
   (SELECT c.slug FROM categories c WHERE c.id = p.category_id) AS category_slug,
   p.address, p.ward, p.province, p.admin_area, p.description, p.opening_hours, p.osm_id,
+  p.visit_duration_minutes, p.rules,
   p.created_at, p.updated_at, p.verified_at,
   p.xmin::text AS row_version
 `;
@@ -354,6 +359,41 @@ export class PlacesRepository {
        ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
       [placeId],
     );
+  }
+
+  /** MỌI FAQ (mọi status) — cho actor đặc quyền tự sửa lại đúng những gì họ đã nhập, không chỉ bản published. */
+  listFaqsForOwner(placeId: string): Promise<PlaceFaqRow[]> {
+    return this.repo.query(
+      `SELECT id, question, answer, sort_order, is_ai_generated, status
+       FROM place_faqs
+       WHERE place_id = $1
+       ORDER BY sort_order ASC NULLS LAST, created_at ASC`,
+      [placeId],
+    );
+  }
+
+  /**
+   * Thay TOÀN BỘ FAQ của một place (đặc quyền Place.Edit.Managed) — cùng khuôn
+   * HotelsRepository.replaceRooms/RestaurantsRepository.replaceMenu. FAQ do actor đã có quyền sửa
+   * place nhập trực tiếp thì publish ngay (status='published') — cùng mức tin cậy PATCH :id/
+   * update() đang cho phép sửa description/short_description trực tiếp, không dựng thêm một hàng
+   * đợi kiểm duyệt riêng cho tính năng nhỏ này. is_ai_generated luôn false (chỉ FAQ AI tự sinh mới
+   * true — không đường ghi nào ở đây tạo loại đó).
+   */
+  async replaceFaqs(
+    placeId: string,
+    faqs: Array<{ question: string; answer: string; sort_order?: number }>,
+  ): Promise<void> {
+    await this.repo.manager.transaction(async (m) => {
+      await m.query(`DELETE FROM place_faqs WHERE place_id = $1`, [placeId]);
+      for (const [i, f] of faqs.entries()) {
+        await m.query(
+          `INSERT INTO place_faqs (place_id, question, answer, sort_order, is_ai_generated, status)
+           VALUES ($1, $2, $3, $4, false, 'published')`,
+          [placeId, f.question, f.answer, f.sort_order ?? i],
+        );
+      }
+    });
   }
 
   /**
@@ -814,16 +854,21 @@ export class PlacesRepository {
    * duyệt qua danh sách place `pending` của người khác. Route gọi hàm này PHẢI gác bằng
    * `@RequirePermissions('Place.Edit.Any')` — hàm này tự nó KHÔNG kiểm quyền lần hai.
    */
-  async listEditorial(params: { limit: number; offset: number }): Promise<{ items: PlaceCardRow[]; total: number }> {
+  async listEditorial(params: { limit: number; offset: number; category?: string }): Promise<{ items: PlaceCardRow[]; total: number }> {
+    const categoryWhere = params.category
+      ? " AND p.category_id IN (SELECT id FROM categories WHERE slug = $1 OR ($1 = 'hotel' AND slug = 'resort') OR parent_id IN (SELECT id FROM categories WHERE slug = $1))"
+      : '';
+    const categoryArgs = params.category ? [params.category] : [];
     const countRows: Array<{ count: string }> = await this.repo.query(
-      `SELECT count(*)::int AS count FROM places p WHERE p.deleted_at IS NULL`,
+      `SELECT count(*)::int AS count FROM places p WHERE p.deleted_at IS NULL${categoryWhere}`,
+      categoryArgs,
     );
     const total = Number(countRows[0]?.count ?? 0);
     const items: PlaceCardRow[] = await this.repo.query(
-      `SELECT ${CARD_COLS} FROM places p WHERE p.deleted_at IS NULL
+      `SELECT ${CARD_COLS} FROM places p WHERE p.deleted_at IS NULL${categoryWhere}
        ORDER BY p.updated_at DESC, p.id ASC
-       LIMIT $1 OFFSET $2`,
-      [params.limit, params.offset],
+       LIMIT $${categoryArgs.length + 1} OFFSET $${categoryArgs.length + 2}`,
+      [...categoryArgs, params.limit, params.offset],
     );
     return { items: withCoverImageUrl(items, this.mediaUrl), total };
   }

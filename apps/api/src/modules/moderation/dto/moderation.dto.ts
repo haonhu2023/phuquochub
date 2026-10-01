@@ -9,7 +9,7 @@ import {
   ModerationTargetType,
   ReportReason,
 } from '../moderation.enums';
-import { MediaStatus } from '../../media/media.enums';
+import { MediaLicenseType, MediaStatus } from '../../media/media.enums';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -81,6 +81,22 @@ export class DecideModerationCaseDto {
   // chế ở `ModerationService.decideMedia/decideReview`, cùng chỗ với INV-11/INV-10.
   @IsOptional() @IsEnum(MediaModerationReasonCode)
   reason_code?: MediaModerationReasonCode;
+
+  // Rights-clearance on approve (2026-09-27) — CHỈ có nghĩa khi target là MEDIA và quyết định đưa
+  // media sang `published` (approve/restore). Tuỳ chọn: bỏ trống thì decideMedia() tự điền
+  // `user_submitted` khi media CHƯA từng được xét quyền (license_type NULL) — không đè lên một
+  // media đã được xét trước đó. Cho phép moderator ghi đúng loại quyền thật (vd `open_license` kèm
+  // ghi công) khi họ biết rõ hơn giá trị mặc định.
+  @IsOptional() @IsEnum(MediaLicenseType)
+  license_type?: MediaLicenseType;
+
+  @IsOptional() @IsString() @MaxLength(300)
+  @Transform(trim)
+  attribution?: string;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  @Transform(trim)
+  license_url?: string;
 }
 
 // POST /reviews/{id}/report · POST /media/{id}/report (M5, ADR-018/moderation-design.md §9.2) —

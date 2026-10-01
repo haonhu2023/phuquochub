@@ -152,6 +152,19 @@ details[open] .faqQuestion::before {
 .heroImage { width: 100%; height: auto; border-radius: var(--radius-lg); object-fit: cover; }
 .paragraph { line-height: var(--leading-relaxed); margin: 0.75rem 0; max-width: 68ch; }
 .list { line-height: var(--leading-relaxed); margin: 0.75rem 0; padding-left: 1.5rem; max-width: 68ch; }
+/* Rich text formatting (2026-09-29) — H2/H3 trong khối rich_text, nhỏ hơn .sectionHeading (H2 cấp
+   khối) để giữ đúng thứ bậc thị giác: section > sub-heading trong đoạn văn. */
+.richHeading2 { font-size: 1.2rem; font-weight: 600; margin: 1.25rem 0 0.5rem; max-width: 68ch; }
+.richHeading3 { font-size: 1.05rem; font-weight: 600; margin: 1rem 0 0.4rem; max-width: 68ch; }
+.blockquote {
+  border-left: 4px solid var(--border);
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  max-width: 68ch;
+  color: var(--muted);
+  font-style: italic;
+  line-height: var(--leading-relaxed);
+}
 /* Callout — nền nhạt pha từ đúng token trạng thái (--accent/--warn/--ok) thay vì hex rời rạc, để
    luôn khớp bảng màu chung dù sau này đổi tông. */
 .callout { border-radius: var(--radius-sm); padding: 1rem 1.25rem; margin: 1.5rem 0; border-left: 4px solid var(--border); }
@@ -162,3 +175,36 @@ details[open] .faqQuestion::before {
 .imageBlock img { width: 100%; height: auto; border-radius: var(--radius-sm); }
 .imageCaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.4rem; }
 .section { margin: 2.5rem 0; }
+
+/* Chuyên mục/tags công khai (2026-09-29) */
+.categoryBadge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  list-style: none;
+  padding: 0;
+}
+.tagLink {
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  text-decoration: none;
+}
+.tagLink:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}

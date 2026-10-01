@@ -45,6 +45,8 @@ ENV NODE_ENV=production
 # `unknown` defaults keep a bare `docker build` working; scripts/deploy.sh passes the real values.
 ARG GIT_COMMIT=unknown
 ARG BUILD_DATE=unknown
+# Public source revision only; no Docker socket or deployment credentials exposed.
+ENV APP_REVISION=$GIT_COMMIT
 LABEL org.opencontainers.image.title="phuquochub-api" \
       org.opencontainers.image.revision="$GIT_COMMIT" \
       org.opencontainers.image.created="$BUILD_DATE"

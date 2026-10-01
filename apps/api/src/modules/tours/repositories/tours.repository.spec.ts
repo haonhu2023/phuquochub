@@ -193,4 +193,94 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
       await expect(sut.countTours()).resolves.toBe(0);
     });
   });
+
+  // Bug thật đã sửa (2026-09-30): bản cũ dùng COALESCE trên tham số đã `?? null` hoá — omit và
+  // "gửi null để xoá" cùng thành NULL, không thể xoá pickup_point/organizer_id/... một khi đã set.
+  // Bản mới chỉ đưa vào SET clause đúng cột THỰC SỰ có mặt trong DTO.
+  describe('updateDetails', () => {
+    function mockTransaction() {
+      const managerQuery = jest.fn().mockResolvedValueOnce([{ '?column?': 1 }]).mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+      return managerQuery;
+    }
+
+    it('PATCH một trường -> UPDATE CHỈ đụng cột đó, không tự bịa NULL cho các cột khác', async () => {
+      const managerQuery = mockTransaction();
+
+      await sut.updateDetails('p1', { pickup_point: 'Cổng khách sạn' });
+
+      const updateCall = managerQuery.mock.calls[1];
+      expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "pickup_point" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'Cổng khách sạn']);
+    });
+
+    it('PATCH organizer_id=null (xoá tường minh) -> UPDATE ghi NULL cho đúng cột đó', async () => {
+      const managerQuery = mockTransaction();
+
+      await sut.updateDetails('p1', { organizer_id: null });
+
+      const updateCall = managerQuery.mock.calls[1];
+      expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "organizer_id" = $2 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', null]);
+    });
+
+    it('nhiều trường cùng lúc -> mỗi trường một cột trong SET, đúng thứ tự tham số', async () => {
+      const managerQuery = mockTransaction();
+
+      await sut.updateDetails('p1', { tour_type: 'diving', inclusions: 'Vé lặn' });
+
+      const updateCall = managerQuery.mock.calls[1];
+      expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "tour_type" = $2, "inclusions" = $3 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'diving', 'Vé lặn']);
+    });
+
+    it('patch rỗng thật sự -> không UPDATE gì', async () => {
+      const managerQuery = mockTransaction();
+
+      await sut.updateDetails('p1', {});
+
+      expect(managerQuery).toHaveBeenCalledTimes(1); // chỉ SELECT FOR UPDATE
+    });
+  });
+
+  describe('detail', () => {
+    it('LEFT JOIN places cho organizer (đơn vị tổ chức)', async () => {
+      ds.query.mockResolvedValue([]);
+      await sut.detail('p1');
+      const q = sql(ds.query.mock.calls[0][0]);
+      expect(q).toContain('LEFT JOIN places op ON op.id = td.organizer_id');
+      expect(q).toContain('td.pickup_point, td.inclusions, td.exclusions, td.cancellation_policy');
+    });
+  });
+
+  describe('replaceStops', () => {
+    it('xoá hết rồi chèn lại trong transaction, location NULL khi không có toạ độ', async () => {
+      const managerQuery = jest.fn().mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+
+      await sut.replaceStops('p1', [{ name: 'Cảng An Thới', time: '08:00' }]);
+
+      expect(managerQuery).toHaveBeenCalledWith('DELETE FROM tour_stops WHERE place_id = $1', ['p1']);
+      const insertCall = managerQuery.mock.calls.find(([q]) => sql(q).includes('INSERT INTO tour_stops'));
+      expect(insertCall).toBeDefined();
+      expect(insertCall![1]).toEqual(['p1', 'Cảng An Thới', null, null, 0, '08:00', null]);
+    });
+
+    it('có toạ độ → ST_SetSRID(ST_MakePoint(lng,lat))', async () => {
+      const managerQuery = jest.fn().mockResolvedValue(undefined);
+      (ds as unknown as { transaction: jest.Mock }).transaction = jest
+        .fn()
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+
+      await sut.replaceStops('p1', [{ name: 'Điểm lặn', location: { lat: 10.05, lng: 104.0 } }]);
+
+      const insertCall = managerQuery.mock.calls.find(([q]) => sql(q).includes('INSERT INTO tour_stops'));
+      expect(sql(insertCall![0])).toContain('ST_SetSRID(ST_MakePoint($3,$4),4326)::geography');
+      expect(insertCall![1]).toEqual(['p1', 'Điểm lặn', 104.0, 10.05, 0, null, null]);
+    });
+  });
 });

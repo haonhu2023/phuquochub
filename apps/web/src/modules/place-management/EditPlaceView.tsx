@@ -11,6 +11,13 @@ import { triggerRevalidate } from '@/lib/revalidate';
 import { placeStatusClassKey, placeStatusLabel } from './statusLabels';
 import type { ManagedPlace, PlaceFormInput } from './types';
 import styles from './place-management.module.css';
+import { getEditorialCategory, editorialPublicDetailHref } from '@/modules/editorial/editorialCategories';
+import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
+import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor';
+import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
+import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
+import { PricesEditor } from '@/modules/category-admin/PricesEditor';
+import { MenuEditor } from '@/modules/category-admin/MenuEditor';
 
 type State =
   | { kind: 'loading' }
@@ -55,6 +62,17 @@ export function EditPlaceView({ placeId }: Props) {
   // Sửa bằng cách đặt thông báo "đã lưu" Ở CHA (component này KHÔNG bị remount) thay vì tin vào
   // state nội bộ của con sắp bị thay thế.
   const [saveNotice, setSaveNotice] = useState(false);
+
+  // CAS thật (2026-09-30) — token `places.content_version` dùng chung cho MỌI editor con
+  // (HotelDetailsEditor/RestaurantDetailsEditor/AmenitiesEditor) trên CÙNG một place. Giữ ở cha để
+  // các editor anh em không "dẫm chân" lên nhau bằng version đã cũ: mỗi lần MỘT editor lưu thành
+  // công, nó gọi `onVersionChange` để đồng bộ NGAY cho các editor còn lại — không cần tải lại trang
+  // giữa hai lần lưu liên tiếp (vd sửa hotel_details rồi sửa amenities ngay sau đó).
+  const placeVersion = state.kind === 'ready' ? state.place.content_version : null;
+  const [contentVersion, setContentVersion] = useState<number | null>(placeVersion);
+  useEffect(() => {
+    if (placeVersion !== null) setContentVersion(placeVersion);
+  }, [placeVersion]);
 
   const load = useCallback(() => {
     const session = readSession();
@@ -123,6 +141,10 @@ export function EditPlaceView({ placeId }: Props) {
       const draft = await saveDraftPlace(
         placeId,
         {
+          // Bug thật đã sửa (2026-09-30) — xem PlaceDraftScalarInput's ghi chú đầy đủ: thiếu field
+          // này khiến POST /places/:id/draft LUÔN 400 bất kể nội dung form. Dùng `contentVersion`
+          // (đã đồng bộ với các category editor liền kề) làm CAS token dùng chung.
+          expected_content_version: contentVersion ?? state.place.content_version,
           category_id: input.category_id,
           address: input.address,
           ward: input.ward,
@@ -248,6 +270,9 @@ export function EditPlaceView({ placeId }: Props) {
     <main>
       <header className={placeStyles.pageHeader}>
         <h1 className={placeStyles.pageTitle}>Sửa: {state.place.name}</h1>
+        {getEditorialCategory(state.place.category_slug) && <p className={placeStyles.pageLede}>
+          {getEditorialCategory(state.place.category_slug)?.intro}
+        </p>}
         <p style={{ marginTop: '0.5rem' }}>
           Trạng thái:{' '}
           <span className={`${styles.statusBadge} ${styles[placeStatusClassKey(state.place.status)]}`}>
@@ -276,7 +301,7 @@ export function EditPlaceView({ placeId }: Props) {
           {isPublished && (
             <>
               {' · '}
-              <Link href={`/places/${state.place.slug}`} target="_blank" style={{ color: 'var(--accent)' }}>
+              <Link href={editorialPublicDetailHref(state.place.category_slug, state.place.slug)} target="_blank" style={{ color: 'var(--accent)' }}>
                 Xem trang công khai →
               </Link>
             </>
@@ -301,10 +326,30 @@ export function EditPlaceView({ placeId }: Props) {
           )}
         </div>
       </header>
+      <section aria-label="Biên tập tên và mô tả" className={styles.contentEditor}>
+        <h2>Nội dung khách sẽ đọc</h2>
+        <p>Sửa tên và mô tả tiếng Việt/English tại đây. Đọc gợi ý đúng loại địa điểm, chỉ công khai thông tin đã xác minh.</p>
+        <PlaceDescriptionEditor placeId={placeId} categorySlug={state.place.category_slug} triggerLabel="Sửa tên và mô tả VI/EN" />
+      </section>
       {saveNotice && (
         <p className={styles.success} role="status">
           Đã lưu thành công.
         </p>
+      )}
+      {state.place.category_slug === 'hotel' && contentVersion !== null && (
+        <>
+          <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <PricesEditor placeId={placeId} />
+        </>
+      )}
+      {state.place.category_slug === 'restaurant' && contentVersion !== null && (
+        <>
+          <RestaurantDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <PricesEditor placeId={placeId} />
+          <MenuEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+        </>
       )}
       <PlaceForm
         key={state.place.content_version}

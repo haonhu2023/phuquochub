@@ -4,12 +4,13 @@ import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { GuideArticle } from './entities/guide-article.entity';
 import { GuideBlock } from './entities/guide-block.entity';
 import { GuideArticlesService } from './guide-articles.service';
-import { GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { GuideArticleCategory, GuideArticleStatus, GuideBlockType } from './guide-article.enums';
 import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { OwnerDecisionQueueService } from '../owner-decision-queue/owner-decision-queue.service';
 import { MediaStatus, MediaLicenseType } from '../media/media.enums';
 import { Media } from '../media/entities/media.entity';
+import { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,10 @@ function makeArticle(overrides: Partial<GuideArticle> = {}): GuideArticle {
     updatedAt: new Date(),
     publishedAt: null,
     publishedBy: null,
+    category: null,
+    tags: [],
+    metaTitle: null,
+    metaDescription: null,
     ...overrides,
   };
 }
@@ -66,8 +71,26 @@ function makeDraftDto(overrides: Record<string, unknown> = {}) {
 
 // ─── Mock factories ───────────────────────────────────────────────────────────
 
+// Chuyên mục/tags lọc công khai (2026-09-29) — listPublished() dùng QueryBuilder (không phải
+// `find()`) cho phần lọc `category`/`tag`, nên mock repo cần một `createQueryBuilder()` chainable
+// trả `getMany()`. `getMany` là điểm duy nhất test cần kiểm soát dữ liệu trả về; các phương thức
+// chain khác (`where`/`andWhere`/`orderBy`/`take`) chỉ cần trả `this` để chain tiếp, NHƯNG vẫn là
+// `jest.fn()` để test có thể assert đã gọi đúng điều kiện lọc.
 function makeArticleRepoMock() {
-  return { findOne: jest.fn(), findOneOrFail: jest.fn(), find: jest.fn().mockResolvedValue([]) };
+  const qb = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    take: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue([]),
+  };
+  return {
+    findOne: jest.fn(),
+    findOneOrFail: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
+    createQueryBuilder: jest.fn().mockReturnValue(qb),
+    _qb: qb, // test-only handle — không thuộc Repository thật, chỉ để assert/mock getMany() gọn hơn qua articleRepo.createQueryBuilder().
+  };
 }
 
 function makeBlockRepoMock() {
@@ -91,6 +114,10 @@ function makeRevisionsServiceMock() {
 
 function makeOwnerDecisionQueueServiceMock() {
   return { enqueue: jest.fn().mockResolvedValue({ id: uuid(300) }) };
+}
+
+function makeModerationCasesRepoMock() {
+  return { createOpenCase: jest.fn().mockResolvedValue({ id: uuid(400) }) };
 }
 
 function makeDataSourceMock(transactionImpl?: (manager: unknown) => Promise<void>) {
@@ -138,6 +165,7 @@ async function buildService(opts: {
   mediaUrlService?: ReturnType<typeof makeMediaUrlServiceMock>;
   revisionsService?: ReturnType<typeof makeRevisionsServiceMock>;
   ownerDecisionQueueService?: ReturnType<typeof makeOwnerDecisionQueueServiceMock>;
+  moderationCasesRepo?: ReturnType<typeof makeModerationCasesRepoMock>;
   dataSource?: ReturnType<typeof makeDataSourceMock>;
 }): Promise<GuideArticlesService> {
   const module: TestingModule = await Test.createTestingModule({
@@ -149,6 +177,7 @@ async function buildService(opts: {
       { provide: MediaUrlService, useValue: opts.mediaUrlService ?? makeMediaUrlServiceMock() },
       { provide: RevisionsService, useValue: opts.revisionsService ?? makeRevisionsServiceMock() },
       { provide: OwnerDecisionQueueService, useValue: opts.ownerDecisionQueueService ?? makeOwnerDecisionQueueServiceMock() },
+      { provide: ModerationCasesRepository, useValue: opts.moderationCasesRepo ?? makeModerationCasesRepoMock() },
       { provide: getDataSourceToken(), useValue: opts.dataSource ?? makeDataSourceMock() },
     ],
   }).compile();
@@ -208,6 +237,48 @@ describe('GuideArticlesService.getPublished', () => {
     });
   });
 
+  // 2026-09-27 — `heroImageUrl`/block `imageUrl` are built from the STABLE public file path, which
+  // 404s for anything not `published` (Secure Private Media). Without a real status alongside it,
+  // the editor cannot tell "broken image" apart from "still pending review".
+  it('exposes heroMediaStatus resolved from the real Media row', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(makeArticle({ status: GuideArticleStatus.DRAFT, heroMediaId: uuid(500) }));
+    const mediaRepo = makeMediaRepoMock();
+    mediaRepo.find.mockResolvedValue([{ id: uuid(500), status: MediaStatus.PENDING }]);
+
+    const service = await buildService({ articleRepo, mediaRepo });
+    const result = await service.getDraft(uuid(1));
+
+    expect(result.heroMediaStatus).toBe(MediaStatus.PENDING);
+  });
+
+  it('heroMediaStatus is null when no hero is set', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(makeArticle({ status: GuideArticleStatus.DRAFT, heroMediaId: null }));
+
+    const service = await buildService({ articleRepo });
+    const result = await service.getDraft(uuid(1));
+
+    expect(result.heroMediaStatus).toBeNull();
+  });
+
+  it('exposes mediaStatus on an image_with_rights block content', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const article = makeArticle({ status: GuideArticleStatus.DRAFT });
+    articleRepo.findOne.mockResolvedValue(article);
+    const blockRepo = makeBlockRepoMock();
+    blockRepo.find.mockResolvedValue([
+      { ...makeSectionHeadingBlock(article.id), blockType: GuideBlockType.IMAGE_WITH_RIGHTS, content: { mediaId: uuid(500) } },
+    ]);
+    const mediaRepo = makeMediaRepoMock();
+    mediaRepo.find.mockResolvedValue([{ id: uuid(500), status: MediaStatus.REJECTED }]);
+
+    const service = await buildService({ articleRepo, blockRepo, mediaRepo });
+    const result = await service.getDraft(article.id);
+
+    expect(result.blocks[0]!.content).toMatchObject({ mediaStatus: MediaStatus.REJECTED });
+  });
+
   it('VI/EN resolve independently (separate slug+locale rows)', async () => {
     const articleRepo = makeArticleRepoMock();
     const viArticle = makeArticle({ id: uuid(1), locale: 'vi', title: 'Cẩm nang Phú Quốc', status: GuideArticleStatus.PUBLISHED });
@@ -251,22 +322,27 @@ describe('GuideArticlesService.listAll', () => {
 describe('GuideArticlesService.listPublished', () => {
   it('queries published-only for the given locale, ordered by publishedAt DESC', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([]);
 
     const service = await buildService({ articleRepo });
     await service.listPublished('vi');
 
-    expect(articleRepo.find).toHaveBeenCalledWith({
-      where: { locale: 'vi', status: GuideArticleStatus.PUBLISHED },
-      order: { publishedAt: 'DESC' },
-      take: 100,
-    });
+    expect(articleRepo.createQueryBuilder).toHaveBeenCalledWith('a');
+    expect(articleRepo._qb.where).toHaveBeenCalledWith('a.locale = :locale', { locale: 'vi' });
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.status = :status', { status: GuideArticleStatus.PUBLISHED });
+    expect(articleRepo._qb.orderBy).toHaveBeenCalledWith('a.publishedAt', 'DESC');
+    expect(articleRepo._qb.take).toHaveBeenCalledWith(100);
   });
 
-  it('trả card shape (slug/locale/title/intro/heroImageUrl/publishedAt) — KHÔNG có blocks', async () => {
+  it('trả card shape (slug/locale/title/intro/heroImageUrl/publishedAt/category/tags) — KHÔNG có blocks', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([
-      makeArticle({ slug: 'phu-quoc', intro: 'Mọi thứ cần biết.', heroMediaId: uuid(500) }),
+    articleRepo._qb.getMany.mockResolvedValue([
+      makeArticle({
+        slug: 'phu-quoc',
+        intro: 'Mọi thứ cần biết.',
+        heroMediaId: uuid(500),
+        category: GuideArticleCategory.AM_THUC,
+        tags: ['bien', 'gia-dinh'],
+      }),
     ]);
     const mediaUrlService = makeMediaUrlServiceMock();
 
@@ -281,6 +357,8 @@ describe('GuideArticlesService.listPublished', () => {
         intro: 'Mọi thứ cần biết.',
         heroImageUrl: `https://api.test/media/${uuid(500)}/file`,
         publishedAt: null,
+        category: GuideArticleCategory.AM_THUC,
+        tags: ['bien', 'gia-dinh'],
       },
     ]);
     expect(result[0]).not.toHaveProperty('blocks');
@@ -288,7 +366,7 @@ describe('GuideArticlesService.listPublished', () => {
 
   it('không có heroMediaId → heroImageUrl null, KHÔNG gọi mediaUrlService', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([makeArticle({ heroMediaId: null })]);
+    articleRepo._qb.getMany.mockResolvedValue([makeArticle({ heroMediaId: null })]);
     const mediaUrlService = makeMediaUrlServiceMock();
 
     const service = await buildService({ articleRepo, mediaUrlService });
@@ -300,10 +378,36 @@ describe('GuideArticlesService.listPublished', () => {
 
   it('không có bài nào published cho locale này → mảng rỗng, không lỗi', async () => {
     const articleRepo = makeArticleRepoMock();
-    articleRepo.find.mockResolvedValue([]);
 
     const service = await buildService({ articleRepo });
     await expect(service.listPublished('en')).resolves.toEqual([]);
+  });
+
+  it('lọc theo category khi truyền filters.category', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi', { category: GuideArticleCategory.LUU_TRU });
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.category = :category', { category: GuideArticleCategory.LUU_TRU });
+  });
+
+  it('lọc theo tag khi truyền filters.tag', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi', { tag: 'bien' });
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledWith('a.tags @> ARRAY[:tag]::text[]', { tag: 'bien' });
+  });
+
+  it('không lọc category/tag khi filters rỗng', async () => {
+    const articleRepo = makeArticleRepoMock();
+    const service = await buildService({ articleRepo });
+
+    await service.listPublished('vi');
+
+    expect(articleRepo._qb.andWhere).toHaveBeenCalledTimes(1); // chỉ status, không category/tag
   });
 });
 
@@ -346,6 +450,234 @@ describe('GuideArticlesService.createDraft', () => {
     });
     await expect(service.createDraft(dto as never, ACTOR)).rejects.toThrow(BadRequestException);
   });
+
+  it('persists category and normalized tags (trim, lowercase, dedupe)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+
+    const service = await buildService({ articleRepo, dataSource });
+    const dto = makeDraftDto({ category: GuideArticleCategory.AM_THUC, tags: [' Biển ', 'biển', 'gia-dinh'] });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.category).toBe(GuideArticleCategory.AM_THUC);
+    expect(result.tags).toEqual(['biển', 'gia-dinh']);
+  });
+
+  it('defaults category to null and tags to [] when omitted', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const result = await service.createDraft(makeDraftDto() as never, ACTOR);
+
+    expect(result.category).toBeNull();
+    expect(result.tags).toEqual([]);
+  });
+
+  it('persists metaTitle/metaDescription, trimmed', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const dto = makeDraftDto({ metaTitle: '  Cẩm nang Phú Quốc — SEO  ', metaDescription: '  Mô tả SEO riêng.  ' });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.metaTitle).toBe('Cẩm nang Phú Quốc — SEO');
+    expect(result.metaDescription).toBe('Mô tả SEO riêng.');
+  });
+
+  it('defaults metaTitle/metaDescription to null when omitted', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const result = await service.createDraft(makeDraftDto() as never, ACTOR);
+
+    expect(result.metaTitle).toBeNull();
+    expect(result.metaDescription).toBeNull();
+  });
+
+  it('treats a whitespace-only metaTitle/metaDescription as absent (null, not blank string)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+
+    const dto = makeDraftDto({ metaTitle: '   ', metaDescription: '   ' });
+    const result = await service.createDraft(dto as never, ACTOR);
+
+    expect(result.metaTitle).toBeNull();
+    expect(result.metaDescription).toBeNull();
+  });
+});
+
+// ─── Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic runs ───────────────────
+describe('GuideArticlesService.createDraft — rich_text paragraph validation', () => {
+  async function tryCreate(paragraphs: unknown[]) {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const service = await buildService({ articleRepo });
+    const dto = makeDraftDto({ blocks: [{ blockType: GuideBlockType.RICH_TEXT, content: { paragraphs } }] });
+    return service.createDraft(dto as never, ACTOR);
+  }
+
+  it('accepts old-shape paragraphs (type:p/list with plain text/items, no runs) unchanged', async () => {
+    const result = await tryCreate([
+      { type: 'p', text: 'Đoạn văn thường.' },
+      { type: 'list', items: ['Mục 1', 'Mục 2'] },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('accepts heading2/heading3/blockquote with plain text', async () => {
+    const result = await tryCreate([
+      { type: 'heading2', text: 'Tiêu đề cấp 2' },
+      { type: 'heading3', text: 'Tiêu đề cấp 3' },
+      { type: 'blockquote', text: 'Một câu trích dẫn.' },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('accepts a paragraph with bold/italic runs instead of text', async () => {
+    const result = await tryCreate([
+      { type: 'p', runs: [{ text: 'Bình thường, ' }, { text: 'đậm', bold: true }, { text: ' và ' }, { text: 'nghiêng', italic: true }] },
+    ]);
+    expect(result.status).toBe(GuideArticleStatus.DRAFT);
+  });
+
+  it('rejects an unknown paragraph type', async () => {
+    await expect(tryCreate([{ type: 'heading1', text: 'x' }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a paragraph with neither text nor runs', async () => {
+    await expect(tryCreate([{ type: 'p' }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects an empty runs array', async () => {
+    await expect(tryCreate([{ type: 'p', runs: [] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a run missing text', async () => {
+    await expect(tryCreate([{ type: 'p', runs: [{ bold: true }] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects over-limit paragraph text with a clear error, not silent truncation', async () => {
+    const tooLong = 'a'.repeat(5001);
+    await expect(tryCreate([{ type: 'p', text: tooLong }])).rejects.toThrow(BadRequestException);
+    await expect(tryCreate([{ type: 'p', text: tooLong }])).rejects.toThrow(/5000/);
+  });
+
+  it('rejects over-limit run text', async () => {
+    const tooLong = 'a'.repeat(2001);
+    await expect(tryCreate([{ type: 'p', runs: [{ text: tooLong }] }])).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects too many paragraphs in one block', async () => {
+    const paragraphs = Array.from({ length: 101 }, () => ({ type: 'p', text: 'x' }));
+    await expect(tryCreate(paragraphs)).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a list item exceeding the per-item length limit', async () => {
+    const tooLong = 'a'.repeat(501);
+    await expect(tryCreate([{ type: 'list', items: [tooLong] }])).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ─── P0 fix (2026-09-27): orphan guide media never got a moderation case ──────
+// MediaService.register() only creates one when session.placeId is set (place photos); a guide
+// hero/block image is always orphan (placeId null), so it silently never entered any queue —
+// confirmed live on production (zero rows in moderation_cases for a freshly-uploaded guide image).
+describe('GuideArticlesService — moderation case for own pending guide media', () => {
+  function makeMedia(overrides: Partial<Media> = {}): Media {
+    return {
+      id: uuid(500),
+      placeId: null,
+      status: MediaStatus.PENDING,
+      uploadedBy: ACTOR,
+      licenseType: null,
+      attribution: null,
+      licenseUrl: null,
+      ...overrides,
+    } as Media;
+  }
+
+  it('creates an open case for a hero image the actor uploaded, still pending, orphan', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ id: uuid(500) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).toHaveBeenCalledWith(
+      dataSource.manager,
+      expect.objectContaining({ targetType: 'media', targetId: uuid(500) }),
+    );
+  });
+
+  it('does NOT create a case for media the actor does not own', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ uploadedBy: uuid(777) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('does NOT create a case for place-attached media (already handled by MediaService.register)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ placeId: uuid(600) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('does NOT create a case for already-published media (reusing an approved image)', async () => {
+    const articleRepo = makeArticleRepoMock();
+    articleRepo.findOne.mockResolvedValue(null);
+    const dataSource = makeDataSourceMock();
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ status: MediaStatus.PUBLISHED })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ articleRepo, dataSource, moderationCasesRepo });
+    await service.createDraft(makeDraftDto({ heroMediaId: uuid(500) }) as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).not.toHaveBeenCalled();
+  });
+
+  it('checks an image_with_rights block mediaId on saveDraft too', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(makeArticle({ contentVersion: 2 }));
+    dataSource.managerBlockRepo.find.mockResolvedValue([]);
+    dataSource.managerMediaRepo.find.mockResolvedValue([makeMedia({ id: uuid(500) })]);
+    const moderationCasesRepo = makeModerationCasesRepoMock();
+
+    const service = await buildService({ dataSource, moderationCasesRepo });
+    const dto = {
+      ...makeDraftDto({
+        blocks: [{ blockType: GuideBlockType.IMAGE_WITH_RIGHTS, content: { mediaId: uuid(500) } }],
+      }),
+      expectedContentVersion: 1,
+    };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(moderationCasesRepo.createOpenCase).toHaveBeenCalledWith(
+      dataSource.manager,
+      expect.objectContaining({ targetType: 'media', targetId: uuid(500) }),
+    );
+  });
 });
 
 // ─── saveDraft (CAS) ──────────────────────────────────────────────────────────
@@ -384,6 +716,85 @@ describe('GuideArticlesService.saveDraft', () => {
     const service = await buildService({ dataSource });
     const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
     await expect(service.saveDraft(uuid(1), dto as never, ACTOR)).rejects.toThrow(NotFoundException);
+  });
+
+  it('updates category/tags — full-replace semantics, normalized, matching intro/heroMediaId', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, category: GuideArticleCategory.LICH_TRINH, tags: ['3-ngay-2-dem'] }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = {
+      ...makeDraftDto(),
+      expectedContentVersion: 1,
+      category: GuideArticleCategory.LICH_TRINH,
+      tags: [' 3-ngay-2-dem ', '3-NGAY-2-DEM'],
+    };
+    const result = await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ category: GuideArticleCategory.LICH_TRINH, tags: ['3-ngay-2-dem'] }),
+    );
+    expect(result.category).toBe(GuideArticleCategory.LICH_TRINH);
+    expect(result.tags).toEqual(['3-ngay-2-dem']);
+  });
+
+  it('clears category to null and tags to [] when omitted from the patch (same convention as intro/heroMediaId)', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(
+      makeArticle({ contentVersion: 1, category: GuideArticleCategory.VUI_CHOI, tags: ['cu'] }),
+    );
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(makeArticle({ contentVersion: 2, category: null, tags: [] }));
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ category: null, tags: [] }),
+    );
+  });
+
+  it('updates metaTitle/metaDescription — trimmed, full-replace semantics', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(makeArticle({ contentVersion: 1 }));
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, metaTitle: 'Tiêu đề SEO', metaDescription: 'Mô tả SEO' }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1, metaTitle: '  Tiêu đề SEO  ', metaDescription: '  Mô tả SEO  ' };
+    const result = await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ metaTitle: 'Tiêu đề SEO', metaDescription: 'Mô tả SEO' }),
+    );
+    expect(result.metaTitle).toBe('Tiêu đề SEO');
+    expect(result.metaDescription).toBe('Mô tả SEO');
+  });
+
+  it('clears metaTitle/metaDescription to null when omitted from the patch', async () => {
+    const dataSource = makeDataSourceMock();
+    dataSource.managerArticleRepo.findOne.mockResolvedValue(
+      makeArticle({ contentVersion: 1, metaTitle: 'Cũ', metaDescription: 'Cũ' }),
+    );
+    dataSource.managerArticleRepo.findOneOrFail.mockResolvedValue(
+      makeArticle({ contentVersion: 2, metaTitle: null, metaDescription: null }),
+    );
+
+    const service = await buildService({ dataSource });
+    const dto = { ...makeDraftDto(), expectedContentVersion: 1 };
+    await service.saveDraft(uuid(1), dto as never, ACTOR);
+
+    expect(dataSource.managerArticleRepo.update).toHaveBeenCalledWith(
+      { id: uuid(1), contentVersion: 1 },
+      expect.objectContaining({ metaTitle: null, metaDescription: null }),
+    );
   });
 });
 

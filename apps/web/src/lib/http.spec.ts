@@ -34,6 +34,51 @@ describe('apiPostPublic', () => {
   });
 });
 
+describe('ApiError.details', () => {
+  // AllExceptionsFilter always collapses a ValidationPipe rejection's `message` to the generic
+  // "Dữ liệu không hợp lệ" and moves the real per-field messages into `error.details` (array of
+  // {message}). Callers that only read `.message` never learn which field was wrong — `.details`
+  // must survive the envelope→ApiError boundary or that information is lost for good.
+  it('surfaces field-level validation messages from error.details', async () => {
+    mockFetchOnce(400, {
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Dữ liệu không hợp lệ',
+        details: [{ message: 'slug must be longer than or equal to 1 characters' }],
+      },
+    });
+    await expect(apiPost('/admin/guide-articles', 'tok', {})).rejects.toMatchObject({
+      status: 400,
+      details: [{ message: 'slug must be longer than or equal to 1 characters' }],
+    });
+  });
+
+  it('is undefined when the server sends no details', async () => {
+    mockFetchOnce(403, { success: false, error: { code: 'FORBIDDEN', message: 'Thiếu quyền' } });
+    try {
+      await apiPost('/admin/guide-articles', 'tok', {});
+      throw new Error('expected apiPost to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      expect((err as ApiError).details).toBeUndefined();
+    }
+  });
+
+  it('ignores malformed details (not an array of {message}) rather than throwing', async () => {
+    mockFetchOnce(400, {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Dữ liệu không hợp lệ', details: 'not-an-array' },
+    });
+    try {
+      await apiPost('/admin/guide-articles', 'tok', {});
+      throw new Error('expected apiPost to reject');
+    } catch (err) {
+      expect((err as ApiError).details).toBeUndefined();
+    }
+  });
+});
+
 describe('apiPost', () => {
   it('gửi Bearer + JSON body, bóc data từ envelope thành công', async () => {
     mockFetchOnce(201, { success: true, data: null, meta: {} });

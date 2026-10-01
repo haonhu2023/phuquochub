@@ -15,7 +15,7 @@ import {
   summarizeTrustSources,
   trustBadgeLabel,
 } from '@/modules/places/trust';
-import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
+import { getPlaceAboutTitle, getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
@@ -23,6 +23,7 @@ import styles from '@/modules/places/places.module.css';
 import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
+import { isValidCoord } from '@/modules/map/mapMarkers';
 import type { Review } from '@/modules/reviews/types';
 import { ClaimCta } from '@/modules/business-claims/ClaimCta';
 import { ProposeEditCta } from '@/modules/place-edit-proposals/ProposeEditCta';
@@ -254,7 +255,7 @@ export default async function PlaceDetailPage({ params }: Params) {
 
       {place.description && (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>{copy.sectionAbout}</h2>
+          <h2 className={styles.sectionTitle}>{getPlaceAboutTitle(locale, place.category_slug)}</h2>
           <p>{place.description}</p>
         </section>
       )}
@@ -310,9 +311,11 @@ export default async function PlaceDetailPage({ params }: Params) {
               </ul>
             </details>
           )}
-          <a className={styles.mapLink} href={mapHref} target="_blank" rel="noopener noreferrer">
-            {copy.viewOnMap}
-          </a>
+          {isValidCoord(place.location.lng, place.location.lat) && (
+            <a className={styles.mapLink} href={mapHref} target="_blank" rel="noopener noreferrer">
+              {copy.viewOnMap}
+            </a>
+          )}
         </section>
       )}
 

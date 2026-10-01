@@ -18,6 +18,7 @@
 // UI pass (2026-09-22): trình bày đổi từ danh sách <p><Link> sang lưới thẻ (dashboard-home.module.css)
 // — logic hiển thị/quyền (caps.*) và hành vi đăng xuất giữ NGUYÊN, không đổi.
 
+import { OwnerCommandCenter } from '@/modules/ops/OwnerCommandCenter';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -26,6 +27,7 @@ import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { NO_CAPABILITIES, type UserCapabilities } from '@/modules/auth/capabilities';
 import styles from './dashboard-home.module.css';
+import { EDITORIAL_CATEGORIES, type EditorialCategory } from '@/modules/editorial/editorialCategories';
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -60,6 +62,7 @@ export default function DashboardPage() {
     { href: '/dashboard/business-claims/new', label: 'Yêu cầu xác nhận quyền quản lý', show: true },
     { href: '/dashboard/business-claims', label: 'Trạng thái yêu cầu của tôi', show: true },
     { href: '/dashboard/editorial/places', label: 'Biên tập nội dung địa điểm', show: caps.canEditorial },
+    { href: '/dashboard/editorial/places', label: 'Bản đồ và tọa độ địa điểm', show: caps.canEditorial },
     { href: '/dashboard/moderation', label: 'Hàng chờ kiểm duyệt', show: caps.canModerate },
     { href: '/dashboard/translations/review', label: 'Duyệt bản dịch', show: caps.canReviewTranslations },
     { href: '/dashboard/editorial/guides', label: 'Biên tập cẩm nang', show: caps.canEditGuides },
@@ -78,11 +81,27 @@ export default function DashboardPage() {
       <p className={styles.greeting}>
         Xin chào, <strong className={styles.greetingName}>{user?.displayName}</strong> ({user?.email})
       </p>
+      {caps.canViewCommandCenter && <OwnerCommandCenter />}
+      {caps.canEditorial && <section aria-labelledby="editorial-categories-title" className={styles.categorySection}>
+        <h2 id="editorial-categories-title">Biên tập theo danh mục</h2>
+        <p className={styles.greeting}>Chọn đúng loại địa điểm để xem những thông tin cần hoàn thiện cho khách du lịch.</p>
+        <div className={styles.grid}>
+          {(Object.keys(EDITORIAL_CATEGORIES) as EditorialCategory[]).map((slug) => {
+            const group = EDITORIAL_CATEGORIES[slug];
+            return <Link key={slug} href={`/dashboard/editorial/places?category=${slug}`} className={styles.categoryCard}>
+              <strong className={styles.cardTitle}>{group.title}</strong>
+              <span className={styles.categoryDescription}>{group.intro}</span>
+              <span className={styles.cardArrow} aria-hidden="true">Xem danh sách →</span>
+            </Link>;
+          })}
+        </div>
+      </section>}
+      <h2>Công cụ quản trị</h2>
       <div className={styles.grid}>
         {links
           .filter((l) => l.show)
           .map((l) => (
-            <Link key={l.href} href={l.href} className={styles.card}>
+            <Link key={l.label} href={l.href} className={styles.card}>
               <div className={styles.cardTitle}>{l.label}</div>
               <span className={styles.cardArrow} aria-hidden="true">
                 →

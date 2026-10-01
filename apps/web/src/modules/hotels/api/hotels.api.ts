@@ -1,7 +1,8 @@
-import { apiGet, apiGetPaginated } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type { PlaceDetail } from '@/modules/places/types';
-import type { HotelCard, HotelSort } from '../types';
+import type { Amenity } from '@/modules/amenities/types';
+import type { HotelCard, HotelSort, HotelType } from '../types';
 
 // Hotel = Place (category='hotel') + satellite (ADR-002). getHotel trả base Place + hotel extras.
 export interface HotelRoom {
@@ -13,10 +14,47 @@ export interface HotelRoom {
   sort_order: number;
 }
 
+// "Hạng sao có nguồn" (product spec, 2026-09-29) — object rời (title/url/verified_at) hoặc null,
+// KHÔNG BAO GIỜ suy đoán — khớp HotelsService.mapHotelDetails (apps/api).
+export interface HotelStarRatingSource {
+  title: string | null;
+  url: string | null;
+  verified_at: string | null;
+}
+
+// Hình dạng CÔNG KHAI (`GET /hotels/:slug` → `.hotel_details`) — HotelsService.getBySlug() dùng
+// mapHotelDetails() trực tiếp: hoặc `null` (place_hotel_details chưa tồn tại) hoặc ĐỦ cả 5 trường
+// (không có content_version — trang công khai không sửa gì nên không cần token CAS).
+export interface HotelDetails {
+  star_rating: number | null;
+  hotel_type: HotelType;
+  check_in: string | null;
+  check_out: string | null;
+  star_rating_source: HotelStarRatingSource | null;
+}
+
+// Hình dạng ĐẶC QUYỀN (`GET/PATCH /hotels/:id/details`, HotelsService.getDetails/updateDetails) —
+// KHÁC hẳn HotelDetails ở trên: `content_version` (token CAS, 2026-09-30) LUÔN có mặt, nhưng các
+// trường detail khác VẮNG MẶT (không phải `null`) khi place_hotel_details CHƯA từng được tạo (hotel
+// vừa tạo, chưa PATCH lần nào) — khác hẳn "đã xoá giá trị" (null tường minh). Khớp đúng
+// `{ ...mapHotelDetails(row), content_version }`: spread của `null` là `{}` nên các field detail
+// biến mất thay vì thành `null`.
+export interface HotelDetailsAdmin {
+  content_version: number;
+  star_rating?: number | null;
+  hotel_type?: HotelType;
+  check_in?: string | null;
+  check_out?: string | null;
+  star_rating_source?: HotelStarRatingSource | null;
+}
+
 export type HotelDetail = PlaceDetail & {
-  hotel_details: Record<string, unknown> | null;
+  hotel_details: HotelDetails | null;
   rooms: HotelRoom[];
-  amenities: string[];
+  // BUG THẬT đã sửa (2026-09-30): trước đây khai `string[]`, nhưng
+  // HotelsRepository.listAmenities() (apps/api) trả về mảng object {id,code,label_vi,label_en,
+  // icon,group} — khớp đúng hình dạng thật, không phải chuỗi rời.
+  amenities: Amenity[];
 };
 
 // `locale` TÙY CHỌN (2026-09-17 real-data pass, cùng mẫu `places.api.ts`'s `getPlace()`):
@@ -61,4 +99,37 @@ export async function listHotels(
   if (params.sort) qs.set('sort', params.sort);
   const q = qs.toString();
   return apiGetPaginated<HotelCard>(`/hotels${q ? `?${q}` : ''}`, { cache: 'no-store' });
+}
+
+// PATCH TỪNG PHẦN thật (product spec, 2026-09-29) — field bỏ qua (`undefined`) giữ nguyên giá trị
+// cũ, field gửi `null` XOÁ (JSON.stringify loại key `undefined`, giữ nguyên `null` — khớp đúng
+// hợp đồng backend, xem UpdateHotelDetailsDto/HotelsRepository.upsertDetails). hotel_type BẮT
+// BUỘC (NOT NULL ở DB) — form phải luôn gửi lại giá trị hiện tại, không được để trống.
+// `expected_content_version` (2026-09-30) — CAS thật, BẮT BUỘC: token đọc từ GET details gần nhất
+// (place.content_version), gửi lại nguyên vẹn. Không khớp -> 409 (xem ApiError.status ở caller).
+export interface UpdateHotelDetailsInput {
+  expected_content_version: number;
+  hotel_type: HotelType;
+  star_rating?: number | null;
+  star_rating_source_id?: string | null;
+  check_in?: string | null;
+  check_out?: string | null;
+}
+
+// Đặc quyền — hoạt động cả khi hotel còn draft/pending (GET /hotels/:slug @Public() chỉ trả place
+// đã published). Dùng để tải lại giá trị hiện tại cho form sửa. Luôn trả về một object (có
+// content_version) — KHÔNG còn `null` (place_hotel_details chưa tồn tại chỉ khiến các field detail
+// vắng mặt, xem HotelDetails's ghi chú).
+export async function getHotelDetails(placeId: string, accessToken: string): Promise<HotelDetailsAdmin> {
+  return apiGetAuth<HotelDetailsAdmin>(`/hotels/${encodeURIComponent(placeId)}/details`, accessToken, {
+    cache: 'no-store',
+  });
+}
+
+export async function updateHotelDetails(
+  placeId: string,
+  payload: UpdateHotelDetailsInput,
+  accessToken: string,
+): Promise<HotelDetailsAdmin> {
+  return apiPatchAuth<HotelDetailsAdmin>(`/hotels/${encodeURIComponent(placeId)}/details`, accessToken, payload);
 }

@@ -141,18 +141,51 @@ else
   fail "deploy.sh lost its migration-failure halt"
 fi
 
+# Regression pin (2026-09-26): `docker compose run` does NOT rebuild an already-built service image
+# on its own, so deploy.sh must explicitly `build migrate` immediately before `run --rm migrate` --
+# otherwise a stale migrate image silently reports "no migrations pending" for a release that added
+# one (this exact bug shipped and was only caught live during the owner-command-center release,
+# because Step 8's smoke test happened to fail for an unrelated reason first).
+BUILD_CALL_LINE=$(grep -nE '^\$COMPOSE --profile tools build migrate\s*$' "$DEPLOY" | head -1 | cut -d: -f1)
+RUN_CALL_LINE=$(printf '%s\n' "$MIGRATE_CALL" | head -1 | cut -d: -f1)
+if [ -n "$BUILD_CALL_LINE" ]; then
+  pass "deploy.sh rebuilds the migrate image before running it"
+else
+  fail "deploy.sh does not rebuild migrate before 'run --rm migrate' -- stale image risk"
+fi
+if [ -n "$BUILD_CALL_LINE" ] && [ -n "$RUN_CALL_LINE" ] && [ "$BUILD_CALL_LINE" -lt "$RUN_CALL_LINE" ]; then
+  pass "the migrate build happens before the migrate run"
+else
+  fail "the migrate build is missing or does not precede the migrate run"
+fi
+
+# Regression pin (2026-09-26): Step 8's smoke-test container must pass REVALIDATE_INTERNAL_SECRET --
+# docker-compose.prod.yml (aa1105d) made it production-required with no default, so a smoke-test
+# `docker run` that omits it crashes the container on boot before the health check ever runs (this
+# also shipped and was only caught live, for the same release as the migrate-staleness bug above).
+if grep -qE 'REVALIDATE_INTERNAL_SECRET=\$\{REVALIDATE_INTERNAL_SECRET:\?' "$DEPLOY"; then
+  pass "deploy.sh's smoke test passes REVALIDATE_INTERNAL_SECRET"
+else
+  fail "deploy.sh's smoke test omits REVALIDATE_INTERNAL_SECRET -- the new image will crash on boot"
+fi
+
 echo "== 5. no OTHER compose invocation accidentally enables the profile =="
-# Only the deliberate migration call may carry --profile tools. If a cutover/rollback command ever
-# picked it up, `up -d` would start migrate again and the guard would be worthless.
+# Only the deliberate migration build+run pair may carry --profile tools. If a cutover/rollback
+# command ever picked it up, `up -d` would start migrate again and the guard would be worthless.
 # Scanned surface is the OPERATIONAL scripts only (scripts/*.sh and scripts/lib/*.sh) -- deliberately
 # not scripts/tests/, which necessarily contains the string in its own assertions, including this
 # one. Comment lines are stripped first so the explanatory comments above the call site don't match.
+# `build migrate` (added 2026-09-26, see deploy.sh Step 7) is the other half of that SAME deliberate
+# pair -- it must rebuild the migrate image before `run --rm migrate` executes it, or a stale image
+# silently no-ops a pending migration (the eb63a4b incident recurring). Excluded here for the same
+# reason `run --rm migrate` is.
 STRAY=$(
   for f in "$REPO_ROOT"/scripts/*.sh "$REPO_ROOT"/scripts/lib/*.sh; do
     [ -f "$f" ] || continue
     grep -n -- '--profile tools' "$f" 2>/dev/null \
       | grep -vE '^[0-9]+:[[:space:]]*#' \
       | grep -v 'run --rm migrate' \
+      | grep -v 'build migrate' \
       | sed "s|^|${f##*/}:|"
   done
 )
@@ -231,8 +264,13 @@ fi
 echo "== 8. compose parses and resolves the profile correctly (needs a compose binary) =="
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   # Synthetic values only -- never real secrets. All resolved output is discarded.
+  # REVALIDATE_INTERNAL_SECRET (aa1105d) has no compose default and is `.invalid()`-rejected for the
+  # literal .env.example placeholder in every environment (env.validation.ts), so this synthetic
+  # value must be 16+ chars and NOT that placeholder, or `docker compose config` fails to interpolate
+  # before this test ever reaches its own assertions.
   cfg() { ( cd "$REPO_ROOT" && REDIS_PASSWORD=synthetic-test-value DB_PASSWORD=synthetic-test-value \
             S3_BUCKET=synthetic S3_PUBLIC_URL=http://synthetic \
+            REVALIDATE_INTERNAL_SECRET=synthetic-test-revalidate-secret-value \
             docker compose -f docker-compose.prod.yml "$@" 2>/dev/null ); }
 
   if cfg config >/dev/null; then

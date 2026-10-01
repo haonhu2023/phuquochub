@@ -17,6 +17,16 @@ export interface PlaceCollectionContent {
 
 export type GuideArticleStatus = 'draft' | 'published';
 
+// Chuyên mục cẩm nang (2026-09-29) — chủ đề bài viết, khác `categories` (loại địa điểm). Giá trị
+// khớp CHÍNH XÁC GuideArticleCategory (guide-article.enums.ts, API) — union string literal thay vì
+// enum TS ở phía web, cùng quy ước MediaModerationStatus ngay dưới đây.
+export type GuideArticleCategory = 'kinh_nghiem' | 'am_thuc' | 'luu_tru' | 'di_chuyen' | 'lich_trinh' | 'vui_choi';
+
+/** Real Media.status values (media.enums.ts MediaStatus) — surfaced 2026-09-27 so the editor can
+ *  tell "still pending review" apart from "broken image": the resolved `imageUrl`/`heroImageUrl`
+ *  are built from a stable path that 404s for anything not `published`. */
+export type MediaModerationStatus = 'pending' | 'published' | 'hidden' | 'rejected';
+
 export type GuideBlockType =
   | 'section_heading'
   | 'rich_text'
@@ -29,9 +39,20 @@ export interface SectionHeadingContent {
   text: string;
 }
 
+/** Một đoạn định dạng trong dòng (2026-09-29) — cấu trúc, KHÔNG phải một token markup cần diễn
+ *  giải ở tầng đọc: renderer chỉ bọc `text` bằng `<strong>`/`<em>` theo hai cờ này. */
+export interface RichTextRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
 export interface RichTextParagraph {
-  type: 'p' | 'list';
+  type: 'p' | 'list' | 'heading2' | 'heading3' | 'blockquote';
+  /** Bài cũ (trước 2026-09-29) chỉ có trường này, không có `runs` — vẫn hợp lệ nguyên vẹn. */
   text?: string;
+  /** Có mặt khi đoạn văn có định dạng đậm/nghiêng trong dòng; khi có, ưu tiên hơn `text` khi render. */
+  runs?: RichTextRun[];
   items?: string[];
 }
 
@@ -51,9 +72,16 @@ export interface FaqContent {
 export interface ImageWithRightsContent {
   mediaId: string;
   caption?: string;
+  /** Văn bản thay thế cho screen reader — tách khỏi `caption` (chú thích hiển thị công khai).
+   *  Thêm 2026-09-27, JSONB nên không cần migration. Renderer dùng `alt || caption` để ảnh cũ
+   *  (chưa từng có `alt`) vẫn có văn bản thay thế hợp lý thay vì rỗng. */
+  alt?: string | null;
   imageUrl?: string;
   attribution?: string | null;
   licenseUrl?: string | null;
+  /** Real Media.status, resolved by the API — see GuideArticlesService.resolveImageBlockContent()'s
+   *  comment. `undefined` for content that predates this field (treat as unknown, not "fine"). */
+  mediaStatus?: MediaModerationStatus | null;
 }
 
 export interface GuideBlock {
@@ -80,6 +108,13 @@ export interface GuideArticleDetail {
   intro: string | null;
   heroMediaId: string | null;
   heroImageUrl: string | null;
+  heroMediaStatus?: MediaModerationStatus | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
+  /** SEO riêng (2026-09-29) — NULL khi chưa đặt. Fallback title/intro chạy ở tầng render
+   *  (generateMetadata của trang chi tiết), KHÔNG ở đây — xem seoMeta.ts. */
+  metaTitle: string | null;
+  metaDescription: string | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: string;

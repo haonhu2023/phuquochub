@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
-import { listMyPlaces } from '@/modules/place-management/api/place-management.api';
+import { previewPlace } from '@/modules/place-management/api/place-management.api';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 import { ContactEditor } from './ContactEditor';
@@ -30,9 +30,17 @@ interface Props {
 
 // "Quản lý liên hệ" của một cơ sở (GET công khai /places/{id}/contacts + POST/PATCH/DELETE
 // Contact.Edit.Managed — CÙNG một permission cho cả ba, giống hệt Business Manager Assignment).
-// Xác nhận quyền quản lý BẰNG CHÍNH cơ chế EditPlaceView đã dùng (đối chiếu placeId với
-// GET /places/mine — KHÔNG có route GET /places/:id đặc quyền riêng) — CÙNG thông điệp "không tìm
-// thấy" khi không quản lý được, không phân biệt "không tồn tại" với "không phải của bạn".
+//
+// BUG THẬT đã sửa (2026-10-01, P0 permission audit): trước đây xác nhận quyền bằng
+// `listMyPlaces().find()` — SAI theo đúng lý do EditPlaceView.tsx đã ghi nhận và tự sửa trước đó:
+// `GET /places/mine` chỉ liệt kê grant scope='managed' có business_id cụ thể (vd chủ cơ sở tự
+// claim), trong khi content_owner giữ `Contact.Edit.Any` (kế thừa từ role Contributor, business_id
+// NULL) — KHÔNG BAO GIỜ xuất hiện ở `/places/mine` dù họ quản lý liên hệ được MỌI place qua đúng
+// route POST/PATCH/DELETE ở trên. Hậu quả thật: mọi content_owner bị chặn ở trang này cho MỌI place
+// họ không tự claim, dù quyền RBAC thật cho phép — xác nhận bằng gọi thẳng API (curl) thành công
+// trong khi UI báo "không có quyền". Sửa bằng ĐÚNG cơ chế EditPlaceView đã dùng: `previewPlace()`
+// (GET :id/preview, gác CHÍNH `Place.Edit.Managed` mà PATCH place dùng) — "xem được để quản lý liên
+// hệ" nay khớp đúng "quản lý được", không còn khoảng lệch quyền giữa đọc và ghi.
 export function ContactsView({ placeId }: Props) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
@@ -57,21 +65,20 @@ export function ContactsView({ placeId }: Props) {
     void Promise.resolve()
       .then(() => {
         if (!cancelled) setState({ kind: 'loading' });
-        // GET /places/{id}/contacts là @Public() — không cần token; GET /places/mine xác nhận
-        // đúng người gọi quản lý được cơ sở này (cùng cơ chế EditPlaceView).
-        return Promise.all([listMyPlaces(session.accessToken), listPlaceContacts(placeId)]);
+        // GET /places/{id}/contacts là @Public() — không cần token; previewPlace() xác nhận đúng
+        // quyền quản lý CÙNG permission (Place.Edit.Managed) mà route ghi (POST/PATCH/DELETE) gác.
+        return Promise.all([previewPlace(placeId, session.accessToken), listPlaceContacts(placeId)]);
       })
-      .then(([places, contacts]) => {
+      .then(([place, contacts]) => {
         if (cancelled) return;
-        const place = places.find((p) => p.id === placeId);
-        if (!place) {
-          setState({ kind: 'not-found' });
-          return;
-        }
         setState({ kind: 'ready', placeName: place.name, contacts });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
+          setState({ kind: 'not-found' });
+          return;
+        }
         const message =
           err instanceof ApiError && err.status < 500
             ? err.message

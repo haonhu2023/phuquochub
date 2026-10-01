@@ -6,10 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { GuideArticle } from './entities/guide-article.entity';
 import { GuideBlock } from './entities/guide-block.entity';
-import { GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { GuideArticleCategory, GuideArticleStatus, GuideBlockType } from './guide-article.enums';
+import { MAX_TAGS } from './dto/guide-tags.constants';
 import { SaveGuideDraftDto } from './dto/save-guide-draft.dto';
 import { UpdateGuideDraftDto } from './dto/update-guide-draft.dto';
 import { Media } from '../media/entities/media.entity';
@@ -18,6 +19,9 @@ import { MediaUrlService } from '../../core/media-url/media-url.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { OwnerDecisionQueueService } from '../owner-decision-queue/owner-decision-queue.service';
+import { ModerationCasesRepository } from '../moderation/repositories/moderation-cases.repository';
+import { computePriority } from '../moderation/moderation-severity';
+import { ModerationCaseSeverity, ModerationCaseSource, ModerationTargetType } from '../moderation/moderation.enums';
 
 export interface GuideBlockView {
   id: string;
@@ -48,6 +52,8 @@ export interface PublishedGuideArticleSummary {
   intro: string | null;
   heroImageUrl: string | null;
   publishedAt: Date | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
 }
 
 export interface GuideArticleView {
@@ -58,6 +64,20 @@ export interface GuideArticleView {
   intro: string | null;
   heroMediaId: string | null;
   heroImageUrl: string | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
+  /**
+   * Real current status of `heroMediaId`'s Media row (2026-09-27) — `null` when no hero is set or
+   * the id no longer resolves. `heroImageUrl` alone cannot tell the editor "is this actually
+   * visible yet": it is built from `MediaUrlService.fileUrl()`, a STABLE path that 404s for
+   * anything not `published` (Secure Private Media) — so a freshly-uploaded pending hero silently
+   * looked broken with no explanation before this field existed. The editor UI uses this to show
+   * "chờ duyệt" + a link, instead of a dead `<img>`.
+   */
+  heroMediaStatus: MediaStatus | null;
+  /** SEO riêng (2026-09-29) — NULL khi chưa đặt; fallback title/intro sống ở tầng render (web). */
+  metaTitle: string | null;
+  metaDescription: string | null;
   status: GuideArticleStatus;
   contentVersion: number;
   updatedAt: Date;
@@ -78,6 +98,7 @@ export class GuideArticlesService {
     private readonly mediaUrlService: MediaUrlService,
     private readonly revisionsService: RevisionsService,
     private readonly ownerDecisionQueueService: OwnerDecisionQueueService,
+    private readonly moderationCasesRepo: ModerationCasesRepository,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
@@ -102,12 +123,29 @@ export class GuideArticlesService {
   // branch to get wrong. No pagination yet (`take: 100`) — matches the scale of every other
   // unpaginated list in this codebase (listAll() above has the same shape); revisit if the guide
   // catalogue ever approaches that ceiling.
-  async listPublished(locale: string): Promise<PublishedGuideArticleSummary[]> {
-    const articles = await this.articleRepo.find({
-      where: { locale, status: GuideArticleStatus.PUBLISHED },
-      order: { publishedAt: 'DESC' },
-      take: 100,
-    });
+  //
+  // `filters.category`/`filters.tag` (2026-09-29) — real public filtering, not just editor-side
+  // metadata. `category` is a straight equality match (closed enum); `tag` uses Postgres array
+  // containment (`tags @> ARRAY[...]`, backed by idx_guide_articles_tags's GIN index) — a
+  // QueryBuilder is used here (not the plain `find()` above) ONLY because TypeORM's `where` object
+  // has no operator for array containment.
+  async listPublished(
+    locale: string,
+    filters: { category?: GuideArticleCategory; tag?: string } = {},
+  ): Promise<PublishedGuideArticleSummary[]> {
+    const qb = this.articleRepo
+      .createQueryBuilder('a')
+      .where('a.locale = :locale', { locale })
+      .andWhere('a.status = :status', { status: GuideArticleStatus.PUBLISHED })
+      .orderBy('a.publishedAt', 'DESC')
+      .take(100);
+    if (filters.category) {
+      qb.andWhere('a.category = :category', { category: filters.category });
+    }
+    if (filters.tag) {
+      qb.andWhere('a.tags @> ARRAY[:tag]::text[]', { tag: filters.tag });
+    }
+    const articles = await qb.getMany();
     return articles.map((a) => ({
       slug: a.slug,
       locale: a.locale,
@@ -115,6 +153,8 @@ export class GuideArticlesService {
       intro: a.intro,
       heroImageUrl: a.heroMediaId ? this.mediaUrlService.fileUrl(a.heroMediaId) : null,
       publishedAt: a.publishedAt,
+      category: a.category,
+      tags: a.tags,
     }));
   }
 
@@ -159,6 +199,10 @@ export class GuideArticlesService {
           title: input.title,
           intro: input.intro ?? null,
           heroMediaId: input.heroMediaId ?? null,
+          category: input.category ?? null,
+          tags: normalizeTags(input.tags),
+          metaTitle: input.metaTitle?.trim() || null,
+          metaDescription: input.metaDescription?.trim() || null,
           status: GuideArticleStatus.DRAFT,
           contentVersion: 1,
           authorId: actorId,
@@ -177,6 +221,12 @@ export class GuideArticlesService {
           status: RevisionStatus.PENDING,
         },
         manager,
+      );
+
+      await this.ensureModerationCasesForOwnPendingMedia(
+        manager,
+        this.extractImageMediaIds(article.heroMediaId, blocks),
+        actorId,
       );
 
       return await this.toView(article, blocks);
@@ -199,6 +249,10 @@ export class GuideArticlesService {
         title: input.title,
         intro: input.intro ?? null,
         heroMediaId: input.heroMediaId ?? null,
+        category: input.category ?? null,
+        tags: normalizeTags(input.tags),
+        metaTitle: input.metaTitle?.trim() || null,
+        metaDescription: input.metaDescription?.trim() || null,
         contentVersion: nextVersion,
       };
       const newBlocks = await this.replaceBlocks(manager, id, input.blocks);
@@ -224,6 +278,10 @@ export class GuideArticlesService {
           title: input.title,
           intro: input.intro ?? null,
           heroMediaId: input.heroMediaId ?? null,
+          category: input.category ?? null,
+          tags: normalizeTags(input.tags),
+          metaTitle: input.metaTitle?.trim() || null,
+          metaDescription: input.metaDescription?.trim() || null,
           contentVersion: nextVersion,
         },
       );
@@ -234,6 +292,13 @@ export class GuideArticlesService {
       }
 
       const saved = await articleRepo.findOneOrFail({ where: { id } });
+
+      await this.ensureModerationCasesForOwnPendingMedia(
+        manager,
+        this.extractImageMediaIds(saved.heroMediaId, newBlocks),
+        actorId,
+      );
+
       return await this.toView(saved, newBlocks);
     });
   }
@@ -433,9 +498,10 @@ export class GuideArticlesService {
       .filter((b) => b.blockType === GuideBlockType.IMAGE_WITH_RIGHTS)
       .map((b) => (b.content as { mediaId?: string }).mediaId)
       .filter((id): id is string => Boolean(id));
+    const allMediaIds = article.heroMediaId ? [...imageMediaIds, article.heroMediaId] : imageMediaIds;
     const mediaById = new Map<string, Media>();
-    if (imageMediaIds.length > 0) {
-      const rows = await this.mediaRepo.find({ where: imageMediaIds.map((id) => ({ id })) });
+    if (allMediaIds.length > 0) {
+      const rows = await this.mediaRepo.find({ where: allMediaIds.map((id) => ({ id })) });
       for (const row of rows) mediaById.set(row.id, row);
     }
 
@@ -447,6 +513,11 @@ export class GuideArticlesService {
       intro: article.intro,
       heroMediaId: article.heroMediaId,
       heroImageUrl,
+      heroMediaStatus: article.heroMediaId ? (mediaById.get(article.heroMediaId)?.status ?? null) : null,
+      category: article.category,
+      tags: article.tags,
+      metaTitle: article.metaTitle,
+      metaDescription: article.metaDescription,
       status: article.status,
       contentVersion: article.contentVersion,
       updatedAt: article.updatedAt,
@@ -465,6 +536,59 @@ export class GuideArticlesService {
     };
   }
 
+  /**
+   * P0 fix (2026-09-27) — orphan guide media (hero/block images, `placeId IS NULL`) never got a
+   * moderation case created for it: `MediaService.register()` only calls `createOpenCase` when
+   * `session.placeId` is set (place photos), which orphan uploads never have. Confirmed live on
+   * production: a freshly-uploaded guide hero image had zero rows in `moderation_cases`. Result: no
+   * one — not even an account holding `Media.Moderate` — had anywhere to approve it, so
+   * `assertMediaPublishEligible()` blocked every guide-with-a-new-image forever.
+   *
+   * Fix lives HERE, not in MediaService, because `register()` genuinely cannot tell a guide upload
+   * from a review upload at upload time — both go through the exact same orphan presign/register
+   * call (see MediaService.presign()'s own comment). The only place a media id becomes VERIFIABLY
+   * "this is a guide asset" is the moment an authorized (`Guide.Edit.Any`) write references it here
+   * — that server-verified relationship is what gates this, never a client-declared "purpose".
+   *
+   * Ownership-scoped (`uploadedBy === actorId`) on purpose, mirroring the existing INV-12 self-
+   * approve precedent: an editor referencing someone else's media id (already-published reuse is
+   * the normal case and is a no-op here since it only acts on `pending` rows) must not be able to
+   * spawn moderation cases for arbitrary media they do not own. `createOpenCase` is idempotent
+   * (`ON CONFLICT ... DO NOTHING` on the partial unique index), so calling this on every save is
+   * safe — never duplicates a case for a still-pending image across repeat saves/retries.
+   */
+  private async ensureModerationCasesForOwnPendingMedia(
+    manager: EntityManager,
+    mediaIds: string[],
+    actorId: string,
+  ): Promise<void> {
+    if (mediaIds.length === 0) return;
+    const rows = await manager.getRepository(Media).find({ where: mediaIds.map((id) => ({ id })) });
+    for (const media of rows) {
+      if (media.placeId !== null) continue; // place-attached media already gets a case via MediaService.
+      if (media.status !== MediaStatus.PENDING) continue; // already decided (published/rejected/hidden) — nothing to queue.
+      if (media.uploadedBy === null || media.uploadedBy !== actorId) continue; // not this editor's own upload.
+      await this.moderationCasesRepo.createOpenCase(manager, {
+        targetType: ModerationTargetType.MEDIA,
+        targetId: media.id,
+        source: ModerationCaseSource.NEW_CONTENT,
+        severity: ModerationCaseSeverity.LOW,
+        priority: computePriority(ModerationCaseSeverity.LOW, 0),
+      });
+    }
+  }
+
+  private extractImageMediaIds(heroMediaId: string | null, blocks: { blockType: GuideBlockType; content: Record<string, unknown> }[]): string[] {
+    const ids = new Set<string>();
+    if (heroMediaId) ids.add(heroMediaId);
+    for (const block of blocks) {
+      if (block.blockType !== GuideBlockType.IMAGE_WITH_RIGHTS) continue;
+      const mediaId = (block.content as { mediaId?: string }).mediaId;
+      if (mediaId) ids.add(mediaId);
+    }
+    return [...ids];
+  }
+
   private resolveImageBlockContent(
     content: Record<string, unknown>,
     mediaById: Map<string, Media>,
@@ -477,6 +601,8 @@ export class GuideArticlesService {
       imageUrl: this.mediaUrlService.fileUrl(mediaId),
       attribution: media?.attribution ?? null,
       licenseUrl: media?.licenseUrl ?? null,
+      // Same reasoning as GuideArticleView.heroMediaStatus above.
+      mediaStatus: media?.status ?? null,
     };
   }
 }
@@ -490,6 +616,10 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
     title: article.title,
     intro: article.intro,
     heroMediaId: article.heroMediaId,
+    category: article.category,
+    tags: article.tags,
+    metaTitle: article.metaTitle,
+    metaDescription: article.metaDescription,
     status: article.status,
     contentVersion: article.contentVersion,
     blocks: blocks
@@ -497,6 +627,91 @@ function snapshotOf(article: GuideArticle, blocks: GuideBlock[]): object {
       .sort((a, b) => a.position - b.position)
       .map((b) => ({ position: b.position, blockType: b.blockType, content: b.content })),
   };
+}
+
+// Chuẩn hoá thẻ tự do (2026-09-29) — cắt khoảng trắng, thường hoá, bỏ trùng (không phân biệt hoa
+// thường) và rỗng, giữ thứ tự client gửi cho các thẻ còn lại đầu tiên. Chạy ở SERVICE (không phải
+// DTO/client) để hai thẻ chỉ khác hoa/thường không bao giờ bị coi là hai thẻ khác nhau trong CSDL —
+// nếu không, lọc công khai theo thẻ (`tags @> ARRAY[...]`) sẽ bỏ sót bài do lệch chữ hoa/thường.
+function normalizeTags(tags: string[] | undefined): string[] {
+  if (!tags) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of tags) {
+    const t = raw.trim().toLowerCase();
+    if (t === '' || seen.has(t)) continue;
+    seen.add(t);
+    result.push(t);
+  }
+  return result.slice(0, MAX_TAGS);
+}
+
+// Rich text formatting (2026-09-29) — H2/H3, blockquote, bold/italic. Vẫn "cấu trúc, không HTML
+// tự do": mỗi đoạn văn là MỘT trong 5 `type` đóng, và định dạng trong dòng là một mảng `runs`
+// ({text,bold?,italic?}) chứ không phải một chuỗi markup cần parse ở tầng đọc — renderer
+// (RichTextBlock.tsx) chỉ ánh xạ field sang JSX, không có gì để diễn giải/làm sạch. Bài cũ (chỉ có
+// `type:'p'|'list'` + `text`/`items`, không có `runs`) vẫn hợp lệ nguyên vẹn — không migration,
+// không re-validate dữ liệu đã lưu (validate chỉ chạy trên GHI mới).
+const RICH_TEXT_PARAGRAPH_TYPES = ['p', 'list', 'heading2', 'heading3', 'blockquote'] as const;
+const MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK = 100;
+const MAX_PARAGRAPH_TEXT_LENGTH = 5000;
+const MAX_RUN_TEXT_LENGTH = 2000;
+const MAX_RUNS_PER_PARAGRAPH = 50;
+const MAX_LIST_ITEMS = 100;
+const MAX_LIST_ITEM_LENGTH = 500;
+
+// Yêu cầu owner: nội dung dài/vượt hạn phải báo lỗi rõ (400 + thông điệp cụ thể), TUYỆT ĐỐI không
+// âm thầm cắt bớt/mất dữ liệu — nên mọi nhánh dưới đây throw thay vì `.slice()`.
+function validateRichTextParagraph(p: Record<string, unknown>, where: string): void {
+  const type = p.type;
+  if (typeof type !== 'string' || !RICH_TEXT_PARAGRAPH_TYPES.includes(type as (typeof RICH_TEXT_PARAGRAPH_TYPES)[number])) {
+    throw new BadRequestException(`${where}: type phải là một trong ${RICH_TEXT_PARAGRAPH_TYPES.join('|')}`);
+  }
+  if (type === 'list') {
+    if (!Array.isArray(p.items)) {
+      throw new BadRequestException(`${where}: list phải có content.items là mảng`);
+    }
+    if (p.items.length > MAX_LIST_ITEMS) {
+      throw new BadRequestException(`${where}: danh sách vượt quá ${MAX_LIST_ITEMS} mục`);
+    }
+    p.items.forEach((item: unknown, i: number) => {
+      if (typeof item !== 'string' || item.length === 0) {
+        throw new BadRequestException(`${where}.items[${i}]: phải là chuỗi không rỗng`);
+      }
+      if (item.length > MAX_LIST_ITEM_LENGTH) {
+        throw new BadRequestException(`${where}.items[${i}]: vượt quá ${MAX_LIST_ITEM_LENGTH} ký tự`);
+      }
+    });
+    return;
+  }
+  // p / heading2 / heading3 / blockquote — cần ĐÚNG MỘT trong hai: `runs` (có định dạng) hoặc
+  // `text` (đoạn văn cũ/không định dạng). Không cho cả hai cùng thiếu (đoạn văn rỗng vô nghĩa).
+  if (p.runs !== undefined) {
+    if (!Array.isArray(p.runs) || p.runs.length === 0) {
+      throw new BadRequestException(`${where}: runs phải là mảng không rỗng`);
+    }
+    if (p.runs.length > MAX_RUNS_PER_PARAGRAPH) {
+      throw new BadRequestException(`${where}: vượt quá ${MAX_RUNS_PER_PARAGRAPH} đoạn định dạng trong một dòng`);
+    }
+    p.runs.forEach((run: unknown, i: number) => {
+      if (typeof run !== 'object' || run === null || typeof (run as Record<string, unknown>).text !== 'string') {
+        throw new BadRequestException(`${where}.runs[${i}]: text phải là chuỗi`);
+      }
+      const runText = (run as Record<string, unknown>).text as string;
+      if (runText.length === 0) {
+        throw new BadRequestException(`${where}.runs[${i}]: text không được rỗng`);
+      }
+      if (runText.length > MAX_RUN_TEXT_LENGTH) {
+        throw new BadRequestException(`${where}.runs[${i}]: vượt quá ${MAX_RUN_TEXT_LENGTH} ký tự`);
+      }
+    });
+  } else if (typeof p.text === 'string') {
+    if (p.text.length > MAX_PARAGRAPH_TEXT_LENGTH) {
+      throw new BadRequestException(`${where}: text vượt quá ${MAX_PARAGRAPH_TEXT_LENGTH} ký tự`);
+    }
+  } else {
+    throw new BadRequestException(`${where}: cần có content.text hoặc content.runs`);
+  }
 }
 
 // Enforces the closed per-blockType content shape declared in the plan — the one place that keeps
@@ -513,6 +728,15 @@ function validateBlocks(blocks: SaveGuideDraftDto['blocks']): void {
         if (!Array.isArray(c.paragraphs)) {
           throw new BadRequestException(`${where}: content.paragraphs must be an array`);
         }
+        if (c.paragraphs.length > MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK) {
+          throw new BadRequestException(`${where}: content.paragraphs vượt quá ${MAX_PARAGRAPHS_PER_RICH_TEXT_BLOCK} đoạn`);
+        }
+        c.paragraphs.forEach((p: unknown, pi: number) => {
+          if (typeof p !== 'object' || p === null) {
+            throw new BadRequestException(`${where}.paragraphs[${pi}]: phải là object`);
+          }
+          validateRichTextParagraph(p as Record<string, unknown>, `${where}.paragraphs[${pi}]`);
+        });
         break;
       case GuideBlockType.PLACE_COLLECTION:
         requireString(c, 'heading', where);

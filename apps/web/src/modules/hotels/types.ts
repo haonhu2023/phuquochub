@@ -3,6 +3,18 @@ import type { GeoPoint } from '@/modules/places/types';
 export const HOTEL_SORT_VALUES = ['rating_desc', 'name_asc'] as const;
 export type HotelSort = (typeof HOTEL_SORT_VALUES)[number];
 
+export const HOTEL_TYPE_VALUES = ['resort', 'hotel', 'homestay', 'villa', 'guesthouse', 'apartment'] as const;
+export type HotelType = (typeof HOTEL_TYPE_VALUES)[number];
+
+export const HOTEL_TYPE_LABELS: Record<HotelType, string> = {
+  resort: 'Resort',
+  hotel: 'Khách sạn',
+  homestay: 'Homestay',
+  villa: 'Villa',
+  guesthouse: 'Nhà nghỉ',
+  apartment: 'Căn hộ',
+};
+
 // Thẻ khách sạn cho trang browse (/hotels) — khớp HotelsService.list() (apps/api), KHÔNG phải
 // schema `Hotel` đầy đủ trong openapi.yaml (schema đó dành cho chi tiết, có rooms/amenities).
 export interface HotelCard {

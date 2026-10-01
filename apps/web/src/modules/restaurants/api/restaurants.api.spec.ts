@@ -1,4 +1,4 @@
-import { getRestaurant, listRestaurants } from './restaurants.api';
+import { getRestaurant, listAllCuisines, listRestaurants, updateRestaurantDetails } from './restaurants.api';
 
 const realFetch = global.fetch;
 
@@ -69,5 +69,37 @@ describe('getRestaurant — locale forwarding', () => {
     mockFetchOnce({ success: true, data: { id: 'r1' } });
     await getRestaurant('sailing-club-phu-quoc', 'en');
     expect(calledPath()).toBe('/api/restaurants/sailing-club-phu-quoc?locale=en');
+  });
+});
+
+describe('listAllCuisines', () => {
+  it('gọi GET /restaurants/cuisines (công khai)', async () => {
+    mockFetchOnce({ success: true, data: [{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }] });
+    const res = await listAllCuisines();
+    expect(calledPath()).toBe('/api/restaurants/cuisines');
+    expect(res).toEqual([{ id: 'c1', code: 'seafood', label_vi: 'Hải sản', label_en: 'Seafood' }]);
+  });
+});
+
+// PATCH TỪNG PHẦN thật (product spec, 2026-09-29) — field bỏ qua giữ nguyên, `null` xoá. Kiểm cả
+// URL/method/body thật gửi qua fetch (không phải mock @/lib/http) để bắt đúng những gì đi qua dây.
+describe('updateRestaurantDetails', () => {
+  it('PATCH đúng URL, gửi body nguyên vẹn kể cả field null (xoá dietary) + expected_content_version', async () => {
+    mockFetchOnce({ success: true, data: { is_local_specialty: true, dietary: null, cuisines: [], content_version: 2 } });
+    await updateRestaurantDetails('r1', { expected_content_version: 1, is_local_specialty: true, dietary: null }, 'token-1');
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(new URL(url).pathname).toBe('/api/restaurants/r1/details');
+    expect(init.method).toBe('PATCH');
+    expect(init.headers.Authorization).toBe('Bearer token-1');
+    expect(JSON.parse(init.body)).toEqual({ expected_content_version: 1, is_local_specialty: true, dietary: null });
+  });
+
+  it('cuisine_codes vắng mặt -> KHÔNG có key đó trong body (giữ nguyên gán hiện có)', async () => {
+    mockFetchOnce({ success: true, data: { content_version: 1, cuisines: [] } });
+    await updateRestaurantDetails('r1', { expected_content_version: 1, is_local_specialty: false }, 'token-1');
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse(init.body)).not.toHaveProperty('cuisine_codes');
   });
 });

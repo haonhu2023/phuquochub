@@ -16,6 +16,7 @@ export const CONTACT_TYPES = [
   'TIKTOK',
   'ZALO',
   'YOUTUBE',
+  'BOOKING_URL',
   'OTHER',
 ] as const;
 export type ContactTypeValue = (typeof CONTACT_TYPES)[number];

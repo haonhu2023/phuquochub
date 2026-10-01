@@ -14,9 +14,11 @@ RUN npm ci
 
 FROM deps AS build
 COPY packages/shared-types packages/shared-types
+COPY packages/utils packages/utils
 COPY packages/config packages/config
 COPY apps/web apps/web
 RUN npm run build --workspace=@phuquochub/shared-types
+RUN npm run build --workspace=@phuquochub/utils
 # PLACE-038: NEXT_PUBLIC_* variables are inlined by Next.js into the client bundle at BUILD
 # time, not read at container runtime -- docker-compose.prod.yml previously set them only as
 # a runtime `environment:` value, which had NO effect (verified: the built image's client

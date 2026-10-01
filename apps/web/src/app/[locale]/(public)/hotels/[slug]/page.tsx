@@ -2,17 +2,25 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
+import { HOTEL_TYPE_LABELS } from '@/modules/hotels/types';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
-import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
+import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
+import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
+// Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — chỉ places/[slug]/page.tsx có
+// link "Xem trên bản đồ"/chỉ đường; trang hotel/restaurant riêng (route khách thật sự dùng) hoàn
+// toàn KHÔNG có, dù cùng dữ liệu location. Cùng href pattern places/[slug] đã dùng (Google Maps
+// ?q=lat,lng) — không phải link hai nơi khác toạ độ.
+const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -96,15 +104,86 @@ export default async function HotelDetailPage({ params }: Params) {
         <PlacePhotosButton placeId={h.id} />
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
+      {isValidCoord(h.location.lng, h.location.lat) && (
+        <p>
+          <a
+            href={`https://www.google.com/maps?q=${h.location.lat},${h.location.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {VIEW_ON_MAP_LABEL[locale]}
+          </a>
+        </p>
+      )}
 
       <PlaceGallery media={h.media} placeName={h.name} />
 
       {h.description && <p>{h.description}</p>}
 
+      {h.hotel_details && (
+        <section>
+          <h2>Thông tin khách sạn</h2>
+          <dl>
+            <dt>Loại hình</dt>
+            <dd>{HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
+            {h.hotel_details.star_rating !== null && (
+              <>
+                <dt>Hạng sao</dt>
+                <dd>
+                  {'★'.repeat(h.hotel_details.star_rating)}
+                  {h.hotel_details.star_rating_source && (
+                    <>
+                      {' — Nguồn: '}
+                      {h.hotel_details.star_rating_source.url ? (
+                        <a href={h.hotel_details.star_rating_source.url} target="_blank" rel="noopener noreferrer">
+                          {h.hotel_details.star_rating_source.title ?? h.hotel_details.star_rating_source.url}
+                        </a>
+                      ) : (
+                        h.hotel_details.star_rating_source.title ?? '(không có tiêu đề)'
+                      )}
+                    </>
+                  )}
+                </dd>
+              </>
+            )}
+            {(h.hotel_details.check_in || h.hotel_details.check_out) && (
+              <>
+                <dt>Giờ nhận/trả phòng</dt>
+                <dd>
+                  {h.hotel_details.check_in ? `Nhận: ${h.hotel_details.check_in.slice(0, 5)}` : 'Chưa có thông tin nhận phòng'}
+                  {' · '}
+                  {h.hotel_details.check_out ? `Trả: ${h.hotel_details.check_out.slice(0, 5)}` : 'Chưa có thông tin trả phòng'}
+                </dd>
+              </>
+            )}
+          </dl>
+        </section>
+      )}
+
       {h.amenities.length > 0 && (
         <section>
           <h2>Tiện nghi</h2>
-          <p>{h.amenities.join(' · ')}</p>
+          <p>{h.amenities.map((a) => a.label_vi).join(' · ')}</p>
+        </section>
+      )}
+
+      {h.contacts.length > 0 && (
+        <section>
+          <h2>Liên hệ</h2>
+          <ul>
+            {h.contacts.map((c) => (
+              <li key={c.id}>
+                {c.label ?? c.contact_type}: {c.value}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {hasOpeningHours(h.opening_hours) && (
+        <section>
+          <h2>Giờ mở cửa</h2>
+          <p>{getOpeningToday(h.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
         </section>
       )}
 
@@ -126,6 +205,34 @@ export default async function HotelDetailPage({ params }: Params) {
             ))}
           </ul>
           {h.rooms.some((r) => r.price_ref !== null) && <p>{PRICE_VERIFYING_TEXT}</p>}
+        </section>
+      )}
+
+      {/* Giá tham khảo qua price_history (SSOT giá dùng chung mọi category, ADR-006/ADR-019) —
+          bug thật đã sửa (2026-09-30, phát hiện qua rà soát P2): `h.prices` LUÔN có mặt trong
+          response (HotelDetail kế thừa PlaceDetail) nhưng trang này trước đây không render, dù
+          places/[slug]/page.tsx đã có đúng khối này từ trước. Cùng nguyên tắc trust gate: amount
+          chỉ hiện khi bản ghi đã đạt canDisplayPrice(), một dòng "đang xác minh" dùng chung. */}
+      {h.prices.length > 0 && (
+        <section>
+          <h2>Giá tham khảo</h2>
+          {h.prices.filter((p) => canDisplayPrice(p.verification_status)).length > 0 && (
+            <ul>
+              {h.prices
+                .filter((p) => canDisplayPrice(p.verification_status))
+                .map((p) => (
+                  <li key={p.id}>
+                    {p.service_name}:{' '}
+                    {p.is_free
+                      ? 'Miễn phí'
+                      : p.amount !== null
+                        ? `${p.amount.toLocaleString('vi-VN')} ${p.currency}${p.unit ? ` / ${p.unit}` : ''}`
+                        : null}
+                  </li>
+                ))}
+            </ul>
+          )}
+          {h.prices.some((p) => !canDisplayPrice(p.verification_status)) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
     </article>

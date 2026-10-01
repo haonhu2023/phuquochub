@@ -1,5 +1,8 @@
+import Link from 'next/link';
 import type { GuideArticleDetail, GuideBlock as GuideBlockData } from './types';
 import type { Locale } from '@/lib/locale';
+import { localizedHref } from '@/lib/locale';
+import { GUIDE_CATEGORY_LABELS } from './guideCategory';
 import { SectionHeadingBlock } from './blocks/SectionHeadingBlock';
 import { RichTextBlock } from './blocks/RichTextBlock';
 import { PlaceCollectionBlock } from './blocks/PlaceCollectionBlock';
@@ -31,11 +34,23 @@ export function GuideArticleView({ article, locale }: { article: GuideArticleDet
             fetchPriority="high"
           />
         )}
+        {article.category && <span className={styles.categoryBadge}>{GUIDE_CATEGORY_LABELS[locale][article.category]}</span>}
         <h1 className={styles.title}>{article.title}</h1>
         {article.intro && <p className={styles.intro}>{article.intro}</p>}
         <p className={styles.updated}>
           {UPDATED_LABEL[locale]}: {new Date(article.updatedAt).toLocaleDateString(locale === 'vi' ? 'vi-VN' : 'en-US')}
         </p>
+        {article.tags.length > 0 && (
+          <ul className={styles.tagList}>
+            {article.tags.map((tag) => (
+              <li key={tag}>
+                <Link href={`${localizedHref(locale, '/guide')}?tag=${encodeURIComponent(tag)}`} className={styles.tagLink}>
+                  #{tag}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </header>
 
       {article.blocks.map((block) => (

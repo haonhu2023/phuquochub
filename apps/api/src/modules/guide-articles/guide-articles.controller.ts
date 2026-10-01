@@ -18,6 +18,7 @@ import { SaveGuideDraftDto } from './dto/save-guide-draft.dto';
 import { UpdateGuideDraftDto } from './dto/update-guide-draft.dto';
 import { PublishGuideArticleDto } from './dto/publish-guide-article.dto';
 import { FlagContentGapDto } from './dto/flag-content-gap.dto';
+import { ListPublishedGuideArticlesQueryDto } from './dto/list-published-guide-articles.dto';
 
 // Public read — no guard. Only ever resolves a PUBLISHED article (see
 // GuideArticlesService.getPublished()'s own comment for why a draft can never leak through here).
@@ -33,8 +34,13 @@ export class GuideArticlesPublicController {
   // one-segment — same non-collision as places.controller.ts's 'mine'/'editorial' vs ':slug',
   // just without needing the explicit ordering those two required).
   @Get()
-  async listPublished(@Query('locale') locale: string = 'vi') {
-    return this.service.listPublished(locale);
+  async listPublished(@Query() query: ListPublishedGuideArticlesQueryDto) {
+    // `tag` thường hoá ở đây để khớp đúng thẻ đã thường hoá lúc lưu (GuideArticlesService.
+    // normalizeTags) — không thì `?tag=Bien` không khớp được dòng lưu là `bien`.
+    return this.service.listPublished(query.locale ?? 'vi', {
+      category: query.category,
+      tag: query.tag?.toLowerCase(),
+    });
   }
 
   @Get(':slug')

@@ -127,7 +127,10 @@ export function trustBadgeLabel(badge: TrustBadge, locale: Locale): string {
  *  (`places/[slug]/page.tsx` trước khi sửa G10); trang đó nay truyền `locale` tường minh. */
 export function formatVerifiedAt(iso: string, locale: Locale = 'vi'): string {
   const localeTag = locale === 'en' ? 'en-US' : 'vi-VN';
-  return new Date(iso).toLocaleDateString(localeTag, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  // Ngày kiểm tra là ngày tại Phú Quốc; múi giờ máy chủ/trình duyệt không được làm lệch ngày.
+  return new Date(iso).toLocaleDateString(localeTag, {
+    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+  });
 }
 
 /** Tên hiển thị cho một trường đã được đối chiếu nguồn — KHÔNG lộ tên cột kỹ thuật ra UI. */

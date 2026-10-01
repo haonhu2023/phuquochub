@@ -1,7 +1,10 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
+// BOOKING_URL (product spec, 2026-09-29) — "đường dẫn/liên hệ đặt phòng" cho khách sạn/tour: cột
+// varchar tự do (contact_type), không phải enum DB, nên thêm giá trị mới không cần migration —
+// tái dùng nguyên module contacts (đã có CRUD/admin UI/public render) thay vì dựng cột riêng.
 const CONTACT_TYPES = [
-  'HOTLINE', 'PHONE', 'EMAIL', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM', 'TIKTOK', 'ZALO', 'YOUTUBE', 'OTHER',
+  'HOTLINE', 'PHONE', 'EMAIL', 'WEBSITE', 'FACEBOOK', 'INSTAGRAM', 'TIKTOK', 'ZALO', 'YOUTUBE', 'BOOKING_URL', 'OTHER',
 ];
 
 export class CreateContactDto {

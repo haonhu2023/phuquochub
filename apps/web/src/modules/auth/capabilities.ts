@@ -92,6 +92,19 @@ const PLACE_APPROVE_ROLES = ['content_owner', 'moderator', 'administrator', 'sup
  *  vì role này không kế thừa `moderator`). Trang `/dashboard/edit-proposals` dùng permission này. */
 const PLACE_EDIT_PROPOSAL_MODERATE_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
 
+/** Vai trò giữ `Verification.Verify` HOẶC `Price.Verify` cho mục đích hiển thị nút "Xác minh" giá
+ *  (PricesEditor). `Verification.Verify` (ADR-008) vẫn moderator-only tuyệt đối cho place/contact
+ *  (Owner Decision 2026-08-06, KHÔNG đổi) — administrator/super_administrator giữ nó qua kế thừa
+ *  `role_parents` TỪ moderator, content_owner thì KHÔNG (kế thừa từ contributor).
+ *
+ *  `content_owner` có mặt ở ĐÂY không phải vì giữ `Verification.Verify` — mà vì giữ permission
+ *  RIÊNG `Price.Verify` (price verification ownership, 2026-10-01, SeedPriceVerifyPermission),
+ *  CHỈ áp dụng cho price_history, không mở thêm gì cho place/contact. Cờ này gộp cả hai nguồn
+ *  quyền làm MỘT vì PricesEditor chỉ cần biết "nút Xác minh giá có nên hiện không", không cần phân
+ *  biệt vì permission nào. THUẦN TUÝ hiển thị — backend vẫn là nơi quyết định duy nhất (xem
+ *  VerificationsController.assertCanVerify). */
+const VERIFICATION_VERIFY_ROLES = ['moderator', 'administrator', 'super_administrator', 'content_owner'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -107,10 +120,13 @@ export interface UserCapabilities {
   canEditSiteContent: boolean;
   /** Hiện khối "Tình trạng sao lưu" trên trang Hướng dẫn (BK1). */
   canViewBackupStatus: boolean;
+  canViewCommandCenter: boolean;
   /** Hiện lối vào "Việc cần làm" (`/dashboard/todo`, GET /owner-decisions — Place.Approve). */
   canViewOwnerTodo: boolean;
   /** Hiện lối vào "Duyệt đề xuất chỉnh sửa" (`/dashboard/edit-proposals` — PlaceEditProposal.Moderate). */
   canReviewPlaceEditProposals: boolean;
+  /** Hiện nút "Xác minh" trên một bản giá pending (PricesEditor — Verification.Verify, moderator-only). */
+  canVerifyPrices: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -121,8 +137,10 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canEditGuides: false,
   canEditSiteContent: false,
   canViewBackupStatus: false,
+  canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
+  canVerifyPrices: false,
 };
 
 /**
@@ -141,7 +159,9 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canEditGuides: codes.some((c) => GUIDE_EDIT_ROLES.includes(c)),
     canEditSiteContent: codes.some((c) => SITE_CONTENT_EDIT_ROLES.includes(c)),
     canViewBackupStatus: codes.some((c) => BACKUP_STATUS_VIEW_ROLES.includes(c)),
+    canViewCommandCenter: codes.some((c) => ['content_owner'].includes(c)),
     canViewOwnerTodo: codes.some((c) => PLACE_APPROVE_ROLES.includes(c)),
     canReviewPlaceEditProposals: codes.some((c) => PLACE_EDIT_PROPOSAL_MODERATE_ROLES.includes(c)),
+    canVerifyPrices: codes.some((c) => VERIFICATION_VERIFY_ROLES.includes(c)),
   };
 }

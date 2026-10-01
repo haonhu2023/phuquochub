@@ -37,6 +37,8 @@ function detailRow(overrides: Partial<PlaceDetailRow> = {}): PlaceDetailRow {
     admin_area: null,
     description: null,
     opening_hours: null,
+    visit_duration_minutes: null,
+    rules: null,
     osm_id: null,
     created_at: new Date('2026-01-01T00:00:00Z'),
     updated_at: new Date('2026-01-01T00:00:00Z'),
@@ -403,6 +405,17 @@ describe('PlacesRepository — hiển thị công khai (GAP-02/GAP-04)', () => {
 
       const [itemsQuery] = repo.query.mock.calls[1];
       expect(sql(itemsQuery)).toContain('ORDER BY p.updated_at DESC, p.id ASC');
+    });
+
+    it('lọc category trên toàn tập trước LIMIT, gồm resort khi chọn hotel', async () => {
+      await sut.listEditorial({ category: 'hotel', limit: 20, offset: 40 });
+      const [countQuery, countArgs] = repo.query.mock.calls[0];
+      const [itemsQuery, itemsArgs] = repo.query.mock.calls[1];
+      expect(sql(countQuery)).toContain('slug = $1');
+      expect(sql(itemsQuery)).toContain("slug = 'resort'");
+      expect(sql(itemsQuery)).toContain('LIMIT $2 OFFSET $3');
+      expect(countArgs).toEqual(['hotel']);
+      expect(itemsArgs).toEqual(['hotel', 20, 40]);
     });
   });
 });
@@ -1542,5 +1555,41 @@ describe('PlacesRepository.updateScalarsIfUnchanged — CAS cho publishDraft() (
       await expect(sut.updateScalarsIfUnchanged('p1', { notARealColumn: 'x' }, '100')).resolves.toBe(true);
       expect(repo.query).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('PlacesRepository — FAQ (product spec, 2026-09-29)', () => {
+  let repo: LooseMock<Repository<Place>>;
+  let sut: PlacesRepository;
+
+  it('listFaqsForOwner: MỌI status (không lọc published như listFaqs)', async () => {
+    repo = createMock<Repository<Place>>({ query: jest.fn() });
+    sut = new PlacesRepository(repo, MEDIA_URL);
+    repo.query.mockResolvedValue([]);
+
+    await sut.listFaqsForOwner('p1');
+
+    const [query, params] = repo.query.mock.calls[0];
+    const q = sql(query);
+    expect(q).not.toContain("status = 'published'");
+    expect(q).toContain('FROM place_faqs');
+    expect(params).toEqual(['p1']);
+  });
+
+  it('replaceFaqs: xoá hết rồi chèn lại trong transaction, luôn is_ai_generated=false/status=published', async () => {
+    const managerQuery = jest.fn().mockResolvedValue(undefined);
+    const manager = { query: managerQuery } as unknown as EntityManager;
+    repo = {
+      manager: { transaction: jest.fn().mockImplementation((cb: (m: EntityManager) => Promise<void>) => cb(manager)) },
+    } as unknown as LooseMock<Repository<Place>>;
+    sut = new PlacesRepository(repo, MEDIA_URL);
+
+    await sut.replaceFaqs('p1', [{ question: 'Q1?', answer: 'A1.' }]);
+
+    expect(managerQuery).toHaveBeenCalledWith('DELETE FROM place_faqs WHERE place_id = $1', ['p1']);
+    const insertCall = managerQuery.mock.calls.find(([q]) => sql(q).includes('INSERT INTO place_faqs'));
+    expect(insertCall).toBeDefined();
+    expect(sql(insertCall![0])).toContain("false, 'published'");
+    expect(insertCall![1]).toEqual(['p1', 'Q1?', 'A1.', 0]);
   });
 });

@@ -38,7 +38,7 @@ describe('DashboardNav', () => {
     await waitFor(() => expect(mockFetchCapabilities).toHaveBeenCalled());
 
     expect(screen.getByRole('link', { name: 'Tổng quan' })).toHaveAttribute('href', '/dashboard');
-    expect(screen.getByRole('link', { name: 'Địa điểm' })).toHaveAttribute('href', '/dashboard/places');
+    expect(screen.getByRole('link', { name: 'Địa điểm của tôi' })).toHaveAttribute('href', '/dashboard/places');
     expect(screen.getByRole('link', { name: 'Hướng dẫn' })).toHaveAttribute('href', '/dashboard/help');
     expect(screen.queryByRole('link', { name: 'Bài viết' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Nội dung website' })).not.toBeInTheDocument();
@@ -56,6 +56,7 @@ describe('DashboardNav', () => {
     render(<DashboardNav />);
 
     expect(await screen.findByRole('link', { name: 'Bài viết' })).toHaveAttribute('href', '/dashboard/editorial/guides');
+    expect(screen.getByRole('link', { name: 'Quản lý địa điểm' })).toHaveAttribute('href', '/dashboard/editorial/places');
     expect(screen.getByRole('link', { name: 'Nội dung website' })).toHaveAttribute('href', '/dashboard/content');
   });
 
@@ -73,6 +74,6 @@ describe('DashboardNav', () => {
     mockReadSession.mockReturnValue(null);
     render(<DashboardNav />);
     expect(mockFetchCapabilities).not.toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: 'Địa điểm' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Địa điểm của tôi' })).toBeInTheDocument();
   });
 });

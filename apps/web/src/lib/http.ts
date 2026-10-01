@@ -6,7 +6,22 @@ interface Envelope<T> {
   success: boolean;
   data: T;
   meta?: Record<string, unknown>;
-  error?: { code?: string; message: string };
+  error?: { code?: string; message: string; details?: unknown };
+}
+
+/** Một mục lỗi field-level từ AllExceptionsFilter (ValidationPipe → `details: [{message}]`). */
+export interface ApiErrorDetail {
+  message: string;
+}
+
+function normalizeDetails(details: unknown): ApiErrorDetail[] | undefined {
+  if (!Array.isArray(details)) return undefined;
+  const items = details
+    .map((d) => (d && typeof d === 'object' && typeof (d as { message?: unknown }).message === 'string'
+      ? { message: (d as { message: string }).message }
+      : null))
+    .filter((d): d is ApiErrorDetail => d !== null);
+  return items.length > 0 ? items : undefined;
 }
 
 // Lỗi API có mang theo HTTP status + mã lỗi ổn định (NOT_FOUND, VALIDATION_ERROR…).
@@ -15,12 +30,17 @@ interface Envelope<T> {
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
+  /** Lỗi field-level từ ValidationPipe, nếu server trả về (VALIDATION_ERROR — xem
+   *  AllExceptionsFilter). `.message` ở trên luôn là chuỗi chung ("Dữ liệu không hợp lệ") cho loại
+   *  lỗi này — nơi cần chỉ rõ trường nào sai (thay vì hiện mỗi thông điệp chung) phải đọc mảng này. */
+  readonly details?: ApiErrorDetail[];
 
-  constructor(message: string, status: number, code?: string) {
+  constructor(message: string, status: number, code?: string, details?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.details = normalizeDetails(details);
   }
 
   get isNotFound(): boolean {
@@ -46,7 +66,7 @@ async function fetchEnvelope<T>(path: string, init: RequestInit): Promise<Envelo
 
   if (!res.ok || !body || body.success === false) {
     const message = body?.error?.message ?? `Yêu cầu thất bại (${res.status})`;
-    throw new ApiError(message, res.status, body?.error?.code);
+    throw new ApiError(message, res.status, body?.error?.code, body?.error?.details);
   }
 
   return body;

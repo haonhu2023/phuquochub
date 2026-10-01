@@ -51,8 +51,10 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canEditGuides: false,
   canEditSiteContent: false,
   canViewBackupStatus: false,
+  canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
+  canVerifyPrices: false,
 };
 
 function authed() {
@@ -117,6 +119,16 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
     render(<PlaceDescriptionEditor placeId="p1" />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Sửa nội dung' })).toBeInTheDocument());
+  });
+
+  it('trong dashboard bãi biển: gợi ý biên tập đúng bãi biển và mở editor VI/EN thật', async () => {
+    authed();
+    mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
+    mockEmptyDrafts();
+    render(<PlaceDescriptionEditor placeId="p1" categorySlug="beach" triggerLabel="Sửa tên và mô tả VI/EN" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa tên và mô tả VI/EN' }));
+    expect(await screen.findByText(/Gợi ý cho bãi biển/)).toBeInTheDocument();
+    expect(screen.getAllByText(/cách tiếp cận/).length).toBeGreaterThan(0);
   });
 
   it('bấm ✏️ -> tải CẢ BA bản nháp (name/short_description/description), điền sẵn vi theo fallback tương ứng', async () => {

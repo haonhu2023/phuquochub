@@ -105,11 +105,78 @@ export class ToursRepository {
 
   async detail(placeId: string) {
     const rows = await this.ds.query(
-      `SELECT tour_type, duration_minutes, difficulty, organizer_id
-       FROM place_tour_details WHERE place_id = $1`,
+      `SELECT td.tour_type, td.duration_minutes, td.difficulty, td.organizer_id,
+              td.pickup_point, td.inclusions, td.exclusions, td.cancellation_policy,
+              op.name AS organizer_name, op.slug AS organizer_slug
+       FROM place_tour_details td
+       LEFT JOIN places op ON op.id = td.organizer_id
+       WHERE td.place_id = $1`,
       [placeId],
     );
     return rows[0] ?? null;
+  }
+
+  /**
+   * UPDATE place_tour_details — hàng LUÔN tồn tại từ lúc tạo (createDetails, khác hotel/
+   * restaurant/beach) nên đây là UPDATE thẳng, không cần UPSERT. PATCH TỪNG PHẦN thật:
+   * `dto.<field> !== undefined` phân biệt "không gửi" (giữ nguyên) với "gửi null" (xoá) với "gửi
+   * giá trị" — chỉ cột THỰC SỰ có mặt trong DTO mới vào SET clause. Bug đã sửa (2026-09-30): bản
+   * cũ dùng COALESCE trên tham số đã `?? null` hoá — omit và "gửi null để xoá" cùng thành NULL,
+   * không thể xoá organizer_id/pickup_point/... một khi đã set. `SELECT ... FOR UPDATE` khoá hàng
+   * cho suốt lệnh, cùng khuôn Hotels/Restaurants/BeachesRepository.
+   */
+  async updateDetails(
+    placeId: string,
+    dto: {
+      tour_type?: string;
+      duration_minutes?: number | null;
+      difficulty?: string | null;
+      organizer_id?: string | null;
+      pickup_point?: string | null;
+      inclusions?: string | null;
+      exclusions?: string | null;
+      cancellation_policy?: string | null;
+    },
+  ): Promise<void> {
+    await this.ds.transaction(async (m) => {
+      await m.query(`SELECT 1 FROM place_tour_details WHERE place_id = $1 FOR UPDATE`, [placeId]);
+
+      const patch: Record<string, unknown> = {};
+      if (dto.tour_type !== undefined) patch.tour_type = dto.tour_type;
+      if (dto.duration_minutes !== undefined) patch.duration_minutes = dto.duration_minutes;
+      if (dto.difficulty !== undefined) patch.difficulty = dto.difficulty;
+      if (dto.organizer_id !== undefined) patch.organizer_id = dto.organizer_id;
+      if (dto.pickup_point !== undefined) patch.pickup_point = dto.pickup_point;
+      if (dto.inclusions !== undefined) patch.inclusions = dto.inclusions;
+      if (dto.exclusions !== undefined) patch.exclusions = dto.exclusions;
+      if (dto.cancellation_policy !== undefined) patch.cancellation_policy = dto.cancellation_policy;
+
+      if (Object.keys(patch).length === 0) return;
+      const setClauses = Object.keys(patch)
+        .map((k, i) => `"${k}" = $${i + 2}`)
+        .join(', ');
+      await m.query(`UPDATE place_tour_details SET ${setClauses} WHERE place_id = $1`, [
+        placeId,
+        ...Object.values(patch),
+      ]);
+    });
+  }
+
+  /** Thay TOÀN BỘ tour_stops — cùng khuôn HotelsRepository.replaceRooms. Đường ghi ĐẦU TIÊN cho bảng này. */
+  async replaceStops(
+    placeId: string,
+    stops: Array<{ name: string; time?: string | null; note?: string | null; location?: { lat: number; lng: number } | null; sort_order?: number }>,
+  ): Promise<void> {
+    await this.ds.transaction(async (m) => {
+      await m.query(`DELETE FROM tour_stops WHERE place_id = $1`, [placeId]);
+      for (const [i, s] of stops.entries()) {
+        await m.query(
+          `INSERT INTO tour_stops (place_id, name, location, sort_order, "time", note)
+           VALUES ($1, $2, CASE WHEN $3::double precision IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint($3,$4),4326)::geography END, $5, $6, $7)`,
+          [placeId, s.name, s.location?.lng ?? null, s.location?.lat ?? null, s.sort_order ?? i, s.time ?? null, s.note ?? null],
+        );
+      }
+    });
   }
 
   stops(placeId: string) {

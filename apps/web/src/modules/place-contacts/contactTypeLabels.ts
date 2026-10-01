@@ -12,6 +12,7 @@ export const CONTACT_TYPE_LABELS: Record<ContactTypeValue, string> = {
   TIKTOK: 'TikTok',
   ZALO: 'Zalo',
   YOUTUBE: 'YouTube',
+  BOOKING_URL: 'Đặt chỗ / Đặt phòng',
   OTHER: 'Khác',
 };
 
@@ -36,5 +37,6 @@ export const CONTACT_VALUE_INPUT_TYPE: Record<ContactTypeValue, ContactValueInpu
   INSTAGRAM: 'url',
   TIKTOK: 'url',
   YOUTUBE: 'url',
+  BOOKING_URL: 'url',
   OTHER: 'text',
 };

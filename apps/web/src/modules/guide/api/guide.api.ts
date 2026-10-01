@@ -1,5 +1,5 @@
 import { apiGet } from '@/lib/http';
-import type { GuideArticleDetail } from '../types';
+import type { GuideArticleCategory, GuideArticleDetail } from '../types';
 
 // Public, published-only read — GET /guide-articles/:slug?locale=.
 //
@@ -28,9 +28,21 @@ export interface GuideArticleCard {
   intro: string | null;
   heroImageUrl: string | null;
   publishedAt: string | null;
+  category: GuideArticleCategory | null;
+  tags: string[];
 }
 
-export async function listGuideArticles(locale: string): Promise<GuideArticleCard[]> {
+// Chuyên mục/tags (2026-09-29) — lọc công khai THẬT (GuideArticlesService.listPublished's
+// QueryBuilder, `category` khớp đúng, `tag` khớp mảng chứa — xem API-side comment), không phải lọc
+// phía client trên toàn bộ danh sách.
+export interface ListGuideArticlesFilters {
+  category?: GuideArticleCategory;
+  tag?: string;
+}
+
+export async function listGuideArticles(locale: string, filters: ListGuideArticlesFilters = {}): Promise<GuideArticleCard[]> {
   const qs = new URLSearchParams({ locale });
+  if (filters.category) qs.set('category', filters.category);
+  if (filters.tag) qs.set('tag', filters.tag);
   return apiGet<GuideArticleCard[]>(`/guide-articles?${qs.toString()}`, { cache: 'no-store' });
 }

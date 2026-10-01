@@ -67,6 +67,12 @@ async function fillAndSubmit() {
 }
 
 describe('NewPlaceView — P1 self-publish redirect', () => {
+  it('chọn bãi biển ở dashboard -> form tạo chọn đúng danh mục và gợi ý riêng', async () => {
+    render(<NewPlaceView initialCategory="beach" />);
+    await waitFor(() => expect(screen.getByLabelText(/Danh mục/)).toHaveValue('c1'));
+    expect(screen.getByRole('heading', { name: 'Thêm bãi biển' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/đường tiếp cận/i)).toBeInTheDocument();
+  });
   it('tạo place status=draft (người tạo giữ Place.Approve) → chuyển thẳng sang trang Sửa của place đó', async () => {
     mockCreatePlace.mockResolvedValue(created({ status: 'draft' }));
     render(<NewPlaceView />);

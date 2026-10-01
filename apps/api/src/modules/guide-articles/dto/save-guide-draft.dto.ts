@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsEnum,
   IsIn,
   IsOptional,
   IsString,
@@ -11,6 +12,8 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { GuideBlockDto } from './guide-block.dto';
+import { GuideArticleCategory } from '../guide-article.enums';
+import { MAX_TAGS, MAX_TAG_LENGTH } from './guide-tags.constants';
 
 // POST /admin/guide-articles body — creates a new draft. `slug`/`locale` together must be unique
 // (guide_articles UNIQUE(slug, locale), enforced at the DB and re-checked in the service for a
@@ -30,6 +33,21 @@ export class SaveGuideDraftDto {
 
   @IsOptional() @IsUUID()
   heroMediaId?: string;
+
+  @IsOptional() @IsEnum(GuideArticleCategory)
+  category?: GuideArticleCategory;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(MAX_TAGS)
+  @IsString({ each: true }) @MaxLength(MAX_TAG_LENGTH, { each: true })
+  tags?: string[];
+
+  // SEO riêng (2026-09-29) — độ dài cột khớp PlaceSeo.metaTitle/metaDescription (guide-article.
+  // entity.ts). Trống → fallback title/intro ở tầng render (web), không phải ở đây.
+  @IsOptional() @IsString() @MaxLength(160)
+  metaTitle?: string;
+
+  @IsOptional() @IsString() @MaxLength(320)
+  metaDescription?: string;
 
   @IsArray() @ArrayMaxSize(60)
   @ValidateNested({ each: true })

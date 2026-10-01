@@ -1,12 +1,13 @@
+import { OwnerDashboardController } from './owner-dashboard.controller';
+import { OwnerDashboardService } from './owner-dashboard.service';
 import { Module } from '@nestjs/common';
 import { BackupStatusService } from './backup-status.service';
 import { BackupStatusController } from './backup-status.controller';
 
-// BK1 (2026-09-22). No TypeOrmModule.forFeature() — BackupStatusService reads only the
-// filesystem (via ConfigService's backupStatus.dbDir/mediaDir), never the database.
+// Backup reads filesystem metadata; dashboard uses the globally registered DataSource.
 @Module({
-  controllers: [BackupStatusController],
-  providers: [BackupStatusService],
+  controllers: [BackupStatusController, OwnerDashboardController],
+  providers: [BackupStatusService, OwnerDashboardService],
   exports: [BackupStatusService],
 })
 export class OpsModule {}
