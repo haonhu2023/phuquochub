@@ -5,6 +5,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { createPlacePrice, listPlacePrices, type PlacePrice } from '@/modules/prices/api/prices.api';
 import { submitPriceVerification, verifyPriceVerification } from '@/modules/verifications/api/verifications.api';
+import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { canDisplayPrice, PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import styles from '@/modules/place-management/place-management.module.css';
 import uiStyles from '@/components/ui/ui.module.css';
@@ -34,6 +35,10 @@ export function PricesEditor({ placeId }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  // Thuần hiển thị (capabilities.ts) — ẩn nút "Xác minh" khỏi người chắc chắn sẽ nhận 403
+  // (Verification.Verify moderator-only) thay vì mời bấm rồi báo lỗi. Backend vẫn là nơi cưỡng chế
+  // duy nhất: giá trị sai/thiếu ở đây chỉ ẩn nhầm nút, không bao giờ cấp thêm quyền.
+  const [canVerify, setCanVerify] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +49,12 @@ export function PricesEditor({ placeId }: Props) {
       .catch(() => {
         if (!cancelled) setState({ kind: 'error', message: 'Không tải được danh sách giá.' });
       });
+    const session = readSession();
+    if (session) {
+      fetchCapabilities(session.accessToken).then((caps) => {
+        if (!cancelled) setCanVerify(caps.canVerifyPrices);
+      });
+    }
     return () => {
       cancelled = true;
     };
@@ -146,16 +157,21 @@ export function PricesEditor({ placeId }: Props) {
                   <em>{PRICE_VERIFYING_TEXT}</em>
                 )}
               </span>
-              {!canDisplayPrice(p.verification_status) && (
-                <button
-                  type="button"
-                  className={styles.linkBtn}
-                  onClick={() => void onVerify(p)}
-                  disabled={verifyingId === p.id}
-                >
-                  {verifyingId === p.id ? 'Đang xác minh…' : 'Xác minh (moderator)'}
-                </button>
-              )}
+              {!canDisplayPrice(p.verification_status) &&
+                (canVerify ? (
+                  <button
+                    type="button"
+                    className={styles.linkBtn}
+                    onClick={() => void onVerify(p)}
+                    disabled={verifyingId === p.id}
+                  >
+                    {verifyingId === p.id ? 'Đang xác minh…' : 'Xác minh'}
+                  </button>
+                ) : (
+                  <span style={{ color: 'var(--muted)', fontSize: '0.875rem' }}>
+                    Cần moderator xác minh để công khai
+                  </span>
+                ))}
             </li>
           ))}
         </ul>

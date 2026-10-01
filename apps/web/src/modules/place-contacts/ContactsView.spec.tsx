@@ -2,7 +2,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ContactsView } from './ContactsView';
 import { readSession } from '@/modules/auth/session';
-import { listMyPlaces } from '@/modules/place-management/api/place-management.api';
+import { previewPlace } from '@/modules/place-management/api/place-management.api';
 import {
   createPlaceContact,
   deletePlaceContact,
@@ -14,7 +14,7 @@ import type { ManagedPlace } from '@/modules/place-management/types';
 import type { PlaceContact } from './types';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
-jest.mock('@/modules/place-management/api/place-management.api', () => ({ listMyPlaces: jest.fn() }));
+jest.mock('@/modules/place-management/api/place-management.api', () => ({ previewPlace: jest.fn() }));
 jest.mock('./api/place-contacts.api', () => ({
   listPlaceContacts: jest.fn(),
   createPlaceContact: jest.fn(),
@@ -23,7 +23,7 @@ jest.mock('./api/place-contacts.api', () => ({
 }));
 
 const mockReadSession = readSession as jest.Mock;
-const mockListMyPlaces = listMyPlaces as jest.Mock;
+const mockPreviewPlace = previewPlace as jest.Mock;
 const mockListContacts = listPlaceContacts as jest.Mock;
 const mockCreate = createPlaceContact as jest.Mock;
 const mockUpdate = updatePlaceContact as jest.Mock;
@@ -79,7 +79,7 @@ function contact(overrides: Partial<PlaceContact> = {}): PlaceContact {
 
 beforeEach(() => {
   mockReadSession.mockReset().mockReturnValue(SESSION);
-  mockListMyPlaces.mockReset().mockResolvedValue([place()]);
+  mockPreviewPlace.mockReset().mockResolvedValue(place());
   mockListContacts.mockReset().mockResolvedValue([]);
   mockCreate.mockReset().mockResolvedValue(undefined);
   mockUpdate.mockReset().mockResolvedValue(undefined);
@@ -94,14 +94,20 @@ describe('ContactsView — chưa đăng nhập', () => {
     mockReadSession.mockReturnValue(null);
     render(<ContactsView placeId="place-1" />);
     await waitFor(() => expect(screen.getByText('Cần đăng nhập')).toBeInTheDocument());
-    expect(mockListMyPlaces).not.toHaveBeenCalled();
+    expect(mockPreviewPlace).not.toHaveBeenCalled();
     expect(mockListContacts).not.toHaveBeenCalled();
   });
 });
 
-describe('ContactsView — không quản lý được cơ sở này', () => {
-  it('placeId không nằm trong GET /places/mine → "Không tìm thấy địa điểm"', async () => {
-    mockListMyPlaces.mockResolvedValue([place({ id: 'other-place' })]);
+// BUG THẬT đã sửa (2026-10-01): trước đây dùng listMyPlaces().find() — content_owner giữ
+// Contact.Edit.Any (kế thừa từ Contributor, business_id NULL) không BAO GIỜ xuất hiện ở
+// GET /places/mine (chỉ liệt kê grant scope='managed' có business_id cụ thể), nên bị chặn nhầm ở
+// MỌI place họ không tự claim dù quyền RBAC thật cho phép quản lý. Nay dùng previewPlace() — CÙNG
+// permission (Place.Edit.Managed) mà route ghi contacts dùng, nên 403/404 từ đó phản ánh ĐÚNG
+// quyền thật, không còn khái niệm "không nằm trong danh sách của tôi" sai lệch.
+describe('ContactsView — không có quyền quản lý cơ sở này', () => {
+  it('previewPlace trả 403/404 → "Không tìm thấy địa điểm" (không phân biệt hai lý do)', async () => {
+    mockPreviewPlace.mockRejectedValue(new ApiError('forbidden', 403));
     render(<ContactsView placeId="place-1" />);
     await waitFor(() => expect(screen.getByText('Không tìm thấy địa điểm')).toBeInTheDocument());
     expect(screen.getByText(/không tồn tại, hoặc bạn không có quyền/)).toBeInTheDocument();

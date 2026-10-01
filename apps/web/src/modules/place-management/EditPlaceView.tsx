@@ -348,7 +348,7 @@ export function EditPlaceView({ placeId }: Props) {
           <RestaurantDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <PricesEditor placeId={placeId} />
-          <MenuEditor placeId={placeId} />
+          <MenuEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
         </>
       )}
       <PlaceForm

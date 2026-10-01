@@ -9,6 +9,8 @@ import uiStyles from '@/components/ui/ui.module.css';
 
 interface Props {
   placeId: string;
+  contentVersion: number;
+  onVersionChange: (v: number) => void;
 }
 
 type State = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; sections: MenuSection[] };
@@ -26,7 +28,7 @@ const NEW_SECTION_VALUE = '__new__';
  * CHỈ actor xem được, không có "chờ xác minh" nào để chờ — ghi rõ trên UI để không ai hiểu lầm đây
  * là một hàng đợi tạm thời giống PricesEditor.
  */
-export function MenuEditor({ placeId }: Props) {
+export function MenuEditor({ placeId, contentVersion, onVersionChange }: Props) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [sectionChoice, setSectionChoice] = useState<string>(NEW_SECTION_VALUE);
   const [newSectionName, setNewSectionName] = useState('');
@@ -108,8 +110,9 @@ export function MenuEditor({ placeId }: Props) {
 
     setBusy(true);
     try {
-      const saved = await updateMenu(placeId, nextSections, session.accessToken);
-      setState({ kind: 'ready', sections: saved });
+      const saved = await updateMenu(placeId, nextSections, contentVersion, session.accessToken);
+      setState({ kind: 'ready', sections: saved.sections });
+      onVersionChange(saved.content_version);
       setItemName('');
       setItemPrice('');
       setIsSignature(false);

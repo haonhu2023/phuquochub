@@ -75,7 +75,17 @@ export class MenuSectionDto {
   items!: MenuItemDto[];
 }
 
+// CAS thật (2026-10-01, P0 permission audit) — BUG THẬT đã sửa: PATCH :id/menu là replace-all
+// (RestaurantsRepository.replaceMenu xoá rồi chèn lại TOÀN BỘ sections/items) nhưng trước đây KHÔNG
+// có token xung đột nào — hai tab/người sửa đồng thời, người lưu SAU âm thầm xoá sạch món của người
+// lưu TRƯỚC, không 409, không cảnh báo. Mọi route ghi khác cùng place (`PATCH :id/details`,
+// `:id/rooms`, `:id/faqs`, PlacesService.update) đều bắt buộc `expected_content_version` qua ĐÚNG
+// MỘT cột `places.content_version` — menu là route replace-all DUY NHẤT còn thiếu, không phải một
+// ngoại lệ có chủ đích.
 export class UpdateRestaurantMenuDto {
+  @IsInt() @Min(0)
+  expected_content_version!: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => MenuSectionDto)

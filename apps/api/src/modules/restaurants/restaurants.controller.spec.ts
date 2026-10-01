@@ -33,10 +33,10 @@ describe('RestaurantsController — ranh giới price trust gate', () => {
     expect(restaurantsService.getMenu).toHaveBeenCalledWith('r1', { publicResponse: true });
   });
 
-  it('PATCH :id/menu (đặc quyền) → updateMenu(id, dto) KHÔNG truyền publicResponse (actor xem giá thật vừa lưu)', () => {
-    const dto = { sections: [] } as Parameters<typeof controller.updateMenu>[1];
-    controller.updateMenu('r1', dto);
-    expect(restaurantsService.updateMenu).toHaveBeenCalledWith('r1', dto);
+  it('PATCH :id/menu (đặc quyền) → updateMenu(id, dto, user.sub) KHÔNG truyền publicResponse (actor xem giá thật vừa lưu)', () => {
+    const dto = { sections: [], expected_content_version: 1 } as Parameters<typeof controller.updateMenu>[1];
+    controller.updateMenu('r1', dto, { sub: 'u1' } as Parameters<typeof controller.updateMenu>[2]);
+    expect(restaurantsService.updateMenu).toHaveBeenCalledWith('r1', dto, 'u1');
   });
 
   it('PATCH :id/details (đặc quyền) → updateDetails(id, dto, user.sub)', () => {

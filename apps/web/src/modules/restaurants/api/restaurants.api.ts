@@ -71,6 +71,11 @@ export interface MenuSectionInput {
   items: MenuItemInput[];
 }
 
+export interface UpdateMenuResponse {
+  sections: MenuSection[];
+  content_version: number;
+}
+
 // Đặc quyền (Place.Edit.Managed) — PATCH :id/menu THAY TOÀN BỘ sections (replace-all, không patch
 // từng món — khớp UpdateRestaurantMenuDto/RestaurantsRepository.replaceMenu phía API). Response
 // KHÔNG redact giá (publicResponse mặc định false ở RestaurantsService.getMenu/updateMenu) — actor
@@ -78,12 +83,21 @@ export interface MenuSectionInput {
 // price_history, món ăn trong thực đơn KHÔNG có cột verification/trust riêng để qua được trạng
 // thái "đã xác minh" (gate "fail-closed" cố ý, xem RestaurantsService's ghi chú đầu file) — giá
 // món nhập ở đây sẽ KHÔNG BAO GIỜ hiện công khai cho tới khi có một migration/ADR riêng thêm cột đó.
+//
+// CAS thật (2026-10-01) — `expected_content_version` BẮT BUỘC: BUG THẬT đã sửa, route replace-all
+// này trước đây không có token xung đột nào (hai tab sửa đồng thời, người lưu sau âm thầm xoá sạch
+// món của người lưu trước). Cùng token `places.content_version` mà HotelDetailsEditor/
+// RestaurantDetailsEditor/AmenitiesEditor đã dùng — xem EditPlaceView's `contentVersion` state.
 export async function updateMenu(
   placeId: string,
   sections: MenuSectionInput[],
+  expectedContentVersion: number,
   accessToken: string,
-): Promise<MenuSection[]> {
-  return apiPatchAuth<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, accessToken, { sections });
+): Promise<UpdateMenuResponse> {
+  return apiPatchAuth<UpdateMenuResponse>(`/restaurants/${encodeURIComponent(placeId)}/menu`, accessToken, {
+    sections,
+    expected_content_version: expectedContentVersion,
+  });
 }
 
 // Sitemap-only slug list (apps/web/src/app/sitemap.ts). `id` (SEO1, 2026-09-22) — same reasoning

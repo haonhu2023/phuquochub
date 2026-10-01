@@ -38,6 +38,7 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
+  canVerifyPrices: false,
 };
 
 function authed() {

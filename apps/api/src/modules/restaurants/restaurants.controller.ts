@@ -28,8 +28,12 @@ export class RestaurantsController {
   @Patch(':id/menu')
   @RequirePermissions('Place.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  updateMenu(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateRestaurantMenuDto) {
-    return this.restaurantsService.updateMenu(id, dto);
+  updateMenu(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateRestaurantMenuDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.restaurantsService.updateMenu(id, dto, user.sub);
   }
 
   // Toàn bộ từ điển cuisines (cho admin UI chọn) — đặt TRƯỚC ':slug' (đoạn một khúc), nếu không

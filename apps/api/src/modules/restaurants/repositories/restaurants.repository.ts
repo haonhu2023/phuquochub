@@ -257,9 +257,29 @@ export class RestaurantsRepository {
     return { invalidCodes: [] };
   }
 
-  /** Thay toàn bộ menu (sections + items) của place. */
-  async replaceMenu(placeId: string, sections: MenuSectionInput[]): Promise<void> {
-    await this.ds.transaction(async (m) => {
+  /**
+   * Thay toàn bộ menu (sections + items) của place. CAS thật (2026-10-01) — cùng khuôn
+   * `upsertDetails()`: bump `places.content_version` TRƯỚC TIÊN trong transaction, 0 dòng khớp →
+   * conflict ngay, không chạm bảng menu nào (replace-all mà không CAS sẽ âm thầm xoá món của người
+   * khác — xem ghi chú UpdateRestaurantMenuDto).
+   */
+  async replaceMenu(
+    placeId: string,
+    sections: MenuSectionInput[],
+    expectedVersion: number,
+  ): Promise<{ conflict: boolean; newVersion?: number }> {
+    return this.ds.transaction(async (m) => {
+      const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
+        `UPDATE places SET content_version = content_version + 1
+           WHERE id = $1 AND content_version = $2
+           RETURNING content_version`,
+        [placeId, expectedVersion],
+      );
+      if (casRows.length === 0) {
+        return { conflict: true };
+      }
+      const newVersion = casRows[0].content_version;
+
       await m.query(
         `DELETE FROM restaurant_menu_items WHERE section_id IN
            (SELECT id FROM restaurant_menu_sections WHERE place_id = $1)`,
@@ -288,6 +308,7 @@ export class RestaurantsRepository {
           );
         }
       }
+      return { conflict: false, newVersion };
     });
   }
 }

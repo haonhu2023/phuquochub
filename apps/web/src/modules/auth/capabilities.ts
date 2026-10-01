@@ -92,6 +92,15 @@ const PLACE_APPROVE_ROLES = ['content_owner', 'moderator', 'administrator', 'sup
  *  vì role này không kế thừa `moderator`). Trang `/dashboard/edit-proposals` dùng permission này. */
 const PLACE_EDIT_PROPOSAL_MODERATE_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
 
+/** Vai trò giữ `Verification.Verify`/`Verification.Reject` (ADR-008, moderator-only theo Owner
+ *  Decision 2026-08-06 — KHÔNG hậu tố scope, KHÔNG cấp cho content_owner/business_owner, KHÔNG có
+ *  biến thể `.Managed`). Đối chiếu trực tiếp `role_parents` (2026-10-01): content_owner kế thừa từ
+ *  contributor (KHÔNG qua moderator) nên KHÔNG có quyền này dù giữ hầu hết quyền biên tập nội dung
+ *  khác — administrator/super_administrator kế thừa TỪ moderator nên có. Dùng để ẩn nút "Xác minh"
+ *  khỏi người chắc chắn sẽ nhận 403 (PricesEditor) thay vì mời bấm rồi báo lỗi — THUẦN TUÝ hiển thị,
+ *  backend vẫn là nơi quyết định duy nhất. */
+const VERIFICATION_VERIFY_ROLES = ['moderator', 'administrator', 'super_administrator'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -112,6 +121,8 @@ export interface UserCapabilities {
   canViewOwnerTodo: boolean;
   /** Hiện lối vào "Duyệt đề xuất chỉnh sửa" (`/dashboard/edit-proposals` — PlaceEditProposal.Moderate). */
   canReviewPlaceEditProposals: boolean;
+  /** Hiện nút "Xác minh" trên một bản giá pending (PricesEditor — Verification.Verify, moderator-only). */
+  canVerifyPrices: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -125,6 +136,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canViewCommandCenter: false,
   canViewOwnerTodo: false,
   canReviewPlaceEditProposals: false,
+  canVerifyPrices: false,
 };
 
 /**
@@ -146,5 +158,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canViewCommandCenter: codes.some((c) => ['content_owner'].includes(c)),
     canViewOwnerTodo: codes.some((c) => PLACE_APPROVE_ROLES.includes(c)),
     canReviewPlaceEditProposals: codes.some((c) => PLACE_EDIT_PROPOSAL_MODERATE_ROLES.includes(c)),
+    canVerifyPrices: codes.some((c) => VERIFICATION_VERIFY_ROLES.includes(c)),
   };
 }

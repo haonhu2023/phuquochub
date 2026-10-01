@@ -4,6 +4,8 @@ import { PricesEditor } from './PricesEditor';
 import { readSession } from '@/modules/auth/session';
 import { createPlacePrice, listPlacePrices } from '@/modules/prices/api/prices.api';
 import { submitPriceVerification, verifyPriceVerification } from '@/modules/verifications/api/verifications.api';
+import { fetchCapabilities } from '@/modules/auth/api/me.api';
+import { NO_CAPABILITIES } from '@/modules/auth/capabilities';
 import { ApiError } from '@/lib/http';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
@@ -15,15 +17,20 @@ jest.mock('@/modules/verifications/api/verifications.api', () => ({
   submitPriceVerification: jest.fn(),
   verifyPriceVerification: jest.fn(),
 }));
+jest.mock('@/modules/auth/api/me.api', () => ({ fetchCapabilities: jest.fn() }));
 
 const mockReadSession = readSession as jest.Mock;
 const mockListPrices = listPlacePrices as jest.Mock;
 const mockCreatePrice = createPlacePrice as jest.Mock;
 const mockSubmitVerification = submitPriceVerification as jest.Mock;
 const mockVerify = verifyPriceVerification as jest.Mock;
+const mockFetchCapabilities = fetchCapabilities as jest.Mock;
 
 beforeEach(() => {
   mockReadSession.mockReturnValue({ accessToken: 'tok' });
+  // Mặc định KHÔNG có quyền xác minh (đa số người gọi PricesEditor là content_owner) — test riêng
+  // ở dưới override thành true cho đường moderator.
+  mockFetchCapabilities.mockResolvedValue(NO_CAPABILITIES);
 });
 
 afterEach(() => jest.clearAllMocks());
@@ -108,10 +115,28 @@ describe('PricesEditor — thêm giá mới (append-only, không sửa/xoá bả
 
 // Verification Foundation (ADR-008) đã có sẵn ở backend — nút này chỉ GỌI ĐÚNG hai bước có sẵn
 // (submit rồi verify), KHÔNG tự đặt logic xác minh nào mới ở frontend. Cả hai bước gác
-// Verification.Verify (moderator-only, Owner Decision 2026-08-06) — test 403 khoá lại đúng việc
-// component không tự "thăng cấp" quyền, chỉ hiện lại đúng lỗi từ API.
+// Verification.Verify (moderator-only, Owner Decision 2026-08-06).
 describe('PricesEditor — nút "Xác minh" (submit + verify qua cơ chế Verification hiện có)', () => {
-  it('giá pending -> bấm Xác minh -> gọi submit rồi verify đúng thứ tự -> tải lại danh sách, hiện giá thật', async () => {
+  // BUG THẬT đã sửa (2026-10-01, P0 permission audit): trước đây nút LUÔN hiện cho mọi người, kể cả
+  // content_owner chắc chắn nhận 403 — "mời bấm để nhận lỗi" đúng anti-pattern người dùng chỉ ra. Nay
+  // dùng `canVerifyPrices` (capabilities.ts, suy từ vai trò — THUẦN hiển thị) để ẩn nút, hiện trạng
+  // thái rõ ràng thay vào đó.
+  it('không giữ Verification.Verify (vd content_owner) -> KHÔNG hiện nút, hiện trạng thái rõ ràng, KHÔNG gọi API nào', async () => {
+    mockListPrices.mockResolvedValue([
+      { id: 'p1', service_name: 'Giá/người', amount: null, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
+    ]);
+    // mockFetchCapabilities đã mặc định NO_CAPABILITIES ở beforeEach — không cần override.
+
+    render(<PricesEditor placeId="place-1" />);
+    await screen.findByText('Giá/người');
+
+    expect(screen.queryByRole('button', { name: /Xác minh/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Cần moderator xác minh để công khai')).toBeInTheDocument();
+    expect(mockSubmitVerification).not.toHaveBeenCalled();
+  });
+
+  it('giữ Verification.Verify (moderator) -> hiện nút -> bấm -> gọi submit rồi verify đúng thứ tự -> tải lại danh sách, hiện giá thật', async () => {
+    mockFetchCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canVerifyPrices: true });
     mockListPrices
       .mockResolvedValueOnce([
         { id: 'p1', service_name: 'Giá/người', amount: null, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
@@ -123,7 +148,7 @@ describe('PricesEditor — nút "Xác minh" (submit + verify qua cơ chế Verif
     mockVerify.mockResolvedValue({ status: 'verified' });
 
     render(<PricesEditor placeId="place-1" />);
-    await screen.findByText('Giá/người');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Xác minh/ })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /Xác minh/ }));
 
@@ -133,14 +158,17 @@ describe('PricesEditor — nút "Xác minh" (submit + verify qua cơ chế Verif
     expect(screen.queryByText('Giá đang được xác minh')).not.toBeInTheDocument();
   });
 
-  it('không có quyền Verification.Verify -> API trả 403 -> hiện đúng lỗi, KHÔNG đổi trạng thái giá', async () => {
+  // Phòng thủ: dù hiện nút (capability đọc được lúc mount), backend vẫn là nơi cưỡng chế thật — một
+  // capability cũ/stale không được phép âm thầm thành công.
+  it('nút hiện (capability stale) nhưng API vẫn trả 403 -> hiện đúng lỗi, KHÔNG đổi trạng thái giá', async () => {
+    mockFetchCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canVerifyPrices: true });
     mockListPrices.mockResolvedValue([
       { id: 'p1', service_name: 'Giá/người', amount: null, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
     ]);
     mockSubmitVerification.mockRejectedValue(new ApiError('Bạn không có quyền thực hiện hành động này.', 403, 'FORBIDDEN'));
 
     render(<PricesEditor placeId="place-1" />);
-    await screen.findByText('Giá/người');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Xác minh/ })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /Xác minh/ }));
 

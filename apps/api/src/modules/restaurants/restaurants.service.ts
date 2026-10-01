@@ -101,10 +101,20 @@ export class RestaurantsService {
   }
 
   // Đặc quyền (Place.Edit.Managed) — actor phải thấy đúng giá họ vừa lưu, KHÔNG redact
-  // (publicResponse mặc định false).
-  async updateMenu(placeId: string, dto: UpdateRestaurantMenuDto) {
-    await this.repo.replaceMenu(placeId, dto.sections);
-    return this.getMenu(placeId);
+  // (publicResponse mặc định false). CAS thật (2026-10-01) — xem UpdateRestaurantMenuDto's ghi chú
+  // đầy đủ: cùng khuôn updateDetails(), 409 trước khi ghi gì, không audit, không invalidate cache.
+  async updateMenu(placeId: string, dto: UpdateRestaurantMenuDto, userId: string) {
+    const result = await this.repo.replaceMenu(placeId, dto.sections, dto.expected_content_version);
+    if (result.conflict) {
+      throw new ConflictException(
+        `Địa điểm vừa được người khác sửa (mong đợi content_version=${dto.expected_content_version}) — tải lại và thử lại.`,
+      );
+    }
+    await this.recordWriteAndInvalidate('place.menu_updated', placeId, userId, {
+      sections_count: dto.sections.length,
+    });
+    const sections = await this.getMenu(placeId);
+    return { sections, content_version: result.newVersion };
   }
 
   // Đặc quyền (Place.Edit.Managed) — đọc details+cuisines bất kể place đang draft/pending/published.

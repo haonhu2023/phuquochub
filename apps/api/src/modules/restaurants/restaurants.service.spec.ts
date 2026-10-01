@@ -135,14 +135,28 @@ describe('RestaurantsService', () => {
     expect(menu[1].items[0].price).toBeNull();
   });
 
-  it('updateMenu: replaceMenu rồi trả menu mới', async () => {
-    const dto = { sections: [{ name: 'X', items: [] }] } as Parameters<typeof service.updateMenu>[1];
-    repo.replaceMenu.mockResolvedValue(undefined);
+  it('updateMenu: replaceMenu rồi trả menu mới + content_version', async () => {
+    const dto = { sections: [{ name: 'X', items: [] }], expected_content_version: 1 } as Parameters<typeof service.updateMenu>[1];
+    repo.replaceMenu.mockResolvedValue({ conflict: false, newVersion: 2 });
     repo.sections.mockResolvedValue([]);
     repo.itemsBySection.mockResolvedValue([]);
-    const menu = await service.updateMenu('r1', dto);
-    expect(repo.replaceMenu).toHaveBeenCalledWith('r1', dto.sections);
-    expect(menu).toEqual([]);
+    const menu = await service.updateMenu('r1', dto, 'u1');
+    expect(repo.replaceMenu).toHaveBeenCalledWith('r1', dto.sections, 1);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'place.menu_updated', entityId: 'r1', actorId: 'u1' }),
+    );
+    expect(menu).toEqual({ sections: [], content_version: 2 });
+  });
+
+  // CAS thật (2026-10-01) — cùng khuôn updateDetails's test 409: conflict trả về TRƯỚC khi đọc lại
+  // menu, không audit, không invalidate cache.
+  it('updateMenu: content_version không khớp → 409, KHÔNG audit, KHÔNG đọc lại menu', async () => {
+    const dto = { sections: [], expected_content_version: 1 } as Parameters<typeof service.updateMenu>[1];
+    repo.replaceMenu.mockResolvedValue({ conflict: true });
+
+    await expect(service.updateMenu('r1', dto, 'u1')).rejects.toThrow(/vừa được người khác sửa/);
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(repo.sections).not.toHaveBeenCalled();
   });
 
   // Public Beta price trust gate (2026-08-28)
@@ -185,16 +199,16 @@ describe('RestaurantsService', () => {
     });
 
     it('updateMenu (đặc quyền) trả raw price thật, không bị redact', async () => {
-      const dto = { sections: [{ name: 'X', items: [] }] } as Parameters<typeof service.updateMenu>[1];
-      repo.replaceMenu.mockResolvedValue(undefined);
+      const dto = { sections: [{ name: 'X', items: [] }], expected_content_version: 1 } as Parameters<typeof service.updateMenu>[1];
+      repo.replaceMenu.mockResolvedValue({ conflict: false, newVersion: 2 });
       repo.sections.mockResolvedValue([{ id: 's1', name: 'X', sort_order: 0 }]);
       repo.itemsBySection.mockResolvedValue([
         { id: 'i1', section_id: 's1', name: 'Món mới', price: String(SECRET_MENU_PRICE), currency: 'VND', tags: null, sort_order: 0 },
       ]);
 
-      const menu = await service.updateMenu('r1', dto);
+      const menu = await service.updateMenu('r1', dto, 'u1');
 
-      expect(menu[0].items[0].price).toBe(SECRET_MENU_PRICE);
+      expect(menu.sections[0].items[0].price).toBe(SECRET_MENU_PRICE);
     });
   });
 
