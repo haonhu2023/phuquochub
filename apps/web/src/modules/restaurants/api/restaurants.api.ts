@@ -56,6 +56,36 @@ export async function getMenu(placeId: string): Promise<MenuSection[]> {
   return apiGet<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, { cache: 'no-store' });
 }
 
+export interface MenuItemInput {
+  name: string;
+  price?: number;
+  currency?: string;
+  tags?: unknown;
+  is_signature?: boolean;
+  sort_order?: number;
+}
+
+export interface MenuSectionInput {
+  name: string;
+  sort_order?: number;
+  items: MenuItemInput[];
+}
+
+// Đặc quyền (Place.Edit.Managed) — PATCH :id/menu THAY TOÀN BỘ sections (replace-all, không patch
+// từng món — khớp UpdateRestaurantMenuDto/RestaurantsRepository.replaceMenu phía API). Response
+// KHÔNG redact giá (publicResponse mặc định false ở RestaurantsService.getMenu/updateMenu) — actor
+// thấy đúng giá vừa lưu. LƯU Ý: public GET :id/menu luôn null hoá `price` của MỌI món — khác
+// price_history, món ăn trong thực đơn KHÔNG có cột verification/trust riêng để qua được trạng
+// thái "đã xác minh" (gate "fail-closed" cố ý, xem RestaurantsService's ghi chú đầu file) — giá
+// món nhập ở đây sẽ KHÔNG BAO GIỜ hiện công khai cho tới khi có một migration/ADR riêng thêm cột đó.
+export async function updateMenu(
+  placeId: string,
+  sections: MenuSectionInput[],
+  accessToken: string,
+): Promise<MenuSection[]> {
+  return apiPatchAuth<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, accessToken, { sections });
+}
+
 // Sitemap-only slug list (apps/web/src/app/sitemap.ts). `id` (SEO1, 2026-09-22) — same reasoning
 // as listHotelSlugs().
 export async function listRestaurantSlugs(limit = 100): Promise<Array<{ slug: string; id: string }>> {

@@ -3,16 +3,24 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PricesEditor } from './PricesEditor';
 import { readSession } from '@/modules/auth/session';
 import { createPlacePrice, listPlacePrices } from '@/modules/prices/api/prices.api';
+import { submitPriceVerification, verifyPriceVerification } from '@/modules/verifications/api/verifications.api';
+import { ApiError } from '@/lib/http';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/modules/prices/api/prices.api', () => ({
   listPlacePrices: jest.fn(),
   createPlacePrice: jest.fn(),
 }));
+jest.mock('@/modules/verifications/api/verifications.api', () => ({
+  submitPriceVerification: jest.fn(),
+  verifyPriceVerification: jest.fn(),
+}));
 
 const mockReadSession = readSession as jest.Mock;
 const mockListPrices = listPlacePrices as jest.Mock;
 const mockCreatePrice = createPlacePrice as jest.Mock;
+const mockSubmitVerification = submitPriceVerification as jest.Mock;
+const mockVerify = verifyPriceVerification as jest.Mock;
 
 beforeEach(() => {
   mockReadSession.mockReturnValue({ accessToken: 'tok' });
@@ -95,5 +103,49 @@ describe('PricesEditor — thêm giá mới (append-only, không sửa/xoá bả
         'tok',
       ),
     );
+  });
+});
+
+// Verification Foundation (ADR-008) đã có sẵn ở backend — nút này chỉ GỌI ĐÚNG hai bước có sẵn
+// (submit rồi verify), KHÔNG tự đặt logic xác minh nào mới ở frontend. Cả hai bước gác
+// Verification.Verify (moderator-only, Owner Decision 2026-08-06) — test 403 khoá lại đúng việc
+// component không tự "thăng cấp" quyền, chỉ hiện lại đúng lỗi từ API.
+describe('PricesEditor — nút "Xác minh" (submit + verify qua cơ chế Verification hiện có)', () => {
+  it('giá pending -> bấm Xác minh -> gọi submit rồi verify đúng thứ tự -> tải lại danh sách, hiện giá thật', async () => {
+    mockListPrices
+      .mockResolvedValueOnce([
+        { id: 'p1', service_name: 'Giá/người', amount: null, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'p1', service_name: 'Giá/người', amount: 180000, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'verified' },
+      ]);
+    mockSubmitVerification.mockResolvedValue({ id: 'verif-1', status: 'pending' });
+    mockVerify.mockResolvedValue({ status: 'verified' });
+
+    render(<PricesEditor placeId="place-1" />);
+    await screen.findByText('Giá/người');
+
+    fireEvent.click(screen.getByRole('button', { name: /Xác minh/ }));
+
+    await waitFor(() => expect(mockSubmitVerification).toHaveBeenCalledWith('p1', 'tok'));
+    expect(mockVerify).toHaveBeenCalledWith('verif-1', 'tok');
+    expect(await screen.findByText(/180.000 VND \/ người/)).toBeInTheDocument();
+    expect(screen.queryByText('Giá đang được xác minh')).not.toBeInTheDocument();
+  });
+
+  it('không có quyền Verification.Verify -> API trả 403 -> hiện đúng lỗi, KHÔNG đổi trạng thái giá', async () => {
+    mockListPrices.mockResolvedValue([
+      { id: 'p1', service_name: 'Giá/người', amount: null, currency: 'VND', unit: 'người', is_free: false, valid_from: null, valid_to: null, verification_status: 'pending' },
+    ]);
+    mockSubmitVerification.mockRejectedValue(new ApiError('Bạn không có quyền thực hiện hành động này.', 403, 'FORBIDDEN'));
+
+    render(<PricesEditor placeId="place-1" />);
+    await screen.findByText('Giá/người');
+
+    fireEvent.click(screen.getByRole('button', { name: /Xác minh/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Bạn không có quyền thực hiện hành động này.');
+    expect(mockVerify).not.toHaveBeenCalled();
+    expect(screen.getByText('Giá đang được xác minh')).toBeInTheDocument();
   });
 });

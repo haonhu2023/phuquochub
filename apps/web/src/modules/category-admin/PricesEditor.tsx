@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { createPlacePrice, listPlacePrices, type PlacePrice } from '@/modules/prices/api/prices.api';
+import { submitPriceVerification, verifyPriceVerification } from '@/modules/verifications/api/verifications.api';
 import { canDisplayPrice, PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import styles from '@/modules/place-management/place-management.module.css';
 import uiStyles from '@/components/ui/ui.module.css';
@@ -32,6 +33,7 @@ export function PricesEditor({ placeId }: Props) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +96,32 @@ export function PricesEditor({ placeId }: Props) {
     }
   }
 
+  // Gộp submit + verify thành MỘT thao tác cho gọn UX — cả hai bước đều gác `Verification.Verify`
+  // (moderator-only, Owner Decision 2026-08-06); một content_owner bấm nút này sẽ nhận đúng lỗi 403
+  // từ API (không có nhánh "tự xác minh" nào ở đây). Không có `source_id`: xem verifications.api.ts.
+  async function onVerify(price: PlacePrice) {
+    const session = readSession();
+    if (!session) return;
+    setError(null);
+    setNotice(null);
+    setVerifyingId(price.id);
+    try {
+      const verification = await submitPriceVerification(price.id, session.accessToken);
+      await verifyPriceVerification(verification.id, session.accessToken);
+      const refreshed = await listPlacePrices(placeId);
+      setState({ kind: 'ready', prices: refreshed });
+      setNotice(`Đã xác minh "${price.service_name}" — public sẽ thấy đúng giá.`);
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.status < 500
+          ? err.message
+          : 'Xác minh thất bại. Cần quyền Verification.Verify (moderator) — nếu bạn không giữ quyền này, nhờ moderator xác minh.',
+      );
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
   return (
     <section aria-label="Giá tham khảo" className={styles.contentEditor}>
       <h2>Giá tham khảo</h2>
@@ -118,6 +146,16 @@ export function PricesEditor({ placeId }: Props) {
                   <em>{PRICE_VERIFYING_TEXT}</em>
                 )}
               </span>
+              {!canDisplayPrice(p.verification_status) && (
+                <button
+                  type="button"
+                  className={styles.linkBtn}
+                  onClick={() => void onVerify(p)}
+                  disabled={verifyingId === p.id}
+                >
+                  {verifyingId === p.id ? 'Đang xác minh…' : 'Xác minh (moderator)'}
+                </button>
+              )}
             </li>
           ))}
         </ul>

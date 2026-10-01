@@ -17,6 +17,7 @@ import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor'
 import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
 import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
 import { PricesEditor } from '@/modules/category-admin/PricesEditor';
+import { MenuEditor } from '@/modules/category-admin/MenuEditor';
 
 type State =
   | { kind: 'loading' }
@@ -347,6 +348,7 @@ export function EditPlaceView({ placeId }: Props) {
           <RestaurantDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <PricesEditor placeId={placeId} />
+          <MenuEditor placeId={placeId} />
         </>
       )}
       <PlaceForm
