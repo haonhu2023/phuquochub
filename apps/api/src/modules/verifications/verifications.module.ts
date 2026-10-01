@@ -13,6 +13,7 @@ import { PlacesModule } from '../places/places.module';
 import { ContactsModule } from '../contacts/contacts.module';
 import { PricesModule } from '../prices/prices.module';
 import { SourcesModule } from '../sources/sources.module';
+import { RbacModule } from '../rbac/rbac.module';
 
 // ADR-008 Verification Foundation. `PlacesModule`/`ContactsModule`/`PricesModule` cấp
 // `PlacesRepository.updateScalars()`/`ContactsRepository.updateScalars()`/
@@ -33,6 +34,7 @@ import { SourcesModule } from '../sources/sources.module';
     ContactsModule,
     PricesModule,
     SourcesModule,
+    RbacModule,
   ],
   controllers: [VerificationsController],
   providers: [

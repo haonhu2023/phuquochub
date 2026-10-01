@@ -35,9 +35,9 @@ export function PricesEditor({ placeId }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
-  // Thuần hiển thị (capabilities.ts) — ẩn nút "Xác minh" khỏi người chắc chắn sẽ nhận 403
-  // (Verification.Verify moderator-only) thay vì mời bấm rồi báo lỗi. Backend vẫn là nơi cưỡng chế
-  // duy nhất: giá trị sai/thiếu ở đây chỉ ẩn nhầm nút, không bao giờ cấp thêm quyền.
+  // Thuần hiển thị (capabilities.ts) — ẩn nút "Xác minh" khỏi người chắc chắn sẽ nhận 403 (giữ cả
+  // Verification.Verify lẫn Price.Verify đều không) thay vì mời bấm rồi báo lỗi. Backend vẫn là
+  // nơi cưỡng chế duy nhất: giá trị sai/thiếu ở đây chỉ ẩn nhầm nút, không bao giờ cấp thêm quyền.
   const [canVerify, setCanVerify] = useState(false);
 
   useEffect(() => {
@@ -107,9 +107,12 @@ export function PricesEditor({ placeId }: Props) {
     }
   }
 
-  // Gộp submit + verify thành MỘT thao tác cho gọn UX — cả hai bước đều gác `Verification.Verify`
-  // (moderator-only, Owner Decision 2026-08-06); một content_owner bấm nút này sẽ nhận đúng lỗi 403
-  // từ API (không có nhánh "tự xác minh" nào ở đây). Không có `source_id`: xem verifications.api.ts.
+  // Gộp submit + verify thành MỘT thao tác cho gọn UX. Gác bởi `Verification.Verify` (moderator,
+  // place/contact/giá) HOẶC `Price.Verify` (content_owner, CHỈ giá — price verification ownership,
+  // 2026-10-01, SeedPriceVerifyPermission) — backend tự quyết OR này theo đúng target_type
+  // (VerificationsController.assertCanVerify), component không biết/không cần biết actor đi đường
+  // nào. `canVerify` ở trên chỉ ẩn/hiện nút cho người CHẮC CHẮN không có quyền nào trong hai; nếu
+  // vẫn 403 (capability cũ/stale), hiện lại đúng lỗi thật từ API, không tự coi là thành công.
   async function onVerify(price: PlacePrice) {
     const session = readSession();
     if (!session) return;
@@ -126,7 +129,7 @@ export function PricesEditor({ placeId }: Props) {
       setError(
         err instanceof ApiError && err.status < 500
           ? err.message
-          : 'Xác minh thất bại. Cần quyền Verification.Verify (moderator) — nếu bạn không giữ quyền này, nhờ moderator xác minh.',
+          : 'Xác minh thất bại. Vui lòng thử lại hoặc nhờ moderator xác minh.',
       );
     } finally {
       setVerifyingId(null);

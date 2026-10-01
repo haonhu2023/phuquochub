@@ -62,7 +62,7 @@ describe('capabilitiesFromRoles', () => {
   // SiteContent.Edit/Ops.BackupStatus.View (SeedContentOwnerRole, launch-readiness 2026-09-22) —
   // phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu các dòng sau khiến owner có đủ
   // quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
-  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, tình trạng sao lưu, việc cần làm, lẫn duyệt đề xuất chỉnh sửa — nhưng KHÔNG xác minh giá (role_parents: content_owner kế thừa contributor, KHÔNG qua moderator — Verification.Verify vẫn moderator-only, Owner Decision 2026-08-06)', () => {
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, tình trạng sao lưu, việc cần làm, duyệt đề xuất chỉnh sửa, LẪN xác minh giá (price verification ownership, 2026-10-01: Price.Verify riêng, KHÔNG phải Verification.Verify — place/contact vẫn moderator-only)', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
@@ -74,7 +74,7 @@ describe('capabilitiesFromRoles', () => {
       canViewCommandCenter: true,
       canViewOwnerTodo: true,
       canReviewPlaceEditProposals: true,
-      canVerifyPrices: false,
+      canVerifyPrices: true,
     });
   });
 
