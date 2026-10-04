@@ -935,6 +935,7 @@ export function GuideArticleEditorView({ id }: { id: string }) {
                   })),
                 }}
                 locale={form.locale}
+                clientPlaceCollections
               />
             </div>
           </div>

@@ -6,6 +6,7 @@ import { GUIDE_CATEGORY_LABELS } from './guideCategory';
 import { SectionHeadingBlock } from './blocks/SectionHeadingBlock';
 import { RichTextBlock } from './blocks/RichTextBlock';
 import { PlaceCollectionBlock } from './blocks/PlaceCollectionBlock';
+import { PlaceCollectionPreview } from './blocks/PlaceCollectionPreview';
 import { CalloutBlock } from './blocks/CalloutBlock';
 import { FaqBlock } from './blocks/FaqBlock';
 import { ImageWithRightsBlock } from './blocks/ImageWithRightsBlock';
@@ -20,8 +21,19 @@ const UPDATED_LABEL: Record<Locale, string> = {
  * Dispatches each block to its presentational component by `blockType`. No block type ever
  * renders via `dangerouslySetInnerHTML` — rich_text stores structured paragraphs, not markup, so
  * there is nothing to sanitize and nothing unsafe to inject.
+ *
+ * `clientPlaceCollections` is for callers that render from a client component (the editor's preview
+ * overlay): the public `place_collection` block is an async server component and cannot mount there.
  */
-export function GuideArticleView({ article, locale }: { article: GuideArticleDetail; locale: Locale }) {
+export function GuideArticleView({
+  article,
+  locale,
+  clientPlaceCollections = false,
+}: {
+  article: GuideArticleDetail;
+  locale: Locale;
+  clientPlaceCollections?: boolean;
+}) {
   return (
     <article>
       <header className={styles.hero}>
@@ -54,20 +66,32 @@ export function GuideArticleView({ article, locale }: { article: GuideArticleDet
       </header>
 
       {article.blocks.map((block) => (
-        <GuideBlockRenderer key={block.id} block={block} locale={locale} />
+        <GuideBlockRenderer key={block.id} block={block} locale={locale} clientPlaceCollections={clientPlaceCollections} />
       ))}
     </article>
   );
 }
 
-function GuideBlockRenderer({ block, locale }: { block: GuideBlockData; locale: Locale }) {
+function GuideBlockRenderer({
+  block,
+  locale,
+  clientPlaceCollections,
+}: {
+  block: GuideBlockData;
+  locale: Locale;
+  clientPlaceCollections: boolean;
+}) {
   switch (block.blockType) {
     case 'section_heading':
       return <SectionHeadingBlock content={block.content as never} />;
     case 'rich_text':
       return <RichTextBlock content={block.content as never} />;
     case 'place_collection':
-      return <PlaceCollectionBlock content={block.content as never} locale={locale} />;
+      return clientPlaceCollections ? (
+        <PlaceCollectionPreview content={block.content as never} locale={locale} />
+      ) : (
+        <PlaceCollectionBlock content={block.content as never} locale={locale} />
+      );
     case 'callout':
       return <CalloutBlock content={block.content as never} />;
     case 'faq':

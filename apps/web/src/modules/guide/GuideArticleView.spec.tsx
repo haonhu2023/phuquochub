@@ -4,11 +4,11 @@ import { GuideArticleView } from './GuideArticleView';
 import type { GuideArticleDetail } from './types';
 
 // place_collection is deliberately NOT included in this fixture: it is an async server component
-// (fetches places), and plain react-dom (as used by @testing-library/react's render()) cannot
-// render a nested async component the way the real Next.js RSC pipeline does — attempting to
-// forces a "Cannot destructure property of undefined" crash from React's own error-frame
-// machinery, not a bug in the component. Its fetch/empty-state behavior has full, dedicated
-// coverage in PlaceCollectionBlock.spec.tsx, which awaits it directly. This file's job is proving
+// (fetches places), which cannot be mounted in a client tree — rendering it through react-dom throws
+// "Objects are not valid as a React child (found: [object Promise])". The public page renders it on
+// the server; the editor preview uses the client twin (see GuideArticleView.preview.spec.tsx).
+// Its fetch/empty-state behavior has full, dedicated coverage in PlaceCollectionBlock.spec.tsx,
+// which awaits it directly. This file's job is proving
 // every OTHER block type dispatches and renders safely, and that no block type ever uses
 // dangerouslySetInnerHTML — neither needs place_collection to be true.
 
