@@ -3,7 +3,8 @@ import { listPlaces, getPlace } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
 import type { PlaceCard as PlaceCardType } from '@/modules/places/types';
 import { listCategories } from '@/modules/categories/api/categories.api';
-import { categoryNameLookup } from '@/modules/categories/categoryName';
+import { categoryNameLookup, categorySlugLookup } from '@/modules/categories/categoryName';
+import { categorySlugOfPlace } from '@/modules/places/placeRoutes';
 import { getHomeContent } from '@/modules/site-content/api/site-content.api';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { getHomeCopy } from './home.copy';
@@ -42,6 +43,7 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
   const copy = getHomeCopy(locale);
   let places: PlaceCardType[];
   let categoryName: (categoryId: string) => string | null;
+  let categorySlug: (categoryId: string) => string | null;
   try {
     const [placesResult, categories, homeContent] = await Promise.all([
       listPlaces({ limit: DISCOVER_LIMIT }),
@@ -53,6 +55,7 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
     ]);
     places = placesResult;
     categoryName = categoryNameLookup(categories, locale);
+    categorySlug = categorySlugLookup(categories);
 
     const featuredSlugs = homeContent?.featuredPlaceSlugs ?? [];
     if (featuredSlugs.length > 0) {
@@ -94,6 +97,7 @@ export async function DiscoverPlaces({ locale }: { locale: Locale }) {
             titleAs="h3"
             locale={locale}
             categoryName={categoryName(place.category_id)}
+            categorySlug={categorySlugOfPlace(place, categorySlug)}
           />
         ))}
       </div>

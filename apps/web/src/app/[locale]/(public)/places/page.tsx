@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { listPlaces } from '@/modules/places/api/places.api';
 import { PlaceCard } from '@/modules/places/PlaceCard';
 import { listCategories } from '@/modules/categories/api/categories.api';
-import { categoryNameLookup } from '@/modules/categories/categoryName';
+import { categoryNameLookup, categorySlugLookup } from '@/modules/categories/categoryName';
+import { categorySlugOfPlace } from '@/modules/places/placeRoutes';
 import { type Locale } from '@/lib/locale';
 import { buildRouteAlternates } from '@/lib/seo';
 import { getHubPageCopy } from '@/lib/hub-pages.copy';
@@ -42,6 +43,7 @@ export default async function PlacesPage({ params }: Props) {
     listCategories().catch(() => []),
   ]);
   const categoryName = categoryNameLookup(categories, locale);
+  const categorySlug = categorySlugLookup(categories);
   const copy = getHubPageCopy(locale, 'places');
 
   return (
@@ -65,7 +67,13 @@ export default async function PlacesPage({ params }: Props) {
       ) : (
         <div className={styles.grid}>
           {places.map((p) => (
-            <PlaceCard key={p.id} place={p} locale={locale} categoryName={categoryName(p.category_id)} />
+            <PlaceCard
+              key={p.id}
+              place={p}
+              locale={locale}
+              categoryName={categoryName(p.category_id)}
+              categorySlug={categorySlugOfPlace(p, categorySlug)}
+            />
           ))}
         </div>
       )}

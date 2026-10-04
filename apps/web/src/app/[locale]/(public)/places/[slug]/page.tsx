@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import { getPlace } from '@/modules/places/api/places.api';
+import { placeDetailHref, specialisedRouteFor } from '@/modules/places/placeRoutes';
 import { formatPriceRange } from '@/modules/places/format';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import {
@@ -120,6 +121,14 @@ export default async function PlaceDetailPage({ params }: Params) {
       notFound();
     }
     throw err;
+  }
+
+  // Khách sạn/nhà hàng/tour có trang chuyên biệt (xem placeRoutes.ts): chuyển sang đó để không có
+  // hai URL cùng nội dung. Chỉ chạy SAU khi getPlace trả về địa điểm công khai, nên không lộ địa
+  // điểm chưa published. Trang đích không chuyển hướng ngược lại, nên không tạo vòng lặp.
+  // permanentRedirect nằm NGOÀI try/catch ở trên vì nó ném lỗi có chủ đích.
+  if (specialisedRouteFor(place.category_slug)) {
+    permanentRedirect(placeDetailHref(locale, place.slug, place.category_slug));
   }
 
   // Đánh giá là khối phụ trợ — lỗi ở đây không được làm sập cả trang chi tiết Place.

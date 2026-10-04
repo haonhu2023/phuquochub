@@ -3,6 +3,9 @@ import { getSiteUrl } from '@/lib/site';
 import { listPlaces, listEnIndexablePlaceIds } from '@/modules/places/api/places.api';
 import { listHotelSlugs } from '@/modules/hotels/api/hotels.api';
 import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
+import { listCategories } from '@/modules/categories/api/categories.api';
+import { categorySlugLookup } from '@/modules/categories/categoryName';
+import { specialisedRouteFor } from '@/modules/places/placeRoutes';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
 import { listGuideArticles } from '@/modules/guide/api/guide.api';
@@ -117,7 +120,7 @@ function guideEntries(
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = getSiteUrl();
 
-  const [places, hotels, restaurants, tours, events, guidesVi, guidesEn] = await Promise.all([
+  const [placesAll, hotels, restaurants, tours, events, guidesVi, guidesEn, categories] = await Promise.all([
     safeList(() => listPlaces({ limit: 100 })),
     safeList(() => listHotelSlugs(100)),
     safeList(() => listRestaurantSlugs(100)),
@@ -125,7 +128,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     safeList(() => listEvents(1, 100)),
     safeList(() => listGuideArticles('vi')),
     safeList(() => listGuideArticles('en')),
+    safeList(() => listCategories()),
   ]);
+
+  // Chỉ bỏ entry /places/{slug} khi CHÍNH slug đó đã có entry chuyên biệt trong kết quả sitemap
+  // (hotels/restaurants/tours). Nếu danh sách chuyên biệt lỗi, rỗng, hoặc bị cắt ở giới hạn 100, slug
+  // đó không nằm trong tập này nên entry /places được giữ lại: không bao giờ mất URL.
+  const specialisedSlugs = new Set([...hotels, ...restaurants, ...tours].map((e) => e.slug));
+  const slugOf = categorySlugLookup(categories);
+  const places = placesAll.filter(
+    (p) => !(specialisedRouteFor(slugOf(p.category_id)) !== null && specialisedSlugs.has(p.slug)),
+  );
 
   // SEO1 (2026-09-22) — ONE batched request for all four entity types combined (place/hotel/
   // restaurant/tour are all rows in `places`, category-filtered on the API side), instead of the

@@ -5,7 +5,9 @@ import { listRestaurantSlugs } from '@/modules/restaurants/api/restaurants.api';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
 import { listGuideArticles } from '@/modules/guide/api/guide.api';
+import { listCategories } from '@/modules/categories/api/categories.api';
 
+jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
 jest.mock('@/modules/places/api/places.api', () => ({ listPlaces: jest.fn(), listEnIndexablePlaceIds: jest.fn() }));
 jest.mock('@/modules/hotels/api/hotels.api', () => ({ listHotelSlugs: jest.fn() }));
 jest.mock('@/modules/restaurants/api/restaurants.api', () => ({ listRestaurantSlugs: jest.fn() }));
@@ -22,6 +24,7 @@ const mockListEvents = listEvents as jest.Mock;
 const mockListGuideArticles = listGuideArticles as jest.Mock;
 
 beforeEach(() => {
+  (listCategories as jest.Mock).mockReset().mockResolvedValue([]);
   mockListPlaces.mockReset().mockResolvedValue([{ id: 'p1', slug: 'vinwonders-phu-quoc' }]);
   // Mặc định: KHÔNG entity nào đủ điều kiện EN — giữ nguyên đúng assertion cũ (chưa qua cổng EN)
   // cho mọi test không tự set lại mock này.
@@ -67,6 +70,41 @@ describe('sitemap v2', () => {
     const home = entries.filter((e) => e.url === 'http://localhost:3000/vi' || e.url === 'http://localhost:3000/en');
     expect(home).toHaveLength(2);
     for (const e of home) expect(e.priority).toBe(1);
+  });
+
+  it('địa điểm khách sạn/nhà hàng KHÔNG còn xuất hiện ở /places/{slug} (URL trùng); bãi biển vẫn có', async () => {
+    (listCategories as jest.Mock).mockResolvedValue([
+      { id: 'c-hotel', slug: 'hotel', name_vi: 'Khách sạn', name_en: null, icon: null, parent_id: null },
+      { id: 'c-beach', slug: 'beach', name_vi: 'Bãi biển', name_en: null, icon: null, parent_id: null },
+    ]);
+    mockListPlaces.mockResolvedValue([
+      { id: 'p-hotel', slug: 'novotel-phu-quoc', category_id: 'c-hotel' },
+      { id: 'p-beach', slug: 'bai-sao', category_id: 'c-beach' },
+    ]);
+    mockListHotelSlugs.mockResolvedValue([{ slug: 'novotel-phu-quoc', id: 'p-hotel' }]);
+    const urls = (await sitemap()).map((e) => e.url);
+    expect(urls).toContain('http://localhost:3000/vi/places/bai-sao');
+    expect(urls).not.toContain('http://localhost:3000/vi/places/novotel-phu-quoc');
+    expect(urls).toContain('http://localhost:3000/vi/hotels/novotel-phu-quoc');
+  });
+
+  it('danh sách hotel lỗi → URL /places của khách sạn VẪN có (không bao giờ mất URL)', async () => {
+    (listCategories as jest.Mock).mockResolvedValue([
+      { id: 'c-hotel', slug: 'hotel', name_vi: 'Khách sạn', name_en: null, icon: null, parent_id: null },
+    ]);
+    mockListPlaces.mockResolvedValue([{ id: 'p-hotel', slug: 'novotel-phu-quoc', category_id: 'c-hotel' }]);
+    mockListHotelSlugs.mockRejectedValue(new Error('hotels down'));
+    const urls = (await sitemap()).map((e) => e.url);
+    expect(urls).toContain('http://localhost:3000/vi/places/novotel-phu-quoc');
+  });
+
+  it('danh mục lỗi → không bỏ entry nào, /places giữ nguyên', async () => {
+    (listCategories as jest.Mock).mockRejectedValue(new Error('categories down'));
+    mockListPlaces.mockResolvedValue([{ id: 'p-hotel', slug: 'novotel-phu-quoc', category_id: 'c-hotel' }]);
+    mockListHotelSlugs.mockResolvedValue([{ slug: 'novotel-phu-quoc', id: 'p-hotel' }]);
+    const urls = (await sitemap()).map((e) => e.url);
+    expect(urls).toContain('http://localhost:3000/vi/places/novotel-phu-quoc');
+    expect(urls).toContain('http://localhost:3000/vi/hotels/novotel-phu-quoc');
   });
 
   it('trang chi tiết thực thể: có /vi/places/{slug}, KHÔNG có /en/places/{slug} (chưa qua cổng EN)', async () => {

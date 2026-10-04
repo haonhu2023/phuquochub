@@ -70,4 +70,18 @@ describe('PlaceCollectionPreview (editor overlay, client-side)', () => {
     await waitFor(() => expect(screen.getByText('Trống')).toBeInTheDocument());
     expect(mockGetPlace).not.toHaveBeenCalled();
   });
+
+  it('resolves the real slug novotel-phu-quoc and renders its card', async () => {
+    mockGetPlace.mockImplementation(async (slug) => makePlace(slug));
+    render(<PlaceCollectionPreview content={{ heading: '', placeSlugs: ['novotel-phu-quoc'], emptyStateText: 'none' }} locale="vi" />);
+    expect(await screen.findByText('Place novotel-phu-quoc')).toBeInTheDocument();
+    expect(mockGetPlace).toHaveBeenCalledWith('novotel-phu-quoc', 'vi');
+    expect(screen.queryByText('none')).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state when novotel-phu-quoc does not resolve', async () => {
+    mockGetPlace.mockRejectedValue(new Error('404'));
+    render(<PlaceCollectionPreview content={{ heading: '', placeSlugs: ['novotel-phu-quoc'], emptyStateText: 'Chưa có địa điểm' }} locale="vi" />);
+    expect(await screen.findByText('Chưa có địa điểm')).toBeInTheDocument();
+  });
 });

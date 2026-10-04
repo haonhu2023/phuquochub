@@ -26,6 +26,21 @@ describe('PlaceCard', () => {
     expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/places/dinh-cau');
   });
 
+  it('khách sạn (categorySlug=hotel) → link tới /vi/hotels/{slug}, không /places', () => {
+    render(<PlaceCard place={BASE_PLACE} categorySlug="hotel" />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/hotels/dinh-cau');
+  });
+
+  it('nhà hàng với locale=en → /en/restaurants/{slug}', () => {
+    render(<PlaceCard place={BASE_PLACE} locale="en" categorySlug="restaurant" />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/en/restaurants/dinh-cau');
+  });
+
+  it('bãi biển (categorySlug=beach) vẫn → /vi/places/{slug} (route chung)', () => {
+    render(<PlaceCard place={BASE_PLACE} categorySlug="beach" />);
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/vi/places/dinh-cau');
+  });
+
   it('PR A: dùng đúng locale="en" khi được truyền', () => {
     render(<PlaceCard place={BASE_PLACE} locale="en" />);
     expect(screen.getByRole('link')).toHaveAttribute('href', '/en/places/dinh-cau');

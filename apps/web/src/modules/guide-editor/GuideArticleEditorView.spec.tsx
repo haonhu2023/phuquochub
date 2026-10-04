@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { GuideArticleEditorView } from './GuideArticleEditorView';
 import { createGuideDraft } from './api/guide-editor.api';
 import { readSession } from '@/modules/auth/session';
@@ -21,6 +21,7 @@ jest.mock('./api/guide-editor.api', () => ({
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/modules/auth/api/me.api', () => ({ fetchCapabilities: jest.fn() }));
+jest.mock('@/modules/places/api/places.api', () => ({ getPlace: jest.fn() }));
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({
@@ -292,6 +293,48 @@ describe('dirty-state guards Publish', () => {
 
     fireEvent.click(publishBtn);
     await waitFor(() => expect(publishGuideArticle).toHaveBeenCalledWith('art-1', 2, 'tok'));
+  });
+});
+
+// Preview overlay (Xem trước) renders the in-memory form state. It must show unsaved edits, resolve
+// place_collection slugs client-side, keep the unsaved title after closing, and never call a write.
+describe('preview overlay uses unsaved form state and makes no write call', () => {
+  const { getGuideDraft, saveGuideDraft, publishGuideArticle } = jest.requireMock('./api/guide-editor.api');
+  const { getPlace } = jest.requireMock('@/modules/places/api/places.api');
+  const EXISTING = {
+    id: 'art-1', slug: 'bai-viet', locale: 'vi', title: 'Tiêu đề gốc', intro: null,
+    heroMediaId: null, heroImageUrl: null, status: 'draft', contentVersion: 1,
+    blocks: [
+      {
+        id: 'b1', position: 0, blockType: 'place_collection', needsDecision: false, decisionNote: null,
+        content: { heading: '', placeSlugs: ['novotel-phu-quoc', 'missing-place'], emptyStateText: 'Chưa có địa điểm' },
+      },
+    ],
+  };
+
+  it('shows the unsaved title and resolved place in the overlay, then keeps the unsaved edit after closing', async () => {
+    getGuideDraft.mockResolvedValue(EXISTING);
+    getPlace.mockImplementation(async (slug: string) => {
+      if (slug !== 'novotel-phu-quoc') throw new Error('404');
+      return { id: slug, name: 'Novotel Phú Quốc (synthetic)', slug, category_id: 'c1', location: { lat: 10, lng: 104 }, status: 'published', verification_status: 'pending', content_version: 1, rating_count: 0, rating_avg: null, price_range: null, cover_image_url: null, short_description: null, category_slug: null, address: null, ward: null, province: null, admin_area: null, description: null, opening_hours: null, osm_id: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', verified_at: null, contacts: [], prices: [], media: [], faqs: [], trust_sources: [], en_display_name_approved: false, en_short_description_approved: false };
+    });
+    render(<GuideArticleEditorView id="art-1" />);
+
+    fireEvent.change(await screen.findByDisplayValue('Tiêu đề gốc'), { target: { value: 'Tiêu đề chưa lưu' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Xem trước' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Xem trước cẩm nang' });
+    expect(within(dialog).getByText('Tiêu đề chưa lưu')).toBeInTheDocument();
+    expect(await within(dialog).findByText('Novotel Phú Quốc (synthetic)')).toBeInTheDocument();
+    expect(getPlace).toHaveBeenCalledWith('novotel-phu-quoc', 'vi');
+    expect(getPlace).toHaveBeenCalledWith('missing-place', 'vi');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Đóng' }));
+    expect(screen.queryByRole('dialog', { name: 'Xem trước cẩm nang' })).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Tiêu đề chưa lưu')).toBeInTheDocument();
+    expect(screen.getAllByText(/Chưa lưu|Còn thay đổi chưa lưu/).length).toBeGreaterThan(0);
+    expect(saveGuideDraft).not.toHaveBeenCalled();
+    expect(publishGuideArticle).not.toHaveBeenCalled();
   });
 });
 

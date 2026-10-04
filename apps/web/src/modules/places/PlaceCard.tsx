@@ -2,7 +2,8 @@ import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
 import { getTrustBadge, priceVerifyingText, resolvePriceDisplay, trustBadgeLabel } from './trust';
-import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
+import { DEFAULT_LOCALE, type Locale } from '@/lib/locale';
+import { placeDetailHref } from './placeRoutes';
 import styles from './places.module.css';
 
 // Thẻ địa điểm (presentational). Dùng ở danh sách + kết quả tìm kiếm.
@@ -28,12 +29,19 @@ export function PlaceCard({
   showTrustBadge = true,
   showPrice = true,
   categoryName = null,
+  categorySlug = null,
 }: {
   place: PlaceCardType;
   titleAs?: 'h2' | 'h3';
   locale?: Locale;
   showTrustBadge?: boolean;
   showPrice?: boolean;
+  /**
+   * Slug danh mục (vd. "hotel") để chọn URL chi tiết đúng (xem placeRoutes.ts). `null` khi nơi gọi
+   * không có map → thẻ link tới /places/{slug}; route đó tự chuyển hướng khi địa điểm thuộc loại có
+   * trang chuyên biệt, nên kết quả vẫn đúng.
+   */
+  categorySlug?: string | null;
   /**
    * Tên danh mục (vd. "Khách sạn") — `PlaceCard` chỉ nhận `category_id` (UUID), không tự tra cứu
    * tên: nơi gọi phải tự map qua `GET /categories` (đã công khai, không phân trang — xem
@@ -52,7 +60,7 @@ export function PlaceCard({
   // ở mật độ danh sách chỉ là tiếng ồn, phần giải thích đầy đủ thuộc về trang chi tiết.
   const isVerified = showTrustBadge && getTrustBadge(place.verification_status) === 'verified';
   return (
-    <Link href={localizedHref(locale, `/places/${place.slug}`)} className={styles.card}>
+    <Link href={placeDetailHref(locale, place.slug, categorySlug)} className={styles.card}>
       {place.cover_image_url ? (
         // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
         <img

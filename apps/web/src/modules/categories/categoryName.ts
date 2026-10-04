@@ -14,3 +14,12 @@ export function categoryNameLookup(categories: Category[], locale: Locale): (cat
   const map = new Map(categories.map((c) => [c.id, locale === 'en' ? (c.name_en ?? c.name_vi) : c.name_vi]));
   return (categoryId: string) => map.get(categoryId) ?? null;
 }
+
+/**
+ * `category_id` → `slug` (vd. "hotel"). Dùng để chọn URL chi tiết chuyên biệt (xem placeRoutes.ts).
+ * Cùng khuôn với categoryNameLookup để các nơi gọi đọc danh mục một lần và dùng cả hai.
+ */
+export function categorySlugLookup(categories: Category[]): (categoryId: string) => string | null {
+  const map = new Map(categories.map((c) => [c.id, c.slug]));
+  return (categoryId: string) => map.get(categoryId) ?? null;
+}

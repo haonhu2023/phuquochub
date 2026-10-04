@@ -25,6 +25,58 @@ jest.mock('next/link', () => ({
 const mockGetPlace = getPlace as jest.Mock;
 const mockListReviews = listReviews as jest.Mock;
 
+// permanentRedirect/notFound thật ném lỗi có chủ đích; mock giữ nguyên hành vi đó để test kiểm tra
+// URL đích mà không cần runtime Next.
+jest.mock('next/navigation', () => ({
+  notFound: () => {
+    throw new Error('NOT_FOUND');
+  },
+  permanentRedirect: (url: string) => {
+    throw new Error(`REDIRECT:${url}`);
+  },
+}));
+
+describe('PlaceDetailPage — chuyển hướng tới trang chuyên biệt (placeRoutes.ts)', () => {
+  beforeEach(() => {
+    mockListReviews.mockReset().mockResolvedValue([]);
+  });
+
+  async function callPage(slug: string, locale: string) {
+    return PlaceDetailPage({ params: Promise.resolve({ slug, locale }) });
+  }
+
+  it('khách sạn (hotel) vi → redirect 308 tới /vi/hotels/{slug}', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'novotel-phu-quoc', category_slug: 'hotel' }));
+    await expect(callPage('novotel-phu-quoc', 'vi')).rejects.toThrow('REDIRECT:/vi/hotels/novotel-phu-quoc');
+  });
+
+  it('resort → cũng vào /hotels (danh sách /hotels gồm cả resort)', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'resort-x', category_slug: 'resort' }));
+    await expect(callPage('resort-x', 'vi')).rejects.toThrow('REDIRECT:/vi/hotels/resort-x');
+  });
+
+  it('nhà hàng en → /en/restaurants/{slug} (giữ locale)', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'nha-hang-ra-khoi', category_slug: 'restaurant' }));
+    await expect(callPage('nha-hang-ra-khoi', 'en')).rejects.toThrow('REDIRECT:/en/restaurants/nha-hang-ra-khoi');
+  });
+
+  it('tour → /vi/tours/{slug}', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'sunset-cruise', category_slug: 'tour' }));
+    await expect(callPage('sunset-cruise', 'vi')).rejects.toThrow('REDIRECT:/vi/tours/sunset-cruise');
+  });
+
+  it('bãi biển KHÔNG redirect: trang chung vẫn render', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
+    await expect(callPage('bai-sao', 'vi')).resolves.toBeTruthy();
+  });
+
+  it('địa điểm không tồn tại (404) → notFound, KHÔNG redirect (không lộ địa điểm chưa published)', async () => {
+    const { ApiError } = jest.requireActual('@/lib/http');
+    mockGetPlace.mockRejectedValue(new ApiError('Không tìm thấy', 404, 'NOT_FOUND'));
+    await expect(callPage('ban-nhap', 'vi')).rejects.toThrow('NOT_FOUND');
+  });
+});
+
 function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
   return {
     id: 'p1',
@@ -122,33 +174,35 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
   });
 
   describe('unverified commercial price suppression', () => {
-    it('hotel pending có price_range → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', async () => {
+    // Các case dưới đây kiểm gate GIÁ trên trang chung, nên dùng category KHÔNG có route chuyên biệt
+    // (attraction). Hotel/restaurant/tour đã chuyển hướng sang trang chuyên biệt (xem describe redirect).
+    it('điểm tham quan pending có price_range → KHÔNG hiện giá thật, hiện "Giá đang được xác minh"', async () => {
       await renderPage(
-        place({ category_slug: 'hotel', verification_status: 'pending', price_range: 'high' }),
+        place({ category_slug: 'attraction', verification_status: 'pending', price_range: 'high' }),
       );
       expect(screen.queryByText('Cao cấp')).not.toBeInTheDocument();
       expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
     });
 
-    it('restaurant chưa xác minh (rejected) có price_range → vẫn ẩn giá thật', async () => {
+    it('chợ chưa xác minh (rejected) có price_range → vẫn ẩn giá thật', async () => {
       await renderPage(
-        place({ category_slug: 'restaurant', verification_status: 'rejected', price_range: 'mid' }),
+        place({ category_slug: 'market', verification_status: 'rejected', price_range: 'mid' }),
       );
       expect(screen.queryByText('Tầm trung')).not.toBeInTheDocument();
       expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
     });
 
-    it('tour đã verified có price_range → VẪN hiện giá thật (trusted commercial giữ nguyên)', async () => {
+    it('quán cà phê đã verified có price_range → VẪN hiện giá thật (trusted commercial giữ nguyên)', async () => {
       await renderPage(
-        place({ category_slug: 'tour', verification_status: 'verified', price_range: 'low' }),
+        place({ category_slug: 'cafe', verification_status: 'verified', price_range: 'low' }),
       );
       expect(screen.getByText('Bình dân')).toBeInTheDocument();
       expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
     });
 
     // Không bịa dòng "đang xác minh" cho một trường CHƯA TỪNG có giá trị.
-    it('hotel pending KHÔNG có price_range (null) → không hiện giá thật lẫn dòng "đang xác minh"', async () => {
-      await renderPage(place({ category_slug: 'hotel', verification_status: 'pending', price_range: null }));
+    it('điểm tham quan pending KHÔNG có price_range (null) → không hiện giá thật lẫn dòng "đang xác minh"', async () => {
+      await renderPage(place({ category_slug: 'attraction', verification_status: 'pending', price_range: null }));
       expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
       expect(screen.queryByText('Mức giá')).not.toBeInTheDocument();
     });
