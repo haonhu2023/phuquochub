@@ -308,49 +308,49 @@ export default async function PlaceDetailPage({ params }: Params) {
           <h2 className={styles.sectionTitle}>Thông tin bãi biển</h2>
           <dl className={styles.infoGrid}>
             {beach.access_route && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Đường vào</dt>
                 <dd>{beach.access_route}</dd>
-              </>
+              </div>
             )}
             {beach.characteristics && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Đặc điểm bãi</dt>
                 <dd>{beach.characteristics}</dd>
-              </>
+              </div>
             )}
             {beach.services && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Dịch vụ tại bãi</dt>
                 <dd>{beach.services}</dd>
-              </>
+              </div>
             )}
             {beach.best_season && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Mùa tham khảo</dt>
                 <dd>
                   {beach.best_season}
                   <BeachSourceNote source={beach.best_season_source} />
                 </dd>
-              </>
+              </div>
             )}
             {beach.lifeguard_info && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Thông tin cứu hộ</dt>
                 <dd>
                   {beach.lifeguard_info}
                   <BeachSourceNote source={beach.lifeguard_info_source} />
                 </dd>
-              </>
+              </div>
             )}
             {beach.sourced_notes && (
-              <>
+              <div className={styles.infoItem}>
                 <dt>Lưu ý</dt>
                 <dd>
                   {beach.sourced_notes}
                   <BeachSourceNote source={beach.sourced_notes_source} />
                 </dd>
-              </>
+              </div>
             )}
           </dl>
         </section>
