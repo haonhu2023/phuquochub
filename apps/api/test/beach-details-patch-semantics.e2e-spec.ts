@@ -84,6 +84,15 @@ describe('Beach details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
     }
   }, 60_000);
 
+  // CAS: every detail write must carry the current places.content_version (required since 3a4366d).
+  async function ver(placeId: string): Promise<number> {
+    const [r]: Array<{ content_version: number }> = await ds.query(
+      `SELECT content_version FROM places WHERE id = $1`,
+      [placeId],
+    );
+    return r.content_version;
+  }
+
   it('REQUIRED SEQUENCE: tạo -> PATCH một trường không xoá trường khác -> xoá tường minh -> đổi giá trị có nguồn không kèm nguồn mới -> xoá nguồn cũ', async () => {
     const placeId = await mkBeachPlace('keep-change-clear');
     const sourceId = await mkSource();
@@ -91,7 +100,12 @@ describe('Beach details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
     // 1) Tạo lần đầu: access_route (tĩnh) + best_season (có nguồn) + nguồn.
     await beachesService.updateDetails(
       placeId,
-      { access_route: 'Theo đường ven biển phía nam', best_season: 'Tháng 11 - tháng 4', best_season_source_id: sourceId },
+      {
+        expected_content_version: await ver(placeId),
+        access_route: 'Theo đường ven biển phía nam',
+        best_season: 'Tháng 11 - tháng 4',
+        best_season_source_id: sourceId,
+      },
       actorId,
     );
     let row = await readDetails(placeId);
@@ -104,7 +118,7 @@ describe('Beach details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
     const firstVerifiedAt = row.best_season_verified_at;
 
     // 2) PATCH CHỈ characteristics — access_route/best_season/nguồn phải GIỮ NGUYÊN.
-    await beachesService.updateDetails(placeId, { characteristics: 'Cát trắng mịn' }, actorId);
+    await beachesService.updateDetails(placeId, { expected_content_version: await ver(placeId), characteristics: 'Cát trắng mịn' }, actorId);
     row = await readDetails(placeId);
     expect(row).toMatchObject({
       access_route: 'Theo đường ven biển phía nam',
@@ -115,13 +129,13 @@ describe('Beach details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
     expect(new Date(row.best_season_verified_at).getTime()).toBe(new Date(firstVerifiedAt).getTime());
 
     // 3) XOÁ tường minh access_route (null) — best_season/nguồn vẫn giữ nguyên.
-    await beachesService.updateDetails(placeId, { access_route: null }, actorId);
+    await beachesService.updateDetails(placeId, { expected_content_version: await ver(placeId), access_route: null }, actorId);
     row = await readDetails(placeId);
     expect(row.access_route).toBeNull();
     expect(row).toMatchObject({ best_season: 'Tháng 11 - tháng 4', best_season_source_id: sourceId });
 
     // 4) Đổi best_season (giá trị) mà KHÔNG kèm nguồn mới -> nguồn/verified_at CŨ phải bị XOÁ.
-    await beachesService.updateDetails(placeId, { best_season: 'Tháng 12 - tháng 3' }, actorId);
+    await beachesService.updateDetails(placeId, { expected_content_version: await ver(placeId), best_season: 'Tháng 12 - tháng 3' }, actorId);
     row = await readDetails(placeId);
     expect(row.best_season).toBe('Tháng 12 - tháng 3');
     expect(row.best_season_source_id).toBeNull();
@@ -129,7 +143,7 @@ describe('Beach details PATCH semantics (giữ/đổi/xoá, nhất quán giá tr
 
     // 5) Cấp nguồn mới cho giá trị hiện tại -> verified_at làm mới.
     const secondSourceId = await mkSource();
-    await beachesService.updateDetails(placeId, { best_season_source_id: secondSourceId }, actorId);
+    await beachesService.updateDetails(placeId, { expected_content_version: await ver(placeId), best_season_source_id: secondSourceId }, actorId);
     row = await readDetails(placeId);
     expect(row.best_season).toBe('Tháng 12 - tháng 3');
     expect(row.best_season_source_id).toBe(secondSourceId);
