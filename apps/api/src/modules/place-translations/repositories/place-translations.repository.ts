@@ -97,6 +97,12 @@ export class PlaceTranslationsRepository {
     });
   }
 
+  // Locked read used by reviewTranslation(): two reviews of the SAME row serialize here, so the second one
+  // re-reads the already-approved row and is refused with 409 instead of colliding on the revision number.
+  findByIdForUpdate(id: string, manager: EntityManager): Promise<PlaceTranslation | null> {
+    return manager.getRepository(PlaceTranslation).findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+  }
+
   findById(id: string, manager?: EntityManager): Promise<PlaceTranslation | null> {
     return this.target(manager).findOne({ where: { id } });
   }

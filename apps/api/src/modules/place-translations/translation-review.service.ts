@@ -185,7 +185,7 @@ export class TranslationReviewService {
     const reviewedAt = new Date();
 
     return this.dataSource.transaction(async (manager) => {
-      const translation = await this.translationsRepo.findById(translationId, manager);
+      const translation = await this.translationsRepo.findByIdForUpdate(translationId, manager);
       if (!translation) {
         throw new NotFoundException(`reviewTranslation: translation ${translationId} not found`);
       }

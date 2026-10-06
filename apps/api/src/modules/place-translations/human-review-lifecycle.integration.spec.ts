@@ -80,6 +80,7 @@ describe('Human review lifecycle — end-to-end (PlaceTranslationsService + Tran
         ),
       ),
       findById: jest.fn((id: string) => Promise.resolve(store.get(id) ?? null)),
+      findByIdForUpdate: jest.fn((id: string) => Promise.resolve(store.get(id) ?? null)),
       // Real semantics of findCurrentPublic (PlaceTranslationsRepository) — the ONLY query the
       // public read path (PlacesService -> getCurrentPublicTranslatedText) is allowed to use.
       findCurrentPublic: jest.fn((placeId: string, fieldKey: string, localeCode: string) =>

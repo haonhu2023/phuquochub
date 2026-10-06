@@ -68,6 +68,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
   beforeEach(() => {
     translationsRepo = {
       findById: jest.fn(),
+      findByIdForUpdate: jest.fn(),
       updateReviewState: jest.fn().mockResolvedValue(true),
       listReviewQueue: jest.fn(),
     } as unknown as jest.Mocked<PlaceTranslationsRepository>;
@@ -140,7 +141,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.REJECTED, null),
       ).rejects.toThrow(BadRequestException);
-      expect(translationsRepo.findById).not.toHaveBeenCalled();
+      expect(translationsRepo.findByIdForUpdate).not.toHaveBeenCalled();
     });
 
     it('rejects a NEEDS_CHANGES decision with only whitespace notes', async () => {
@@ -155,7 +156,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('allows an APPROVED decision with no notes', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow());
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow());
 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null),
@@ -169,14 +170,14 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, 'x'.repeat(REVIEW_NOTES_MAX_LENGTH + 1)),
       ).rejects.toThrow(BadRequestException);
-      expect(translationsRepo.findById).not.toHaveBeenCalled();
+      expect(translationsRepo.findByIdForUpdate).not.toHaveBeenCalled();
     });
   });
 
   it('throws NotFoundException when the translation does not exist', async () => {
     usersRepo.findById.mockResolvedValue(actor());
     authz.can.mockResolvedValue(true);
-    translationsRepo.findById.mockResolvedValue(null);
+    translationsRepo.findByIdForUpdate.mockResolvedValue(null);
 
     await expect(
       service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null),
@@ -187,7 +188,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('409s on a superseded (not-current) row — the current row must be reviewed instead', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow({ isCurrent: false }));
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow({ isCurrent: false }));
 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null),
@@ -198,7 +199,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('409s on a row already decided (APPROVED) — a second decision is not a re-review', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow({ humanReviewStatus: 'APPROVED' }));
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow({ humanReviewStatus: 'APPROVED' }));
 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.REJECTED, 'changed my mind'),
@@ -209,7 +210,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('409s on a row already decided (REJECTED)', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow({ humanReviewStatus: 'REJECTED' }));
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow({ humanReviewStatus: 'REJECTED' }));
 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null),
@@ -219,7 +220,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('allows re-review of a NEEDS_CHANGES row without a content edit', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow({ humanReviewStatus: 'NEEDS_CHANGES' }));
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow({ humanReviewStatus: 'NEEDS_CHANGES' }));
 
       await expect(
         service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null),
@@ -229,7 +230,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('DOUBLE_SUBMISSION_SAFE — when the conditional UPDATE affects 0 rows (a concurrent write won the race), throws 409 and never reports false success', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow());
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow());
       translationsRepo.updateReviewState.mockResolvedValue(false);
 
       await expect(
@@ -240,7 +241,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     it('passes the OBSERVED prior humanReviewStatus as the optimistic-concurrency guard to updateReviewState', async () => {
       usersRepo.findById.mockResolvedValue(actor());
       authz.can.mockResolvedValue(true);
-      translationsRepo.findById.mockResolvedValue(currentRow({ humanReviewStatus: 'NEEDS_CHANGES' }));
+      translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow({ humanReviewStatus: 'NEEDS_CHANGES' }));
 
       await service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null);
 
@@ -257,7 +258,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     usersRepo.findById.mockResolvedValue(actor());
     authz.can.mockResolvedValue(true);
     const row = currentRow();
-    translationsRepo.findById.mockResolvedValue(row);
+    translationsRepo.findByIdForUpdate.mockResolvedValue(row);
 
     const result = await service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, 'looks good');
 
@@ -295,7 +296,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
   it('REJECTED_CAN_BE_PUBLIC=NO — a REJECT decision never sets isPublic/isProductionData/productionEligible', async () => {
     usersRepo.findById.mockResolvedValue(actor());
     authz.can.mockResolvedValue(true);
-    translationsRepo.findById.mockResolvedValue(currentRow());
+    translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow());
 
     const result = await service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.REJECTED, 'not accurate');
 
@@ -313,7 +314,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
   it('NEEDS_CHANGES_CAN_BE_PUBLIC=NO — a NEEDS_CHANGES decision never sets isPublic/isProductionData/productionEligible', async () => {
     usersRepo.findById.mockResolvedValue(actor());
     authz.can.mockResolvedValue(true);
-    translationsRepo.findById.mockResolvedValue(currentRow());
+    translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow());
 
     const result = await service.reviewTranslation(
       TRANSLATION_ID,
@@ -337,7 +338,7 @@ describe('TranslationReviewService — CRITICAL HUMAN-REVIEW RULE enforcement', 
     authz.can.mockResolvedValue(true);
     // Row's own importBatchId/sourceId carry no reviewer concept; confirm the ONLY id ever written
     // as reviewedBy is the actorId this method was called with.
-    translationsRepo.findById.mockResolvedValue(currentRow());
+    translationsRepo.findByIdForUpdate.mockResolvedValue(currentRow());
 
     await service.reviewTranslation(TRANSLATION_ID, ACTOR_ID, HumanReviewStatus.APPROVED, null);
 
