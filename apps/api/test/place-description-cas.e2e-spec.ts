@@ -247,6 +247,16 @@ describe('Place description drafts: CAS + revision-bound publish — live Postgr
     expect(await translationRow(enB.id)).toMatchObject({ human_review_status: 'PENDING', is_public: false, is_current: true });
   });
 
+  it('bản đã duyệt vẫn là bản công khai khi có bản nháp mới chờ duyệt; bản nháp không lộ ra public', async () => {
+    const p = await mkPlace('keep-public');
+    const [a] = await places.saveDescriptionDraft(p.id, { vi: 'Đã duyệt A', expected_vi_id: null }, ownerId);
+    await places.publishDescriptionDraft(p.id, { vi_translation_id: a.id }, ownerId);
+    const [b] = await places.saveDescriptionDraft(p.id, { vi: 'Nháp B', expected_vi_id: a.id }, ownerId);
+    expect(await translationRow(a.id)).toMatchObject({ is_current: false, is_public: true });
+    expect(await translationRow(b.id)).toMatchObject({ is_current: true, is_public: false });
+    expect((await places.getBySlug(p.slug, 'vi')).description).toBe('Đã duyệt A');
+  });
+
   // ---------------------------------------------------------------------------
   // Concurrency. Each case uses a fresh place and states the serial order it can produce.
   // ---------------------------------------------------------------------------

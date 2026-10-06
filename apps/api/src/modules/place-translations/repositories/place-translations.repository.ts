@@ -116,7 +116,7 @@ export class PlaceTranslationsRepository {
     const rows: Array<{ place_id: string }> = await this.target(manager).manager.query(
       `SELECT DISTINCT place_id FROM place_translations
        WHERE place_id = ANY($1) AND field_key = $2 AND locale_code = $3
-         AND is_current = true AND is_public = true AND is_production_data = true`,
+         AND is_public = true AND is_production_data = true`,
       [placeIds, fieldKey, localeCode],
     );
     return new Set(rows.map((r) => r.place_id));
@@ -133,8 +133,11 @@ export class PlaceTranslationsRepository {
     localeCode: string,
     manager?: EntityManager,
   ): Promise<PlaceTranslation | null> {
+    // The newest APPROVED revision. A newer pending draft supersedes it (is_current=false) but must not
+    // remove the live text from the public page, so the approved flags are the eligibility test, not is_current.
     return this.target(manager).findOne({
-      where: { placeId, fieldKey, localeCode, isCurrent: true, isPublic: true, isProductionData: true },
+      where: { placeId, fieldKey, localeCode, isPublic: true, isProductionData: true },
+      order: { createdAt: 'DESC' },
     });
   }
 

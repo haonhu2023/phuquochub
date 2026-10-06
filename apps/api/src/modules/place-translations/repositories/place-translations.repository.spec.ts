@@ -5,7 +5,7 @@ import type { PlaceTranslation } from '../entities/place-translation.entity';
 const PLACE_ID = '11111111-1111-1111-1111-111111111111';
 
 describe('PlaceTranslationsRepository.findCurrentPublic — Public Place i18n Read Path eligibility predicate', () => {
-  it('queries isCurrent=true AND isPublic=true AND isProductionData=true for the exact place/field/locale', async () => {
+  it('queries the newest APPROVED row (isPublic=true AND isProductionData=true), not the current row, for the exact place/field/locale', async () => {
     const findOne = jest.fn().mockResolvedValue(null);
     const repo = { findOne } as unknown as Repository<PlaceTranslation>;
     const translationsRepo = new PlaceTranslationsRepository(repo);
@@ -17,10 +17,10 @@ describe('PlaceTranslationsRepository.findCurrentPublic — Public Place i18n Re
         placeId: PLACE_ID,
         fieldKey: 'short_description',
         localeCode: 'en',
-        isCurrent: true,
         isPublic: true,
         isProductionData: true,
       },
+      order: { createdAt: 'DESC' },
     });
   });
 
@@ -219,7 +219,7 @@ describe('PlaceTranslationsRepository.listPlaceIdsWithCurrentPublicField — SEO
     const result = await translationsRepo.listPlaceIdsWithCurrentPublicField([PLACE_ID, PLACE_ID_2], 'short_description', 'en');
 
     expect(query.mock.calls[0][0]).toContain('place_id = ANY($1)');
-    expect(query.mock.calls[0][0]).toContain('is_current = true AND is_public = true AND is_production_data = true');
+    expect(query.mock.calls[0][0]).toContain('is_public = true AND is_production_data = true');
     expect(query.mock.calls[0][1]).toEqual([[PLACE_ID, PLACE_ID_2], 'short_description', 'en']);
     expect(result).toEqual(new Set([PLACE_ID]));
   });

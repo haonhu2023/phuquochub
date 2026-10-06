@@ -420,3 +420,28 @@ describe('PlaceDescriptionEditor — bản nháp hiện hành, retry và lỗi m
     expect(mockSaveDescription).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('PlaceDescriptionEditor — chỉ gửi locale đã đổi', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ user: SESSION.user, initializing: false, isAuthenticated: true, accessToken: 'token-abc' } as never);
+    mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
+    mockEmptyDrafts();
+  });
+
+  it('chỉ EN đổi -> save chỉ gửi en với expected_en_id; VI không được gửi lại dù có bản nháp VI', async () => {
+    mockGetDescription.mockResolvedValue({
+      fallback_description: null,
+      vi: { id: 't-vi-cur', text: 'VI hiện có', human_review_status: 'APPROVED', is_public: true },
+      en: { id: 't-en-cur', text: 'EN cũ', human_review_status: 'PENDING', is_public: false },
+    });
+    mockSaveDescription.mockResolvedValue([{ id: 't-en-new', locale_code: 'en', human_review_status: 'PENDING' }]);
+    render(<PlaceDescriptionEditor placeId="p1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (English)'), { target: { value: 'EN mới' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
+    await waitFor(() => expect(mockSaveDescription).toHaveBeenCalledWith('p1', { en: 'EN mới', expected_en_id: 't-en-cur' }, 'token-abc'));
+    expect(mockSaveDescription.mock.calls[0][1]).not.toHaveProperty('vi');
+  });
+});

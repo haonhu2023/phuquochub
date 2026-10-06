@@ -161,8 +161,9 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
   }
 
   // Trường được coi là ĐÃ SỬA khi VI hoặc EN khác bản đã tải.
+  // Có thay đổi GỬI ĐƯỢC: VI đã đổi, hoặc EN đã đổi và không rỗng (EN rỗng không được lưu).
   function isDirty(field: FieldKey, fields: Record<FieldKey, FieldState>, loaded: Record<FieldKey, FieldState>): boolean {
-    return fields[field].vi !== loaded[field].vi || fields[field].en !== loaded[field].en;
+    return fields[field].vi !== loaded[field].vi || (fields[field].en !== loaded[field].en && fields[field].en.trim() !== '');
   }
 
   const PENDING_REVIEW = ['PENDING', 'NEEDS_CHANGES'];
@@ -195,12 +196,14 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     const dirty = FIELDS.filter((f) => isDirty(f, fields, loaded));
     const outcomes = await Promise.allSettled(
       dirty.map((field) => {
-        const en = fields[field].en || undefined;
         const ids = draftIds[field];
+        const viChanged = fields[field].vi !== loaded[field].vi;
+        const enChanged = fields[field].en !== loaded[field].en && fields[field].en.trim() !== '';
+        // Chỉ gửi locale ĐÃ ĐỔI, kèm id của chính locale đó: locale không đổi không bị ghi lại
+        // và không bị kéo theo conflict của locale khác.
         const input: DraftSaveInput = {
-          vi: fields[field].vi,
-          expected_vi_id: ids.vi?.id ?? null,
-          ...(en !== undefined ? { en, expected_en_id: ids.en?.id ?? null } : {}),
+          ...(viChanged ? { vi: fields[field].vi, expected_vi_id: ids.vi?.id ?? null } : {}),
+          ...(enChanged ? { en: fields[field].en, expected_en_id: ids.en?.id ?? null } : {}),
         };
         if (field === 'name') return saveNameDraft(placeId, input, accessToken);
         return field === 'description'
