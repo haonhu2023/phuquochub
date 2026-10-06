@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
 import { BeachesRepository } from './repositories/beaches.repository';
@@ -115,7 +115,12 @@ export class BeachesService {
 
   // Đặc quyền (Place.Edit.Managed). UPSERT — xem BeachesRepository.upsertDetails.
   async updateDetails(placeId: string, dto: UpdateBeachDetailsDto, userId: string) {
-    await this.repo.upsertDetails(placeId, dto);
+    const result = await this.repo.upsertDetails(placeId, dto, dto.expected_content_version);
+    if (result.conflict) {
+      throw new ConflictException(
+        `Địa điểm vừa được người khác sửa (mong đợi content_version=${dto.expected_content_version}) — tải lại và thử lại.`,
+      );
+    }
     await this.recordWriteAndInvalidate('place.beach_details_updated', placeId, userId, {
       access_route_changed: dto.access_route !== undefined,
       characteristics_changed: dto.characteristics !== undefined,

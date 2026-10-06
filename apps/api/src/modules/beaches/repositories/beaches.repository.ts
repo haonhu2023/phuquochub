@@ -169,8 +169,27 @@ export class BeachesRepository {
    * minh. `SELECT ... FOR UPDATE` khoá đúng hàng cho suốt read-modify-write, chặn lost-update khi
    * hai admin sửa cùng bãi biển đồng thời.
    */
-  async upsertDetails(placeId: string, dto: UpdateBeachDetailsDto): Promise<void> {
-    await this.ds.transaction(async (m) => {
+  async upsertDetails(
+    placeId: string,
+    dto: UpdateBeachDetailsDto,
+    expectedVersion: number,
+  ): Promise<{ conflict: boolean }> {
+    // A PATCH with no detail field is a no-op: no version bump, no write.
+    const hasDetailField = Object.keys(dto).some(
+      (k) => k !== 'expected_content_version' && (dto as unknown as Record<string, unknown>)[k] !== undefined,
+    );
+    if (!hasDetailField) return { conflict: false };
+    return this.ds.transaction(async (m) => {
+      // CAS: the same token places/hotels/restaurants use. A stale version writes nothing (409 at the service).
+      const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
+        `UPDATE places SET content_version = content_version + 1
+           WHERE id = $1 AND content_version = $2
+           RETURNING content_version`,
+        [placeId, expectedVersion],
+      );
+      if (casRows.length === 0) {
+        return { conflict: true };
+      }
       const rows = await m.query(
         `SELECT access_route, characteristics, services,
                 best_season, best_season_source_id,
@@ -230,7 +249,7 @@ export class BeachesRepository {
         patch,
       );
 
-      if (Object.keys(patch).length === 0) return;
+      if (Object.keys(patch).length === 0) return { conflict: false };
 
       if (!current) {
         const cols = ['place_id', ...Object.keys(patch)];
@@ -239,7 +258,7 @@ export class BeachesRepository {
           `INSERT INTO "place_beach_details" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')})`,
           [placeId, ...Object.values(patch)],
         );
-        return;
+        return { conflict: false };
       }
 
       const setClauses = Object.keys(patch)
@@ -249,6 +268,7 @@ export class BeachesRepository {
         placeId,
         ...Object.values(patch),
       ]);
+      return { conflict: false };
     });
   }
 }

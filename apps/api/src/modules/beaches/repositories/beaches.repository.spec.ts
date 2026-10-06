@@ -198,8 +198,12 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
   // transaction, chỉ đụng cột THỰC SỰ có mặt trong DTO. Proof thật trên Postgres: xem
   // test/hotel-details-patch-semantics.e2e-spec.ts (cùng cơ chế `computeSourcedFieldPatch`).
   describe('upsertDetails', () => {
-    function mockTransaction(selectResult: unknown[]) {
-      const managerQuery = jest.fn().mockResolvedValueOnce(selectResult).mockResolvedValue(undefined);
+    function mockTransaction(selectResult: unknown[], casRows: unknown[] = [{ content_version: 3 }]) {
+      const managerQuery = jest
+        .fn()
+        .mockResolvedValueOnce([casRows, 1])
+        .mockResolvedValueOnce(selectResult)
+        .mockResolvedValue(undefined);
       (ds as unknown as { transaction: jest.Mock }).transaction = jest
         .fn()
         .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
@@ -209,9 +213,9 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
     it('chưa có hàng, PATCH một trường TĨNH (không nguồn) -> INSERT chỉ với cột đó', async () => {
       const managerQuery = mockTransaction([]);
 
-      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never);
+      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never, 3);
 
-      const insertCall = managerQuery.mock.calls[1];
+      const insertCall = managerQuery.mock.calls[2];
       expect(sql(insertCall[0])).toBe('INSERT INTO "place_beach_details" ("place_id", "access_route") VALUES ($1, $2)');
       expect(insertCall[1]).toEqual(['p1', 'Theo đường ven biển']);
     });
@@ -219,9 +223,9 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
     it('chưa có hàng, PATCH một trường CÓ NGUỒN không kèm source -> INSERT giá trị + source/verified_at NULL tường minh (không suy đoán nguồn)', async () => {
       const managerQuery = mockTransaction([]);
 
-      await sut.upsertDetails('p1', { lifeguard_info: 'Có trạm cứu hộ' } as never);
+      await sut.upsertDetails('p1', { lifeguard_info: 'Có trạm cứu hộ' } as never, 3);
 
-      const insertCall = managerQuery.mock.calls[1];
+      const insertCall = managerQuery.mock.calls[2];
       expect(sql(insertCall[0])).toBe(
         'INSERT INTO "place_beach_details" ("place_id", "lifeguard_info", "lifeguard_info_source_id", "lifeguard_info_verified_at") VALUES ($1, $2, $3, $4)',
       );
@@ -233,9 +237,9 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
         { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
       ]);
 
-      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never);
+      await sut.upsertDetails('p1', { access_route: 'Theo đường ven biển' } as never, 3);
 
-      const updateCall = managerQuery.mock.calls[1];
+      const updateCall = managerQuery.mock.calls[2];
       expect(sql(updateCall[0])).toBe('UPDATE "place_beach_details" SET "access_route" = $2 WHERE place_id = $1');
       expect(updateCall[1]).toEqual(['p1', 'Theo đường ven biển']);
     });
@@ -245,9 +249,9 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
         { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
       ]);
 
-      await sut.upsertDetails('p1', { best_season: 'Tháng 12-3' } as never);
+      await sut.upsertDetails('p1', { best_season: 'Tháng 12-3' } as never, 3);
 
-      const [updateSql, params] = managerQuery.mock.calls[1];
+      const [updateSql, params] = managerQuery.mock.calls[2];
       expect(sql(updateSql)).toContain('"best_season_source_id" = $');
       expect(sql(updateSql)).toContain('"best_season_verified_at" = $');
       expect(params).toContain(null);
@@ -258,9 +262,9 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
         { best_season: 'Tháng 11-4', lifeguard_info: null, sourced_notes: null },
       ]);
 
-      await sut.upsertDetails('p1', { best_season_source_id: 'src-1' } as never);
+      await sut.upsertDetails('p1', { best_season_source_id: 'src-1' } as never, 3);
 
-      const [updateSql, params] = managerQuery.mock.calls[1];
+      const [updateSql, params] = managerQuery.mock.calls[2];
       expect(sql(updateSql)).not.toContain('"best_season" = $2 '); // không SET lại giá trị text
       expect(params).toContain('src-1');
       expect(params.some((p: unknown) => p instanceof Date)).toBe(true);
@@ -269,9 +273,22 @@ describe('BeachesRepository — browse (ward/price_range filter, sort, paginatio
     it('patch rỗng thật sự -> không UPDATE/INSERT gì', async () => {
       const managerQuery = mockTransaction([{ best_season: null, lifeguard_info: null, sourced_notes: null }]);
 
-      await sut.upsertDetails('p1', {} as never);
+      await sut.upsertDetails('p1', {} as never, 3);
 
-      expect(managerQuery).toHaveBeenCalledTimes(1);
+      expect(managerQuery).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('upsertDetails — CAS trên places.content_version', () => {
+  it('version lệch → conflict, KHÔNG ghi chi tiết', async () => {
+    const managerQuery = jest.fn().mockResolvedValueOnce([[], 0]).mockResolvedValue(undefined);
+    const ds2 = createMock<DataSource>({ query: jest.fn() });
+    (ds2 as unknown as { transaction: jest.Mock }).transaction = jest
+      .fn()
+      .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<unknown>) => cb({ query: managerQuery }));
+    const repo = new BeachesRepository(ds2, MEDIA_URL);
+    await expect(repo.upsertDetails('p1', { access_route: 'x' } as never, 1)).resolves.toEqual({ conflict: true });
+    expect(managerQuery).toHaveBeenCalledTimes(1);
   });
 });

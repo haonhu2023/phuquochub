@@ -17,7 +17,7 @@ describe('BeachesService', () => {
       listBeaches: jest.fn(),
       countBeaches: jest.fn(),
       detail: jest.fn(),
-      upsertDetails: jest.fn(),
+      upsertDetails: jest.fn().mockResolvedValue({ conflict: false }),
     });
     audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
     cacheInvalidation = createMock<Deps[3]>({ invalidatePlace: jest.fn().mockResolvedValue(undefined) });
@@ -208,7 +208,7 @@ describe('BeachesService', () => {
 
   describe('updateDetails — KHÔNG BAO GIỜ tự suy ra "an toàn" từ chuỗi text', () => {
     it('upsert rồi trả detail đã map; lifeguard_info không có source → lifeguard_info_source null', async () => {
-      repo.upsertDetails.mockResolvedValue(undefined);
+      repo.upsertDetails.mockResolvedValue({ conflict: false });
       repo.detail.mockResolvedValue({
         access_route: null,
         characteristics: null,
@@ -230,17 +230,17 @@ describe('BeachesService', () => {
         sourced_notes_source_url: null,
       });
 
-      const dto = { lifeguard_info: 'Có trạm cứu hộ giờ hành chính' };
+      const dto = { lifeguard_info: 'Có trạm cứu hộ giờ hành chính', expected_content_version: 1 };
       const res = await service.updateDetails('b1', dto, 'u1');
 
-      expect(repo.upsertDetails).toHaveBeenCalledWith('b1', dto);
+      expect(repo.upsertDetails).toHaveBeenCalledWith('b1', dto, 1);
       // Có text mô tả nhưng KHÔNG có source_id → source null, KHÔNG suy ra trạng thái "an toàn" nào.
       expect(res?.lifeguard_info_source).toBeNull();
       expect(res?.lifeguard_info).toBe('Có trạm cứu hộ giờ hành chính');
     });
 
     it('ghi audit place.beach_details_updated và chỉ invalidate cache khi đã published', async () => {
-      repo.upsertDetails.mockResolvedValue(undefined);
+      repo.upsertDetails.mockResolvedValue({ conflict: false });
       repo.detail.mockResolvedValue({
         access_route: null, characteristics: null, services: null,
         best_season: null, best_season_source_id: null, best_season_verified_at: null,
@@ -252,7 +252,7 @@ describe('BeachesService', () => {
       });
       placesService.getSlugAndStatus.mockResolvedValue({ slug: 'bai-sao', status: 'published' });
 
-      await service.updateDetails('b1', { access_route: 'x' }, 'u1');
+      await service.updateDetails('b1', { access_route: 'x', expected_content_version: 1 }, 'u1');
 
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'place.beach_details_updated', entityId: 'b1', actorId: 'u1' }),

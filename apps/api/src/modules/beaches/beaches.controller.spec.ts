@@ -30,7 +30,7 @@ describe('BeachesController', () => {
   });
 
   it('PATCH :id/details → updateDetails(id, dto, user.sub)', () => {
-    const dto = { access_route: 'Theo đường ven biển' };
+    const dto = { access_route: 'Theo đường ven biển', expected_content_version: 1 };
     controller.updateDetails('b1', dto, { sub: 'u1' } as Parameters<typeof controller.updateDetails>[2]);
     expect(beachesService.updateDetails).toHaveBeenCalledWith('b1', dto, 'u1');
   });

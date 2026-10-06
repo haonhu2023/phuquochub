@@ -51,6 +51,9 @@ export class ListBeachesQueryDto {
 // Field TÙY CHỌN "được phép xoá" khai kiểu `T | null` (không chỉ `T | undefined`) — xem ghi chú
 // đầy đủ ở UpdateHotelDetailsDto.
 export class UpdateBeachDetailsDto {
+  @IsInt() @Min(0)
+  expected_content_version!: number;
+
   @IsOptional() @IsString() @MaxLength(2000)
   access_route?: string | null;
 
