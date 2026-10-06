@@ -118,6 +118,8 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
       getCurrentTranslation: jest.fn().mockResolvedValue(null),
       publishTranslationBundle: jest.fn(),
+      saveDraftIfCurrent: jest.fn(),
+      getTranslationById: jest.fn(),
     });
     translationReviewService = createMock<Ctor[13]>({ reviewTranslation: jest.fn() });
     localesService = createMock<Ctor[14]>({
@@ -704,47 +706,49 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   // saveDescriptionDraft / publishDescriptionDraft / getDescriptionDraft — mô tả VI/EN THẬT qua
   // place_translations (content_owner, 2026-09-16) — KHÔNG places.description
   // -------------------------------------------------------------------------
-  describe('saveDescriptionDraft', () => {
+  describe('saveDescriptionDraft (CAS theo id bản nháp đã đọc)', () => {
     beforeEach(() => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', description: 'mô tả gốc' });
+      placeTranslationsService.saveDraftIfCurrent.mockResolvedValue([{ id: 't-new', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
     });
 
     it('không có vi lẫn en → BadRequest', async () => {
       await expect(service.saveDescriptionDraft('p1', {}, 'u1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
+    it('gửi vi mà thiếu expected_vi_id → BadRequest, không ghi', async () => {
+      await expect(service.saveDescriptionDraft('p1', { vi: 'X' } as never, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(placeTranslationsService.saveDraftIfCurrent).not.toHaveBeenCalled();
+    });
+
     it('không tìm thấy place → NotFound', async () => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue(null);
-      await expect(service.saveDescriptionDraft('p1', { vi: 'X' }, 'u1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.saveDescriptionDraft('p1', { vi: 'X', expected_vi_id: null }, 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('gọi publishTranslationBundle với origin=OWNER_UPDATE, cả vi lẫn en khi cả hai được truyền', async () => {
-      placeTranslationsService.publishTranslationBundle.mockResolvedValue([
-        { id: 't-vi', localeCode: 'vi', humanReviewStatus: 'PENDING' },
-        { id: 't-en', localeCode: 'en', humanReviewStatus: 'PENDING' },
-      ]);
-
-      await service.saveDescriptionDraft('p1', { vi: 'Mô tả mới', en: 'New description' }, 'u1');
-
-      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
+    it('chỉ vi → một item, mang đúng expectedCurrentId; en KHÔNG được ghi', async () => {
+      await service.saveDescriptionDraft('p1', { vi: 'Chỉ VI', expected_vi_id: 't-old' }, 'u1');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
       expect(input.placeId).toBe('p1');
       expect(input.origin).toBe(RevisionOrigin.OWNER_UPDATE);
-      expect(input.editorId).toBe('u1');
-      expect(input.items).toHaveLength(2);
-      const viItem = input.items.find((i: { localeCode: string }) => i.localeCode === 'vi');
-      const enItem = input.items.find((i: { localeCode: string }) => i.localeCode === 'en');
-      expect(viItem).toMatchObject({ translatedText: 'Mô tả mới', sourceLocaleCode: 'vi', isPublic: false, isProductionData: false });
-      expect(enItem).toMatchObject({ translatedText: 'New description', sourceLocaleCode: 'vi', isPublic: false, isProductionData: false });
+      expect(input.items).toHaveLength(1);
+      expect(input.items[0]).toMatchObject({ expectedCurrentId: 't-old' });
+      expect(input.items[0].item).toMatchObject({ localeCode: 'vi', fieldKey: 'description', isPublic: false });
     });
 
-    it('chỉ vi được truyền → items chỉ có MỘT phần tử (vi)', async () => {
-      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't-vi', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+    it('vi và en cùng gửi → mỗi locale có expectedCurrentId riêng; expected null = chưa có bản nào', async () => {
+      await service.saveDescriptionDraft('p1', { vi: 'Mô tả mới', expected_vi_id: 't-vi', en: 'New', expected_en_id: null }, 'u1');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      const vi = input.items.find((i: { item: { localeCode: string } }) => i.item.localeCode === 'vi');
+      const en = input.items.find((i: { item: { localeCode: string } }) => i.item.localeCode === 'en');
+      expect(vi).toMatchObject({ expectedCurrentId: 't-vi' });
+      expect(en).toMatchObject({ expectedCurrentId: null });
+      expect(en.item.sourceText).toBe('Mô tả mới');
+    });
 
-      await service.saveDescriptionDraft('p1', { vi: 'Chỉ VI' }, 'u1');
-
-      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
-      expect(input.items).toHaveLength(1);
-      expect(input.items[0].localeCode).toBe('vi');
+    it('conflict từ tầng transaction (đã đổi sau khi đọc) được truyền nguyên, không bị nuốt', async () => {
+      placeTranslationsService.saveDraftIfCurrent.mockRejectedValue(new ConflictException('đã đổi'));
+      await expect(service.saveDescriptionDraft('p1', { vi: 'X', expected_vi_id: 't-old' }, 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
@@ -770,57 +774,33 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     });
   });
 
-  describe('publishDescriptionDraft', () => {
-    it('không có bản nháp PENDING/NEEDS_CHANGES nào → NotFound', async () => {
-      placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
-      await expect(service.publishDescriptionDraft('p1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+  describe('publishDescriptionDraft (theo id bản nháp đã xem)', () => {
+    it('không gửi id nào → BadRequest, không duyệt gì', async () => {
+      await expect(service.publishDescriptionDraft('p1', {}, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(translationReviewService.reviewTranslation).not.toHaveBeenCalled();
     });
 
-    it('duyệt qua TranslationReviewService.reviewTranslation() với decision=APPROVED cho từng locale PENDING', async () => {
-      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
-        Promise.resolve({ id: `t-${locale}`, localeCode: locale, humanReviewStatus: 'PENDING' }),
-      );
+    it('id thuộc place/field/locale khác → NotFound, không duyệt', async () => {
+      placeTranslationsService.getTranslationById.mockResolvedValue({ id: 't-vi', placeId: 'other', fieldKey: 'description', localeCode: 'vi' });
+      await expect(service.publishDescriptionDraft('p1', { vi_translation_id: 't-vi' }, 'u1')).rejects.toBeInstanceOf(NotFoundException);
+      expect(translationReviewService.reviewTranslation).not.toHaveBeenCalled();
+    });
+
+    it('chỉ vi_translation_id → chỉ duyệt đúng id đó; EN không bị duyệt', async () => {
+      placeTranslationsService.getTranslationById.mockResolvedValue({ id: 't-vi', placeId: 'p1', fieldKey: 'description', localeCode: 'vi' });
       translationReviewService.reviewTranslation.mockResolvedValue(undefined);
-
-      const results = await service.publishDescriptionDraft('p1', 'u1');
-
-      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-vi', 'u1', 'APPROVED', null);
-      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-en', 'u1', 'APPROVED', null);
-      expect(results).toEqual([
-        { locale_code: 'vi', ok: true },
-        { locale_code: 'en', ok: true },
-      ]);
-    });
-
-    it('một locale lỗi (vd actor thiếu PlaceTranslation.Review.Any) → locale còn lại VẪN được công khai, kết quả báo đúng locale lỗi', async () => {
-      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
-        Promise.resolve({ id: `t-${locale}`, localeCode: locale, humanReviewStatus: 'PENDING' }),
-      );
-      translationReviewService.reviewTranslation.mockImplementation((id: string) =>
-        id === 't-en' ? Promise.reject(new Error('boom')) : Promise.resolve(undefined),
-      );
-
-      const results = await service.publishDescriptionDraft('p1', 'u1');
-
-      expect(results).toEqual(
-        expect.arrayContaining([
-          { locale_code: 'vi', ok: true },
-          { locale_code: 'en', ok: false, error: 'boom' },
-        ]),
-      );
-    });
-
-    it('bỏ qua bản dịch đã APPROVED từ trước (chỉ duyệt PENDING/NEEDS_CHANGES)', async () => {
-      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _f: string, locale: string) =>
-        locale === 'vi'
-          ? Promise.resolve({ id: 't-vi', localeCode: 'vi', humanReviewStatus: 'APPROVED' })
-          : Promise.resolve({ id: 't-en', localeCode: 'en', humanReviewStatus: 'PENDING' }),
-      );
-
-      await service.publishDescriptionDraft('p1', 'u1');
-
+      const results = await service.publishDescriptionDraft('p1', { vi_translation_id: 't-vi' }, 'u1');
       expect(translationReviewService.reviewTranslation).toHaveBeenCalledTimes(1);
-      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-en', 'u1', 'APPROVED', null);
+      expect(translationReviewService.reviewTranslation).toHaveBeenCalledWith('t-vi', 'u1', 'APPROVED', null);
+      expect(results).toEqual([{ locale_code: 'vi', translation_id: 't-vi', ok: true }]);
+    });
+
+    it('bản nháp đã bị thay (reviewTranslation → 409) → kết quả ok:false status 409 cho RIÊNG locale đó', async () => {
+      placeTranslationsService.getTranslationById.mockResolvedValue({ id: 't-vi', placeId: 'p1', fieldKey: 'description', localeCode: 'vi' });
+      translationReviewService.reviewTranslation.mockRejectedValue(new ConflictException('superseded'));
+      await expect(service.publishDescriptionDraft('p1', { vi_translation_id: 't-vi' }, 'u1')).resolves.toEqual([
+        { locale_code: 'vi', translation_id: 't-vi', ok: false, status: 409, error: 'superseded' },
+      ]);
     });
   });
 
@@ -842,18 +822,19 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
 
     it('saveNameDraft: publishTranslationBundle nhận field_key display_name', async () => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', name: 'Tên gốc' });
-      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+      placeTranslationsService.saveDraftIfCurrent.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
 
-      await service.saveNameDraft('p1', { vi: 'Tên mới' }, 'u1');
+      await service.saveNameDraft('p1', { vi: 'Tên mới', expected_vi_id: null }, 'u1');
 
-      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
-      expect(input.items[0].fieldKey).toBe('display_name');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      expect(input.items[0].item.fieldKey).toBe('display_name');
+      expect(input.items[0].expectedCurrentId).toBeNull();
     });
 
     it('publishNameDraft: đọc/duyệt field_key display_name; không có nháp -> thông điệp riêng cho tên', async () => {
       placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
-      await expect(service.publishNameDraft('p1', 'u1')).rejects.toThrow(/tên/);
-      expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'display_name', 'vi');
+      await expect(service.publishNameDraft('p1', {}, 'u1')).rejects.toThrow(/vi_translation_id|en_translation_id/);
+      expect(translationReviewService.reviewTranslation).not.toHaveBeenCalled();
     });
   });
 
@@ -868,19 +849,18 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(placeTranslationsService.getCurrentTranslation).toHaveBeenCalledWith('p1', 'short_description', 'vi');
     });
 
-    it('saveShortDescriptionDraft: publishTranslationBundle nhận field_key short_description', async () => {
+    it('saveShortDescriptionDraft: CAS theo expected_vi_id, field_key short_description', async () => {
       placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', short_description: 'Ngắn gốc' });
-      placeTranslationsService.publishTranslationBundle.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
-
-      await service.saveShortDescriptionDraft('p1', { vi: 'Ngắn mới' }, 'u1');
-
-      const [input] = placeTranslationsService.publishTranslationBundle.mock.calls[0];
-      expect(input.items[0].fieldKey).toBe('short_description');
+      placeTranslationsService.saveDraftIfCurrent.mockResolvedValue([{ id: 't1', localeCode: 'vi', humanReviewStatus: 'PENDING' }]);
+      await service.saveShortDescriptionDraft('p1', { vi: 'Ngắn mới', expected_vi_id: null }, 'u1');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      expect(input.items[0].item.fieldKey).toBe('short_description');
+      expect(input.items[0].expectedCurrentId).toBeNull();
     });
 
     it('publishShortDescriptionDraft: không có nháp -> thông điệp riêng cho mô tả ngắn', async () => {
       placeTranslationsService.getCurrentTranslation.mockResolvedValue(null);
-      await expect(service.publishShortDescriptionDraft('p1', 'u1')).rejects.toThrow(/mô tả ngắn/);
+      await expect(service.publishShortDescriptionDraft('p1', {}, 'u1')).rejects.toThrow(/vi_translation_id|en_translation_id/);
     });
   });
 

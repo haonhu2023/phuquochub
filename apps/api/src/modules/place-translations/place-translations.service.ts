@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
@@ -316,6 +316,68 @@ export class PlaceTranslationsService {
    * bản công khai. KHÔNG dùng cho bất kỳ đường công khai nào — chỉ getCurrentPublicTranslatedText()
    * ở trên mới được phép phục vụ khách.
    */
+  getTranslationById(id: string): Promise<PlaceTranslation | null> {
+    return this.translationsRepo.findById(id);
+  }
+
+  /**
+   * Lưu nháp CÓ KIỂM PHIÊN BẢN: với mỗi item, hàng current của (place, field, locale) phải đúng là
+   * `expectedCurrentId` (id owner đã đọc), nếu không → 409 và KHÔNG ghi gì. Toàn bộ nằm trong MỘT
+   * transaction: khóa hàng current (FOR UPDATE) → so id → supersede → insert. Hai ghi đồng thời cùng
+   * lúc tạo hai hàng current (`expectedCurrentId` = null) sẽ vi phạm partial unique index
+   * uq_place_trans_current; lỗi 23505 được đổi thành 409 thay vì 500.
+   */
+  async saveDraftIfCurrent(input: {
+    placeId: string;
+    origin: RevisionOrigin;
+    editorId: string | null;
+    items: Array<{ item: PublishTranslationItem; expectedCurrentId: string | null }>;
+  }): Promise<PlaceTranslation[]> {
+    if (input.items.length === 0) {
+      throw new BadRequestException('saveDraftIfCurrent: items must not be empty');
+    }
+    for (const { item } of input.items) {
+      await this.localesService.assertPublishableLocale(item.localeCode);
+      await this.localesService.getKnownLocale(item.sourceLocaleCode);
+    }
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const saved: PlaceTranslation[] = [];
+        for (const { item, expectedCurrentId } of input.items) {
+          const current = await this.translationsRepo.findCurrentForUpdate(
+            input.placeId,
+            item.fieldKey,
+            item.localeCode,
+            manager,
+          );
+          if ((current?.id ?? null) !== expectedCurrentId) {
+            throw new ConflictException(
+              `Bản nháp ${item.fieldKey}/${item.localeCode} đã đổi sau khi bạn đọc (mong đợi ${expectedCurrentId ?? "chưa có"}, hiện tại ${current?.id ?? "chưa có"}) — tải lại và thử lại.`,
+            );
+          }
+          saved.push(
+            await this.publishOneTranslation(
+              input.placeId,
+              item,
+              input.origin,
+              input.editorId,
+              null,
+              manager,
+            ),
+          );
+        }
+        return saved;
+      });
+    } catch (err) {
+      // Chỉ đổi lỗi của đúng chỉ mục "một hàng current cho (place, field, locale)" thành 409. Mọi 23505 khác vẫn ném nguyên.
+      const pg = (err as { driverError?: { code?: string; constraint?: string } }).driverError;
+      if (pg?.code === "23505" && pg.constraint === "uq_place_trans_current") {
+        throw new ConflictException("Bản nháp vừa được người khác lưu cùng lúc — tải lại và thử lại.");
+      }
+      throw err;
+    }
+  }
+
   getCurrentTranslation(placeId: string, fieldKey: string, localeCode: string): Promise<PlaceTranslation | null> {
     return this.translationsRepo.findCurrent(placeId, fieldKey, localeCode);
   }

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { PublishFieldDraftInput, SaveFieldDraftInput } from './dto/places.dto';
 import { EntityManager } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { slugify } from '@phuquochub/utils';
@@ -831,90 +832,30 @@ export class PlacesService {
    * của nền tảng) cho CẢ HAI mục — với chính bản ghi `vi`, `TranslationMethod.ORIGINAL` đúng nghĩa
    * "đây LÀ ngôn ngữ nguồn", không phải một bản dịch của gì khác.
    */
-  async saveDescriptionDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+  async saveDescriptionDraft(id: string, dto: SaveFieldDraftInput, userId: string) {
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
-    return this.saveFieldTranslationDraft(id, DESCRIPTION_FIELD_KEY, dto, existing.description, userId);
+    return this.saveFieldDraftIfCurrent(id, DESCRIPTION_FIELD_KEY, dto, existing.description, userId);
   }
 
   /** Lưu nháp TÊN HIỂN THỊ VI/EN (2026-09-17) — CÙNG khuôn saveDescriptionDraft(), field_key `display_name`. */
-  async saveNameDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+  async saveNameDraft(id: string, dto: SaveFieldDraftInput, userId: string) {
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
-    return this.saveFieldTranslationDraft(id, DISPLAY_NAME_FIELD_KEY, dto, existing.name, userId);
+    return this.saveFieldDraftIfCurrent(id, DISPLAY_NAME_FIELD_KEY, dto, existing.name, userId);
   }
 
   /** Lưu nháp MÔ TẢ NGẮN VI/EN (2026-09-17) — CÙNG khuôn saveDescriptionDraft(), field_key `short_description`. */
-  async saveShortDescriptionDraft(id: string, dto: { vi?: string; en?: string }, userId: string) {
+  async saveShortDescriptionDraft(id: string, dto: SaveFieldDraftInput, userId: string) {
     const existing = await this.placesRepo.getCardByIdIncludingInactive(id);
     if (!existing) {
       throw new NotFoundException('Không tìm thấy địa điểm');
     }
-    return this.saveFieldTranslationDraft(id, SHORT_DESCRIPTION_FIELD_KEY, dto, existing.short_description, userId);
-  }
-
-  /**
-   * Phần dùng chung của saveDescriptionDraft/saveNameDraft/saveShortDescriptionDraft (2026-09-17).
-   * `fallbackForEnSource` — giá trị VI gốc dùng làm `sourceText` cho bản EN khi caller không gửi vi
-   * trong CÙNG lần gọi này (giữ đúng hành vi cũ của saveDescriptionDraft).
-   */
-  private async saveFieldTranslationDraft(
-    id: string,
-    fieldKey: string,
-    dto: { vi?: string; en?: string },
-    fallbackForEnSource: string | null,
-    userId: string,
-  ) {
-    if (dto.vi === undefined && dto.en === undefined) {
-      throw new BadRequestException('Cần ít nhất một trong hai trường vi/en.');
-    }
-    const items: PublishTranslationItem[] = [];
-    if (dto.vi !== undefined) {
-      items.push({
-        fieldKey,
-        localeCode: 'vi',
-        sourceLocaleCode: 'vi',
-        translatedText: dto.vi,
-        sourceText: dto.vi,
-        textFormat: TextFormat.PLAIN_TEXT,
-        translationMethod: TranslationMethod.ORIGINAL,
-        translationStatus: TranslationApprovalStatus.PENDING,
-        humanReviewStatus: HumanReviewStatus.PENDING,
-        qualityGate: QualityGateStatus.PASS,
-        isPublic: false,
-        isProductionData: false,
-        productionEligible: false,
-      });
-    }
-    if (dto.en !== undefined) {
-      items.push({
-        fieldKey,
-        localeCode: 'en',
-        sourceLocaleCode: 'vi',
-        translatedText: dto.en,
-        sourceText: dto.vi ?? fallbackForEnSource ?? '',
-        textFormat: TextFormat.PLAIN_TEXT,
-        translationMethod: TranslationMethod.HUMAN,
-        translationStatus: TranslationApprovalStatus.PENDING,
-        humanReviewStatus: HumanReviewStatus.PENDING,
-        qualityGate: QualityGateStatus.PASS,
-        isPublic: false,
-        isProductionData: false,
-        productionEligible: false,
-      });
-    }
-    const rows = await this.placeTranslationsService.publishTranslationBundle({
-      placeId: id,
-      items,
-      origin: RevisionOrigin.OWNER_UPDATE,
-      editorId: userId,
-      changeNote: null,
-    });
-    return rows.map((r) => ({ id: r.id, locale_code: r.localeCode, human_review_status: r.humanReviewStatus }));
+    return this.saveFieldDraftIfCurrent(id, SHORT_DESCRIPTION_FIELD_KEY, dto, existing.short_description, userId);
   }
 
   /**
@@ -931,48 +872,127 @@ export class PlacesService {
    * không phải một giả định che giấu — kết quả trả về liệt kê CHÍNH XÁC locale nào thành công/lỗi
    * để caller biết và có thể thử lại đúng phần còn thiếu.
    */
-  async publishDescriptionDraft(id: string, userId: string) {
-    return this.publishFieldTranslationDraft(id, DESCRIPTION_FIELD_KEY, userId, 'Không có bản nháp mô tả nào đang chờ công khai.');
+  async publishDescriptionDraft(id: string, dto: PublishFieldDraftInput, userId: string) {
+    return this.publishFieldDraftByIds(id, DESCRIPTION_FIELD_KEY, dto, userId);
   }
 
-  /** Công khai bản nháp TÊN HIỂN THỊ VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
-  async publishNameDraft(id: string, userId: string) {
-    return this.publishFieldTranslationDraft(id, DISPLAY_NAME_FIELD_KEY, userId, 'Không có bản nháp tên nào đang chờ công khai.');
-  }
-
-  /** Công khai bản nháp MÔ TẢ NGẮN VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
-  async publishShortDescriptionDraft(id: string, userId: string) {
-    return this.publishFieldTranslationDraft(
-      id,
-      SHORT_DESCRIPTION_FIELD_KEY,
-      userId,
-      'Không có bản nháp mô tả ngắn nào đang chờ công khai.',
-    );
-  }
-
-  /** Phần dùng chung của publishDescriptionDraft/publishNameDraft/publishShortDescriptionDraft (2026-09-17). */
-  private async publishFieldTranslationDraft(id: string, fieldKey: string, userId: string, emptyMessage: string) {
-    const [vi, en] = await Promise.all([
-      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'vi'),
-      this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'en'),
-    ]);
-    const targets = [vi, en].filter(
-      (t): t is NonNullable<typeof t> =>
-        t !== null && (t.humanReviewStatus === HumanReviewStatus.PENDING || t.humanReviewStatus === HumanReviewStatus.NEEDS_CHANGES),
-    );
-    if (targets.length === 0) {
-      throw new NotFoundException(emptyMessage);
+  /**
+   * Lưu nháp mô tả/mô tả ngắn CÓ CAS: mỗi locale được gửi phải kèm `expected_<locale>_id` (id hàng
+   * current owner đã đọc, hoặc null nếu chưa có). Lệch → 409, không ghi gì (xem saveDraftIfCurrent).
+   * Locale không được gửi thì KHÔNG bị chạm (EN giữ nguyên khi chỉ lưu VI).
+   */
+  private async saveFieldDraftIfCurrent(
+    id: string,
+    fieldKey: string,
+    dto: SaveFieldDraftInput,
+    fallbackForEnSource: string | null,
+    userId: string,
+  ) {
+    if (dto.vi === undefined && dto.en === undefined) {
+      throw new BadRequestException('Cần ít nhất một trong hai trường vi/en.');
     }
-    const results: Array<{ locale_code: string; ok: boolean; error?: string }> = [];
-    for (const t of targets) {
+    if (dto.vi !== undefined && dto.expected_vi_id === undefined) {
+      throw new BadRequestException('expected_vi_id là bắt buộc khi gửi vi (id bản nháp đã đọc; null nếu chưa có).');
+    }
+    if (dto.en !== undefined && dto.expected_en_id === undefined) {
+      throw new BadRequestException('expected_en_id là bắt buộc khi gửi en (id bản nháp đã đọc; null nếu chưa có).');
+    }
+    const items: Array<{ item: PublishTranslationItem; expectedCurrentId: string | null }> = [];
+    if (dto.vi !== undefined) {
+      items.push({
+        item: {
+          fieldKey,
+          localeCode: 'vi',
+          sourceLocaleCode: 'vi',
+          translatedText: dto.vi,
+          sourceText: dto.vi,
+          textFormat: TextFormat.PLAIN_TEXT,
+          translationMethod: TranslationMethod.ORIGINAL,
+          translationStatus: TranslationApprovalStatus.PENDING,
+          humanReviewStatus: HumanReviewStatus.PENDING,
+          qualityGate: QualityGateStatus.PASS,
+          isPublic: false,
+          isProductionData: false,
+          productionEligible: false,
+        },
+        expectedCurrentId: dto.expected_vi_id ?? null,
+      });
+    }
+    if (dto.en !== undefined) {
+      items.push({
+        item: {
+          fieldKey,
+          localeCode: 'en',
+          sourceLocaleCode: 'vi',
+          translatedText: dto.en,
+          sourceText: dto.vi ?? fallbackForEnSource ?? '',
+          textFormat: TextFormat.PLAIN_TEXT,
+          translationMethod: TranslationMethod.HUMAN,
+          translationStatus: TranslationApprovalStatus.PENDING,
+          humanReviewStatus: HumanReviewStatus.PENDING,
+          qualityGate: QualityGateStatus.PASS,
+          isPublic: false,
+          isProductionData: false,
+          productionEligible: false,
+        },
+        expectedCurrentId: dto.expected_en_id ?? null,
+      });
+    }
+    const rows = await this.placeTranslationsService.saveDraftIfCurrent({
+      placeId: id,
+      origin: RevisionOrigin.OWNER_UPDATE,
+      editorId: userId,
+      items,
+    });
+    return rows.map((r) => ({ id: r.id, locale_code: r.localeCode, human_review_status: r.humanReviewStatus }));
+  }
+
+  /**
+   * Công khai ĐÚNG các bản nháp được chỉ định theo id (revision owner đã xem).
+   * - Mọi id được kiểm TRƯỚC khi duyệt cái nào: id phải thuộc đúng place, field và locale (sai → 404, không duyệt gì).
+   * - Mỗi locale duyệt qua reviewTranslation: gate isCurrent + trạng thái, quyền PlaceTranslation.Review.Any và audit nằm ở đó.
+   * - Id đã bị thay hoặc đã duyệt (ConflictException) → ok:false, status 409 CHO RIÊNG locale đó; locale khác không bị đổi.
+   * - Lỗi khác (vd quyền 403) được ném ra ngay; lần duyệt đầu tiên đã fail nên không có gì được duyệt.
+   */
+  private async publishFieldDraftByIds(
+    id: string,
+    fieldKey: string,
+    dto: PublishFieldDraftInput,
+    userId: string,
+  ) {
+    const requested: Array<{ locale: "vi" | "en"; translationId: string }> = [];
+    if (dto.vi_translation_id) requested.push({ locale: "vi", translationId: dto.vi_translation_id });
+    if (dto.en_translation_id) requested.push({ locale: "en", translationId: dto.en_translation_id });
+    if (requested.length === 0) {
+      throw new BadRequestException("Cần vi_translation_id hoặc en_translation_id của bản nháp cần công khai.");
+    }
+    for (const { locale, translationId } of requested) {
+      const row = await this.placeTranslationsService.getTranslationById(translationId);
+      if (!row || row.placeId !== id || row.fieldKey !== fieldKey || row.localeCode !== locale) {
+        throw new NotFoundException("Không tìm thấy bản nháp này cho địa điểm, trường và ngôn ngữ đã chọn.");
+      }
+    }
+    const results: Array<{ locale_code: string; translation_id: string; ok: boolean; status?: number; error?: string }> = [];
+    for (const { locale, translationId } of requested) {
       try {
-        await this.translationReviewService.reviewTranslation(t.id, userId, HumanReviewStatus.APPROVED, null);
-        results.push({ locale_code: t.localeCode, ok: true });
+        await this.translationReviewService.reviewTranslation(translationId, userId, HumanReviewStatus.APPROVED, null);
+        results.push({ locale_code: locale, translation_id: translationId, ok: true });
       } catch (err) {
-        results.push({ locale_code: t.localeCode, ok: false, error: (err as Error).message });
+        if (!(err instanceof ConflictException)) throw err;
+        results.push({ locale_code: locale, translation_id: translationId, ok: false, status: 409, error: err.message });
       }
     }
     return results;
+  }
+
+  /** Công khai bản nháp TÊN HIỂN THỊ VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
+  async publishNameDraft(id: string, dto: PublishFieldDraftInput, userId: string) {
+    return this.publishFieldDraftByIds(id, DISPLAY_NAME_FIELD_KEY, dto, userId);
+  }
+
+  /** Công khai bản nháp MÔ TẢ NGẮN VI/EN (2026-09-17) — CÙNG khuôn publishDescriptionDraft(). */
+  async publishShortDescriptionDraft(id: string, dto: PublishFieldDraftInput, userId: string) {
+    return this.publishFieldDraftByIds(id, SHORT_DESCRIPTION_FIELD_KEY, dto, userId);
   }
 
   async archive(id: string, actorId: string) {

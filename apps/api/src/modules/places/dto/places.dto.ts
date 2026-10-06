@@ -189,8 +189,15 @@ export class SaveDescriptionDraftDto {
   @IsOptional() @IsString()
   vi?: string;
 
+  // CAS: id hàng current owner đã đọc (GET …/description/draft). null = chưa có bản nào. Bắt buộc khi gửi vi.
+  @IsOptional() @IsUUID()
+  expected_vi_id?: string | null;
+
   @IsOptional() @IsString()
   en?: string;
+
+  @IsOptional() @IsUUID()
+  expected_en_id?: string | null;
 }
 
 // Body của POST /places/:id/name/draft (2026-09-17) — CÙNG khuôn SaveDescriptionDraftDto,
@@ -199,8 +206,15 @@ export class SaveNameDraftDto {
   @IsOptional() @IsString()
   vi?: string;
 
+  // CAS: id hàng current owner đã đọc (GET …/name/draft). null = chưa có bản nào. Bắt buộc khi gửi vi.
+  @IsOptional() @IsUUID()
+  expected_vi_id?: string | null;
+
   @IsOptional() @IsString()
   en?: string;
+
+  @IsOptional() @IsUUID()
+  expected_en_id?: string | null;
 }
 
 // Body của POST /places/:id/short-description/draft (2026-09-17) — CÙNG khuôn
@@ -209,8 +223,15 @@ export class SaveShortDescriptionDraftDto {
   @IsOptional() @IsString()
   vi?: string;
 
+  // CAS: id hàng current owner đã đọc (GET …/short-description/draft). null = chưa có bản nào. Bắt buộc khi gửi vi.
+  @IsOptional() @IsUUID()
+  expected_vi_id?: string | null;
+
   @IsOptional() @IsString()
   en?: string;
+
+  @IsOptional() @IsUUID()
+  expected_en_id?: string | null;
 }
 
 // Body của `POST /api/places/en-indexable-ids` — SEO1 (2026-09-22), sitemap-only. Capped at 500:
@@ -242,3 +263,22 @@ export class UpdatePlaceFaqsDto {
   @Type(() => FaqItemDto)
   faqs!: FaqItemDto[];
 }
+
+// Body publish mô tả/mô tả ngắn: công khai ĐÚNG các bản nháp được chỉ định theo id (revision owner đã xem).
+// Không có id nào thì không công khai gì; không còn "publish tất cả bản pending".
+export class PublishFieldDraftDto {
+  @IsOptional() @IsUUID()
+  vi_translation_id?: string;
+
+  @IsOptional() @IsUUID()
+  en_translation_id?: string;
+}
+
+export type SaveFieldDraftInput = {
+  vi?: string;
+  en?: string;
+  expected_vi_id?: string | null;
+  expected_en_id?: string | null;
+};
+
+export type PublishFieldDraftInput = { vi_translation_id?: string; en_translation_id?: string };

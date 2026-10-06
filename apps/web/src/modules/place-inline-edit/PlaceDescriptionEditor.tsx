@@ -17,6 +17,8 @@ import {
   saveNameDraft,
   saveShortDescriptionDraft,
   type PublishDescriptionResult,
+  type DraftSaveInput,
+  type DraftPublishInput,
 } from './api/place-description.api';
 import styles from './place-description-editor.module.css';
 import { getEditorialCategory } from '@/modules/editorial/editorialCategories';
@@ -41,11 +43,18 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   description: 'Mô tả chi tiết',
 };
 
+type SaveSummary = { saved: FieldKey[]; conflicts: FieldKey[]; errors: FieldKey[]; draftIds: DraftIdsByField };
+
+/** Id bản nháp VI/EN hiện hành đã đọc (CAS), cho cả ba trường. */
+/** Bản nháp hiện hành của một locale: id (CAS) và trạng thái duyệt (PENDING/NEEDS_CHANGES/APPROVED). */
+type DraftSlot = { id: string; status: string };
+type DraftIdsByField = Record<FieldKey, { vi: DraftSlot | null; en: DraftSlot | null }>;
+
 type PanelState =
   | { kind: 'closed' }
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; fields: Record<FieldKey, FieldState> };
+  | { kind: 'ready'; fields: Record<FieldKey, FieldState>; loaded: Record<FieldKey, FieldState>; draftIds: DraftIdsByField };
 
 /**
  * Nút ✏️ + drawer chỉnh sửa NỘI DUNG địa điểm (tên/mô tả ngắn/mô tả chi tiết, cả VI/EN) NGAY TRÊN
@@ -75,6 +84,8 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Locale được chọn để công khai. Mặc định: chỉ tiếng Việt. Tiếng Anh phải được bật rõ ràng.
+  const [publishLocales, setPublishLocales] = useState<{ vi: boolean; en: boolean }>({ vi: true, en: false });
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -107,18 +118,25 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
         getShortDescriptionDraft(placeId, session.accessToken),
         getDescriptionDraft(placeId, session.accessToken),
       ]);
+      const fields: Record<FieldKey, FieldState> = {
+        name: { vi: name.vi?.text ?? name.fallback_name ?? '', en: name.en?.text ?? '' },
+        short_description: {
+          vi: shortDescription.vi?.text ?? shortDescription.fallback_short_description ?? '',
+          en: shortDescription.en?.text ?? '',
+        },
+        description: {
+          vi: description.vi?.text ?? description.fallback_description ?? '',
+          en: description.en?.text ?? '',
+        },
+      };
       setPanel({
         kind: 'ready',
-        fields: {
-          name: { vi: name.vi?.text ?? name.fallback_name ?? '', en: name.en?.text ?? '' },
-          short_description: {
-            vi: shortDescription.vi?.text ?? shortDescription.fallback_short_description ?? '',
-            en: shortDescription.en?.text ?? '',
-          },
-          description: {
-            vi: description.vi?.text ?? description.fallback_description ?? '',
-            en: description.en?.text ?? '',
-          },
+        fields,
+        loaded: fields,
+        draftIds: {
+          name: { vi: name.vi ? { id: name.vi.id, status: name.vi.human_review_status } : null, en: name.en ? { id: name.en.id, status: name.en.human_review_status } : null },
+          short_description: { vi: shortDescription.vi ? { id: shortDescription.vi.id, status: shortDescription.vi.human_review_status } : null, en: shortDescription.en ? { id: shortDescription.en.id, status: shortDescription.en.human_review_status } : null },
+          description: { vi: description.vi ? { id: description.vi.id, status: description.vi.human_review_status } : null, en: description.en ? { id: description.en.id, status: description.en.human_review_status } : null },
         },
       });
     } catch (err) {
@@ -142,26 +160,169 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     setPanel((p) => (p.kind === 'ready' ? { ...p, fields: { ...p.fields, [field]: { ...p.fields[field], [locale]: value } } } : p));
   }
 
-  const SAVE_DRAFT_BY_FIELD: Record<FieldKey, typeof saveNameDraft> = {
-    name: saveNameDraft,
-    short_description: saveShortDescriptionDraft,
-    description: saveDescriptionDraft,
-  };
-  const PUBLISH_BY_FIELD: Record<FieldKey, typeof publishNameDraft> = {
-    name: publishNameDraft,
-    short_description: publishShortDescriptionDraft,
-    description: publishDescriptionDraft,
-  };
+  // Trường được coi là ĐÃ SỬA khi VI hoặc EN khác bản đã tải.
+  function isDirty(field: FieldKey, fields: Record<FieldKey, FieldState>, loaded: Record<FieldKey, FieldState>): boolean {
+    return fields[field].vi !== loaded[field].vi || fields[field].en !== loaded[field].en;
+  }
 
-  async function saveAllDrafts(fields: Record<FieldKey, FieldState>, accessToken: string): Promise<string[]> {
+  const PENDING_REVIEW = ['PENDING', 'NEEDS_CHANGES'];
+  function needsReview(slot: DraftSlot | null): boolean {
+    return slot !== null && PENDING_REVIEW.includes(slot.status);
+  }
+
+  function withIds(
+    ids: DraftIdsByField,
+    field: FieldKey,
+    rows: Array<{ id: string; locale_code: string; human_review_status: string }>,
+  ): DraftIdsByField {
+    const next: DraftIdsByField = { ...ids, [field]: { ...ids[field] } };
+    for (const row of rows) {
+      const slot = { id: row.id, status: row.human_review_status };
+      if (row.locale_code === 'vi') next[field].vi = slot;
+      if (row.locale_code === 'en') next[field].en = slot;
+    }
+    return next;
+  }
+
+  // Lưu nháp các trường ĐÃ SỬA, mỗi locale kèm id bản nháp hiện hành đã đọc (CAS).
+  // Trường không sửa không được gửi: không tạo revision vô ích.
+  async function saveDirtyDrafts(
+    fields: Record<FieldKey, FieldState>,
+    loaded: Record<FieldKey, FieldState>,
+    draftIds: DraftIdsByField,
+    accessToken: string,
+  ): Promise<SaveSummary> {
+    const dirty = FIELDS.filter((f) => isDirty(f, fields, loaded));
     const outcomes = await Promise.allSettled(
-      FIELDS.map((field) =>
-        SAVE_DRAFT_BY_FIELD[field](placeId, { vi: fields[field].vi, en: fields[field].en || undefined }, accessToken),
-      ),
+      dirty.map((field) => {
+        const en = fields[field].en || undefined;
+        const ids = draftIds[field];
+        const input: DraftSaveInput = {
+          vi: fields[field].vi,
+          expected_vi_id: ids.vi?.id ?? null,
+          ...(en !== undefined ? { en, expected_en_id: ids.en?.id ?? null } : {}),
+        };
+        if (field === 'name') return saveNameDraft(placeId, input, accessToken);
+        return field === 'description'
+          ? saveDescriptionDraft(placeId, input, accessToken)
+          : saveShortDescriptionDraft(placeId, input, accessToken);
+      }),
     );
-    return outcomes
-      .map((o, i) => (o.status === 'rejected' ? FIELD_LABELS[FIELDS[i]] : null))
-      .filter((x): x is string => x !== null);
+    let nextIds = draftIds;
+    const saved: FieldKey[] = [];
+    const conflicts: FieldKey[] = [];
+    const errors: FieldKey[] = [];
+    outcomes.forEach((o, i) => {
+      const field = dirty[i];
+      if (o.status === 'fulfilled') {
+        saved.push(field);
+        nextIds = withIds(nextIds, field, o.value);
+      } else if (o.reason instanceof ApiError && o.reason.status === 409) {
+        conflicts.push(field);
+      } else {
+        errors.push(field);
+      }
+    });
+    return { saved, conflicts, errors, draftIds: nextIds };
+  }
+
+  // Sau khi lưu: nhận id/trạng thái mới; trường lưu thành công được coi là bản đã tải.
+  function applySave(summary: SaveSummary) {
+    setPanel((p) => {
+      if (p.kind !== 'ready') return p;
+      const loaded = { ...p.loaded };
+      for (const field of summary.saved) loaded[field] = p.fields[field];
+      return { ...p, loaded, draftIds: summary.draftIds };
+    });
+  }
+
+  // Lập kế hoạch công khai: chỉ các locale ĐÃ CHỌN, của trường KHÔNG có lỗi lưu, và có bản nháp đang chờ duyệt.
+  // Trường đã sửa nhưng không lưu được (unsavedChange) bị bỏ qua. Bản đã APPROVED không được gửi lại.
+  function planPublish(
+    fields: Record<FieldKey, FieldState>,
+    loaded: Record<FieldKey, FieldState>,
+    ids: DraftIdsByField,
+    locales: { vi: boolean; en: boolean },
+    saved: FieldKey[],
+  ): Array<{ field: FieldKey; locales: Array<'vi' | 'en'> }> {
+    const plans: Array<{ field: FieldKey; locales: Array<'vi' | 'en'> }> = [];
+    for (const field of FIELDS) {
+      const unsavedChange = isDirty(field, fields, loaded) && !saved.includes(field);
+      if (unsavedChange) continue;
+      const wanted: Array<'vi' | 'en'> = [];
+      if (locales.vi && needsReview(ids[field].vi)) wanted.push('vi');
+      if (locales.en && fields[field].en.trim() !== '' && needsReview(ids[field].en)) wanted.push('en');
+      if (wanted.length > 0) plans.push({ field, locales: wanted });
+    }
+    return plans;
+  }
+
+  // Công khai theo id đúng các locale đã lập kế hoạch. Mỗi kết quả đọc theo locale: ok:false không được báo thành công.
+  async function publishPlanned(
+    plans: Array<{ field: FieldKey; locales: Array<'vi' | 'en'> }>,
+    ids: DraftIdsByField,
+    accessToken: string,
+  ): Promise<{ published: string[]; notApplied: string[]; approved: Array<{ field: FieldKey; locale: 'vi' | 'en' }> }> {
+    const published: string[] = [];
+    const notApplied: string[] = [];
+    const approved: Array<{ field: FieldKey; locale: 'vi' | 'en' }> = [];
+    const runs = plans.map((plan) => {
+      const body: DraftPublishInput = {};
+      for (const l of plan.locales) {
+        const slot = ids[plan.field][l];
+        if (!slot) continue;
+        if (l === 'vi') body.vi_translation_id = slot.id;
+        else body.en_translation_id = slot.id;
+      }
+      const call =
+        plan.field === 'name'
+          ? publishNameDraft(placeId, body, accessToken)
+          : plan.field === 'description'
+            ? publishDescriptionDraft(placeId, body, accessToken)
+            : publishShortDescriptionDraft(placeId, body, accessToken);
+      return { plan, call };
+    });
+    const outcomes = await Promise.allSettled(runs.map((r) => r.call));
+    outcomes.forEach((o, i) => {
+      const { plan } = runs[i];
+      if (o.status === 'rejected') {
+        for (const l of plan.locales) notApplied.push(FIELD_LABELS[plan.field] + ' (' + l.toUpperCase() + '): lỗi khi công khai');
+        return;
+      }
+      for (const row of o.value) {
+        const locale = row.locale_code === 'en' ? 'en' : 'vi';
+        if (!plan.locales.includes(locale)) continue; // server trả đúng những locale đã gửi
+        const label = FIELD_LABELS[plan.field] + ' (' + locale.toUpperCase() + ')';
+        if (row.ok === true) {
+          published.push(label);
+          approved.push({ field: plan.field, locale });
+        } else {
+          notApplied.push(label + ': ' + (row.status === 409 ? 'bản đã đổi sau khi bạn đọc — tải lại để xem bản mới' : 'lỗi khi công khai'));
+        }
+      }
+    });
+    return { published, notApplied, approved };
+  }
+
+  // Đánh dấu APPROVED cho đúng các locale server đã duyệt ok:true (retry sẽ không gửi lại).
+  function applyApproved(approved: Array<{ field: FieldKey; locale: 'vi' | 'en' }>) {
+    if (approved.length === 0) return;
+    setPanel((p) => {
+      if (p.kind !== 'ready') return p;
+      const next: DraftIdsByField = { ...p.draftIds };
+      for (const { field, locale } of approved) {
+        const slot = next[field][locale];
+        if (slot) next[field] = { ...next[field], [locale]: { ...slot, status: 'APPROVED' } };
+      }
+      return { ...p, draftIds: next };
+    });
+  }
+
+  function failureParts(summary: SaveSummary): string[] {
+    return [
+      ...summary.conflicts.map((f) => FIELD_LABELS[f] + ': bản đã đổi sau khi bạn đọc — tải lại để xem bản mới'),
+      ...summary.errors.map((f) => FIELD_LABELS[f] + ': lỗi khi lưu nháp'),
+    ];
   }
 
   async function onSaveDraft() {
@@ -171,12 +332,14 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     setBusy(true);
     setNotice(null);
     try {
-      const failedFields = await saveAllDrafts(panel.fields, session.accessToken);
-      if (failedFields.length > 0) {
-        setNotice(`Lưu nháp MỘT PHẦN — lỗi ở: ${failedFields.join(', ')}. Các trường còn lại đã lưu nháp.`);
-      } else {
-        setNotice('Đã lưu nháp — CHƯA hiển thị công khai. Bấm "Lưu và công khai" khi sẵn sàng.');
-      }
+      const summary = await saveDirtyDrafts(panel.fields, panel.loaded, panel.draftIds, session.accessToken);
+      applySave(summary);
+      const parts: string[] = [];
+      if (summary.saved.length > 0) parts.push('Đã lưu nháp: ' + summary.saved.map((f) => FIELD_LABELS[f]).join(', ') + '. CHƯA hiển thị công khai.');
+      const failed = failureParts(summary);
+      if (failed.length > 0) parts.push('Chưa lưu: ' + failed.join('; ') + '. Nội dung bạn nhập vẫn còn trong ô.');
+      if (parts.length === 0) parts.push('Không có thay đổi để lưu.');
+      setNotice(parts.join(' '));
     } finally {
       setBusy(false);
     }
@@ -189,33 +352,18 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     setBusy(true);
     setNotice(null);
     try {
-      // Lưu nháp bản MỚI NHẤT của CẢ BA trường trước, rồi công khai — một thao tác cho người dùng
-      // ("Lưu và công khai"), nhiều lệnh gọi API tuần tự/song song phía dưới.
-      const failedSaves = await saveAllDrafts(panel.fields, session.accessToken);
-
-      const publishOutcomes = await Promise.allSettled(
-        FIELDS.map((field) => PUBLISH_BY_FIELD[field](placeId, session.accessToken)),
-      );
-      const failedPublishes: string[] = [];
-      for (let i = 0; i < FIELDS.length; i += 1) {
-        const outcome = publishOutcomes[i];
-        const label = FIELD_LABELS[FIELDS[i]];
-        if (outcome.status === 'rejected') {
-          failedPublishes.push(label);
-          continue;
-        }
-        const localeFailures = (outcome.value as PublishDescriptionResult[]).filter((r) => !r.ok);
-        if (localeFailures.length > 0) {
-          failedPublishes.push(`${label} (${localeFailures.map((f) => f.locale_code.toUpperCase()).join(', ')})`);
-        }
-      }
-
-      const allFailed = [...failedSaves, ...failedPublishes];
-      if (allFailed.length > 0) {
-        setNotice(`Công khai MỘT PHẦN — lỗi ở: ${allFailed.join(', ')}. Các trường/locale còn lại đã công khai.`);
-      } else {
-        setNotice('Đã công khai — khách xem trang (kể cả chưa đăng nhập) sẽ thấy bản mới ngay.');
-      }
+      const summary = await saveDirtyDrafts(panel.fields, panel.loaded, panel.draftIds, session.accessToken);
+      applySave(summary);
+      const plans = planPublish(panel.fields, panel.loaded, summary.draftIds, publishLocales, summary.saved);
+      const pub = await publishPlanned(plans, summary.draftIds, session.accessToken);
+      applyApproved(pub.approved);
+      const parts: string[] = [];
+      if (pub.published.length > 0) parts.push('Đã công khai: ' + pub.published.join(', ') + '.');
+      const failed = [...pub.notApplied, ...failureParts(summary)];
+      if (failed.length > 0) parts.push('Chưa áp dụng: ' + failed.join('; ') + '. Nội dung bạn nhập vẫn còn trong ô.');
+      if (!publishLocales.en) parts.push('Bản tiếng Anh chưa được công khai (chưa chọn) và vẫn là nháp.');
+      if (pub.published.length === 0 && failed.length === 0) parts.push('Không có thay đổi để công khai.');
+      setNotice(parts.join(' '));
     } finally {
       setBusy(false);
     }
@@ -286,6 +434,14 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
 
                 {notice && <p className={styles.notice}>{notice}</p>}
 
+                <div>
+                  <label>
+                    <input type="checkbox" checked={publishLocales.vi} onChange={(e) => setPublishLocales((p) => ({ ...p, vi: e.target.checked }))} /> Công khai tiếng Việt
+                  </label>{' '}
+                  <label>
+                    <input type="checkbox" checked={publishLocales.en} onChange={(e) => setPublishLocales((p) => ({ ...p, en: e.target.checked }))} /> Công khai tiếng Anh
+                  </label>
+                </div>
                 <div className={styles.actions}>
                   <button type="button" onClick={() => void onSaveDraft()} disabled={busy}>
                     Lưu nháp

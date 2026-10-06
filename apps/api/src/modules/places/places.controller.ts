@@ -25,6 +25,7 @@ import {
   ListPlacesQueryDto,
   RightNowQueryDto,
   SaveDescriptionDraftDto,
+  PublishFieldDraftDto,
   SaveNameDraftDto,
   SaveShortDescriptionDraftDto,
   UpdatePlaceDto,
@@ -145,8 +146,12 @@ export class PlacesController {
   @Post(':id/description/publish')
   @RequirePermissions('Place.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  publishDescriptionDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
-    return this.placesService.publishDescriptionDraft(id, user.sub);
+  publishDescriptionDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PublishFieldDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.publishDescriptionDraft(id, dto, user.sub);
   }
 
   // Tên hiển thị VI/EN (2026-09-17) — CÙNG khuôn nhóm description ở trên, field_key `display_name`.
@@ -171,8 +176,12 @@ export class PlacesController {
   @Post(':id/name/publish')
   @RequirePermissions('Place.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  publishNameDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
-    return this.placesService.publishNameDraft(id, user.sub);
+  publishNameDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PublishFieldDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.publishNameDraft(id, dto, user.sub);
   }
 
   // Mô tả ngắn VI/EN (2026-09-17) — CÙNG khuôn nhóm description ở trên, field_key `short_description`.
@@ -197,8 +206,12 @@ export class PlacesController {
   @Post(':id/short-description/publish')
   @RequirePermissions('Place.Edit.Managed')
   @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
-  publishShortDescriptionDraft(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
-    return this.placesService.publishShortDescriptionDraft(id, user.sub);
+  publishShortDescriptionDraft(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PublishFieldDraftDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.placesService.publishShortDescriptionDraft(id, dto, user.sub);
   }
 
   // Public Place i18n Read Path (2026-09-02): `?locale=vi|en` tuỳ chọn — không đổi shape phản

@@ -37,6 +37,22 @@ export interface PublishDescriptionResult {
   locale_code: string;
   ok: boolean;
   error?: string;
+  translation_id?: string;
+  status?: number;
+}
+
+/** Body lưu nháp: vi/en kèm id bản nháp đã đọc (CAS). Bắt buộc expected_*_id khi gửi text tương ứng. */
+export interface DraftSaveInput {
+  vi?: string;
+  en?: string;
+  expected_vi_id?: string | null;
+  expected_en_id?: string | null;
+}
+
+/** Body publish: công khai ĐÚNG các bản nháp được chỉ định theo id (revision owner đã xem). */
+export interface DraftPublishInput {
+  vi_translation_id?: string;
+  en_translation_id?: string;
 }
 
 /** Xem trước: bản nháp HIỆN HÀNH (bất kể đã công khai hay chưa) cho vi/en + giá trị gốc places.description. */
@@ -51,7 +67,7 @@ export async function getDescriptionDraft(placeId: string, accessToken: string):
 /** Lưu nháp — TUYỆT ĐỐI không ảnh hưởng tới bản công khai hiện tại. */
 export async function saveDescriptionDraft(
   placeId: string,
-  input: { vi?: string; en?: string },
+  input: DraftSaveInput,
   accessToken: string,
 ): Promise<Array<{ id: string; locale_code: string; human_review_status: string }>> {
   return apiPost(`/places/${encodeURIComponent(placeId)}/description/draft`, accessToken, input);
@@ -60,9 +76,10 @@ export async function saveDescriptionDraft(
 /** Lưu và công khai — duyệt bản nháp hiện hành cho mỗi locale đang PENDING/NEEDS_CHANGES. */
 export async function publishDescriptionDraft(
   placeId: string,
+  input: DraftPublishInput,
   accessToken: string,
 ): Promise<PublishDescriptionResult[]> {
-  return apiPost(`/places/${encodeURIComponent(placeId)}/description/publish`, accessToken);
+  return apiPost(`/places/${encodeURIComponent(placeId)}/description/publish`, accessToken, input);
 }
 
 /** Tên hiển thị VI/EN (2026-09-17) — CÙNG khuôn getDescriptionDraft(), field_key `display_name`. */
@@ -74,14 +91,18 @@ export async function getNameDraft(placeId: string, accessToken: string): Promis
 
 export async function saveNameDraft(
   placeId: string,
-  input: { vi?: string; en?: string },
+  input: DraftSaveInput,
   accessToken: string,
 ): Promise<Array<{ id: string; locale_code: string; human_review_status: string }>> {
   return apiPost(`/places/${encodeURIComponent(placeId)}/name/draft`, accessToken, input);
 }
 
-export async function publishNameDraft(placeId: string, accessToken: string): Promise<PublishDescriptionResult[]> {
-  return apiPost(`/places/${encodeURIComponent(placeId)}/name/publish`, accessToken);
+export async function publishNameDraft(
+  placeId: string,
+  input: DraftPublishInput,
+  accessToken: string,
+): Promise<PublishDescriptionResult[]> {
+  return apiPost(`/places/${encodeURIComponent(placeId)}/name/publish`, accessToken, input);
 }
 
 /** Mô tả ngắn VI/EN (2026-09-17) — CÙNG khuôn getDescriptionDraft(), field_key `short_description`. */
@@ -98,7 +119,7 @@ export async function getShortDescriptionDraft(
 
 export async function saveShortDescriptionDraft(
   placeId: string,
-  input: { vi?: string; en?: string },
+  input: DraftSaveInput,
   accessToken: string,
 ): Promise<Array<{ id: string; locale_code: string; human_review_status: string }>> {
   return apiPost(`/places/${encodeURIComponent(placeId)}/short-description/draft`, accessToken, input);
@@ -106,7 +127,8 @@ export async function saveShortDescriptionDraft(
 
 export async function publishShortDescriptionDraft(
   placeId: string,
+  input: DraftPublishInput,
   accessToken: string,
 ): Promise<PublishDescriptionResult[]> {
-  return apiPost(`/places/${encodeURIComponent(placeId)}/short-description/publish`, accessToken);
+  return apiPost(`/places/${encodeURIComponent(placeId)}/short-description/publish`, accessToken, input);
 }

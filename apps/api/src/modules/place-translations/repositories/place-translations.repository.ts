@@ -82,6 +82,21 @@ export class PlaceTranslationsRepository {
     return this.target(manager).findOne({ where: { placeId, fieldKey, localeCode, isCurrent: true } });
   }
 
+  // CAS for draft saves: lock the CURRENT row for (place, field, locale) inside the caller's transaction.
+  // Concurrent writers on the same current row serialize here; the first commit wins, the rest re-read
+  // the already-superseded row and fail the id check in saveDraftIfCurrent().
+  findCurrentForUpdate(
+    placeId: string,
+    fieldKey: string,
+    localeCode: string,
+    manager: EntityManager,
+  ): Promise<PlaceTranslation | null> {
+    return manager.getRepository(PlaceTranslation).findOne({
+      where: { placeId, fieldKey, localeCode, isCurrent: true },
+      lock: { mode: "pessimistic_write" },
+    });
+  }
+
   findById(id: string, manager?: EntityManager): Promise<PlaceTranslation | null> {
     return this.target(manager).findOne({ where: { id } });
   }

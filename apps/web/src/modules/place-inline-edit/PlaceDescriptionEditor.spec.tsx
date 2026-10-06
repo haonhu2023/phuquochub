@@ -149,7 +149,7 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
     expect(screen.getByDisplayValue('Mô tả gốc')).toBeInTheDocument();
   });
 
-  it('Lưu nháp -> gọi CẢ BA saveXDraft, hiện thông báo "CHƯA hiển thị công khai", KHÔNG gọi publish nào', async () => {
+  it('Lưu nháp -> chỉ lưu trường ĐÃ SỬA (không gọi save cho trường không sửa), CHƯA công khai, KHÔNG gọi publish', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
     mockEmptyDrafts();
@@ -162,20 +162,22 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
     fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
 
     await waitFor(() =>
-      expect(mockSaveDescription).toHaveBeenCalledWith('p1', { vi: 'VI mới', en: undefined }, 'token-abc'),
+      expect(mockSaveDescription).toHaveBeenCalledWith('p1', { vi: 'VI mới', expected_vi_id: null }, 'token-abc'),
     );
-    expect(mockSaveName).toHaveBeenCalled();
-    expect(mockSaveShortDescription).toHaveBeenCalled();
+    expect(mockSaveName).not.toHaveBeenCalled();
+    expect(mockSaveShortDescription).not.toHaveBeenCalled();
     expect(await screen.findByText(/CHƯA hiển thị công khai/)).toBeInTheDocument();
     expect(mockPublishName).not.toHaveBeenCalled();
     expect(mockPublishShortDescription).not.toHaveBeenCalled();
     expect(mockPublishDescription).not.toHaveBeenCalled();
   });
 
-  it('Lưu và công khai -> lưu nháp RỒI publish CẢ BA trường, hiện thông báo thành công khi mọi trường/locale ok', async () => {
+  it('Lưu và công khai -> chỉ lưu và công khai trường ĐÃ SỬA, đúng bản VI theo id; EN không được công khai khi chưa chọn', async () => {
     authed();
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }]);
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
     mockEmptyDrafts();
+    mockSaveDescription.mockResolvedValue([{ id: 't-desc-vi', locale_code: 'vi', human_review_status: 'PENDING' }]);
 
     render(<PlaceDescriptionEditor placeId="p1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
@@ -184,28 +186,28 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
     fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI công khai' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
 
-    await waitFor(() => expect(mockSaveDescription).toHaveBeenCalled());
-    await waitFor(() => expect(mockPublishName).toHaveBeenCalledWith('p1', 'token-abc'));
-    expect(mockPublishShortDescription).toHaveBeenCalledWith('p1', 'token-abc');
-    expect(mockPublishDescription).toHaveBeenCalledWith('p1', 'token-abc');
-    expect(await screen.findByText(/Đã công khai/)).toBeInTheDocument();
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledWith('p1', { vi_translation_id: 't-desc-vi' }, 'token-abc'));
+    expect(mockPublishDescription.mock.calls[0][1]).not.toHaveProperty('en_translation_id');
+    expect(mockPublishName).not.toHaveBeenCalled();
+    expect(mockPublishShortDescription).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(VI\)\./)).toBeInTheDocument();
+    expect(screen.getByText(/Bản tiếng Anh chưa được công khai/)).toBeInTheDocument();
   });
 
-  it('publish MỘT PHẦN lỗi (vd EN của mô tả chi tiết fail) -> báo RÕ trường + locale nào lỗi', async () => {
+  it('publish MỘT PHẦN lỗi (vd VI của mô tả chi tiết fail) -> báo RÕ trường + locale nào lỗi', async () => {
     authed();
     mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
     mockEmptyDrafts();
-    mockPublishDescription.mockResolvedValue([
-      { locale_code: 'vi', ok: true },
-      { locale_code: 'en', ok: false, error: 'boom' },
-    ]);
+    mockSaveDescription.mockResolvedValue([{ id: 't-desc-vi', locale_code: 'vi', human_review_status: 'PENDING' }]);
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: false, error: 'boom' }]);
 
     render(<PlaceDescriptionEditor placeId="p1" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
     await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI lỗi' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
 
-    expect(await screen.findByText(/Công khai MỘT PHẦN.*Mô tả chi tiết.*EN/)).toBeInTheDocument();
+    expect(await screen.findByText(/Chưa áp dụng: Mô tả chi tiết \(VI\): lỗi khi công khai/)).toBeInTheDocument();
   });
 
   it('một trường lỗi khi tải (vd getNameDraft 403) -> báo đúng "không có quyền", không crash', async () => {
@@ -236,5 +238,185 @@ describe('PlaceDescriptionEditor — nút ✏️ + drawer sửa nội dung (tên
     expect(screen.getByText((_, el) => el?.textContent === 'Mô tả chi tiết — VI: Xem thử VI')).toBeInTheDocument();
     expect(mockSaveDescription).not.toHaveBeenCalled();
     expect(mockPublishDescription).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlaceDescriptionEditor — VI/EN và lỗi một phần', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: SESSION.user, initializing: false, isAuthenticated: true, accessToken: 'token-abc' } as never);
+    mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
+    mockEmptyDrafts();
+  });
+
+  async function openAndEditDescription(vi: string, en?: string) {
+    render(<PlaceDescriptionEditor placeId="p1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: vi } });
+    if (en !== undefined) fireEvent.change(screen.getByLabelText('Mô tả chi tiết (English)'), { target: { value: en } });
+  }
+
+  it('lưu nháp bị 409 (bản đã đổi) -> nội dung người dùng nhập còn nguyên và báo rõ chưa lưu', async () => {
+    mockSaveDescription.mockRejectedValue(new ApiError('conflict', 409, 'CONFLICT'));
+    await openAndEditDescription('VI giữ lại');
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp' }));
+    expect(await screen.findByText(/Chưa lưu: Mô tả chi tiết: bản đã đổi sau khi bạn đọc/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)')).toHaveValue('VI giữ lại');
+    expect(mockPublishDescription).not.toHaveBeenCalled();
+  });
+
+  it('EN chưa chọn -> công khai chỉ VI; chọn EN -> gửi cả hai id và thông báo nêu đúng hai locale', async () => {
+    mockSaveDescription.mockResolvedValue([
+      { id: 't-desc-vi', locale_code: 'vi', human_review_status: 'PENDING' },
+      { id: 't-desc-en', locale_code: 'en', human_review_status: 'PENDING' },
+    ]);
+    mockPublishDescription.mockResolvedValue([
+      { locale_code: 'vi', ok: true },
+      { locale_code: 'en', ok: true },
+    ]);
+    await openAndEditDescription('VI A', 'EN A');
+    fireEvent.click(screen.getByLabelText(/Công khai tiếng Anh/));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() =>
+      expect(mockPublishDescription).toHaveBeenCalledWith(
+        'p1',
+        { vi_translation_id: 't-desc-vi', en_translation_id: 't-desc-en' },
+        'token-abc',
+      ),
+    );
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(VI\), Mô tả chi tiết \(EN\)\./)).toBeInTheDocument();
+  });
+
+  it('lỗi một phần: VI công khai, EN bị 409 -> báo đúng phần đã và chưa áp dụng; nội dung EN còn trong ô', async () => {
+    mockSaveDescription.mockResolvedValue([
+      { id: 't-desc-vi', locale_code: 'vi', human_review_status: 'PENDING' },
+      { id: 't-desc-en', locale_code: 'en', human_review_status: 'PENDING' },
+    ]);
+    mockPublishDescription.mockResolvedValue([
+      { locale_code: 'vi', ok: true },
+      { locale_code: 'en', ok: false, status: 409, error: 'superseded' },
+    ]);
+    await openAndEditDescription('VI B', 'EN B');
+    fireEvent.click(screen.getByLabelText(/Công khai tiếng Anh/));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(VI\)\./)).toBeInTheDocument();
+    expect(screen.getByText(/Chưa áp dụng: Mô tả chi tiết \(EN\): bản đã đổi sau khi bạn đọc/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Mô tả chi tiết (English)')).toHaveValue('EN B');
+  });
+});
+
+describe('PlaceDescriptionEditor — bản nháp hiện hành, retry và lỗi một phần', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseAuth.mockReturnValue({ user: SESSION.user, initializing: false, isAuthenticated: true, accessToken: 'token-abc' } as never);
+    mockFetchCapabilities.mockResolvedValue(EDITORIAL_CAPS);
+    mockEmptyDrafts();
+  });
+
+  const slot = (id: string, text: string, status: string, locale: 'vi' | 'en' = 'vi') => ({
+    id,
+    text,
+    human_review_status: status,
+    is_public: false,
+    locale,
+  });
+
+  async function openDescription() {
+    render(<PlaceDescriptionEditor placeId="p1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sửa nội dung' }));
+    await screen.findByLabelText('Mô tả chi tiết (Tiếng Việt)');
+  }
+
+  it('tải lại editor có bản nháp VI đang chờ duyệt, không sửa gì -> Công khai vẫn duyệt đúng bản đó (không bị bỏ qua)', async () => {
+    mockGetDescription.mockResolvedValue({
+      fallback_description: null,
+      vi: { id: 't-vi-old', text: 'VI đang chờ', human_review_status: 'PENDING', is_public: false },
+      en: null,
+    });
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }]);
+    await openDescription();
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledWith('p1', { vi_translation_id: 't-vi-old' }, 'token-abc'));
+    expect(mockSaveDescription).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(VI\)\./)).toBeInTheDocument();
+  });
+
+  it('không sửa và không có bản nháp đang chờ -> không lưu, không công khai, báo rõ không có thay đổi', async () => {
+    mockGetDescription.mockResolvedValue({
+      fallback_description: null,
+      vi: { id: 't-vi-live', text: 'VI đã công khai', human_review_status: 'APPROVED', is_public: true },
+      en: null,
+    });
+    await openDescription();
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    expect(await screen.findByText(/Không có thay đổi để công khai\./)).toBeInTheDocument();
+    expect(mockSaveDescription).not.toHaveBeenCalled();
+    expect(mockPublishDescription).not.toHaveBeenCalled();
+    expect(mockSaveName).not.toHaveBeenCalled();
+    expect(mockSaveShortDescription).not.toHaveBeenCalled();
+  });
+
+  it('chọn công khai EN đã lưu nháp từ trước (không sửa EN) -> chỉ gửi en_translation_id; VI đã duyệt không bị gửi lại', async () => {
+    mockGetDescription.mockResolvedValue({
+      fallback_description: null,
+      vi: { id: 't-vi-live', text: 'VI đã duyệt', human_review_status: 'APPROVED', is_public: true },
+      en: { id: 't-en-draft', text: 'EN nháp', human_review_status: 'PENDING', is_public: false },
+    });
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'en', ok: true }]);
+    await openDescription();
+    fireEvent.click(screen.getByLabelText(/Công khai tiếng Anh/));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledWith('p1', { en_translation_id: 't-en-draft' }, 'token-abc'));
+    expect(mockPublishDescription.mock.calls[0][1]).not.toHaveProperty('vi_translation_id');
+    expect(mockSaveDescription).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(EN\)\./)).toBeInTheDocument();
+  });
+
+  it('EN có bản nháp chờ nhưng chưa chọn công khai EN -> EN không được gửi, và VI đã sửa chỉ công khai VI', async () => {
+    mockGetDescription.mockResolvedValue({
+      fallback_description: null,
+      vi: null,
+      en: { id: 't-en-draft', text: 'EN nháp', human_review_status: 'PENDING', is_public: false },
+    });
+    mockSaveDescription.mockResolvedValue([{ id: 't-vi-new', locale_code: 'vi', human_review_status: 'PENDING' }]);
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }]);
+    await openDescription();
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI mới' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledWith('p1', { vi_translation_id: 't-vi-new' }, 'token-abc'));
+    expect(mockPublishDescription.mock.calls[0][1]).not.toHaveProperty('en_translation_id');
+    expect(await screen.findByText(/Bản tiếng Anh chưa được công khai/)).toBeInTheDocument();
+  });
+
+  it('lỗi một phần (VI công khai bị 409): giữ text, giữ id bản nháp, báo chưa áp dụng; retry chỉ công khai lại đúng id, KHÔNG lưu lại', async () => {
+    mockSaveDescription.mockResolvedValue([{ id: 't-vi-1', locale_code: 'vi', human_review_status: 'PENDING' }]);
+    mockPublishDescription
+      .mockResolvedValueOnce([{ locale_code: 'vi', ok: false, status: 409, error: 'superseded' }])
+      .mockResolvedValueOnce([{ locale_code: 'vi', ok: true }]);
+    await openDescription();
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI giữ nguyên' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    expect(await screen.findByText(/Chưa áp dụng: Mô tả chi tiết \(VI\): bản đã đổi sau khi bạn đọc/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)')).toHaveValue('VI giữ nguyên');
+    expect(mockSaveDescription).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledTimes(2));
+    expect(mockPublishDescription.mock.calls[1]).toEqual(['p1', { vi_translation_id: 't-vi-1' }, 'token-abc']);
+    expect(mockSaveDescription).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/Đã công khai: Mô tả chi tiết \(VI\)\./)).toBeInTheDocument();
+  });
+
+  it('sau khi công khai thành công, bấm lại không công khai lại (không tạo thao tác thừa)', async () => {
+    mockSaveDescription.mockResolvedValue([{ id: 't-vi-2', locale_code: 'vi', human_review_status: 'PENDING' }]);
+    mockPublishDescription.mockResolvedValue([{ locale_code: 'vi', ok: true }]);
+    await openDescription();
+    fireEvent.change(screen.getByLabelText('Mô tả chi tiết (Tiếng Việt)'), { target: { value: 'VI một lần' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    await waitFor(() => expect(mockPublishDescription).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu và công khai' }));
+    expect(await screen.findByText(/Không có thay đổi để công khai\./)).toBeInTheDocument();
+    expect(mockPublishDescription).toHaveBeenCalledTimes(1);
+    expect(mockSaveDescription).toHaveBeenCalledTimes(1);
   });
 });
