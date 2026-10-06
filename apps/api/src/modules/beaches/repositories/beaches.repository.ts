@@ -173,7 +173,7 @@ export class BeachesRepository {
     placeId: string,
     dto: UpdateBeachDetailsDto,
     expectedVersion: number,
-  ): Promise<{ conflict: boolean }> {
+  ): Promise<{ conflict: boolean; contentVersion?: number }> {
     // A PATCH with no detail field is a no-op: no version bump, no write.
     const hasDetailField = Object.keys(dto).some(
       (k) => k !== 'expected_content_version' && (dto as unknown as Record<string, unknown>)[k] !== undefined,
@@ -249,7 +249,7 @@ export class BeachesRepository {
         patch,
       );
 
-      if (Object.keys(patch).length === 0) return { conflict: false };
+      if (Object.keys(patch).length === 0) return { conflict: false, contentVersion: casRows[0].content_version };
 
       if (!current) {
         const cols = ['place_id', ...Object.keys(patch)];
@@ -258,7 +258,7 @@ export class BeachesRepository {
           `INSERT INTO "place_beach_details" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${placeholders.join(', ')})`,
           [placeId, ...Object.values(patch)],
         );
-        return { conflict: false };
+        return { conflict: false, contentVersion: casRows[0].content_version };
       }
 
       const setClauses = Object.keys(patch)
@@ -268,7 +268,7 @@ export class BeachesRepository {
         placeId,
         ...Object.values(patch),
       ]);
-      return { conflict: false };
+      return { conflict: false, contentVersion: casRows[0].content_version };
     });
   }
 }

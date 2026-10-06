@@ -113,6 +113,11 @@ export class BeachesService {
     return { ...place, beach_details: mapBeachDetails(details) };
   }
 
+  // Đặc quyền (Place.Edit.Managed). Đọc không qua cổng công khai, dùng cho editor.
+  async getDetails(placeId: string) {
+    return mapBeachDetails(await this.repo.detail(placeId));
+  }
+
   // Đặc quyền (Place.Edit.Managed). UPSERT — xem BeachesRepository.upsertDetails.
   async updateDetails(placeId: string, dto: UpdateBeachDetailsDto, userId: string) {
     const result = await this.repo.upsertDetails(placeId, dto, dto.expected_content_version);
@@ -132,6 +137,9 @@ export class BeachesService {
       sourced_notes_changed: dto.sourced_notes !== undefined,
       sourced_notes_source_changed: dto.sourced_notes_source_id !== undefined,
     });
-    return mapBeachDetails(await this.repo.detail(placeId));
+    return {
+      ...mapBeachDetails(await this.repo.detail(placeId)),
+      content_version: result.contentVersion ?? dto.expected_content_version,
+    };
   }
 }

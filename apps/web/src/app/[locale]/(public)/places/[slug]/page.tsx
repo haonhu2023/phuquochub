@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { getPlace } from '@/modules/places/api/places.api';
+import { getBeachPublicDetails, type BeachSource } from '@/modules/beaches/api/beaches.api';
 import { placeDetailHref, specialisedRouteFor } from '@/modules/places/placeRoutes';
 import { formatPriceRange } from '@/modules/places/format';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
@@ -109,6 +110,24 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 // Server Component: chi tiết địa điểm (khớp openapi Place — contacts/prices/media/faqs).
+// Nguồn của mùa tham khảo/cứu hộ/lưu ý: luôn hiển thị kèm nguồn thật (tên + liên kết), không suy ra từ text.
+function BeachSourceNote({ source }: { source: BeachSource | null }) {
+  if (!source) return null;
+  const label = source.title ?? source.url ?? '(không có tiêu đề)';
+  return (
+    <>
+      {' — Nguồn: '}
+      {source.url ? (
+        <a href={source.url} target="_blank" rel="noopener noreferrer">
+          {label}
+        </a>
+      ) : (
+        label
+      )}
+    </>
+  );
+}
+
 export default async function PlaceDetailPage({ params }: Params) {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
@@ -177,6 +196,21 @@ export default async function PlaceDetailPage({ params }: Params) {
   const trustedPrices = place.prices.filter((p) => canDisplayPrice(p.verification_status));
   const hasUnverifiedPrices = place.prices.some((p) => !canDisplayPrice(p.verification_status));
   const copy = getPlaceDetailCopy(locale);
+  // Chi tiết bãi biển: chỉ tải khi category là beach; lỗi đọc không được làm hỏng trang địa điểm.
+  // Chỉ coi là có dữ liệu khi ít nhất một trường có giá trị — object rỗng không tạo mục (không hiện tiêu đề trống).
+  const beachDetails = place.category_slug === 'beach' ? await getBeachPublicDetails(slug, locale).catch(() => null) : null;
+  const beach =
+    beachDetails &&
+    [
+      beachDetails.access_route,
+      beachDetails.characteristics,
+      beachDetails.services,
+      beachDetails.best_season,
+      beachDetails.lifeguard_info,
+      beachDetails.sourced_notes,
+    ].some(Boolean)
+      ? beachDetails
+      : null;
 
   return (
     <article className={styles.detail}>
@@ -266,6 +300,59 @@ export default async function PlaceDetailPage({ params }: Params) {
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>{getPlaceAboutTitle(locale, place.category_slug)}</h2>
           <p>{place.description}</p>
+        </section>
+      )}
+
+      {beach && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Thông tin bãi biển</h2>
+          <dl className={styles.infoGrid}>
+            {beach.access_route && (
+              <>
+                <dt>Đường vào</dt>
+                <dd>{beach.access_route}</dd>
+              </>
+            )}
+            {beach.characteristics && (
+              <>
+                <dt>Đặc điểm bãi</dt>
+                <dd>{beach.characteristics}</dd>
+              </>
+            )}
+            {beach.services && (
+              <>
+                <dt>Dịch vụ tại bãi</dt>
+                <dd>{beach.services}</dd>
+              </>
+            )}
+            {beach.best_season && (
+              <>
+                <dt>Mùa tham khảo</dt>
+                <dd>
+                  {beach.best_season}
+                  <BeachSourceNote source={beach.best_season_source} />
+                </dd>
+              </>
+            )}
+            {beach.lifeguard_info && (
+              <>
+                <dt>Thông tin cứu hộ</dt>
+                <dd>
+                  {beach.lifeguard_info}
+                  <BeachSourceNote source={beach.lifeguard_info_source} />
+                </dd>
+              </>
+            )}
+            {beach.sourced_notes && (
+              <>
+                <dt>Lưu ý</dt>
+                <dd>
+                  {beach.sourced_notes}
+                  <BeachSourceNote source={beach.sourced_notes_source} />
+                </dd>
+              </>
+            )}
+          </dl>
         </section>
       )}
 

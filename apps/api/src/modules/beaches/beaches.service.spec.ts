@@ -207,6 +207,25 @@ describe('BeachesService', () => {
   });
 
   describe('updateDetails — KHÔNG BAO GIỜ tự suy ra "an toàn" từ chuỗi text', () => {
+    it('trả content_version mới từ kết quả CAS (token cho lần lưu kế tiếp)', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false, contentVersion: 8 });
+      repo.detail.mockResolvedValue(null);
+      const res = await service.updateDetails('b1', { access_route: 'x', expected_content_version: 7 }, 'u1');
+      expect(res).toMatchObject({ content_version: 8 });
+    });
+
+    it('PATCH rỗng (không có CAS trả token) → content_version giữ nguyên bằng version gửi lên', async () => {
+      repo.upsertDetails.mockResolvedValue({ conflict: false });
+      repo.detail.mockResolvedValue(null);
+      const res = await service.updateDetails('b1', { expected_content_version: 7 }, 'u1');
+      expect(res).toMatchObject({ content_version: 7 });
+    });
+
+    it('getDetails: đọc cho quản trị, null khi chưa có hàng chi tiết', async () => {
+      repo.detail.mockResolvedValue(null);
+      await expect(service.getDetails('b1')).resolves.toBeNull();
+    });
+
     it('upsert rồi trả detail đã map; lifeguard_info không có source → lifeguard_info_source null', async () => {
       repo.upsertDetails.mockResolvedValue({ conflict: false });
       repo.detail.mockResolvedValue({

@@ -1,4 +1,4 @@
-import { apiGetPaginated } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type { BeachCard, BeachSort } from '../types';
 
@@ -25,4 +25,59 @@ export async function listBeaches(
   if (params.sort) qs.set('sort', params.sort);
   const q = qs.toString();
   return apiGetPaginated<BeachCard>(`/beaches${q ? `?${q}` : ''}`, { cache: 'no-store' });
+}
+
+// Chi tiết bãi (place_beach_details) — cùng hợp đồng với BeachesController. Trường nguồn luôn đi kèm
+// object nguồn rời (title/url/verified_at) hoặc null; không suy ra "an toàn" từ text.
+export interface BeachSource {
+  title: string | null;
+  url: string | null;
+  verified_at: string | null;
+}
+
+export interface BeachDetails {
+  access_route: string | null;
+  characteristics: string | null;
+  services: string | null;
+  best_season: string | null;
+  best_season_source: BeachSource | null;
+  lifeguard_info: string | null;
+  lifeguard_info_source: BeachSource | null;
+  sourced_notes: string | null;
+  sourced_notes_source: BeachSource | null;
+}
+
+export interface UpdateBeachDetailsInput {
+  expected_content_version: number;
+  access_route?: string | null;
+  characteristics?: string | null;
+  services?: string | null;
+  best_season?: string | null;
+  best_season_source_id?: string | null;
+  lifeguard_info?: string | null;
+  lifeguard_info_source_id?: string | null;
+}
+
+/** Chi tiết bãi cho màn quản trị — đọc được cả khi place còn nháp. Trả null nếu chưa có hàng chi tiết. */
+export async function getBeachDetailsAdmin(placeId: string, accessToken: string): Promise<BeachDetails | null> {
+  return apiGetAuth<BeachDetails | null>(`/beaches/${encodeURIComponent(placeId)}/details`, accessToken, { cache: 'no-store' });
+}
+
+/** PATCH có CAS: `expected_content_version` là token places.content_version đang hiển thị. Trả thêm token mới. */
+export async function updateBeachDetails(
+  placeId: string,
+  input: UpdateBeachDetailsInput,
+  accessToken: string,
+): Promise<BeachDetails & { content_version: number }> {
+  return apiPatchAuth<BeachDetails & { content_version: number }>(`/beaches/${encodeURIComponent(placeId)}/details`, accessToken, input);
+}
+
+/** Chi tiết bãi công khai (kèm beach_details) — dùng ở trang /places/[slug] khi category là beach. */
+export async function getBeachPublicDetails(slug: string, locale: string = 'vi'): Promise<BeachDetails | null> {
+  const qs = new URLSearchParams({ locale });
+  const body = await apiGet<{ beach_details: BeachDetails | null }>(
+    `/beaches/${encodeURIComponent(slug)}?${qs.toString()}`,
+    { cache: 'no-store' },
+  );
+  return body.beach_details;
 }

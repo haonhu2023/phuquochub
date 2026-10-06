@@ -20,6 +20,14 @@ export class BeachesController {
     return this.beachesService.list(query);
   }
 
+  // Đọc chi tiết cho màn quản trị (kể cả khi place còn nháp, nơi GET /beaches/:slug công khai trả 404).
+  @Get(':id/details')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getDetails(@Param('id', ParseUUIDPipe) id: string) {
+    return this.beachesService.getDetails(id);
+  }
+
   // đường vào/đặc điểm bãi/mùa tham khảo/dịch vụ/thông tin cứu hộ/lưu ý có nguồn — xem
   // UpdateBeachDetailsDto. UPSERT.
   @Patch(':id/details')
