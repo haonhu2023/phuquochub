@@ -1,0 +1,127 @@
+import { Type } from 'class-transformer';
+import {
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
+import {
+  RealEstateAddressPrecision,
+  RealEstateFurnitureStatus,
+  RealEstatePosterRole,
+  RealEstatePropertyType,
+  RealEstateRentPeriod,
+  RealEstateSalePriceBasis,
+  RealEstateTransactionType,
+} from '../real-estate-listings.enums';
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Tạo/sửa tin — CHỈ các trường thực nhận. Trường theo giao dịch (rent_period/deposit_amount/...
+// vs sale_price_basis/legal_status_note) được validate THEO transaction_type ở service
+// (assertTransactionScopedFields) — DTO chỉ kiểm hình dạng từng field, không biết ngữ cảnh.
+export class UpsertRealEstateListingDto {
+  @IsEnum(RealEstatePosterRole)
+  poster_role!: RealEstatePosterRole;
+
+  @IsEnum(RealEstateTransactionType)
+  transaction_type!: RealEstateTransactionType;
+
+  @IsEnum(RealEstatePropertyType)
+  property_type!: RealEstatePropertyType;
+
+  @IsString() @MinLength(1) @MaxLength(200)
+  title!: string;
+
+  @IsOptional() @IsString() @MaxLength(80)
+  ward?: string | null;
+
+  @IsOptional() @IsEnum(RealEstateAddressPrecision)
+  address_precision?: RealEstateAddressPrecision;
+
+  @IsOptional() @IsString() @MaxLength(300)
+  address_text?: string | null;
+
+  @IsOptional() @IsNumber() @Min(-90) @Max(90)
+  lat?: number | null;
+
+  @IsOptional() @IsNumber() @Min(-180) @Max(180)
+  lng?: number | null;
+
+  @IsOptional() @IsNumber() @Min(0)
+  area_sqm?: number | null;
+
+  @IsOptional() @IsNumber() @Min(0)
+  price?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(3)
+  price_currency?: string | null;
+
+  @IsOptional() @IsEnum(RealEstateRentPeriod)
+  rent_period?: RealEstateRentPeriod | null;
+
+  @IsOptional() @IsEnum(RealEstateSalePriceBasis)
+  sale_price_basis?: RealEstateSalePriceBasis | null;
+
+  @IsOptional() @IsNumber() @Min(0)
+  deposit_amount?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  utilities_note?: string | null;
+
+  @IsOptional() @IsEnum(RealEstateFurnitureStatus)
+  furniture_status?: RealEstateFurnitureStatus | null;
+
+  @IsOptional() @Matches(DATE_RE, { message: 'move_in_date phải là YYYY-MM-DD' })
+  move_in_date?: string | null;
+
+  @IsOptional() @IsInt() @Min(0)
+  lease_term_months?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(500)
+  legal_status_note?: string | null;
+
+  @IsOptional() @IsString() @MaxLength(4000)
+  description?: string | null;
+
+  @IsString() @MinLength(1) @MaxLength(30)
+  contact_method!: string;
+
+  @IsString() @MinLength(1) @MaxLength(200)
+  contact_value!: string;
+
+  @IsOptional() @Matches(DATE_RE, { message: 'expires_at phải là YYYY-MM-DD' })
+  expires_at?: string | null;
+}
+
+export class DecideRealEstateListingDto {
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  note?: string;
+}
+
+export class ListRealEstateListingsQueryDto {
+  @IsOptional() @IsEnum(RealEstateTransactionType)
+  transaction_type?: RealEstateTransactionType;
+
+  @IsOptional() @IsEnum(RealEstatePropertyType)
+  property_type?: RealEstatePropertyType;
+
+  @IsOptional() @IsString() @MaxLength(80)
+  ward?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50)
+  limit?: number;
+}

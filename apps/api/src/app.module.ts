@@ -21,6 +21,7 @@ import { PricesModule } from './modules/prices/prices.module';
 import { PlacesModule } from './modules/places/places.module';
 import { PlaceEditProposalsModule } from './modules/place-edit-proposals/place-edit-proposals.module';
 import { JobListingsModule } from './modules/job-listings/job-listings.module';
+import { RealEstateListingsModule } from './modules/real-estate-listings/real-estate-listings.module';
 import { GeoModule } from './modules/geo/geo.module';
 import { SearchModule } from './modules/search/search.module';
 import { HotelsModule } from './modules/hotels/hotels.module';
@@ -84,6 +85,7 @@ import { OpsModule } from './modules/ops/ops.module';
     PlacesModule,
     PlaceEditProposalsModule,
     JobListingsModule,
+    RealEstateListingsModule,
     GeoModule,
     SearchModule,
     HotelsModule,
