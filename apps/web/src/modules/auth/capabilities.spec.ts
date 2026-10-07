@@ -34,6 +34,7 @@ describe('capabilitiesFromRoles', () => {
       canViewOwnerTodo: false,
       canReviewPlaceEditProposals: false,
       canVerifyPrices: false,
+      canReviewJobListings: false,
     });
   });
 
@@ -52,6 +53,7 @@ describe('capabilitiesFromRoles', () => {
         canViewOwnerTodo: true,
         canReviewPlaceEditProposals: true,
         canVerifyPrices: true,
+        canReviewJobListings: true,
       });
     },
   );
@@ -75,6 +77,7 @@ describe('capabilitiesFromRoles', () => {
       canViewOwnerTodo: true,
       canReviewPlaceEditProposals: true,
       canVerifyPrices: true,
+      canReviewJobListings: true,
     });
   });
 
@@ -98,6 +101,7 @@ describe('capabilitiesFromRoles', () => {
       canViewOwnerTodo: false,
       canReviewPlaceEditProposals: false,
       canVerifyPrices: false,
+      canReviewJobListings: false,
     });
   });
 
@@ -128,6 +132,7 @@ describe('capabilitiesFromRoles', () => {
         canViewOwnerTodo: false,
         canReviewPlaceEditProposals: false,
         canVerifyPrices: false,
+        canReviewJobListings: false,
       });
     });
 

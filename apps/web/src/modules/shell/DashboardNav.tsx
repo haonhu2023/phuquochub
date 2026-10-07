@@ -43,6 +43,8 @@ export function DashboardNav() {
     { href: '/dashboard/editorial/places', label: 'Quản lý địa điểm', show: caps.canEditorial },
     { href: '/dashboard/editorial/guides', label: 'Bài viết', show: caps.canEditGuides },
     { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },
+    { href: '/dashboard/job-listings', label: 'Tin tuyển dụng của tôi', show: true },
+    { href: '/dashboard/job-listings/moderation', label: 'Duyệt tin tuyển dụng', show: caps.canReviewJobListings },
     { href: '/dashboard/help', label: 'Hướng dẫn', show: true },
   ];
 

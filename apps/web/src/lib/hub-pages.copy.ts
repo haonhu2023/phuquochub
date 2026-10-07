@@ -27,7 +27,8 @@ export type HubPageKey =
   | 'events'
   | 'explore'
   | 'map'
-  | 'guide';
+  | 'guide'
+  | 'jobs';
 
 const VI: Record<HubPageKey, HubPageCopy> = {
   places: {
@@ -79,6 +80,11 @@ const VI: Record<HubPageKey, HubPageCopy> = {
     title: 'Cẩm nang Phú Quốc',
     description: 'Bài viết hướng dẫn du lịch Phú Quốc — nên ở đâu, đi đâu, ăn gì theo từng khu vực.',
     h1: 'Cẩm nang Phú Quốc',
+  },
+  jobs: {
+    title: 'Tuyển dụng Phú Quốc — Việc làm địa phương',
+    description: 'Tin tuyển dụng tại Phú Quốc — lọc theo ngành nghề, khu vực và hình thức làm việc, liên hệ trực tiếp nhà tuyển dụng.',
+    h1: 'Tuyển dụng tại Phú Quốc',
   },
 };
 
@@ -132,6 +138,11 @@ const EN: Record<HubPageKey, HubPageCopy> = {
     title: 'Phú Quốc Travel Guide',
     description: 'Phú Quốc travel guide articles — where to stay, where to go, what to eat by area.',
     h1: 'Phú Quốc Travel Guide',
+  },
+  jobs: {
+    title: 'Phú Quốc Jobs — Local Vacancies',
+    description: 'Job listings in Phú Quốc — filter by category, area and employment type, contact the employer directly.',
+    h1: 'Jobs in Phú Quốc',
   },
 };
 
