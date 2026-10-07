@@ -65,6 +65,10 @@ export class RoomTypeDto {
 }
 
 export class UpdateHotelRoomsDto {
+  // CAS: token places.content_version đang hiển thị. Thiếu/sai → 400; lệch → 409, không ghi.
+  @IsInt() @Min(0)
+  expected_content_version!: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => RoomTypeDto)

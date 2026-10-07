@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { HotelsService } from './hotels.service';
 import { PlaceStatus } from '../places/place.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
@@ -155,16 +156,24 @@ describe('HotelsService', () => {
   });
 
   it('updateRooms: thay toàn bộ rooms rồi trả danh sách mới', async () => {
-    const dto = { rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
-    repo.replaceRooms.mockResolvedValue(undefined);
+    const dto = { expected_content_version: 4, rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
+    repo.replaceRooms.mockResolvedValue({ conflict: false, contentVersion: 5 });
     repo.listRooms.mockResolvedValue([
       { id: 'r9', name: 'Deluxe', capacity: null, price_ref: null, currency: 'VND', valid_from: null, valid_to: null, sort_order: 0 },
     ]);
 
     const res = await service.updateRooms('h1', dto);
 
-    expect(repo.replaceRooms).toHaveBeenCalledWith('h1', dto.rooms);
-    expect(res[0]).toMatchObject({ id: 'r9', name: 'Deluxe' });
+    expect(repo.replaceRooms).toHaveBeenCalledWith('h1', dto.rooms, 4);
+    expect(res.rooms[0]).toMatchObject({ id: 'r9', name: 'Deluxe' });
+    expect(res.content_version).toBe(5);
+  });
+
+  it('updateRooms: lệch version → 409, không trả danh sách', async () => {
+    const dto = { expected_content_version: 4, rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
+    repo.replaceRooms.mockResolvedValue({ conflict: true });
+    await expect(service.updateRooms('h1', dto)).rejects.toThrow(ConflictException);
+    expect(repo.listRooms).not.toHaveBeenCalled();
   });
 
   describe('getDetails (đọc đặc quyền — hoạt động cả khi place chưa published)', () => {
@@ -309,15 +318,15 @@ describe('HotelsService', () => {
     });
 
     it('updateRooms (đặc quyền) trả raw price thật, không bị redact', async () => {
-      const dto = { rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
-      repo.replaceRooms.mockResolvedValue(undefined);
+      const dto = { expected_content_version: 4, rooms: [{ name: 'Deluxe' }] } as Parameters<typeof service.updateRooms>[1];
+      repo.replaceRooms.mockResolvedValue({ conflict: false, contentVersion: 5 });
       repo.listRooms.mockResolvedValue([
         { id: 'r1', name: 'Deluxe', capacity: 2, price_ref: String(SECRET_ROOM_PRICE), currency: 'VND', valid_from: null, valid_to: null, sort_order: 0 },
       ]);
 
-      const rooms = await service.updateRooms('h1', dto);
+      const res = await service.updateRooms('h1', dto);
 
-      expect(rooms[0].price_ref).toBe(SECRET_ROOM_PRICE);
+      expect(res.rooms[0].price_ref).toBe(SECRET_ROOM_PRICE);
     });
   });
 });

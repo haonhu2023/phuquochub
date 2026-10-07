@@ -189,8 +189,14 @@ export class HotelsService {
 
   // Đặc quyền (Place.Edit.Managed) — actor phải thấy đúng giá họ vừa lưu, KHÔNG redact
   // (publicResponse mặc định false).
+  // Trả { rooms, content_version } (đổi từ mảng thuần để mang token CAS mới). Lệch version → 409, không ghi.
   async updateRooms(placeId: string, dto: UpdateHotelRoomsDto) {
-    await this.repo.replaceRooms(placeId, dto.rooms);
-    return this.listRooms(placeId);
+    const result = await this.repo.replaceRooms(placeId, dto.rooms, dto.expected_content_version);
+    if (result.conflict) {
+      throw new ConflictException(
+        `Địa điểm vừa được người khác sửa (mong đợi content_version=${dto.expected_content_version}) — tải lại và thử lại.`,
+      );
+    }
+    return { rooms: await this.listRooms(placeId), content_version: result.contentVersion };
   }
 }

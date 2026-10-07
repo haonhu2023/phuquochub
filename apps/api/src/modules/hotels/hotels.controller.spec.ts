@@ -32,8 +32,14 @@ describe('HotelsController — ranh giới price trust gate', () => {
     expect(hotelsService.listRooms).toHaveBeenCalledWith('h1', { publicResponse: true });
   });
 
+  it('GET :id/rooms/managed → listRooms(id) KHÔNG publicResponse (giá thật cho editor)', () => {
+    hotelsService.listRooms = jest.fn().mockResolvedValue([{ id: 'r1', price_ref: 500000 }]);
+    controller.listRoomsManaged('h1');
+    expect(hotelsService.listRooms).toHaveBeenCalledWith('h1');
+  });
+
   it('PATCH :id/rooms (đặc quyền) → updateRooms(id, dto) KHÔNG truyền publicResponse (actor xem giá thật vừa lưu)', () => {
-    const dto = { rooms: [] } as Parameters<typeof controller.updateRooms>[1];
+    const dto = { expected_content_version: 4, rooms: [] } as Parameters<typeof controller.updateRooms>[1];
     controller.updateRooms('h1', dto);
     expect(hotelsService.updateRooms).toHaveBeenCalledWith('h1', dto);
   });

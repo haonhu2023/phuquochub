@@ -221,8 +221,21 @@ export class HotelsRepository {
   }
 
   /** Thay toàn bộ room types của một place (transaction). */
-  async replaceRooms(placeId: string, rooms: RoomInput[]): Promise<void> {
-    await this.ds.transaction(async (m) => {
+  // CAS trên places.content_version trong cùng transaction (cùng khuôn upsertDetails): lệch → conflict,
+  // KHÔNG xoá/ghi phòng nào. Thành công → bump version và trả token mới.
+  async replaceRooms(
+    placeId: string,
+    rooms: RoomInput[],
+    expectedVersion: number,
+  ): Promise<{ conflict: boolean; contentVersion?: number }> {
+    return this.ds.transaction(async (m) => {
+      const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
+        `UPDATE places SET content_version = content_version + 1
+           WHERE id = $1 AND content_version = $2
+           RETURNING content_version`,
+        [placeId, expectedVersion],
+      );
+      if (casRows.length === 0) return { conflict: true };
       await m.query(`DELETE FROM hotel_room_types WHERE place_id = $1`, [placeId]);
       for (const [i, r] of rooms.entries()) {
         await m.query(
@@ -241,6 +254,7 @@ export class HotelsRepository {
           ],
         );
       }
+      return { conflict: false, contentVersion: casRows[0].content_version };
     });
   }
 }

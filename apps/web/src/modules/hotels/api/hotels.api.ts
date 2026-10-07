@@ -12,6 +12,8 @@ export interface HotelRoom {
   price_ref: number | null;
   currency: string;
   sort_order: number;
+  valid_from?: string | null;
+  valid_to?: string | null;
 }
 
 // "Hạng sao có nguồn" (product spec, 2026-09-29) — object rời (title/url/verified_at) hoặc null,
@@ -132,4 +134,28 @@ export async function updateHotelDetails(
   accessToken: string,
 ): Promise<HotelDetailsAdmin> {
   return apiPatchAuth<HotelDetailsAdmin>(`/hotels/${encodeURIComponent(placeId)}/details`, accessToken, payload);
+}
+
+// Phòng cho editor quản trị (giá THẬT). GET :id/rooms công khai luôn xoá price_ref — không dùng cho editor.
+export interface HotelRoomInput {
+  name: string;
+  capacity?: number | null;
+  price_ref?: number | null;
+  currency?: string;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  sort_order?: number;
+}
+
+export async function getHotelRoomsManaged(placeId: string, accessToken: string): Promise<HotelRoom[]> {
+  return apiGetAuth<HotelRoom[]>(`/hotels/${encodeURIComponent(placeId)}/rooms/managed`, accessToken, { cache: 'no-store' });
+}
+
+/** Thay toàn bộ danh sách phòng, có CAS. Trả { rooms, content_version } (kiểu mới — không có caller web cũ nào đọc endpoint này). */
+export async function updateHotelRooms(
+  placeId: string,
+  input: { expected_content_version: number; rooms: HotelRoomInput[] },
+  accessToken: string,
+): Promise<{ rooms: HotelRoom[]; content_version: number }> {
+  return apiPatchAuth<{ rooms: HotelRoom[]; content_version: number }>(`/hotels/${encodeURIComponent(placeId)}/rooms`, accessToken, input);
 }

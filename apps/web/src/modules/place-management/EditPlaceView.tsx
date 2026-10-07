@@ -14,6 +14,7 @@ import styles from './place-management.module.css';
 import { getEditorialCategory, editorialPublicDetailHref } from '@/modules/editorial/editorialCategories';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor';
+import { HotelRoomsEditor } from '@/modules/category-admin/HotelRoomsEditor';
 import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
 import { BeachDetailsEditor } from '@/modules/category-admin/BeachDetailsEditor';
 import { TourDetailsEditor } from '@/modules/category-admin/TourDetailsEditor';
@@ -341,6 +342,7 @@ export function EditPlaceView({ placeId }: Props) {
       {state.place.category_slug === 'hotel' && contentVersion !== null && (
         <>
           <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+          <HotelRoomsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <AmenitiesEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
           <PricesEditor placeId={placeId} />
         </>

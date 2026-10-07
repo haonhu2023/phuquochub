@@ -22,6 +22,15 @@ export class HotelsController {
   }
 
   // Route 2 đoạn khai báo trước ':slug' (1 đoạn) cho rõ ràng.
+  // Đọc GIÁ THẬT cho editor (quyền Place.Edit.Managed). Route công khai GET :id/rooms luôn xoá price_ref;
+  // editor dùng route này để tải đủ dữ liệu trước khi thay toàn bộ danh sách, tránh ghi đè giá thành null.
+  @Get(':id/rooms/managed')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  listRoomsManaged(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotelsService.listRooms(id);
+  }
+
   @Public()
   @Get(':id/rooms')
   listRooms(@Param('id', ParseUUIDPipe) id: string) {
