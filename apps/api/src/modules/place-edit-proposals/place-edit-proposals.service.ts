@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { PlaceEditProposalsRepository, ListProposalsFilter } from './repositories/place-edit-proposals.repository';
 import { PlaceEditProposalDecision, PlaceEditProposalFieldKey, PlaceEditProposalStatus } from './place-edit-proposals.enums';
 import { CreatePlaceEditProposalDto, DecidePlaceEditProposalDto } from './dto/place-edit-proposal.dto';
-import { toPlaceEditProposalView } from './place-edit-proposals.mapper';
+import { toPlaceEditProposalView, toPlaceEditProposalSenderView } from './place-edit-proposals.mapper';
 import { PlacesRepository } from '../places/repositories/places.repository';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
@@ -152,6 +152,20 @@ export class PlaceEditProposalsService {
   async list(filter: ListProposalsFilter): Promise<ReturnType<typeof toPlaceEditProposalView>[]> {
     const rows = await this.proposalsRepo.list(filter);
     return rows.map(toPlaceEditProposalView);
+  }
+
+  // "Góp ý của tôi": chỉ đề xuất do chính người gửi tạo. Không thuộc người gửi → 404 (không lộ tồn tại).
+  async listMine(proposerId: string): Promise<ReturnType<typeof toPlaceEditProposalSenderView>[]> {
+    const rows = await this.proposalsRepo.list({ proposerId });
+    return rows.map(toPlaceEditProposalSenderView);
+  }
+
+  async getMine(id: string, proposerId: string): Promise<ReturnType<typeof toPlaceEditProposalSenderView>> {
+    const row = await this.proposalsRepo.findById(id);
+    if (!row || row.proposerId !== proposerId) {
+      throw new NotFoundException('Không tìm thấy đề xuất');
+    }
+    return toPlaceEditProposalSenderView(row);
   }
 
   async getById(id: string): Promise<ReturnType<typeof toPlaceEditProposalView>> {

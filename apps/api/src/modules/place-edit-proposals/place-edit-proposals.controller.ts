@@ -35,6 +35,18 @@ export class PlaceEditProposalsController {
     return this.proposalsService.list({ status: query.status, placeId: query.place_id });
   }
 
+  // "Góp ý của tôi": đã xác thực, không yêu cầu quyền Moderate. PHẢI đặt TRƯỚC ':id' — nếu không, ':id'
+  // (ParseUUIDPipe) sẽ nuốt 'mine' và trả 400 thay vì tới đúng route này.
+  @Get('place-edit-proposals/mine')
+  listMine(@CurrentUser() user: AuthPrincipal) {
+    return this.proposalsService.listMine(user.sub);
+  }
+
+  @Get('place-edit-proposals/mine/:id')
+  getMine(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.proposalsService.getMine(id, user.sub);
+  }
+
   @Get('place-edit-proposals/:id')
   @RequirePermissions('PlaceEditProposal.Moderate')
   getById(@Param('id', ParseUUIDPipe) id: string) {
