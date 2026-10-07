@@ -32,6 +32,8 @@ export interface HotelDetails {
   hotel_type: HotelType;
   check_in: string | null;
   check_out: string | null;
+  // Đường vào/điểm tiếp cận. null = chưa có thông tin (không phải "không có").
+  access_route?: string | null;
   star_rating_source: HotelStarRatingSource | null;
 }
 
@@ -47,6 +49,7 @@ export interface HotelDetailsAdmin {
   hotel_type?: HotelType;
   check_in?: string | null;
   check_out?: string | null;
+  access_route?: string | null;
   star_rating_source?: HotelStarRatingSource | null;
 }
 
@@ -116,6 +119,7 @@ export interface UpdateHotelDetailsInput {
   star_rating_source_id?: string | null;
   check_in?: string | null;
   check_out?: string | null;
+  access_route?: string | null;
 }
 
 // Đặc quyền — hoạt động cả khi hotel còn draft/pending (GET /hotels/:slug @Public() chỉ trả place

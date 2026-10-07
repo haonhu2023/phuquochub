@@ -111,4 +111,8 @@ export class UpdateHotelDetailsDto {
 
   @IsOptional() @Matches(HH_MM, { message: 'check_out phải là giờ HH:MM (24h)' })
   check_out?: string | null;
+
+  // Đường vào/điểm tiếp cận (văn bản tự do). Null = chưa có thông tin — KHÔNG phải "không có đường vào".
+  @IsOptional() @IsString() @MaxLength(300)
+  access_route?: string | null;
 }

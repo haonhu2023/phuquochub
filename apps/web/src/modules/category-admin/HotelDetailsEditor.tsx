@@ -37,6 +37,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
   const [starRating, setStarRating] = useState('');
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
+  const [accessRoute, setAccessRoute] = useState('');
   const [newSourceTitle, setNewSourceTitle] = useState('');
   const [newSourceUrl, setNewSourceUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,6 +66,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
             setStarRating(details.star_rating != null ? String(details.star_rating) : '');
             setCheckIn(details.check_in?.slice(0, 5) ?? '');
             setCheckOut(details.check_out?.slice(0, 5) ?? '');
+            setAccessRoute(details.access_route ?? '');
           }
         })
         .catch(() => {
@@ -115,6 +117,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
         star_rating: starRating.trim() ? Number(starRating) : null,
         check_in: checkIn.trim() ? checkIn : null,
         check_out: checkOut.trim() ? checkOut : null,
+        access_route: accessRoute.trim() ? accessRoute.trim() : null,
       };
       if (starRatingSourceId) payload.star_rating_source_id = starRatingSourceId;
 
@@ -163,6 +166,10 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
         <label className={uiStyles.field}>
           <span className={uiStyles.fieldLabel}>Giờ trả phòng (HH:MM)</span>
           <input className={styles.input} type="text" placeholder="12:00" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} />
+        </label>
+        <label className={uiStyles.field}>
+          <span className={uiStyles.fieldLabel}>Đường vào / điểm tiếp cận (để trống = chưa có thông tin)</span>
+          <input className={styles.input} type="text" maxLength={300} value={accessRoute} onChange={(e) => setAccessRoute(e.target.value)} />
         </label>
       </div>
 

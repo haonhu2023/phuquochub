@@ -126,6 +126,12 @@ export default async function HotelDetailPage({ params }: Params) {
           <dl>
             <dt>Loại hình</dt>
             <dd>{HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
+            {h.hotel_details.access_route && (
+              <>
+                <dt>Đường vào</dt>
+                <dd>{h.hotel_details.access_route}</dd>
+              </>
+            )}
             {h.hotel_details.star_rating !== null && (
               <>
                 <dt>Hạng sao</dt>

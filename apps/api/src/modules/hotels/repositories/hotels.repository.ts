@@ -83,7 +83,7 @@ export class HotelsRepository {
 
   async detail(placeId: string) {
     const rows = await this.ds.query(
-      `SELECT hd.star_rating, hd.hotel_type, hd.check_in, hd.check_out,
+      `SELECT hd.star_rating, hd.hotel_type, hd.check_in, hd.check_out, hd.access_route,
               hd.star_rating_source_id, hd.star_rating_verified_at,
               s.title AS star_rating_source_title, s.url AS star_rating_source_url
        FROM place_hotel_details hd
@@ -153,6 +153,7 @@ export class HotelsRepository {
       if (dto.hotel_type !== undefined) patch.hotel_type = dto.hotel_type;
       if (dto.check_in !== undefined) patch.check_in = dto.check_in;
       if (dto.check_out !== undefined) patch.check_out = dto.check_out;
+      if (dto.access_route !== undefined) patch.access_route = dto.access_route;
 
       const starRatingProvided = dto.star_rating !== undefined;
       const sourceProvided = dto.star_rating_source_id !== undefined;

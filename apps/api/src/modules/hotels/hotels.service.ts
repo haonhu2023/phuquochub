@@ -10,6 +10,7 @@ import { CacheInvalidationService } from '../../core/cache-invalidation/cache-in
 interface HotelDetailsRow {
   star_rating: number | null;
   hotel_type: string;
+  access_route: string | null;
   check_in: string | null;
   check_out: string | null;
   star_rating_source_id: string | null;
@@ -25,6 +26,7 @@ function mapHotelDetails(row: HotelDetailsRow | null) {
   return {
     star_rating: row.star_rating,
     hotel_type: row.hotel_type,
+    access_route: row.access_route,
     check_in: row.check_in,
     check_out: row.check_out,
     star_rating_source:
