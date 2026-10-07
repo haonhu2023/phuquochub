@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
 import { RestaurantsRepository } from './repositories/restaurants.repository';
@@ -14,12 +14,20 @@ import { CacheInvalidationService } from '../../core/cache-invalidation/cache-in
 // `publicResponse: false` (mặc định — dùng bởi `updateMenu()`, đặc quyền) giữ giá trị thật để actor
 // thấy đúng giá họ vừa lưu. KHÔNG dùng place.verification_status làm proxy: place đã xác minh
 // không có nghĩa từng giá món trong thực đơn đã được đối chiếu.
-function mapItem(i: Record<string, unknown>, publicResponse: boolean) {
+// Giá món công khai (quyết định sản phẩm 07/10/2026): hiển thị giá đã được cơ sở/nguồn cung cấp qua
+// quyền Place.Edit.Managed. Thiếu đơn vị/ngày/nguồn KHÔNG bị điền: trả null để giao diện nói 'chưa rõ'.
+// Giá null = chưa biết (không phải miễn phí). `publicResponse` không còn xoá giá.
+function mapItem(i: Record<string, unknown>, _publicResponse: boolean) {
   return {
     id: i.id,
     name: i.name,
-    price: publicResponse ? null : i.price !== null && i.price !== undefined ? Number(i.price) : null,
+    price: i.price !== null && i.price !== undefined ? Number(i.price) : null,
     currency: i.currency,
+    price_unit: i.price_unit ?? null,
+    price_recorded_on: i.price_recorded_on ?? null,
+    price_source: i.price_source_id
+      ? { id: i.price_source_id, title: i.price_source_title ?? null, url: i.price_source_url ?? null }
+      : null,
     tags: i.tags ?? null,
     is_signature: i.is_signature ?? false,
     sort_order: i.sort_order,
@@ -104,6 +112,16 @@ export class RestaurantsService {
   // (publicResponse mặc định false). CAS thật (2026-10-01) — xem UpdateRestaurantMenuDto's ghi chú
   // đầy đủ: cùng khuôn updateDetails(), 409 trước khi ghi gì, không audit, không invalidate cache.
   async updateMenu(placeId: string, dto: UpdateRestaurantMenuDto, userId: string) {
+    // Món chưa có giá không được mang đơn vị/ngày ghi nhận/nguồn giá: không ghi "đã có" cho giá không tồn tại.
+    for (const sec of dto.sections) {
+      for (const it of sec.items) {
+        const hasPrice = it.price !== undefined && it.price !== null;
+        const hasMeta = it.price_unit || it.price_recorded_on || it.price_source_id;
+        if (!hasPrice && hasMeta) {
+          throw new BadRequestException(`Món "${it.name}" chưa có giá: không gửi đơn vị, ngày ghi nhận hoặc nguồn giá.`);
+        }
+      }
+    }
     const result = await this.repo.replaceMenu(placeId, dto.sections, dto.expected_content_version);
     if (result.conflict) {
       throw new ConflictException(

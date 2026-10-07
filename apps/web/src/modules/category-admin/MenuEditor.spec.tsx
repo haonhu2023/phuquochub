@@ -1,24 +1,60 @@
 /** @jest-environment jsdom */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MenuEditor } from './MenuEditor';
 import { readSession } from '@/modules/auth/session';
-import { getMenu, updateMenu } from '@/modules/restaurants/api/restaurants.api';
+import { getMenuManaged, updateMenu } from '@/modules/restaurants/api/restaurants.api';
+import { createSource } from '@/modules/sources/api/sources.api';
 import { ApiError } from '@/lib/http';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('@/modules/restaurants/api/restaurants.api', () => ({
-  getMenu: jest.fn(),
+  getMenuManaged: jest.fn(),
   updateMenu: jest.fn(),
 }));
+jest.mock('@/modules/sources/api/sources.api', () => ({ createSource: jest.fn() }));
 
 const mockReadSession = readSession as jest.Mock;
-const mockGetMenu = getMenu as jest.Mock;
-const mockUpdateMenu = updateMenu as jest.Mock;
-
+const mockGet = getMenuManaged as jest.Mock;
+const mockUpdate = updateMenu as jest.Mock;
+const mockCreateSource = createSource as jest.Mock;
 const mockOnVersionChange = jest.fn();
 
-function renderEditor(placeId = 'place-1', contentVersion = 1) {
-  return render(<MenuEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={mockOnVersionChange} />);
+const MENU = [
+  {
+    id: 's1',
+    name: 'Món chính',
+    sort_order: 0,
+    items: [
+      {
+        id: 'i1',
+        name: 'Cá nướng synthetic',
+        price: 150000,
+        currency: 'VND',
+        price_unit: 'phần',
+        price_recorded_on: '2026-10-01',
+        price_source: { id: 'src-old', title: 'Menu quán synthetic', url: null },
+        tags: null,
+        is_signature: true,
+        sort_order: 0,
+      },
+      {
+        id: 'i2',
+        name: 'Canh chua synthetic',
+        price: null,
+        currency: 'VND',
+        price_unit: null,
+        price_recorded_on: null,
+        price_source: null,
+        tags: null,
+        is_signature: false,
+        sort_order: 1,
+      },
+    ],
+  },
+];
+
+function renderEditor(contentVersion = 6) {
+  return render(<MenuEditor placeId="rest-1" contentVersion={contentVersion} onVersionChange={mockOnVersionChange} />);
 }
 
 beforeEach(() => {
@@ -27,100 +63,92 @@ beforeEach(() => {
 
 afterEach(() => jest.clearAllMocks());
 
-describe('MenuEditor — tải thực đơn hiện có', () => {
-  it('hiện đúng mục/món đã có, giá gắn nhãn "(nội bộ)"', async () => {
-    mockGetMenu.mockResolvedValue([
-      { id: 's1', name: 'Hải sản', sort_order: 0, items: [{ id: 'i1', name: 'Ghẹ rang muối', price: 250000, currency: 'VND', tags: null, is_signature: true, sort_order: 0 }] },
-    ]);
+describe('MenuEditor — tải và hiển thị', () => {
+  it('tải bằng route quản trị (giá thật) và hiện đơn vị/ngày/nguồn; món thiếu giá hiện "chưa có giá"', async () => {
+    mockGet.mockResolvedValue(MENU);
     renderEditor();
-    expect(await screen.findByText(/Ghẹ rang muối ★ — 250.000 VND \(nội bộ\)/)).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Hải sản' })).toBeInTheDocument();
+    expect(await screen.findByText(/Cá nướng synthetic/)).toBeInTheDocument();
+    expect(mockGet).toHaveBeenCalledWith('rest-1', 'tok');
+    expect(screen.getByText(/150\.000 VND \/ phần/)).toBeInTheDocument();
+    expect(screen.getByText(/ghi nhận 2026-10-01/)).toBeInTheDocument();
+    expect(screen.getAllByText(/chưa có giá/).length).toBeGreaterThan(0);
+  });
+
+  it('lỗi tải → không có nút lưu', async () => {
+    mockGet.mockRejectedValue(new ApiError('down', 500));
+    renderEditor();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Không thể lưu cho đến khi tải lại được');
+    expect(screen.queryByRole('button', { name: 'Lưu thực đơn' })).toBeNull();
   });
 });
 
-describe('MenuEditor — thêm món (replace-all, gửi lại TOÀN BỘ sections)', () => {
-  it('thêm món vào mục có sẵn -> updateMenu nhận đúng mảng sections đã gộp món mới', async () => {
-    mockGetMenu.mockResolvedValue([
-      { id: 's1', name: 'Hải sản', sort_order: 0, items: [{ id: 'i1', name: 'Ghẹ rang muối', price: 250000, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }] },
-    ]);
-    mockUpdateMenu.mockResolvedValue({
-      sections: [
-        { id: 's1', name: 'Hải sản', sort_order: 0, items: [
-          { id: 'i1', name: 'Ghẹ rang muối', price: 250000, currency: 'VND', tags: null, is_signature: false, sort_order: 0 },
-          { id: 'i2', name: 'Tôm hùm nướng', price: 450000, currency: 'VND', tags: null, is_signature: false, sort_order: 1 },
-        ] },
-      ],
-      content_version: 2,
-    });
-
-    renderEditor();
-    await screen.findByRole('option', { name: 'Hải sản' });
-
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Hải sản' } });
-    fireEvent.change(screen.getByPlaceholderText(/Ghẹ rang muối/), { target: { value: 'Tôm hùm nướng' } });
-    fireEvent.change(screen.getByLabelText(/Giá \(VND/), { target: { value: '450000' } });
-    fireEvent.click(screen.getByRole('button', { name: /Thêm món/ }));
-
-    await waitFor(() =>
-      expect(mockUpdateMenu).toHaveBeenCalledWith(
-        'place-1',
-        [
-          {
-            name: 'Hải sản',
-            sort_order: 0,
-            items: [
-              { name: 'Ghẹ rang muối', price: 250000, currency: 'VND', tags: undefined, is_signature: false, sort_order: 0 },
-              { name: 'Tôm hùm nướng', price: 450000, is_signature: false },
-            ],
-          },
-        ],
-        1,
-        'tok',
-      ),
-    );
-    expect(await screen.findByText(/Tôm hùm nướng/)).toBeInTheDocument();
-    // CAS thật (2026-10-01) — content_version mới phải truyền ngược lên cha qua onVersionChange,
-    // CÙNG khuôn AmenitiesEditor/HotelDetailsEditor, để editor anh em kế tiếp không dùng version cũ.
-    expect(mockOnVersionChange).toHaveBeenCalledWith(2);
-
-    // UpdateRestaurantMenuDto's MenuItemDto không có `id`, và ValidationPipe toàn cục dùng
-    // forbidNonWhitelisted:true — gửi `id` sẽ bị API trả 400. Khoá lại không tái phát bug này.
-    const sentSections = mockUpdateMenu.mock.calls[0][1] as Array<{ items: Array<Record<string, unknown>> }>;
-    for (const section of sentSections) {
-      for (const item of section.items) {
-        expect(item).not.toHaveProperty('id');
-      }
-    }
+describe('MenuEditor — lưu có CAS và giữ metadata', () => {
+  it('lưu giữ đơn vị/ngày/nguồn của món cũ; món thiếu giá gửi null cho metadata và không gửi price', async () => {
+    mockGet.mockResolvedValue(MENU);
+    mockUpdate.mockResolvedValue({ sections: fromMenu(MENU), content_version: 7 });
+    renderEditor(6);
+    await screen.findByText(/Cá nướng synthetic/);
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thực đơn' }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    const [placeId, sections, version] = mockUpdate.mock.calls[0];
+    expect(placeId).toBe('rest-1');
+    expect(version).toBe(6);
+    const [cá, canh] = sections[0].items;
+    expect(cá).toMatchObject({ name: 'Cá nướng synthetic', price: 150000, price_unit: 'phần', price_recorded_on: '2026-10-01', price_source_id: 'src-old' });
+    expect(canh).toMatchObject({ name: 'Canh chua synthetic', price_unit: null, price_recorded_on: null, price_source_id: null });
+    expect('price' in canh).toBe(false);
+    await waitFor(() => expect(mockOnVersionChange).toHaveBeenCalledWith(7));
   });
 
-  it('mục mới chưa nhập tên -> báo lỗi, KHÔNG gọi updateMenu', async () => {
-    mockGetMenu.mockResolvedValue([]);
+  it('metadata nhập khi món chưa có giá → báo lỗi, KHÔNG gọi API', async () => {
+    mockGet.mockResolvedValue([]);
     renderEditor();
-    await waitFor(() => expect(mockGetMenu).toHaveBeenCalled());
-
-    fireEvent.change(screen.getByPlaceholderText(/Ghẹ rang muối/), { target: { value: 'Súp hải sản' } });
-    fireEvent.click(screen.getByRole('button', { name: /Thêm món/ }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/tên mục/);
-    expect(mockUpdateMenu).not.toHaveBeenCalled();
+    await screen.findByText(/Thực đơn/);
+    fireEvent.change(screen.getByLabelText('Tên mục mới'), { target: { value: 'Khai vị' } });
+    fireEvent.change(screen.getByLabelText('Tên món'), { target: { value: 'Gỏi synthetic' } });
+    fireEvent.change(screen.getByLabelText('Đơn vị (suất/phần/kg…)'), { target: { value: 'đĩa' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào bản nháp' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('chưa có giá nên không được nhập');
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  // CAS thật (2026-10-01) — BUG THẬT đã sửa: replace-all trước đây không có token xung đột, người
-  // lưu sau âm thầm xoá sạch món của người lưu trước. Test này khoá lại component đọc đúng lỗi 409
-  // từ backend, KHÔNG tự coi là thành công, KHÔNG gọi onVersionChange với version cũ.
-  it('content_version lệch (ai đó vừa sửa) -> API trả 409 -> hiện đúng lỗi, KHÔNG đổi version', async () => {
-    mockGetMenu.mockResolvedValue([]);
-    mockUpdateMenu.mockRejectedValue(
-      new ApiError('Địa điểm vừa được người khác sửa (mong đợi content_version=1) — tải lại và thử lại.', 409),
-    );
+  it('nguồn mới được tạo đúng một lần; lưu lại sau lỗi 500 tái dùng nguồn (không tạo trùng)', async () => {
+    mockGet.mockResolvedValue([]);
+    mockCreateSource.mockResolvedValue({ id: 'src-new' });
+    mockUpdate.mockRejectedValueOnce(new ApiError('server', 500)).mockResolvedValueOnce({ sections: [], content_version: 7 });
     renderEditor();
-    await waitFor(() => expect(mockGetMenu).toHaveBeenCalled());
+    await screen.findByText(/Thực đơn/);
+    fireEvent.change(screen.getByLabelText('Tên mục mới'), { target: { value: 'Hải sản' } });
+    fireEvent.change(screen.getByLabelText('Tên món'), { target: { value: 'Ghẹ synthetic' } });
+    fireEvent.change(screen.getByLabelText('Giá (VND) — để trống nếu chưa có'), { target: { value: '200000' } });
+    fireEvent.change(screen.getByLabelText('Nguồn giá — tiêu đề'), { target: { value: 'Bảng giá synthetic' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào bản nháp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thực đơn' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Bản nháp vẫn được giữ');
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thực đơn' }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+    expect(mockCreateSource).toHaveBeenCalledTimes(1);
+    expect(mockUpdate.mock.calls[1][1][0].items[0].price_source_id).toBe('src-new');
+  });
 
-    fireEvent.change(screen.getByPlaceholderText(/Hải sản, Khai vị/), { target: { value: 'Khai vị' } });
-    fireEvent.change(screen.getByPlaceholderText(/Ghẹ rang muối/), { target: { value: 'Súp hải sản' } });
-    fireEvent.click(screen.getByRole('button', { name: /Thêm món/ }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(/vừa được người khác sửa/);
+  it('409 → giữ nguyên bản nháp, không đổi version', async () => {
+    mockGet.mockResolvedValue(MENU);
+    mockUpdate.mockRejectedValue(new ApiError('Địa điểm vừa được người khác sửa.', 409));
+    renderEditor();
+    await screen.findByText(/Cá nướng synthetic/);
+    fireEvent.change(screen.getByLabelText('Tên mục mới'), { target: { value: 'Món phụ' } });
+    fireEvent.change(screen.getByLabelText('Tên món'), { target: { value: 'Nháp giữ lại' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào bản nháp' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thực đơn' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('người khác sửa');
+    expect(screen.getByText(/Nháp giữ lại/)).toBeInTheDocument();
     expect(mockOnVersionChange).not.toHaveBeenCalled();
   });
 });
+
+// Chuyển menu tải về sang dạng API trả về sau khi lưu (chỉ để mô phỏng phản hồi của updateMenu).
+function fromMenu(list: typeof MENU) {
+  return list;
+}
+
+void within; // (giữ import cho các lần mở rộng test theo phạm vi dòng)

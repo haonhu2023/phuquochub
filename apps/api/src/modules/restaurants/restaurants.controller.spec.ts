@@ -28,6 +28,11 @@ describe('RestaurantsController — ranh giới price trust gate', () => {
     expect(restaurantsService.getDetails).toHaveBeenCalledWith('r1');
   });
 
+  it('GET :id/menu/managed → getMenu(id) KHÔNG publicResponse (giá thật cho editor)', () => {
+    controller.getMenuManaged('r1');
+    expect(restaurantsService.getMenu).toHaveBeenCalledWith('r1');
+  });
+
   it('GET :id/menu (@Public()) → getMenu(id, { publicResponse: true })', () => {
     controller.getMenu('r1');
     expect(restaurantsService.getMenu).toHaveBeenCalledWith('r1', { publicResponse: true });

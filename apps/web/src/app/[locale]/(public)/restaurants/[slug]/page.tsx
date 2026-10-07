@@ -51,6 +51,17 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 // Chi tiết nhà hàng = Place base + ẩm thực + thực đơn (satellite ADR-002).
+// Giá món: số + tiền tệ rõ ràng. Giá null được xử lý ở chỗ gọi (không bao giờ hiển thị 0).
+function formatMenuPrice(amount: number, currency: string): string {
+  return `${new Intl.NumberFormat("vi-VN").format(amount)} ${currency}`;
+}
+
+// Ngày ghi nhận giá (YYYY-MM-DD) hiển thị dd/mm/yyyy, không đổi múi giờ.
+function formatIsoDate(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
+
 export default async function RestaurantDetailPage({ params }: Params) {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
@@ -171,31 +182,48 @@ export default async function RestaurantDetailPage({ params }: Params) {
         </section>
       )}
 
-      {/* Public Beta price trust gate (2026-08-28): `restaurant_menu_items.price` KHÔNG có cột
-          verification/trust nào ở DB (migration InitRestaurant) — không có bằng chứng nào để
-          gate theo TỪNG món, và place.verification_status của Place cha KHÔNG được dùng làm proxy
-          (một place đã xác minh không có nghĩa TỪNG giá món trong thực đơn đã được đối chiếu).
-          Fail-closed: ẩn raw price ở mọi món, MỘT dòng đang xác minh dùng chung cho cả section
-          (không lặp lại cho từng món) khi section có ít nhất một món đã nhập giá. Tên/mô tả món
-          KHÔNG bị ẩn — chỉ giá trị tiền mới là dữ liệu chưa có bằng chứng xác minh. "Món nổi bật"
-          (product spec, 2026-09-29) đánh dấu ★ ngay cạnh tên món. */}
-      {menu.map((s) => {
-        const hasPricedItem = s.items.some((i) => i.price !== null);
-        return (
-          <section key={s.id}>
-            <h2>{s.name}</h2>
-            <ul>
-              {s.items.map((i) => (
-                <li key={i.id}>
-                  {i.is_signature && <span aria-label="Món nổi bật">★ </span>}
-                  {i.name}
-                </li>
-              ))}
-            </ul>
-            {hasPricedItem && <p>{PRICE_VERIFYING_TEXT}</p>}
-          </section>
-        );
-      })}
+      {/* Giá món (quyết định sản phẩm 07/10/2026): hiện giá đã được cơ sở/nguồn cung cấp qua quyền/kiểm duyệt
+          hiện có. Giá null = CHƯA CÓ GIÁ (không phải miễn phí). Thiếu đơn vị/ngày ghi nhận/nguồn được nói rõ là
+          "chưa rõ", không suy đoán và không gọi là đã xác minh. Ngày sửa bản ghi KHÔNG phải ngày ghi nhận giá. */}
+      {menu.map((s) => (
+        <section key={s.id}>
+          <h2>{s.name}</h2>
+          <ul>
+            {s.items.map((i) => (
+              <li key={i.id}>
+                {i.is_signature && <span aria-label="Món nổi bật">★ </span>}
+                {i.name}
+                {" — "}
+                {i.price === null ? (
+                  <span>chưa có giá</span>
+                ) : (
+                  <span>
+                    {formatMenuPrice(i.price, i.currency)}
+                    {i.price_unit ? ` / ${i.price_unit}` : " (chưa rõ đơn vị)"}
+                    {i.price_recorded_on
+                      ? `, ghi nhận ngày ${formatIsoDate(i.price_recorded_on)}`
+                      : ", chưa rõ ngày ghi nhận"}
+                    {i.price_source ? (
+                      <>
+                        {" — Nguồn giá: "}
+                        {i.price_source.url ? (
+                          <a href={i.price_source.url} target="_blank" rel="noopener noreferrer">
+                            {i.price_source.title ?? i.price_source.url}
+                          </a>
+                        ) : (
+                          i.price_source.title ?? "(không có tiêu đề)"
+                        )}
+                      </>
+                    ) : (
+                      " — chưa rõ nguồn giá"
+                    )}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </article>
   );
 }

@@ -16,6 +16,9 @@ export interface MenuSectionInput {
     name: string;
     price?: number | null;
     currency?: string;
+    price_unit?: string | null;
+    price_recorded_on?: string | null;
+    price_source_id?: string | null;
     tags?: unknown;
     is_signature?: boolean;
     sort_order?: number;
@@ -131,8 +134,12 @@ export class RestaurantsRepository {
   itemsBySection(sectionIds: string[]) {
     if (sectionIds.length === 0) return Promise.resolve([]);
     return this.ds.query(
-      `SELECT id, section_id, name, price, currency, tags, is_signature, sort_order
-       FROM restaurant_menu_items WHERE section_id = ANY($1) ORDER BY sort_order ASC`,
+      `SELECT i.id, i.section_id, i.name, i.price, i.currency, i.tags, i.is_signature, i.sort_order,
+              i.price_unit, to_char(i.price_recorded_on, 'YYYY-MM-DD') AS price_recorded_on, i.price_source_id,
+              s.title AS price_source_title, s.url AS price_source_url
+       FROM restaurant_menu_items i
+       LEFT JOIN sources s ON s.id = i.price_source_id
+       WHERE i.section_id = ANY($1) ORDER BY i.sort_order ASC`,
       [sectionIds],
     );
   }
@@ -294,8 +301,8 @@ export class RestaurantsRepository {
         const sectionId = secRows[0].id;
         for (const [ii, it] of (s.items ?? []).entries()) {
           await m.query(
-            `INSERT INTO restaurant_menu_items (section_id, name, price, currency, tags, is_signature, sort_order)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            `INSERT INTO restaurant_menu_items (section_id, name, price, currency, tags, is_signature, sort_order, price_unit, price_recorded_on, price_source_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
             [
               sectionId,
               it.name,
@@ -304,6 +311,9 @@ export class RestaurantsRepository {
               it.tags ?? null,
               it.is_signature ?? false,
               it.sort_order ?? ii,
+              it.price_unit ?? null,
+              it.price_recorded_on ?? null,
+              it.price_source_id ?? null,
             ],
           );
         }

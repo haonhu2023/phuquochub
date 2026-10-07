@@ -9,6 +9,10 @@ export interface MenuItem {
   name: string;
   price: number | null;
   currency: string;
+  // Đơn vị/ngày ghi nhận/nguồn của GIÁ. null = chưa rõ (không suy đoán).
+  price_unit: string | null;
+  price_recorded_on: string | null;
+  price_source: { id: string; title: string | null; url: string | null } | null;
   tags: string[] | null;
   // "Món nổi bật" (product spec, 2026-09-29) — AddRestaurantMenuItemSignature.
   is_signature: boolean;
@@ -52,6 +56,11 @@ export async function getRestaurant(slug: string, locale: string = 'vi'): Promis
   return apiGet<RestaurantDetail>(`/restaurants/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }
 
+// Menu cho EDITOR (giá thật, quyền Place.Edit.Managed). Editor phải dùng hàm này, không dùng getMenu công khai.
+export async function getMenuManaged(placeId: string, accessToken: string): Promise<MenuSection[]> {
+  return apiGetAuth<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu/managed`, accessToken, { cache: 'no-store' });
+}
+
 export async function getMenu(placeId: string): Promise<MenuSection[]> {
   return apiGet<MenuSection[]>(`/restaurants/${encodeURIComponent(placeId)}/menu`, { cache: 'no-store' });
 }
@@ -60,6 +69,10 @@ export interface MenuItemInput {
   name: string;
   price?: number;
   currency?: string;
+  // Đơn vị/ngày ghi nhận/nguồn của giá. null = chưa rõ; gửi lại nguyên khi lưu để không mất metadata cũ.
+  price_unit?: string | null;
+  price_recorded_on?: string | null;
+  price_source_id?: string | null;
   tags?: unknown;
   is_signature?: boolean;
   sort_order?: number;

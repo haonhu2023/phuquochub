@@ -154,64 +154,42 @@ describe('RestaurantDetailPage — gallery ảnh công khai (real-data pass)', (
 // page fails closed: raw menu prices are ALWAYS hidden, never conditioned on the parent place's
 // verification_status (that would be a false proxy — a verified restaurant doesn't mean every
 // menu price was individually checked). SENTINEL_PRICE stands in for a real leaked amount.
-describe('RestaurantDetailPage — menu price trust gate', () => {
-  const SENTINEL_PRICE = 987654;
+describe('RestaurantDetailPage — giá món (quyết định sản phẩm 2026-10-07)', () => {
+  const PRICE = 987654;
 
-  it('menu item has a price → raw amount never renders anywhere, disclosure shown', async () => {
+  it('giá có đơn vị, ngày ghi nhận và nguồn → hiện đủ, nguồn là liên kết', async () => {
     await renderPage(restaurant(), [
-      {
-        id: 's1',
-        name: 'Khai vị',
-        sort_order: 0,
-        items: [
-          { id: 'i1', name: 'Gỏi hải sản', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 },
-        ],
-      },
+      { id: 's1', name: 'Khai vị', sort_order: 0, items: [
+        { id: 'i1', name: 'Gỏi hải sản', price: PRICE, currency: 'VND', price_unit: 'đĩa', price_recorded_on: '2026-10-01',
+          price_source: { id: 'src1', title: 'Menu quán', url: 'https://example.test/menu' }, tags: null, is_signature: false, sort_order: 0 },
+      ] },
     ]);
-    expect(screen.getByText('Gỏi hải sản')).toBeInTheDocument();
-    expect(screen.queryByText(new RegExp(String(SENTINEL_PRICE)))).not.toBeInTheDocument();
-    expect(document.body.textContent).not.toContain(String(SENTINEL_PRICE));
-    expect(screen.getByText(PRICE_VERIFYING_TEXT)).toBeInTheDocument();
+    expect(screen.getByText(/987.654 VND/)).toBeInTheDocument();
+    expect(screen.getByText(/\/ đĩa/)).toBeInTheDocument();
+    expect(screen.getByText(/ghi nhận ngày 01\/10\/2026/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Menu quán' })).toHaveAttribute('href', 'https://example.test/menu');
   });
 
-  it('restaurant itself verified → menu price still hidden (place trust is not a proxy for item trust)', async () => {
-    await renderPage(restaurant({ verification_status: 'verified' }), [
-      {
-        id: 's1',
-        name: 'Món chính',
-        sort_order: 0,
-        items: [{ id: 'i1', name: 'Cá nướng', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
-      },
+  it('thiếu đơn vị/ngày/nguồn → nói rõ là chưa rõ, không suy đoán, không gọi là đã xác minh', async () => {
+    await renderPage(restaurant(), [
+      { id: 's1', name: 'Món chính', sort_order: 0, items: [
+        { id: 'i1', name: 'Cá nướng', price: PRICE, currency: 'VND', price_unit: null, price_recorded_on: null, price_source: null, tags: null, is_signature: false, sort_order: 0 },
+      ] },
     ]);
-    expect(document.body.textContent).not.toContain(String(SENTINEL_PRICE));
+    expect(screen.getByText(/chưa rõ đơn vị/)).toBeInTheDocument();
+    expect(screen.getByText(/chưa rõ ngày ghi nhận/)).toBeInTheDocument();
+    expect(screen.getByText(/chưa rõ nguồn giá/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/đã xác minh/);
   });
 
-  it('item with no price → no fake disclosure line for that section', async () => {
+  it('món chưa có giá → "chưa có giá", KHÔNG hiện 0 và KHÔNG hiện miễn phí', async () => {
     await renderPage(restaurant(), [
-      {
-        id: 's1',
-        name: 'Đồ uống',
-        sort_order: 0,
-        items: [{ id: 'i1', name: 'Nước dừa', price: null, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
-      },
+      { id: 's1', name: 'Đồ uống', sort_order: 0, items: [
+        { id: 'i1', name: 'Nước dừa', price: null, currency: 'VND', price_unit: null, price_recorded_on: null, price_source: null, tags: null, is_signature: false, sort_order: 0 },
+      ] },
     ]);
-    expect(screen.getByText('Nước dừa')).toBeInTheDocument();
-    expect(screen.queryByText(PRICE_VERIFYING_TEXT)).not.toBeInTheDocument();
-  });
-
-  it('multiple priced items in one section → disclosure renders once, not once per item', async () => {
-    await renderPage(restaurant(), [
-      {
-        id: 's1',
-        name: 'Khai vị',
-        sort_order: 0,
-        items: [
-          { id: 'i1', name: 'Gỏi', price: SENTINEL_PRICE, currency: 'VND', tags: null, is_signature: false, sort_order: 0 },
-          { id: 'i2', name: 'Chả giò', price: SENTINEL_PRICE + 1, currency: 'VND', tags: null, is_signature: false, sort_order: 1 },
-        ],
-      },
-    ]);
-    expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
+    expect(screen.getByText('chưa có giá')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/miễn phí|0 VND/);
   });
 });
 
@@ -278,7 +256,7 @@ describe('RestaurantDetailPage — ẩm thực/đặc sản/liên hệ/giờ m�
         id: 's1',
         name: 'Món chính',
         sort_order: 0,
-        items: [{ id: 'i1', name: 'Gỏi cá trích', price: null, currency: 'VND', tags: null, is_signature: true, sort_order: 0 }],
+        items: [{ id: 'i1', name: 'Gỏi cá trích', price: null, currency: 'VND', price_unit: null, price_recorded_on: null, price_source: null, tags: null, is_signature: true, sort_order: 0 }],
       },
     ]);
     expect(screen.getByText(/★/)).toBeInTheDocument();
@@ -291,7 +269,7 @@ describe('RestaurantDetailPage — ẩm thực/đặc sản/liên hệ/giờ m�
         id: 's1',
         name: 'Món chính',
         sort_order: 0,
-        items: [{ id: 'i1', name: 'Cơm trắng', price: null, currency: 'VND', tags: null, is_signature: false, sort_order: 0 }],
+        items: [{ id: 'i1', name: 'Cơm trắng', price: null, currency: 'VND', price_unit: null, price_recorded_on: null, price_source: null, tags: null, is_signature: false, sort_order: 0 }],
       },
     ]);
     expect(document.body.textContent).not.toContain('★');

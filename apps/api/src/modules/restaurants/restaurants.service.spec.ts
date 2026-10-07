@@ -174,17 +174,19 @@ describe('RestaurantsService', () => {
       expect(JSON.stringify(res)).not.toContain(SECRET_PLACE_RANGE);
     });
 
-    it('getMenu({ publicResponse: true }) — route công khai: raw price KHÔNG BAO GIỜ lộ, kể cả trong JSON', async () => {
+    it('getMenu({ publicResponse: true }) — giá đã nhập được công khai cùng đơn vị/ngày/nguồn KHI CÓ; thiếu thì null (không đoán, không thành 0)', async () => {
       repo.sections.mockResolvedValue([{ id: 's1', name: 'Khai vị', sort_order: 0 }]);
       repo.itemsBySection.mockResolvedValue([
-        { id: 'i1', section_id: 's1', name: 'Gỏi hải sản', price: String(SECRET_MENU_PRICE), currency: 'VND', tags: null, sort_order: 0 },
+        { id: 'i1', section_id: 's1', name: 'Gỏi hải sản', price: String(SECRET_MENU_PRICE), currency: 'VND', tags: null, sort_order: 0,
+          price_unit: 'đĩa', price_recorded_on: '2026-10-01', price_source_id: 'src-1', price_source_title: 'Menu quán', price_source_url: null },
+        { id: 'i2', section_id: 's1', name: 'Canh chua', price: null, currency: 'VND', tags: null, sort_order: 1,
+          price_unit: null, price_recorded_on: null, price_source_id: null, price_source_title: null, price_source_url: null },
       ]);
 
       const menu = await service.getMenu('r1', { publicResponse: true });
 
-      expect(menu[0].items[0].price).toBeNull();
-      expect(menu[0].items[0].name).toBe('Gỏi hải sản'); // tên món không phải giá, vẫn giữ nguyên
-      expect(JSON.stringify(menu)).not.toContain(String(SECRET_MENU_PRICE));
+      expect(menu[0].items[0]).toMatchObject({ name: 'Gỏi hải sản', price: SECRET_MENU_PRICE, price_unit: 'đĩa', price_recorded_on: '2026-10-01', price_source: { title: 'Menu quán' } });
+      expect(menu[0].items[1]).toMatchObject({ name: 'Canh chua', price: null, price_unit: null, price_recorded_on: null, price_source: null });
     });
 
     it('getMenu (mặc định, KHÔNG publicResponse) vẫn giữ raw price — đường đặc quyền updateMenu() phản ánh đúng giá actor vừa lưu', async () => {

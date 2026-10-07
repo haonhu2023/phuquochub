@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  Matches,
+  IsUUID,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -27,6 +29,18 @@ export class MenuItemDto {
 
   @IsOptional() @IsString() @MaxLength(3)
   currency?: string;
+
+  // Đơn vị giá (suất/phần/kg/chai…). Null = chưa rõ đơn vị — KHÔNG tự điền.
+  @IsOptional() @IsString() @MaxLength(40)
+  price_unit?: string | null;
+
+  // Ngày giá được ghi nhận (YYYY-MM-DD). Chỉ có khi có giá. KHÔNG phải ngày sửa bản ghi.
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'price_recorded_on phải là YYYY-MM-DD' })
+  price_recorded_on?: string | null;
+
+  // Nguồn cho giá (sources.id). Null = chưa có nguồn cho giá — KHÔNG coi là đã xác minh.
+  @IsOptional() @IsUUID()
+  price_source_id?: string | null;
 
   @IsOptional()
   tags?: unknown;

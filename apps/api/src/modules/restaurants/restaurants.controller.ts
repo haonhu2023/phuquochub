@@ -17,6 +17,15 @@ export class RestaurantsController {
     return this.restaurantsService.list(query);
   }
 
+  // Đọc menu với GIÁ THẬT cho editor (quyền Place.Edit.Managed). GET :id/menu công khai luôn xoá giá; editor
+  // PHẢI tải route này trước khi thay toàn bộ menu, nếu không lưu sẽ ghi null cho mọi giá đã có.
+  @Get(':id/menu/managed')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getMenuManaged(@Param('id', ParseUUIDPipe) id: string) {
+    return this.restaurantsService.getMenu(id);
+  }
+
   @Public()
   @Get(':id/menu')
   getMenu(@Param('id', ParseUUIDPipe) id: string) {
