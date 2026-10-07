@@ -34,10 +34,14 @@ function row(overrides: Partial<JobListing> = {}): JobListing {
   r.reviewerId = null;
   r.reviewedAt = null;
   r.reviewNote = null;
+  r.createdAt = new Date('2026-10-07T00:00:00Z');
+  r.updatedAt = new Date('2026-10-07T00:00:00Z');
   Object.assign(r, overrides);
   return r;
 }
 
+// `repo.save` trả về ĐÚNG entity truyền vào (giả lập hành vi TypeORM .save() với một row đã có id) —
+// để test đọc lại được các trường service vừa đổi (status/reviewerId/...) qua `result`/qua mapper.
 describe('JobListingsService', () => {
   type Deps = ConstructorParameters<typeof JobListingsService>;
   let repo: LooseMock<Deps[0]>;
@@ -46,7 +50,14 @@ describe('JobListingsService', () => {
 
   beforeEach(() => {
     repo = createMock<Deps[0]>({
-      create: jest.fn(),
+      // Giả lập hành vi TypeORM thật: `repository.create()` của `JobListingsRepository` gọi `.save()`
+      // bên trong (xem repository), nên createdAt/updatedAt được DB gán — mock phải gán tương tự,
+      // không để mapper gọi `.toISOString()` trên `undefined`.
+      create: jest.fn((entity: JobListing) => {
+        entity.createdAt = entity.createdAt ?? new Date('2026-10-07T00:00:00Z');
+        entity.updatedAt = entity.updatedAt ?? new Date('2026-10-07T00:00:00Z');
+        return Promise.resolve(entity);
+      }),
       save: jest.fn((entity: JobListing) => Promise.resolve(entity)),
       findById: jest.fn(),
       listMine: jest.fn(),
@@ -75,17 +86,19 @@ describe('JobListingsService', () => {
     });
 
     it('salary_negotiable=true bỏ qua yêu cầu currency', async () => {
-      repo.create.mockResolvedValue(row());
       await expect(
         service.create({ ...baseDto(), salary_min: 5_000_000, salary_negotiable: true }, 'u1'),
       ).resolves.toBeDefined();
     });
 
-    it('tạo mới luôn ở trạng thái draft, gắn created_by theo người gọi', async () => {
-      repo.create.mockImplementation((e: JobListing) => Promise.resolve(e));
-      const created = await service.create(baseDto(), 'u1');
-      expect(created.status).toBe(JobListingStatus.DRAFT);
-      expect(created.createdBy).toBe('u1');
+    it('tạo mới luôn ở trạng thái draft, gắn created_by theo người gọi (kiểm entity truyền cho repo.create)', async () => {
+      const result = await service.create(baseDto(), 'u1');
+      const createdEntity = repo.create.mock.calls[0][0] as JobListing;
+      expect(createdEntity.status).toBe(JobListingStatus.DRAFT);
+      expect(createdEntity.createdBy).toBe('u1');
+      expect(result.status).toBe(JobListingStatus.DRAFT);
+      // Sender view KHÔNG có created_by riêng (chủ tin luôn là chính người gọi) — không lộ id dư thừa.
+      expect(result).not.toHaveProperty('created_by');
     });
   });
 
@@ -106,7 +119,8 @@ describe('JobListingsService', () => {
       repo.findById.mockResolvedValue(row({ status: JobListingStatus.DRAFT, createdBy: 'u1' }));
       const result = await service.submit('job-1', 'u1');
       expect(result.status).toBe(JobListingStatus.PENDING);
-      expect(result.reviewerId).toBeNull();
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.reviewerId).toBeNull();
     });
 
     it('submit từ rejected → pending trực tiếp (không qua draft)', async () => {
@@ -128,7 +142,8 @@ describe('JobListingsService', () => {
       );
       const result = await service.update('job-1', baseDto(), 'u1');
       expect(result.status).toBe(JobListingStatus.DRAFT);
-      expect(result.reviewerId).toBeNull();
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.reviewerId).toBeNull();
     });
 
     it('update khi published đẩy ngay về pending (ẩn khỏi công khai, buộc duyệt lại), không qua draft', async () => {
@@ -137,8 +152,9 @@ describe('JobListingsService', () => {
       );
       const result = await service.update('job-1', baseDto(), 'u1');
       expect(result.status).toBe(JobListingStatus.PENDING);
-      expect(result.publishedAt).toBeNull();
-      expect(result.reviewerId).toBeNull();
+      expect(result.published_at).toBeNull();
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.reviewerId).toBeNull();
     });
 
     it('update khi closed → ConflictException (phải reopen trước)', async () => {
@@ -146,20 +162,20 @@ describe('JobListingsService', () => {
       await expect(service.update('job-1', baseDto(), 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('decide approve từ pending → published, set published_at', async () => {
+    it('decide approve từ pending → published, set published_at, lộ reviewer_id cho moderator', async () => {
       repo.findById.mockResolvedValue(row({ status: JobListingStatus.PENDING }));
       const result = await service.decide('job-1', { decision: 'approve' }, 'mod-1');
       expect(result.status).toBe(JobListingStatus.PUBLISHED);
-      expect(result.publishedAt).not.toBeNull();
-      expect(result.reviewerId).toBe('mod-1');
+      expect(result.published_at).not.toBeNull();
+      expect(result.reviewer_id).toBe('mod-1');
     });
 
     it('decide reject từ pending → rejected, không set published_at', async () => {
       repo.findById.mockResolvedValue(row({ status: JobListingStatus.PENDING }));
       const result = await service.decide('job-1', { decision: 'reject', note: 'thiếu thông tin' }, 'mod-1');
       expect(result.status).toBe(JobListingStatus.REJECTED);
-      expect(result.publishedAt).toBeNull();
-      expect(result.reviewNote).toBe('thiếu thông tin');
+      expect(result.published_at).toBeNull();
+      expect(result.review_note).toBe('thiếu thông tin');
     });
 
     it('decide khi không ở pending → ConflictException', async () => {
@@ -200,8 +216,9 @@ describe('JobListingsService', () => {
       );
       const result = await service.reopen('job-1', 'u1');
       expect(result.status).toBe(JobListingStatus.PENDING);
-      expect(result.publishedAt).toBeNull();
-      expect(result.reviewerId).toBeNull();
+      expect(result.published_at).toBeNull();
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.reviewerId).toBeNull();
     });
 
     it('reopen từ pending (chưa closed) → ConflictException', async () => {
@@ -214,6 +231,15 @@ describe('JobListingsService', () => {
     it('getPublicById: repository trả null (chưa publish/hết hạn/không tồn tại) → NotFoundException đồng nhất', async () => {
       repo.getPublicById.mockResolvedValue(null);
       await expect(service.getPublicById('job-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('getPublicById: view công khai có contact_value (mục đích của tính năng) nhưng KHÔNG có status/reviewer_id', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, contactValue: '0909999999' }));
+      const result = await service.getPublicById('job-1');
+      expect(result.contact_value).toBe('0909999999');
+      expect(result).not.toHaveProperty('status');
+      expect(result).not.toHaveProperty('reviewer_id');
+      expect(result).not.toHaveProperty('review_note');
     });
 
     it('listPublic: chuyển query thành filter + phân trang, gọi đúng repository', async () => {

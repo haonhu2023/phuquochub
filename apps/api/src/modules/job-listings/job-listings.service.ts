@@ -5,6 +5,7 @@ import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListing } from './entities/job-listing.entity';
 import { JobListingStatus } from './job-listings.enums';
 import { DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
+import { toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
 
 // Bảng chuyển trạng thái đã chốt (docs/delivery/release-web-candidate-2026-10-04.md §13r):
 //   draft --submit--> pending
@@ -55,13 +56,14 @@ export class JobListingsService {
     entity.expiresAt = dto.expires_at ?? null;
   }
 
-  async create(dto: UpsertJobListingDto, userId: string): Promise<JobListing> {
+  async create(dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
     const entity = new JobListing();
     JobListingsService.applyDto(entity, dto);
     entity.createdBy = userId;
     entity.status = JobListingStatus.DRAFT;
-    return this.repo.create(entity);
+    const saved = await this.repo.create(entity);
+    return toJobListingSenderView(saved);
   }
 
   private async loadOwned(id: string, userId: string): Promise<JobListing> {
@@ -75,7 +77,7 @@ export class JobListingsService {
   // quyết định có ý thức KHÔNG xây overlay "bản sửa chờ duyệt song song bản public" cho MVP này, xem
   // lý do trong §13r). `closed` KHÔNG nằm trong bảng chuyển trạng thái của update() — phải `reopen()`
   // (→ pending, luôn qua duyệt lại) trước khi sửa, tránh một hành vi ngầm gộp "mở lại" và "sửa".
-  async update(id: string, dto: UpsertJobListingDto, userId: string): Promise<JobListing> {
+  async update(id: string, dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
     const row = await this.loadOwned(id, userId);
     if (row.status === JobListingStatus.CLOSED) {
@@ -95,10 +97,11 @@ export class JobListingsService {
       row.reviewedAt = null;
       row.publishedAt = null;
     }
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return toJobListingSenderView(saved);
   }
 
-  async submit(id: string, userId: string): Promise<JobListing> {
+  async submit(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     const row = await this.loadOwned(id, userId);
     if (row.status !== JobListingStatus.DRAFT && row.status !== JobListingStatus.REJECTED) {
       throw new ConflictException(`Không thể gửi duyệt từ trạng thái "${row.status}"`);
@@ -107,7 +110,8 @@ export class JobListingsService {
     row.reviewNote = null;
     row.reviewerId = null;
     row.reviewedAt = null;
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return toJobListingSenderView(saved);
   }
 
   // Đóng/mở lại: chủ tin HOẶC moderator (`JobListing.Moderate`) — quyết định quyền nằm TẠI ĐÂY, một
@@ -121,16 +125,17 @@ export class JobListingsService {
     throw new ForbiddenException();
   }
 
-  async close(id: string, userId: string): Promise<JobListing> {
+  async close(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     const row = await this.loadOwnedOrModerated(id, userId);
     if (row.status !== JobListingStatus.PUBLISHED) {
       throw new ConflictException(`Không thể đóng từ trạng thái "${row.status}"`);
     }
     row.status = JobListingStatus.CLOSED;
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return toJobListingSenderView(saved);
   }
 
-  async reopen(id: string, userId: string): Promise<JobListing> {
+  async reopen(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     const row = await this.loadOwnedOrModerated(id, userId);
     if (row.status !== JobListingStatus.CLOSED) {
       throw new ConflictException(`Không thể mở lại từ trạng thái "${row.status}"`);
@@ -140,10 +145,11 @@ export class JobListingsService {
     row.reviewerId = null;
     row.reviewedAt = null;
     row.publishedAt = null;
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return toJobListingSenderView(saved);
   }
 
-  async decide(id: string, dto: DecideJobListingDto, moderatorId: string): Promise<JobListing> {
+  async decide(id: string, dto: DecideJobListingDto, moderatorId: string): Promise<ReturnType<typeof toJobListingModeratorView>> {
     const row = await this.repo.findById(id);
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
     if (row.status !== JobListingStatus.PENDING) {
@@ -158,19 +164,23 @@ export class JobListingsService {
     } else {
       row.status = JobListingStatus.REJECTED;
     }
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return toJobListingModeratorView(saved);
   }
 
-  listPending(): Promise<JobListing[]> {
-    return this.repo.listPending();
+  async listPending(): Promise<ReturnType<typeof toJobListingModeratorView>[]> {
+    const rows = await this.repo.listPending();
+    return rows.map(toJobListingModeratorView);
   }
 
-  listMine(userId: string): Promise<JobListing[]> {
-    return this.repo.listMine(userId);
+  async listMine(userId: string): Promise<ReturnType<typeof toJobListingSenderView>[]> {
+    const rows = await this.repo.listMine(userId);
+    return rows.map(toJobListingSenderView);
   }
 
-  async getMine(id: string, userId: string): Promise<JobListing> {
-    return this.loadOwned(id, userId);
+  async getMine(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
+    const row = await this.loadOwned(id, userId);
+    return toJobListingSenderView(row);
   }
 
   async listPublic(query: ListJobListingsQueryDto) {
@@ -181,14 +191,14 @@ export class JobListingsService {
       this.repo.listPublic(filter, limit, (page - 1) * limit),
       this.repo.countPublic(filter),
     ]);
-    return paginate(items, page, limit, total);
+    return paginate(items.map(toJobListingPublicView), page, limit, total);
   }
 
-  async getPublicById(id: string): Promise<JobListing> {
+  async getPublicById(id: string): Promise<ReturnType<typeof toJobListingPublicView>> {
     const row = await this.repo.getPublicById(id);
     // 404 đồng nhất cho "không tồn tại" và "tồn tại nhưng chưa/không còn công khai" — không rò trạng
     // thái nội bộ qua sự khác biệt giữa hai loại lỗi.
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
-    return row;
+    return toJobListingPublicView(row);
   }
 }
