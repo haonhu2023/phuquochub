@@ -45,6 +45,8 @@ export function DashboardNav() {
     { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },
     { href: '/dashboard/job-listings', label: 'Tin tuyển dụng của tôi', show: true },
     { href: '/dashboard/job-listings/moderation', label: 'Duyệt tin tuyển dụng', show: caps.canReviewJobListings },
+    { href: '/dashboard/real-estate', label: 'Tin bất động sản của tôi', show: true },
+    { href: '/dashboard/real-estate/moderation', label: 'Duyệt tin bất động sản', show: caps.canReviewRealEstateListings },
     { href: '/dashboard/help', label: 'Hướng dẫn', show: true },
   ];
 

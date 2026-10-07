@@ -97,6 +97,11 @@ const PLACE_EDIT_PROPOSAL_MODERATE_ROLES = ['content_owner', 'moderator', 'admin
  *  PlaceEditProposal). Trang `/dashboard/job-listings/moderation` dùng permission này. */
 const JOB_LISTING_MODERATE_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
 
+/** Vai trò giữ `RealEstateListing.Moderate` (SeedRealEstateListingPermissions1720008400000 — cấp
+ *  TRỰC TIẾP cho CẢ `moderator` VÀ `content_owner`, cùng mẫu JobListing). Trang
+ *  `/dashboard/real-estate/moderation` dùng permission này. */
+const REAL_ESTATE_LISTING_MODERATE_ROLES = ['content_owner', 'moderator', 'administrator', 'super_administrator'];
+
 /** Vai trò giữ `Verification.Verify` HOẶC `Price.Verify` cho mục đích hiển thị nút "Xác minh" giá
  *  (PricesEditor). `Verification.Verify` (ADR-008) vẫn moderator-only tuyệt đối cho place/contact
  *  (Owner Decision 2026-08-06, KHÔNG đổi) — administrator/super_administrator giữ nó qua kế thừa
@@ -134,6 +139,8 @@ export interface UserCapabilities {
   canVerifyPrices: boolean;
   /** Hiện lối vào "Duyệt tin tuyển dụng" (`/dashboard/job-listings/moderation` — JobListing.Moderate). */
   canReviewJobListings: boolean;
+  /** Hiện lối vào "Duyệt tin bất động sản" (`/dashboard/real-estate/moderation` — RealEstateListing.Moderate). */
+  canReviewRealEstateListings: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -149,6 +156,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canReviewPlaceEditProposals: false,
   canVerifyPrices: false,
   canReviewJobListings: false,
+  canReviewRealEstateListings: false,
 };
 
 /**
@@ -172,5 +180,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canReviewPlaceEditProposals: codes.some((c) => PLACE_EDIT_PROPOSAL_MODERATE_ROLES.includes(c)),
     canVerifyPrices: codes.some((c) => VERIFICATION_VERIFY_ROLES.includes(c)),
     canReviewJobListings: codes.some((c) => JOB_LISTING_MODERATE_ROLES.includes(c)),
+    canReviewRealEstateListings: codes.some((c) => REAL_ESTATE_LISTING_MODERATE_ROLES.includes(c)),
   };
 }

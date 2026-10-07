@@ -35,6 +35,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewPlaceEditProposals: false,
       canVerifyPrices: false,
       canReviewJobListings: false,
+      canReviewRealEstateListings: false,
     });
   });
 
@@ -54,6 +55,7 @@ describe('capabilitiesFromRoles', () => {
         canReviewPlaceEditProposals: true,
         canVerifyPrices: true,
         canReviewJobListings: true,
+        canReviewRealEstateListings: true,
       });
     },
   );
@@ -78,6 +80,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewPlaceEditProposals: true,
       canVerifyPrices: true,
       canReviewJobListings: true,
+      canReviewRealEstateListings: true,
     });
   });
 
@@ -102,6 +105,7 @@ describe('capabilitiesFromRoles', () => {
       canReviewPlaceEditProposals: false,
       canVerifyPrices: false,
       canReviewJobListings: false,
+      canReviewRealEstateListings: false,
     });
   });
 
@@ -133,6 +137,7 @@ describe('capabilitiesFromRoles', () => {
         canReviewPlaceEditProposals: false,
         canVerifyPrices: false,
         canReviewJobListings: false,
+        canReviewRealEstateListings: false,
       });
     });
 

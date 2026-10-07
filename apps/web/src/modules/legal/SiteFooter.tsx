@@ -75,6 +75,17 @@ export function SiteFooter({ locale = DEFAULT_LOCALE, socialLinks }: Props) {
         </div>
 
         <div>
+          <p className={styles.footerGroupTitle}>{nav.residentTitle}</p>
+          <nav className={styles.footerGroupLinks} aria-label={nav.residentTitle}>
+            {nav.residentItems.map((item) => (
+              <Link key={item.href} href={localizedHref(locale, item.href)}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <div>
           <p className={styles.footerGroupTitle}>{nav.footerAboutTitle}</p>
           <nav className={styles.footerGroupLinks} aria-label={nav.footerAboutTitle}>
             <Link href={localizedHref(locale, '/about')}>{legal.about}</Link>

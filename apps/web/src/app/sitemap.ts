@@ -39,6 +39,7 @@ const STATIC_ROUTES = [
   '/events',
   '/guide',
   '/jobs',
+  '/real-estate',
 ];
 
 // A single entity-type fetch must never take down the whole sitemap -- if one endpoint is

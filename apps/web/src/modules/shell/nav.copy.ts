@@ -13,6 +13,10 @@ export interface NavItem {
 export interface NavCopy {
   headerItems: NavItem[];
   footerExploreItems: NavItem[];
+  /** "Sống tại Phú Quốc" — nhóm cư dân (tuyển dụng/bất động sản), TÁCH khỏi "Khám phá" (mục VII:
+   *  "Tuyển dụng/bất động sản ở nhóm cư dân", không gộp vào các lối vào hướng du khách). */
+  residentItems: NavItem[];
+  residentTitle: string;
   footerAboutTitle: string;
   footerExploreTitle: string;
   footerLanguageTitle: string;
@@ -38,9 +42,13 @@ const VI: NavCopy = {
     { href: '/hotels', label: 'Khách sạn' },
     { href: '/tours', label: 'Tour' },
     { href: '/beaches', label: 'Bãi biển' },
-    { href: '/jobs', label: 'Tuyển dụng' },
     { href: '/map', label: 'Bản đồ' },
   ],
+  residentItems: [
+    { href: '/jobs', label: 'Tuyển dụng' },
+    { href: '/real-estate', label: 'Bất động sản' },
+  ],
+  residentTitle: 'Sống tại Phú Quốc',
   footerAboutTitle: 'PhuQuocHub',
   footerExploreTitle: 'Khám phá',
   footerLanguageTitle: 'Ngôn ngữ',
@@ -66,9 +74,13 @@ const EN: NavCopy = {
     { href: '/hotels', label: 'Hotels' },
     { href: '/tours', label: 'Tours' },
     { href: '/beaches', label: 'Beaches' },
-    { href: '/jobs', label: 'Jobs' },
     { href: '/map', label: 'Map' },
   ],
+  residentItems: [
+    { href: '/jobs', label: 'Jobs' },
+    { href: '/real-estate', label: 'Real Estate' },
+  ],
+  residentTitle: 'Living in Phú Quốc',
   footerAboutTitle: 'PhuQuocHub',
   footerExploreTitle: 'Explore',
   footerLanguageTitle: 'Language',

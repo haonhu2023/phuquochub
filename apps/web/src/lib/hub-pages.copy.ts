@@ -28,7 +28,8 @@ export type HubPageKey =
   | 'explore'
   | 'map'
   | 'guide'
-  | 'jobs';
+  | 'jobs'
+  | 'real-estate';
 
 const VI: Record<HubPageKey, HubPageCopy> = {
   places: {
@@ -85,6 +86,11 @@ const VI: Record<HubPageKey, HubPageCopy> = {
     title: 'Tuyển dụng Phú Quốc — Việc làm địa phương',
     description: 'Tin tuyển dụng tại Phú Quốc — lọc theo ngành nghề, khu vực và hình thức làm việc, liên hệ trực tiếp nhà tuyển dụng.',
     h1: 'Tuyển dụng tại Phú Quốc',
+  },
+  'real-estate': {
+    title: 'Nhà đất Phú Quốc — Cho thuê và mua bán',
+    description: 'Tin cho thuê và mua bán bất động sản tại Phú Quốc — phòng trọ, căn hộ, nhà, đất, mặt bằng, liên hệ trực tiếp người đăng.',
+    h1: 'Cho thuê & mua bán bất động sản tại Phú Quốc',
   },
 };
 
@@ -143,6 +149,11 @@ const EN: Record<HubPageKey, HubPageCopy> = {
     title: 'Phú Quốc Jobs — Local Vacancies',
     description: 'Job listings in Phú Quốc — filter by category, area and employment type, contact the employer directly.',
     h1: 'Jobs in Phú Quốc',
+  },
+  'real-estate': {
+    title: 'Phú Quốc Real Estate — Rent & Sale',
+    description: 'Rental and sale real estate listings in Phú Quốc — rooms, apartments, houses, land, retail space, contact the poster directly.',
+    h1: 'Phú Quốc Real Estate — Rent & Sale',
   },
 };
 
