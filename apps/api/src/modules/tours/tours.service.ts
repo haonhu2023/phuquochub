@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { PlacesService } from '../places/places.service';
 import { PlaceStatus } from '../places/place.enums';
 import { ToursRepository } from './repositories/tours.repository';
@@ -129,9 +129,23 @@ export class ToursService {
     return { ...place, tour_details: await this.repo.detail(place.id as string) };
   }
 
+  // Đặc quyền (Place.Edit.Managed). Đọc chi tiết cho editor; không qua cổng công khai.
+  async getDetails(placeId: string) {
+    return this.repo.detail(placeId);
+  }
+
   // Đặc quyền (Place.Edit.Managed). Xem ToursRepository.updateDetails's ghi chú.
   async updateDetails(placeId: string, dto: UpdateTourDetailsDto, userId: string) {
-    await this.repo.updateDetails(placeId, dto);
+    const { expected_content_version, ...detailDto } = dto;
+    const result = await this.repo.updateDetails(placeId, expected_content_version, detailDto);
+    if (result.conflict) {
+      throw new ConflictException(
+        `Địa điểm vừa được người khác sửa (mong đợi content_version=${expected_content_version}) — tải lại và thử lại.`,
+      );
+    }
+    if (result.missingTourType) {
+      throw new BadRequestException('Lần đầu lưu chi tiết tour cần chọn loại tour (tour_type).');
+    }
     await this.recordWriteAndInvalidate('place.tour_details_updated', placeId, userId, {
       tour_type_changed: dto.tour_type !== undefined,
       duration_minutes_changed: dto.duration_minutes !== undefined,
@@ -142,7 +156,7 @@ export class ToursService {
       exclusions_changed: dto.exclusions !== undefined,
       cancellation_policy_changed: dto.cancellation_policy !== undefined,
     });
-    return this.repo.detail(placeId);
+    return { ...(await this.repo.detail(placeId)), content_version: result.contentVersion ?? expected_content_version };
   }
 
   // Đặc quyền (Place.Edit.Managed). Thay TOÀN BỘ itinerary — cùng khuôn updateRooms/updateMenu.

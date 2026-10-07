@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { ToursService } from './tours.service';
 import { TourTypeDto } from './dto/tours.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
@@ -182,18 +182,30 @@ describe('ToursService', () => {
 
   describe('updateDetails (điểm đón/bao gồm-không bao gồm/chính sách hủy)', () => {
     it('truyền dto nguyên vẹn xuống repo, trả detail đã cập nhật, ghi audit', async () => {
-      repo.updateDetails.mockResolvedValue(undefined);
+      repo.updateDetails.mockResolvedValue({ conflict: false, contentVersion: 5 });
       repo.detail.mockResolvedValue({ pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' });
       placesService.getSlugAndStatus.mockResolvedValue({ slug: 't', status: 'draft' });
 
-      const dto = { pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' };
+      const dto = { expected_content_version: 4, pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' };
       const res = await service.updateDetails('t1', dto, 'u1');
 
-      expect(repo.updateDetails).toHaveBeenCalledWith('t1', dto);
+      expect(repo.updateDetails).toHaveBeenCalledWith('t1', 4, { pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' });
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'place.tour_details_updated', entityId: 't1', actorId: 'u1' }),
       );
-      expect(res).toEqual({ pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống' });
+      expect(res).toEqual({ pickup_point: 'Cổng khách sạn', inclusions: 'Vé vào cổng, nước uống', content_version: 5 });
+    });
+
+    it('version lệch -> 409, không ghi audit', async () => {
+      repo.updateDetails.mockResolvedValue({ conflict: true });
+      await expect(service.updateDetails('t1', { expected_content_version: 4, pickup_point: 'X' }, 'u1')).rejects.toThrow(ConflictException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('lần đầu thiếu tour_type -> 400, không ghi audit', async () => {
+      repo.updateDetails.mockResolvedValue({ conflict: false, contentVersion: 5, missingTourType: true });
+      await expect(service.updateDetails('t1', { expected_content_version: 4, pickup_point: 'X' }, 'u1')).rejects.toThrow(BadRequestException);
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 

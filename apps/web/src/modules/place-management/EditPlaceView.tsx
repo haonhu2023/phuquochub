@@ -16,6 +16,7 @@ import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescrip
 import { HotelDetailsEditor } from '@/modules/category-admin/HotelDetailsEditor';
 import { RestaurantDetailsEditor } from '@/modules/category-admin/RestaurantDetailsEditor';
 import { BeachDetailsEditor } from '@/modules/category-admin/BeachDetailsEditor';
+import { TourDetailsEditor } from '@/modules/category-admin/TourDetailsEditor';
 import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
 import { PricesEditor } from '@/modules/category-admin/PricesEditor';
 import { MenuEditor } from '@/modules/category-admin/MenuEditor';
@@ -346,6 +347,9 @@ export function EditPlaceView({ placeId }: Props) {
       )}
       {state.place.category_slug === 'beach' && contentVersion !== null && (
         <BeachDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
+      )}
+      {state.place.category_slug === 'tour' && contentVersion !== null && (
+        <TourDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
       )}
       {state.place.category_slug === 'restaurant' && contentVersion !== null && (
         <>

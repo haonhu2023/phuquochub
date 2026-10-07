@@ -109,6 +109,10 @@ export class ListToursQueryDto {
 // place riêng, để trống — không ép người biên tập tạo một place giả chỉ để có ID.
 // Field "được phép xoá" khai `T | null` — xem ghi chú đầy đủ ở UpdateHotelDetailsDto.
 export class UpdateTourDetailsDto {
+  // CAS: token places.content_version đang hiển thị. Thiếu/sai kiểu → 400; lệch → 409, không ghi.
+  @IsInt() @Min(0)
+  expected_content_version!: number;
+
   @IsOptional() @IsEnum(TourTypeDto)
   tour_type?: TourTypeDto;
 

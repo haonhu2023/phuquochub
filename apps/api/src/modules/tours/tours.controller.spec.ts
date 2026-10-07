@@ -27,8 +27,14 @@ describe('ToursController', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handler)).toEqual(['Place.Edit.Managed']);
   });
 
+  it('GET :id/details → getDetails(id) (quyền Place.Edit.Managed, đọc được bản nháp)', async () => {
+    toursService.getDetails = jest.fn().mockResolvedValue({ tour_type: 'diving' });
+    await expect(controller.getDetails('t1')).resolves.toEqual({ tour_type: 'diving' });
+    expect(toursService.getDetails).toHaveBeenCalledWith('t1');
+  });
+
   it('PATCH :id/details → updateDetails(id, dto, user.sub)', () => {
-    const dto = { pickup_point: 'Cổng khách sạn' };
+    const dto = { expected_content_version: 4, pickup_point: 'Cổng khách sạn' };
     controller.updateDetails('t1', dto, { sub: 'u1' } as Parameters<typeof controller.updateDetails>[2]);
     expect(toursService.updateDetails).toHaveBeenCalledWith('t1', dto, 'u1');
   });

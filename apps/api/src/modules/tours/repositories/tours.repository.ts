@@ -6,6 +6,13 @@ import { TourDifficultyDto, TourSort, TourTypeDto } from '../dto/tours.dto';
 import { MediaUrlService } from '../../../core/media-url/media-url.service';
 import { COVER_IMAGE_COLS, CoverImageColumns, withCoverImageUrl } from '../../../core/media-url/cover-image';
 
+/** Ném bên trong transaction để rollback; không phải lỗi nghiệp vụ gửi ra client. */
+class MissingTourTypeRollback extends Error {
+  constructor(readonly contentVersion: number) {
+    super('missing tour_type');
+  }
+}
+
 /** Row thô của truy vấn card — chỉ ghim phần ảnh bìa; các cột khác vẫn được service tự đọc. */
 type CardRow = Record<string, unknown> & CoverImageColumns;
 
@@ -125,8 +132,11 @@ export class ToursRepository {
    * không thể xoá organizer_id/pickup_point/... một khi đã set. `SELECT ... FOR UPDATE` khoá hàng
    * cho suốt lệnh, cùng khuôn Hotels/Restaurants/BeachesRepository.
    */
+  // CAS trên places.content_version trong cùng transaction (cùng khuôn BeachesRepository.upsertDetails).
+  // Hàng chi tiết chưa có → INSERT (cần tour_type, NOT NULL); có → UPDATE từng cột được gửi.
   async updateDetails(
     placeId: string,
+    expectedVersion: number,
     dto: {
       tour_type?: string;
       duration_minutes?: number | null;
@@ -137,9 +147,23 @@ export class ToursRepository {
       exclusions?: string | null;
       cancellation_policy?: string | null;
     },
-  ): Promise<void> {
-    await this.ds.transaction(async (m) => {
-      await m.query(`SELECT 1 FROM place_tour_details WHERE place_id = $1 FOR UPDATE`, [placeId]);
+  ): Promise<{ conflict: boolean; contentVersion?: number; missingTourType?: boolean }> {
+    // PATCH không có trường chi tiết nào: không bump version, không ghi (cùng BeachesRepository).
+    const detailKeys = ['tour_type', 'duration_minutes', 'difficulty', 'organizer_id', 'pickup_point', 'inclusions', 'exclusions', 'cancellation_policy'] as const;
+    if (!detailKeys.some((k) => dto[k] !== undefined)) return { conflict: false };
+    // Thiếu tour_type ở lần ghi đầu: phải ROLLBACK cả lần bump version đã chạy trong transaction này,
+    // nên ném lỗi đánh dấu để transaction không commit; bắt bên ngoài và trả kết quả.
+    try {
+      return await this.ds.transaction(async (m) => {
+        const [casRows]: [Array<{ content_version: number }>, number] = await m.query(
+        `UPDATE places SET content_version = content_version + 1
+           WHERE id = $1 AND content_version = $2
+           RETURNING content_version`,
+        [placeId, expectedVersion],
+      );
+      if (casRows.length === 0) return { conflict: true };
+      const contentVersion = casRows[0].content_version;
+      const existing = await m.query(`SELECT 1 FROM place_tour_details WHERE place_id = $1 FOR UPDATE`, [placeId]);
 
       const patch: Record<string, unknown> = {};
       if (dto.tour_type !== undefined) patch.tour_type = dto.tour_type;
@@ -151,7 +175,15 @@ export class ToursRepository {
       if (dto.exclusions !== undefined) patch.exclusions = dto.exclusions;
       if (dto.cancellation_policy !== undefined) patch.cancellation_policy = dto.cancellation_policy;
 
-      if (Object.keys(patch).length === 0) return;
+      if (existing.length === 0) {
+        if (patch.tour_type === undefined) throw new MissingTourTypeRollback(contentVersion);
+        const cols = ['place_id', ...Object.keys(patch)];
+        await m.query(
+          `INSERT INTO "place_tour_details" (${cols.map((c) => `"${c}"`).join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
+          [placeId, ...Object.values(patch)],
+        );
+        return { conflict: false, contentVersion };
+      }
       const setClauses = Object.keys(patch)
         .map((k, i) => `"${k}" = $${i + 2}`)
         .join(', ');
@@ -159,7 +191,12 @@ export class ToursRepository {
         placeId,
         ...Object.values(patch),
       ]);
-    });
+      return { conflict: false, contentVersion };
+      });
+    } catch (err) {
+      if (err instanceof MissingTourTypeRollback) return { conflict: false, contentVersion: err.contentVersion, missingTourType: true };
+      throw err;
+    }
   }
 
   /** Thay TOÀN BỘ tour_stops — cùng khuôn HotelsRepository.replaceRooms. Đường ghi ĐẦU TIÊN cho bảng này. */

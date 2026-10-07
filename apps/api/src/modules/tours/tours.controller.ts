@@ -55,6 +55,14 @@ export class ToursController {
     return this.toursService.updateDetails(id, dto, user.sub);
   }
 
+  // Đọc chi tiết cho màn quản trị (kể cả khi place còn nháp, nơi GET /tours/:slug công khai trả 404).
+  @Get(':id/details')
+  @RequirePermissions('Place.Edit.Managed')
+  @AuthorizationContext({ resourceType: 'place', resource: { from: 'param', name: 'id' } })
+  getDetails(@Param('id', ParseUUIDPipe) id: string) {
+    return this.toursService.getDetails(id);
+  }
+
   // "Lịch trình theo mốc" — thay TOÀN BỘ, cùng khuôn PATCH :id/rooms (Hotels)/:id/menu (Restaurants).
   @Put(':id/itinerary')
   @RequirePermissions('Place.Edit.Managed')

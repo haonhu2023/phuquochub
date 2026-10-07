@@ -198,50 +198,89 @@ describe('ToursRepository — browse (filter, sort, pagination)', () => {
   // "gửi null để xoá" cùng thành NULL, không thể xoá pickup_point/organizer_id/... một khi đã set.
   // Bản mới chỉ đưa vào SET clause đúng cột THỰC SỰ có mặt trong DTO.
   describe('updateDetails', () => {
-    function mockTransaction() {
-      const managerQuery = jest.fn().mockResolvedValueOnce([{ '?column?': 1 }]).mockResolvedValue(undefined);
+    function mockTransaction(casRows: unknown[], existing: unknown[]) {
+      const managerQuery = jest
+        .fn()
+        .mockResolvedValueOnce([casRows, 1])
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValue(undefined);
       (ds as unknown as { transaction: jest.Mock }).transaction = jest
         .fn()
-        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<void>) => cb({ query: managerQuery }));
+        .mockImplementation((cb: (m: { query: typeof managerQuery }) => Promise<unknown>) => cb({ query: managerQuery }));
       return managerQuery;
     }
+    const CAS_OK = [{ content_version: 6 }];
 
-    it('PATCH một trường -> UPDATE CHỈ đụng cột đó, không tự bịa NULL cho các cột khác', async () => {
-      const managerQuery = mockTransaction();
+    it('PATCH một trường -> CAS bump version, UPDATE CHỈ đụng cột đó, trả version mới', async () => {
+      const managerQuery = mockTransaction(CAS_OK, [{ '?column?': 1 }]);
 
-      await sut.updateDetails('p1', { pickup_point: 'Cổng khách sạn' });
+      const res = await sut.updateDetails('p1', 5, { pickup_point: 'Cổng khách sạn' });
 
-      const updateCall = managerQuery.mock.calls[1];
+      expect(sql(managerQuery.mock.calls[0][0])).toContain('content_version = content_version + 1');
+      expect(managerQuery.mock.calls[0][1]).toEqual(['p1', 5]);
+      const updateCall = managerQuery.mock.calls[2];
       expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "pickup_point" = $2 WHERE place_id = $1');
       expect(updateCall[1]).toEqual(['p1', 'Cổng khách sạn']);
+      expect(res).toEqual({ conflict: false, contentVersion: 6 });
     });
 
     it('PATCH organizer_id=null (xoá tường minh) -> UPDATE ghi NULL cho đúng cột đó', async () => {
-      const managerQuery = mockTransaction();
+      const managerQuery = mockTransaction(CAS_OK, [{ '?column?': 1 }]);
 
-      await sut.updateDetails('p1', { organizer_id: null });
+      await sut.updateDetails('p1', 5, { organizer_id: null });
 
-      const updateCall = managerQuery.mock.calls[1];
+      const updateCall = managerQuery.mock.calls[2];
       expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "organizer_id" = $2 WHERE place_id = $1');
       expect(updateCall[1]).toEqual(['p1', null]);
     });
 
     it('nhiều trường cùng lúc -> mỗi trường một cột trong SET, đúng thứ tự tham số', async () => {
-      const managerQuery = mockTransaction();
+      const managerQuery = mockTransaction(CAS_OK, [{ '?column?': 1 }]);
 
-      await sut.updateDetails('p1', { tour_type: 'diving', inclusions: 'Vé lặn' });
+      await sut.updateDetails('p1', 5, { tour_type: 'diving', inclusions: 'Vé lặn' });
 
-      const updateCall = managerQuery.mock.calls[1];
+      const updateCall = managerQuery.mock.calls[2];
       expect(sql(updateCall[0])).toBe('UPDATE place_tour_details SET "tour_type" = $2, "inclusions" = $3 WHERE place_id = $1');
       expect(updateCall[1]).toEqual(['p1', 'diving', 'Vé lặn']);
     });
 
-    it('patch rỗng thật sự -> không UPDATE gì', async () => {
-      const managerQuery = mockTransaction();
+    it('version cũ (CAS không khớp) -> conflict, KHÔNG ghi chi tiết', async () => {
+      const managerQuery = mockTransaction([], []);
 
-      await sut.updateDetails('p1', {});
+      const res = await sut.updateDetails('p1', 5, { pickup_point: 'X' });
 
-      expect(managerQuery).toHaveBeenCalledTimes(1); // chỉ SELECT FOR UPDATE
+      expect(res).toEqual({ conflict: true });
+      expect(managerQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('chưa có hàng chi tiết + có tour_type -> INSERT (không UPDATE im lặng)', async () => {
+      const managerQuery = mockTransaction(CAS_OK, []);
+
+      const res = await sut.updateDetails('p1', 5, { tour_type: 'diving', pickup_point: 'Cổng' });
+
+      const insertCall = managerQuery.mock.calls[2];
+      expect(sql(insertCall[0])).toBe('INSERT INTO "place_tour_details" ("place_id", "tour_type", "pickup_point") VALUES ($1, $2, $3)');
+      expect(insertCall[1]).toEqual(['p1', 'diving', 'Cổng']);
+      expect(res).toEqual({ conflict: false, contentVersion: 6 });
+    });
+
+    it('chưa có hàng chi tiết + thiếu tour_type -> báo missingTourType, không INSERT', async () => {
+      const managerQuery = mockTransaction(CAS_OK, []);
+
+      const res = await sut.updateDetails('p1', 5, { pickup_point: 'Cổng' });
+
+      expect(res).toEqual({ conflict: false, contentVersion: 6, missingTourType: true });
+      expect(managerQuery).toHaveBeenCalledTimes(2); // CAS + SELECT, không INSERT
+    });
+
+    it('patch rỗng thật sự -> không mở transaction, không bump version', async () => {
+      const txn = jest.fn();
+      (ds as unknown as { transaction: jest.Mock }).transaction = txn;
+
+      const res = await sut.updateDetails('p1', 5, {});
+
+      expect(txn).not.toHaveBeenCalled();
+      expect(res).toEqual({ conflict: false });
     });
   });
 

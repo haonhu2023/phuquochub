@@ -49,6 +49,52 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 // Chi tiết tour = Place base + hành trình (itinerary) + lịch (schedule), satellite ADR-002.
+const TOUR_TYPE_LABEL: Record<string, string> = {
+  diving: 'Lặn',
+  fishing: 'Câu cá',
+  trekking: 'Đi bộ/trekking',
+  sightseeing: 'Tham quan',
+  cruise: 'Du thuyền',
+  other: 'Khác',
+};
+const DIFFICULTY_LABEL: Record<string, string> = { easy: 'Dễ', moderate: 'Trung bình', hard: 'Khó' };
+
+function str(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v : null;
+}
+
+function TourInfoSection({ details }: { details: Record<string, unknown> | null }) {
+  if (!details) return null;
+  const rows: Array<[string, string]> = [];
+  const type = str(details.tour_type);
+  if (type) rows.push(['Loại tour', TOUR_TYPE_LABEL[type] ?? type]);
+  if (typeof details.duration_minutes === 'number') rows.push(['Thời lượng', `${details.duration_minutes} phút`]);
+  const diff = str(details.difficulty);
+  if (diff) rows.push(['Độ khó', DIFFICULTY_LABEL[diff] ?? diff]);
+  const pickup = str(details.pickup_point);
+  if (pickup) rows.push(['Điểm đón khách', pickup]);
+  const inc = str(details.inclusions);
+  if (inc) rows.push(['Bao gồm', inc]);
+  const exc = str(details.exclusions);
+  if (exc) rows.push(['Không bao gồm', exc]);
+  const cancel = str(details.cancellation_policy);
+  if (cancel) rows.push(['Quy định hủy', cancel]);
+  if (rows.length === 0) return null;
+  return (
+    <section>
+      <h2>Thông tin tour</h2>
+      <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export default async function TourDetailPage({ params }: Params) {
   const { slug, locale: localeParam } = await params;
   const locale = localeParam as Locale;
@@ -104,6 +150,10 @@ export default async function TourDetailPage({ params }: Params) {
       <PlaceGallery media={t.media} placeName={t.name} />
 
       {t.description && <p>{t.description}</p>}
+
+      {/* Thông tin tour (admin nhập ở editor). Chỉ hiện trường đã có giá trị: thiếu thời lượng/độ khó/
+          điểm đón không được diễn đạt thành "miễn phí", "đang mở" hay "không có". */}
+      <TourInfoSection details={t.tour_details} />
 
       {itinerary.length > 0 && (
         <section>
