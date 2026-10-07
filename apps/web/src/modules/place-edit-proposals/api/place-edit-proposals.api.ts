@@ -4,6 +4,7 @@ import type {
   DecidePlaceEditProposalInput,
   PlaceEditProposalFieldKey,
   PlaceEditProposalStatus,
+  PlaceEditProposalSenderView,
   PlaceEditProposalView,
 } from '../types';
 
@@ -40,4 +41,9 @@ export async function decidePlaceEditProposal(
   accessToken: string,
 ): Promise<PlaceEditProposalView> {
   return apiPost<PlaceEditProposalView>(`/place-edit-proposals/${encodeURIComponent(id)}/decide`, accessToken, input);
+}
+
+/** GET /place-edit-proposals/mine — chỉ đề xuất của chính người gửi (xác thực, không cần quyền Moderate). */
+export async function listMyPlaceEditProposals(accessToken: string): Promise<PlaceEditProposalSenderView[]> {
+  return apiGetAuth<PlaceEditProposalSenderView[]>('/place-edit-proposals/mine', accessToken, { cache: 'no-store' });
 }

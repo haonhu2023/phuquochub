@@ -69,3 +69,19 @@ export interface DecidePlaceEditProposalInput {
   decision: PlaceEditProposalDecision;
   note?: string;
 }
+
+// "Góp ý của tôi" (người gửi): khớp PlaceEditProposalsService.listMine/getMine — KHÔNG có reviewer_id,
+// review_note (ghi chú nội bộ). Người gửi chỉ thấy trạng thái và thời điểm xử lý.
+export interface PlaceEditProposalSenderView {
+  id: string;
+  place_id: string;
+  field_key: PlaceEditProposalFieldKey;
+  locale_code: string | null;
+  proposed_value: unknown;
+  reason: string;
+  source_url: string | null;
+  status: PlaceEditProposalStatus;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -1,0 +1,76 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { readSession } from '@/modules/auth/session';
+import { listMyPlaceEditProposals } from './api/place-edit-proposals.api';
+import { PLACE_EDIT_PROPOSAL_STATUS_LABELS, type PlaceEditProposalSenderView } from './types';
+import styles from '@/modules/place-management/place-management.module.css';
+
+type State =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; items: PlaceEditProposalSenderView[] };
+
+function formatDate(iso: string | null): string {
+  if (!iso) return 'chưa có';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'chưa có' : d.toLocaleDateString('vi-VN');
+}
+
+/**
+ * "Góp ý của tôi": danh sách đề xuất của chính người dùng và trạng thái xử lý. KHÔNG hiện người duyệt hay
+ * ghi chú nội bộ (API không trả các trường đó). Trạng thái rỗng và lỗi được hiển thị rõ, không coi là "không có góp ý".
+ */
+export function MyProposalsView() {
+  const [state, setState] = useState<State>({ kind: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      const session = readSession();
+      if (!session) {
+        if (!cancelled) setState({ kind: 'error', message: 'Phiên đăng nhập đã hết hạn — tải lại trang.' });
+        return;
+      }
+      listMyPlaceEditProposals(session.accessToken)
+        .then((items) => {
+          if (!cancelled) setState({ kind: 'ready', items });
+        })
+        .catch(() => {
+          if (!cancelled) setState({ kind: 'error', message: 'Không tải được danh sách góp ý. Vui lòng thử lại.' });
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (state.kind === 'loading') return <p style={{ color: 'var(--muted)' }}>Đang tải góp ý…</p>;
+  if (state.kind === 'error') return <p className={styles.alert} role="alert">{state.message}</p>;
+  if (state.items.length === 0) {
+    return (
+      <section aria-label="Góp ý của tôi">
+        <h1>Góp ý của tôi</h1>
+        <p>Bạn chưa gửi góp ý nào.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Góp ý của tôi">
+      <h1>Góp ý của tôi</h1>
+      <ul>
+        {state.items.map((p) => (
+          <li key={p.id} style={{ marginBottom: '0.75rem' }}>
+            <strong>{p.field_key}</strong>
+            {p.locale_code ? ` (${p.locale_code})` : ''} — {PLACE_EDIT_PROPOSAL_STATUS_LABELS[p.status]}
+            <div style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
+              Gửi ngày {formatDate(p.created_at)}
+              {p.reviewed_at ? `; xử lý ngày ${formatDate(p.reviewed_at)}` : '; chưa được xử lý'}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
