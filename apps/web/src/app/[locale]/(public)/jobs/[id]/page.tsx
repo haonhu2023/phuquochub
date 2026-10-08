@@ -5,6 +5,7 @@ import { formatSalary } from '@/modules/job-listings/salary';
 import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
+import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -51,7 +52,10 @@ export default async function JobListingDetailPage({ params }: Params) {
           {job.employer_name}
           {job.employer_role ? ` · ${job.employer_role}` : ''}
         </p>
-        <SaveButton targetType="job_listing" targetId={job.id} locale={locale} />
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <SaveButton targetType="job_listing" targetId={job.id} locale={locale} />
+          <ReportButton targetType="job_listing" targetId={job.id} />
+        </div>
       </header>
 
       <dl>
