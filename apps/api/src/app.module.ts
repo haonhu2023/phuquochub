@@ -22,6 +22,7 @@ import { PlacesModule } from './modules/places/places.module';
 import { PlaceEditProposalsModule } from './modules/place-edit-proposals/place-edit-proposals.module';
 import { JobListingsModule } from './modules/job-listings/job-listings.module';
 import { RealEstateListingsModule } from './modules/real-estate-listings/real-estate-listings.module';
+import { RealEstateListingPhotosModule } from './modules/real-estate-listing-photos/real-estate-listing-photos.module';
 import { SavedItemsModule } from './modules/saved-items/saved-items.module';
 import { ListingReportsModule } from './modules/listing-reports/listing-reports.module';
 import { GeoModule } from './modules/geo/geo.module';
@@ -88,6 +89,7 @@ import { OpsModule } from './modules/ops/ops.module';
     PlaceEditProposalsModule,
     JobListingsModule,
     RealEstateListingsModule,
+    RealEstateListingPhotosModule,
     SavedItemsModule,
     ListingReportsModule,
     GeoModule,

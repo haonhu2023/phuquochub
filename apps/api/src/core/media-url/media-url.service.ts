@@ -56,4 +56,24 @@ export class MediaUrlService {
   moderationFileUrl(mediaId: string): string {
     return `${this.base}/media/${mediaId}/moderation-file`;
   }
+
+  /**
+   * Absolute URL for `GET /real-estate-listings/{listingId}/photos/{photoId}/file` — the public
+   * channel, same "stable, no signature, re-checked on every hit" contract as `fileUrl()`. Reused
+   * here rather than duplicated: this service's whole job is building these stable app-origin
+   * URLs, and it already does so for several unrelated modules (hotels/restaurants/tours/beaches/
+   * attractions/reviews via their repositories) — real-estate-listing-photos is just another one.
+   */
+  realEstateListingPhotoFileUrl(listingId: string, photoId: string): string {
+    return `${this.base}/real-estate-listings/${listingId}/photos/${photoId}/file`;
+  }
+
+  /**
+   * Absolute URL for `GET /real-estate-listings/{listingId}/photos/{photoId}/owner-file` — the
+   * OWNER-facing channel (any listing status, so the poster can preview photos before submitting
+   * for review). Same role as `placeMediaFileUrl()`/`moderationFileUrl()` above.
+   */
+  realEstateListingPhotoOwnerFileUrl(listingId: string, photoId: string): string {
+    return `${this.base}/real-estate-listings/${listingId}/photos/${photoId}/owner-file`;
+  }
 }

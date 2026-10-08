@@ -262,6 +262,25 @@ export class StorageService implements OnModuleInit {
     return { ok: true };
   }
 
+  /**
+   * Downloads the full object body (bounded by the same MAX_OBJECT_BYTES ceiling every other
+   * object on this bucket is already held to). Generic by design — same "operate on raw keys,
+   * know nothing about the caller's entity" rule as every other method here; a caller that needs
+   * to inspect bytes for domain-specific risk (e.g. embedded location metadata) does that
+   * inspection itself, after `verifyUploadedObject` has already confirmed the object exists and
+   * is within size — this method does not re-check size via HEAD first, so callers must only use
+   * it on a key already known (via verifyUploadedObject) to be within bounds.
+   */
+  async getObject(key: string): Promise<Buffer> {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const body = res.Body as Readable;
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(chunk as Buffer);
+    }
+    return Buffer.concat(chunks);
+  }
+
   async deleteObject(key: string): Promise<void> {
     try {
       await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
