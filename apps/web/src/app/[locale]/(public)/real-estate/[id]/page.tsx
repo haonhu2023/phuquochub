@@ -11,6 +11,7 @@ import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
+import { RealEstateListingPhotoGallery } from '@/modules/real-estate-listing-photos/RealEstateListingPhotoGallery';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -82,6 +83,8 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
           <ReportButton targetType="real_estate_listing" targetId={listing.id} />
         </div>
       </header>
+
+      <RealEstateListingPhotoGallery listingId={listing.id} />
 
       <dl>
         <div className={placesStyles.infoItem}>

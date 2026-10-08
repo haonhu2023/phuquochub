@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/http';
 import { getMyRealEstateListing } from './api/real-estate-listings.api';
 import { RealEstateListingForm } from './RealEstateListingForm';
 import type { RealEstateListingSenderView } from './types';
+import { RealEstateListingPhotosManager } from '../real-estate-listing-photos/RealEstateListingPhotosManager';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
@@ -93,6 +94,7 @@ export function EditRealEstateListingView({ id }: { id: string }) {
         <h1 className={placeStyles.pageTitle}>Sửa tin bất động sản</h1>
       </header>
       <RealEstateListingForm existing={state.listing} onSaved={(listing) => setState({ kind: 'saved', listing })} />
+      <RealEstateListingPhotosManager listingId={state.listing.id} />
     </main>
   );
 }

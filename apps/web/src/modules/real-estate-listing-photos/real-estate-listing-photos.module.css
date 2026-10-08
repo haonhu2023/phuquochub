@@ -1,0 +1,76 @@
+/* Ảnh của tin bất động sản — chỉ những class CHƯA có ở places.module.css/place-management.module.css. */
+
+.uploadHint {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.fileInput {
+  display: block;
+  max-width: 100%;
+  font: inherit;
+  color: var(--fg);
+}
+.fileInput:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.fileInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.uploadStatus {
+  margin: 0.75rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.9rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+
+.thumbErrorText {
+  padding: 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.tileBody {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem;
+}
+
+.skeletonTile {
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
