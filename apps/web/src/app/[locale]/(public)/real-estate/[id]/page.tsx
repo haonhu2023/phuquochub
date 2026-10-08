@@ -9,6 +9,7 @@ import {
 import { formatRealEstatePrice } from '@/modules/real-estate-listings/price';
 import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { SaveButton } from '@/modules/saved-items/SaveButton';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -75,6 +76,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
           {realEstateTransactionTypeLabel(listing.transaction_type, locale)} ·{' '}
           {realEstatePropertyTypeLabel(listing.property_type, locale)}
         </p>
+        <SaveButton targetType="real_estate_listing" targetId={listing.id} locale={locale} />
       </header>
 
       <dl>

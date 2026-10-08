@@ -4,6 +4,7 @@ import { jobListingEmploymentTypeLabel } from '@/modules/job-listings/types';
 import { formatSalary } from '@/modules/job-listings/salary';
 import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { SaveButton } from '@/modules/saved-items/SaveButton';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -50,6 +51,7 @@ export default async function JobListingDetailPage({ params }: Params) {
           {job.employer_name}
           {job.employer_role ? ` · ${job.employer_role}` : ''}
         </p>
+        <SaveButton targetType="job_listing" targetId={job.id} locale={locale} />
       </header>
 
       <dl>
