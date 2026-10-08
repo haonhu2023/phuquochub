@@ -102,6 +102,17 @@ describe('ListingReportsService', () => {
       expect(result).toHaveLength(1);
     });
 
+    it('kèm listing đã resolve (tiêu đề), null khi tin không còn công khai', async () => {
+      authz.can.mockImplementation((_u: string, perm: string) => Promise.resolve(perm === 'JobListing.Moderate'));
+      repo.listOpenByTargetType.mockResolvedValue([row({ id: 'lr-a', targetId: 'job-1' }), row({ id: 'lr-b', targetId: 'job-gone' })]);
+      jobListingsService.getPublicById.mockImplementation((id: string) =>
+        id === 'job-1' ? Promise.resolve({ id, title: 'Phục vụ bàn' }) : Promise.reject(new NotFoundException()),
+      );
+      const result = await service.listPending('mod-1');
+      expect(result.find((r) => r.id === 'lr-a')?.listing).toEqual({ id: 'job-1', title: 'Phục vụ bàn' });
+      expect(result.find((r) => r.id === 'lr-b')?.listing).toBeNull();
+    });
+
     it('giữ CẢ hai quyền → gộp báo cáo của cả hai loại', async () => {
       authz.can.mockResolvedValue(true);
       repo.listOpenByTargetType.mockImplementation((t: ListableTargetType) =>

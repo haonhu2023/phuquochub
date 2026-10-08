@@ -13,7 +13,7 @@ const MODERATE_PERMISSION: Record<ListableTargetType, string> = {
   [ListableTargetType.REAL_ESTATE_LISTING]: 'RealEstateListing.Moderate',
 };
 
-function toView(row: ListingReport) {
+function toView(row: ListingReport, listing: unknown | null = null) {
   return {
     id: row.id,
     target_type: row.targetType,
@@ -23,6 +23,10 @@ function toView(row: ListingReport) {
     status: row.status,
     resolved_at: row.resolvedAt ? row.resolvedAt.toISOString() : null,
     created_at: row.createdAt.toISOString(),
+    // Chỉ listPending() điền trường này (hàng chờ moderator cần thấy tiêu đề/giá, không chỉ UUID).
+    // null khi tin không còn công khai tại thời điểm xem hàng chờ (đã đóng/hết hạn sau khi bị báo
+    // cáo) — cùng hợp đồng "listing: null" đã dùng ở saved-items, không phải lỗi.
+    listing,
   };
 }
 
@@ -97,7 +101,8 @@ export class ListingReportsService {
       }
     }
     const lists = await Promise.all(allowed.map((t) => this.repo.listOpenByTargetType(t)));
-    return lists.flat().map(toView);
+    const rows = lists.flat();
+    return Promise.all(rows.map(async (row) => toView(row, await this.resolveTargetPublic(row.targetType, row.targetId))));
   }
 
   async resolve(id: string, dto: ResolveListingReportDto, resolverId: string): Promise<ReturnType<typeof toView>> {
