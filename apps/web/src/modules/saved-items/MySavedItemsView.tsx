@@ -112,11 +112,15 @@ export function MySavedItemsView() {
                   <RealEstateListingCard listing={item.listing as RealEstateListingPublicView} />
                 )}
                 <div className={placeMgmtStyles.actions} style={{ marginTop: '0.5rem' }}>
+                  {/* aria-label kèm tiêu đề — nhiều nút "Bỏ lưu" lặp lại trên trang không phân biệt
+                      được với nhau nếu chỉ có text chung, một vấn đề a11y thật (trình đọc màn hình
+                      không biết nút nào ứng với tin nào), không chỉ để test dễ chọn phần tử. */}
                   <button
                     type="button"
                     className={placeStyles.btn}
                     disabled={removingId === item.id}
                     onClick={() => remove(item)}
+                    aria-label={`Bỏ lưu ${item.listing.title}`}
                   >
                     Bỏ lưu
                   </button>
@@ -131,6 +135,7 @@ export function MySavedItemsView() {
                   className={placeStyles.btn}
                   disabled={removingId === item.id}
                   onClick={() => remove(item)}
+                  aria-label={`Bỏ lưu tin ${item.target_type === 'job_listing' ? 'tuyển dụng' : 'bất động sản'} không còn khả dụng`}
                 >
                   Bỏ lưu
                 </button>

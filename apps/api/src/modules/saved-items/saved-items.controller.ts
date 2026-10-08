@@ -16,12 +16,12 @@ export class SavedItemsController {
     return this.service.listMine(user.sub);
   }
 
-  // 200 + { data: null } — cùng quy ước "EmptySuccess" của PlacesController.archive() (DELETE
-  // /places/:id không có @HttpCode riêng, mặc định 200 từ Nest). KHÔNG dùng 204 thật: codebase
-  // này không có tiền lệ nào, và 204 theo đúng HTTP spec phải KHÔNG mang body — nhưng
-  // TransformInterceptor vẫn bọc payload qua RxJS map() bất kể status code, nên một handler
-  // @HttpCode(204) trả về `undefined` từ service() (không `return` gì) sẽ khiến body thực tế phụ
-  // thuộc hành vi ngầm của Express/Node với 204, một rủi ro không đáng để lệch quy ước đã có.
+  // Không @HttpCode riêng → mặc định Nest cho @Post() là 201, mang { data: null } (cùng quy ước
+  // "EmptySuccess" đã có — vd DELETE /places/:id không @HttpCode riêng, mặc định 200 từ Nest cho
+  // @Delete()). KHÔNG dùng 204 thật: codebase này không có tiền lệ nào, và 204 theo đúng HTTP spec
+  // phải KHÔNG mang body — nhưng TransformInterceptor vẫn bọc payload qua RxJS map() bất kể status
+  // code, nên một handler @HttpCode(204) trả về `undefined` sẽ khiến body thực tế phụ thuộc hành
+  // vi ngầm của Express/Node với 204, một rủi ro không đáng để lệch quy ước đã có.
   @Post()
   async save(@Body() dto: CreateSavedItemDto, @CurrentUser() user: AuthPrincipal) {
     await this.service.save(user.sub, dto.target_type, dto.target_id);

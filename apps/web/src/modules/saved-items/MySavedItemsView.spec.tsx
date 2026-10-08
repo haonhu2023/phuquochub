@@ -73,7 +73,7 @@ describe('MySavedItemsView', () => {
     ]);
     mockUnsave.mockResolvedValue(undefined);
     render(<MySavedItemsView />);
-    const btn = await screen.findByRole('button', { name: 'Bỏ lưu' });
+    const btn = await screen.findByRole('button', { name: 'Bỏ lưu Phục vụ bàn' });
     fireEvent.click(btn);
     await waitFor(() => expect(mockUnsave).toHaveBeenCalledWith('job_listing', 'job-1', 'tok'));
   });
