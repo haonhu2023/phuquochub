@@ -26,6 +26,7 @@ const ROW = {
   source_url: null,
   status: 'needs_changes',
   sender_message: null,
+  photos: [],
   reviewed_at: '2026-10-07T03:00:00.000Z',
   created_at: '2026-10-06T03:00:00.000Z',
   updated_at: '2026-10-07T03:00:00.000Z',

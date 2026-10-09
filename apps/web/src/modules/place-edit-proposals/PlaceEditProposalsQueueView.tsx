@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/http';
 import { previewPlace } from '@/modules/place-management/api/place-management.api';
 import { listPlaceEditProposals } from './api/place-edit-proposals.api';
 import { PlaceEditProposalDecisionForm } from './PlaceEditProposalDecisionForm';
+import { ProposalPhotoThumbnail } from './ProposalPhotoUploader';
 import { PLACE_EDIT_PROPOSAL_FIELD_LABELS, PLACE_EDIT_PROPOSAL_STATUS_LABELS, type PlaceEditProposalView } from './types';
 import placeStyles from '@/modules/places/places.module.css';
 
@@ -16,7 +17,7 @@ type State =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: PlaceEditProposalView[]; places: Map<string, PlaceLookup> };
+  | { kind: 'ready'; items: PlaceEditProposalView[]; places: Map<string, PlaceLookup>; accessToken: string };
 
 function formatValue(v: unknown): string {
   if (v == null) return '(trống)';
@@ -66,7 +67,7 @@ export function PlaceEditProposalsQueueView() {
             }
           }),
         );
-        if (!cancelled) setState({ kind: 'ready', items, places });
+        if (!cancelled) setState({ kind: 'ready', items, places, accessToken: session.accessToken });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -167,6 +168,14 @@ export function PlaceEditProposalsQueueView() {
                       {item.source_url}
                     </a>
                   </p>
+                )}
+                {item.photos.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', margin: '0.4rem 0' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--muted)' }}>Ảnh bằng chứng đính kèm:</span>
+                    {item.photos.map((photo) => (
+                      <ProposalPhotoThumbnail key={photo.id} photo={photo} accessToken={state.accessToken} />
+                    ))}
+                  </div>
                 )}
                 <PlaceEditProposalDecisionForm proposal={item} onDecided={reload} />
               </li>

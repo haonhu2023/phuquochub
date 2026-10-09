@@ -27,6 +27,7 @@ const proposal: PlaceEditProposalView = {
   reviewed_at: null,
   review_note: null,
   sender_message: null,
+  photos: [],
   created_at: '2026-09-24T00:00:00.000Z',
   updated_at: '2026-09-24T00:00:00.000Z',
 };

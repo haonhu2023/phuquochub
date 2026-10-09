@@ -41,6 +41,8 @@ describe('PlaceEditProposalsService', () => {
   let localesService: LooseMock<LocalesService>;
   let placeTranslationsService: LooseMock<PlaceTranslationsService>;
   let cacheInvalidation: LooseMock<CacheInvalidationService>;
+  let mediaRepo: LooseMock<import('../media/repositories/media.repository').MediaRepository>;
+  let mediaUrl: LooseMock<import('../../core/media-url/media-url.service').MediaUrlService>;
   let dataSource: LooseMock<DataSource>;
   let manager: EntityManager;
   let service: PlaceEditProposalsService;
@@ -77,6 +79,13 @@ describe('PlaceEditProposalsService', () => {
     cacheInvalidation = createMock<CacheInvalidationService>({
       invalidatePlace: jest.fn().mockResolvedValue(undefined),
     });
+    mediaRepo = createMock<import('../media/repositories/media.repository').MediaRepository>({
+      listAllByProposal: jest.fn().mockResolvedValue([]),
+    });
+    mediaUrl = createMock<import('../../core/media-url/media-url.service').MediaUrlService>({
+      moderationFileUrl: jest.fn((id: string) => `https://x/media/${id}/moderation-file`),
+      placeEditProposalPhotoFileUrl: jest.fn((proposalId: string, id: string) => `https://x/place-edit-proposals/${proposalId}/media/${id}/file`),
+    });
     dataSource = createMock<DataSource>({
       transaction: jest.fn((cb: (m: EntityManager) => Promise<unknown>) => cb(manager)),
     });
@@ -87,6 +96,8 @@ describe('PlaceEditProposalsService', () => {
       localesService,
       placeTranslationsService,
       cacheInvalidation,
+      mediaRepo,
+      mediaUrl,
       dataSource,
     );
   });
@@ -161,6 +172,9 @@ describe('PlaceEditProposalsService', () => {
       expect(savedArg.proposerId).toBe('user-1');
       expect(placesService.update).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.PENDING);
+      // Đề xuất vừa tạo chắc chắn chưa có ảnh nào — bỏ qua truy vấn media, vẫn giữ đúng hình dạng.
+      expect(result.photos).toEqual([]);
+      expect(mediaRepo.listAllByProposal).not.toHaveBeenCalled();
     });
 
     it('locale_code không nhận diện được → bỏ qua (null), không chặn đề xuất', async () => {
@@ -536,6 +550,55 @@ describe('PlaceEditProposalsService', () => {
 
       expect(dataSource.transaction).toHaveBeenCalledTimes(1);
       expect(proposalsRepo.findByIdForUpdate).toHaveBeenCalledWith('proposal-1', manager);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Ảnh góp ý đính kèm ("qua media moderation", mục V đợt 2) — url khác nhau theo đối tượng xem.
+  // -------------------------------------------------------------------------
+  describe('ảnh góp ý đính kèm trong các view đọc', () => {
+    const mediaRow = { id: 'media-1', status: 'pending', createdAt: new Date('2026-10-09T00:00:00Z') };
+
+    it('getMine: có ảnh → photos dùng kênh của NGƯỜI GỬI (placeEditProposalPhotoFileUrl)', async () => {
+      proposalsRepo.findById.mockResolvedValue(makeProposal() as never);
+      mediaRepo.listAllByProposal.mockResolvedValue([mediaRow] as never);
+
+      const result = await service.getMine('proposal-1', 'user-1');
+
+      expect(mediaRepo.listAllByProposal).toHaveBeenCalledWith('proposal-1');
+      expect(result.photos).toEqual([
+        { id: 'media-1', status: 'pending', created_at: '2026-10-09T00:00:00.000Z', url: 'https://x/place-edit-proposals/proposal-1/media/media-1/file' },
+      ]);
+    });
+
+    it('getById (moderator): có ảnh → photos dùng kênh MODERATION (moderationFileUrl), KHÔNG lộ qua kênh của người gửi', async () => {
+      proposalsRepo.findById.mockResolvedValue(makeProposal() as never);
+      mediaRepo.listAllByProposal.mockResolvedValue([mediaRow] as never);
+
+      const result = await service.getById('proposal-1');
+
+      expect(result.photos).toEqual([
+        { id: 'media-1', status: 'pending', created_at: '2026-10-09T00:00:00.000Z', url: 'https://x/media/media-1/moderation-file' },
+      ]);
+    });
+
+    it('list (hàng chờ duyệt): mỗi đề xuất tự mang đúng photos của chính nó', async () => {
+      proposalsRepo.list.mockResolvedValue([makeProposal()] as never);
+      mediaRepo.listAllByProposal.mockResolvedValue([mediaRow] as never);
+
+      const [result] = await service.list({});
+
+      expect(result.photos).toHaveLength(1);
+      expect(mediaUrl.moderationFileUrl).toHaveBeenCalledWith('media-1');
+    });
+
+    it('listMine: không có ảnh nào → photos rỗng, không lỗi', async () => {
+      proposalsRepo.list.mockResolvedValue([makeProposal()] as never);
+      mediaRepo.listAllByProposal.mockResolvedValue([]);
+
+      const [result] = await service.listMine('user-1');
+
+      expect(result.photos).toEqual([]);
     });
   });
 });

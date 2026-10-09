@@ -7,6 +7,7 @@ import { PlaceEditProposalsController } from './place-edit-proposals.controller'
 import { PlacesModule } from '../places/places.module';
 import { LocalesModule } from '../locales/locales.module';
 import { PlaceTranslationsModule } from '../place-translations/place-translations.module';
+import { MediaModule } from '../media/media.module';
 
 // `PlacesModule` imported for `PlacesRepository` (read current field value at submit/decide time)
 // and `PlacesService` (the ONLY write path a decide()-approve ever calls — task requirement:
@@ -18,8 +19,11 @@ import { PlaceTranslationsModule } from '../place-translations/place-translation
 // is public-readable via a translation row even at locale=vi, not only for non-default locales —
 // see the guard in the service). No cycle: PlaceTranslationsModule does not import this module or
 // PlacesModule back (verified — it only imports LocalesModule/RevisionsModule/RbacModule/UsersModule).
+// `MediaModule` — CHỈ để lấy `MediaRepository` (liệt kê ảnh góp ý đính kèm khi trả view) — AN
+// TOÀN, không tạo cycle: hướng này (proposals -> media) đã TỒN TẠI SẴN xuyên qua PlacesModule
+// (proposals -> places -> media), thêm cạnh trực tiếp không đổi gì về mặt chu trình.
 @Module({
-  imports: [TypeOrmModule.forFeature([PlaceEditProposal]), PlacesModule, LocalesModule, PlaceTranslationsModule],
+  imports: [TypeOrmModule.forFeature([PlaceEditProposal]), PlacesModule, LocalesModule, PlaceTranslationsModule, MediaModule],
   controllers: [PlaceEditProposalsController],
   providers: [PlaceEditProposalsRepository, PlaceEditProposalsService],
   exports: [PlaceEditProposalsRepository, PlaceEditProposalsService],

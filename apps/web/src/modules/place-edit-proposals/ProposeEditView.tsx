@@ -7,6 +7,7 @@ import placeStyles from '@/modules/places/places.module.css';
 import { getPlace } from '@/modules/places/api/places.api';
 import type { PlaceDetail } from '@/modules/places/types';
 import { ProposeEditForm } from './ProposeEditForm';
+import { ProposalPhotoUploader } from './ProposalPhotoUploader';
 
 // Trang gửi "Đề xuất chỉnh sửa" — cùng khuôn ReportPlaceView.tsx. place_id/place_name/place_slug
 // đến từ query string (ProposeEditCta trên trang chi tiết Place công khai) chỉ để điền sẵn form và
@@ -19,7 +20,7 @@ export function ProposeEditView() {
   const placeId = searchParams.get('place_id');
   const placeName = searchParams.get('place_name') || 'Địa điểm đã chọn';
   const placeSlug = searchParams.get('place_slug');
-  const [submitted, setSubmitted] = useState(false);
+  const [submittedProposalId, setSubmittedProposalId] = useState<string | null>(null);
   const [currentPlace, setCurrentPlace] = useState<PlaceDetail | null>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function ProposeEditView() {
     );
   }
 
-  if (submitted) {
+  if (submittedProposalId) {
     return (
       <main>
         <header className={placeStyles.pageHeader}>
@@ -69,7 +70,8 @@ export function ProposeEditView() {
             Cảm ơn bạn đã đóng góp cho <strong>{placeName}</strong>. Kiểm duyệt viên sẽ xem xét — đề
             xuất chưa áp dụng ngay và chưa hiển thị công khai.
           </p>
-          <Link href="/places" className={placeStyles.btn}>
+          <ProposalPhotoUploader proposalId={submittedProposalId} />
+          <Link href="/places" className={placeStyles.btn} style={{ marginTop: '1rem', display: 'inline-block' }}>
             Duyệt địa điểm →
           </Link>
         </div>
@@ -89,7 +91,7 @@ export function ProposeEditView() {
         placeId={placeId}
         placeName={placeName}
         currentPlace={currentPlace}
-        onSubmitted={() => setSubmitted(true)}
+        onSubmitted={(proposalId) => setSubmittedProposalId(proposalId)}
       />
     </main>
   );

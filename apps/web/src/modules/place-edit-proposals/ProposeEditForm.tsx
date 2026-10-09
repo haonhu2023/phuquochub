@@ -33,7 +33,7 @@ interface Props {
    * điền sẵn giá trị đề xuất. Null khi CTA không mang theo slug hoặc lấy dữ liệu thất bại — vẫn
    * cho gửi đề xuất bình thường, chỉ là không hiện được phần so sánh. */
   currentPlace: PlaceDetail | null;
-  onSubmitted: () => void;
+  onSubmitted: (proposalId: string) => void;
 }
 
 function hoursForDay(ranges: { open: string; close: string }[]): string {
@@ -130,7 +130,7 @@ export function ProposeEditForm({ placeId, placeName, currentPlace, onSubmitted 
 
     setSubmitting(true);
     try {
-      await submitPlaceEditProposal(
+      const created = await submitPlaceEditProposal(
         placeId,
         {
           field_key: fieldKey,
@@ -140,7 +140,7 @@ export function ProposeEditForm({ placeId, placeName, currentPlace, onSubmitted 
         } as never,
         session.accessToken,
       );
-      onSubmitted();
+      onSubmitted(created.id);
     } catch (err) {
       setError(submitErrorMessage(err));
     } finally {

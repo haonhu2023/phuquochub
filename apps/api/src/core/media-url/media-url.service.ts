@@ -76,4 +76,13 @@ export class MediaUrlService {
   realEstateListingPhotoOwnerFileUrl(listingId: string, photoId: string): string {
     return `${this.base}/real-estate-listings/${listingId}/photos/${photoId}/owner-file`;
   }
+
+  /**
+   * Absolute URL for `GET /place-edit-proposals/{proposalId}/media/{mediaId}/file` — the SENDER's
+   * own channel (any status — người gửi cần xem lại ảnh của chính mình dù đang chờ duyệt/bị từ
+   * chối). Same role as `placeMediaFileUrl()` above, just scoped to a proposal instead of a place.
+   */
+  placeEditProposalPhotoFileUrl(proposalId: string, mediaId: string): string {
+    return `${this.base}/place-edit-proposals/${proposalId}/media/${mediaId}/file`;
+  }
 }

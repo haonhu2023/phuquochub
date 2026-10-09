@@ -14,6 +14,9 @@ import { RevisionOrigin } from '../revisions/revision.enums';
 import { computeFieldValueHash } from '../evidence/field-value-hash';
 import { openingHoursErrors } from '../../common/opening-hours';
 import { CacheInvalidationService } from '../../core/cache-invalidation/cache-invalidation.service';
+import { MediaRepository } from '../media/repositories/media.repository';
+import { MediaUrlService } from '../../core/media-url/media-url.service';
+import type { Media } from '../media/entities/media.entity';
 
 const SCALAR_VALUE_MAX_LENGTH = 300; // same limit as UpdatePlaceDto.address/.short_description
 
@@ -32,8 +35,28 @@ export class PlaceEditProposalsService {
     private readonly localesService: LocalesService,
     private readonly placeTranslationsService: PlaceTranslationsService,
     private readonly cacheInvalidation: CacheInvalidationService,
+    private readonly mediaRepo: MediaRepository,
+    private readonly mediaUrl: MediaUrlService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * Ảnh góp ý đính kèm (nếu có) — "qua media moderation" (mục V đợt 2). `urlFor` khác nhau theo
+   * đối tượng xem: moderator dùng kênh `/media/{id}/moderation-file` (đã có sẵn, dùng chung cho
+   * MỌI loại media, không cần route riêng cho nhánh proposal); người gửi dùng kênh riêng
+   * `/place-edit-proposals/{id}/media/{mediaId}/file` (PlaceEditProposalPhotosController) để xem
+   * được ảnh CỦA CHÍNH MÌNH dù đang ở trạng thái nào. Không lộ `object_key`/checksum — chỉ
+   * id/status/url, cùng hình dạng tối thiểu `OwnerPlacePhoto` của media module.
+   */
+  private async photosFor(proposalId: string, urlFor: (mediaId: string) => string) {
+    const rows: Media[] = await this.mediaRepo.listAllByProposal(proposalId);
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      created_at: row.createdAt.toISOString(),
+      url: urlFor(row.id),
+    }));
+  }
 
   /**
    * short_description is publicly readable via a `place_translations` overlay row — and, unlike
@@ -67,7 +90,7 @@ export class PlaceEditProposalsService {
    * update() khi gửi đề xuất") — places/translations/field-evidence-links/verification_status đều
    * không đổi bởi việc gửi đề xuất, chỉ khi một reviewer sau này quyết định approve.
    */
-  async submit(placeId: string, dto: CreatePlaceEditProposalDto, proposerId: string): Promise<ReturnType<typeof toPlaceEditProposalView>> {
+  async submit(placeId: string, dto: CreatePlaceEditProposalDto, proposerId: string) {
     const place = await this.placesRepo.getCardByIdIncludingInactive(placeId);
     if (!place) {
       throw new NotFoundException('Không tìm thấy địa điểm');
@@ -146,34 +169,48 @@ export class PlaceEditProposalsService {
       proposerId,
     });
     const saved = await this.proposalsRepo.save(row);
-    return toPlaceEditProposalView(saved);
+    // Ảnh luôn gắn SAU khi gửi (qua PlaceEditProposalPhotosController, cần id của đề xuất đã tồn
+    // tại) — vừa tạo chắc chắn chưa có ảnh nào, bỏ qua truy vấn mà vẫn giữ đúng hình dạng response.
+    return { ...toPlaceEditProposalView(saved), photos: [] };
   }
 
-  async list(filter: ListProposalsFilter): Promise<ReturnType<typeof toPlaceEditProposalView>[]> {
+  async list(filter: ListProposalsFilter): Promise<Array<ReturnType<typeof toPlaceEditProposalView> & { photos: unknown[] }>> {
     const rows = await this.proposalsRepo.list(filter);
-    return rows.map(toPlaceEditProposalView);
+    return Promise.all(
+      rows.map(async (row) => ({
+        ...toPlaceEditProposalView(row),
+        photos: await this.photosFor(row.id, (mediaId) => this.mediaUrl.moderationFileUrl(mediaId)),
+      })),
+    );
   }
 
   // "Góp ý của tôi": chỉ đề xuất do chính người gửi tạo. Không thuộc người gửi → 404 (không lộ tồn tại).
-  async listMine(proposerId: string): Promise<ReturnType<typeof toPlaceEditProposalSenderView>[]> {
+  async listMine(proposerId: string): Promise<Array<ReturnType<typeof toPlaceEditProposalSenderView> & { photos: unknown[] }>> {
     const rows = await this.proposalsRepo.list({ proposerId });
-    return rows.map(toPlaceEditProposalSenderView);
+    return Promise.all(
+      rows.map(async (row) => ({
+        ...toPlaceEditProposalSenderView(row),
+        photos: await this.photosFor(row.id, (mediaId) => this.mediaUrl.placeEditProposalPhotoFileUrl(row.id, mediaId)),
+      })),
+    );
   }
 
-  async getMine(id: string, proposerId: string): Promise<ReturnType<typeof toPlaceEditProposalSenderView>> {
+  async getMine(id: string, proposerId: string) {
     const row = await this.proposalsRepo.findById(id);
     if (!row || row.proposerId !== proposerId) {
       throw new NotFoundException('Không tìm thấy đề xuất');
     }
-    return toPlaceEditProposalSenderView(row);
+    const photos = await this.photosFor(id, (mediaId) => this.mediaUrl.placeEditProposalPhotoFileUrl(id, mediaId));
+    return { ...toPlaceEditProposalSenderView(row), photos };
   }
 
-  async getById(id: string): Promise<ReturnType<typeof toPlaceEditProposalView>> {
+  async getById(id: string) {
     const row = await this.proposalsRepo.findById(id);
     if (!row) {
       throw new NotFoundException('Không tìm thấy đề xuất');
     }
-    return toPlaceEditProposalView(row);
+    const photos = await this.photosFor(id, (mediaId) => this.mediaUrl.moderationFileUrl(mediaId));
+    return { ...toPlaceEditProposalView(row), photos };
   }
 
   /**

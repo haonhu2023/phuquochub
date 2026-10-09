@@ -48,6 +48,18 @@ export const PLACE_EDIT_PROPOSAL_STATUS_LABELS: Record<PlaceEditProposalStatus, 
 
 export type PlaceEditProposalDecision = 'approve' | 'reject' | 'needs_changes';
 
+// "Ảnh góp ý qua media moderation" — một ảnh BẰNG CHỨNG đính kèm, LUÔN qua hàng chờ kiểm duyệt
+// chung (không tự công khai). `url` khác nhau theo đối tượng xem (API tự chọn đúng kênh — xem
+// PlaceEditProposalsService.photosFor()): moderator qua `/media/{id}/moderation-file`, người gửi
+// qua `/place-edit-proposals/{id}/media/{mediaId}/file` — cả hai cần Bearer, không gắn thẳng vào
+// <img src>, phải qua useAuthenticatedImage.
+export interface PlaceEditProposalPhoto {
+  id: string;
+  status: string;
+  created_at: string;
+  url: string;
+}
+
 export interface PlaceEditProposalView {
   id: string;
   place_id: string;
@@ -62,6 +74,7 @@ export interface PlaceEditProposalView {
   reviewed_at: string | null;
   review_note: string | null;
   sender_message: string | null;
+  photos: PlaceEditProposalPhoto[];
   created_at: string;
   updated_at: string;
 }
@@ -87,6 +100,7 @@ export interface PlaceEditProposalSenderView {
   source_url: string | null;
   status: PlaceEditProposalStatus;
   sender_message: string | null;
+  photos: PlaceEditProposalPhoto[];
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;

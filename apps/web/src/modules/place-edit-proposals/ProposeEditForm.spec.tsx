@@ -59,7 +59,7 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
 
 beforeEach(() => {
   mockReadSession.mockReset().mockReturnValue(SESSION);
-  mockSubmit.mockReset().mockResolvedValue(undefined);
+  mockSubmit.mockReset().mockResolvedValue({ id: 'new-proposal-1' });
 });
 
 describe('ProposeEditForm — hiển thị giá trị hiện tại để so sánh', () => {
@@ -205,6 +205,6 @@ describe('ProposeEditForm — gửi đề xuất theo field_key', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Gửi đề xuất' }));
 
-    await waitFor(() => expect(onSubmitted).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith('new-proposal-1'));
   });
 });

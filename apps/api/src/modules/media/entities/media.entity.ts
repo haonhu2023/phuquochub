@@ -12,12 +12,13 @@ import {
 import { MediaLicenseType, MediaProvider, MediaStatus, MediaType } from '../media.enums';
 import { Place } from '../../places/entities/place.entity';
 
-// Bảng `media` — exclusive arc 5 nhánh (place/review/post/business/event), thay `place_media`
-// (ADR-009, +event_id theo ADR-003/ADR-002 — database.md §3.5). CHECK TỐI ĐA một chủ sở hữu áp ở
-// migration (nới lỏng từ đúng-một, Media Upload Foundation 2026-07-30 — cho phép media mồ côi,
-// pending, chưa gắn owner nào, cùng cách attachToReview() đã giả định từ trước). review_id/
-// event_id đã có FK thật (thêm sau khi reviews/events tồn tại); chỉ post_id còn chưa FK (bảng
-// đích thuộc Wave sau).
+// Bảng `media` — exclusive arc 6 nhánh (place/review/post/business/event/proposal), thay
+// `place_media` (ADR-009, +event_id theo ADR-003/ADR-002 — database.md §3.5, +proposal_id theo
+// AddMediaProposalOwner — "ảnh góp ý qua media moderation", mục V đợt 2). CHECK TỐI ĐA một chủ sở
+// hữu áp ở migration (nới lỏng từ đúng-một, Media Upload Foundation 2026-07-30 — cho phép media mồ
+// côi, pending, chưa gắn owner nào, cùng cách attachToReview() đã giả định từ trước). review_id/
+// event_id/proposal_id đã có FK thật (thêm sau khi reviews/events/place_edit_proposals tồn tại);
+// chỉ post_id còn chưa FK (bảng đích thuộc Wave sau).
 @Entity('media')
 @Index(['placeId'])
 @Index(['status'])
@@ -39,6 +40,9 @@ export class Media {
 
   @Column({ type: 'uuid', nullable: true })
   eventId!: string | null; // → events (Wave 2/ADR-002); FK thêm khi bảng events tồn tại
+
+  @Column({ type: 'uuid', nullable: true })
+  proposalId!: string | null; // → place_edit_proposals ("ảnh góp ý qua media moderation")
 
   @Column({ type: 'enum', enum: MediaType, enumName: 'media_type' })
   type!: MediaType;

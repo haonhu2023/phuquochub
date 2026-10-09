@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { listMyPlaceEditProposals } from './api/place-edit-proposals.api';
+import { ProposalPhotoThumbnail } from './ProposalPhotoUploader';
 import { PLACE_EDIT_PROPOSAL_STATUS_LABELS, type PlaceEditProposalSenderView } from './types';
 import styles from '@/modules/place-management/place-management.module.css';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: PlaceEditProposalSenderView[] };
+  | { kind: 'ready'; items: PlaceEditProposalSenderView[]; accessToken: string };
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'chưa có';
@@ -36,7 +37,7 @@ export function MyProposalsView() {
       }
       listMyPlaceEditProposals(session.accessToken)
         .then((items) => {
-          if (!cancelled) setState({ kind: 'ready', items });
+          if (!cancelled) setState({ kind: 'ready', items, accessToken: session.accessToken });
         })
         .catch(() => {
           if (!cancelled) setState({ kind: 'error', message: 'Không tải được danh sách góp ý. Vui lòng thử lại.' });
@@ -74,6 +75,13 @@ export function MyProposalsView() {
               <blockquote style={{ margin: '0.4rem 0 0', paddingLeft: '0.75rem', borderLeft: '3px solid var(--border)', fontSize: '0.9rem' }}>
                 Phản hồi: {p.sender_message}
               </blockquote>
+            )}
+            {p.photos.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.4rem' }}>
+                {p.photos.map((photo) => (
+                  <ProposalPhotoThumbnail key={photo.id} photo={photo} accessToken={state.accessToken} />
+                ))}
+              </div>
             )}
           </li>
         ))}

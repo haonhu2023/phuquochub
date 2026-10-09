@@ -15,11 +15,14 @@ jest.mock('./ProposeEditForm', () => ({
       data-place-name={placeName}
       data-has-current={currentPlace ? 'yes' : 'no'}
     >
-      <button type="button" onClick={() => onSubmitted()}>
+      <button type="button" onClick={() => onSubmitted('prop-123')}>
         fake-submit
       </button>
     </div>
   )),
+}));
+jest.mock('./ProposalPhotoUploader', () => ({
+  ProposalPhotoUploader: jest.fn(({ proposalId }) => <div data-testid="proposal-photo-uploader" data-proposal-id={proposalId} />),
 }));
 
 const mockUseSearchParams = useSearchParams as jest.Mock;
@@ -97,5 +100,7 @@ describe('ProposeEditView — có place_id', () => {
     expect(screen.getByText('Đề xuất đã được gửi và đang chờ xem xét')).toBeInTheDocument();
     expect(screen.queryByText('Đã gửi báo cáo')).not.toBeInTheDocument();
     expect(screen.queryByTestId('propose-edit-form')).not.toBeInTheDocument();
+    // Ảnh bằng chứng chỉ gắn được vào đề xuất ĐÃ TỒN TẠI — phải nhận đúng id vừa tạo.
+    expect(screen.getByTestId('proposal-photo-uploader')).toHaveAttribute('data-proposal-id', 'prop-123');
   });
 });

@@ -56,6 +56,10 @@ export interface NewUploadedMedia {
   placeId: string | null;
   caption: string | null;
   altText: string | null;
+  // "Ảnh góp ý qua media moderation" (AddMediaProposalOwner) — nhánh chủ sở hữu thứ 6, luôn null
+  // trừ khi caller là PlaceEditProposalPhotosService. Tuỳ chọn (mặc định null nếu không truyền)
+  // để không phải sửa MỌI call site hiện có của createUploaded().
+  proposalId?: string | null;
 }
 
 // Repository `media`. Sprint 2: chỉ đọc gallery Place (published) cho trang chi tiết.
@@ -406,10 +410,25 @@ export class MediaRepository {
       checksumSha256: data.checksumSha256,
       uploadedBy: data.uploadedBy,
       placeId: data.placeId,
+      proposalId: data.proposalId ?? null,
       caption: data.caption,
       altText: data.altText,
     });
     return repo.save(media);
+  }
+
+  /** Mọi ảnh góp ý của MỘT đề xuất (mọi trạng thái — màn hình duyệt/sender tự lọc theo nhu cầu). */
+  listAllByProposal(proposalId: string): Promise<Media[]> {
+    return this.repo.find({ where: { proposalId, deletedAt: IsNull() }, order: { createdAt: 'ASC' } });
+  }
+
+  /** Ảnh có thuộc ĐÚNG đề xuất này không (chưa xoá mềm) — chốt chặn cho route file của người gửi. */
+  async existsForProposal(proposalId: string, mediaId: string): Promise<boolean> {
+    const rows: unknown[] = await this.repo.query(
+      `SELECT 1 FROM media WHERE id = $1 AND proposal_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [mediaId, proposalId],
+    );
+    return rows.length > 0;
   }
 
   /**
