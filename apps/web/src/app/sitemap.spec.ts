@@ -190,6 +190,16 @@ describe('sitemap v2', () => {
       expect(urls).not.toContain('http://localhost:3000/en/real-estate/rel-1');
     });
 
+    // Bug thật phát hiện qua test image trên VPS (r15, 09/10/2026): limit=100 bị backend từ chối
+    // 400 (ListJobListingsQueryDto/ListRealEstateListingsQueryDto chỉ cho @Max(50)), safeList nuốt
+    // lỗi thành mảng rỗng — unit test mock KHÔNG áp constraint của DTO thật nên không tự bắt được,
+    // chỉ khẳng định được call args đúng ở đây SAU KHI đã biết trần thật là bao nhiêu.
+    it('gọi listJobListings/listRealEstateListings với limit=50 (KHÔNG phải 100) — 100 bị DTO backend từ chối 400', () => {
+      void sitemap();
+      expect(mockListJobListings).toHaveBeenCalledWith({ limit: 50 });
+      expect(mockListRealEstateListings).toHaveBeenCalledWith({ limit: 50 });
+    });
+
     it('listJobListings/listRealEstateListings lỗi → KHÔNG làm hỏng sitemap, hub /jobs//real-estate vẫn còn', async () => {
       mockListJobListings.mockRejectedValue(new Error('API down'));
       mockListRealEstateListings.mockRejectedValue(new Error('API down'));

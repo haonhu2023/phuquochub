@@ -136,8 +136,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       safeList(() => listCategories()),
       // listJobListings/listRealEstateListings (@Public) đã tự lọc published + chưa hết hạn tại
       // thời điểm đọc — đúng tập cần lên sitemap, không cần endpoint riêng.
-      safeList(async () => (await listJobListings({ limit: 100 })).data),
-      safeList(async () => (await listRealEstateListings({ limit: 100 })).data),
+      //
+      // limit=50, KHÔNG phải 100 như các entity khác ở trên: ListJobListingsQueryDto/
+      // ListRealEstateListingsQueryDto giới hạn `@Max(50)` ở chính DTO — limit=100 bị 400
+      // VALIDATION_ERROR, `safeList` nuốt lỗi đó thành mảng rỗng (im lặng, trông giống "chưa có
+      // tin nào" chứ không giống một lỗi) — chỉ phát hiện được qua test THẬT trên image đã build
+      // (r15 smoke test, 09/10/2026), không phải qua unit test (mock không áp constraint của DTO
+      // thật). Bài học: không giả định mọi entity list endpoint cùng trần limit.
+      safeList(async () => (await listJobListings({ limit: 50 })).data),
+      safeList(async () => (await listRealEstateListings({ limit: 50 })).data),
     ]);
 
   // Chỉ bỏ entry /places/{slug} khi CHÍNH slug đó đã có entry chuyên biệt trong kết quả sitemap
