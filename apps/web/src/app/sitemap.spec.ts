@@ -6,6 +6,8 @@ import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
 import { listGuideArticles } from '@/modules/guide/api/guide.api';
 import { listCategories } from '@/modules/categories/api/categories.api';
+import { listJobListings } from '@/modules/job-listings/api/job-listings.api';
+import { listRealEstateListings } from '@/modules/real-estate-listings/api/real-estate-listings.api';
 
 jest.mock('@/modules/categories/api/categories.api', () => ({ listCategories: jest.fn() }));
 jest.mock('@/modules/places/api/places.api', () => ({ listPlaces: jest.fn(), listEnIndexablePlaceIds: jest.fn() }));
@@ -14,6 +16,8 @@ jest.mock('@/modules/restaurants/api/restaurants.api', () => ({ listRestaurantSl
 jest.mock('@/modules/tours/api/tours.api', () => ({ listTourSlugs: jest.fn() }));
 jest.mock('@/modules/events/api/events.api', () => ({ listEvents: jest.fn() }));
 jest.mock('@/modules/guide/api/guide.api', () => ({ listGuideArticles: jest.fn() }));
+jest.mock('@/modules/job-listings/api/job-listings.api', () => ({ listJobListings: jest.fn() }));
+jest.mock('@/modules/real-estate-listings/api/real-estate-listings.api', () => ({ listRealEstateListings: jest.fn() }));
 
 const mockListPlaces = listPlaces as jest.Mock;
 const mockListEnIndexablePlaceIds = listEnIndexablePlaceIds as jest.Mock;
@@ -22,6 +26,8 @@ const mockListRestaurantSlugs = listRestaurantSlugs as jest.Mock;
 const mockListTourSlugs = listTourSlugs as jest.Mock;
 const mockListEvents = listEvents as jest.Mock;
 const mockListGuideArticles = listGuideArticles as jest.Mock;
+const mockListJobListings = listJobListings as jest.Mock;
+const mockListRealEstateListings = listRealEstateListings as jest.Mock;
 
 beforeEach(() => {
   (listCategories as jest.Mock).mockReset().mockResolvedValue([]);
@@ -42,6 +48,8 @@ beforeEach(() => {
         : [],
     ),
   );
+  mockListJobListings.mockReset().mockResolvedValue({ data: [{ id: 'job-1' }], meta: { total: 1, page: 1, limit: 100 } });
+  mockListRealEstateListings.mockReset().mockResolvedValue({ data: [{ id: 'rel-1' }], meta: { total: 1, page: 1, limit: 100 } });
 });
 
 // SEO v2 (Phase 21) — hợp đồng sitemap sau nâng cấp:
@@ -161,6 +169,35 @@ describe('sitemap v2', () => {
       const urls = entries.map((e) => e.url);
       expect(urls).toContain('http://localhost:3000/vi/places/vinwonders-phu-quoc');
       expect(urls.some((u) => u.includes('/en/places/') || u.includes('/en/hotels/') || u.includes('/en/restaurants/') || u.includes('/en/tours/'))).toBe(false);
+    });
+  });
+
+  // Mục VI: "Danh sách/chi tiết/.../sitemap/structured data nhất quán" — trước đây sitemap chỉ có
+  // hai trang hub /jobs//real-estate, thiếu chi tiết từng tin (ghi là giới hạn biết trước ở
+  // §13t/§13v, đóng lại ở §13y).
+  describe('tuyển dụng/bất động sản (mục VI — sitemap nhất quán)', () => {
+    it('bao gồm chi tiết tin tuyển dụng/bất động sản ở /vi, dùng id thẳng (không có slug)', async () => {
+      const entries = await sitemap();
+      const urls = entries.map((e) => e.url);
+      expect(urls).toContain('http://localhost:3000/vi/jobs/job-1');
+      expect(urls).toContain('http://localhost:3000/vi/real-estate/rel-1');
+    });
+
+    it('KHÔNG có bản /en cho chi tiết tin — không có bản dịch song song, khác place', async () => {
+      const entries = await sitemap();
+      const urls = entries.map((e) => e.url);
+      expect(urls).not.toContain('http://localhost:3000/en/jobs/job-1');
+      expect(urls).not.toContain('http://localhost:3000/en/real-estate/rel-1');
+    });
+
+    it('listJobListings/listRealEstateListings lỗi → KHÔNG làm hỏng sitemap, hub /jobs//real-estate vẫn còn', async () => {
+      mockListJobListings.mockRejectedValue(new Error('API down'));
+      mockListRealEstateListings.mockRejectedValue(new Error('API down'));
+      const entries = await sitemap();
+      const urls = entries.map((e) => e.url);
+      expect(urls).toContain('http://localhost:3000/vi/jobs');
+      expect(urls).toContain('http://localhost:3000/vi/real-estate');
+      expect(urls.some((u) => u.includes('/jobs/job-1') || u.includes('/real-estate/rel-1'))).toBe(false);
     });
   });
 

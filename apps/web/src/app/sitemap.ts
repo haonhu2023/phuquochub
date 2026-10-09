@@ -9,6 +9,8 @@ import { specialisedRouteFor } from '@/modules/places/placeRoutes';
 import { listTourSlugs } from '@/modules/tours/api/tours.api';
 import { listEvents } from '@/modules/events/api/events.api';
 import { listGuideArticles } from '@/modules/guide/api/guide.api';
+import { listJobListings } from '@/modules/job-listings/api/job-listings.api';
+import { listRealEstateListings } from '@/modules/real-estate-listings/api/real-estate-listings.api';
 import { localizedHref, SUPPORTED_LOCALES, type Locale } from '@/lib/locale';
 import { isEnDetailIndexable } from '@/lib/seo';
 
@@ -122,16 +124,21 @@ function guideEntries(
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = getSiteUrl();
 
-  const [placesAll, hotels, restaurants, tours, events, guidesVi, guidesEn, categories] = await Promise.all([
-    safeList(() => listPlaces({ limit: 100 })),
-    safeList(() => listHotelSlugs(100)),
-    safeList(() => listRestaurantSlugs(100)),
-    safeList(() => listTourSlugs(100)),
-    safeList(() => listEvents(1, 100)),
-    safeList(() => listGuideArticles('vi')),
-    safeList(() => listGuideArticles('en')),
-    safeList(() => listCategories()),
-  ]);
+  const [placesAll, hotels, restaurants, tours, events, guidesVi, guidesEn, categories, jobListings, realEstateListings] =
+    await Promise.all([
+      safeList(() => listPlaces({ limit: 100 })),
+      safeList(() => listHotelSlugs(100)),
+      safeList(() => listRestaurantSlugs(100)),
+      safeList(() => listTourSlugs(100)),
+      safeList(() => listEvents(1, 100)),
+      safeList(() => listGuideArticles('vi')),
+      safeList(() => listGuideArticles('en')),
+      safeList(() => listCategories()),
+      // listJobListings/listRealEstateListings (@Public) đã tự lọc published + chưa hết hạn tại
+      // thời điểm đọc — đúng tập cần lên sitemap, không cần endpoint riêng.
+      safeList(async () => (await listJobListings({ limit: 100 })).data),
+      safeList(async () => (await listRealEstateListings({ limit: 100 })).data),
+    ]);
 
   // Chỉ bỏ entry /places/{slug} khi CHÍNH slug đó đã có entry chuyên biệt trong kết quả sitemap
   // (hotels/restaurants/tours). Nếu danh sách chuyên biệt lỗi, rỗng, hoặc bị cắt ở giới hạn 100, slug
@@ -187,5 +194,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       { changeFrequency: 'daily', priority: 0.5 },
     ),
     ...guideEntries(site, [...guidesVi, ...guidesEn]),
+    // Tuyển dụng/bất động sản: URL chi tiết dùng id thẳng (/jobs/{id}, không có slug), và không có
+    // bản dịch EN song song (đăng một ngôn ngữ, khác place) — cùng khuôn `events` ở trên (không
+    // truyền enIndexableIds, chỉ vào sitemap bản vi). Mục VI: "Danh sách/chi tiết/.../sitemap...
+    // nhất quán" — trước candidate này, sitemap chỉ có hai trang hub /jobs//real-estate, thiếu
+    // chi tiết từng tin (đã ghi là giới hạn biết trước ở §13t/§13v/§13y).
+    ...detailEntries(
+      site,
+      jobListings.map((j) => ({ slug: j.id })),
+      '/jobs',
+      { changeFrequency: 'daily', priority: 0.6 },
+    ),
+    ...detailEntries(
+      site,
+      realEstateListings.map((r) => ({ slug: r.id })),
+      '/real-estate',
+      { changeFrequency: 'daily', priority: 0.6 },
+    ),
   ];
 }
