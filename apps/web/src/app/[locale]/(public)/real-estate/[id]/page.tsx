@@ -12,6 +12,7 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { RealEstateListingPhotoGallery } from '@/modules/real-estate-listing-photos/RealEstateListingPhotoGallery';
+import { buildRealEstateListingJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -72,6 +73,10 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRealEstateListingJsonLd(listing)) }}
+      />
       <header className={placesStyles.pageHeader}>
         <h1 className={placesStyles.pageTitle}>{listing.title}</h1>
         <p className={placesStyles.pageLede}>

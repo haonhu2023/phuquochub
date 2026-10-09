@@ -1,8 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PlaceDetail } from '@phuquochub/shared-types';
-import { buildGuideArticleJsonLd, buildGuideFaqJsonLd, buildPlaceJsonLd, buildWebSiteJsonLd, serializeJsonLd } from './structured-data';
+import {
+  buildGuideArticleJsonLd,
+  buildGuideFaqJsonLd,
+  buildJobPostingJsonLd,
+  buildPlaceJsonLd,
+  buildRealEstateListingJsonLd,
+  buildWebSiteJsonLd,
+  serializeJsonLd,
+} from './structured-data';
 import type { GuideArticleDetail } from '@/modules/guide/types';
+import type { JobListingPublicView } from '@/modules/job-listings/types';
+import type { RealEstateListingPublicView } from '@/modules/real-estate-listings/types';
 
 // STRUCTURED_DATA_NO_HARDCODED_REGION (Place Information Foundation, 2026-08-18).
 
@@ -448,5 +458,166 @@ describe('buildGuideFaqJsonLd', () => {
       }),
     );
     expect(result).toBeNull();
+  });
+});
+
+function baseJob(overrides: Partial<JobListingPublicView> = {}): JobListingPublicView {
+  return {
+    id: 'job-1',
+    place_id: null,
+    employer_name: 'Nhà hàng Test',
+    employer_role: null,
+    title: 'Phục vụ bàn',
+    job_category: 'F&B',
+    ward: null,
+    work_location: 'Dương Đông, Phú Quốc',
+    employment_type: 'full_time',
+    salary_min: null,
+    salary_max: null,
+    salary_negotiable: true,
+    salary_currency: null,
+    salary_period: null,
+    shift_info: null,
+    requirements: null,
+    benefits: null,
+    description: null,
+    contact_method: 'phone',
+    contact_value: '0909xxxxxx',
+    expires_at: null,
+    published_at: '2026-10-01T00:00:00.000Z',
+    created_at: '2026-10-01T00:00:00.000Z',
+    updated_at: '2026-10-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('buildJobPostingJsonLd', () => {
+  it('field bắt buộc luôn có: title/url/datePosted/employmentType/hiringOrganization/jobLocation', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob());
+    expect(jsonLd['@type']).toBe('JobPosting');
+    expect(jsonLd.title).toBe('Phục vụ bàn');
+    expect(jsonLd.url).toBe('http://localhost:3000/jobs/job-1');
+    expect(jsonLd.datePosted).toBe('2026-10-01T00:00:00.000Z');
+    expect(jsonLd.employmentType).toBe('FULL_TIME');
+    expect(jsonLd.hiringOrganization).toEqual({ '@type': 'Organization', name: 'Nhà hàng Test' });
+  });
+
+  it('employment_type seasonal → ánh xạ TEMPORARY (không phải giá trị ngoài enum schema.org)', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob({ employment_type: 'seasonal' }));
+    expect(jsonLd.employmentType).toBe('TEMPORARY');
+  });
+
+  it('ward null → jobLocation lùi về work_location (giống postalAddress của place)', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob({ ward: null, work_location: 'An Thới' }));
+    expect(jsonLd.jobLocation).toEqual({
+      '@type': 'Place',
+      address: { '@type': 'PostalAddress', addressLocality: 'An Thới', addressCountry: 'VN' },
+    });
+  });
+
+  it('ward có giá trị → jobLocation dùng ward, KHÔNG dùng work_location', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob({ ward: 'Dương Đông', work_location: 'Khách sạn ABC, Dương Đông' }));
+    const address = jsonLd.jobLocation as { address: { addressLocality: string } };
+    expect(address.address.addressLocality).toBe('Dương Đông');
+  });
+
+  it('description/validThrough null → BỎ HẲN hai trường đó, không bịa giá trị', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob());
+    expect(jsonLd).not.toHaveProperty('description');
+    expect(jsonLd).not.toHaveProperty('validThrough');
+  });
+
+  it('có description/expires_at → đưa đúng giá trị vào description/validThrough', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob({ description: 'Cần người nhanh nhẹn', expires_at: '2026-12-01T00:00:00.000Z' }));
+    expect(jsonLd.description).toBe('Cần người nhanh nhẹn');
+    expect(jsonLd.validThrough).toBe('2026-12-01T00:00:00.000Z');
+  });
+
+  it('lương thoả thuận (salary_negotiable=true, không số) → KHÔNG phát baseSalary', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob());
+    expect(jsonLd).not.toHaveProperty('baseSalary');
+  });
+
+  it('có salary_min/max + currency + period → baseSalary đầy đủ minValue/maxValue/unitText', () => {
+    const jsonLd = buildJobPostingJsonLd(
+      baseJob({ salary_min: 6000000, salary_max: 8000000, salary_currency: 'VND', salary_period: 'month', salary_negotiable: false }),
+    );
+    expect(jsonLd.baseSalary).toEqual({
+      '@type': 'MonetaryAmount',
+      currency: 'VND',
+      value: { '@type': 'QuantitativeValue', minValue: 6000000, maxValue: 8000000, unitText: 'MONTH' },
+    });
+  });
+
+  it('có số lương nhưng THIẾU currency → KHÔNG phát baseSalary (MonetaryAmount không hợp lệ thiếu currency)', () => {
+    const jsonLd = buildJobPostingJsonLd(baseJob({ salary_min: 6000000, salary_currency: null }));
+    expect(jsonLd).not.toHaveProperty('baseSalary');
+  });
+});
+
+function baseRealEstateListing(overrides: Partial<RealEstateListingPublicView> = {}): RealEstateListingPublicView {
+  return {
+    id: 'rel-1',
+    poster_role: 'owner',
+    transaction_type: 'rent',
+    property_type: 'room',
+    title: 'Phòng trọ gần biển',
+    ward: null,
+    address_precision: 'area',
+    address_text: null,
+    lat: null,
+    lng: null,
+    area_sqm: null,
+    price: null,
+    price_currency: null,
+    rent_period: null,
+    sale_price_basis: null,
+    deposit_amount: null,
+    utilities_note: null,
+    furniture_status: null,
+    move_in_date: null,
+    lease_term_months: null,
+    legal_status_note: null,
+    description: null,
+    contact_method: 'phone',
+    contact_value: '0909xxxxxx',
+    deal_status: 'available',
+    expires_at: null,
+    published_at: '2026-10-01T00:00:00.000Z',
+    created_at: '2026-10-01T00:00:00.000Z',
+    updated_at: '2026-10-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('buildRealEstateListingJsonLd', () => {
+  it('field cơ bản: name/url/datePosted luôn có', () => {
+    const jsonLd = buildRealEstateListingJsonLd(baseRealEstateListing());
+    expect(jsonLd['@type']).toBe('RealEstateListing');
+    expect(jsonLd.name).toBe('Phòng trọ gần biển');
+    expect(jsonLd.url).toBe('http://localhost:3000/real-estate/rel-1');
+    expect(jsonLd.datePosted).toBe('2026-10-01T00:00:00.000Z');
+  });
+
+  it('price=null (thoả thuận) → KHÔNG phát offers', () => {
+    const jsonLd = buildRealEstateListingJsonLd(baseRealEstateListing());
+    expect(jsonLd).not.toHaveProperty('offers');
+  });
+
+  it('có price + price_currency → offers đúng giá trị', () => {
+    const jsonLd = buildRealEstateListingJsonLd(baseRealEstateListing({ price: 3000000, price_currency: 'VND' }));
+    expect(jsonLd.offers).toEqual({ '@type': 'Offer', price: 3000000, priceCurrency: 'VND' });
+  });
+
+  it('có price nhưng THIẾU price_currency → KHÔNG phát offers', () => {
+    const jsonLd = buildRealEstateListingJsonLd(baseRealEstateListing({ price: 3000000, price_currency: null }));
+    expect(jsonLd).not.toHaveProperty('offers');
+  });
+
+  it('address_text/lat/lng KHÔNG xuất hiện trong JSON-LD dù có trong object truyền vào — builder không tự phát vị trí (API đã tự ẩn khi area, builder không cần và không nên lặp lại quyết định riêng tư đó)', () => {
+    const jsonLd = buildRealEstateListingJsonLd(baseRealEstateListing({ address_text: '123 Lẽ ra không public', lat: 10.1, lng: 104.1 }));
+    expect(JSON.stringify(jsonLd)).not.toContain('Lẽ ra không public');
+    expect(jsonLd).not.toHaveProperty('address');
+    expect(jsonLd).not.toHaveProperty('geo');
   });
 });

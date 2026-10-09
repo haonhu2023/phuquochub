@@ -7,6 +7,8 @@ import type { RestaurantDetail } from '@/modules/restaurants/api/restaurants.api
 import type { TourDetail } from '@/modules/tours/api/tours.api';
 import type { EventDetail } from '@/modules/events/api/events.api';
 import type { GuideArticleDetail } from '@/modules/guide/types';
+import type { JobListingPublicView } from '@/modules/job-listings/types';
+import type { RealEstateListingPublicView } from '@/modules/real-estate-listings/types';
 import { getSiteUrl } from './site';
 import { localizedHref, type Locale } from './locale';
 import { hasOpeningHours, regularOf, validRanges, WEEKDAY_KEYS, type WeekdayKey } from '@/modules/places/openingHours';
@@ -310,6 +312,90 @@ export function buildGuideArticleJsonLd(article: GuideArticleDetail, locale: Loc
   // publishedAt luôn có ở đây (hàm chỉ gọi cho bài ĐÃ xuất bản) — updatedAt luôn có sẵn từ API.
   if (article.publishedAt) fields.datePublished = article.publishedAt;
   fields.dateModified = article.updatedAt;
+  return fields;
+}
+
+// schema.org JobPosting.employmentType chỉ nhận một tập enum cố định — ánh xạ 1-1 từ 3 giá trị
+// MVP của chính nền tảng (job-listings/types.ts), không bịa giá trị nào ngoài tập đó. `seasonal`
+// ánh xạ `TEMPORARY` (gần nghĩa nhất trong enum schema.org — công việc thời vụ có thời hạn, không
+// phải hợp đồng dài hạn), không phải một suy diễn ngoài dữ liệu đã có.
+const JOB_EMPLOYMENT_TYPE_SCHEMA: Record<JobListingPublicView['employment_type'], string> = {
+  full_time: 'FULL_TIME',
+  part_time: 'PART_TIME',
+  seasonal: 'TEMPORARY',
+};
+
+const SALARY_PERIOD_UNIT_TEXT: Record<NonNullable<JobListingPublicView['salary_period']>, string> = {
+  hour: 'HOUR',
+  day: 'DAY',
+  month: 'MONTH',
+};
+
+/**
+ * `JobPosting` JSON-LD (mục VI: "...structured data nhất quán") — đủ điều kiện rich result tìm
+ * việc của Google ở mức MVP đang có: `title`/`datePosted`/`employmentType`/`hiringOrganization`
+ * LUÔN có (field bắt buộc ở DB); `validThrough`/`baseSalary`/`description`/`jobLocation` CHỈ phát
+ * khi dữ liệu thật tồn tại — không bịa `description` rỗng hay suy diễn lương từ "thoả thuận".
+ *
+ * `jobLocation` dùng `ward` nếu có, lùi về `work_location` (free text, LUÔN có — field bắt buộc)
+ * khi chưa có `ward` — cùng kiểu lùi-về đã dùng ở `postalAddress()` cho place (`admin_area ?? ward`).
+ */
+export function buildJobPostingJsonLd(job: JobListingPublicView): JsonLd {
+  const site = getSiteUrl();
+  const fields: JsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: job.title,
+    url: `${site}/jobs/${job.id}`,
+    datePosted: job.published_at,
+    employmentType: JOB_EMPLOYMENT_TYPE_SCHEMA[job.employment_type],
+    hiringOrganization: { '@type': 'Organization', name: job.employer_name },
+    jobLocation: {
+      '@type': 'Place',
+      address: { '@type': 'PostalAddress', addressLocality: job.ward ?? job.work_location, addressCountry: 'VN' },
+    },
+  };
+  if (job.description) fields.description = job.description;
+  if (job.expires_at) fields.validThrough = job.expires_at;
+  if ((job.salary_min != null || job.salary_max != null) && job.salary_currency) {
+    fields.baseSalary = {
+      '@type': 'MonetaryAmount',
+      currency: job.salary_currency,
+      value: {
+        '@type': 'QuantitativeValue',
+        ...(job.salary_min != null ? { minValue: job.salary_min } : {}),
+        ...(job.salary_max != null ? { maxValue: job.salary_max } : {}),
+        ...(job.salary_period ? { unitText: SALARY_PERIOD_UNIT_TEXT[job.salary_period] } : {}),
+      },
+    };
+  }
+  return fields;
+}
+
+/**
+ * `RealEstateListing` JSON-LD (mục VI). Khác `JobPosting`, Google không có rich result riêng cho
+ * kiểu này — giữ TỐI THIỂU, chỉ những trường trực tiếp khớp dữ liệu đang hiển thị cho người xem
+ * (cùng kỷ luật `buildBreadcrumbJsonLd()`: JSON-LD phải khớp nội dung nhìn thấy được). KHÔNG phát
+ * `about`/property-type lồng/`floorSize`/GoodRelations `businessFunction` — những phần đó đòi
+ * quyết định ánh xạ ngữ nghĩa (vd "đã cho thuê" có phải "SoldOut" không?) mà dữ liệu hiện có không
+ * trả lời rõ, đúng kỷ luật "không suy diễn khi không có bằng chứng" của file này.
+ *
+ * `offers.price` CHỈ phát khi CẢ `price` và `price_currency` đều có — một listing "thoả thuận"
+ * (price=null) không có gì để khai trong `Offer`.
+ */
+export function buildRealEstateListingJsonLd(listing: RealEstateListingPublicView): JsonLd {
+  const site = getSiteUrl();
+  const fields: JsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'RealEstateListing',
+    name: listing.title,
+    url: `${site}/real-estate/${listing.id}`,
+    datePosted: listing.published_at,
+  };
+  if (listing.description) fields.description = listing.description;
+  if (listing.price != null && listing.price_currency) {
+    fields.offers = { '@type': 'Offer', price: listing.price, priceCurrency: listing.price_currency };
+  }
   return fields;
 }
 

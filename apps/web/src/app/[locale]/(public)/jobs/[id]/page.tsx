@@ -6,6 +6,7 @@ import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
+import { buildJobPostingJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -46,6 +47,7 @@ export default async function JobListingDetailPage({ params }: Params) {
 
   return (
     <article>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildJobPostingJsonLd(job)) }} />
       <header className={placesStyles.pageHeader}>
         <h1 className={placesStyles.pageTitle}>{job.title}</h1>
         <p className={placesStyles.pageLede}>
