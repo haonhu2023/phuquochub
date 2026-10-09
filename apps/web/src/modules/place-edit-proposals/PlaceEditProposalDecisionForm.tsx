@@ -27,6 +27,7 @@ const DECISIONS: { value: PlaceEditProposalDecision; label: string; requiresNote
 export function PlaceEditProposalDecisionForm({ proposal, onDecided }: Props) {
   const [selected, setSelected] = useState<PlaceEditProposalDecision | null>(null);
   const [note, setNote] = useState('');
+  const [senderMessage, setSenderMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +57,11 @@ export function PlaceEditProposalDecisionForm({ proposal, onDecided }: Props) {
     try {
       const result = await decidePlaceEditProposal(
         proposal.id,
-        { decision: current.value, ...(note.trim() ? { note: note.trim() } : {}) },
+        {
+          decision: current.value,
+          ...(note.trim() ? { note: note.trim() } : {}),
+          ...(senderMessage.trim() ? { sender_message: senderMessage.trim() } : {}),
+        },
         session.accessToken,
       );
       if (result.status === 'conflict') {
@@ -108,6 +113,20 @@ export function PlaceEditProposalDecisionForm({ proposal, onDecided }: Props) {
           rows={2}
           placeholder="Vì sao từ chối / cần bổ sung gì thêm…"
           required
+        />
+      )}
+      {current && (
+        // Khác HẲN ô "Lý do" ở trên — đây là PHẢN HỒI CÔNG KHAI người gửi đọc được (mục V đợt 2:
+        // "Tách phản hồi public khỏi note nội bộ"), không phải ghi chú nội bộ giữa các moderator.
+        // Luôn tuỳ chọn cho mọi quyết định — admin không bắt buộc phải viết gì cho người gửi.
+        <textarea
+          aria-label="Phản hồi cho người gửi (tuỳ chọn, người gửi sẽ đọc được)"
+          className={placeMgmtStyles.textarea}
+          value={senderMessage}
+          onChange={(e) => setSenderMessage(e.target.value)}
+          maxLength={1000}
+          rows={2}
+          placeholder="Nhắn gì cho người đã gửi góp ý này? (tuỳ chọn — họ sẽ đọc được)"
         />
       )}
       <div style={{ marginTop: '0.5rem' }}>

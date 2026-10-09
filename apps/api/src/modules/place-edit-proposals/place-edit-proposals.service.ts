@@ -254,6 +254,7 @@ export class PlaceEditProposalsService {
           proposal.reviewedAt = new Date();
           proposal.reviewNote =
             dto.note ?? 'Dữ liệu gốc đã thay đổi kể từ khi đề xuất được gửi — không tự động ghi đè.';
+          proposal.senderMessage = dto.sender_message ?? null;
           const saved = await this.proposalsRepo.save(proposal, manager);
           return toPlaceEditProposalView(saved);
         }
@@ -293,6 +294,7 @@ export class PlaceEditProposalsService {
       proposal.reviewerId = reviewerId;
       proposal.reviewedAt = new Date();
       proposal.reviewNote = dto.note ?? null;
+      proposal.senderMessage = dto.sender_message ?? null;
       const saved = await this.proposalsRepo.save(proposal, manager);
       return toPlaceEditProposalView(saved);
     });

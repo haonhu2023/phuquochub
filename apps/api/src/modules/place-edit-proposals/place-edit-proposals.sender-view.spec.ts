@@ -15,6 +15,7 @@ describe('toPlaceEditProposalSenderView', () => {
     reviewerId: 'admin-7',
     reviewedAt: new Date('2026-10-07T03:00:00Z'),
     reviewNote: 'Ghi chú nội bộ — không gửi cho người gửi',
+    senderMessage: 'Cảm ơn góp ý — vui lòng bổ sung thêm giờ cuối tuần.',
     createdAt: new Date('2026-10-06T03:00:00Z'),
     updatedAt: new Date('2026-10-07T03:00:00Z'),
   } as unknown as Parameters<typeof toPlaceEditProposalSenderView>[0];
@@ -26,5 +27,17 @@ describe('toPlaceEditProposalSenderView', () => {
     expect(view).not.toHaveProperty('review_note');
     expect(JSON.stringify(view)).not.toContain('admin-7');
     expect(JSON.stringify(view)).not.toContain('Ghi chú nội bộ');
+  });
+
+  // sender_message là "phản hồi public" người gửi ĐƯỢC đọc — hoàn toàn khác review_note ở trên,
+  // phải CÓ MẶT đúng giá trị, không bị lọc theo cùng quy tắc "nội bộ".
+  it('CÓ sender_message — khác hẳn review_note, đây là phản hồi public cho người gửi', () => {
+    const view = toPlaceEditProposalSenderView(row);
+    expect(view.sender_message).toBe('Cảm ơn góp ý — vui lòng bổ sung thêm giờ cuối tuần.');
+  });
+
+  it('sender_message null khi admin không viết gì', () => {
+    const view = toPlaceEditProposalSenderView({ ...row, senderMessage: null });
+    expect(view.sender_message).toBeNull();
   });
 });

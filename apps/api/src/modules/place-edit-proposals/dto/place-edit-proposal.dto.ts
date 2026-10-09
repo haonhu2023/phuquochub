@@ -47,6 +47,14 @@ export class DecidePlaceEditProposalDto {
   @MaxLength(1000)
   @Transform(trim)
   note?: string;
+
+  // Khác HẲN `note` (→ review_note, nội bộ) — trường này → sender_message, CHÍNH người gửi đọc
+  // được (xem toPlaceEditProposalSenderView()). Tuỳ chọn: admin có thể quyết định mà không viết gì.
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  @Transform(trim)
+  sender_message?: string;
 }
 
 export class ListPlaceEditProposalsQueryDto {

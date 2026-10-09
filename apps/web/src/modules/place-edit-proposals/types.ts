@@ -61,6 +61,7 @@ export interface PlaceEditProposalView {
   reviewer_id: string | null;
   reviewed_at: string | null;
   review_note: string | null;
+  sender_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,10 +69,14 @@ export interface PlaceEditProposalView {
 export interface DecidePlaceEditProposalInput {
   decision: PlaceEditProposalDecision;
   note?: string;
+  // Khác HẲN `note` (→ review_note, nội bộ) — trường này người gửi ĐỌC ĐƯỢC (xem
+  // toPlaceEditProposalSenderView() ở backend). Tuỳ chọn, admin không bắt buộc phải viết.
+  sender_message?: string;
 }
 
 // "Góp ý của tôi" (người gửi): khớp PlaceEditProposalsService.listMine/getMine — KHÔNG có reviewer_id,
-// review_note (ghi chú nội bộ). Người gửi chỉ thấy trạng thái và thời điểm xử lý.
+// review_note (ghi chú nội bộ). `sender_message` LÀ "phản hồi public" người gửi được đọc — khác
+// hẳn review_note, mục V đợt 2: "Tách phản hồi public khỏi note nội bộ".
 export interface PlaceEditProposalSenderView {
   id: string;
   place_id: string;
@@ -81,6 +86,7 @@ export interface PlaceEditProposalSenderView {
   reason: string;
   source_url: string | null;
   status: PlaceEditProposalStatus;
+  sender_message: string | null;
   reviewed_at: string | null;
   created_at: string;
   updated_at: string;

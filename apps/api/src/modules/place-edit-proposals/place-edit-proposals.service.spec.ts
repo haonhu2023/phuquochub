@@ -27,6 +27,7 @@ function makeProposal(overrides: Record<string, unknown> = {}) {
     reviewerId: null,
     reviewedAt: null,
     reviewNote: null,
+    senderMessage: null,
     createdAt: new Date('2026-09-13T00:00:00Z'),
     updatedAt: new Date('2026-09-13T00:00:00Z'),
     ...overrides,
@@ -306,6 +307,30 @@ describe('PlaceEditProposalsService', () => {
       expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
     });
 
+    // sender_message ("phản hồi public") và note (→ review_note, nội bộ) là HAI trường ĐỘC LẬP —
+    // admin có thể gửi một, cả hai, hoặc không gửi gì. Phải khẳng định cả hai cùng có mặt đúng giá
+    // trị trong CÙNG một lượt decide(), không trộn lẫn hay ghi đè nhau.
+    it('reject kèm sender_message VÀ note → cả hai lưu đúng, độc lập nhau (review_note nội bộ không lộ ở đây vì cùng view moderator)', async () => {
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(makeProposal() as never);
+
+      const result = await service.decide(
+        'proposal-1',
+        { decision: PlaceEditProposalDecision.REJECT, note: 'ghi chú nội bộ A', sender_message: 'Cảm ơn bạn, nhưng thông tin này đã đúng rồi.' } as never,
+        'staff-1',
+      );
+
+      expect(result.review_note).toBe('ghi chú nội bộ A');
+      expect(result.sender_message).toBe('Cảm ơn bạn, nhưng thông tin này đã đúng rồi.');
+    });
+
+    it('reject KHÔNG kèm sender_message → sender_message null (admin không bắt buộc phải viết)', async () => {
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(makeProposal() as never);
+
+      const result = await service.decide('proposal-1', { decision: PlaceEditProposalDecision.REJECT, note: 'không đủ căn cứ' } as never, 'staff-1');
+
+      expect(result.sender_message).toBeNull();
+    });
+
     it('needs_changes → status NEEDS_CHANGES, KHÔNG gọi placesService.update(), KHÔNG invalidate cache', async () => {
       proposalsRepo.findByIdForUpdate.mockResolvedValue(makeProposal() as never);
 
@@ -402,6 +427,25 @@ describe('PlaceEditProposalsService', () => {
       expect(placesService.update).not.toHaveBeenCalled();
       expect(result.status).toBe(PlaceEditProposalStatus.CONFLICT);
       expect(cacheInvalidation.invalidatePlace).not.toHaveBeenCalled();
+    });
+
+    it('approve → CONFLICT kèm sender_message → vẫn lưu đúng sender_message (nhánh CONFLICT có đường ghi riêng, không đi qua "đuôi chung")', async () => {
+      const proposal = makeProposal({
+        fieldKey: PlaceEditProposalFieldKey.ADDRESS,
+        proposedValue: 'Địa chỉ mới',
+        baseValueHash: computeFieldValueHash('Địa chỉ cũ'),
+      });
+      proposalsRepo.findByIdForUpdate.mockResolvedValue(proposal as never);
+      placesRepo.getCardByIdIncludingInactiveForUpdate.mockResolvedValue({ address: 'Địa chỉ khác', status: PlaceStatus.PUBLISHED, slug: 'place-1-slug' } as never);
+
+      const result = await service.decide(
+        'proposal-1',
+        { decision: PlaceEditProposalDecision.APPROVE, sender_message: 'Ai đó vừa sửa trước bạn, mình sẽ xem lại.' } as never,
+        'staff-1',
+      );
+
+      expect(result.status).toBe(PlaceEditProposalStatus.CONFLICT);
+      expect(result.sender_message).toBe('Ai đó vừa sửa trước bạn, mình sẽ xem lại.');
     });
 
     // Safety net cho proposal đã tồn tại TRƯỚC guard này (hoặc overlay xuất hiện trong lúc proposal

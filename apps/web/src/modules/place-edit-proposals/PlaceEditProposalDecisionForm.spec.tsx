@@ -26,6 +26,7 @@ const proposal: PlaceEditProposalView = {
   reviewer_id: null,
   reviewed_at: null,
   review_note: null,
+  sender_message: null,
   created_at: '2026-09-24T00:00:00.000Z',
   updated_at: '2026-09-24T00:00:00.000Z',
 };
@@ -74,6 +75,34 @@ it('chọn "Từ chối" kèm lý do -> gửi decision=reject + note', async () 
   await waitFor(() =>
     expect(mockDecide).toHaveBeenCalledWith('prop-1', { decision: 'reject', note: 'Không đúng' }, 'tok'),
   );
+});
+
+it('ô "Phản hồi cho người gửi" luôn tuỳ chọn, kể cả với quyết định "Từ chối" (requiresNote) -> gửi kèm note VÀ sender_message, hai trường độc lập', async () => {
+  mockDecide.mockResolvedValue({ ...proposal, status: 'rejected' });
+  render(<PlaceEditProposalDecisionForm proposal={proposal} onDecided={onDecided} />);
+
+  fireEvent.click(screen.getByRole('radio', { name: 'Từ chối' }));
+  fireEvent.change(screen.getByLabelText('Lý do (bắt buộc)'), { target: { value: 'Không đúng' } });
+  fireEvent.change(screen.getByLabelText(/Phản hồi cho người gửi/), { target: { value: 'Cảm ơn bạn đã góp ý' } });
+  fireEvent.click(screen.getByRole('button', { name: /Xác nhận/ }));
+
+  await waitFor(() =>
+    expect(mockDecide).toHaveBeenCalledWith(
+      'prop-1',
+      { decision: 'reject', note: 'Không đúng', sender_message: 'Cảm ơn bạn đã góp ý' },
+      'tok',
+    ),
+  );
+});
+
+it('không điền "Phản hồi cho người gửi" -> KHÔNG gửi trường sender_message (admin không bắt buộc phải viết)', async () => {
+  mockDecide.mockResolvedValue({ ...proposal, status: 'approved' });
+  render(<PlaceEditProposalDecisionForm proposal={proposal} onDecided={onDecided} />);
+
+  fireEvent.click(screen.getByRole('radio', { name: 'Duyệt — áp dụng ngay' }));
+  fireEvent.click(screen.getByRole('button', { name: /Xác nhận/ }));
+
+  await waitFor(() => expect(mockDecide).toHaveBeenCalledWith('prop-1', { decision: 'approve' }, 'tok'));
 });
 
 it('kết quả trả về status=conflict -> báo rõ KHÔNG tự ghi đè, vẫn gọi onDecided để nạp lại', async () => {

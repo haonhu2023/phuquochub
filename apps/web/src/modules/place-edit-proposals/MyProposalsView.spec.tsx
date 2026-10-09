@@ -25,6 +25,7 @@ const ROW = {
   reason: 'Lý do synthetic',
   source_url: null,
   status: 'needs_changes',
+  sender_message: null,
   reviewed_at: '2026-10-07T03:00:00.000Z',
   created_at: '2026-10-06T03:00:00.000Z',
   updated_at: '2026-10-07T03:00:00.000Z',
@@ -38,6 +39,19 @@ describe('MyProposalsView — Góp ý của tôi', () => {
     expect(screen.getByText(/xử lý ngày/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('admin-7');
     expect(document.body.textContent).not.toContain('Ghi chú nội bộ');
+  });
+
+  it('CÓ sender_message → hiện "Phản hồi: ..." (khác hẳn ghi chú nội bộ, đây là trường public)', async () => {
+    mockList.mockResolvedValue([{ ...ROW, sender_message: 'Cảm ơn góp ý, mình đã cập nhật.' }]);
+    render(<MyProposalsView />);
+    expect(await screen.findByText(/Phản hồi: Cảm ơn góp ý, mình đã cập nhật\./)).toBeInTheDocument();
+  });
+
+  it('sender_message null → KHÔNG hiện dòng "Phản hồi" nào (không bịa chuỗi cho field tuỳ chọn trống)', async () => {
+    mockList.mockResolvedValue([{ ...ROW, sender_message: null }]);
+    render(<MyProposalsView />);
+    await screen.findByText(/Cần bổ sung/);
+    expect(screen.queryByText(/^Phản hồi:/)).toBeNull();
   });
 
   it('chưa gửi góp ý nào → trạng thái rỗng, không báo lỗi', async () => {

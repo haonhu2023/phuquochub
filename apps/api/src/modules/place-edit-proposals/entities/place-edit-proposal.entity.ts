@@ -52,6 +52,11 @@ export class PlaceEditProposal {
   @Column({ type: 'varchar', length: 1000, nullable: true })
   reviewNote!: string | null;
 
+  // Khác HẲN reviewNote (nội bộ) — phản hồi NÀY dành cho CHÍNH người gửi đọc (xem
+  // AddPlaceEditProposalSenderMessage migration). Admin điền tuỳ chọn lúc quyết định.
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  senderMessage!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

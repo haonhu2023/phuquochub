@@ -19,7 +19,9 @@ function formatDate(iso: string | null): string {
 
 /**
  * "Góp ý của tôi": danh sách đề xuất của chính người dùng và trạng thái xử lý. KHÔNG hiện người duyệt hay
- * ghi chú nội bộ (API không trả các trường đó). Trạng thái rỗng và lỗi được hiển thị rõ, không coi là "không có góp ý".
+ * ghi chú nội bộ (API không trả các trường đó). `sender_message` LÀ "phản hồi public" admin viết riêng
+ * cho người gửi (khác hẳn ghi chú nội bộ) — hiện khi có, null thì không hiện gì thêm (không bịa chuỗi
+ * "chưa có phản hồi" cho một field tuỳ chọn). Trạng thái rỗng và lỗi được hiển thị rõ, không coi là "không có góp ý".
  */
 export function MyProposalsView() {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -68,6 +70,11 @@ export function MyProposalsView() {
               Gửi ngày {formatDate(p.created_at)}
               {p.reviewed_at ? `; xử lý ngày ${formatDate(p.reviewed_at)}` : '; chưa được xử lý'}
             </div>
+            {p.sender_message && (
+              <blockquote style={{ margin: '0.4rem 0 0', paddingLeft: '0.75rem', borderLeft: '3px solid var(--border)', fontSize: '0.9rem' }}>
+                Phản hồi: {p.sender_message}
+              </blockquote>
+            )}
           </li>
         ))}
       </ul>
