@@ -15,6 +15,7 @@ export function JobListingCard({ job, locale = 'vi' }: { job: JobListingPublicVi
           {job.ward ? ` · ${job.ward}` : ''}
         </p>
         <div className={placesStyles.cardMeta}>
+          <span className={placesStyles.badge}>{job.job_category}</span>
           <span className={placesStyles.badge}>{jobListingEmploymentTypeLabel(job.employment_type, locale)}</span>
           <span className={placesStyles.price}>{formatSalary(job, locale)}</span>
         </div>

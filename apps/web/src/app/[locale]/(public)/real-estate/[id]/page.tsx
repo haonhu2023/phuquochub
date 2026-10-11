@@ -69,7 +69,20 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
     contact: locale === 'en' ? 'Contact' : 'Liên hệ',
     address: locale === 'en' ? 'Address' : 'Địa chỉ',
     months: locale === 'en' ? 'months' : 'tháng',
+    postedOn: locale === 'en' ? 'Posted on' : 'Đăng ngày',
+    updatedOn: locale === 'en' ? 'Updated on' : 'Cập nhật',
+    deadline: locale === 'en' ? 'Available until' : 'Hạn đăng',
   };
+  const dateLocale = locale === 'en' ? 'en-US' : 'vi-VN';
+  const formatDate = (iso: string) => new Date(iso).toLocaleDateString(dateLocale);
+  // Bug thiếu đã sửa (2026-10-11): ngày đăng/cập nhật/hết hạn đã có trong response từ trước
+  // (created_at/updated_at/published_at/expires_at) nhưng chưa từng render ở trang công khai.
+  // `deal_status` KHÔNG render ở đây — endpoint này CHỈ trả tin `dealStatus=available` (xem
+  // RealEstateListingsRepository.publicQuery()), nên giá trị đó luôn hằng định trên trang này,
+  // không mang thêm thông tin nào cho người xem (khác hẳn job_category/expires_at, vốn thay đổi
+  // theo từng tin).
+  const postedAt = listing.published_at ?? listing.created_at;
+  const updatedDiffersFromPosted = listing.updated_at !== postedAt;
 
   return (
     <article>
@@ -157,6 +170,23 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
           <div className={placesStyles.infoItem}>
             <dt>{t.legalStatus}</dt>
             <dd>{listing.legal_status_note}</dd>
+          </div>
+        )}
+
+        <div className={placesStyles.infoItem}>
+          <dt>{t.postedOn}</dt>
+          <dd>{formatDate(postedAt)}</dd>
+        </div>
+        {updatedDiffersFromPosted && (
+          <div className={placesStyles.infoItem}>
+            <dt>{t.updatedOn}</dt>
+            <dd>{formatDate(listing.updated_at)}</dd>
+          </div>
+        )}
+        {listing.expires_at && (
+          <div className={placesStyles.infoItem}>
+            <dt>{t.deadline}</dt>
+            <dd>{formatDate(listing.expires_at)}</dd>
           </div>
         )}
       </dl>

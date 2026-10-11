@@ -62,6 +62,10 @@ export default async function JobListingDetailPage({ params }: Params) {
 
       <dl>
         <div className={placesStyles.infoItem}>
+          <dt>{locale === 'en' ? 'Job category' : 'Ngành nghề'}</dt>
+          <dd>{job.job_category}</dd>
+        </div>
+        <div className={placesStyles.infoItem}>
           <dt>{locale === 'en' ? 'Location' : 'Nơi làm việc'}</dt>
           <dd>
             {job.work_location}
@@ -80,6 +84,16 @@ export default async function JobListingDetailPage({ params }: Params) {
           <div className={placesStyles.infoItem}>
             <dt>{locale === 'en' ? 'Shift' : 'Ca làm việc'}</dt>
             <dd>{job.shift_info}</dd>
+          </div>
+        )}
+        {/* Bug thiếu đã sửa (2026-10-11): job_category/expires_at đã có trong DTO/form từ trước
+            (chủ tin đã nhập được qua form), nhưng chưa từng được render ở trang công khai. Backend
+            đã lọc tin hết hạn khỏi danh sách công khai (xem JobListingsRepository) — nếu tin này
+            đang hiện ở đây thì expires_at (nếu có) CHẮC CHẮN chưa qua, không cần nhãn "còn hạn". */}
+        {job.expires_at && (
+          <div className={placesStyles.infoItem}>
+            <dt>{locale === 'en' ? 'Application deadline' : 'Hạn tuyển'}</dt>
+            <dd>{new Date(job.expires_at).toLocaleDateString(locale === 'en' ? 'en-US' : 'vi-VN')}</dd>
           </div>
         )}
       </dl>
