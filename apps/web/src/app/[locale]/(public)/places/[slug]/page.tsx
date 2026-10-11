@@ -198,7 +198,9 @@ export default async function PlaceDetailPage({ params }: Params) {
   const copy = getPlaceDetailCopy(locale);
   // Chi tiết bãi biển: chỉ tải khi category là beach; lỗi đọc không được làm hỏng trang địa điểm.
   // Chỉ coi là có dữ liệu khi ít nhất một trường có giá trị — object rỗng không tạo mục (không hiện tiêu đề trống).
-  const beachDetails = place.category_slug === 'beach' ? await getBeachPublicDetails(slug, locale).catch(() => null) : null;
+  const beachPublicDetails =
+    place.category_slug === 'beach' ? await getBeachPublicDetails(slug, locale).catch(() => null) : null;
+  const beachDetails = beachPublicDetails?.beach_details ?? null;
   const beach =
     beachDetails &&
     [
@@ -211,6 +213,9 @@ export default async function PlaceDetailPage({ params }: Params) {
     ].some(Boolean)
       ? beachDetails
       : null;
+  // amenities độc lập với beach_details (xem BeachPublicDetails's ghi chú) — có thể có dữ liệu dù
+  // beach_details rỗng/chưa tồn tại, nên tính riêng, không gộp vào điều kiện `beach` ở trên.
+  const beachAmenities = beachPublicDetails?.amenities ?? [];
 
   return (
     <article className={styles.detail}>
@@ -353,6 +358,15 @@ export default async function PlaceDetailPage({ params }: Params) {
               </div>
             )}
           </dl>
+        </section>
+      )}
+
+      {/* Bug thiếu đã sửa (2026-10-11): cùng khuôn hotels/[slug] và restaurants/[slug] — bãi biển
+          cũng dùng CHUNG bảng place_amenities, chỉ chưa từng được render ở trang này. */}
+      {beachAmenities.length > 0 && (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Tiện nghi</h2>
+          <p>{beachAmenities.map((a) => a.label_vi).join(' · ')}</p>
         </section>
       )}
 

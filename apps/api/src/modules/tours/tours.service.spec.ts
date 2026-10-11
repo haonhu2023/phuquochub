@@ -18,6 +18,7 @@ describe('ToursService', () => {
       listTours: jest.fn(),
       countTours: jest.fn(),
       detail: jest.fn(),
+      listAmenities: jest.fn().mockResolvedValue([]),
       stops: jest.fn(),
       schedules: jest.fn(),
       tourCategoryId: jest.fn(),
@@ -59,6 +60,20 @@ describe('ToursService', () => {
       duration_minutes: null,
       difficulty: null,
     });
+  });
+
+  // Bug thiếu đã sửa (2026-10-11): cùng khuôn Hotels/Restaurants/BeachesService.getBySlug() —
+  // `amenities` (place_amenities dùng chung) chưa từng được nhúng cho tour.
+  it('getBySlug: ghép tour_details + amenities', async () => {
+    placesService.getBySlug.mockResolvedValue({ id: 't1', slug: 'tour-a' });
+    repo.detail.mockResolvedValue({ tour_type: 'boat' });
+    repo.listAmenities.mockResolvedValue([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
+
+    const res = await service.getBySlug('tour-a');
+
+    expect(res.tour_details).toEqual({ tour_type: 'boat' });
+    expect(res.amenities).toEqual([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
+    expect(repo.listAmenities).toHaveBeenCalledWith('t1');
   });
 
   // Public Beta price trust gate (2026-08-28): web quyết định có hiện price_range thật hay không

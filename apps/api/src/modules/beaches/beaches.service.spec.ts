@@ -17,6 +17,7 @@ describe('BeachesService', () => {
       listBeaches: jest.fn(),
       countBeaches: jest.fn(),
       detail: jest.fn(),
+      listAmenities: jest.fn().mockResolvedValue([]),
       upsertDetails: jest.fn().mockResolvedValue({ conflict: false }),
     });
     audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
@@ -203,6 +204,19 @@ describe('BeachesService', () => {
       const res = await service.getBySlug('bai-sao');
 
       expect(res.beach_details).toBeNull();
+    });
+
+    // Bug thiếu đã sửa (2026-10-11): cùng khuôn HotelsService/RestaurantsService.getBySlug() —
+    // `amenities` (bảng place_amenities dùng chung) chưa từng được nhúng cho bãi biển.
+    it('nhúng đúng amenities từ place_amenities (cùng khuôn hotel/restaurant)', async () => {
+      placesService.getBySlug.mockResolvedValue({ id: 'b1', slug: 'bai-sao', name: 'Bãi Sao' });
+      repo.detail.mockResolvedValue(null);
+      repo.listAmenities.mockResolvedValue([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
+
+      const res = await service.getBySlug('bai-sao');
+
+      expect(res.amenities).toEqual([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
+      expect(repo.listAmenities).toHaveBeenCalledWith('b1');
     });
   });
 

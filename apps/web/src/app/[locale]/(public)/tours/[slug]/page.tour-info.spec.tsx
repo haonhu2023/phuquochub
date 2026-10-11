@@ -38,6 +38,7 @@ function tourWithDetails(details: Record<string, unknown> | null): TourDetail {
     location: { lat: 10, lng: 104 },
     trust_sources: [],
     tour_details: details,
+    amenities: [],
   } as unknown as TourDetail;
 }
 

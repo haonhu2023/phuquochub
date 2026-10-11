@@ -123,6 +123,17 @@ export class ToursRepository {
     return rows[0] ?? null;
   }
 
+  /** Cùng truy vấn HotelsRepository/RestaurantsRepository/BeachesRepository.listAmenities() —
+   * `place_amenities`/`amenities` là bảng dùng chung mọi category. */
+  listAmenities(placeId: string) {
+    return this.ds.query(
+      `SELECT a.id, a.code, a.label_vi, a.label_en, a.icon, a."group"
+       FROM place_amenities pa JOIN amenities a ON a.id = pa.amenity_id
+       WHERE pa.place_id = $1 ORDER BY a."group", a.code`,
+      [placeId],
+    );
+  }
+
   /**
    * UPDATE place_tour_details — hàng LUÔN tồn tại từ lúc tạo (createDetails, khác hotel/
    * restaurant/beach) nên đây là UPDATE thẳng, không cần UPSERT. PATCH TỪNG PHẦN thật:

@@ -159,6 +159,18 @@ export class BeachesRepository {
     return rows[0] ?? null;
   }
 
+  /** Cùng truy vấn HotelsRepository.listAmenities()/RestaurantsRepository.listAmenities() —
+   * `place_amenities`/`amenities` là bảng dùng chung mọi category, chưa có module nào đọc nó cho
+   * bãi biển. */
+  listAmenities(placeId: string) {
+    return this.ds.query(
+      `SELECT a.id, a.code, a.label_vi, a.label_en, a.icon, a."group"
+       FROM place_amenities pa JOIN amenities a ON a.id = pa.amenity_id
+       WHERE pa.place_id = $1 ORDER BY a."group", a.code`,
+      [placeId],
+    );
+  }
+
   /**
    * UPSERT place_beach_details — cùng nguyên tắc HotelsRepository.upsertDetails (xem ghi chú đầy
    * đủ ở đó): PATCH TỪNG PHẦN thật, `dto.<field> !== undefined` phân biệt "không gửi" (giữ

@@ -109,8 +109,8 @@ export class BeachesService {
 
   async getBySlug(slug: string, locale?: string) {
     const place = await this.placesService.getBySlug(slug, locale);
-    const details = await this.repo.detail(place.id);
-    return { ...place, beach_details: mapBeachDetails(details) };
+    const [details, amenities] = await Promise.all([this.repo.detail(place.id), this.repo.listAmenities(place.id)]);
+    return { ...place, beach_details: mapBeachDetails(details), amenities };
   }
 
   // Đặc quyền (Place.Edit.Managed). Đọc không qua cổng công khai, dùng cho editor.

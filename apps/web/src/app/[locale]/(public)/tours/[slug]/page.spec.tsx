@@ -63,6 +63,7 @@ function tour(overrides: Partial<TourDetail> = {}): TourDetail {
     en_display_name_approved: false,
     en_short_description_approved: false,
     tour_details: null,
+    amenities: [],
     ...overrides,
   };
 }
@@ -154,6 +155,46 @@ describe('TourDetailPage — schedule price trust gate', () => {
       { id: 'sc2', date: '2026-09-02', capacity: null, price: SENTINEL_PRICE + 1, currency: 'VND', valid_from: null, valid_to: null },
     ]);
     expect(screen.getAllByText(PRICE_VERIFYING_TEXT)).toHaveLength(1);
+  });
+});
+
+// Bug thiếu đã sửa (2026-10-11): amenities (place_amenities dùng chung) và opening_hours (đã có
+// sẵn trên mọi Place) chưa từng được render ở trang tour, dù dữ liệu/hàm đã sẵn có từ trước.
+describe('TourDetailPage — tiện nghi + giờ hoạt động (bug thiếu đã sửa)', () => {
+  it('amenities render đúng', async () => {
+    await renderPage(tour({ amenities: [{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe', label_en: null, icon: null, group: null }] }));
+    expect(screen.getByText(/Bãi đỗ xe/)).toBeInTheDocument();
+  });
+
+  it('amenities rỗng → không hiện mục "Tiện nghi"', async () => {
+    await renderPage(tour({ amenities: [] }));
+    expect(screen.queryByText('Tiện nghi')).not.toBeInTheDocument();
+  });
+
+  it('chưa có opening_hours → không hiện mục "Giờ hoạt động"', async () => {
+    await renderPage(tour({ opening_hours: null }));
+    expect(screen.queryByText('Giờ hoạt động')).not.toBeInTheDocument();
+  });
+
+  it('có giờ theo ngày → hiện mục "Giờ hoạt động" kèm bảng giờ cả tuần', async () => {
+    await renderPage(
+      tour({
+        opening_hours: {
+          regular: {
+            mon: [{ open: '08:00', close: '17:00' }],
+            tue: [{ open: '08:00', close: '17:00' }],
+            wed: [{ open: '08:00', close: '17:00' }],
+            thu: [{ open: '08:00', close: '17:00' }],
+            fri: [{ open: '08:00', close: '17:00' }],
+            sat: [{ open: '08:00', close: '17:00' }],
+            sun: [],
+          },
+        },
+      }),
+    );
+    expect(screen.getByText('Giờ hoạt động')).toBeInTheDocument();
+    expect(screen.getByText('Giờ mở cửa cả tuần')).toBeInTheDocument();
+    expect(screen.getByText(/Thứ Hai/)).toBeInTheDocument();
   });
 });
 

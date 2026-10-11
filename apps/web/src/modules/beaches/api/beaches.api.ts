@@ -1,5 +1,6 @@
 import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
+import type { Amenity } from '@/modules/amenities/types';
 import type { BeachCard, BeachSort } from '../types';
 
 // Beach = Place (category='beach'), không có bảng vệ tinh ⇒ chỉ có đường ĐỌC danh sách ở đây.
@@ -72,12 +73,17 @@ export async function updateBeachDetails(
   return apiPatchAuth<BeachDetails & { content_version: number }>(`/beaches/${encodeURIComponent(placeId)}/details`, accessToken, input);
 }
 
-/** Chi tiết bãi công khai (kèm beach_details) — dùng ở trang /places/[slug] khi category là beach. */
-export async function getBeachPublicDetails(slug: string, locale: string = 'vi'): Promise<BeachDetails | null> {
+// Bug thiếu đã sửa (2026-10-11): `amenities` (bảng place_amenities dùng chung, cùng field tên này
+// ở HotelDetail/RestaurantDetail) nay cũng được BeachesService.getBySlug() trả về — tách riêng
+// khỏi beach_details vì amenities có thể có dữ liệu dù chưa từng tạo hàng place_beach_details nào
+// (hai nguồn độc lập, không nên gộp điều kiện "có dữ liệu" của beach_details lên amenities).
+export interface BeachPublicDetails {
+  beach_details: BeachDetails | null;
+  amenities: Amenity[];
+}
+
+/** Chi tiết bãi công khai (kèm beach_details + amenities) — dùng ở trang /places/[slug] khi category là beach. */
+export async function getBeachPublicDetails(slug: string, locale: string = 'vi'): Promise<BeachPublicDetails> {
   const qs = new URLSearchParams({ locale });
-  const body = await apiGet<{ beach_details: BeachDetails | null }>(
-    `/beaches/${encodeURIComponent(slug)}?${qs.toString()}`,
-    { cache: 'no-store' },
-  );
-  return body.beach_details;
+  return apiGet<BeachPublicDetails>(`/beaches/${encodeURIComponent(slug)}?${qs.toString()}`, { cache: 'no-store' });
 }

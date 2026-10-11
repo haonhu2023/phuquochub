@@ -96,8 +96,8 @@ export class ToursService {
     // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
     // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất).
     const place = await this.placesService.getBySlug(slug);
-    const details = await this.repo.detail(place.id);
-    return { ...place, tour_details: details };
+    const [details, amenities] = await Promise.all([this.repo.detail(place.id), this.repo.listAmenities(place.id)]);
+    return { ...place, tour_details: details, amenities };
   }
 
   async getItinerary(placeId: string) {

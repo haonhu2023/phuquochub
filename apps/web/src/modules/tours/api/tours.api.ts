@@ -1,6 +1,7 @@
 import { apiGet, apiGetPaginated } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type { GeoPoint, PlaceDetail } from '@/modules/places/types';
+import type { Amenity } from '@/modules/amenities/types';
 import type { TourCard, TourSort } from '../types';
 
 // Tour = Place (category='tour') + satellite (ADR-002).
@@ -23,7 +24,9 @@ export interface TourSchedule {
   valid_to: string | null;
 }
 
-export type TourDetail = PlaceDetail & { tour_details: Record<string, unknown> | null };
+// Bug thiếu đã sửa (2026-10-11): `amenities` (bảng place_amenities dùng chung, cùng field tên này
+// ở HotelDetail/RestaurantDetail/BeachPublicDetails) nay cũng được ToursService.getBySlug() trả về.
+export type TourDetail = PlaceDetail & { tour_details: Record<string, unknown> | null; amenities: Amenity[] };
 
 // `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
 // pass) — trước đây hàm này không truyền `?locale=` nên `/en/tours/{slug}` luôn nhận nội dung mặc

@@ -2,7 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import type { PlaceDetail } from '@/modules/places/types';
 import { getPlace } from '@/modules/places/api/places.api';
-import { getBeachPublicDetails, type BeachDetails } from '@/modules/beaches/api/beaches.api';
+import { getBeachPublicDetails, type BeachDetails, type BeachPublicDetails } from '@/modules/beaches/api/beaches.api';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import PlaceDetailPage from './page';
 
@@ -31,7 +31,7 @@ const mockGetPlace = getPlace as jest.Mock;
 const mockBeach = getBeachPublicDetails as jest.Mock;
 const mockListReviews = listReviews as jest.Mock;
 
-const EMPTY_BEACH: BeachDetails = {
+const EMPTY_BEACH_DETAILS: BeachDetails = {
   access_route: null,
   characteristics: null,
   services: null,
@@ -42,6 +42,10 @@ const EMPTY_BEACH: BeachDetails = {
   sourced_notes: null,
   sourced_notes_source: null,
 };
+
+function beachResponse(overrides: Partial<BeachDetails> = {}, amenities: BeachPublicDetails['amenities'] = []): BeachPublicDetails {
+  return { beach_details: { ...EMPTY_BEACH_DETAILS, ...overrides }, amenities };
+}
 
 beforeEach(() => {
   mockListReviews.mockReset().mockResolvedValue([]);
@@ -93,12 +97,13 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
 describe('PlaceDetailPage — mục Thông tin bãi biển (công khai)', () => {
   it('bãi biển có đường vào và mùa tham khảo có nguồn → hiện cả hai, nguồn là liên kết', async () => {
     mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
-    mockBeach.mockResolvedValue({
-      ...EMPTY_BEACH,
-      access_route: 'Đi đường ven biển 10 phút',
-      best_season: 'Tháng 11 đến tháng 4',
-      best_season_source: { title: 'Sở Du lịch', url: 'https://example.test/src', verified_at: null },
-    });
+    mockBeach.mockResolvedValue(
+      beachResponse({
+        access_route: 'Đi đường ven biển 10 phút',
+        best_season: 'Tháng 11 đến tháng 4',
+        best_season_source: { title: 'Sở Du lịch', url: 'https://example.test/src', verified_at: null },
+      }),
+    );
     render(await callPage('bai-sao', 'vi'));
     expect(screen.getByRole('heading', { name: 'Thông tin bãi biển' })).toBeInTheDocument();
     expect(screen.getByText('Đi đường ven biển 10 phút')).toBeInTheDocument();
@@ -109,7 +114,7 @@ describe('PlaceDetailPage — mục Thông tin bãi biển (công khai)', () => 
 
   it('mùa tham khảo không có nguồn → không hiện "Nguồn:" và không suy ra trạng thái an toàn', async () => {
     mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
-    mockBeach.mockResolvedValue({ ...EMPTY_BEACH, best_season: 'Tháng 11 đến tháng 4' });
+    mockBeach.mockResolvedValue(beachResponse({ best_season: 'Tháng 11 đến tháng 4' }));
     render(await callPage('bai-sao', 'vi'));
     expect(screen.getByText('Tháng 11 đến tháng 4')).toBeInTheDocument();
     expect(screen.queryByText(/Nguồn:/)).not.toBeInTheDocument();
@@ -130,9 +135,27 @@ describe('PlaceDetailPage — mục Thông tin bãi biển (công khai)', () => 
   });
   it('chi tiết bãi có đủ trường nhưng đều trống → không có mục bãi biển, không ghi "miễn phí" hay "an toàn"', async () => {
     mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
-    mockBeach.mockResolvedValue(EMPTY_BEACH);
+    mockBeach.mockResolvedValue(beachResponse());
     const { container } = render(await callPage('bai-sao', 'vi'));
     expect(screen.queryByRole('heading', { name: 'Thông tin bãi biển' })).not.toBeInTheDocument();
     expect(container.textContent ?? '').not.toMatch(/miễn phí|an toàn|dịch vụ tại bãi/i);
+  });
+
+  // Bug thiếu đã sửa (2026-10-11): amenities (place_amenities dùng chung) chưa từng được render
+  // cho bãi biển dù owner đã gán được qua AmenitiesEditor từ trước.
+  it('amenities render đúng, ĐỘC LẬP với beach_details rỗng (hai nguồn khác nhau)', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
+    mockBeach.mockResolvedValue(beachResponse({}, [{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe', label_en: null, icon: null, group: null }]));
+    render(await callPage('bai-sao', 'vi'));
+    expect(screen.getByText(/Bãi đỗ xe/)).toBeInTheDocument();
+    // beach_details vẫn rỗng → không có mục "Thông tin bãi biển", nhưng mục "Tiện nghi" vẫn hiện.
+    expect(screen.queryByRole('heading', { name: 'Thông tin bãi biển' })).not.toBeInTheDocument();
+  });
+
+  it('amenities rỗng → không hiện mục "Tiện nghi"', async () => {
+    mockGetPlace.mockResolvedValue(place({ slug: 'bai-sao', category_slug: 'beach' }));
+    mockBeach.mockResolvedValue(beachResponse());
+    render(await callPage('bai-sao', 'vi'));
+    expect(screen.queryByText('Tiện nghi')).not.toBeInTheDocument();
   });
 });

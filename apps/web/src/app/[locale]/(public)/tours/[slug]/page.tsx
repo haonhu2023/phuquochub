@@ -15,6 +15,8 @@ import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
+import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_TOURS_LABEL: Record<Locale, string> = { vi: 'Tour', en: 'Tours' };
@@ -115,6 +117,7 @@ export default async function TourDetailPage({ params }: Params) {
   } catch {
     // sub-resource lỗi → bỏ qua, vẫn hiển thị base.
   }
+  const openingWeek = getOpeningWeek(t.opening_hours, new Date(), locale);
 
   return (
     <article>
@@ -154,6 +157,37 @@ export default async function TourDetailPage({ params }: Params) {
       {/* Thông tin tour (admin nhập ở editor). Chỉ hiện trường đã có giá trị: thiếu thời lượng/độ khó/
           điểm đón không được diễn đạt thành "miễn phí", "đang mở" hay "không có". */}
       <TourInfoSection details={t.tour_details} />
+
+      {/* Bug thiếu đã sửa (2026-10-11): cùng khuôn hotels/restaurants/places[slug] — tour cũng dùng
+          CHUNG bảng place_amenities, chỉ chưa từng được render ở trang này. */}
+      {t.amenities.length > 0 && (
+        <section>
+          <h2>Tiện nghi</h2>
+          <p>{t.amenities.map((a) => a.label_vi).join(' · ')}</p>
+        </section>
+      )}
+
+      {/* Bug thiếu đã sửa (2026-10-11): `opening_hours` đã có sẵn trên mọi Place (kể cả tour) từ
+          trước, nhưng trang tour chưa từng đọc/render trường này — không phải mọi tour đều có giờ
+          cố định (phụ thuộc lịch khởi hành), nên chỉ hiện khi dữ liệu thật sự có. */}
+      {hasOpeningHours(t.opening_hours) && (
+        <section>
+          <h2>Giờ hoạt động</h2>
+          <p>{getOpeningToday(t.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
+          {openingWeek.length > 0 && (
+            <details>
+              <summary>{getPlaceDetailCopy(locale).weekHoursSummary}</summary>
+              <ul>
+                {openingWeek.map((row) => (
+                  <li key={row.key}>
+                    {row.label}: {row.hours}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      )}
 
       {itinerary.length > 0 && (
         <section>
