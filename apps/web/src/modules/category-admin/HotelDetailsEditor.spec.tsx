@@ -62,3 +62,30 @@ describe('HotelDetailsEditor — đường vào / điểm tiếp cận', () => {
     expect(mockOnVersionChange).not.toHaveBeenCalled();
   });
 });
+
+// Chính sách huỷ phòng (mục V đợt 1 mục A) — cùng khuôn access_route ở trên, field độc lập.
+const CANCELLATION = 'Chính sách huỷ phòng (để trống = chưa có thông tin)';
+
+describe('HotelDetailsEditor — chính sách huỷ phòng', () => {
+  it('tải giá trị đã lưu và gửi đúng trong payload', async () => {
+    mockGet.mockResolvedValue({ content_version: 4, hotel_type: 'resort', star_rating: 4, check_in: null, check_out: null, cancellation_policy: 'Huỷ trước 24h synthetic', star_rating_source: null });
+    mockUpdate.mockResolvedValue({ content_version: 5, hotel_type: 'resort', star_rating: 4, check_in: null, check_out: null, cancellation_policy: 'Huỷ trước 24h synthetic', star_rating_source: null });
+    renderEditor(4);
+    const textarea = (await screen.findByLabelText(CANCELLATION)) as HTMLTextAreaElement;
+    expect(textarea.value).toBe('Huỷ trước 24h synthetic');
+    fireEvent.change(textarea, { target: { value: '  Huỷ trước 48h synthetic  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin khách sạn' }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({ expected_content_version: 4, cancellation_policy: 'Huỷ trước 48h synthetic' });
+  });
+
+  it('để trống → gửi null (chưa có thông tin), không gửi chuỗi rỗng', async () => {
+    mockGet.mockResolvedValue({ content_version: 4, hotel_type: 'hotel', star_rating: null, check_in: null, check_out: null, cancellation_policy: 'Cũ', star_rating_source: null });
+    mockUpdate.mockResolvedValue({ content_version: 5, hotel_type: 'hotel', star_rating: null, check_in: null, check_out: null, cancellation_policy: null, star_rating_source: null });
+    renderEditor(4);
+    fireEvent.change(await screen.findByLabelText(CANCELLATION), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin khách sạn' }));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    expect(mockUpdate.mock.calls[0][1].cancellation_policy).toBeNull();
+  });
+});

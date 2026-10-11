@@ -396,6 +396,22 @@ describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spe
     expect(screen.getByText(/Chủ Nhật/)).toBeInTheDocument();
   });
 
+  // Chính sách huỷ phòng (mục V đợt 1 mục A) — field mới, chưa từng có.
+  it('có cancellation_policy → hiện mục "Chính sách huỷ phòng"', async () => {
+    await renderPage(
+      hotel({ hotel_details: { hotel_type: 'resort', star_rating: null, check_in: null, check_out: null, cancellation_policy: 'Huỷ trước 24h được hoàn 100%', star_rating_source: null } }),
+    );
+    expect(screen.getByText('Chính sách huỷ phòng')).toBeInTheDocument();
+    expect(screen.getByText(/Huỷ trước 24h được hoàn 100%/)).toBeInTheDocument();
+  });
+
+  it('không có cancellation_policy → không hiện mục đó', async () => {
+    await renderPage(
+      hotel({ hotel_details: { hotel_type: 'resort', star_rating: null, check_in: null, check_out: null, cancellation_policy: null, star_rating_source: null } }),
+    );
+    expect(screen.queryByText('Chính sách huỷ phòng')).not.toBeInTheDocument();
+  });
+
   it('hotel_details có nguồn hạng sao → hiện link tới nguồn', async () => {
     await renderPage(
       hotel({

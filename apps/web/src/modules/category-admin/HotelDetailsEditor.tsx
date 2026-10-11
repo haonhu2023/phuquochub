@@ -38,6 +38,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [accessRoute, setAccessRoute] = useState('');
+  const [cancellationPolicy, setCancellationPolicy] = useState('');
   const [newSourceTitle, setNewSourceTitle] = useState('');
   const [newSourceUrl, setNewSourceUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -67,6 +68,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
             setCheckIn(details.check_in?.slice(0, 5) ?? '');
             setCheckOut(details.check_out?.slice(0, 5) ?? '');
             setAccessRoute(details.access_route ?? '');
+            setCancellationPolicy(details.cancellation_policy ?? '');
           }
         })
         .catch(() => {
@@ -118,6 +120,7 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
         check_in: checkIn.trim() ? checkIn : null,
         check_out: checkOut.trim() ? checkOut : null,
         access_route: accessRoute.trim() ? accessRoute.trim() : null,
+        cancellation_policy: cancellationPolicy.trim() ? cancellationPolicy.trim() : null,
       };
       if (starRatingSourceId) payload.star_rating_source_id = starRatingSourceId;
 
@@ -170,6 +173,17 @@ export function HotelDetailsEditor({ placeId, contentVersion, onVersionChange }:
         <label className={uiStyles.field}>
           <span className={uiStyles.fieldLabel}>Đường vào / điểm tiếp cận (để trống = chưa có thông tin)</span>
           <input className={styles.input} type="text" maxLength={300} value={accessRoute} onChange={(e) => setAccessRoute(e.target.value)} />
+        </label>
+        <label className={uiStyles.field}>
+          <span className={uiStyles.fieldLabel}>Chính sách huỷ phòng (để trống = chưa có thông tin)</span>
+          <textarea
+            className={styles.input}
+            rows={3}
+            maxLength={1000}
+            value={cancellationPolicy}
+            onChange={(e) => setCancellationPolicy(e.target.value)}
+            placeholder="Vd: Huỷ trước 24h được hoàn 100%, sau đó không hoàn"
+          />
         </label>
       </div>
 

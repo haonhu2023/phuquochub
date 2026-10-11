@@ -115,4 +115,9 @@ export class UpdateHotelDetailsDto {
   // Đường vào/điểm tiếp cận (văn bản tự do). Null = chưa có thông tin — KHÔNG phải "không có đường vào".
   @IsOptional() @IsString() @MaxLength(300)
   access_route?: string | null;
+
+  // Chính sách huỷ phòng (văn bản tự do, cùng khuôn `tour_details.cancellation_policy`). Null =
+  // chưa có thông tin — KHÔNG phải "không cho huỷ".
+  @IsOptional() @IsString() @MaxLength(1000)
+  cancellation_policy?: string | null;
 }

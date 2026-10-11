@@ -119,6 +119,29 @@ describe('HotelsService', () => {
     expect(JSON.stringify(res)).not.toContain('1500000');
   });
 
+  // Chính sách huỷ phòng (mục V đợt 1 mục A) — cùng khuôn access_route, field độc lập.
+  it('getBySlug: hotel_details có cancellation_policy → trả đúng, null → trả null (không suy đoán)', async () => {
+    placesService.getBySlug.mockResolvedValue({ id: 'h1', slug: 'ks-a', name: 'Khách sạn A' });
+    repo.detail.mockResolvedValue({
+      hotel_type: 'resort',
+      star_rating: null,
+      check_in: null,
+      check_out: null,
+      access_route: null,
+      cancellation_policy: 'Huỷ trước 24h được hoàn 100%',
+      star_rating_source_id: null,
+      star_rating_verified_at: null,
+      star_rating_source_title: null,
+      star_rating_source_url: null,
+    });
+    repo.listRooms.mockResolvedValue([]);
+    repo.listAmenities.mockResolvedValue([]);
+
+    const res = await service.getBySlug('ks-a');
+
+    expect(res.hotel_details?.cancellation_policy).toBe('Huỷ trước 24h được hoàn 100%');
+  });
+
   // 2026-09 locale forwarding fix: trước đây getBySlug(slug) không nhận/forward locale nào cả, nên
   // PlacesService luôn thấy `undefined` bất kể client yêu cầu gì. Đây là đúng ranh giới bị vá.
   describe('getBySlug — locale forwarding', () => {

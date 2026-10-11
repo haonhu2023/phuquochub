@@ -164,6 +164,12 @@ export default async function HotelDetailPage({ params }: Params) {
                 </dd>
               </>
             )}
+            {h.hotel_details.cancellation_policy && (
+              <>
+                <dt>Chính sách huỷ phòng</dt>
+                <dd>{h.hotel_details.cancellation_policy}</dd>
+              </>
+            )}
           </dl>
         </section>
       )}

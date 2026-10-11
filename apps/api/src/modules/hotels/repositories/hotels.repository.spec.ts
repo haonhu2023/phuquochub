@@ -151,6 +151,17 @@ describe('HotelsRepository — browse (stars filter, sort, pagination)', () => {
       expect(updateCall[1]).toEqual(['p1', 'hotel', null]);
     });
 
+    // Chính sách huỷ phòng (mục V đợt 1 mục A) — cùng khuôn access_route, patch độc lập.
+    it('PATCH cancellation_policy -> UPDATE chỉ đụng đúng cột đó', async () => {
+      const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: null, star_rating_source_id: null }]);
+
+      await sut.upsertDetails('p1', { hotel_type: 'hotel', cancellation_policy: 'Huỷ trước 24h được hoàn 100%' } as never, 1);
+
+      const updateCall = managerQuery.mock.calls[2];
+      expect(sql(updateCall[0])).toBe('UPDATE "place_hotel_details" SET "hotel_type" = $2, "cancellation_policy" = $3 WHERE place_id = $1');
+      expect(updateCall[1]).toEqual(['p1', 'hotel', 'Huỷ trước 24h được hoàn 100%']);
+    });
+
     it('star_rating đổi giá trị KHÔNG kèm source mới -> xoá source_id/verified_at cũ (nhất quán giá trị-nguồn)', async () => {
       const managerQuery = mockTransaction([{ hotel_type: 'hotel', star_rating: 4, star_rating_source_id: 'old-src' }]);
 
