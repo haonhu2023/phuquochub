@@ -298,6 +298,11 @@ export function EditPlaceView({ placeId }: Props) {
           </Link>
         </p>
         <p style={{ marginTop: '0.5rem' }}>
+          <Link href={`/dashboard/places/${placeId}/opening-hours-evidence`} style={{ color: 'var(--accent)' }}>
+            Nộp bằng chứng giờ mở cửa →
+          </Link>
+        </p>
+        <p style={{ marginTop: '0.5rem' }}>
           <Link href={`/dashboard/places/${placeId}/preview`} style={{ color: 'var(--accent)' }}>
             Xem trước →
           </Link>
