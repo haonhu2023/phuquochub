@@ -82,6 +82,11 @@ export function OpeningHoursEvidenceQueueView() {
           Duyệt đủ điều kiện sẽ cho giờ mở cửa của địa điểm hiện công khai ngay. So khớp nội dung nộp với giờ hiện tại của địa điểm trước khi
           duyệt — hệ thống chỉ tự xác nhận &quot;giá trị chưa đổi&quot;, không tự xác nhận nội dung có đúng ý nghĩa.
         </p>
+        {state.kind === 'ready' && (
+          <button type="button" className={placeStyles.btn} onClick={reload} style={{ marginTop: '0.5rem' }}>
+            Tải lại hàng chờ
+          </button>
+        )}
       </header>
 
       {state.kind === 'loading' && (
@@ -138,7 +143,11 @@ export function OpeningHoursEvidenceQueueView() {
                 {item.place_current_opening_hours ? JSON.stringify(item.place_current_opening_hours) : '(không có)'}
               </p>
               <p>Khai báo lúc nộp: {item.schedule_stability_claimed === 'TEMPORARY' ? 'Thông báo tạm thời' : 'Lịch ổn định'}</p>
-              <OpeningHoursEvidenceDecisionForm item={item} onDecided={reload} />
+              {/* KHÔNG reload() ngay khi quyết định xong (khác JobListingModerationQueueView) — item
+                  này CÓ hiện kết quả duyệt inline (eligible/linked hay không, kèm reason_codes),
+                  reload ngay sẽ xoá nó khỏi danh sách trước khi moderator đọc được. Moderator tự
+                  bấm "Tải lại hàng chờ" ở header khi muốn qua lô tiếp theo. */}
+              <OpeningHoursEvidenceDecisionForm item={item} onDecided={() => {}} />
             </li>
           ))}
         </ul>
