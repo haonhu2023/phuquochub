@@ -11,7 +11,8 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
-import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
+import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -68,6 +69,7 @@ export default async function HotelDetailPage({ params }: Params) {
     }
     throw err;
   }
+  const openingWeek = getOpeningWeek(h.opening_hours, new Date(), locale);
 
   return (
     <article>
@@ -190,6 +192,21 @@ export default async function HotelDetailPage({ params }: Params) {
         <section>
           <h2>Giờ mở cửa</h2>
           <p>{getOpeningToday(h.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
+          {/* Bug thiếu đã sửa (2026-10-11): cùng ghi chú restaurants/[slug]/page.tsx — bảng giờ cả
+              tuần đã có/đã test từ trước (places/[slug]/page.tsx), trang khách sạn riêng trước đây
+              chỉ hiện "giờ hôm nay". */}
+          {openingWeek.length > 0 && (
+            <details>
+              <summary>{getPlaceDetailCopy(locale).weekHoursSummary}</summary>
+              <ul>
+                {openingWeek.map((row) => (
+                  <li key={row.key}>
+                    {row.label}: {row.hours}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
       )}
 

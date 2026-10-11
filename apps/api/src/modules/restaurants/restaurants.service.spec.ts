@@ -23,6 +23,7 @@ describe('RestaurantsService', () => {
       upsertDetails: jest.fn(),
       setCuisines: jest.fn(),
       listAllCuisines: jest.fn(),
+      listAmenities: jest.fn(),
     });
     audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
     cacheInvalidation = createMock<Deps[3]>({ invalidatePlace: jest.fn().mockResolvedValue(undefined) });
@@ -111,13 +112,16 @@ describe('RestaurantsService', () => {
     expect(repo.countRestaurants).toHaveBeenCalledWith({ priceRange: 'high', cuisine: 'seafood', sort: 'name_asc' });
   });
 
-  it('getBySlug: ghép restaurant_details + cuisines', async () => {
+  it('getBySlug: ghép restaurant_details + cuisines + amenities', async () => {
     placesService.getBySlug.mockResolvedValue({ id: 'r1', slug: 'quan-a' });
     repo.detail.mockResolvedValue({ price_range: 'mid' });
     repo.listCuisines.mockResolvedValue(['seafood']);
+    repo.listAmenities.mockResolvedValue([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
     const res = await service.getBySlug('quan-a');
     expect(res.restaurant_details).toEqual({ price_range: 'mid' });
     expect(res.cuisines).toEqual(['seafood']);
+    expect(res.amenities).toEqual([{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe' }]);
+    expect(repo.listAmenities).toHaveBeenCalledWith('r1');
   });
 
   it('getMenu: nhóm item theo section, price→Number', async () => {

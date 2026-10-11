@@ -373,6 +373,29 @@ describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spe
     expect(document.body.textContent).not.toContain('[object Object]');
   });
 
+  // Bug thiếu đã sửa (2026-10-11): places/[slug]/page.tsx đã có bảng giờ cả tuần từ trước — trang
+  // khách sạn riêng chỉ hiện "giờ hôm nay", chưa từng hiện phần này.
+  it('có giờ theo ngày → hiện bảng giờ cả tuần, đủ 7 ngày', async () => {
+    await renderPage(
+      hotel({
+        opening_hours: {
+          regular: {
+            mon: [{ open: '00:00', close: '23:59' }],
+            tue: [{ open: '00:00', close: '23:59' }],
+            wed: [{ open: '00:00', close: '23:59' }],
+            thu: [{ open: '00:00', close: '23:59' }],
+            fri: [{ open: '00:00', close: '23:59' }],
+            sat: [{ open: '00:00', close: '23:59' }],
+            sun: [{ open: '00:00', close: '23:59' }],
+          },
+        },
+      }),
+    );
+    expect(screen.getByText('Giờ mở cửa cả tuần')).toBeInTheDocument();
+    expect(screen.getByText(/Thứ Hai/)).toBeInTheDocument();
+    expect(screen.getByText(/Chủ Nhật/)).toBeInTheDocument();
+  });
+
   it('hotel_details có nguồn hạng sao → hiện link tới nguồn', async () => {
     await renderPage(
       hotel({

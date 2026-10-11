@@ -13,7 +13,8 @@ import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
-import { getOpeningToday, hasOpeningHours } from '@/modules/places/openingHours';
+import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
+import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { isValidCoord } from '@/modules/map/mapMarkers';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -82,6 +83,7 @@ export default async function RestaurantDetailPage({ params }: Params) {
   } catch {
     menu = [];
   }
+  const openingWeek = getOpeningWeek(r.opening_hours, new Date(), locale);
 
   return (
     <article>
@@ -134,6 +136,13 @@ export default async function RestaurantDetailPage({ params }: Params) {
       )}
       {r.restaurant_details?.is_local_specialty && <p style={{ color: '#6b7280' }}>Có phục vụ đặc sản Phú Quốc</p>}
 
+      {r.amenities.length > 0 && (
+        <section>
+          <h2>Tiện nghi</h2>
+          <p>{r.amenities.map((a) => a.label_vi).join(' · ')}</p>
+        </section>
+      )}
+
       {r.contacts.length > 0 && (
         <section>
           <h2>Liên hệ</h2>
@@ -151,6 +160,21 @@ export default async function RestaurantDetailPage({ params }: Params) {
         <section>
           <h2>Giờ mở cửa</h2>
           <p>{getOpeningToday(r.opening_hours, new Date(), locale).hours ?? 'Chưa có thông tin'}</p>
+          {/* Bug thiếu đã sửa (2026-10-11): places/[slug]/page.tsx đã có bảng giờ cả tuần từ trước
+              (getOpeningWeek, đã test đầy đủ) — trang nhà hàng riêng trước đây chỉ gọi
+              getOpeningToday(), chưa từng hiện phần này dù dữ liệu/hàm đã sẵn có. */}
+          {openingWeek.length > 0 && (
+            <details>
+              <summary>{getPlaceDetailCopy(locale).weekHoursSummary}</summary>
+              <ul>
+                {openingWeek.map((row) => (
+                  <li key={row.key}>
+                    {row.label}: {row.hours}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
       )}
 

@@ -87,11 +87,15 @@ export class RestaurantsService {
     // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
     // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất).
     const place = await this.placesService.getBySlug(slug);
-    const [details, cuisines] = await Promise.all([
+    // `amenities` (cùng khuôn HotelsService.getBySlug()) — bảng `place_amenities` dùng chung mọi
+    // category; owner đã có thể gán "gửi xe" v.v. cho nhà hàng qua AmenitiesEditor từ trước, nhưng
+    // response công khai chưa từng trả lại field này (bug thiếu, không phải chưa thiết kế).
+    const [details, cuisines, amenities] = await Promise.all([
       this.repo.detail(place.id),
       this.repo.listCuisines(place.id),
+      this.repo.listAmenities(place.id),
     ]);
-    return { ...place, restaurant_details: details, cuisines };
+    return { ...place, restaurant_details: details, cuisines, amenities };
   }
 
   async getMenu(placeId: string, opts: { publicResponse?: boolean } = {}) {

@@ -60,6 +60,7 @@ function restaurant(overrides: Partial<RestaurantDetail> = {}): RestaurantDetail
     en_short_description_approved: false,
     restaurant_details: null,
     cuisines: [],
+    amenities: [],
     ...overrides,
   };
 }
@@ -248,6 +249,41 @@ describe('RestaurantDetailPage — ẩm thực/đặc sản/liên hệ/giờ m�
       }),
     );
     expect(screen.getByText(/PHONE: 0909123456/)).toBeInTheDocument();
+  });
+
+  // Bug thiếu đã sửa (2026-10-11): owner đã gán được tiện nghi cho nhà hàng qua AmenitiesEditor
+  // từ trước, nhưng trang công khai chưa từng render field này dù backend giờ đã trả về.
+  it('amenities render đúng, cùng khuôn trang khách sạn', async () => {
+    await renderPage(restaurant({ amenities: [{ id: 'am1', code: 'parking', label_vi: 'Bãi đỗ xe', label_en: null, icon: null, group: null }] }));
+    expect(screen.getByText(/Bãi đỗ xe/)).toBeInTheDocument();
+  });
+
+  it('amenities rỗng → không hiện mục "Tiện nghi"', async () => {
+    await renderPage(restaurant({ amenities: [] }));
+    expect(screen.queryByText('Tiện nghi')).not.toBeInTheDocument();
+  });
+
+  // Bug thiếu đã sửa (2026-10-11): places/[slug]/page.tsx đã có bảng giờ cả tuần từ trước — trang
+  // nhà hàng riêng chỉ hiện "giờ hôm nay", chưa từng hiện phần này.
+  it('có giờ theo ngày → hiện bảng giờ cả tuần, đủ 7 ngày', async () => {
+    await renderPage(
+      restaurant({
+        opening_hours: {
+          regular: {
+            mon: [{ open: '08:00', close: '22:00' }],
+            tue: [{ open: '08:00', close: '22:00' }],
+            wed: [{ open: '08:00', close: '22:00' }],
+            thu: [{ open: '08:00', close: '22:00' }],
+            fri: [{ open: '08:00', close: '22:00' }],
+            sat: [{ open: '08:00', close: '22:00' }],
+            sun: [],
+          },
+        },
+      }),
+    );
+    expect(screen.getByText('Giờ mở cửa cả tuần')).toBeInTheDocument();
+    expect(screen.getByText(/Thứ Hai/)).toBeInTheDocument();
+    expect(screen.getByText(/Chủ Nhật/)).toBeInTheDocument();
   });
 
   it('món nổi bật (is_signature) đánh dấu ★ cạnh tên món', async () => {

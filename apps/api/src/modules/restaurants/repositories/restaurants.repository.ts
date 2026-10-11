@@ -124,6 +124,17 @@ export class RestaurantsRepository {
     return this.ds.query(`SELECT id, code, label_vi, label_en FROM cuisines ORDER BY code`);
   }
 
+  /** Cùng truy vấn HotelsRepository.listAmenities() — `place_amenities`/`amenities` là bảng dùng
+   * chung mọi category (không riêng hotel), chỉ chưa có module nào khác đọc nó cho nhà hàng. */
+  listAmenities(placeId: string) {
+    return this.ds.query(
+      `SELECT a.id, a.code, a.label_vi, a.label_en, a.icon, a."group"
+       FROM place_amenities pa JOIN amenities a ON a.id = pa.amenity_id
+       WHERE pa.place_id = $1 ORDER BY a."group", a.code`,
+      [placeId],
+    );
+  }
+
   sections(placeId: string) {
     return this.ds.query(
       `SELECT id, name, sort_order FROM restaurant_menu_sections WHERE place_id = $1 ORDER BY sort_order ASC`,

@@ -1,6 +1,7 @@
 import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type { PlaceDetail } from '@/modules/places/types';
+import type { Amenity } from '@/modules/amenities/types';
 import type { RestaurantCard, RestaurantSort } from '../types';
 
 // Restaurant = Place (category='restaurant') + satellite (ADR-002).
@@ -46,6 +47,10 @@ export interface RestaurantCuisine {
 export type RestaurantDetail = PlaceDetail & {
   restaurant_details: RestaurantDetails | null;
   cuisines: RestaurantCuisine[];
+  // Bug thiếu đã sửa (2026-10-11): owner đã có thể gán tiện nghi (vd "gửi xe") cho nhà hàng qua
+  // AmenitiesEditor từ trước (bảng place_amenities dùng chung mọi category — xem HotelDetail's
+  // field cùng tên), nhưng RestaurantsService.getBySlug() chưa từng trả field này ra response.
+  amenities: Amenity[];
 };
 
 // `locale` TÙY CHỌN, cùng mẫu `getHotel()`/`places.api.ts`'s `getPlace()` (2026-09-17 real-data
