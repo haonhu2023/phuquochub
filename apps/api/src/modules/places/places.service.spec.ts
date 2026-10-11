@@ -965,6 +965,28 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(placesRepo.getCardByIdIncludingInactive).toHaveBeenCalledWith('p1');
       expect(placesRepo.getDetailBySlug).not.toHaveBeenCalled();
     });
+
+    // Bug thật phát hiện 2026-10-11 (dựng Opening-Hours Evidence Workflow): buildDetailResponse()
+    // dùng CHUNG cho getBySlug (public, PHẢI áp cổng bằng chứng — xem describe "opening-hours
+    // evidence gate" dưới getBySlug) và preview (đặc quyền, route đã gác Place.Edit.Managed) —
+    // trước khi sửa, preview() vô tình áp CÙNG cổng đó, khiến owner xem lại chính giờ mở cửa họ
+    // vừa lưu thấy `null` bất cứ khi nào chưa có bằng chứng (luôn luôn đúng trước khi luồng nộp
+    // bằng chứng tồn tại) — không phải giá trị thật trong DB. preview() PHẢI luôn thấy giá trị
+    // thật, không qua cổng public.
+    it('KHÔNG áp cổng bằng chứng opening_hours — owner xem lại preview thấy giá trị THẬT dù chưa có bằng chứng nào', async () => {
+      const OH = { regular: { mon: [{ open: '09:00', close: '17:00' }] } };
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', opening_hours: OH });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+
+      const res = await service.preview('p1');
+
+      expect(res.opening_hours).toEqual(OH);
+      expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------

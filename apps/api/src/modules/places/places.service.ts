@@ -241,14 +241,27 @@ export class PlacesService {
     }
     // Preview không có `?locale=` của request khách — bỏ trống để resolveLocalizedField dùng
     // locale mặc định hệ thống (đúng seam LocalesService.resolveRequestLocale(undefined) hiện có).
-    return this.buildDetailResponse(row);
+    //
+    // Bug thật phát hiện 2026-10-11 (khi dựng Opening-Hours Evidence Workflow): `applyOpeningHoursGate:
+    // false` — cổng bằng chứng opening_hours (dưới) là một luật PUBLIC ("khách thấy gì"), nhưng
+    // buildDetailResponse() dùng CHUNG cho cả getBySlug (public) VÀ preview (đặc quyền, route đã
+    // gác Place.Edit.Managed ở controller) — trước khi sửa, preview() vô tình ÁP CÙNG cổng đó lên
+    // chính actor được tin để sửa place, nên owner xem lại chính giờ mở cửa họ vừa lưu sẽ thấy
+    // `null` (không phải giá trị thật trong DB) bất cứ khi nào cổng chưa pass — đúng tình huống "một
+    // cột quên áp đúng phạm vi ở một trong hai chỗ" mà comment gốc bên dưới cảnh báo, chỉ theo
+    // chiều ngược (áp THỪA, không áp THIẾU). preview() là đường đọc đặc quyền (audit/editor tự xem
+    // lại), không phải một client công khai — phải luôn thấy giá trị THẬT đang lưu trong DB.
+    return this.buildDetailResponse(row, undefined, { applyOpeningHoursGate: false });
   }
 
   // Thân của getBySlug/preview — TÁCH RA vì hai route chỉ khác nguồn đọc row (published-only vs
   // đặc quyền không lọc status), không khác cách ghép response. Một định nghĩa response, hai
   // đường vào — không lệch được như từng lệch (F-17/F-19 đều là loại lỗi "một cột quên map ở một
-  // trong hai chỗ").
-  private async buildDetailResponse(row: PlaceDetailRow, locale?: string) {
+  // trong hai chỗ"). `applyOpeningHoursGate` (mặc định true, đúng hành vi getBySlug/public cũ) —
+  // preview() tắt nó (xem comment của preview() ở trên); KHÔNG thêm option tương tự cho field nào
+  // khác chỉ để phục vụ việc này (phạm vi chỉ opening_hours, đúng field duy nhất đang có cổng).
+  private async buildDetailResponse(row: PlaceDetailRow, locale?: string, options?: { applyOpeningHoursGate?: boolean }) {
+    const applyOpeningHoursGate = options?.applyOpeningHoursGate ?? true;
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
     const [
       contacts,
@@ -280,7 +293,7 @@ export class PlacesService {
       // its one evidence row sits at NEEDS_REVIEW). Response-level only: the DB value is untouched,
       // and getDetailBySlug() stays a raw pass-through for its other, privileged callers (audit/
       // ingestion — see that method's own comment) that must keep seeing the real stored value.
-      this.placesRepo.hasCurrentQualifiedOpeningHoursEvidence(row.id, row.opening_hours),
+      applyOpeningHoursGate ? this.placesRepo.hasCurrentQualifiedOpeningHoursEvidence(row.id, row.opening_hours) : Promise.resolve(true),
       // EN indexation gate (Phase 20 v2) — CỐ Ý luôn tra cứu locale 'en' cố định ở đây, KHÔNG
       // theo `locale` của request: một trang /vi cũng cần biết bản EN có đủ điều kiện index hay
       // không để dựng đúng hreflang="en" (xem web `isEnDetailIndexable`). Dùng lại ĐÚNG seam
