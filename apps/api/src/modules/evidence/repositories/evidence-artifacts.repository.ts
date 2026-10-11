@@ -30,6 +30,14 @@ export class EvidenceArtifactsRepository {
     return this.target(manager).findOne({ where: { id } });
   }
 
+  // Hàng chờ duyệt cho một evidenceType cụ thể — dùng cho hàng chờ moderator (Opening-Hours
+  // Evidence Workflow). NEEDS_REVIEW là trạng thái khởi tạo của ensureEvidenceArtifact; một khi
+  // reviewEvidenceArtifact ghi APPROVE+eligible, verificationStatus chuyển VERIFIED và hàng tự rời
+  // khỏi danh sách này (không cần xoá/đánh dấu riêng).
+  listByTypeAndStatus(evidenceType: string, verificationStatus: string, manager?: EntityManager): Promise<EvidenceArtifact[]> {
+    return this.target(manager).find({ where: { evidenceType, verificationStatus }, order: { createdAt: 'ASC' } });
+  }
+
   create(data: Partial<EvidenceArtifact>): EvidenceArtifact {
     return this.repo.create(data);
   }

@@ -8,11 +8,16 @@ import { EvidenceArtifactsRepository } from './repositories/evidence-artifacts.r
 import { PlaceFieldEvidenceLinksRepository } from './repositories/place-field-evidence-links.repository';
 import { EvidenceReviewsRepository } from './repositories/evidence-reviews.repository';
 import { EvidenceService } from './evidence.service';
+import { OpeningHoursEvidenceService } from './opening-hours-evidence.service';
+import { OpeningHoursEvidenceController } from './opening-hours-evidence.controller';
 import { PlacesModule } from '../places/places.module';
 import { SourcesModule } from '../sources/sources.module';
 import { Clock, SystemClock } from '../../common/clock';
 
-// Không có controller — chưa có yêu cầu API surface, cùng giai đoạn với PlaceExternalIdentifiersModule.
+// Opening-Hours Evidence Workflow (2026-10-11) — controller THỰC SỰ đầu tiên của module này,
+// nhưng CHỈ cho opening_hours (OpeningHoursEvidenceService là một orchestrator riêng, KHÔNG một
+// controller chung cho mọi field — xem file đó). Mọi field khác vẫn "chưa có yêu cầu API surface"
+// như trước, cùng giai đoạn với PlaceExternalIdentifiersModule.
 //
 // Place-field evidence V0: import PlacesModule chỉ để dùng PlacesRepository.existsById() (đã có
 // sẵn, JSDoc của chính nó nêu rõ đây là seam liên-module cho "place_id này có hợp lệ không" —
@@ -33,12 +38,14 @@ import { Clock, SystemClock } from '../../common/clock';
     PlacesModule,
     SourcesModule,
   ],
+  controllers: [OpeningHoursEvidenceController],
   providers: [
     EvidenceArtifactsRepository,
     PlaceFieldEvidenceLinksRepository,
     EvidenceReviewsRepository,
     { provide: Clock, useClass: SystemClock },
     EvidenceService,
+    OpeningHoursEvidenceService,
   ],
   exports: [EvidenceService],
 })
