@@ -6,14 +6,14 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { getMyJobListing } from './api/job-listings.api';
 import { JobListingForm } from './JobListingForm';
-import type { JobListingSenderView } from './types';
+import type { JobListingSenderDetailView, JobListingSenderView } from './types';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; job: JobListingSenderView }
+  | { kind: 'ready'; job: JobListingSenderDetailView }
   | { kind: 'saved'; job: JobListingSenderView };
 
 export function EditJobListingView({ id }: { id: string }) {

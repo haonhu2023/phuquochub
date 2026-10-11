@@ -65,6 +65,7 @@ describe('JobListingsService', () => {
       countPublic: jest.fn(),
       getPublicById: jest.fn(),
       listPending: jest.fn(),
+      findPlaceSummary: jest.fn().mockResolvedValue(null),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
     service = new JobListingsService(repo, authz);
@@ -240,6 +241,36 @@ describe('JobListingsService', () => {
       expect(result).not.toHaveProperty('status');
       expect(result).not.toHaveProperty('reviewer_id');
       expect(result).not.toHaveProperty('review_note');
+    });
+
+    // "Place tùy chọn" (mục V đợt 3) — ghép tên/slug qua lookup riêng, không throw nếu không khớp.
+    it('getPublicById: có place_id và khớp place thật → ghép đúng place {id,name,slug}', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, placeId: 'p1' }));
+      repo.findPlaceSummary.mockResolvedValue({ id: 'p1', name: 'Bãi Sao', slug: 'bai-sao' });
+      const result = await service.getPublicById('job-1');
+      expect(result.place).toEqual({ id: 'p1', name: 'Bãi Sao', slug: 'bai-sao' });
+      expect(repo.findPlaceSummary).toHaveBeenCalledWith('p1');
+    });
+
+    it('getPublicById: place_id null → place=null, KHÔNG gọi lookup', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, placeId: null }));
+      const result = await service.getPublicById('job-1');
+      expect(result.place).toBeNull();
+      expect(repo.findPlaceSummary).not.toHaveBeenCalled();
+    });
+
+    it('getPublicById: có place_id nhưng không khớp hàng nào (đã xoá/không tồn tại) → place=null, KHÔNG throw', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, placeId: 'ghost' }));
+      repo.findPlaceSummary.mockResolvedValue(null);
+      const result = await service.getPublicById('job-1');
+      expect(result.place).toBeNull();
+    });
+
+    it('getMine: chủ tin đang sửa thấy đúng place đã liên kết (để prefill lại ô chọn)', async () => {
+      repo.findById.mockResolvedValue(row({ createdBy: 'owner-1', placeId: 'p1' }));
+      repo.findPlaceSummary.mockResolvedValue({ id: 'p1', name: 'Bãi Sao', slug: 'bai-sao' });
+      const result = await service.getMine('job-1', 'owner-1');
+      expect(result.place).toEqual({ id: 'p1', name: 'Bãi Sao', slug: 'bai-sao' });
     });
 
     it('listPublic: chuyển query thành filter + phân trang, gọi đúng repository', async () => {

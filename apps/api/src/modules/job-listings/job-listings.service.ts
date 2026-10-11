@@ -178,9 +178,17 @@ export class JobListingsService {
     return rows.map(toJobListingSenderView);
   }
 
-  async getMine(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
+  // "Place tùy chọn" (mục V đợt 3) — ghép tên/slug để chủ tin thấy ĐÚNG địa điểm đang liên kết khi
+  // mở lại form sửa (place_id trần không đủ để hiện lại cho người dùng chọn gì). `null` nếu
+  // placeId null hoặc không khớp hàng nào (không throw — liên kết này không bắt buộc tồn tại).
+  private async attachPlace<T extends { place_id: string | null }>(view: T): Promise<T & { place: { id: string; name: string; slug: string } | null }> {
+    const place = view.place_id ? await this.repo.findPlaceSummary(view.place_id) : null;
+    return { ...view, place };
+  }
+
+  async getMine(id: string, userId: string): Promise<ReturnType<typeof toJobListingSenderView> & { place: { id: string; name: string; slug: string } | null }> {
     const row = await this.loadOwned(id, userId);
-    return toJobListingSenderView(row);
+    return this.attachPlace(toJobListingSenderView(row));
   }
 
   async listPublic(query: ListJobListingsQueryDto) {
@@ -194,11 +202,11 @@ export class JobListingsService {
     return paginate(items.map(toJobListingPublicView), page, limit, total);
   }
 
-  async getPublicById(id: string): Promise<ReturnType<typeof toJobListingPublicView>> {
+  async getPublicById(id: string): Promise<ReturnType<typeof toJobListingPublicView> & { place: { id: string; name: string; slug: string } | null }> {
     const row = await this.repo.getPublicById(id);
     // 404 đồng nhất cho "không tồn tại" và "tồn tại nhưng chưa/không còn công khai" — không rò trạng
     // thái nội bộ qua sự khác biệt giữa hai loại lỗi.
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
-    return toJobListingPublicView(row);
+    return this.attachPlace(toJobListingPublicView(row));
   }
 }

@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { getJobListing } from '@/modules/job-listings/api/job-listings.api';
 import { jobListingEmploymentTypeLabel } from '@/modules/job-listings/types';
 import { formatSalary } from '@/modules/job-listings/salary';
@@ -54,6 +55,15 @@ export default async function JobListingDetailPage({ params }: Params) {
           {job.employer_name}
           {job.employer_role ? ` · ${job.employer_role}` : ''}
         </p>
+        {/* Bug thiếu đã sửa (2026-10-11): "place tùy chọn" (mục V đợt 3) đã ghi được từ lâu nhưng
+            chưa từng hiện công khai — chỉ một liên kết tham khảo, KHÔNG suy ra tin này do địa điểm
+            đó đăng hay địa điểm đó xác nhận gì về tin. */}
+        {job.place && (
+          <p className={placesStyles.pageLede}>
+            {locale === 'en' ? 'At: ' : 'Tại: '}
+            <Link href={localizedHref(locale, `/places/${job.place.slug}`)}>{job.place.name}</Link>
+          </p>
+        )}
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <SaveButton targetType="job_listing" targetId={job.id} locale={locale} />
           <ReportButton targetType="job_listing" targetId={job.id} />

@@ -3,7 +3,9 @@ import type { PaginationMeta } from '@phuquochub/shared-types';
 import type {
   DecideJobListingInput,
   JobListingModeratorView,
+  JobListingPublicDetailView,
   JobListingPublicView,
+  JobListingSenderDetailView,
   JobListingSenderView,
   ListJobListingsFilter,
   UpsertJobListingInput,
@@ -27,9 +29,10 @@ export async function listJobListings(
   return apiGetPaginated<JobListingPublicView>(`/job-listings${filterQuery(filter)}`, { cache: 'no-store' });
 }
 
-/** GET /job-listings/{id} (@Public) — 404 đồng nhất cho không tồn tại / chưa-hoặc-không-còn công khai. */
-export async function getJobListing(id: string): Promise<JobListingPublicView> {
-  return apiGet<JobListingPublicView>(`/job-listings/${encodeURIComponent(id)}`, { cache: 'no-store' });
+/** GET /job-listings/{id} (@Public) — 404 đồng nhất cho không tồn tại / chưa-hoặc-không-còn công khai.
+ * Có `place` (xem JobListingLinkedPlace's ghi chú) — CHỈ lời gọi MỘT bản ghi này mới có. */
+export async function getJobListing(id: string): Promise<JobListingPublicDetailView> {
+  return apiGet<JobListingPublicDetailView>(`/job-listings/${encodeURIComponent(id)}`, { cache: 'no-store' });
 }
 
 /** GET /job-listings/mine — tất cả tin của chính người gọi, mọi trạng thái (đã đăng nhập). */
@@ -37,8 +40,9 @@ export async function listMyJobListings(accessToken: string): Promise<JobListing
   return apiGetAuth<JobListingSenderView[]>('/job-listings/mine', accessToken, { cache: 'no-store' });
 }
 
-export async function getMyJobListing(id: string, accessToken: string): Promise<JobListingSenderView> {
-  return apiGetAuth<JobListingSenderView>(`/job-listings/mine/${encodeURIComponent(id)}`, accessToken, {
+/** Có `place` — CHỈ lời gọi MỘT bản ghi này mới có (xem JobListingLinkedPlace's ghi chú). */
+export async function getMyJobListing(id: string, accessToken: string): Promise<JobListingSenderDetailView> {
+  return apiGetAuth<JobListingSenderDetailView>(`/job-listings/mine/${encodeURIComponent(id)}`, accessToken, {
     cache: 'no-store',
   });
 }

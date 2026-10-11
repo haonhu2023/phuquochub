@@ -65,4 +65,17 @@ export class JobListingsRepository {
   listPending(): Promise<JobListing[]> {
     return this.repo.find({ where: { status: JobListingStatus.PENDING }, order: { createdAt: 'ASC' } });
   }
+
+  // "Place tùy chọn" (mục V đợt 3) — chỉ tên/slug để hiện một liên kết có ý nghĩa, KHÔNG injected
+  // PlacesService/PlacesRepository (tránh coupling module không cần thiết cho một lookup đơn giản,
+  // cùng mẫu MediaRepository.placeExists() đã dùng raw SQL trực tiếp vào bảng places). `place_id`
+  // không được validate tồn tại lúc ghi (DTO chỉ kiểm UUID) — trả `null` nếu không khớp hàng nào,
+  // KHÔNG throw, vì liên kết này không cấp quyền gì và không phải điều kiện bắt buộc.
+  async findPlaceSummary(placeId: string): Promise<{ id: string; name: string; slug: string } | null> {
+    const rows = await this.repo.manager.query(
+      `SELECT id, name, slug FROM places WHERE id = $1 AND deleted_at IS NULL`,
+      [placeId],
+    );
+    return rows[0] ?? null;
+  }
 }

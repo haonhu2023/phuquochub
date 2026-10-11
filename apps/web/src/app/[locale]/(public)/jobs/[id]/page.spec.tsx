@@ -1,19 +1,28 @@
 /** @jest-environment jsdom */
 import { render, screen } from '@testing-library/react';
 import { getJobListing } from '@/modules/job-listings/api/job-listings.api';
-import type { JobListingPublicView } from '@/modules/job-listings/types';
+import type { JobListingPublicDetailView } from '@/modules/job-listings/types';
 import JobListingDetailPage from './page';
 
 jest.mock('@/modules/job-listings/api/job-listings.api', () => ({ getJobListing: jest.fn() }));
 jest.mock('@/modules/saved-items/SaveButton', () => ({ SaveButton: () => null }));
 jest.mock('@/modules/listing-reports/ReportButton', () => ({ ReportButton: () => null }));
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 
 const mockGetJobListing = getJobListing as jest.Mock;
 
-function job(overrides: Partial<JobListingPublicView> = {}): JobListingPublicView {
+function job(overrides: Partial<JobListingPublicDetailView> = {}): JobListingPublicDetailView {
   return {
     id: 'j1',
     place_id: null,
+    place: null,
     employer_name: 'Nhà hàng A',
     employer_role: null,
     title: 'Phục vụ bàn',
@@ -40,7 +49,7 @@ function job(overrides: Partial<JobListingPublicView> = {}): JobListingPublicVie
   };
 }
 
-async function renderPage(j: JobListingPublicView, locale = 'vi') {
+async function renderPage(j: JobListingPublicDetailView, locale = 'vi') {
   mockGetJobListing.mockResolvedValueOnce(j);
   render(await JobListingDetailPage({ params: Promise.resolve({ id: j.id, locale }) }));
 }
@@ -72,5 +81,19 @@ describe('JobListingDetailPage — ngành nghề + hạn tuyển (bug thiếu đ
     await renderPage(job({ job_category: 'F&B', expires_at: '2026-12-31T00:00:00.000Z' }), 'en');
     expect(screen.getByText('Job category')).toBeInTheDocument();
     expect(screen.getByText('Application deadline')).toBeInTheDocument();
+  });
+});
+
+// "Place tùy chọn" (mục V đợt 3) — đã ghi được qua place_id từ lâu nhưng chưa từng hiện công khai.
+describe('JobListingDetailPage — liên kết địa điểm (bug thiếu đã sửa)', () => {
+  it('có place → hiện liên kết đúng tên, trỏ đúng slug', async () => {
+    await renderPage(job({ place: { id: 'p1', name: 'Bãi Sao', slug: 'bai-sao' } }));
+    const link = screen.getByRole('link', { name: 'Bãi Sao' });
+    expect(link).toHaveAttribute('href', '/vi/places/bai-sao');
+  });
+
+  it('không có place (null) → KHÔNG hiện mục "Tại:"', async () => {
+    await renderPage(job({ place: null }));
+    expect(screen.queryByText(/Tại:/)).not.toBeInTheDocument();
   });
 });

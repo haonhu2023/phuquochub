@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
+import { suggest, type Suggestion } from '@/modules/search/api/search.api';
 import { createJobListing, updateJobListing } from './api/job-listings.api';
 import {
   JOB_LISTING_EMPLOYMENT_TYPES,
   JOB_LISTING_SALARY_PERIODS,
   JOB_LISTING_SALARY_PERIOD_LABELS,
   jobListingEmploymentTypeLabel,
+  type JobListingSenderDetailView,
   type JobListingSenderView,
   type UpsertJobListingInput,
 } from './types';
@@ -16,8 +18,11 @@ import uiStyles from '@/components/ui/ui.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
 interface Props {
-  /** Có sẵn → sửa (PATCH); không có → tạo mới (POST). */
-  existing?: JobListingSenderView;
+  /** Có sẵn → sửa (PATCH); không có → tạo mới (POST). Có `place` (tên/slug của place_id đang liên
+   * kết, nếu có) để prefill lại ô chọn — xem JobListingLinkedPlace's ghi chú ở types.ts. */
+  existing?: JobListingSenderDetailView;
+  // create/update KHÔNG trả `place` (chỉ getMine() có) — picker đã biết tên vừa chọn từ state cục
+  // bộ, không cần backend echo lại, nên kiểu trả về ở đây giữ nguyên JobListingSenderView gốc.
   onSaved: (saved: JobListingSenderView) => void;
 }
 
@@ -64,6 +69,51 @@ export function JobListingForm({ existing, onSaved }: Props) {
   const [input, setInput] = useState<UpsertJobListingInput>(toInput(existing));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // "Place tùy chọn" (mục V đợt 3) — single-select, tái dùng CHÍNH API tìm kiếm PlacePicker (guide-
+  // editor) đã dùng cho khối place_collection, nhưng hình dạng khác hẳn (một place, không phải danh
+  // sách có thứ tự) nên viết riêng tại đây thay vì ép dùng lại component multi-select đó.
+  const [selectedPlaceName, setSelectedPlaceName] = useState<string | null>(existing?.place?.name ?? null);
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [placeSuggestions, setPlaceSuggestions] = useState<Suggestion[]>([]);
+  const [placeSearching, setPlaceSearching] = useState(false);
+  const [placeSearchError, setPlaceSearchError] = useState<string | null>(null);
+  const placeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showPlaceSuggestions = placeQuery.trim().length >= 2;
+
+  useEffect(() => {
+    if (placeDebounceRef.current) clearTimeout(placeDebounceRef.current);
+    const q = placeQuery.trim();
+    if (q.length < 2) return;
+    placeDebounceRef.current = setTimeout(() => {
+      setPlaceSearching(true);
+      suggest(q)
+        .then((results) => {
+          setPlaceSuggestions(results);
+          setPlaceSearchError(null);
+        })
+        .catch(() => {
+          setPlaceSuggestions([]);
+          setPlaceSearchError('Không tìm được địa điểm. Thử lại.');
+        })
+        .finally(() => setPlaceSearching(false));
+    }, 300);
+    return () => {
+      if (placeDebounceRef.current) clearTimeout(placeDebounceRef.current);
+    };
+  }, [placeQuery]);
+
+  function pickPlace(s: Suggestion) {
+    set('place_id', s.id);
+    setSelectedPlaceName(s.title);
+    setPlaceQuery('');
+    setPlaceSuggestions([]);
+  }
+
+  function clearPlace() {
+    set('place_id', null);
+    setSelectedPlaceName(null);
+  }
 
   function set<K extends keyof UpsertJobListingInput>(key: K, value: UpsertJobListingInput[K]) {
     setInput((prev) => ({ ...prev, [key]: value }));
@@ -160,6 +210,53 @@ export function JobListingForm({ existing, onSaved }: Props) {
             />
           </div>
         </div>
+      </fieldset>
+
+      {/* "Place tùy chọn" (mục V đợt 3) — liên kết việc làm này tới một địa điểm bất kỳ trên nền
+          tảng (vd khách sạn/nhà hàng đang tuyển). KHÔNG cấp quyền đại diện/quản lý địa điểm đó —
+          chỉ là một liên kết tham khảo cho người tìm việc. */}
+      <fieldset className={placeMgmtStyles.section}>
+        <legend className={placeMgmtStyles.sectionTitle}>Địa điểm liên quan (tuỳ chọn)</legend>
+        {selectedPlaceName ? (
+          <p className={placeMgmtStyles.fieldHint}>
+            Đang liên kết: <strong>{selectedPlaceName}</strong>{' '}
+            <button type="button" className={placeMgmtStyles.linkBtn} onClick={clearPlace} disabled={submitting}>
+              Bỏ liên kết
+            </button>
+          </p>
+        ) : (
+          <div className={uiStyles.field}>
+            <label className={uiStyles.fieldLabel} htmlFor="jl-place-search">
+              Tìm địa điểm theo tên
+            </label>
+            <input
+              id="jl-place-search"
+              type="text"
+              className={placeMgmtStyles.input}
+              value={placeQuery}
+              onChange={(e) => setPlaceQuery(e.target.value)}
+              disabled={submitting}
+              placeholder="Vd: Bãi Sao, Novotel Phú Quốc..."
+            />
+            {showPlaceSuggestions && placeSearching && <p className={placeMgmtStyles.fieldHint}>Đang tìm...</p>}
+            {showPlaceSuggestions && placeSearchError && (
+              <p role="alert" className={placeMgmtStyles.alert}>
+                {placeSearchError}
+              </p>
+            )}
+            {showPlaceSuggestions && placeSuggestions.length > 0 && (
+              <ul className={placeMgmtStyles.list}>
+                {placeSuggestions.map((s) => (
+                  <li key={s.id}>
+                    <button type="button" className={placeMgmtStyles.linkBtn} onClick={() => pickPlace(s)} disabled={submitting}>
+                      {s.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </fieldset>
 
       <fieldset className={placeMgmtStyles.section}>

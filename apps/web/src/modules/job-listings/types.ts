@@ -88,6 +88,21 @@ export interface JobListingModeratorView extends JobListingSenderView {
   reviewer_id: string | null;
 }
 
+// Bug thiếu đã sửa (2026-10-11): "place tùy chọn" (mục V đợt 3) đã ghi được qua place_id từ lâu
+// nhưng response chỉ có id trần — không đủ để hiện lại cho người dùng chọn gì. Backend ghép thêm
+// tên/slug (JobListingsService.attachPlace()) CHỈ ở hai lời gọi đọc MỘT bản ghi (getMine/
+// getPublicById) — KHÔNG ở listMine()/create()/update()/submit()/close()/reopen(), nên field này
+// KHÔNG thuộc JobListingBaseView dùng chung (sẽ nói sai cho các lời gọi không có nó). Form không
+// cần backend echo lại sau khi lưu — picker đã biết tên địa điểm vừa chọn từ state cục bộ.
+export interface JobListingLinkedPlace {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export type JobListingPublicDetailView = JobListingPublicView & { place: JobListingLinkedPlace | null };
+export type JobListingSenderDetailView = JobListingSenderView & { place: JobListingLinkedPlace | null };
+
 export interface UpsertJobListingInput {
   employer_name: string;
   employer_role?: string | null;
