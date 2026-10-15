@@ -41,34 +41,80 @@ release_manifest_verify "$PROJECT_DIR" "$TAG" || {
   exit 1
 }
 
-echo "[deploy] === Step 5: build images tagged $TAG ==="
-# Image provenance (2026-08-14): stamp the commit and build time INTO the images as OCI labels, so
-# `docker inspect` can answer "which commit is this?" without bracketing dist/ against marker files
-# -- the forensic exercise that was required when the running api image turned out to be
-# unidentifiable. $TAG is the git sha/tag being released, which is exactly the revision to record.
-BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR" \
-  --build-arg "GIT_COMMIT=$TAG" \
-  --build-arg "BUILD_DATE=$BUILD_DATE"
-# Deploy reconciliation (fd224c1 rollout, 2026-08-10): NEXT_PUBLIC_MAP_TILE_URL's default contains
-# literal `{`/`}` (the MapLibre tile template). POSIX `${VAR:-default}` parameter expansion ends at
-# the FIRST unescaped `}` in `default` -- here that's the one closing `{z}` -- so embedding the
-# literal inline (as this used to) silently truncated to ".../{z" and appended the remainder
-# ("/{x}/{y}.png}") as plain trailing text, leaving a stray `}` in the built value. Confirmed
-# reproducing: `sh -c 'echo "${U:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"'` prints
-# `https://tile.openstreetmap.org/{z/{x}/{y}.png}` -- that trailing `}` is exactly what showed up
-# percent-encoded (`%7D`) after MapLibre substituted a real tile y-value (`.../965.png%7D`). Fixed
-# by resolving the default as a PLAIN assignment (no braces inside a `${...}` expansion) instead.
-TILE_URL="${NEXT_PUBLIC_MAP_TILE_URL:-}"
-if [ -z "$TILE_URL" ]; then
-  TILE_URL="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+echo "[deploy] === Step 5: build images tagged $TAG (or verify pre-built ones if SKIP_BUILD=1) ==="
+# SKIP_BUILD (2026-10-15) -- release_manifest_verify above proves the SOURCE TREE matches $TAG; it
+# proves nothing about build INPUTS (base image, lockfile resolution, build-arg values) or OUTPUTS
+# (the resulting image), and a build's own "CACHED" layers from a PRIOR run are no guarantee the
+# NEXT run reproduces them (base image could have moved, buildx cache could be pruned, etc). A
+# candidate that was already built and verified end-to-end (integration/browser tests against the
+# EXACT image) on an isolated stack is a STRONGER guarantee than "build again and hope it matches"
+# -- rebuilding here would silently substitute an unverified new artifact for the one that was
+# actually tested. SKIP_BUILD=1 uses the already-tagged images instead of rebuilding, with identity
+# re-checked HERE and again immediately before cutover (Step 9) so nothing can swap the tag out
+# from under this run. EXPECTED_API_IMAGE_ID/EXPECTED_WEB_IMAGE_ID (the `docker image inspect
+# --format '{{.Id}}'` value recorded when the candidate was tested) are optional but STRONGLY
+# recommended -- without them this only proves the tag exists, not that it is the exact artifact
+# that was verified.
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  echo "[deploy]     SKIP_BUILD=1 -- using already-built images, NOT rebuilding. Integrity gate"
+  echo "[deploy]     above still ran (source tree verified); this only skips the 'docker build'"
+  echo "[deploy]     calls themselves, which is the one step that cannot be re-verified by re-running."
+  for img in "phuquochub-api:$TAG" "phuquochub-web:$TAG"; do
+    docker image inspect "$img" >/dev/null 2>&1 || {
+      echo "[deploy] ERROR: SKIP_BUILD=1 but $img does not exist locally. Build or load it first" >&2
+      echo "[deploy]        (e.g. docker load < <archive>.tar, or unset SKIP_BUILD to build now" >&2
+      echo "[deploy]        from this already-integrity-verified source tree)." >&2
+      exit 1
+    }
+  done
+  API_ID=$(docker image inspect "phuquochub-api:$TAG" --format '{{.Id}}')
+  WEB_ID=$(docker image inspect "phuquochub-web:$TAG" --format '{{.Id}}')
+  echo "[deploy]     phuquochub-api:$TAG -> $API_ID"
+  echo "[deploy]     phuquochub-web:$TAG -> $WEB_ID"
+  if [ -n "${EXPECTED_API_IMAGE_ID:-}" ] && [ "$API_ID" != "$EXPECTED_API_IMAGE_ID" ]; then
+    echo "[deploy] ERROR: phuquochub-api:$TAG is $API_ID, expected $EXPECTED_API_IMAGE_ID." >&2
+    echo "[deploy]        Refusing to deploy an artifact that does not match what was verified." >&2
+    exit 1
+  fi
+  if [ -n "${EXPECTED_WEB_IMAGE_ID:-}" ] && [ "$WEB_ID" != "$EXPECTED_WEB_IMAGE_ID" ]; then
+    echo "[deploy] ERROR: phuquochub-web:$TAG is $WEB_ID, expected $EXPECTED_WEB_IMAGE_ID." >&2
+    echo "[deploy]        Refusing to deploy an artifact that does not match what was verified." >&2
+    exit 1
+  fi
+  echo "[deploy]     Identity verified (existence + expected ID match, where provided)."
+  RESOLVED_API_ID="$API_ID"
+  RESOLVED_WEB_ID="$WEB_ID"
+else
+  # Image provenance (2026-08-14): stamp the commit and build time INTO the images as OCI labels,
+  # so `docker inspect` can answer "which commit is this?" without bracketing dist/ against marker
+  # files -- the forensic exercise that was required when the running api image turned out to be
+  # unidentifiable. $TAG is the git sha/tag being released, which is exactly the revision to record.
+  BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  docker build -f "$PROJECT_DIR/apps/api/Dockerfile" -t "phuquochub-api:$TAG" "$PROJECT_DIR" \
+    --build-arg "GIT_COMMIT=$TAG" \
+    --build-arg "BUILD_DATE=$BUILD_DATE"
+  # Deploy reconciliation (fd224c1 rollout, 2026-08-10): NEXT_PUBLIC_MAP_TILE_URL's default contains
+  # literal `{`/`}` (the MapLibre tile template). POSIX `${VAR:-default}` parameter expansion ends
+  # at the FIRST unescaped `}` in `default` -- here that's the one closing `{z}` -- so embedding the
+  # literal inline (as this used to) silently truncated to ".../{z" and appended the remainder
+  # ("/{x}/{y}.png}") as plain trailing text, leaving a stray `}` in the built value. Confirmed
+  # reproducing: `sh -c 'echo "${U:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}"'` prints
+  # `https://tile.openstreetmap.org/{z/{x}/{y}.png}` -- that trailing `}` is exactly what showed up
+  # percent-encoded (`%7D`) after MapLibre substituted a real tile y-value (`.../965.png%7D`). Fixed
+  # by resolving the default as a PLAIN assignment (no braces inside a `${...}` expansion) instead.
+  TILE_URL="${NEXT_PUBLIC_MAP_TILE_URL:-}"
+  if [ -z "$TILE_URL" ]; then
+    TILE_URL="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+  fi
+  docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
+    --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
+    --build-arg "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}" \
+    --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
+    --build-arg "GIT_COMMIT=$TAG" \
+    --build-arg "BUILD_DATE=$BUILD_DATE"
+  RESOLVED_API_ID=$(docker image inspect "phuquochub-api:$TAG" --format '{{.Id}}')
+  RESOLVED_WEB_ID=$(docker image inspect "phuquochub-web:$TAG" --format '{{.Id}}')
 fi
-docker build -f "$PROJECT_DIR/apps/web/Dockerfile" -t "phuquochub-web:$TAG" "$PROJECT_DIR" \
-  --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
-  --build-arg "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}" \
-  --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
-  --build-arg "GIT_COMMIT=$TAG" \
-  --build-arg "BUILD_DATE=$BUILD_DATE"
 
 echo "[deploy] === Step 6: tag recorded as phuquochub-api:$TAG / phuquochub-web:$TAG ==="
 echo "[deploy]     (retain this tag -- scripts/rollback.sh needs it to roll back TO)"
@@ -116,6 +162,31 @@ if ! docker exec "phuquoc-api-smoketest-$TAG" node -e "require('http').get('http
 fi
 docker rm -f "phuquoc-api-smoketest-$TAG"
 echo "[deploy] Smoke test passed."
+
+echo "[deploy] === Step 8b: re-verify image identity immediately before cutover ==="
+# Closes the gap between "we resolved/built this image at Step 5" and "we actually hand it to
+# compose at Step 9" -- migrations and the smoke test both took real time, during which something
+# else on the host (a concurrent build, a `docker pull`, a manual `docker tag`) could have
+# repointed "phuquochub-api:$TAG" / "phuquochub-web:$TAG" at a different image without this script
+# noticing. Re-reads the tag NOW and compares against what Step 5 resolved, so the artifact that
+# gets cut over is provably the same one that was smoke-tested two steps ago -- not just "a build
+# that happened to carry the same tag at some point."
+API_ID_NOW=$(docker image inspect "phuquochub-api:$TAG" --format '{{.Id}}')
+WEB_ID_NOW=$(docker image inspect "phuquochub-web:$TAG" --format '{{.Id}}')
+if [ "$API_ID_NOW" != "$RESOLVED_API_ID" ]; then
+  echo "[deploy] ERROR: phuquochub-api:$TAG changed identity since Step 5/8 (was $RESOLVED_API_ID," >&2
+  echo "[deploy]        now $API_ID_NOW). Refusing to cut over to an artifact that was never" >&2
+  echo "[deploy]        smoke-tested. Deploy HALTED -- the previous containers are untouched." >&2
+  exit 1
+fi
+if [ "$WEB_ID_NOW" != "$RESOLVED_WEB_ID" ]; then
+  echo "[deploy] ERROR: phuquochub-web:$TAG changed identity since Step 5 (was $RESOLVED_WEB_ID," >&2
+  echo "[deploy]        now $WEB_ID_NOW). Refusing to cut over to an unverified artifact. Deploy" >&2
+  echo "[deploy]        HALTED -- the previous containers are untouched." >&2
+  exit 1
+fi
+echo "[deploy]     Confirmed: phuquochub-api:$TAG = $API_ID_NOW (unchanged since Step 5/8)"
+echo "[deploy]     Confirmed: phuquochub-web:$TAG = $WEB_ID_NOW (unchanged since Step 5)"
 
 echo "[deploy] === Step 9: cutover -- point the compose stack at the new tag and redeploy ==="
 # Record what is live BEFORE the swap, so Step 9b can tell the operator the exact tag to hand to

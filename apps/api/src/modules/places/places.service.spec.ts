@@ -563,6 +563,28 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(revision.diff).toEqual({ fields: ['province'] });
     });
 
+    // Bằng chứng audit thật cho price_range/opening_hours (yêu cầu 15/10/2026 — "content_version
+    // tăng không tự chứng minh audit"): price_range và opening_hours đi qua CHÍNH cùng filter
+    // REVISABLE_FIELDS + recordPlaceRevision() đã được kiểm ở trên cho 'name'/'province' — test
+    // này khoá trực tiếp HAI trường đó, không suy luận từ trường khác.
+    it('đổi price_range → ghi revision với diff.fields=["price_range"]', async () => {
+      await service.update('p1', { price_range: 'high' } as UpdatePlaceDto, 'u1');
+
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.status).toBe(RevisionStatus.APPROVED);
+      expect(revision.diff).toEqual({ fields: ['price_range'] });
+      expect(revision.editorId).toBe('u1');
+    });
+
+    it('đổi opening_hours → ghi revision với diff.fields=["opening_hours"]', async () => {
+      await service.update('p1', { opening_hours: { mon: '08:00-20:00' } } as unknown as UpdatePlaceDto, 'u1');
+
+      const [revision] = revisions.recordPlaceRevision.mock.calls[0];
+      expect(revision.status).toBe(RevisionStatus.APPROVED);
+      expect(revision.diff).toEqual({ fields: ['opening_hours'] });
+      expect(revision.editorId).toBe('u1');
+    });
+
     it('KHÔNG ghi revision khi patch rỗng (không trường revisable nào đổi)', async () => {
       await service.update('p1', {} as UpdatePlaceDto, 'u1');
 
