@@ -62,6 +62,12 @@ describe('PlacesController — ranh giới công khai / đặc quyền', () => {
       ['archive', 'Place.Archive'],
       ['approve', 'Place.Approve'],
       ['updateFaqs', 'Place.Edit.Managed'],
+      // Gap thật phát hiện 15/10/2026 (đối chiếu caller khi sửa preview()'s price/opening-hours
+      // gate): `preview` chưa từng được khoá vào bảng này — permission thật ĐÚNG (route vẫn gác
+      // `Place.Edit.Managed` + `@AuthorizationContext`, không đổi), chỉ là test metadata quên khai
+      // báo, nên một lỗi gõ permission tương lai ở route này sẽ không bị bắt. Đóng gap, không phải
+      // thay đổi hành vi.
+      ['preview', 'Place.Edit.Managed'],
     ];
 
     it.each(EXPECTED)('`%s` yêu cầu đúng permission %s', (name, permission) => {
