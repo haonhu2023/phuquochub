@@ -987,6 +987,31 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(res.opening_hours).toEqual(OH);
       expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).not.toHaveBeenCalled();
     });
+
+    // Bug THỨ HAI phát hiện 15/10/2026 (owner chất vấn trực tiếp "liệu sửa field khác có vô tình
+    // xoá price_range không") — cùng nguyên nhân, NẶNG HƠN opening_hours: preview() cũng bị
+    // redactUntrustedPriceRange() áp nhầm. PlaceForm.tsx khởi tạo ô chọn price_range từ preview()
+    // VÀ luôn gửi field này trong payload PATCH (không có quy ước "để trống = không đổi") —
+    // PlacesService.update() áp `dto.price_range !== undefined` (null vẫn được áp) — nghĩa là chỉ
+    // cần owner sửa BẤT KỲ field khác trên một place chưa verification_status trusted, price_range
+    // thật bị XOÁ THẬT trong DB qua đúng luồng ghi hợp lệ. Test này khoá đúng field preview() phải
+    // KHÔNG redact, không phải chỉ opening_hours.
+    it('KHÔNG áp price trust gate — owner xem lại preview thấy price_range THẬT dù verification_status chưa trusted (chặn nguy cơ editor ghi đè giá thành null)', async () => {
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({
+        id: 'p1',
+        price_range: 'high',
+        verification_status: 'pending',
+      });
+      contactsRepo.listByOwner.mockResolvedValue([]);
+      pricesRepo.current.mockResolvedValue([]);
+      mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+      placesRepo.listFaqs.mockResolvedValue([]);
+      sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+
+      const res = await service.preview('p1');
+
+      expect(res.price_range).toBe('high');
+    });
   });
 
   // -------------------------------------------------------------------------

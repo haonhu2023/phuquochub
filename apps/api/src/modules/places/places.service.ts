@@ -251,17 +251,34 @@ export class PlacesService {
     // cột quên áp đúng phạm vi ở một trong hai chỗ" mà comment gốc bên dưới cảnh báo, chỉ theo
     // chiều ngược (áp THỪA, không áp THIẾU). preview() là đường đọc đặc quyền (audit/editor tự xem
     // lại), không phải một client công khai — phải luôn thấy giá trị THẬT đang lưu trong DB.
-    return this.buildDetailResponse(row, undefined, { applyOpeningHoursGate: false });
+    //
+    // Bug THỨ HAI, cùng nguyên nhân, NẶNG HƠN — phát hiện 15/10/2026 khi owner chất vấn trực tiếp
+    // "liệu sửa field khác có vô tình xoá price_range không": `redactUntrustedPriceRange` (price
+    // trust gate, 2026-08-28) CŨNG bị áp nhầm vào preview() qua CHÍNH hàm này. Khác opening_hours
+    // (chỉ ảnh hưởng hiển thị), đây là MẤT DỮ LIỆU THẬT: `PlaceForm.tsx` khởi tạo ô chọn
+    // price_range từ `initial.price_range` (tức từ preview(), đã bị redact nhầm thành `null` khi
+    // verification_status chưa tin cậy) và LUÔN gửi `price_range` trong payload PATCH (không có
+    // quy ước "để trống = không đổi" cho field này) — `PlacesService.update()` áp
+    // `dto.price_range !== undefined` (null VẪN được áp, không bị coi là "không gửi") — nghĩa là
+    // chỉ cần owner mở editor một place CHƯA trusted rồi lưu BẤT KỲ field nào khác (không đụng tới
+    // price_range), `price_range` thật bị ghi đè thành `null` NGAY, qua đúng luồng ghi hợp lệ,
+    // không cần làm gì bất thường. Sửa CÙNG cách: `applyPriceRangeGate: false` cho preview().
+    return this.buildDetailResponse(row, undefined, { applyOpeningHoursGate: false, applyPriceRangeGate: false });
   }
 
   // Thân của getBySlug/preview — TÁCH RA vì hai route chỉ khác nguồn đọc row (published-only vs
   // đặc quyền không lọc status), không khác cách ghép response. Một định nghĩa response, hai
   // đường vào — không lệch được như từng lệch (F-17/F-19 đều là loại lỗi "một cột quên map ở một
-  // trong hai chỗ"). `applyOpeningHoursGate` (mặc định true, đúng hành vi getBySlug/public cũ) —
-  // preview() tắt nó (xem comment của preview() ở trên); KHÔNG thêm option tương tự cho field nào
-  // khác chỉ để phục vụ việc này (phạm vi chỉ opening_hours, đúng field duy nhất đang có cổng).
-  private async buildDetailResponse(row: PlaceDetailRow, locale?: string, options?: { applyOpeningHoursGate?: boolean }) {
+  // trong hai chỗ"). `applyOpeningHoursGate`/`applyPriceRangeGate` (mặc định true, đúng hành vi
+  // getBySlug/public cũ) — preview() tắt CẢ HAI (xem comment của preview() ở trên). Đây là hai
+  // field CÓ cổng public hôm nay — KHÔNG thêm option tương tự cho field khác chưa có cổng nào.
+  private async buildDetailResponse(
+    row: PlaceDetailRow,
+    locale?: string,
+    options?: { applyOpeningHoursGate?: boolean; applyPriceRangeGate?: boolean },
+  ) {
     const applyOpeningHoursGate = options?.applyOpeningHoursGate ?? true;
+    const applyPriceRangeGate = options?.applyPriceRangeGate ?? true;
     // Ghép đủ contract openapi Place: scalar chi tiết + contacts/prices/media/faqs.
     const [
       contacts,
@@ -309,7 +326,9 @@ export class PlacesService {
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
       // cậy — trước đây route công khai này luôn trả raw price_range trong response JSON.
-      ...redactUntrustedPriceRange(toPlaceDetail(row)),
+      // `applyPriceRangeGate=false` (preview() — xem comment của preview() ở trên) bỏ qua redact
+      // này hoàn toàn, giữ nguyên `toPlaceDetail(row)` (giá trị thật trong DB).
+      ...(applyPriceRangeGate ? redactUntrustedPriceRange(toPlaceDetail(row)) : toPlaceDetail(row)),
       // Public Place i18n Read Path: overlay SAU cùng, ghi đè bất kỳ giá trị nào toPlaceDetail đã
       // đặt — bản dịch hợp lệ nếu có, nếu không thì giữ nguyên giá trị gốc. `id`/`slug` KHÔNG bao
       // giờ nằm trong overlay này — identity không đổi theo locale.
