@@ -60,6 +60,30 @@ describe('DashboardNav', () => {
     expect(screen.getByRole('link', { name: 'Nội dung website' })).toHaveAttribute('href', '/dashboard/content');
   });
 
+  // Phát hiện 2026-10-11 (xây /dashboard/opening-hours-evidence): route đã gác đúng Source.Verify
+  // ở backend từ đầu, nhưng DashboardNav không có mục nào trỏ tới nó — moderator đăng nhập sẽ
+  // không thấy trang này trừ khi tự gõ URL. content_owner KHÔNG thấy mục này (Source.Verify chỉ
+  // cấp trực tiếp cho moderator, khác JobListing.Moderate/RealEstateListing.Moderate).
+  it('moderator → thấy "Duyệt bằng chứng giờ mở cửa"; content_owner → KHÔNG thấy (Source.Verify không cấp cho content_owner)', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canReviewOpeningHoursEvidence: true });
+    render(<DashboardNav />);
+
+    expect(await screen.findByRole('link', { name: 'Duyệt bằng chứng giờ mở cửa' })).toHaveAttribute(
+      'href',
+      '/dashboard/opening-hours-evidence',
+    );
+  });
+
+  it('content_owner (canReviewOpeningHoursEvidence: false) → KHÔNG thấy "Duyệt bằng chứng giờ mở cửa"', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canReviewJobListings: true });
+    render(<DashboardNav />);
+
+    await waitFor(() => expect(mockFetchCapabilities).toHaveBeenCalled());
+    expect(screen.queryByRole('link', { name: 'Duyệt bằng chứng giờ mở cửa' })).not.toBeInTheDocument();
+  });
+
   it('chưa xác định capabilities (đang tải) → ẩn hai mục đặc quyền cho tới khi biết chắc, không hiện nhầm rồi ẩn lại', () => {
     mockReadSession.mockReturnValue(SESSION);
     mockFetchCapabilities.mockReturnValue(new Promise(() => {})); // không bao giờ resolve trong test này

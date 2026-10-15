@@ -36,11 +36,12 @@ describe('capabilitiesFromRoles', () => {
       canVerifyPrices: false,
       canReviewJobListings: false,
       canReviewRealEstateListings: false,
+      canReviewOpeningHoursEvidence: false,
     });
   });
 
   it.each([['moderator'], ['administrator'], ['super_administrator']])(
-    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, việc cần làm (Place.Approve), duyệt đề xuất chỉnh sửa (PlaceEditProposal.Moderate), xác minh giá (Verification.Verify) — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ), KHÔNG nội dung website/tình trạng sao lưu',
+    'vai trò "%s": thấy biên tập, kiểm duyệt, duyệt bản dịch, biên tập cẩm nang, việc cần làm (Place.Approve), duyệt đề xuất chỉnh sửa (PlaceEditProposal.Moderate), xác minh giá (Verification.Verify), duyệt bằng chứng giờ mở cửa (Source.Verify) — nhưng KHÔNG tự duyệt (Media.Moderate.Own chỉ content_owner giữ), KHÔNG nội dung website/tình trạng sao lưu',
     (role) => {
       expect(capabilitiesFromRoles([role])).toEqual({
         canEditorial: true,
@@ -56,6 +57,7 @@ describe('capabilitiesFromRoles', () => {
         canVerifyPrices: true,
         canReviewJobListings: true,
         canReviewRealEstateListings: true,
+        canReviewOpeningHoursEvidence: true,
       });
     },
   );
@@ -66,7 +68,7 @@ describe('capabilitiesFromRoles', () => {
   // SiteContent.Edit/Ops.BackupStatus.View (SeedContentOwnerRole, launch-readiness 2026-09-22) —
   // phát hiện qua đăng nhập thật (browser smoke test) rằng thiếu các dòng sau khiến owner có đủ
   // quyền API nhưng dashboard KHÔNG hiện lối vào nào, y như một member trơn.
-  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, tình trạng sao lưu, việc cần làm, duyệt đề xuất chỉnh sửa, LẪN xác minh giá (price verification ownership, 2026-10-01: Price.Verify riêng, KHÔNG phải Verification.Verify — place/contact vẫn moderator-only)', () => {
+  it('content_owner: thấy CẢ biên tập, kiểm duyệt, duyệt bản dịch, tự duyệt ảnh của mình, biên tập cẩm nang, nội dung website, tình trạng sao lưu, việc cần làm, duyệt đề xuất chỉnh sửa, LẪN xác minh giá (price verification ownership, 2026-10-01: Price.Verify riêng, KHÔNG phải Verification.Verify — place/contact vẫn moderator-only) — NHƯNG KHÔNG duyệt bằng chứng giờ mở cửa (Source.Verify chỉ cấp trực tiếp cho moderator, content_owner không giữ)', () => {
     expect(capabilitiesFromRoles(['content_owner'])).toEqual({
       canEditorial: true,
       canModerate: true,
@@ -81,6 +83,7 @@ describe('capabilitiesFromRoles', () => {
       canVerifyPrices: true,
       canReviewJobListings: true,
       canReviewRealEstateListings: true,
+      canReviewOpeningHoursEvidence: false,
     });
   });
 
@@ -106,6 +109,7 @@ describe('capabilitiesFromRoles', () => {
       canVerifyPrices: false,
       canReviewJobListings: false,
       canReviewRealEstateListings: false,
+      canReviewOpeningHoursEvidence: false,
     });
   });
 
@@ -138,6 +142,7 @@ describe('capabilitiesFromRoles', () => {
         canVerifyPrices: false,
         canReviewJobListings: false,
         canReviewRealEstateListings: false,
+        canReviewOpeningHoursEvidence: false,
       });
     });
 

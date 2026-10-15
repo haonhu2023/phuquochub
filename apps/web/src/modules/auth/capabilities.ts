@@ -115,6 +115,14 @@ const REAL_ESTATE_LISTING_MODERATE_ROLES = ['content_owner', 'moderator', 'admin
  *  VerificationsController.assertCanVerify). */
 const VERIFICATION_VERIFY_ROLES = ['moderator', 'administrator', 'super_administrator', 'content_owner'];
 
+/** Vai trò giữ `Source.Verify` (SeedSourcePermissions1720001800000 — cấp TRỰC TIẾP cho `moderator`
+ *  CHỈ, không cấp cho `content_owner` ở bất kỳ migration nào — khác hẳn JobListing.Moderate/
+ *  RealEstateListing.Moderate ở trên, nơi content_owner CÓ giữ trực tiếp). Phát hiện 2026-10-11
+ *  khi xây trang `/dashboard/opening-hours-evidence`: route đã gác đúng `Source.Verify` ở backend
+ *  từ đầu, nhưng KHÔNG CÓ lối vào nào trong `DashboardNav` — một moderator đăng nhập sẽ không thấy
+ *  trang này trừ khi tự gõ URL, đúng loại lỗi "UI không tới được" dù API/quyền đã đúng. */
+const SOURCE_VERIFY_ROLES = ['moderator', 'administrator', 'super_administrator'];
+
 export interface UserCapabilities {
   /** Hiện lối vào "Biên tập nội dung" (sửa địa điểm chưa có chủ, thêm ảnh/giờ/liên hệ). */
   canEditorial: boolean;
@@ -141,6 +149,8 @@ export interface UserCapabilities {
   canReviewJobListings: boolean;
   /** Hiện lối vào "Duyệt tin bất động sản" (`/dashboard/real-estate/moderation` — RealEstateListing.Moderate). */
   canReviewRealEstateListings: boolean;
+  /** Hiện lối vào "Duyệt bằng chứng giờ mở cửa" (`/dashboard/opening-hours-evidence` — Source.Verify, moderator only, KHÔNG content_owner). */
+  canReviewOpeningHoursEvidence: boolean;
 }
 
 export const NO_CAPABILITIES: UserCapabilities = {
@@ -157,6 +167,7 @@ export const NO_CAPABILITIES: UserCapabilities = {
   canVerifyPrices: false,
   canReviewJobListings: false,
   canReviewRealEstateListings: false,
+  canReviewOpeningHoursEvidence: false,
 };
 
 /**
@@ -181,5 +192,6 @@ export function capabilitiesFromRoles(roles: readonly unknown[] | null | undefin
     canVerifyPrices: codes.some((c) => VERIFICATION_VERIFY_ROLES.includes(c)),
     canReviewJobListings: codes.some((c) => JOB_LISTING_MODERATE_ROLES.includes(c)),
     canReviewRealEstateListings: codes.some((c) => REAL_ESTATE_LISTING_MODERATE_ROLES.includes(c)),
+    canReviewOpeningHoursEvidence: codes.some((c) => SOURCE_VERIFY_ROLES.includes(c)),
   };
 }

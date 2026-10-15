@@ -53,6 +53,11 @@ export function DashboardNav() {
       label: 'Hàng chờ báo cáo',
       show: caps.canReviewJobListings || caps.canReviewRealEstateListings,
     },
+    {
+      href: '/dashboard/opening-hours-evidence',
+      label: 'Duyệt bằng chứng giờ mở cửa',
+      show: caps.canReviewOpeningHoursEvidence,
+    },
     { href: '/dashboard/help', label: 'Hướng dẫn', show: true },
   ];
 

@@ -57,6 +57,7 @@ const EDITORIAL_CAPS: UserCapabilities = {
   canVerifyPrices: false,
   canReviewJobListings: false,
   canReviewRealEstateListings: false,
+  canReviewOpeningHoursEvidence: false,
 };
 
 function authed() {
