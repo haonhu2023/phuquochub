@@ -296,7 +296,7 @@ export default async function PlaceDetailPage({ params }: Params) {
         />
       </header>
 
-      <ClaimCta placeId={place.id} placeName={place.name} />
+      <ClaimCta placeId={place.id} placeName={place.name} locale={locale} />
       <ProposeEditCta placeId={place.id} placeName={place.name} placeSlug={place.slug} locale={locale} />
 
       <PlaceGallery media={place.media} placeName={place.name} />

@@ -10,7 +10,7 @@ import { createReview } from './api/reviews.api';
 import { formatReviewDate, ratingStars, reviewMediaAlt, reviewMediaSrc } from './format';
 import type { Review } from './types';
 import { useLocale } from '@/lib/LocaleContext';
-import { localizedHref } from '@/lib/locale';
+import { localizedHref, type Locale } from '@/lib/locale';
 import legalStyles from '@/modules/legal/legal.module.css';
 import styles from './reviews.module.css';
 
@@ -18,6 +18,28 @@ interface Props {
   placeId: string;
   initialReviews: Review[];
 }
+
+// Khoảng trống i18n thật phát hiện 16/10/2026 (nghiệm thu sau release `2889bf8`): phạm vi sửa ở
+// đây CHỈ đúng 3 nhãn đã xác nhận còn tiếng Việt ở `/en` (tiêu đề mục, dòng trống, gợi ý đăng
+// nhập) — `locale` đã có sẵn trong component (dòng dưới, trước đây không dùng cho văn bản). Phần
+// còn lại của component (form đánh giá khi đã đăng nhập) CHƯA được xác nhận trong lượt nghiệm thu
+// này, cố tình để nguyên, không mở rộng phạm vi sửa.
+const TEXT: Record<Locale, { sectionLabel: string; title: (n: number) => string; empty: string; loginCta: string; loginSuffix: string }> = {
+  vi: {
+    sectionLabel: 'Đánh giá',
+    title: (n) => `Đánh giá (${n})`,
+    empty: 'Chưa có đánh giá nào. Hãy là người đầu tiên!',
+    loginCta: 'Đăng nhập',
+    loginSuffix: 'để viết đánh giá.',
+  },
+  en: {
+    sectionLabel: 'Reviews',
+    title: (n) => `Reviews (${n})`,
+    empty: 'No reviews yet. Be the first!',
+    loginCta: 'Log in',
+    loginSuffix: 'to write a review.',
+  },
+};
 
 // Client Component: đây là luồng GHI đầu tiên của FE ngoài auth (MVP gap-analysis 2026-07-25/26,
 // "Reddit" pillar). Optimistic-append sau khi tạo thành công thay vì refetch — createReview trả
@@ -80,12 +102,14 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
     }
   }
 
+  const t = TEXT[locale];
+
   return (
-    <section className={styles.section} aria-label="Đánh giá">
-      <h2 className={styles.sectionTitle}>Đánh giá ({reviews.length})</h2>
+    <section className={styles.section} aria-label={t.sectionLabel}>
+      <h2 className={styles.sectionTitle}>{t.title(reviews.length)}</h2>
 
       {reviews.length === 0 ? (
-        <p className={styles.empty}>Chưa có đánh giá nào. Hãy là người đầu tiên!</p>
+        <p className={styles.empty}>{t.empty}</p>
       ) : (
         <ul className={styles.reviewList}>
           {reviews.map((r) => (
@@ -125,7 +149,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
 
       {!isAuthenticated && (
         <p className={styles.hint}>
-          <Link href="/login">Đăng nhập</Link> để viết đánh giá.
+          <Link href="/login">{t.loginCta}</Link> {t.loginSuffix}
         </p>
       )}
 

@@ -22,6 +22,14 @@ const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en
 // toàn KHÔNG có, dù cùng dữ liệu location. Cùng href pattern places/[slug] đã dùng (Google Maps
 // ?q=lat,lng) — không phải link hai nơi khác toạ độ.
 const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
+// Khoảng trống i18n thật phát hiện 16/10/2026 (nghiệm thu sau release `2889bf8`): 4 tiêu đề mục
+// dưới đây hardcode tiếng Việt kể cả ở `/en`, trong khi phần còn lại của trang đã song ngữ qua
+// placeDetail.copy.ts (`sectionContact`). "Liên hệ" tái dùng CHÍNH `getPlaceDetailCopy(locale)`
+// đã có sẵn thay vì khai lại; 3 nhãn còn lại là riêng của trang khách sạn, theo đúng khuôn các
+// hằng `Record<Locale, string>` đã có ở trên (BREADCRUMB_*/VIEW_ON_MAP_LABEL).
+const SECTION_HOTEL_INFO_LABEL: Record<Locale, string> = { vi: 'Thông tin khách sạn', en: 'Hotel information' };
+const LABEL_HOTEL_TYPE: Record<Locale, string> = { vi: 'Loại hình', en: 'Type' };
+const SECTION_AMENITIES_LABEL: Record<Locale, string> = { vi: 'Tiện nghi', en: 'Amenities' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -124,9 +132,9 @@ export default async function HotelDetailPage({ params }: Params) {
 
       {h.hotel_details && (
         <section>
-          <h2>Thông tin khách sạn</h2>
+          <h2>{SECTION_HOTEL_INFO_LABEL[locale]}</h2>
           <dl>
-            <dt>Loại hình</dt>
+            <dt>{LABEL_HOTEL_TYPE[locale]}</dt>
             <dd>{HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
             {h.hotel_details.access_route && (
               <>
@@ -176,14 +184,14 @@ export default async function HotelDetailPage({ params }: Params) {
 
       {h.amenities.length > 0 && (
         <section>
-          <h2>Tiện nghi</h2>
+          <h2>{SECTION_AMENITIES_LABEL[locale]}</h2>
           <p>{h.amenities.map((a) => a.label_vi).join(' · ')}</p>
         </section>
       )}
 
       {h.contacts.length > 0 && (
         <section>
-          <h2>Liên hệ</h2>
+          <h2>{getPlaceDetailCopy(locale).sectionContact}</h2>
           <ul>
             {h.contacts.map((c) => (
               <li key={c.id}>
