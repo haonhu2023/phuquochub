@@ -149,7 +149,7 @@ describe('PlaceDetailPage — link Google Maps (tìm theo tên + toạ độ tha
   // ĐIỀU KIỆN, xem apps/api PlaceExternalIdentifiersService) phải đi xuyên qua trang tới ĐÚNG tham
   // số `query_place_id` trên link chính, đổi hẳn nhãn sang "Xem trên Google Maps" (đã xác nhận),
   // KHÔNG còn "Tìm trên Google Maps" (chỉ tìm kiếm). Link toạ độ tham khảo vẫn giữ nguyên song song.
-  it('có google_place_id (đủ điều kiện từ API) -> link chính mở ĐÚNG hồ sơ, kèm query_place_id, nhãn đổi sang "đã xác nhận"', async () => {
+  it('có google_place_id (đủ điều kiện từ API) -> link chính mở ĐÚNG hồ sơ, kèm query_place_id, nhãn đổi sang "đã xác nhận", KHÔNG còn link toạ độ tham khảo (một nút chính là đủ, sửa 16/10/2026 theo owner)', async () => {
     await renderPage(
       place({
         name: 'Bãi Sao',
@@ -161,8 +161,7 @@ describe('PlaceDetailPage — link Google Maps (tìm theo tên + toạ độ tha
     const profileLink = screen.getByRole('link', { name: 'Xem trên Google Maps →' });
     expect(profileLink).toHaveAttribute('href', expect.stringContaining('query_place_id=ChIJ-bai-sao-verified'));
     expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
-    const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
-    expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.0572576,104.0363948');
+    expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
   });
 });
 

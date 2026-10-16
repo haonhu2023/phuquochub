@@ -101,6 +101,16 @@ describe('RestaurantDetailPage — link Google Maps (tìm theo tên + toạ đ�
     const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
     expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
   });
+
+  it('có google_place_id (đủ điều kiện) -> CHỈ một nút chính "Xem trên Google Maps", KHÔNG còn link toạ độ tham khảo (16/10/2026, áp dụng nhất quán với trang places/hotels)', async () => {
+    await renderPage(
+      restaurant({ location: { lat: 10.215, lng: 103.96 }, name: 'Nhà hàng Ra Khơi', address: 'Đường 30/4, Dương Đông', google_place_id: 'ChIJ-rakhoi-verified' }),
+    );
+    const profileLink = screen.getByRole('link', { name: 'Xem trên Google Maps →' });
+    expect(profileLink).toHaveAttribute('href', expect.stringContaining('query_place_id=ChIJ-rakhoi-verified'));
+    expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
+  });
 });
 
 // Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.spec.tsx's ghi chú đầy đủ, cùng khuôn.

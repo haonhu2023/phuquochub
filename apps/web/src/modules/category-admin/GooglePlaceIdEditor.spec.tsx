@@ -171,3 +171,39 @@ describe('GooglePlaceIdEditor — xác nhận/thu hồi (vai trò riêng)', () =
     expect(screen.queryByRole('button', { name: REVOKE_BTN })).not.toBeInTheDocument();
   });
 });
+
+// Lỗi thật phát hiện 16/10/2026 (nghiệm thu Bãi Sao thật: ID lưu thành công, verified_at vẫn null,
+// audit_logs KHÔNG có dòng confirm nào — đúng dấu hiệu "request chưa từng rời trình duyệt", trùng
+// thời điểm một `auth.refresh.reuse_detected` thật trong log). Trước sửa: bấm Lưu/Xác nhận/Thu hồi
+// khi phiên đã mất giữa chừng chỉ `return` im lặng — nút vẫn hiện, bấm "có vẻ hoạt động" nhưng
+// không gửi gì, không báo gì. `readSession()` trả session hợp lệ ở lần gọi ĐẦU (tải trang) rồi
+// null ở các lần sau — mô phỏng đúng kịch bản phiên mất GIỮA LÚC trang đã tải và lúc bấm nút.
+describe('GooglePlaceIdEditor — phiên hết hạn giữa lúc trang đã tải và lúc bấm (không còn im lặng)', () => {
+  it('bấm Lưu khi phiên đã mất → báo lỗi rõ, KHÔNG gọi API, KHÔNG im lặng', async () => {
+    mockList.mockResolvedValue([]);
+    mockReadSession.mockReturnValueOnce({ accessToken: 'tok' }).mockReturnValue(null);
+    renderEditor();
+    fireEvent.change(await screen.findByLabelText(ID_INPUT), { target: { value: 'ChIJ-new' } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_BTN }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Phiên đăng nhập đã hết hạn');
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it('bấm Xác nhận khi phiên đã mất → báo lỗi rõ, KHÔNG gọi API, KHÔNG im lặng', async () => {
+    mockList.mockResolvedValue([unverifiedRow()]);
+    mockReadSession.mockReturnValueOnce({ accessToken: 'tok' }).mockReturnValue(null);
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: CONFIRM_BTN }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Phiên đăng nhập đã hết hạn');
+    expect(mockConfirm).not.toHaveBeenCalled();
+  });
+
+  it('bấm Thu hồi khi phiên đã mất → báo lỗi rõ, KHÔNG gọi API, KHÔNG im lặng', async () => {
+    mockList.mockResolvedValue([unverifiedRow({ verified_at: '2026-10-16T08:00:00Z' })]);
+    mockReadSession.mockReturnValueOnce({ accessToken: 'tok' }).mockReturnValue(null);
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: REVOKE_BTN }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Phiên đăng nhập đã hết hạn');
+    expect(mockRevoke).not.toHaveBeenCalled();
+  });
+});

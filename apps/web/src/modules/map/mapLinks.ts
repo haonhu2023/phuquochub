@@ -44,8 +44,15 @@ export interface PlaceMapLinks {
   primary: MapLink;
   /** true = `primary` mở đúng hồ sơ đã đối chiếu (Place ID). false = `primary` chỉ là kết quả tìm kiếm, CHƯA bảo đảm đúng hồ sơ. */
   primaryCertain: boolean;
-  /** Toạ độ tham khảo thuần (cơ chế cũ) — luôn có khi toạ độ hợp lệ, dùng làm lựa chọn phụ. */
-  referencePin: MapLink;
+  /**
+   * Toạ độ tham khảo thuần (cơ chế cũ, `?q=lat,lng` — chỉ ghim, không hồ sơ). CHỈ có khi
+   * `primaryCertain=false` (owner phát hiện 16/10/2026: hiện CẠNH một "Xem trên Google Maps" đã
+   * xác nhận, ghim trần không nhãn trông như một lựa chọn ngang hàng/mở hồ sơ KHÁC — gây hiểu
+   * nhầm). Khi đã có hồ sơ xác nhận, một nút chính là đủ; toạ độ vẫn giữ nguyên trong dữ liệu/
+   * dashboard, chỉ không lặp lại thành link riêng trên trang công khai nữa. `null` ở nhánh đã xác
+   * nhận — KHÔNG phải toạ độ không hợp lệ (trường hợp đó cả hàm trả `null` luôn, xem dưới).
+   */
+  referencePin: MapLink | null;
   /** Chỉ đường tới đúng toạ độ (kèm Place ID nếu có). */
   directions: MapLink;
 }
@@ -92,7 +99,7 @@ export function getPlaceMapLinks(input: PlaceMapLinkInput, locale: Locale): Plac
         label: t.profile,
       },
       primaryCertain: true,
-      referencePin,
+      referencePin: null, // đã có hồ sơ xác nhận — không lặp lại ghim trần dễ hiểu nhầm nữa
       directions: {
         url: `https://www.google.com/maps/dir/?api=1&destination=${coord}&destination_place_id=${placeId}`,
         label: t.directions,

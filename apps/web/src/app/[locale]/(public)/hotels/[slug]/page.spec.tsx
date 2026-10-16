@@ -272,6 +272,16 @@ describe('HotelDetailPage — link Google Maps (tìm theo tên + toạ độ tha
     expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
   });
+
+  it('có google_place_id (đủ điều kiện) -> CHỈ một nút chính "Xem trên Google Maps", KHÔNG còn link toạ độ tham khảo (16/10/2026, áp dụng nhất quán với trang places/restaurants)', async () => {
+    await renderPage(
+      hotel({ location: { lat: 10.1288141, lng: 103.9807506 }, name: 'Novotel Phú Quốc Resort', address: null, google_place_id: 'ChIJ-novotel-verified' }),
+    );
+    const profileLink = screen.getByRole('link', { name: 'Xem trên Google Maps →' });
+    expect(profileLink).toHaveAttribute('href', expect.stringContaining('query_place_id=ChIJ-novotel-verified'));
+    expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
+  });
 });
 
 // Bug thật đã sửa (2026-09-30, phát hiện qua rà soát P2) — `h.prices` (price_history, SSOT giá)

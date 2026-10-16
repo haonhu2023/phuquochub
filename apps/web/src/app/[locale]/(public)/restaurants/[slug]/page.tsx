@@ -129,10 +129,16 @@ export default async function RestaurantDetailPage({ params }: Params) {
             <a href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
               {mapLinks.primary.label}
             </a>
-            {' · '}
-            <a href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
-              {mapLinks.referencePin.label}
-            </a>
+            {/* referencePin chỉ còn khi CHƯA có hồ sơ xác nhận — xem mapLinks.ts (sửa 16/10/2026,
+                owner phát hiện: ghim trần cạnh hồ sơ đã xác nhận gây hiểu nhầm). */}
+            {mapLinks.referencePin && (
+              <>
+                {' · '}
+                <a href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+                  {mapLinks.referencePin.label}
+                </a>
+              </>
+            )}
           </p>
         );
       })()}

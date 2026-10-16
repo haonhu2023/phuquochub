@@ -87,9 +87,21 @@ export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
   if (state.kind === 'loading') return <p style={{ color: 'var(--muted)' }}>Đang tải định danh Google Maps…</p>;
   if (state.kind === 'error') return <p className={styles.alert}>{state.message}</p>;
 
+  // Lỗi thật phát hiện 16/10/2026 (owner nghiệm thu Bãi Sao — lưu ID thành công, verified_at vẫn
+  // null, audit_logs KHÔNG có dòng confirm nào): `readSession()` trả null khi phiên đã hết hạn/bị
+  // thu hồi (vd `auth.refresh.reuse_detected`) GIỮA LÚC trang đã tải và lúc bấm — nhưng 3 hàm này
+  // trước đây chỉ `if (!session) return;` IM LẶNG, không báo gì, không gửi request nào, nên KHÔNG
+  // CÓ audit log (đúng, vì request chưa từng rời trình duyệt) VÀ người dùng không thấy lỗi nào để
+  // biết phải tải lại trang. Nút vẫn hiện bình thường, bấm vẫn "có vẻ hoạt động" nhưng không làm
+  // gì — đây là lỗi UI, KHÔNG phải thao tác sai của người dùng.
+  const SESSION_EXPIRED_MESSAGE = 'Phiên đăng nhập đã hết hạn — tải lại trang và đăng nhập lại trước khi lưu/xác nhận.';
+
   async function onSave() {
     const session = readSession();
-    if (!session) return;
+    if (!session) {
+      setError(SESSION_EXPIRED_MESSAGE);
+      return;
+    }
     setError(null);
     setNotice(null);
 
@@ -131,7 +143,11 @@ export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
   // (confirmErrorMessage xử lý) thay vì âm thầm xác nhận ID mới.
   async function onConfirm() {
     const session = readSession();
-    if (!session || state.kind !== 'ready' || !state.current) return;
+    if (!session) {
+      setError(SESSION_EXPIRED_MESSAGE);
+      return;
+    }
+    if (state.kind !== 'ready' || !state.current) return; // nút chỉ hiện khi có current — không thể xảy ra, không cần báo
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -148,7 +164,11 @@ export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
 
   async function onRevoke() {
     const session = readSession();
-    if (!session || state.kind !== 'ready' || !state.current) return;
+    if (!session) {
+      setError(SESSION_EXPIRED_MESSAGE);
+      return;
+    }
+    if (state.kind !== 'ready' || !state.current) return; // nút chỉ hiện khi có current — không thể xảy ra, không cần báo
     setError(null);
     setNotice(null);
     setBusy(true);

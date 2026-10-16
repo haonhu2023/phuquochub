@@ -12,7 +12,8 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
       'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao, An Thới, Phú Quốc'),
     );
     expect(links!.primary.label).toBe('Tìm trên Google Maps →');
-    expect(links!.referencePin.url).toBe('https://www.google.com/maps?q=10.0572576,104.0363948');
+    expect(links!.referencePin).not.toBeNull(); // chưa xác nhận -> vẫn giữ fallback toạ độ tham khảo
+    expect(links!.referencePin!.url).toBe('https://www.google.com/maps?q=10.0572576,104.0363948');
     expect(links!.directions.url).toBe('https://www.google.com/maps/dir/?api=1&destination=10.0572576,104.0363948');
   });
 
@@ -30,7 +31,7 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
     );
   });
 
-  it('CÓ Place ID: primary mở đúng hồ sơ, primaryCertain=true, kèm query_place_id/destination_place_id', () => {
+  it('CÓ Place ID: primary mở đúng hồ sơ, primaryCertain=true, kèm query_place_id/destination_place_id, KHÔNG còn referencePin (một nút chính là đủ)', () => {
     const links = getPlaceMapLinks(
       { lat: 10.1288141, lng: 103.9807506, name: 'Novotel Phú Quốc Resort', address: null, googlePlaceId: 'ChIJ_testPlaceId123' },
       'vi',
@@ -39,6 +40,7 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
     expect(links!.primary.label).toBe('Xem trên Google Maps →');
     expect(links!.primary.url).toContain('query_place_id=ChIJ_testPlaceId123');
     expect(links!.directions.url).toContain('destination_place_id=ChIJ_testPlaceId123');
+    expect(links!.referencePin).toBeNull();
   });
 
   it('Thiếu toạ độ hợp lệ (NaN) → trả null, không dựng link nào', () => {
@@ -61,7 +63,7 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
   it('locale=en: nhãn tiếng Anh đúng, cùng URL logic', () => {
     const links = getPlaceMapLinks({ lat: 10, lng: 104, name: 'Bai Sao', address: null }, 'en');
     expect(links!.primary.label).toBe('Find on Google Maps →');
-    expect(links!.referencePin.label).toBe('View reference location');
+    expect(links!.referencePin!.label).toBe('View reference location');
     expect(links!.directions.label).toBe('Directions →');
   });
 });

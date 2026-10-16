@@ -440,10 +440,16 @@ export default async function PlaceDetailPage({ params }: Params) {
               <a className={styles.mapLink} href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
                 {mapLinks.primary.label}
               </a>
-              {' · '}
-              <a className={styles.mapLink} href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
-                {mapLinks.referencePin.label}
-              </a>
+              {/* referencePin chỉ còn khi CHƯA có hồ sơ xác nhận (xem mapLinks.ts) — một nút chính
+                  "Xem trên Google Maps" là đủ khi đã xác nhận, không lặp lại ghim trần dễ hiểu nhầm. */}
+              {mapLinks.referencePin && (
+                <>
+                  {' · '}
+                  <a className={styles.mapLink} href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+                    {mapLinks.referencePin.label}
+                  </a>
+                </>
+              )}
             </p>
           )}
         </section>
