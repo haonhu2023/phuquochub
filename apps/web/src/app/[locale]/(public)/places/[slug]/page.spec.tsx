@@ -163,6 +163,48 @@ describe('PlaceDetailPage — link Google Maps (tìm theo tên + toạ độ tha
     expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
   });
+
+  // Lỗi thật đã sửa 16/10/2026 (owner phát hiện) — khoảng trống CODE, không chỉ fixture thiếu dữ
+  // liệu: link bản đồ trước đây nằm LỒNG trong khối `{hasInfo && (...)}` ("Thông tin" — address/
+  // ward/price/hours). Một place có toạ độ hợp lệ nhưng KHÔNG có bất kỳ trường nào trong 4 trường
+  // đó (hasInfo=false) vẫn PHẢI có link bản đồ — điều kiện duy nhất của link là toạ độ hợp lệ, đã
+  // tự gate trong getPlaceMapLinks, không phụ thuộc hasInfo. Hai test dưới đây CỐ Ý ghi đè
+  // ward/price_range/opening_hours về rỗng (khác default fixture ward='An Thới') để tái hiện đúng
+  // hasInfo=false — KHÔNG sửa default của fixture để né lỗi.
+  describe('link bản đồ KHÔNG phụ thuộc hasInfo (place thiếu address/ward/price/hours)', () => {
+    it('toạ độ hợp lệ, KHÔNG có địa chỉ/khu vực/giá/giờ (hasInfo=false), CHƯA có Place ID -> vẫn hiện link tìm kiếm + toạ độ tham khảo', async () => {
+      await renderPage(
+        place({
+          name: 'Place Trống Thông Tin',
+          address: null,
+          ward: null,
+          price_range: null,
+          opening_hours: null,
+          location: { lat: 10.0572576, lng: 104.0363948 },
+        }),
+      );
+      expect(screen.queryByRole('heading', { name: /Thông tin/ })).not.toBeInTheDocument(); // xác nhận ĐÚNG hasInfo=false, không phải test giả
+      expect(screen.getByRole('link', { name: 'Tìm trên Google Maps →' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Xem toạ độ tham khảo' })).toBeInTheDocument();
+    });
+
+    it('toạ độ hợp lệ, KHÔNG có địa chỉ/khu vực/giá/giờ (hasInfo=false), ĐÃ có Place ID xác nhận -> vẫn hiện link hồ sơ đúng', async () => {
+      await renderPage(
+        place({
+          name: 'Place Trống Thông Tin',
+          address: null,
+          ward: null,
+          price_range: null,
+          opening_hours: null,
+          location: { lat: 10.0572576, lng: 104.0363948 },
+          google_place_id: 'ChIJ-no-info-fields',
+        }),
+      );
+      expect(screen.queryByRole('heading', { name: /Thông tin/ })).not.toBeInTheDocument();
+      const profileLink = screen.getByRole('link', { name: 'Xem trên Google Maps →' });
+      expect(profileLink).toHaveAttribute('href', expect.stringContaining('query_place_id=ChIJ-no-info-fields'));
+    });
+  });
 });
 
 describe('PlaceDetailPage — gallery ảnh công khai (dùng chung PlaceGallery)', () => {

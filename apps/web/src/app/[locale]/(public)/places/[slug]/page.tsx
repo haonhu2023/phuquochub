@@ -435,24 +435,31 @@ export default async function PlaceDetailPage({ params }: Params) {
               </ul>
             </details>
           )}
-          {mapLinks && (
-            <p>
-              <a className={styles.mapLink} href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
-                {mapLinks.primary.label}
-              </a>
-              {/* referencePin chỉ còn khi CHƯA có hồ sơ xác nhận (xem mapLinks.ts) — một nút chính
-                  "Xem trên Google Maps" là đủ khi đã xác nhận, không lặp lại ghim trần dễ hiểu nhầm. */}
-              {mapLinks.referencePin && (
-                <>
-                  {' · '}
-                  <a className={styles.mapLink} href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
-                    {mapLinks.referencePin.label}
-                  </a>
-                </>
-              )}
-            </p>
-          )}
         </section>
+      )}
+
+      {/* Lỗi thật đã sửa 16/10/2026 (owner phát hiện): link bản đồ trước đây nằm LỒNG trong
+          `{hasInfo && (...)}` — một place có toạ độ hợp lệ (hoặc thậm chí ĐÃ có hồ sơ Google xác
+          nhận) nhưng thiếu CẢ 4 trường address/ward/price/hours (hasInfo=false) sẽ KHÔNG hiện link
+          bản đồ nào, dù dữ liệu để dựng link vẫn đủ. Điều kiện duy nhất của link bản đồ là TOẠ ĐỘ
+          hợp lệ (đã gate trong chính `getPlaceMapLinks`) — không phụ thuộc hasInfo. Tách thành khối
+          độc lập, không còn lồng trong "Thông tin". */}
+      {mapLinks && (
+        <p>
+          <a className={styles.mapLink} href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
+            {mapLinks.primary.label}
+          </a>
+          {/* referencePin chỉ còn khi CHƯA có hồ sơ xác nhận (xem mapLinks.ts) — một nút chính
+              "Xem trên Google Maps" là đủ khi đã xác nhận, không lặp lại ghim trần dễ hiểu nhầm. */}
+          {mapLinks.referencePin && (
+            <>
+              {' · '}
+              <a className={styles.mapLink} href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+                {mapLinks.referencePin.label}
+              </a>
+            </>
+          )}
+        </p>
       )}
 
       {place.contacts.length > 0 && (
