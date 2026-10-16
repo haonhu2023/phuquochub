@@ -17,6 +17,7 @@ import {
   type Weekday,
 } from '@/modules/place-management/openingHours';
 import type { PlaceDetail } from '@/modules/places/types';
+import { TimeOfDayField } from '@/modules/place-management/TimeOfDayField';
 import { submitPlaceEditProposal } from './api/place-edit-proposals.api';
 import {
   PLACE_EDIT_PROPOSAL_FIELD_KEYS,
@@ -275,21 +276,19 @@ export function ProposeEditForm({ placeId, placeName, currentPlace, onSubmitted 
                   )}
                   {openingHours.regular[day].map((range, index) => (
                     <div key={index} className={placeMgmtStyles.rangeRow}>
-                      <input
-                        type="time"
-                        className={placeMgmtStyles.timeInput}
+                      <TimeOfDayField
+                        id={`pep-oh-${day}-${index}-open`}
                         value={range.open}
-                        onChange={(e) => updateRange(day, index, 'open', e.target.value)}
-                        aria-label={`Giờ mở cửa ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
+                        onChange={(v) => updateRange(day, index, 'open', v)}
+                        ariaLabel={`Giờ mở (HH:mm, 24 giờ) ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
                         disabled={submitting}
                       />
                       <span className={placeMgmtStyles.rangeSep}>–</span>
-                      <input
-                        type="time"
-                        className={placeMgmtStyles.timeInput}
+                      <TimeOfDayField
+                        id={`pep-oh-${day}-${index}-close`}
                         value={range.close}
-                        onChange={(e) => updateRange(day, index, 'close', e.target.value)}
-                        aria-label={`Giờ đóng cửa ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
+                        onChange={(v) => updateRange(day, index, 'close', v)}
+                        ariaLabel={`Giờ đóng (HH:mm, 24 giờ) ${WEEKDAY_LABELS[day]} khung ${index + 1}`}
                         disabled={submitting}
                       />
                       <button

@@ -1,6 +1,8 @@
 import {
   emptyOpeningHoursFormState,
   formStateToOpeningHours,
+  isValidTimeOfDay,
+  normalizeTimeOfDay,
   openingHoursToFormState,
   validateOpeningHoursForm,
   WEEKDAYS,
@@ -37,6 +39,59 @@ describe('openingHoursToFormState', () => {
   });
 });
 
+// SỬA UX nhập giờ 16/10/2026 (owner báo lỗi thật: `<input type="time">` hiện đồng hồ 12 giờ AM/PM,
+// không gõ trực tiếp được 18:00 rõ ràng) — ô text thay thế tự kiểm định dạng, hai hàm dưới đây là
+// nguồn chân lý duy nhất cho việc đó (TimeOfDayField.tsx và validateOpeningHoursForm đều gọi lại).
+describe('normalizeTimeOfDay', () => {
+  it('đã đúng "HH:mm" hai chữ số -> giữ nguyên', () => {
+    expect(normalizeTimeOfDay('06:00')).toBe('06:00');
+    expect(normalizeTimeOfDay('18:00')).toBe('18:00');
+    expect(normalizeTimeOfDay('23:59')).toBe('23:59');
+    expect(normalizeTimeOfDay('00:00')).toBe('00:00');
+  });
+
+  it('giờ một chữ số có dấu ":" -> thêm số 0', () => {
+    expect(normalizeTimeOfDay('6:00')).toBe('06:00');
+    expect(normalizeTimeOfDay('9:05')).toBe('09:05');
+  });
+
+  it('gõ liền không dấu ":" (3-4 chữ số) -> chuẩn hoá đúng', () => {
+    expect(normalizeTimeOfDay('600')).toBe('06:00');
+    expect(normalizeTimeOfDay('1800')).toBe('18:00');
+    expect(normalizeTimeOfDay('0000')).toBe('00:00');
+  });
+
+  it('khoảng trắng đầu/cuối -> trim trước khi kiểm', () => {
+    expect(normalizeTimeOfDay('  18:00  ')).toBe('18:00');
+  });
+
+  it('chuỗi rỗng -> null (không phải lỗi định dạng, là "thiếu")', () => {
+    expect(normalizeTimeOfDay('')).toBeNull();
+    expect(normalizeTimeOfDay('   ')).toBeNull();
+  });
+
+  it('giờ ngoài 00-23 hoặc phút ngoài 00-59 -> null', () => {
+    expect(normalizeTimeOfDay('25:00')).toBeNull();
+    expect(normalizeTimeOfDay('18:70')).toBeNull();
+    expect(normalizeTimeOfDay('24:00')).toBeNull();
+    expect(normalizeTimeOfDay('18:60')).toBeNull();
+  });
+
+  it('rác không phải số/giờ -> null', () => {
+    expect(normalizeTimeOfDay('abc')).toBeNull();
+    expect(normalizeTimeOfDay('6:0')).toBeNull(); // phút phải đủ 2 chữ số
+    expect(normalizeTimeOfDay('18:00:00')).toBeNull();
+  });
+});
+
+describe('isValidTimeOfDay', () => {
+  it('khớp đúng kết quả normalizeTimeOfDay !== null', () => {
+    expect(isValidTimeOfDay('18:00')).toBe(true);
+    expect(isValidTimeOfDay('25:00')).toBe(false);
+    expect(isValidTimeOfDay('')).toBe(false);
+  });
+});
+
 describe('validateOpeningHoursForm', () => {
   it('mọi ngày rỗng -> không lỗi', () => {
     expect(validateOpeningHoursForm(emptyOpeningHoursFormState())).toEqual([]);
@@ -62,6 +117,23 @@ describe('validateOpeningHoursForm', () => {
   it('khung qua đêm (open > close) KHÔNG bị coi là lỗi — backend cố tình không kiểm open<close', () => {
     const state = emptyOpeningHoursFormState();
     state.regular.sat = [{ open: '22:00', close: '02:00' }];
+    expect(validateOpeningHoursForm(state)).toEqual([]);
+  });
+
+  it('có giá trị nhưng SAI định dạng/khoảng ("25:00", "18:70") -> báo lỗi đúng ngày + vị trí (không còn do trình duyệt đảm bảo)', () => {
+    const state = emptyOpeningHoursFormState();
+    state.regular.mon = [{ open: '25:00', close: '18:00' }];
+    state.regular.wed = [{ open: '08:00', close: '18:70' }];
+    const errors = validateOpeningHoursForm(state);
+    expect(errors).toEqual([
+      { day: 'mon', index: 0 },
+      { day: 'wed', index: 0 },
+    ]);
+  });
+
+  it('gõ không dấu ":" nhưng hợp lệ ("600", "1800") -> KHÔNG lỗi', () => {
+    const state = emptyOpeningHoursFormState();
+    state.regular.mon = [{ open: '600', close: '1800' }];
     expect(validateOpeningHoursForm(state)).toEqual([]);
   });
 });
@@ -127,5 +199,12 @@ describe('formStateToOpeningHours', () => {
     const state = openingHoursToFormState(original);
     const result = formStateToOpeningHours(state, original);
     expect(Object.keys(result.regular ?? {}).sort()).toEqual([...WEEKDAYS].sort());
+  });
+
+  it('lưới an toàn cuối: chuẩn hoá "6:00"/"1800" (chưa qua blur) thành "06:00"/"18:00" lúc gửi', () => {
+    const state = emptyOpeningHoursFormState();
+    state.regular.mon = [{ open: '6:00', close: '1800' }];
+    const result = formStateToOpeningHours(state, null);
+    expect(result.regular?.mon).toEqual([{ open: '06:00', close: '18:00' }]);
   });
 });

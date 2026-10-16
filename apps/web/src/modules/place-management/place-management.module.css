@@ -282,6 +282,15 @@
   background: var(--surface);
   color: var(--fg);
   font: inherit;
+  width: 5.5rem;
+}
+.timeInputInvalid {
+  border-color: var(--err);
+}
+.timeFieldWrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 .rangeSep {
   color: var(--muted);

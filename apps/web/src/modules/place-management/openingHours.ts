@@ -57,17 +57,45 @@ export interface OpeningHoursRangeError {
   index: number;
 }
 
+// Owner báo lỗi UX thật 16/10/2026: `<input type="time">` hiện đồng hồ 12 giờ AM/PM trên trình
+// duyệt của owner, không gõ trực tiếp được 18:00 rõ ràng. Thay bằng ô text (TimeOfDayField.tsx) —
+// nghĩa là định dạng HH:mm KHÔNG còn được trình duyệt đảm bảo như trước, nên hai hàm dưới đây tự
+// kiểm định dạng/khoảng giờ hợp lệ. Chấp nhận có hoặc không dấu `:` ("6:00", "600", "1800") để gõ
+// nhanh hơn — KHÔNG tự chèn ký tự nào trong lúc gõ (tránh nhảy con trỏ), chỉ chuẩn hoá khi gọi hàm
+// này (component gọi lúc blur; formStateToOpeningHours gọi lại lúc submit làm lưới an toàn cuối).
+const TIME_OF_DAY_COLON_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const TIME_OF_DAY_DIGITS_RE = /^([01]?\d|2[0-3])([0-5]\d)$/;
+
+/** Chuẩn hoá một chuỗi giờ gõ tay thành "HH:mm" (hai chữ số, 24 giờ) — `null` nếu không hợp lệ. */
+export function normalizeTimeOfDay(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const withColon = trimmed.match(TIME_OF_DAY_COLON_RE);
+  if (withColon) return `${withColon[1].padStart(2, '0')}:${withColon[2]}`;
+  const digitsOnly = trimmed.match(TIME_OF_DAY_DIGITS_RE);
+  if (digitsOnly) return `${digitsOnly[1].padStart(2, '0')}:${digitsOnly[2]}`;
+  return null;
+}
+
+/** Giờ 00–23, phút 00–59 — chuỗi rỗng KHÔNG hợp lệ (dùng kiểm "thiếu giờ" ở chỗ khác). */
+export function isValidTimeOfDay(raw: string): boolean {
+  return normalizeTimeOfDay(raw) !== null;
+}
+
 /**
- * Khung giờ thiếu open hoặc close (input time để trống) — CHẶN submit. Định dạng HH:MM đã do
- * chính `<input type="time">` đảm bảo (trình duyệt không cho gõ giá trị sai định dạng), và
- * backend CỐ Ý không kiểm open<close (khung qua đêm 22:00→02:00 hợp lệ — common/opening-hours.ts)
- * nên KHÔNG kiểm thêm ở đây, tránh chặt hơn backend.
+ * Khung giờ thiếu open/close, hoặc có giá trị nhưng SAI định dạng/khoảng hợp lệ (vd "25:00",
+ * "18:70") — cả hai đều CHẶN submit. Backend CỐ Ý không kiểm open<close (khung qua đêm 22:00→02:00
+ * hợp lệ — common/opening-hours.ts) nên KHÔNG kiểm thêm ở đây, tránh chặt hơn backend.
  */
 export function validateOpeningHoursForm(state: OpeningHoursFormState): OpeningHoursRangeError[] {
   const errors: OpeningHoursRangeError[] = [];
   for (const day of WEEKDAYS) {
     state.regular[day].forEach((range, index) => {
       if (!range.open || !range.close) {
+        errors.push({ day, index });
+        return;
+      }
+      if (!isValidTimeOfDay(range.open) || !isValidTimeOfDay(range.close)) {
         errors.push({ day, index });
       }
     });
@@ -94,7 +122,14 @@ export function formStateToOpeningHours(
   }
   const regular: NonNullable<OpeningHours['regular']> = {};
   for (const day of WEEKDAYS) {
-    regular[day] = state.regular[day].map((r) => ({ open: r.open, close: r.close }));
+    // Lưới an toàn cuối: chuẩn hoá về "HH:mm" hai chữ số ngay trước khi gửi, phòng trường hợp blur
+    // chưa chạy (vd gõ xong bấm submit bằng phím tắt). Form đã validate hợp lệ trước khi gọi hàm
+    // này nên `normalizeTimeOfDay` không trả `null` ở đây trong thực tế — `?? r.open` chỉ là phòng
+    // hờ, không đổi hành vi khi dữ liệu đã hợp lệ.
+    regular[day] = state.regular[day].map((r) => ({
+      open: normalizeTimeOfDay(r.open) ?? r.open,
+      close: normalizeTimeOfDay(r.close) ?? r.close,
+    }));
   }
   result.regular = regular;
   return result;

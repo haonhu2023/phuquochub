@@ -262,10 +262,10 @@ describe('PlaceForm — giờ mở cửa', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Bãi biển' })).toBeInTheDocument());
 
     // Thứ Hai: 2 khung (nghỉ trưa).
-    expect(screen.getByLabelText('Giờ mở cửa Thứ Hai khung 1')).toHaveValue('08:00');
-    expect(screen.getByLabelText('Giờ đóng cửa Thứ Hai khung 1')).toHaveValue('12:00');
-    expect(screen.getByLabelText('Giờ mở cửa Thứ Hai khung 2')).toHaveValue('13:30');
-    expect(screen.getByLabelText('Giờ đóng cửa Thứ Hai khung 2')).toHaveValue('22:00');
+    expect(screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1')).toHaveValue('08:00');
+    expect(screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 1')).toHaveValue('12:00');
+    expect(screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 2')).toHaveValue('13:30');
+    expect(screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 2')).toHaveValue('22:00');
 
     // Thứ Tư: mảng rỗng -> "Đóng cửa", CHỈ đúng một ngày đóng cửa.
     expect(screen.getAllByText('Đóng cửa')).toHaveLength(1);
@@ -277,8 +277,8 @@ describe('PlaceForm — giờ mở cửa', () => {
   it('thêm khung giờ cho một ngày đang đóng cửa -> "Đóng cửa" biến mất, input giờ xuất hiện', async () => {
     await renderFresh();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
-    expect(screen.getByLabelText('Giờ mở cửa Thứ Hai khung 1')).toBeInTheDocument();
-    expect(screen.getByLabelText('Giờ đóng cửa Thứ Hai khung 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 1')).toBeInTheDocument();
     // 6 ngày còn lại vẫn đóng cửa.
     expect(screen.getAllByText('Đóng cửa')).toHaveLength(6);
   });
@@ -291,7 +291,7 @@ describe('PlaceForm — giờ mở cửa', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Xoá khung giờ 1 của Thứ Ba' }));
 
-    expect(screen.queryByLabelText('Giờ mở cửa Thứ Ba khung 1')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Ba khung 1')).not.toBeInTheDocument();
     // Thứ Tư (đã đóng cửa từ đầu) + Thứ Ba (vừa xoá) = 2 ngày đóng cửa.
     expect(screen.getAllByText('Đóng cửa')).toHaveLength(2);
   });
@@ -387,7 +387,7 @@ describe('PlaceForm — giờ mở cửa', () => {
     const onSubmit = await renderFresh();
     await fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
-    fireEvent.change(screen.getByLabelText('Giờ mở cửa Thứ Hai khung 1'), { target: { value: '08:00' } });
+    fireEvent.change(screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1'), { target: { value: '08:00' } });
     // Giờ đóng cửa CỐ TÌNH để trống.
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
@@ -400,8 +400,8 @@ describe('PlaceForm — giờ mở cửa', () => {
     const onSubmit = await renderFresh();
     await fillRequiredFields();
     fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Bảy' }));
-    fireEvent.change(screen.getByLabelText('Giờ mở cửa Thứ Bảy khung 1'), { target: { value: '22:00' } });
-    fireEvent.change(screen.getByLabelText('Giờ đóng cửa Thứ Bảy khung 1'), { target: { value: '02:00' } });
+    fireEvent.change(screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Bảy khung 1'), { target: { value: '22:00' } });
+    fireEvent.change(screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Bảy khung 1'), { target: { value: '02:00' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
 
@@ -409,5 +409,80 @@ describe('PlaceForm — giờ mở cửa', () => {
     const payload = onSubmit.mock.calls[0][0] as PlaceFormInput;
     expect(payload.opening_hours?.regular?.sat).toEqual([{ open: '22:00', close: '02:00' }]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // SỬA UX nhập giờ 16/10/2026 (owner báo lỗi thật: `<input type="time">` hiện đồng hồ 12 giờ
+  // AM/PM, không gõ trực tiếp được 18:00 rõ ràng) — thay bằng ô text TimeOfDayField, các test dưới
+  // khoá đúng hành vi mới: gõ trực tiếp HH:mm, chuẩn hoá lúc blur, chặn submit khi sai định dạng.
+  it('gõ trực tiếp "6:00" (thiếu số 0) -> blur chuẩn hoá thành "06:00"', async () => {
+    await renderFresh();
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
+    const openInput = screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1');
+    fireEvent.change(openInput, { target: { value: '6:00' } });
+    expect(openInput).toHaveValue('6:00'); // KHÔNG tự sửa trong lúc gõ
+    fireEvent.blur(openInput);
+    expect(openInput).toHaveValue('06:00');
+  });
+
+  it('gõ "1800" (không dấu hai chấm) -> blur chuẩn hoá thành "18:00"', async () => {
+    await renderFresh();
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
+    const closeInput = screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 1');
+    fireEvent.change(closeInput, { target: { value: '1800' } });
+    fireEvent.blur(closeInput);
+    expect(closeInput).toHaveValue('18:00');
+  });
+
+  it('gõ "25:00" (giờ sai) -> blur giữ nguyên nội dung, hiện lỗi tại ô, KHÔNG được gửi', async () => {
+    const onSubmit = await renderFresh();
+    await fillRequiredFields();
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
+    const openInput = screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1');
+    const closeInput = screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 1');
+    fireEvent.change(openInput, { target: { value: '25:00' } });
+    fireEvent.blur(openInput);
+    expect(openInput).toHaveValue('25:00'); // giữ nguyên, không xoá
+    expect(screen.getByText(/Giờ không hợp lệ/)).toBeInTheDocument();
+    fireEvent.change(closeInput, { target: { value: '18:00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    // Hai cảnh báo cùng hiện: lỗi tại ô (TimeOfDayField, "Giờ không hợp lệ") + lỗi tổng ở đầu form
+    // (PlaceForm, nêu đúng ngày) — kiểm riêng từng cái, không gộp bằng getByRole đơn.
+    const alerts = screen.getAllByRole('alert');
+    expect(alerts.some((a) => /Thứ Hai/.test(a.textContent ?? ''))).toBe(true);
+  });
+
+  it('gõ "18:70" (phút sai) -> hiện lỗi, KHÔNG được gửi', async () => {
+    const onSubmit = await renderFresh();
+    await fillRequiredFields();
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Hai' }));
+    const openInput = screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1');
+    const closeInput = screen.getByLabelText('Giờ đóng (HH:mm, 24 giờ) Thứ Hai khung 1');
+    fireEvent.change(openInput, { target: { value: '08:00' } });
+    fireEvent.change(closeInput, { target: { value: '18:70' } });
+    fireEvent.blur(closeInput);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo' }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('sửa lại giờ đã nhập (xoá, gõ đè) -> payload đúng giá trị mới', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    render(
+      <PlaceForm initial={initialWithHours} submitLabel="Lưu" submittingLabel="Đang lưu…" onSubmit={onSubmit} cancelHref="/x" />,
+    );
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Bãi biển' })).toBeInTheDocument());
+    const openInput = screen.getByLabelText('Giờ mở (HH:mm, 24 giờ) Thứ Hai khung 1');
+    fireEvent.change(openInput, { target: { value: '' } });
+    fireEvent.change(openInput, { target: { value: '09:15' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const payload = onSubmit.mock.calls[0][0] as PlaceFormInput;
+    expect(payload.opening_hours?.regular?.mon?.[0]).toEqual({ open: '09:15', close: '12:00' });
   });
 });
