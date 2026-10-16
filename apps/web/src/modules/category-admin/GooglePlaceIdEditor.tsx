@@ -6,6 +6,8 @@ import { ApiError } from '@/lib/http';
 import {
   getExternalIdentifiers,
   upsertGooglePlaceId,
+  confirmGooglePlaceId,
+  revokeGooglePlaceIdVerification,
   type ExternalIdentifier,
 } from '@/modules/place-external-identifiers/api/place-external-identifiers.api';
 import { createSource } from '@/modules/sources/api/sources.api';
@@ -14,23 +16,36 @@ import uiStyles from '@/components/ui/ui.module.css';
 
 interface Props {
   placeId: string;
+  /** Dùng để dựng link "mở hồ sơ Google để đối chiếu" — chỉ cho UI, không gửi lên server. */
+  placeName?: string;
 }
 
 type State = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; current: ExternalIdentifier | null };
 
+const FORBIDDEN_CONFIRM_MESSAGE = 'Bạn không có quyền xác nhận — chỉ vai trò quản trị/kiểm duyệt phù hợp (đã đối chiếu hồ sơ Google) mới xác nhận/thu hồi được.';
+
+function confirmErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 403) return FORBIDDEN_CONFIRM_MESSAGE;
+    if (err.status === 404) return 'Chưa có Google Place ID nào để xác nhận — nhập ID trước.';
+    if (err.status < 500) return err.message;
+  }
+  return 'Thao tác thất bại. Vui lòng thử lại.';
+}
+
 /**
  * Google Place ID (gói "mở đúng hồ sơ Google Maps", 2026-10-16) — nhúng vào EditPlaceView cho
- * MỌI category (không riêng hotel/restaurant): gắn SAI đúng hồ sơ Google của một địa điểm bất kỳ,
- * không phải một nhóm category cụ thể. Cùng khuôn HotelDetailsEditor (tự tải, tự lưu, không phụ
- * thuộc PlaceForm) nhưng KHÔNG dùng contentVersion CAS của place — identifier là sub-resource độc
- * lập, tự có idempotency/conflict check riêng (PlaceExternalIdentifiersService.upsertPrimaryGooglePlaceId).
+ * MỌI category (không riêng hotel/restaurant). Cùng khuôn HotelDetailsEditor (tự tải, tự lưu,
+ * không phụ thuộc PlaceForm) nhưng KHÔNG dùng contentVersion CAS của place — identifier là
+ * sub-resource độc lập, tự có idempotency/conflict check riêng.
  *
- * QUAN TRỌNG: nhập ID ở đây KHÔNG tự đánh dấu "đã xác minh" — `verified_at` luôn null sau khi lưu
- * (route backend không nhận field đó từ client). Chỉ một identifier ĐÃ qua bước xác minh riêng
- * (CHƯA xây ở gói này — ai/cơ chế nào được xác minh còn là quyết định chưa chốt) mới được public
- * site dùng để mở đúng hồ sơ; cho tới lúc đó trang công khai vẫn fallback sang tìm theo tên/địa chỉ.
+ * HAI quyền KHÁC NHAU trên cùng form này (xem apps/api PlaceExternalIdentifiersController's ghi
+ * chú đầy đủ): nhập/sửa ID dùng `Place.Edit.Managed` (quyền trang này đã yêu cầu để vào được —
+ * luôn thành công); xác nhận/thu hồi dùng `PlaceExternalIdentifier.Verify` — RIÊNG, phần lớn
+ * người dùng trang này sẽ KHÔNG có quyền đó và sẽ thấy lỗi 403 rõ ràng khi bấm, đây là hành vi
+ * ĐÚNG (người nhập ID không tự xác nhận được chính ID mình vừa nhập), không phải lỗi UI.
  */
-export function GooglePlaceIdEditor({ placeId }: Props) {
+export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [externalId, setExternalId] = useState('');
   const [newSourceTitle, setNewSourceTitle] = useState('');
@@ -97,7 +112,7 @@ export function GooglePlaceIdEditor({ placeId }: Props) {
       setState({ kind: 'ready', current: updated });
       setNewSourceTitle('');
       setNewSourceUrl('');
-      setNotice('Đã lưu Google Place ID. Định danh CHƯA được xác minh — trang công khai vẫn dùng link tìm kiếm cho tới khi có bước xác minh riêng.');
+      setNotice('Đã lưu Google Place ID. Định danh CHƯA được xác nhận — trang công khai vẫn dùng link tìm kiếm cho tới khi người có quyền xác nhận.');
     } catch (err) {
       setError(err instanceof ApiError && err.status < 500 ? err.message : 'Lưu thất bại. Vui lòng thử lại.');
     } finally {
@@ -105,7 +120,46 @@ export function GooglePlaceIdEditor({ placeId }: Props) {
     }
   }
 
+  async function onConfirm() {
+    const session = readSession();
+    if (!session) return;
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const updated = await confirmGooglePlaceId(placeId, {}, session.accessToken);
+      setState({ kind: 'ready', current: updated });
+      setNotice('Đã xác nhận: hồ sơ Google khớp địa điểm này. (Không xác minh quyền sở hữu, chất lượng cơ sở hay lối vào.)');
+    } catch (err) {
+      setError(confirmErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRevoke() {
+    const session = readSession();
+    if (!session) return;
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const updated = await revokeGooglePlaceIdVerification(placeId, session.accessToken);
+      setState({ kind: 'ready', current: updated });
+      setNotice('Đã thu hồi xác nhận. Định danh vẫn còn, trang công khai quay lại link tìm kiếm.');
+    } catch (err) {
+      setError(confirmErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const current = state.current;
+  // Link mở ĐÚNG hồ sơ Google để đối chiếu trước khi xác nhận — cùng cơ chế URL đã dùng ở
+  // mapLinks.ts (query_place_id), không gọi API trả phí nào, chỉ một liên kết điều hướng.
+  const crossCheckUrl = current
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName || current.external_id)}&query_place_id=${encodeURIComponent(current.external_id)}`
+    : null;
 
   return (
     <section aria-label="Quản lý Google Place ID" className={styles.contentEditor}>
@@ -118,9 +172,9 @@ export function GooglePlaceIdEditor({ placeId }: Props) {
         Trạng thái hiện tại:{' '}
         {current ? (
           current.verified_at ? (
-            <>đã xác minh ({new Date(current.verified_at).toLocaleDateString('vi-VN')})</>
+            <>đã xác nhận ({new Date(current.verified_at).toLocaleDateString('vi-VN')}) — hồ sơ Google khớp địa điểm này</>
           ) : (
-            'đã nhập, CHƯA xác minh — trang công khai chưa dùng ID này'
+            'đã nhập, CHƯA xác nhận — trang công khai chưa dùng ID này'
           )
         ) : (
           'chưa có'
@@ -155,6 +209,34 @@ export function GooglePlaceIdEditor({ placeId }: Props) {
           {busy ? 'Đang lưu…' : 'Lưu Google Place ID'}
         </button>
       </div>
+
+      {current && (
+        <div className={styles.contentEditor} style={{ marginTop: '1rem' }}>
+          <h3>Xác nhận (vai trò quản trị/kiểm duyệt)</h3>
+          <p className={styles.fieldHint}>
+            Mở hồ sơ Google bên dưới, đối chiếu tên/địa chỉ/vị trí với địa điểm này, rồi mới xác
+            nhận. &ldquo;Đã xác nhận&rdquo; chỉ nghĩa hồ sơ Google khớp địa điểm — không xác minh
+            quyền sở hữu, chất lượng cơ sở hay lối vào.
+          </p>
+          {crossCheckUrl && (
+            <p>
+              <a href={crossCheckUrl} target="_blank" rel="noopener noreferrer">
+                Mở hồ sơ Google để đối chiếu →
+              </a>
+            </p>
+          )}
+          <div className={styles.actions}>
+            <button type="button" className={styles.submitBtn} onClick={() => void onConfirm()} disabled={busy}>
+              {busy ? 'Đang xử lý…' : 'Xác nhận khớp địa điểm'}
+            </button>
+            {current.verified_at && (
+              <button type="button" className={styles.archiveBtn} onClick={() => void onRevoke()} disabled={busy}>
+                {busy ? 'Đang xử lý…' : 'Thu hồi xác nhận'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

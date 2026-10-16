@@ -15,3 +15,16 @@ export class UpsertGooglePlaceIdDto {
   @IsOptional() @IsUUID()
   evidence_id?: string;
 }
+
+// Xác nhận (2026-10-16) — vai trò RIÊNG (`PlaceExternalIdentifier.Verify`, khác `Place.Edit.Managed`
+// của route nhập ID) đối chiếu hồ sơ Google với địa điểm rồi gọi route confirm. `source_id`/
+// `evidence_id` TUỲ CHỌN — bằng chứng đối chiếu của CHÍNH người xác nhận (có thể khác/bổ sung
+// nguồn mà người nhập ID ban đầu đã đưa); để trống thì giữ nguyên nguồn/bằng chứng đã có, không
+// xoá. KHÔNG có field nào khác — không nhận `verified_at` tuỳ ý, server luôn tự đặt là "bây giờ".
+export class ConfirmGooglePlaceIdDto {
+  @IsOptional() @IsUUID()
+  source_id?: string;
+
+  @IsOptional() @IsUUID()
+  evidence_id?: string;
+}

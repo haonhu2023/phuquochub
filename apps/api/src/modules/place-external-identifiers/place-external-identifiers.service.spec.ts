@@ -1,8 +1,10 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PlaceExternalIdentifiersService } from './place-external-identifiers.service';
 import { PlaceExternalIdentifiersRepository } from './repositories/place-external-identifiers.repository';
 import { PlaceExternalIdentifier } from './entities/place-external-identifier.entity';
 import { PlaceExternalIdentifierProvider } from './place-external-identifiers.enums';
+import type { DataSource, EntityManager } from 'typeorm';
+import type { AuditService } from '../../core/audit/audit.service';
 
 function makeIdentifier(overrides: Partial<PlaceExternalIdentifier> = {}): PlaceExternalIdentifier {
   const row = new PlaceExternalIdentifier();
@@ -23,6 +25,9 @@ function makeIdentifier(overrides: Partial<PlaceExternalIdentifier> = {}): Place
 describe('PlaceExternalIdentifiersService', () => {
   let service: PlaceExternalIdentifiersService;
   let repo: jest.Mocked<PlaceExternalIdentifiersRepository>;
+  let dataSource: jest.Mocked<DataSource>;
+  let audit: jest.Mocked<AuditService>;
+  let managerQuery: jest.Mock;
 
   beforeEach(() => {
     repo = {
@@ -32,7 +37,20 @@ describe('PlaceExternalIdentifiersService', () => {
       create: jest.fn((data) => Object.assign(new PlaceExternalIdentifier(), data)),
       save: jest.fn(async (row) => row),
     } as unknown as jest.Mocked<PlaceExternalIdentifiersRepository>;
-    service = new PlaceExternalIdentifiersService(repo);
+
+    // Mô phỏng dataSource.transaction(cb) — chạy cb với một "manager" giả, chỉ cần hỗ trợ .query()
+    // (advisory lock gọi qua manager.query ngay dòng đầu withPlaceProviderLock). Repo đã mock ở
+    // trên bỏ qua manager (không phân biệt gọi với/không manager) — đủ để test LOGIC, việc khoá
+    // advisory lock THẬT (transaction/Postgres thật) được chứng minh ở e2e spec riêng.
+    managerQuery = jest.fn().mockResolvedValue(undefined);
+    const fakeManager = { query: managerQuery } as unknown as EntityManager;
+    dataSource = {
+      transaction: jest.fn((cb: (manager: EntityManager) => Promise<unknown>) => cb(fakeManager)),
+    } as unknown as jest.Mocked<DataSource>;
+
+    audit = { record: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<AuditService>;
+
+    service = new PlaceExternalIdentifiersService(repo, dataSource, audit);
   });
 
   describe('ensureIdentifier', () => {
@@ -127,6 +145,16 @@ describe('PlaceExternalIdentifiersService', () => {
   });
 
   describe('upsertPrimaryGooglePlaceId — đường ghi dashboard (KHÁC ensureIdentifier)', () => {
+    it('khoá advisory (place+provider) trong một transaction trước khi đọc/ghi gì', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      repo.findByProviderAndExternalId.mockResolvedValue(null);
+
+      await service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-new' });
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(managerQuery).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock($1, hashtext($2))', [2, 'place-1:GOOGLE_PLACES']);
+    });
+
     it('place chưa có identifier nào → tạo mới, verifiedAt luôn null', async () => {
       repo.findByPlaceAndProvider.mockResolvedValue(null);
       repo.findByProviderAndExternalId.mockResolvedValue(null);
@@ -139,7 +167,7 @@ describe('PlaceExternalIdentifiersService', () => {
       expect(result.isPrimary).toBe(true);
     });
 
-    it('lưu lặp CÙNG giá trị cho CÙNG place → no-op, không tạo hàng mới (idempotent)', async () => {
+    it('lưu lặp CÙNG giá trị, KHÔNG gửi source/evidence mới → no-op thật, không ghi DB (idempotent)', async () => {
       const existing = makeIdentifier({ placeId: 'place-1', externalId: 'ChIJ-same' });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
@@ -150,8 +178,31 @@ describe('PlaceExternalIdentifiersService', () => {
       expect(repo.findByProviderAndExternalId).not.toHaveBeenCalled();
     });
 
+    it('lưu lặp CÙNG giá trị ID, CÓ gửi source/evidence mới → cập nhật source/evidence, KHÔNG đụng verifiedAt đã xác nhận', async () => {
+      const existing = makeIdentifier({
+        placeId: 'place-1',
+        externalId: 'ChIJ-same',
+        sourceId: 'src-old',
+        verifiedAt: new Date('2026-10-01'),
+      });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-same', sourceId: 'src-new' });
+
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(result.sourceId).toBe('src-new');
+      expect(result.verifiedAt).toEqual(new Date('2026-10-01')); // KHÔNG mất xác nhận đã có
+    });
+
     it('sửa sang ID KHÁC cho CÙNG place → UPDATE hàng đã có tại chỗ, KHÔNG insert hàng thứ hai, verifiedAt reset về null', async () => {
-      const existing = makeIdentifier({ id: 'ext-1', placeId: 'place-1', externalId: 'ChIJ-old', verifiedAt: new Date('2026-10-01') });
+      const existing = makeIdentifier({
+        id: 'ext-1',
+        placeId: 'place-1',
+        externalId: 'ChIJ-old',
+        sourceId: 'src-old',
+        evidenceId: 'ev-old',
+        verifiedAt: new Date('2026-10-01'),
+      });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
       repo.findByProviderAndExternalId.mockResolvedValue(null); // ID mới chưa ai dùng
 
@@ -159,10 +210,12 @@ describe('PlaceExternalIdentifiersService', () => {
 
       expect(repo.create).not.toHaveBeenCalled(); // KHÔNG tạo hàng mới
       expect(repo.save).toHaveBeenCalledTimes(1);
-      expect(repo.save).toHaveBeenCalledWith(existing); // cùng instance, chỉ sửa field tại chỗ
+      expect(repo.save).toHaveBeenCalledWith(existing, expect.anything()); // cùng instance, chỉ sửa field tại chỗ
       expect(result.id).toBe('ext-1'); // vẫn là hàng cũ, không phải hàng mới
       expect(result.externalId).toBe('ChIJ-corrected');
       expect(result.verifiedAt).toBeNull(); // xác minh cũ gắn với ID cũ, không tự áp dụng cho ID mới
+      expect(result.sourceId).toBeNull(); // KHÔNG mang nguồn của ID cũ sang như thể vẫn hợp lệ
+      expect(result.evidenceId).toBeNull();
     });
 
     it('ID mới đã thuộc place KHÁC → từ chối, không ghi gì (không áp định danh của Bãi Sao cho địa điểm khác)', async () => {
@@ -174,6 +227,89 @@ describe('PlaceExternalIdentifiersService', () => {
       ).rejects.toThrow(BadRequestException);
       expect(repo.save).not.toHaveBeenCalled();
       expect(repo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmGooglePlaceId — xác nhận hồ sơ Google khớp địa điểm', () => {
+    it('chưa có identifier nào → NotFoundException, không ghi gì', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      await expect(service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-1' })).rejects.toThrow(NotFoundException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('CÓ identifier, CHƯA xác nhận → set verifiedAt = bây giờ, ghi audit với actor/thời điểm', async () => {
+      const existing = makeIdentifier({ verifiedAt: null });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-1' });
+
+      expect(result.verifiedAt).not.toBeNull();
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'place_external_identifier.verified',
+          entityType: 'place_external_identifier',
+          actorId: 'user-mod-1',
+          permission: 'PlaceExternalIdentifier.Verify',
+        }),
+      );
+    });
+
+    it('đã xác nhận TỪ TRƯỚC → confirm lại vẫn cập nhật verifiedAt (đối chiếu lại định kỳ hợp lệ), vẫn ghi audit', async () => {
+      const oldDate = new Date('2026-10-01T00:00:00Z');
+      const existing = makeIdentifier({ verifiedAt: oldDate });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-2' });
+
+      expect(result.verifiedAt).not.toEqual(oldDate);
+      expect(audit.record).toHaveBeenCalledTimes(1);
+    });
+
+    it('kèm source_id/evidence_id của người xác nhận → ghi đè đúng field đó', async () => {
+      const existing = makeIdentifier({ sourceId: 'src-proposer', evidenceId: null });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-1', evidenceId: 'ev-confirmer' });
+
+      expect(result.sourceId).toBe('src-proposer'); // không gửi -> giữ nguyên
+      expect(result.evidenceId).toBe('ev-confirmer'); // gửi -> cập nhật
+    });
+  });
+
+  describe('revokeGooglePlaceIdVerification — thu hồi xác nhận', () => {
+    it('chưa có identifier nào → NotFoundException, không ghi gì', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      await expect(service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1' })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('CÓ identifier đã xác nhận → set verifiedAt = null, ghi audit với actor/thời điểm', async () => {
+      const existing = makeIdentifier({ verifiedAt: new Date('2026-10-16') });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-mod-1' });
+
+      expect(result.verifiedAt).toBeNull();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'place_external_identifier.verification_revoked',
+          actorId: 'user-mod-1',
+          permission: 'PlaceExternalIdentifier.Verify',
+        }),
+      );
+    });
+
+    it('không xoá identifier — chỉ đưa verifiedAt về null, external_id vẫn còn nguyên', async () => {
+      const existing = makeIdentifier({ externalId: 'ChIJ-stays', verifiedAt: new Date('2026-10-16') });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1' });
+
+      expect(result.externalId).toBe('ChIJ-stays');
     });
   });
 });

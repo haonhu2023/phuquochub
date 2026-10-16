@@ -1,7 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { PlaceExternalIdentifiersRepository } from './repositories/place-external-identifiers.repository';
 import { PlaceExternalIdentifier } from './entities/place-external-identifier.entity';
 import { PlaceExternalIdentifierProvider } from './place-external-identifiers.enums';
+import { AuditService } from '../../core/audit/audit.service';
 
 export interface EnsureIdentifierInput {
   placeId: string;
@@ -16,9 +19,27 @@ export interface EnsureIdentifierInput {
 export interface UpsertPrimaryGooglePlaceIdInput {
   placeId: string;
   externalId: string;
-  sourceId?: string | null;
-  evidenceId?: string | null;
+  sourceId?: string;
+  evidenceId?: string;
 }
+
+export interface ConfirmGooglePlaceIdInput {
+  placeId: string;
+  actorId: string;
+  sourceId?: string;
+  evidenceId?: string;
+}
+
+export interface RevokeGooglePlaceIdVerificationInput {
+  placeId: string;
+  actorId: string;
+}
+
+// Lớp advisory lock riêng của module này (2) — KHÔNG trùng lớp 1 mà SourceFirstIngestService đã
+// dùng cho pipeline nhập liệu (xem withCandidateLock ở đó). pg_advisory_xact_lock (không phải
+// pg_advisory_lock trần) tự giải phóng khi transaction COMMIT/ROLLBACK — không cần try/finally
+// unlock thủ công, không thể rò rỉ lock nếu có exception giữa chừng.
+const ADVISORY_LOCK_CLASS = 2;
 
 // Idempotent theo (provider, external_id) — cùng nguyên tắc VerifiedFactsIngestionService.ensureSource
 // (dedupe theo type+externalRef): gọi lại với đúng place + đúng identifier là no-op, không tạo hàng
@@ -26,7 +47,31 @@ export interface UpsertPrimaryGooglePlaceIdInput {
 // cho hai place khác nhau trong CSDL này (xung đột danh tính, không phải điều kiện im lặng bỏ qua).
 @Injectable()
 export class PlaceExternalIdentifiersService {
-  constructor(private readonly repo: PlaceExternalIdentifiersRepository) {}
+  constructor(
+    private readonly repo: PlaceExternalIdentifiersRepository,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly audit: AuditService,
+  ) {}
+
+  // Khoá đúng một (placeId, provider) cho toàn bộ thời gian của `fn` — dùng cho MỌI thao tác ghi
+  // trên sub-resource này (propose/confirm/revoke), không chỉ upsert. Lý do KHÔNG đủ nếu chỉ khoá
+  // hàng đã có (`pessimistic_write`/FOR UPDATE, tiền lệ ở place-edit-proposals.repository.ts):
+  // lần ghi ĐẦU TIÊN cho một (placeId, provider) chưa có hàng nào để khoá — hai request đồng thời
+  // cùng thấy "chưa có hàng" rồi cùng INSERT sẽ tạo hai hàng is_primary=true mâu thuẫn, vì schema
+  // không có UNIQUE(place_id, provider) (chỉ UNIQUE(provider, external_id)). Advisory lock (cùng
+  // họ pg_advisory_lock mà SourceFirstIngestService.withCandidateLock đã dùng để chặn đúng loại
+  // đua này khi tạo place) không cần hàng tồn tại trước để khoá — serializes cả nhánh "chưa có
+  // hàng" lẫn nhánh "đã có hàng, sửa tại chỗ". Không cần migration thêm UNIQUE index.
+  private async withPlaceProviderLock<T>(
+    placeId: string,
+    provider: PlaceExternalIdentifierProvider,
+    fn: (manager: EntityManager) => Promise<T>,
+  ): Promise<T> {
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [ADVISORY_LOCK_CLASS, `${placeId}:${provider}`]);
+      return fn(manager);
+    });
+  }
 
   async ensureIdentifier(input: EnsureIdentifierInput): Promise<PlaceExternalIdentifier> {
     const existing = await this.repo.findByProviderAndExternalId(input.provider, input.externalId);
@@ -67,55 +112,156 @@ export class PlaceExternalIdentifiersService {
   // áp dụng cho ID mới; khác giá trị và external_id đó đã thuộc place KHÁC → từ chối (cùng thông
   // điệp xung đột danh tính như ensureIdentifier).
   async upsertPrimaryGooglePlaceId(input: UpsertPrimaryGooglePlaceIdInput): Promise<PlaceExternalIdentifier> {
-    const existingForPlace = await this.repo.findByPlaceAndProvider(
-      input.placeId,
-      PlaceExternalIdentifierProvider.GOOGLE_PLACES,
-    );
-    if (existingForPlace && existingForPlace.externalId === input.externalId) {
-      return existingForPlace; // idempotent no-op — same place, same id, save-again
-    }
-
-    const claimedElsewhere = await this.repo.findByProviderAndExternalId(
-      PlaceExternalIdentifierProvider.GOOGLE_PLACES,
-      input.externalId,
-    );
-    if (claimedElsewhere && claimedElsewhere.placeId !== input.placeId) {
-      throw new BadRequestException(
-        `GOOGLE_PLACES identifier "${input.externalId}" is already mapped to place ${claimedElsewhere.placeId}; ` +
-          `refusing to also map it to ${input.placeId}. Resolve the identity conflict before retrying.`,
+    return this.withPlaceProviderLock(input.placeId, PlaceExternalIdentifierProvider.GOOGLE_PLACES, async (manager) => {
+      const existingForPlace = await this.repo.findByPlaceAndProvider(
+        input.placeId,
+        PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        manager,
       );
-    }
 
-    if (existingForPlace) {
-      existingForPlace.externalId = input.externalId;
-      existingForPlace.sourceId = input.sourceId ?? null;
-      existingForPlace.evidenceId = input.evidenceId ?? null;
-      existingForPlace.verifiedAt = null;
-      return this.repo.save(existingForPlace);
-    }
+      // Lưu lại ĐÚNG ID hiện tại (chưa đổi) — hành vi RÕ: KHÔNG BAO GIỜ đụng verifiedAt (không vô
+      // tình mất xác nhận đã có chỉ vì lưu lại), nhưng CÓ cập nhật source/evidence nếu người dùng
+      // cung cấp mới (vd bổ sung bằng chứng cho một ID đã nhập, không cần đổi ID để làm việc đó).
+      // Không có gì thay đổi thật → không ghi DB (true no-op, không chỉ "idempotent về mặt kết quả").
+      if (existingForPlace && existingForPlace.externalId === input.externalId) {
+        let changed = false;
+        if (input.sourceId !== undefined && input.sourceId !== existingForPlace.sourceId) {
+          existingForPlace.sourceId = input.sourceId;
+          changed = true;
+        }
+        if (input.evidenceId !== undefined && input.evidenceId !== existingForPlace.evidenceId) {
+          existingForPlace.evidenceId = input.evidenceId;
+          changed = true;
+        }
+        return changed ? this.repo.save(existingForPlace, manager) : existingForPlace;
+      }
 
-    const row = this.repo.create({
-      placeId: input.placeId,
-      provider: PlaceExternalIdentifierProvider.GOOGLE_PLACES,
-      externalId: input.externalId,
-      isPrimary: true,
-      sourceId: input.sourceId ?? null,
-      evidenceId: input.evidenceId ?? null,
-      verifiedAt: null,
+      const claimedElsewhere = await this.repo.findByProviderAndExternalId(
+        PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        input.externalId,
+        manager,
+      );
+      if (claimedElsewhere && claimedElsewhere.placeId !== input.placeId) {
+        throw new BadRequestException(
+          `GOOGLE_PLACES identifier "${input.externalId}" is already mapped to place ${claimedElsewhere.placeId}; ` +
+            `refusing to also map it to ${input.placeId}. Resolve the identity conflict before retrying.`,
+        );
+      }
+
+      if (existingForPlace) {
+        // Đổi sang ID KHÁC cho CÙNG place — thay tại chỗ, KHÔNG mang source/evidence của ID CŨ sang
+        // như thể bằng chứng đó vẫn hợp lệ cho ID mới (luôn lấy từ input, mặc định null nếu không
+        // cung cấp — không kế thừa giá trị cũ). `verifiedAt` reset về null: xác nhận cũ gắn với ID
+        // cũ, một ID khác CHƯA từng được ai đối chiếu, dù is_primary/row vẫn là CÙNG một hàng.
+        existingForPlace.externalId = input.externalId;
+        existingForPlace.sourceId = input.sourceId ?? null;
+        existingForPlace.evidenceId = input.evidenceId ?? null;
+        existingForPlace.verifiedAt = null;
+        return this.repo.save(existingForPlace, manager);
+      }
+
+      const row = this.repo.create({
+        placeId: input.placeId,
+        provider: PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        externalId: input.externalId,
+        isPrimary: true,
+        sourceId: input.sourceId ?? null,
+        evidenceId: input.evidenceId ?? null,
+        verifiedAt: null,
+      });
+      return this.repo.save(row, manager);
     });
-    return this.repo.save(row);
+  }
+
+  // Xác nhận (2026-10-16) — hồ sơ Google khớp ĐÚNG địa điểm này. KHÔNG xác minh quyền sở hữu, chất
+  // lượng cơ sở hay lối vào (xem ghi chú ở findVerifiedPrimaryGooglePlaceId) — chỉ một khẳng định
+  // hẹp: "người có quyền đã đối chiếu, hồ sơ này đúng là địa điểm đó". Route gọi hàm này đòi
+  // `PlaceExternalIdentifier.Verify` (KHÁC `Place.Edit.Managed` — xem migration
+  // 1720009100000), không scoped theo place cụ thể (ai giữ quyền này xác nhận được MỌI place,
+  // giống Place.Approve/Price.Verify). Mỗi lần gọi là MỘT hành động xác nhận thật (không chỉ kiểm
+  // tra trạng thái) — `verifiedAt` LUÔN cập nhật thành "bây giờ" kể cả khi đã xác nhận từ trước
+  // (đối chiếu lại định kỳ là hợp lệ), và actor/thời điểm LUÔN được ghi qua AuditService (cơ chế
+  // audit đã có — KHÔNG thêm cột `verified_by` mới vào entity).
+  async confirmGooglePlaceId(input: ConfirmGooglePlaceIdInput): Promise<PlaceExternalIdentifier> {
+    return this.withPlaceProviderLock(input.placeId, PlaceExternalIdentifierProvider.GOOGLE_PLACES, async (manager) => {
+      const existing = await this.repo.findByPlaceAndProvider(
+        input.placeId,
+        PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        manager,
+      );
+      if (!existing) {
+        throw new NotFoundException('Chưa có Google Place ID nào để xác nhận cho địa điểm này.');
+      }
+      const before = existing.verifiedAt;
+      const confirmedAt = new Date();
+      existing.verifiedAt = confirmedAt;
+      if (input.sourceId !== undefined) existing.sourceId = input.sourceId;
+      if (input.evidenceId !== undefined) existing.evidenceId = input.evidenceId;
+      const saved = await this.repo.save(existing, manager);
+
+      await this.audit.record({
+        event: 'place_external_identifier.verified',
+        entityType: 'place_external_identifier',
+        entityId: saved.id,
+        actorId: input.actorId,
+        permission: 'PlaceExternalIdentifier.Verify',
+        context: {
+          place_id: input.placeId,
+          provider: saved.provider,
+          external_id: saved.externalId,
+          from: before ? before.toISOString() : null,
+          to: confirmedAt.toISOString(),
+        },
+      });
+      return saved;
+    });
+  }
+
+  // Thu hồi xác nhận (2026-10-16) — đối xứng với confirm, cùng permission. Không xoá identifier
+  // (owner/manager vẫn có thể đã nhập đúng ID, chỉ là xác nhận đó không còn đúng/cần xem lại) —
+  // chỉ đưa verifiedAt về null, trang công khai tự quay lại fallback tìm kiếm (findVerifiedPrimary
+  // GooglePlaceId's quy tắc không đổi).
+  async revokeGooglePlaceIdVerification(input: RevokeGooglePlaceIdVerificationInput): Promise<PlaceExternalIdentifier> {
+    return this.withPlaceProviderLock(input.placeId, PlaceExternalIdentifierProvider.GOOGLE_PLACES, async (manager) => {
+      const existing = await this.repo.findByPlaceAndProvider(
+        input.placeId,
+        PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        manager,
+      );
+      if (!existing) {
+        throw new NotFoundException('Chưa có Google Place ID nào cho địa điểm này.');
+      }
+      const before = existing.verifiedAt;
+      existing.verifiedAt = null;
+      const saved = await this.repo.save(existing, manager);
+
+      await this.audit.record({
+        event: 'place_external_identifier.verification_revoked',
+        entityType: 'place_external_identifier',
+        entityId: saved.id,
+        actorId: input.actorId,
+        permission: 'PlaceExternalIdentifier.Verify',
+        context: {
+          place_id: input.placeId,
+          provider: saved.provider,
+          external_id: saved.externalId,
+          from: before ? before.toISOString() : null,
+          to: null,
+        },
+      });
+      return saved;
+    });
   }
 
   // Quy tắc "đủ điều kiện công khai" (chốt 2026-10-16, gói external-identifiers): CHỈ identifier có
   // `verifiedAt` KHÔNG null và `isPrimary` được dùng để build link "hồ sơ đã xác nhận" công khai
   // (xem PlacesService.buildDetailResponse, apps/web mapLinks.ts's nhánh `primaryCertain: true`).
-  // `ensureIdentifier` ở trên KHÔNG BAO GIỜ nhận verifiedAt từ client (route viết trong
-  // PlaceExternalIdentifiersController luôn truyền `null`) — nên MỘT ĐỊNH NGHĨA DUY NHẤT "đủ điều
-  // kiện" nằm ở ĐÂY, không rải rác điều kiện lọc ở nhiều caller. Ai/cơ chế nào được phép SET
-  // verifiedAt (đánh dấu đã xác minh) CHƯA được quyết định — cố ý CHƯA có action nào trong service
-  // này làm việc đó; bất kỳ identifier nào tồn tại hôm nay (nhập qua dashboard) có verifiedAt=null
-  // nên sẽ KHÔNG đi qua đường này cho tới khi quyết định đó được đưa ra và một cơ chế xác minh
-  // riêng (ngoài phạm vi gói này) ghi verifiedAt.
+  // `ensureIdentifier`/`upsertPrimaryGooglePlaceId` KHÔNG BAO GIỜ nhận verifiedAt từ client — nên
+  // MỘT ĐỊNH NGHĨA DUY NHẤT "đủ điều kiện" nằm ở ĐÂY, không rải rác điều kiện lọc ở nhiều caller.
+  // Cơ chế SET verifiedAt (2026-10-16, cùng ngày, phần hai của gói): `confirmGooglePlaceId()`/
+  // `revokeGooglePlaceIdVerification()` bên dưới — đòi permission RIÊNG
+  // `PlaceExternalIdentifier.Verify` (migration 1720009100000), tách khỏi `Place.Edit.Managed` mà
+  // route nhập ID dùng, để người nhập ID không tự xác nhận được chính ID họ vừa nhập.
   async findVerifiedPrimaryGooglePlaceId(placeId: string): Promise<string | null> {
     const row = await this.repo.findByPlaceAndProvider(placeId, PlaceExternalIdentifierProvider.GOOGLE_PLACES);
     if (!row || !row.isPrimary || row.verifiedAt === null) return null;

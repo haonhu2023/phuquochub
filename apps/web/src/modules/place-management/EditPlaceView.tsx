@@ -352,7 +352,7 @@ export function EditPlaceView({ placeId }: Props) {
       {/* KHÔNG gắn theo category — gán sai đúng hồ sơ Google Maps áp dụng cho mọi loại địa điểm,
           không phải riêng hotel/restaurant. KHÔNG dùng contentVersion CAS (xem ghi chú ở
           GooglePlaceIdEditor.tsx — sub-resource độc lập, tự có idempotency riêng). */}
-      <GooglePlaceIdEditor placeId={placeId} />
+      <GooglePlaceIdEditor placeId={placeId} placeName={state.place.name} />
       {state.place.category_slug === 'hotel' && contentVersion !== null && (
         <>
           <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />

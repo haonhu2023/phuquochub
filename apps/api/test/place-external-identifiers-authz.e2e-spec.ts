@@ -69,6 +69,14 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     ]);
   }
 
+  // Quyền XÁC NHẬN (2026-10-16) — toàn cục (scope_type='global', KHÔNG business_id), khớp đúng
+  // cách migration 1720009100000 cấp PlaceExternalIdentifier.Verify cho content_owner: ai giữ
+  // quyền này xác nhận được MỌI place, không giới hạn theo business_id như grantManaged ở trên.
+  async function grantContentOwner(userId: string): Promise<void> {
+    const [{ id: roleId }] = await ds.query(`SELECT id FROM roles WHERE code = 'content_owner'`);
+    await ds.query(`INSERT INTO user_roles (user_id, role_id, scope_type) VALUES ($1,$2,'global')`, [userId, roleId]);
+  }
+
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
@@ -202,10 +210,12 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     expect(listB.body.data).toHaveLength(0);
   });
 
-  it('định danh hợp lệ đi qua API tới GET /places/:slug — chỉ khi đủ điều kiện (verified); record chưa có ID vẫn hoạt động', async () => {
+  it('nhập → xác nhận (qua API thật, KHÔNG phải SQL trực tiếp) → public DTO trả đúng ID; record chưa có ID vẫn hoạt động', async () => {
     const a = await mkPlace('public-readback');
     const mgr = await createUser('mgr-public-readback');
+    const confirmer = await createUser('confirmer-public-readback');
     await grantManaged(mgr.userId, a.id);
+    await grantContentOwner(confirmer.userId);
     const [{ slug }] = await ds.query(`SELECT slug FROM places WHERE id = $1`, [a.id]);
     await ds.query(`UPDATE places SET status = 'published' WHERE id = $1`, [a.id]);
 
@@ -214,20 +224,186 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     expect(before.status).toBe(200);
     expect(before.body.data.google_place_id).toBeNull();
 
-    // Nhập ID qua dashboard — verifiedAt vẫn null (chưa ai xác minh) → PUBLIC VẪN null, giữ fallback.
-    const unverifiedId = uid('ChIJ-unverified');
+    // Người quản lý nhập ID — verifiedAt vẫn null (chưa ai xác minh) → PUBLIC VẪN null, giữ fallback.
+    const theId = uid('ChIJ-confirm-flow');
     await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: unverifiedId });
+      .send({ external_id: theId });
     const afterUnverified = await request(app.getHttpServer()).get(`/api/places/${slug}`);
     expect(afterUnverified.body.data.google_place_id).toBeNull();
 
-    // Mô phỏng một identifier ĐÃ xác minh (cơ chế xác minh thật chưa tồn tại trong gói này — xem
-    // PlaceExternalIdentifiersService's ghi chú — ghi thẳng verified_at bằng SQL CHỈ để chứng minh
-    // đường ĐỌC hoạt động đúng khi điều kiện đã thoả, không phải một API thật).
-    await ds.query(`UPDATE place_external_identifiers SET verified_at = now() WHERE place_id = $1`, [a.id]);
+    // Người có quyền PlaceExternalIdentifier.Verify xác nhận — qua ĐÚNG endpoint thật, không phải
+    // ghi thẳng SQL (cơ chế xác minh giờ đã tồn tại, khác gói trước).
+    const confirmRes = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .set('Authorization', `Bearer ${confirmer.accessToken}`)
+      .send({});
+    expect(confirmRes.status).toBe(200);
+    expect(confirmRes.body.data.verified_at).not.toBeNull();
+
     const afterVerified = await request(app.getHttpServer()).get(`/api/places/${slug}`);
-    expect(afterVerified.body.data.google_place_id).toBe(unverifiedId);
+    expect(afterVerified.body.data.google_place_id).toBe(theId);
+  });
+
+  it('actor CHỈ có Place.Edit.Managed (không có PlaceExternalIdentifier.Verify) → confirm/revoke đều 403 — không tự xác nhận được ID mình vừa nhập', async () => {
+    const a = await mkPlace('confirm-authz');
+    const mgr = await createUser('mgr-confirm-authz');
+    await grantManaged(mgr.userId, a.id);
+    await request(app.getHttpServer())
+      .put(`/api/places/${a.id}/external-identifiers/google-places`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({ external_id: uid('ChIJ-self-confirm-attempt') });
+
+    const confirmRes = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({});
+    expect(confirmRes.status).toBe(403);
+
+    const revokeRes = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/revoke`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({});
+    expect(revokeRes.status).toBe(403);
+  });
+
+  it('confirm không token → 401; confirm khi chưa có identifier nào → 404', async () => {
+    const a = await mkPlace('confirm-noauth');
+    const confirmer = await createUser('confirmer-noauth');
+    await grantContentOwner(confirmer.userId);
+
+    const noToken = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .send({});
+    expect(noToken.status).toBe(401);
+
+    const noIdentifier = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .set('Authorization', `Bearer ${confirmer.accessToken}`)
+      .send({});
+    expect(noIdentifier.status).toBe(404);
+  });
+
+  it('đổi sang ID khác sau khi đã xác nhận → mất xác nhận (verified_at về null, public fallback)', async () => {
+    const a = await mkPlace('reset-on-change');
+    const mgr = await createUser('mgr-reset-on-change');
+    const confirmer = await createUser('confirmer-reset-on-change');
+    await grantManaged(mgr.userId, a.id);
+    await grantContentOwner(confirmer.userId);
+    const [{ slug }] = await ds.query(`SELECT slug FROM places WHERE id = $1`, [a.id]);
+    await ds.query(`UPDATE places SET status = 'published' WHERE id = $1`, [a.id]);
+
+    await request(app.getHttpServer())
+      .put(`/api/places/${a.id}/external-identifiers/google-places`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({ external_id: uid('ChIJ-will-be-replaced') });
+    await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .set('Authorization', `Bearer ${confirmer.accessToken}`)
+      .send({});
+    const confirmedCheck = await request(app.getHttpServer()).get(`/api/places/${slug}`);
+    expect(confirmedCheck.body.data.google_place_id).not.toBeNull();
+
+    // Đổi sang ID khác (sửa nhầm, nhập lại) — xác nhận cũ gắn với ID CŨ, không tự áp dụng cho ID mới.
+    const replacement = await request(app.getHttpServer())
+      .put(`/api/places/${a.id}/external-identifiers/google-places`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({ external_id: uid('ChIJ-replacement') });
+    expect(replacement.body.data.verified_at).toBeNull();
+
+    const afterReplace = await request(app.getHttpServer()).get(`/api/places/${slug}`);
+    expect(afterReplace.body.data.google_place_id).toBeNull(); // về fallback — ID mới CHƯA từng được xác nhận
+  });
+
+  it('thu hồi xác nhận → public quay về fallback (null), identifier vẫn còn (chưa xoá)', async () => {
+    const a = await mkPlace('revoke-flow');
+    const mgr = await createUser('mgr-revoke-flow');
+    const confirmer = await createUser('confirmer-revoke-flow');
+    await grantManaged(mgr.userId, a.id);
+    await grantContentOwner(confirmer.userId);
+    const [{ slug }] = await ds.query(`SELECT slug FROM places WHERE id = $1`, [a.id]);
+    await ds.query(`UPDATE places SET status = 'published' WHERE id = $1`, [a.id]);
+    const theId = uid('ChIJ-revoke-flow');
+
+    await request(app.getHttpServer())
+      .put(`/api/places/${a.id}/external-identifiers/google-places`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({ external_id: theId });
+    await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+      .set('Authorization', `Bearer ${confirmer.accessToken}`)
+      .send({});
+    expect((await request(app.getHttpServer()).get(`/api/places/${slug}`)).body.data.google_place_id).toBe(theId);
+
+    const revokeRes = await request(app.getHttpServer())
+      .post(`/api/places/${a.id}/external-identifiers/google-places/revoke`)
+      .set('Authorization', `Bearer ${confirmer.accessToken}`)
+      .send({});
+    expect(revokeRes.status).toBe(200);
+    expect(revokeRes.body.data.verified_at).toBeNull();
+    expect(revokeRes.body.data.external_id).toBe(theId); // KHÔNG xoá identifier, chỉ mất xác nhận
+
+    const afterRevoke = await request(app.getHttpServer()).get(`/api/places/${slug}`);
+    expect(afterRevoke.body.data.google_place_id).toBeNull(); // public quay về fallback
+  });
+
+  it('ghi đồng thời (2 external_id khác nhau, cùng place, cùng lúc) → KHÔNG tạo hai primary mâu thuẫn, đúng 1 hàng sau cùng', async () => {
+    const a = await mkPlace('concurrent-write');
+    const mgr = await createUser('mgr-concurrent-write');
+    await grantManaged(mgr.userId, a.id);
+    const idX = uid('ChIJ-concurrent-x');
+    const idY = uid('ChIJ-concurrent-y');
+
+    const [resX, resY] = await Promise.all([
+      request(app.getHttpServer())
+        .put(`/api/places/${a.id}/external-identifiers/google-places`)
+        .set('Authorization', `Bearer ${mgr.accessToken}`)
+        .send({ external_id: idX }),
+      request(app.getHttpServer())
+        .put(`/api/places/${a.id}/external-identifiers/google-places`)
+        .set('Authorization', `Bearer ${mgr.accessToken}`)
+        .send({ external_id: idY }),
+    ]);
+    expect(resX.status).toBe(200);
+    expect(resY.status).toBe(200);
+
+    const list = await request(app.getHttpServer())
+      .get(`/api/places/${a.id}/external-identifiers`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`);
+    expect(list.body.data).toHaveLength(1); // advisory lock tuần tự hoá — không có 2 primary mâu thuẫn
+    expect([idX, idY]).toContain(list.body.data[0].external_id); // một trong hai "thắng", không mất dữ liệu kiểu khác
+  });
+
+  it('xác nhận đồng thời (2 lần confirm cùng lúc) → không lỗi, verified_at có giá trị, vẫn đúng 1 hàng', async () => {
+    const a = await mkPlace('concurrent-confirm');
+    const mgr = await createUser('mgr-concurrent-confirm');
+    const confirmer = await createUser('confirmer-concurrent-confirm');
+    await grantManaged(mgr.userId, a.id);
+    await grantContentOwner(confirmer.userId);
+    await request(app.getHttpServer())
+      .put(`/api/places/${a.id}/external-identifiers/google-places`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`)
+      .send({ external_id: uid('ChIJ-concurrent-confirm') });
+
+    const [c1, c2] = await Promise.all([
+      request(app.getHttpServer())
+        .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+        .set('Authorization', `Bearer ${confirmer.accessToken}`)
+        .send({}),
+      request(app.getHttpServer())
+        .post(`/api/places/${a.id}/external-identifiers/google-places/confirm`)
+        .set('Authorization', `Bearer ${confirmer.accessToken}`)
+        .send({}),
+    ]);
+    expect(c1.status).toBe(200);
+    expect(c2.status).toBe(200);
+    expect(c1.body.data.verified_at).not.toBeNull();
+    expect(c2.body.data.verified_at).not.toBeNull();
+
+    const list = await request(app.getHttpServer())
+      .get(`/api/places/${a.id}/external-identifiers`)
+      .set('Authorization', `Bearer ${mgr.accessToken}`);
+    expect(list.body.data).toHaveLength(1);
   });
 });
