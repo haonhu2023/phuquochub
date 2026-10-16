@@ -123,6 +123,28 @@ async function renderPage(p: PlaceDetail) {
 // 2026-09-17 (real-data pass): gallery được tách ra `PlaceGallery` (dùng chung với
 // hotels/restaurants/tours) — test lại HÀNH VI render, không phải chi tiết cài đặt, để đảm bảo
 // refactor không lặng lẽ làm mất gallery khỏi trang này.
+// Lỗi thật đã sửa 16/10/2026 (phát hiện qua ảnh chụp Bãi Sao — chính fixture mặc định của file
+// này): link cũ CHỈ mở toạ độ (`?q=lat,lng`), Google Maps hiện điểm ghim, không hiện hồ sơ "Bãi
+// Sao". Nay dùng `getPlaceMapLinks` — xem modules/map/mapLinks.ts cho lý do đầy đủ.
+describe('PlaceDetailPage — link Google Maps (tìm theo tên + toạ độ tham khảo)', () => {
+  it('không có địa chỉ -> link tìm kiếm chỉ theo tên, kèm link toạ độ tham khảo riêng', async () => {
+    await renderPage(place({ name: 'Bãi Sao', address: null, location: { lat: 10.0572576, lng: 104.0363948 } }));
+    const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
+    expect(searchLink).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao'),
+    );
+    const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
+    expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.0572576,104.0363948');
+  });
+
+  it('toạ độ không hợp lệ -> không render link bản đồ nào', async () => {
+    await renderPage(place({ location: { lat: NaN, lng: 104.0363948 } }));
+    expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
+  });
+});
+
 describe('PlaceDetailPage — gallery ảnh công khai (dùng chung PlaceGallery)', () => {
   it('có media đã published -> render ảnh thật', async () => {
     await renderPage(

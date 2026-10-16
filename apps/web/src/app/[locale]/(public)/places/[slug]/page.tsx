@@ -25,7 +25,7 @@ import styles from '@/modules/places/places.module.css';
 import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
-import { isValidCoord } from '@/modules/map/mapMarkers';
+import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 import type { Review } from '@/modules/reviews/types';
 import { ClaimCta } from '@/modules/business-claims/ClaimCta';
 import { ProposeEditCta } from '@/modules/place-edit-proposals/ProposeEditCta';
@@ -187,7 +187,14 @@ export default async function PlaceDetailPage({ params }: Params) {
   const trustSource = summarizeTrustSources(place.trust_sources, locale);
   const verifiedAtLabel = place.verified_at ? formatVerifiedAt(place.verified_at, locale) : null;
   const hasInfo = place.address || place.ward || priceLabel || showPriceVerifying || hasHours;
-  const mapHref = `https://www.google.com/maps?q=${place.location.lat},${place.location.lng}`;
+  // Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ (`?q=lat,lng`) — Google Maps hiện điểm
+  // ghim, không hiện hồ sơ địa điểm. `getPlaceMapLinks` ưu tiên tìm theo tên(+địa chỉ), nhãn nói
+  // rõ đây là tìm kiếm (chưa xác nhận đúng hồ sơ) trừ khi có Google Place ID đã đối chiếu (hiện
+  // CHƯA có cơ chế dashboard nào để gắn Place ID — xem mapLinks.ts).
+  const mapLinks = getPlaceMapLinks(
+    { lat: place.location.lat, lng: place.location.lng, name: place.name, address: place.address },
+    locale,
+  );
   // Public Beta price trust gate — "Giá dịch vụ" (2026-08-28): mỗi dòng `PlacePrice` đã mang sẵn
   // `verification_status` RIÊNG của chính bản ghi giá đó (price_history.verification_status,
   // KHÔNG phải verification_status của place) — dùng ĐÚNG field đó, cùng canDisplayPrice() dùng
@@ -421,10 +428,16 @@ export default async function PlaceDetailPage({ params }: Params) {
               </ul>
             </details>
           )}
-          {isValidCoord(place.location.lng, place.location.lat) && (
-            <a className={styles.mapLink} href={mapHref} target="_blank" rel="noopener noreferrer">
-              {copy.viewOnMap}
-            </a>
+          {mapLinks && (
+            <p>
+              <a className={styles.mapLink} href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
+                {mapLinks.primary.label}
+              </a>
+              {' · '}
+              <a className={styles.mapLink} href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+                {mapLinks.referencePin.label}
+              </a>
+            </p>
           )}
         </section>
       )}

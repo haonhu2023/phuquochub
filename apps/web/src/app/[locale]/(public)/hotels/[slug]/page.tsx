@@ -13,20 +13,15 @@ import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescrip
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
-import { isValidCoord } from '@/modules/map/mapMarkers';
+import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
-// Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — chỉ places/[slug]/page.tsx có
-// link "Xem trên bản đồ"/chỉ đường; trang hotel/restaurant riêng (route khách thật sự dùng) hoàn
-// toàn KHÔNG có, dù cùng dữ liệu location. Cùng href pattern places/[slug] đã dùng (Google Maps
-// ?q=lat,lng) — không phải link hai nơi khác toạ độ.
-const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
 // Khoảng trống i18n thật phát hiện 16/10/2026 (nghiệm thu sau release `2889bf8`): 4 tiêu đề mục
 // dưới đây hardcode tiếng Việt kể cả ở `/en`, trong khi phần còn lại của trang đã song ngữ qua
 // placeDetail.copy.ts (`sectionContact`). "Liên hệ" tái dùng CHÍNH `getPlaceDetailCopy(locale)`
 // đã có sẵn thay vì khai lại; 3 nhãn còn lại là riêng của trang khách sạn, theo đúng khuôn các
-// hằng `Record<Locale, string>` đã có ở trên (BREADCRUMB_*/VIEW_ON_MAP_LABEL).
+// hằng `Record<Locale, string>` đã có ở trên (BREADCRUMB_*).
 const SECTION_HOTEL_INFO_LABEL: Record<Locale, string> = { vi: 'Thông tin khách sạn', en: 'Hotel information' };
 const LABEL_HOTEL_TYPE: Record<Locale, string> = { vi: 'Loại hình', en: 'Type' };
 const SECTION_AMENITIES_LABEL: Record<Locale, string> = { vi: 'Tiện nghi', en: 'Amenities' };
@@ -114,17 +109,22 @@ export default async function HotelDetailPage({ params }: Params) {
         <PlacePhotosButton placeId={h.id} />
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
-      {isValidCoord(h.location.lng, h.location.lat) && (
-        <p>
-          <a
-            href={`https://www.google.com/maps?q=${h.location.lat},${h.location.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {VIEW_ON_MAP_LABEL[locale]}
-          </a>
-        </p>
-      )}
+      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts. */}
+      {(() => {
+        const mapLinks = getPlaceMapLinks({ lat: h.location.lat, lng: h.location.lng, name: h.name, address: h.address }, locale);
+        if (!mapLinks) return null;
+        return (
+          <p>
+            <a href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
+              {mapLinks.primary.label}
+            </a>
+            {' · '}
+            <a href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+              {mapLinks.referencePin.label}
+            </a>
+          </p>
+        );
+      })()}
 
       <PlaceGallery media={h.media} placeName={h.name} />
 

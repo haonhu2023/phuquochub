@@ -236,19 +236,40 @@ describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route 
 // không dựng bộ hiển thị thứ hai.
 // Bug thật đã sửa (2026-09-30, phát hiện qua chẩn đoán bản đồ) — trang hotel/restaurant riêng
 // (route khách thật sự dùng) hoàn toàn KHÔNG có link "Xem trên bản đồ"/chỉ đường, dù
-// places/[slug]/page.tsx đã có từ trước với cùng toạ độ. Test này khoá lại: link tồn tại VÀ dùng
-// ĐÚNG place.location (không phải toạ độ hard-code/khác nguồn với marker).
-describe('HotelDetailPage — link "Xem trên bản đồ" (chỉ đường, cùng toạ độ với dữ liệu)', () => {
-  it('render link Google Maps đúng toạ độ location của hotel', async () => {
-    await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 } }));
-    const link = screen.getByRole('link', { name: /Xem trên bản đồ/ });
-    expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
-    expect(link).toHaveAttribute('target', '_blank');
+// places/[slug]/page.tsx đã có từ trước với cùng toạ độ.
+//
+// SỬA 16/10/2026 (lỗi thật khác, phát hiện qua ảnh chụp Bãi Sao): link cũ CHỈ mở toạ độ
+// (`?q=lat,lng`) — Google Maps hiện điểm ghim, không hiện hồ sơ địa điểm. Nay dùng
+// `getPlaceMapLinks` (xem modules/map/mapLinks.ts): link chính là TÌM KIẾM theo tên (+địa chỉ nếu
+// có) — tăng khả năng khớp đúng hồ sơ thật, nhãn nói rõ "Tìm trên Google Maps" (chưa xác nhận,
+// chưa có Google Place ID trong hệ thống); link phụ "Xem toạ độ tham khảo" giữ nguyên cơ chế toạ
+// độ thuần cũ.
+describe('HotelDetailPage — link Google Maps (tìm theo tên + toạ độ tham khảo, cùng dữ liệu location/name)', () => {
+  it('render đúng 2 link: tìm theo tên (chưa có địa chỉ) và toạ độ tham khảo', async () => {
+    await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 }, name: 'Khách sạn Biển Xanh', address: null }));
+    const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
+    expect(searchLink).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Khách sạn Biển Xanh'),
+    );
+    expect(searchLink).toHaveAttribute('target', '_blank');
+    const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
+    expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
   });
 
-  it('toạ độ không hợp lệ (NaN/ngoài phạm vi Trái Đất) -> KHÔNG render link, tránh dẫn khách tới nơi sai', async () => {
+  it('có địa chỉ -> link tìm kiếm ghép tên + địa chỉ', async () => {
+    await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 }, name: 'Khách sạn Biển Xanh', address: 'Bãi Trường, Dương Tơ' }));
+    const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
+    expect(searchLink).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Khách sạn Biển Xanh, Bãi Trường, Dương Tơ'),
+    );
+  });
+
+  it('toạ độ không hợp lệ (NaN/ngoài phạm vi Trái Đất) -> KHÔNG render link nào, tránh dẫn khách tới nơi sai', async () => {
     await renderPage(hotel({ location: { lat: NaN, lng: 103.9654 } }));
-    expect(screen.queryByRole('link', { name: /Xem trên bản đồ/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Tìm trên Google Maps →' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Xem toạ độ tham khảo' })).not.toBeInTheDocument();
   });
 });
 

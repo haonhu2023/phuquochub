@@ -87,11 +87,18 @@ describe('RestaurantDetailPage/generateMetadata — getRestaurant() phải nhậ
 });
 
 // Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.spec.tsx's ghi chú đầy đủ, cùng khuôn.
-describe('RestaurantDetailPage — link "Xem trên bản đồ" (chỉ đường, cùng toạ độ với dữ liệu)', () => {
-  it('render link Google Maps đúng toạ độ location của nhà hàng', async () => {
-    await renderPage(restaurant({ location: { lat: 10.2199, lng: 103.9654 } }));
-    const link = screen.getByRole('link', { name: /Xem trên bản đồ/ });
-    expect(link).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
+// SỬA 16/10/2026 — xem hotels/[slug]/page.spec.tsx's ghi chú đầy đủ cho lý do: nay tìm theo tên
+// (+địa chỉ) thay vì chỉ toạ độ, cùng `getPlaceMapLinks`.
+describe('RestaurantDetailPage — link Google Maps (tìm theo tên + toạ độ tham khảo, cùng dữ liệu location/name)', () => {
+  it('render đúng 2 link: tìm theo tên (chưa có địa chỉ) và toạ độ tham khảo', async () => {
+    await renderPage(restaurant({ location: { lat: 10.2199, lng: 103.9654 }, name: 'Quán Hải Sản', address: null }));
+    const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
+    expect(searchLink).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Quán Hải Sản'),
+    );
+    const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
+    expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.2199,103.9654');
   });
 });
 

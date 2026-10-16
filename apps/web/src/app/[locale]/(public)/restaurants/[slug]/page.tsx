@@ -15,12 +15,10 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
-import { isValidCoord } from '@/modules/map/mapMarkers';
+import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
-// Bug thật đã sửa (2026-09-30) — xem hotels/[slug]/page.tsx's ghi chú đầy đủ, cùng khuôn.
-const VIEW_ON_MAP_LABEL: Record<Locale, string> = { vi: 'Xem trên bản đồ →', en: 'View on map →' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -116,17 +114,22 @@ export default async function RestaurantDetailPage({ params }: Params) {
       </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
-      {isValidCoord(r.location.lng, r.location.lat) && (
-        <p>
-          <a
-            href={`https://www.google.com/maps?q=${r.location.lat},${r.location.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {VIEW_ON_MAP_LABEL[locale]}
-          </a>
-        </p>
-      )}
+      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts. */}
+      {(() => {
+        const mapLinks = getPlaceMapLinks({ lat: r.location.lat, lng: r.location.lng, name: r.name, address: r.address }, locale);
+        if (!mapLinks) return null;
+        return (
+          <p>
+            <a href={mapLinks.primary.url} target="_blank" rel="noopener noreferrer">
+              {mapLinks.primary.label}
+            </a>
+            {' · '}
+            <a href={mapLinks.referencePin.url} target="_blank" rel="noopener noreferrer">
+              {mapLinks.referencePin.label}
+            </a>
+          </p>
+        );
+      })()}
 
       <PlaceGallery media={r.media} placeName={r.name} />
 
