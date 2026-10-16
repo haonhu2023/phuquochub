@@ -13,6 +13,17 @@ import { AllExceptionsFilter } from '../src/common/filters/all-exceptions.filter
 // path — cùng lý do places-preview-authz.e2e-spec.ts tồn tại: metadata-lock spec
 // (place-external-identifiers.controller.spec.ts) chỉ chứng minh route KHAI BÁO đúng permission,
 // không chứng minh guard THỰC SỰ chặn một actor quản lý place A ghi định danh của place B.
+// `(provider, external_id)` có ràng buộc UNIQUE thật ở DB — một external_id hằng (literal) lặp lại
+// giữa các lần chạy suite này trên CÙNG một Postgres (vd chạy lại suite, hoặc chạy chung file với
+// suite khác không dọn dữ liệu giữa các lần) sẽ va chạm với hàng CŨ của một place KHÁC, biến một
+// trường hợp lẽ ra PASS (200) thành trông giống xung đột danh tính thật (400) — phát hiện thật
+// 2026-10-16 khi chạy file này 2 lần liên tiếp trên cùng DB cô lập. `uid()` khớp đúng cách
+// createUser()/mkPlace() bên dưới đã tự làm cho email/slug — mọi external_id dùng trong file này
+// PHẢI đi qua đây, không viết literal trần.
+function uid(label: string): string {
+  return `${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 describe('Place external identifiers over HTTP: managed scope — live Postgres', () => {
   let app: INestApplication;
   let ds: DataSource;
@@ -82,20 +93,21 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     const b = await mkPlace('scope-b');
     const mgr = await createUser('mgr-a');
     await grantManaged(mgr.userId, a.id);
+    const idA = uid('ChIJ-scope-a');
 
     const putA = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-scope-a' });
+      .send({ external_id: idA });
     expect(putA.status).toBe(200);
     expect(putA.body.data.place_id).toBe(a.id);
-    expect(putA.body.data.external_id).toBe('ChIJ-scope-a');
+    expect(putA.body.data.external_id).toBe(idA);
     expect(putA.body.data.verified_at).toBeNull(); // KHÔNG tự đánh dấu verified chỉ vì vừa nhập
 
     const putB = await request(app.getHttpServer())
       .put(`/api/places/${b.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-scope-b' });
+      .send({ external_id: uid('ChIJ-scope-b') });
     expect(putB.status).toBe(403);
 
     const listA = await request(app.getHttpServer())
@@ -117,7 +129,7 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     const put = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${outsider.accessToken}`)
-      .send({ external_id: 'ChIJ-nogrant' });
+      .send({ external_id: uid('ChIJ-nogrant') });
     expect(put.status).toBe(403);
   });
 
@@ -126,7 +138,7 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
 
     const res = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
-      .send({ external_id: 'ChIJ-noauth' });
+      .send({ external_id: uid('ChIJ-noauth') });
     expect(res.status).toBe(401);
   });
 
@@ -134,27 +146,29 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     const a = await mkPlace('idempotent');
     const mgr = await createUser('mgr-idempotent');
     await grantManaged(mgr.userId, a.id);
+    const idV1 = uid('ChIJ-v1');
+    const idV2 = uid('ChIJ-v2-corrected');
 
     const first = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-v1' });
+      .send({ external_id: idV1 });
     expect(first.status).toBe(200);
 
     const again = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-v1' });
+      .send({ external_id: idV1 });
     expect(again.status).toBe(200);
     expect(again.body.data.id).toBe(first.body.data.id);
 
     const corrected = await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-v2-corrected' });
+      .send({ external_id: idV2 });
     expect(corrected.status).toBe(200);
     expect(corrected.body.data.id).toBe(first.body.data.id); // CÙNG hàng, không phải hàng mới
-    expect(corrected.body.data.external_id).toBe('ChIJ-v2-corrected');
+    expect(corrected.body.data.external_id).toBe(idV2);
 
     const list = await request(app.getHttpServer())
       .get(`/api/places/${a.id}/external-identifiers`)
@@ -169,16 +183,17 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     const mgrB = await createUser('mgr-conflict-b');
     await grantManaged(mgrA.userId, a.id);
     await grantManaged(mgrB.userId, b.id);
+    const claimedId = uid('ChIJ-claimed-by-a');
 
     await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgrA.accessToken}`)
-      .send({ external_id: 'ChIJ-claimed-by-a' });
+      .send({ external_id: claimedId });
 
     const res = await request(app.getHttpServer())
       .put(`/api/places/${b.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgrB.accessToken}`)
-      .send({ external_id: 'ChIJ-claimed-by-a' });
+      .send({ external_id: claimedId });
     expect(res.status).toBe(400);
 
     const listB = await request(app.getHttpServer())
@@ -200,10 +215,11 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     expect(before.body.data.google_place_id).toBeNull();
 
     // Nhập ID qua dashboard — verifiedAt vẫn null (chưa ai xác minh) → PUBLIC VẪN null, giữ fallback.
+    const unverifiedId = uid('ChIJ-unverified');
     await request(app.getHttpServer())
       .put(`/api/places/${a.id}/external-identifiers/google-places`)
       .set('Authorization', `Bearer ${mgr.accessToken}`)
-      .send({ external_id: 'ChIJ-unverified' });
+      .send({ external_id: unverifiedId });
     const afterUnverified = await request(app.getHttpServer()).get(`/api/places/${slug}`);
     expect(afterUnverified.body.data.google_place_id).toBeNull();
 
@@ -212,6 +228,6 @@ describe('Place external identifiers over HTTP: managed scope — live Postgres'
     // đường ĐỌC hoạt động đúng khi điều kiện đã thoả, không phải một API thật).
     await ds.query(`UPDATE place_external_identifiers SET verified_at = now() WHERE place_id = $1`, [a.id]);
     const afterVerified = await request(app.getHttpServer()).get(`/api/places/${slug}`);
-    expect(afterVerified.body.data.google_place_id).toBe('ChIJ-unverified');
+    expect(afterVerified.body.data.google_place_id).toBe(unverifiedId);
   });
 });
