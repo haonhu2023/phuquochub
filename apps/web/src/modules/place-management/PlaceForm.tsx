@@ -57,20 +57,28 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   const [openingHours, setOpeningHours] = useState<OpeningHoursFormState>(() =>
     openingHoursToFormState(initial?.opening_hours),
   );
+  // Bảo toàn giờ mở cửa khi không đụng tới (phát hiện thật 16/10/2026) — xem ghi chú tại
+  // PlaceFormInput.opening_hours (types.ts) cho lý do đầy đủ. `false` ban đầu dù `initial` đã có
+  // giờ: KHÔNG gửi lại field này nếu người dùng không chạm tới, kể cả khi đã có giá trị — tránh
+  // ghi đè vô hại-nhưng-không-cần-thiết, và đúng cùng nguyên tắc "không đổi gì nếu không đụng tới".
+  const [openingHoursTouched, setOpeningHoursTouched] = useState(false);
   const editorialGroup = getEditorialCategory(categories?.find((c) => c.id === categoryId)?.slug ?? initial?.category_slug);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function toggleIs24h() {
+    setOpeningHoursTouched(true);
     setOpeningHours((prev) => ({ ...prev, is24h: !prev.is24h }));
   }
 
   function setOpeningHoursNote(value: string) {
+    setOpeningHoursTouched(true);
     setOpeningHours((prev) => ({ ...prev, note: value }));
   }
 
   function addRange(day: Weekday) {
+    setOpeningHoursTouched(true);
     setOpeningHours((prev) => ({
       ...prev,
       regular: { ...prev.regular, [day]: [...prev.regular[day], { open: '', close: '' }] },
@@ -78,6 +86,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   }
 
   function removeRange(day: Weekday, index: number) {
+    setOpeningHoursTouched(true);
     setOpeningHours((prev) => ({
       ...prev,
       regular: { ...prev.regular, [day]: prev.regular[day].filter((_, i) => i !== index) },
@@ -85,6 +94,7 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   }
 
   function updateRange(day: Weekday, index: number, field: 'open' | 'close', value: string) {
+    setOpeningHoursTouched(true);
     setOpeningHours((prev) => ({
       ...prev,
       regular: {
@@ -144,7 +154,9 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
       description: description.trim() || null,
       short_description: shortDescription.trim() || null,
       price_range: priceRange,
-      opening_hours: formStateToOpeningHours(openingHours, initial?.opening_hours ?? null),
+      // Chỉ gửi khi người dùng thực sự đụng tới mục giờ — xem ghi chú openingHoursTouched/
+      // PlaceFormInput.opening_hours cho lý do. Không gửi (undefined) = giữ nguyên giá trị hiện có.
+      ...(openingHoursTouched ? { opening_hours: formStateToOpeningHours(openingHours, initial?.opening_hours ?? null) } : {}),
     };
 
     setSubmitting(true);

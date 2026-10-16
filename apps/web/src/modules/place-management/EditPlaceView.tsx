@@ -152,7 +152,11 @@ export function EditPlaceView({ placeId }: Props) {
           address: input.address,
           ward: input.ward,
           price_range: input.price_range,
-          opening_hours: input.opening_hours,
+          // Chỉ gửi khi PlaceForm xác nhận người dùng đã đụng tới mục giờ (xem ghi chú
+          // PlaceFormInput.opening_hours) — omit hoàn toàn (không phải `null`) để backend giữ
+          // nguyên giá trị hiện có, đúng ý nghĩa `dto.opening_hours !== undefined` ở
+          // PlacesService.update()/saveDraft().
+          ...(input.opening_hours !== undefined ? { opening_hours: input.opening_hours } : {}),
           location: input.location,
         },
         session.accessToken,

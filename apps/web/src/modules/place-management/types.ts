@@ -31,10 +31,17 @@ export interface PlaceFormInput {
   description: string | null;
   short_description: string | null;
   price_range: PriceRangeValue | null;
-  // KHÔNG nullable (khác các trường trên) — UpdatePlaceDto.opening_hours không nhận null,
-  // `{}`/regular rỗng mới là "trống" hợp lệ theo IsOpeningHours. Luôn gửi một object hợp lệ, xem
-  // openingHours.ts formStateToOpeningHours().
-  opening_hours: OpeningHours;
+  // NGOẠI LỆ CÓ CHỦ Ý so với quy ước `T | null` ở trên (phát hiện thật 16/10/2026, nghiệm thu nhập
+  // liệu Ra Khơi): mọi trường khác ở form này có một lựa chọn TƯỜNG MINH cho "xoá" (vd <select>
+  // "Không chọn" cho price_range) — người dùng phải CHỦ ĐỘNG chọn nó. `opening_hours` thì khác:
+  // `openingHoursToFormState(null)` và trạng thái "đã chủ động xoá hết giờ" render RA CÙNG MỘT HÌNH
+  // DẠNG rỗng, không cách nào phân biệt "chưa từng đụng tới" với "đã xoá" chỉ từ state của form. Gửi
+  // luôn một object (như trước) khiến MỌI lần lưu — kể cả chỉ sửa địa chỉ — biến `opening_hours`
+  // NULL ("chưa từng đặt giờ") thành `{is_24h:false,regular:{mon:[],...}}` ("đã khảo sát, đóng cửa
+  // mọi ngày") mà người dùng không hề thao tác tới mục giờ. `undefined` ở ĐÚNG field này an toàn
+  // (PlaceForm tự theo dõi "đã đụng tới mục giờ chưa" — xem openingHoursTouched — không dựa vào suy
+  // luận từ state rỗng), nên đây là ngoại lệ hẹp, không áp dụng cho field nào khác.
+  opening_hours?: OpeningHours;
 }
 
 // PATCH /places/:id body — CAS (AddPlaceContentVersion, 2026-09-22). BẮT BUỘC, không tùy chọn:

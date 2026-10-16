@@ -221,6 +221,37 @@ describe('EditPlaceView — chống ghi đè theo bảng chức năng (hoàn t�
     await waitFor(() => expect(mockPublishDraft).toHaveBeenCalledWith('p1', 'rev1', 'tok'));
   });
 
+  // Phát hiện thật 16/10/2026 (nghiệm thu nhập liệu Ra Khơi, production): sửa ĐỊA CHỈ một place có
+  // `opening_hours=null` ("chưa từng đặt giờ") khiến DB ghi thành `{is_24h:false, 7 ngày rỗng}`
+  // ("đã khảo sát, đóng cửa cả tuần") — dù người dùng không hề đụng tới mục giờ. Test này khoá
+  // đúng sự cố đó ở mức component đầy đủ (PlaceForm thật lồng trong EditPlaceView thật, không
+  // mock PlaceForm) — xác nhận `saveDraftPlace` KHÔNG nhận field `opening_hours` nào cả khi mục
+  // giờ không bị đụng tới, bất kể `initial.opening_hours` là null hay đã có dữ liệu thật.
+  it('sửa địa chỉ, KHÔNG đụng mục giờ, place initial opening_hours=null -> saveDraftPlace KHÔNG có key opening_hours (không biến null thành object rỗng)', async () => {
+    await renderReady({ opening_hours: null });
+
+    fireEvent.change(screen.getByLabelText(/Địa chỉ/), { target: { value: 'Địa chỉ mới' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+    await waitFor(() => expect(mockSaveDraft).toHaveBeenCalledTimes(1));
+    const payload = mockSaveDraft.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.address).toBe('Địa chỉ mới');
+    expect(payload).not.toHaveProperty('opening_hours');
+  });
+
+  it('sửa địa chỉ, KHÔNG đụng mục giờ, place initial ĐÃ có giờ thật -> saveDraftPlace vẫn KHÔNG gửi lại opening_hours (để backend tự giữ nguyên, không resend "ảnh chụp")', async () => {
+    await renderReady({
+      opening_hours: { is_24h: false, regular: { mon: [{ open: '08:00', close: '20:00' }], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } },
+    });
+
+    fireEvent.change(screen.getByLabelText(/Địa chỉ/), { target: { value: 'Địa chỉ mới' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thay đổi' }));
+
+    await waitFor(() => expect(mockSaveDraft).toHaveBeenCalledTimes(1));
+    const payload = mockSaveDraft.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('opening_hours');
+  });
+
   it('publishPlaceDraft trả 409 → thông điệp rõ ràng', async () => {
     mockPublishDraft.mockRejectedValueOnce(new ApiError('conflict', 409));
     await renderReady();

@@ -145,10 +145,14 @@ describe('PlaceForm — gửi form', () => {
       description: null,
       short_description: null,
       price_range: null,
-      // Chưa từng điền gì ở "Giờ mở cửa" (place mới) — vẫn LUÔN gửi object hợp lệ (KHÔNG null),
-      // 7 ngày rỗng = đóng cửa cả tuần, is_24h=false, KHÔNG có note (rỗng bị bỏ qua).
-      opening_hours: { is_24h: false, regular: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } },
+      // SỬA 16/10/2026 (phát hiện thật khi nghiệm thu Ra Khơi): `opening_hours` KHÔNG còn nằm
+      // trong `toEqual` ở trên — chưa từng đụng tới mục "Giờ mở cửa" (kể cả khi tạo mới) nghĩa là
+      // field này bị OMIT hoàn toàn khỏi payload (xem openingHoursTouched/types.ts), không còn
+      // luôn gửi object `{is_24h:false, 7 ngày rỗng}` như trước — tạo mới một place giờ bắt đầu
+      // với opening_hours THẬT SỰ null (chưa khảo sát), không phải "đã khảo sát, đóng cửa cả
+      // tuần" giả.
     });
+    expect(payload).not.toHaveProperty('opening_hours');
   });
 
   it('nút submit bị vô hiệu hoá trong lúc đang gửi (chống double-submit)', async () => {
@@ -299,16 +303,24 @@ describe('PlaceForm — giờ mở cửa', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0] as PlaceFormInput;
-    expect(payload.opening_hours.is_24h).toBe(true);
+    expect(payload.opening_hours).toBeDefined();
+    expect(payload.opening_hours?.is_24h).toBe(true);
   });
 
-  it('payload gửi ĐÚNG nhiều khung giờ/ngày + ghi chú khi có', async () => {
+  it('payload gửi ĐÚNG nhiều khung giờ/ngày + ghi chú khi có, khi NGƯỜI DÙNG có đụng tới mục giờ', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
     render(
       <PlaceForm initial={initialWithHours} submitLabel="Lưu" submittingLabel="Đang lưu…" onSubmit={onSubmit} cancelHref="/x" />,
     );
     await waitFor(() => expect(screen.getByRole('option', { name: 'Bãi biển' })).toBeInTheDocument());
 
+    // SỬA 16/10/2026: chỉ submit không đụng gì tới mục giờ giờ OMIT field này khỏi payload (xem
+    // test "KHÔNG đụng tới mục giờ... payload OMIT opening_hours" bên dưới) — để test ĐÚNG mục
+    // tiêu "payload gửi đúng dữ liệu phức tạp khi CÓ đụng tới", đánh dấu đã đụng bằng một tương
+    // tác thật (thêm rồi xoá ngay một khung giờ cho Thứ Tư — ngày duy nhất đang "Đóng cửa" trong
+    // fixture — không đổi NỘI DUNG lịch cuối cùng, chỉ đánh dấu openingHoursTouched=true).
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm khung giờ cho Thứ Tư' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xoá khung giờ 1 của Thứ Tư' }));
     fireEvent.click(screen.getByRole('button', { name: 'Lưu' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -346,7 +358,14 @@ describe('PlaceForm — giờ mở cửa', () => {
     expect(payload.opening_hours).not.toHaveProperty('note');
   });
 
-  it('sửa trường KHÔNG liên quan (tên) KHÔNG làm mất giờ mở cửa đã có', async () => {
+  // SỬA 16/10/2026 (phát hiện thật — nghiệm thu nhập liệu Ra Khơi, place THẬT có opening_hours
+  // NULL bị đổi thành `{is_24h:false, 7 ngày rỗng}` chỉ vì lưu địa chỉ): "không làm mất giờ" giờ
+  // đạt được bằng CÁCH KHÁC — OMIT hẳn field khỏi payload khi không đụng tới (PlaceForm không còn
+  // tự resend "ảnh chụp" field đó), để backend (`buildDraftScalarPatch`: `dto.opening_hours !==
+  // undefined`) tự giữ nguyên giá trị đang có. Test ở mức PlaceForm chỉ khoá đúng phần CỦA NÓ —
+  // omit đúng field; phần "backend thực sự giữ nguyên" được khoá riêng ở mức HTTP/DB (xem
+  // isolated-stack test 16/10/2026 trong tài liệu phát hành release-web-candidate-2026-10-04.md).
+  it('sửa trường KHÔNG liên quan (tên), KHÔNG đụng mục giờ -> payload OMIT opening_hours (để backend tự giữ nguyên)', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
     render(
       <PlaceForm initial={initialWithHours} submitLabel="Lưu" submittingLabel="Đang lưu…" onSubmit={onSubmit} cancelHref="/x" />,
@@ -359,11 +378,7 @@ describe('PlaceForm — giờ mở cửa', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0] as PlaceFormInput;
     expect(payload.name).toBe('Tên mới');
-    expect(payload.opening_hours.regular?.mon).toEqual([
-      { open: '08:00', close: '12:00' },
-      { open: '13:30', close: '22:00' },
-    ]);
-    expect(payload.opening_hours.note).toBe('Nghỉ lễ Tết');
+    expect(payload).not.toHaveProperty('opening_hours');
   });
 
   it('khung giờ thiếu giờ đóng -> CHẶN submit, hiển thị lỗi, KHÔNG gọi onSubmit', async () => {
@@ -390,7 +405,7 @@ describe('PlaceForm — giờ mở cửa', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     const payload = onSubmit.mock.calls[0][0] as PlaceFormInput;
-    expect(payload.opening_hours.regular?.sat).toEqual([{ open: '22:00', close: '02:00' }]);
+    expect(payload.opening_hours?.regular?.sat).toEqual([{ open: '22:00', close: '02:00' }]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
