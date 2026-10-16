@@ -16,9 +16,18 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
     expect(links!.directions.url).toBe('https://www.google.com/maps/dir/?api=1&destination=10.0572576,104.0363948');
   });
 
-  it('KHÔNG có Place ID, KHÔNG có địa chỉ: tìm kiếm chỉ theo tên', () => {
+  it('KHÔNG có Place ID, KHÔNG có địa chỉ: tìm kiếm theo tên + bù ngữ cảnh "Phú Quốc" (tránh trùng tên nơi khác)', () => {
     const links = getPlaceMapLinks({ lat: 10.0572576, lng: 104.0363948, name: 'Bãi Sao', address: null }, 'vi');
-    expect(links!.primary.url).toBe('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao'));
+    expect(links!.primary.url).toBe(
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao, Phú Quốc, Việt Nam'),
+    );
+  });
+
+  it('locale=en, KHÔNG có địa chỉ: ngữ cảnh bù thêm cũng bằng tiếng Anh ("Phú Quốc, Vietnam")', () => {
+    const links = getPlaceMapLinks({ lat: 10.0572576, lng: 104.0363948, name: 'Sao Beach', address: null }, 'en');
+    expect(links!.primary.url).toBe(
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Sao Beach, Phú Quốc, Vietnam'),
+    );
   });
 
   it('CÓ Place ID: primary mở đúng hồ sơ, primaryCertain=true, kèm query_place_id/destination_place_id', () => {
@@ -42,11 +51,11 @@ describe('getPlaceMapLinks — phân biệt hồ sơ đã xác nhận / tìm ki�
 
   it('Tên có dấu/ký tự đặc biệt (&, dấu phẩy) được encode đúng, không làm hỏng URL', () => {
     const links = getPlaceMapLinks(
-      { lat: 10, lng: 104, name: 'Nhà hàng Ra Khơi & Bạn, Phú Quốc', address: null },
+      { lat: 10, lng: 104, name: 'Nhà hàng Ra Khơi & Bạn', address: 'Đường 30/4, Dương Đông' },
       'vi',
     );
     const decoded = decodeURIComponent(links!.primary.url.split('query=')[1]);
-    expect(decoded).toBe('Nhà hàng Ra Khơi & Bạn, Phú Quốc');
+    expect(decoded).toBe('Nhà hàng Ra Khơi & Bạn, Đường 30/4, Dương Đông');
   });
 
   it('locale=en: nhãn tiếng Anh đúng, cùng URL logic', () => {

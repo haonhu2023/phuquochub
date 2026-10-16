@@ -50,18 +50,20 @@ export interface PlaceMapLinks {
   directions: MapLink;
 }
 
-const TEXT: Record<Locale, { search: string; profile: string; pin: string; directions: string }> = {
+const TEXT: Record<Locale, { search: string; profile: string; pin: string; directions: string; noAddressContext: string }> = {
   vi: {
     search: 'Tìm trên Google Maps →',
     profile: 'Xem trên Google Maps →',
     pin: 'Xem toạ độ tham khảo',
     directions: 'Chỉ đường →',
+    noAddressContext: 'Phú Quốc, Việt Nam',
   },
   en: {
     search: 'Find on Google Maps →',
     profile: 'View on Google Maps →',
     pin: 'View reference location',
     directions: 'Directions →',
+    noAddressContext: 'Phú Quốc, Vietnam',
   },
 };
 
@@ -70,7 +72,11 @@ export function getPlaceMapLinks(input: PlaceMapLinkInput, locale: Locale): Plac
   if (!isValidCoord(input.lng, input.lat)) return null;
   const t = TEXT[locale];
   const coord = `${input.lat},${input.lng}`;
-  const queryText = input.address ? `${input.name}, ${input.address}` : input.name;
+  // Lỗi thật phát hiện 16/10/2026 (owner, duyệt gói 9f5b95b): khi KHÔNG có địa chỉ, truy vấn trước
+  // đây chỉ dùng tên trần (vd. "Bãi Sao") — dễ trùng với địa điểm cùng tên ở nơi khác trên Google
+  // Maps. Khi có địa chỉ thật (đã xác nhận với Novotel/Ra Khơi), địa chỉ luôn đã kèm quận/thành
+  // phố/tỉnh nên đủ ngữ cảnh, không cần thêm. Chỉ bù ngữ cảnh "Phú Quốc" cho nhánh không có địa chỉ.
+  const queryText = input.address ? `${input.name}, ${input.address}` : `${input.name}, ${t.noAddressContext}`;
   const encodedQuery = encodeURIComponent(queryText);
 
   const referencePin: MapLink = {

@@ -127,12 +127,12 @@ async function renderPage(p: PlaceDetail) {
 // này): link cũ CHỈ mở toạ độ (`?q=lat,lng`), Google Maps hiện điểm ghim, không hiện hồ sơ "Bãi
 // Sao". Nay dùng `getPlaceMapLinks` — xem modules/map/mapLinks.ts cho lý do đầy đủ.
 describe('PlaceDetailPage — link Google Maps (tìm theo tên + toạ độ tham khảo)', () => {
-  it('không có địa chỉ -> link tìm kiếm chỉ theo tên, kèm link toạ độ tham khảo riêng', async () => {
+  it('không có địa chỉ -> link tìm kiếm theo tên + bù ngữ cảnh "Phú Quốc", kèm link toạ độ tham khảo riêng', async () => {
     await renderPage(place({ name: 'Bãi Sao', address: null, location: { lat: 10.0572576, lng: 104.0363948 } }));
     const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
     expect(searchLink).toHaveAttribute(
       'href',
-      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao'),
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Bãi Sao, Phú Quốc, Việt Nam'),
     );
     const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
     expect(pinLink).toHaveAttribute('href', 'https://www.google.com/maps?q=10.0572576,104.0363948');

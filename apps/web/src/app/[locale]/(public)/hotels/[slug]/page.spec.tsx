@@ -245,12 +245,12 @@ describe('HotelDetailPage — getHotel() phải nhận đúng locale từ route 
 // chưa có Google Place ID trong hệ thống); link phụ "Xem toạ độ tham khảo" giữ nguyên cơ chế toạ
 // độ thuần cũ.
 describe('HotelDetailPage — link Google Maps (tìm theo tên + toạ độ tham khảo, cùng dữ liệu location/name)', () => {
-  it('render đúng 2 link: tìm theo tên (chưa có địa chỉ) và toạ độ tham khảo', async () => {
+  it('render đúng 2 link: tìm theo tên + bù ngữ cảnh "Phú Quốc" (chưa có địa chỉ) và toạ độ tham khảo', async () => {
     await renderPage(hotel({ location: { lat: 10.2199, lng: 103.9654 }, name: 'Khách sạn Biển Xanh', address: null }));
     const searchLink = screen.getByRole('link', { name: 'Tìm trên Google Maps →' });
     expect(searchLink).toHaveAttribute(
       'href',
-      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Khách sạn Biển Xanh'),
+      'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Khách sạn Biển Xanh, Phú Quốc, Việt Nam'),
     );
     expect(searchLink).toHaveAttribute('target', '_blank');
     const pinLink = screen.getByRole('link', { name: 'Xem toạ độ tham khảo' });
