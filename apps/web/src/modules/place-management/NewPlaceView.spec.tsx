@@ -40,6 +40,7 @@ function created(overrides: Partial<ManagedPlace> = {}): ManagedPlace {
     admin_area: null,
     description: null,
     osm_id: null,
+    google_place_id: null,
     opening_hours: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',

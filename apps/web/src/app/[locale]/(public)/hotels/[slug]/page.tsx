@@ -109,9 +109,14 @@ export default async function HotelDetailPage({ params }: Params) {
         <PlacePhotosButton placeId={h.id} />
       </h1>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
-      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts. */}
+      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts.
+          `googlePlaceId: h.google_place_id` (bổ sung cùng ngày) — API chỉ trả giá trị này khi ĐỦ
+          ĐIỀU KIỆN (đã xác minh); `null` thì helper tự fallback sang tìm theo tên/địa chỉ. */}
       {(() => {
-        const mapLinks = getPlaceMapLinks({ lat: h.location.lat, lng: h.location.lng, name: h.name, address: h.address }, locale);
+        const mapLinks = getPlaceMapLinks(
+          { lat: h.location.lat, lng: h.location.lng, name: h.name, address: h.address, googlePlaceId: h.google_place_id },
+          locale,
+        );
         if (!mapLinks) return null;
         return (
           <p>

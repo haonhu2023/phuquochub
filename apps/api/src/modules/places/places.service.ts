@@ -22,6 +22,7 @@ import {
   TranslationApprovalStatus,
 } from '../multilingual-import/multilingual-import.enums';
 import { LocalesService } from '../locales/locales.service';
+import { PlaceExternalIdentifiersService } from '../place-external-identifiers/place-external-identifiers.service';
 import { RevisionsService } from '../revisions/revisions.service';
 import { RevisionOrigin, RevisionStatus } from '../revisions/revision.enums';
 import { AuditService } from '../../core/audit/audit.service';
@@ -117,6 +118,7 @@ export class PlacesService {
     private readonly translationReviewService: TranslationReviewService,
     private readonly localesService: LocalesService,
     private readonly cacheInvalidation: CacheInvalidationService,
+    private readonly placeExternalIdentifiersService: PlaceExternalIdentifiersService,
   ) {}
 
   async list(query: ListPlacesQueryDto) {
@@ -292,6 +294,7 @@ export class PlacesService {
       hasQualifiedOpeningHoursEvidence,
       enDisplayNameApproved,
       enShortDescriptionApproved,
+      googlePlaceId,
     ] = await Promise.all([
       this.contactsRepo.listByOwner(PLACE_DISCRIMINATOR, row.id),
       this.pricesRepo.current(PLACE_DISCRIMINATOR, row.id),
@@ -322,6 +325,12 @@ export class PlacesService {
       this.placeTranslationsService
         .getCurrentPublicTranslatedText(row.id, SHORT_DESCRIPTION_FIELD_KEY, 'en')
         .then((text) => text !== null),
+      // Google Maps "hồ sơ đã xác nhận" (2026-10-16) — chỉ trả identifier ĐỦ ĐIỀU KIỆN (verifiedAt
+      // khác null, xem PlaceExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId's ghi chú
+      // đầy đủ về quy tắc này và vì sao chưa có cơ chế nào set verifiedAt hôm nay). `null` ở đây
+      // không phải lỗi — nghĩa là "chưa có định danh đủ điều kiện", web tự fallback sang tìm theo
+      // tên/địa chỉ (mapLinks.ts), không phải trạng thái cần xử lý đặc biệt ở service này.
+      this.placeExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId(row.id),
     ]);
     return {
       // Public Beta price trust gate (2026-08-28): raw `price_range` chỉ lộ ra khi place đã tin
@@ -340,6 +349,7 @@ export class PlacesService {
       opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
       en_display_name_approved: enDisplayNameApproved,
       en_short_description_approved: enShortDescriptionApproved,
+      google_place_id: googlePlaceId,
       trust_sources: trustSources,
       // KHÔNG kèm `version` (CAS token) — trường TUỲ CHỌN trên PlaceContact (shared-types), chỉ
       // ContactsService.toResponse() (kênh chủ cơ sở) trả; kênh công khai chỉ đọc, thêm một round-

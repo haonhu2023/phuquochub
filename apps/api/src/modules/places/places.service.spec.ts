@@ -63,6 +63,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
   let translationReviewService: LooseMock<Ctor[13]>;
   let localesService: LooseMock<Ctor[14]>;
   let cacheInvalidation: LooseMock<Ctor[15]>;
+  let placeExternalIdentifiersService: LooseMock<Ctor[16]>;
   let service: PlacesService;
 
   beforeEach(() => {
@@ -131,6 +132,12 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     cacheInvalidation = createMock<Ctor[15]>({
       invalidatePlace: jest.fn().mockResolvedValue(undefined),
     });
+    // google_place_id (2026-10-16) — default `null` keeps every EXISTING getBySlug/preview test in
+    // this file passing unchanged (none of them assert on it). The dedicated describe block below
+    // overrides this per-test to prove the field actually flows from a qualified identifier.
+    placeExternalIdentifiersService = createMock<Ctor[16]>({
+      findVerifiedPrimaryGooglePlaceId: jest.fn().mockResolvedValue(null),
+    });
 
     service = new PlacesService(
       placesRepo,
@@ -149,6 +156,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       translationReviewService,
       localesService,
       cacheInvalidation,
+      placeExternalIdentifiersService,
     );
   });
 
@@ -1062,6 +1070,39 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       expect(pricesRepo.current).toHaveBeenCalledWith('place', 'p1');
       // trust_sources đọc entity_type='place_field' (từng trường), KHÔNG 'place'.
       expect(sourceAttributionsRepo.listByEntity).toHaveBeenCalledWith('place_field', 'p1');
+    });
+
+    // google_place_id (2026-10-16) — chỉ đọc qua findVerifiedPrimaryGooglePlaceId(), KHÔNG tự lọc
+    // gì thêm ở service: quy tắc "đủ điều kiện" (verifiedAt khác null) nằm DUY NHẤT trong hàm đó.
+    describe('google_place_id', () => {
+      function commonMocks() {
+        contactsRepo.listByOwner.mockResolvedValue([]);
+        pricesRepo.current.mockResolvedValue([]);
+        mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+        placesRepo.listFaqs.mockResolvedValue([]);
+        sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+      }
+
+      it('record chưa có identifier nào → google_place_id null, vẫn hoạt động bình thường', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+        commonMocks();
+        placeExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId.mockResolvedValue(null);
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.google_place_id).toBeNull();
+        expect(placeExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId).toHaveBeenCalledWith('p1');
+      });
+
+      it('identifier đủ điều kiện (đã qua gate ở service con) → đi qua nguyên vẹn vào response công khai', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+        commonMocks();
+        placeExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId.mockResolvedValue('ChIJ-verified-real');
+
+        const res = await service.getBySlug('bai-sao');
+
+        expect(res.google_place_id).toBe('ChIJ-verified-real');
+      });
     });
 
     // Public Beta price trust gate (2026-08-28): `GET /places/:slug` trước đây trả raw

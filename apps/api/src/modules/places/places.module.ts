@@ -16,6 +16,7 @@ import { RbacModule } from '../rbac/rbac.module';
 import { SourcesModule } from '../sources/sources.module';
 import { PlaceTranslationsModule } from '../place-translations/place-translations.module';
 import { LocalesModule } from '../locales/locales.module';
+import { PlaceExternalIdentifiersModule } from '../place-external-identifiers/place-external-identifiers.module';
 
 // Place Trust & Freshness Surface (2026-08-19): `SourcesModule` cấp SourceAttributionsRepository/
 // SourcesRepository để PlacesService.getBySlug() đọc `trust_sources` (source_attributions +
@@ -37,6 +38,9 @@ import { LocalesModule } from '../locales/locales.module';
     // never the write-side methods. Neither module imports PlacesModule back (no cycle).
     PlaceTranslationsModule,
     LocalesModule,
+    // google_place_id ở buildDetailResponse (2026-10-16) — read-only, cùng nguyên tắc
+    // PlaceTranslationsModule ở trên: PlaceExternalIdentifiersModule KHÔNG import ngược PlacesModule.
+    PlaceExternalIdentifiersModule,
   ],
   controllers: [PlacesController],
   providers: [PlacesRepository, PlacesService],

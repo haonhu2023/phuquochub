@@ -256,4 +256,13 @@ export interface PlaceDetail extends PlaceCard {
    */
   en_display_name_approved: boolean;
   en_short_description_approved: boolean;
+  /**
+   * Google Place ID ĐÃ XÁC MINH (provider GOOGLE_PLACES, `is_primary` + `verified_at` khác null)
+   * — dùng để mở ĐÚNG hồ sơ Google Maps thay vì chỉ tìm theo tên/địa chỉ (xem apps/web
+   * modules/map/mapLinks.ts's nhánh `primaryCertain: true`). `null` = chưa có định danh đủ điều
+   * kiện (chưa nhập, hoặc đã nhập nhưng chưa qua bước xác minh riêng — xem
+   * PlaceExternalIdentifiersService.findVerifiedPrimaryGooglePlaceId's ghi chú đầy đủ) — client
+   * PHẢI fallback sang tìm theo tên/địa chỉ, không coi `null` là lỗi.
+   */
+  google_place_id: string | null;
 }

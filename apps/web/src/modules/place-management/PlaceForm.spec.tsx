@@ -87,6 +87,7 @@ describe('PlaceForm — điền sẵn khi sửa', () => {
     admin_area: null,
     description: 'Mô tả chi tiết',
     osm_id: null,
+    google_place_id: null,
     opening_hours: {
       is_24h: false,
       note: 'Nghỉ lễ Tết',
@@ -218,6 +219,7 @@ describe('PlaceForm — giờ mở cửa', () => {
     admin_area: null,
     description: null,
     osm_id: null,
+    google_place_id: null,
     opening_hours: {
       is_24h: false,
       note: 'Nghỉ lễ Tết',

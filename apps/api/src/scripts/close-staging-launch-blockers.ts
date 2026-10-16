@@ -158,6 +158,9 @@ export async function executeClosure(dataSource: import('typeorm').DataSource, p
     new CacheInvalidationService({
       get: () => ({ webInternalUrl: null, sharedSecret: null }),
     } as unknown as import('@nestjs/config').ConfigService),
+    // google_place_id (2026-10-16) — only read inside buildDetailResponse(), which this script's
+    // use of approve() never calls; null is a safe stand-in, same as the other unused deps above.
+    null as any,
   );
 
   for (const target of plan.publishTargets) {

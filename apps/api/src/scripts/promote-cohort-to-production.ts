@@ -323,6 +323,9 @@ export async function executePromotion(
     revisionsService, audit, mediaUrl, null as any, null as any, null as any, null as any, null as any, null as any,
     null as any,
     cacheInvalidation,
+    // google_place_id (2026-10-16) — only read inside buildDetailResponse(), not touched by this
+    // script's calls; null is a safe stand-in, same pattern as the other unused deps above.
+    null as any,
   );
 
   const localesRepo = new LocalesRepository(dataSource.getRepository(SupportedLocale));

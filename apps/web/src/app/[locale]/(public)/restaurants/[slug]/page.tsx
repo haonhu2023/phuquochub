@@ -114,9 +114,15 @@ export default async function RestaurantDetailPage({ params }: Params) {
       </nav>
       <h1>{r.name}</h1>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
-      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts. */}
+      {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts.
+          `googlePlaceId: r.google_place_id` (bổ sung cùng ngày) — API chỉ trả giá trị này khi ĐỦ
+          ĐIỀU KIỆN (đã xác minh, xem PlaceExternalIdentifiersService's ghi chú); `null` thì helper
+          tự fallback sang tìm theo tên/địa chỉ, không cần if/else riêng ở đây. */}
       {(() => {
-        const mapLinks = getPlaceMapLinks({ lat: r.location.lat, lng: r.location.lng, name: r.name, address: r.address }, locale);
+        const mapLinks = getPlaceMapLinks(
+          { lat: r.location.lat, lng: r.location.lng, name: r.name, address: r.address, googlePlaceId: r.google_place_id },
+          locale,
+        );
         if (!mapLinks) return null;
         return (
           <p>

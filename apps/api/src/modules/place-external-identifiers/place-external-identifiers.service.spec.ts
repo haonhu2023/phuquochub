@@ -101,4 +101,79 @@ describe('PlaceExternalIdentifiersService', () => {
       expect(repo.listByPlace).toHaveBeenCalledWith('place-1');
     });
   });
+
+  describe('findVerifiedPrimaryGooglePlaceId — quy tắc "đủ điều kiện công khai"', () => {
+    it('không có identifier nào cho place → null (record chưa có ID vẫn hoạt động)', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      await expect(service.findVerifiedPrimaryGooglePlaceId('place-1')).resolves.toBeNull();
+    });
+
+    it('CÓ identifier nhưng verifiedAt=null (vừa nhập qua dashboard, chưa ai xác minh) → null, KHÔNG coi là đã xác minh', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(makeIdentifier({ verifiedAt: null }));
+      await expect(service.findVerifiedPrimaryGooglePlaceId('place-1')).resolves.toBeNull();
+    });
+
+    it('CÓ identifier, verifiedAt khác null nhưng isPrimary=false → null', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(makeIdentifier({ verifiedAt: new Date('2026-10-16'), isPrimary: false }));
+      await expect(service.findVerifiedPrimaryGooglePlaceId('place-1')).resolves.toBeNull();
+    });
+
+    it('identifier đủ điều kiện (isPrimary=true, verifiedAt khác null) → trả externalId thật', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(
+        makeIdentifier({ externalId: 'ChIJ-qualified', isPrimary: true, verifiedAt: new Date('2026-10-16') }),
+      );
+      await expect(service.findVerifiedPrimaryGooglePlaceId('place-1')).resolves.toBe('ChIJ-qualified');
+    });
+  });
+
+  describe('upsertPrimaryGooglePlaceId — đường ghi dashboard (KHÁC ensureIdentifier)', () => {
+    it('place chưa có identifier nào → tạo mới, verifiedAt luôn null', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      repo.findByProviderAndExternalId.mockResolvedValue(null);
+
+      const result = await service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-new', sourceId: 'src-1' });
+
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(result.externalId).toBe('ChIJ-new');
+      expect(result.verifiedAt).toBeNull();
+      expect(result.isPrimary).toBe(true);
+    });
+
+    it('lưu lặp CÙNG giá trị cho CÙNG place → no-op, không tạo hàng mới (idempotent)', async () => {
+      const existing = makeIdentifier({ placeId: 'place-1', externalId: 'ChIJ-same' });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      const result = await service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-same' });
+
+      expect(result).toBe(existing);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.findByProviderAndExternalId).not.toHaveBeenCalled();
+    });
+
+    it('sửa sang ID KHÁC cho CÙNG place → UPDATE hàng đã có tại chỗ, KHÔNG insert hàng thứ hai, verifiedAt reset về null', async () => {
+      const existing = makeIdentifier({ id: 'ext-1', placeId: 'place-1', externalId: 'ChIJ-old', verifiedAt: new Date('2026-10-01') });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+      repo.findByProviderAndExternalId.mockResolvedValue(null); // ID mới chưa ai dùng
+
+      const result = await service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-corrected' });
+
+      expect(repo.create).not.toHaveBeenCalled(); // KHÔNG tạo hàng mới
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect(repo.save).toHaveBeenCalledWith(existing); // cùng instance, chỉ sửa field tại chỗ
+      expect(result.id).toBe('ext-1'); // vẫn là hàng cũ, không phải hàng mới
+      expect(result.externalId).toBe('ChIJ-corrected');
+      expect(result.verifiedAt).toBeNull(); // xác minh cũ gắn với ID cũ, không tự áp dụng cho ID mới
+    });
+
+    it('ID mới đã thuộc place KHÁC → từ chối, không ghi gì (không áp định danh của Bãi Sao cho địa điểm khác)', async () => {
+      repo.findByPlaceAndProvider.mockResolvedValue(null);
+      repo.findByProviderAndExternalId.mockResolvedValue(makeIdentifier({ placeId: 'place-other', externalId: 'ChIJ-taken' }));
+
+      await expect(
+        service.upsertPrimaryGooglePlaceId({ placeId: 'place-1', externalId: 'ChIJ-taken' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+  });
 });

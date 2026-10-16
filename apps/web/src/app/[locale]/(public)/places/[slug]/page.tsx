@@ -189,10 +189,17 @@ export default async function PlaceDetailPage({ params }: Params) {
   const hasInfo = place.address || place.ward || priceLabel || showPriceVerifying || hasHours;
   // Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ (`?q=lat,lng`) — Google Maps hiện điểm
   // ghim, không hiện hồ sơ địa điểm. `getPlaceMapLinks` ưu tiên tìm theo tên(+địa chỉ), nhãn nói
-  // rõ đây là tìm kiếm (chưa xác nhận đúng hồ sơ) trừ khi có Google Place ID đã đối chiếu (hiện
-  // CHƯA có cơ chế dashboard nào để gắn Place ID — xem mapLinks.ts).
+  // rõ đây là tìm kiếm (chưa xác nhận đúng hồ sơ) trừ khi có Google Place ID đã đối chiếu.
+  // `place.google_place_id` (bổ sung cùng ngày) — API chỉ trả giá trị này khi ĐỦ ĐIỀU KIỆN (đã
+  // xác minh qua dashboard mới, xem place-external-identifiers); `null` thì helper tự fallback.
   const mapLinks = getPlaceMapLinks(
-    { lat: place.location.lat, lng: place.location.lng, name: place.name, address: place.address },
+    {
+      lat: place.location.lat,
+      lng: place.location.lng,
+      name: place.name,
+      address: place.address,
+      googlePlaceId: place.google_place_id,
+    },
     locale,
   );
   // Public Beta price trust gate — "Giá dịch vụ" (2026-08-28): mỗi dòng `PlacePrice` đã mang sẵn

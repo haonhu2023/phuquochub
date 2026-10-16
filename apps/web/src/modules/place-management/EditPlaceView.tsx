@@ -21,6 +21,7 @@ import { TourDetailsEditor } from '@/modules/category-admin/TourDetailsEditor';
 import { AmenitiesEditor } from '@/modules/category-admin/AmenitiesEditor';
 import { PricesEditor } from '@/modules/category-admin/PricesEditor';
 import { MenuEditor } from '@/modules/category-admin/MenuEditor';
+import { GooglePlaceIdEditor } from '@/modules/category-admin/GooglePlaceIdEditor';
 
 type State =
   | { kind: 'loading' }
@@ -348,6 +349,10 @@ export function EditPlaceView({ placeId }: Props) {
           Đã lưu thành công.
         </p>
       )}
+      {/* KHÔNG gắn theo category — gán sai đúng hồ sơ Google Maps áp dụng cho mọi loại địa điểm,
+          không phải riêng hotel/restaurant. KHÔNG dùng contentVersion CAS (xem ghi chú ở
+          GooglePlaceIdEditor.tsx — sub-resource độc lập, tự có idempotency riêng). */}
+      <GooglePlaceIdEditor placeId={placeId} />
       {state.place.category_slug === 'hotel' && contentVersion !== null && (
         <>
           <HotelDetailsEditor placeId={placeId} contentVersion={contentVersion} onVersionChange={setContentVersion} />
