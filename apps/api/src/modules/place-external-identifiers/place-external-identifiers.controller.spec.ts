@@ -51,7 +51,7 @@ describe('PlaceExternalIdentifiersController — ranh giới quyền', () => {
     },
   );
 
-  it('upsertGooglePlaceId và confirmGooglePlaceId KHÔNG dùng chung một permission (người nhập ID không tự xác nhận được)', () => {
+  it('upsertGooglePlaceId và confirmGooglePlaceId KHÔNG dùng chung một permission (một business_manager CHỈ giữ Place.Edit.Managed không tự xác nhận được — KHÔNG phải cơ chế duyệt hai người độc lập, content_owner giữ cả hai permission)', () => {
     expect(permissionsOf('upsertGooglePlaceId')).not.toEqual(permissionsOf('confirmGooglePlaceId'));
   });
 });

@@ -135,7 +135,7 @@ describe('GooglePlaceIdEditor — xác nhận/thu hồi (vai trò riêng)', () =
     renderEditor();
     fireEvent.click(await screen.findByRole('button', { name: CONFIRM_BTN }));
     await waitFor(() => expect(mockConfirm).toHaveBeenCalledTimes(1));
-    expect(mockConfirm).toHaveBeenCalledWith('place-1', {}, 'tok');
+    expect(mockConfirm).toHaveBeenCalledWith('place-1', { expected_external_id: 'ChIJ-existing' }, 'tok');
     expect(await screen.findByRole('status')).toHaveTextContent('Đã xác nhận');
     expect(screen.getByRole('button', { name: REVOKE_BTN })).toBeInTheDocument();
   });
@@ -149,13 +149,24 @@ describe('GooglePlaceIdEditor — xác nhận/thu hồi (vai trò riêng)', () =
     expect(screen.getByText(/CHƯA xác nhận/)).toBeInTheDocument();
   });
 
+  it('xác nhận 409 (ID bị thay giữa lúc tải trang và lúc bấm) → báo lỗi rõ cùng hướng xử lý, KHÔNG đổi trạng thái hiển thị', async () => {
+    mockList.mockResolvedValue([unverifiedRow({ external_id: 'ChIJ-stale' })]);
+    mockConfirm.mockRejectedValue(new ApiError('ID hiện tại ("ChIJ-new") khác với ID bạn đã đối chiếu ("ChIJ-stale").', 409));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: CONFIRM_BTN }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('ChIJ-stale');
+    expect(alert).toHaveTextContent('Tải lại trang');
+    expect(screen.getByText(/CHƯA xác nhận/)).toBeInTheDocument();
+  });
+
   it('đã xác nhận → bấm thu hồi → gọi revokeGooglePlaceIdVerification, quay lại trạng thái "chưa xác nhận"', async () => {
     mockList.mockResolvedValue([unverifiedRow({ verified_at: '2026-10-16T08:00:00Z' })]);
     mockRevoke.mockResolvedValue(unverifiedRow({ verified_at: null }));
     renderEditor();
     fireEvent.click(await screen.findByRole('button', { name: REVOKE_BTN }));
     await waitFor(() => expect(mockRevoke).toHaveBeenCalledTimes(1));
-    expect(mockRevoke).toHaveBeenCalledWith('place-1', 'tok');
+    expect(mockRevoke).toHaveBeenCalledWith('place-1', { expected_external_id: 'ChIJ-existing' }, 'tok');
     expect(await screen.findByText(/CHƯA xác nhận/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: REVOKE_BTN })).not.toBeInTheDocument();
   });

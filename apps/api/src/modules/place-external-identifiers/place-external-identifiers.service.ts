@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
 import { PlaceExternalIdentifiersRepository } from './repositories/place-external-identifiers.repository';
@@ -26,6 +26,15 @@ export interface UpsertPrimaryGooglePlaceIdInput {
 export interface ConfirmGooglePlaceIdInput {
   placeId: string;
   actorId: string;
+  // BẮT BUỘC (2026-10-16, owner yêu cầu sau khi đọc lại luồng confirm/revoke) — external_id mà
+  // người xác nhận ĐÃ ĐỌC và đối chiếu trên Google Maps trước khi bấm, KHÔNG phải "bất kỳ ID nào
+  // đang là primary lúc request tới server". Không có field này, một race thật tồn tại: admin mở
+  // trang, thấy ID X, mở hồ sơ Google của X để đối chiếu — đúng lúc đó người khác (hoặc chính họ ở
+  // tab khác) sửa ID thành Y qua upsertPrimaryGooglePlaceId; admin bấm "Xác nhận" (vẫn tưởng đang
+  // xác nhận X) → nếu server chỉ xác nhận "ID hiện tại", Y sẽ bị đánh dấu đã xác nhận dù CHƯA ai đối
+  // chiếu nó. So khớp dưới ĐÂY, trong CÙNG advisory lock với chính thao tác đổi ID, đóng đúng race
+  // đó — không chỉ là validate hình thức.
+  expectedExternalId: string;
   sourceId?: string;
   evidenceId?: string;
 }
@@ -33,6 +42,9 @@ export interface ConfirmGooglePlaceIdInput {
 export interface RevokeGooglePlaceIdVerificationInput {
   placeId: string;
   actorId: string;
+  // Cùng lý do expectedExternalId ở ConfirmGooglePlaceIdInput — thu hồi cũng phải bám đúng ID đã
+  // đọc, không thu hồi nhầm xác nhận của một ID đã bị thay bằng ID khác từ lúc đó.
+  expectedExternalId: string;
 }
 
 // Lớp advisory lock riêng của module này (2) — KHÔNG trùng lớp 1 mà SourceFirstIngestService đã
@@ -45,6 +57,9 @@ const ADVISORY_LOCK_CLASS = 2;
 // (dedupe theo type+externalRef): gọi lại với đúng place + đúng identifier là no-op, không tạo hàng
 // thứ hai. Gọi với CÙNG identifier nhưng KHÁC place bị từ chối — một Google Place ID không được gán
 // cho hai place khác nhau trong CSDL này (xung đột danh tính, không phải điều kiện im lặng bỏ qua).
+// Từ khoá cho MỌI phương thức ghi của class này (ensureIdentifier/upsertPrimaryGooglePlaceId/
+// confirm/revoke): tất cả đi qua CÙNG withPlaceProviderLock (class 2), nên không còn writer nào của
+// bảng này (kể cả đường import cũ) đứng ngoài khoá — xem ghi chú đầy đủ ở ensureIdentifier.
 @Injectable()
 export class PlaceExternalIdentifiersService {
   constructor(
@@ -73,28 +88,41 @@ export class PlaceExternalIdentifiersService {
     });
   }
 
+  // Khoá CÙNG keyspace (class 2, (placeId, provider)) với upsertPrimaryGooglePlaceId/confirm/revoke
+  // (2026-10-16, rà soát "mọi writer" theo yêu cầu owner). TRƯỚC khi sửa: hàm này chỉ khoá qua
+  // SourceFirstIngestService.withCandidateLock (class 1, khoá theo candidateKey của job import) —
+  // KHÁC hẳn keyspace mà dashboard dùng, nên hai đường ghi không hề loại trừ nhau dù cùng đụng một
+  // (placeId, provider): một job import đang chạy VÀ một admin bấm confirm/upsert trên CÙNG place
+  // tại CÙNG thời điểm có thể cùng đọc "chưa có hàng"/đọc xong rồi mới bị cái kia ghi đè. Đường đua
+  // này là THẬT (không chỉ lý thuyết) — `registerExternalIds()` (source-first-ingest.service.ts)
+  // gọi hàm này không qua class-2 lock nào, và không có gì ngăn hai lần kích hoạt job thủ công (hoặc
+  // một job + một thao tác dashboard) chạy đồng thời trên cùng place — dù job tự nó xử lý TUẦN TỰ
+  // bên trong (for-loop, không Promise.all). Khoá ở ĐÂY thay vì ở call site để MỌI caller tương lai
+  // của ensureIdentifier (không chỉ ingest) tự động được bảo vệ, không cần tự nhớ bọc transaction.
   async ensureIdentifier(input: EnsureIdentifierInput): Promise<PlaceExternalIdentifier> {
-    const existing = await this.repo.findByProviderAndExternalId(input.provider, input.externalId);
-    if (existing) {
-      if (existing.placeId !== input.placeId) {
-        throw new BadRequestException(
-          `${input.provider} identifier "${input.externalId}" is already mapped to place ${existing.placeId}; ` +
-            `refusing to also map it to ${input.placeId}. Resolve the identity conflict before retrying.`,
-        );
+    return this.withPlaceProviderLock(input.placeId, input.provider, async (manager) => {
+      const existing = await this.repo.findByProviderAndExternalId(input.provider, input.externalId, manager);
+      if (existing) {
+        if (existing.placeId !== input.placeId) {
+          throw new BadRequestException(
+            `${input.provider} identifier "${input.externalId}" is already mapped to place ${existing.placeId}; ` +
+              `refusing to also map it to ${input.placeId}. Resolve the identity conflict before retrying.`,
+          );
+        }
+        return existing; // idempotent no-op — same place, same provider, same external id
       }
-      return existing; // idempotent no-op — same place, same provider, same external id
-    }
 
-    const row = this.repo.create({
-      placeId: input.placeId,
-      provider: input.provider,
-      externalId: input.externalId,
-      isPrimary: input.isPrimary ?? true,
-      sourceId: input.sourceId ?? null,
-      evidenceId: input.evidenceId ?? null,
-      verifiedAt: input.verifiedAt ?? null,
+      const row = this.repo.create({
+        placeId: input.placeId,
+        provider: input.provider,
+        externalId: input.externalId,
+        isPrimary: input.isPrimary ?? true,
+        sourceId: input.sourceId ?? null,
+        evidenceId: input.evidenceId ?? null,
+        verifiedAt: input.verifiedAt ?? null,
+      });
+      return this.repo.save(row, manager);
     });
-    return this.repo.save(row);
   }
 
   listByPlace(placeId: string): Promise<PlaceExternalIdentifier[]> {
@@ -192,6 +220,12 @@ export class PlaceExternalIdentifiersService {
       if (!existing) {
         throw new NotFoundException('Chưa có Google Place ID nào để xác nhận cho địa điểm này.');
       }
+      if (existing.externalId !== input.expectedExternalId) {
+        throw new ConflictException(
+          `ID hiện tại ("${existing.externalId}") khác với ID bạn đã đối chiếu ("${input.expectedExternalId}") — ` +
+            `có thể đã bị người khác sửa. Tải lại và đối chiếu lại trước khi xác nhận.`,
+        );
+      }
       const before = existing.verifiedAt;
       const confirmedAt = new Date();
       existing.verifiedAt = confirmedAt;
@@ -231,6 +265,12 @@ export class PlaceExternalIdentifiersService {
       if (!existing) {
         throw new NotFoundException('Chưa có Google Place ID nào cho địa điểm này.');
       }
+      if (existing.externalId !== input.expectedExternalId) {
+        throw new ConflictException(
+          `ID hiện tại ("${existing.externalId}") khác với ID bạn đang thao tác ("${input.expectedExternalId}") — ` +
+            `có thể đã bị người khác sửa. Tải lại trước khi thu hồi.`,
+        );
+      }
       const before = existing.verifiedAt;
       existing.verifiedAt = null;
       const saved = await this.repo.save(existing, manager);
@@ -261,7 +301,10 @@ export class PlaceExternalIdentifiersService {
   // Cơ chế SET verifiedAt (2026-10-16, cùng ngày, phần hai của gói): `confirmGooglePlaceId()`/
   // `revokeGooglePlaceIdVerification()` bên dưới — đòi permission RIÊNG
   // `PlaceExternalIdentifier.Verify` (migration 1720009100000), tách khỏi `Place.Edit.Managed` mà
-  // route nhập ID dùng, để người nhập ID không tự xác nhận được chính ID họ vừa nhập.
+  // route nhập ID dùng. Tách quyền này bảo đảm "người CHỈ giữ Place.Edit.Managed không tự xác nhận
+  // được" — KHÔNG bảo đảm "người nhập ID không bao giờ là người xác nhận" (content_owner giữ cả
+  // hai permission, được phép tự làm cả hai bước ở MVP này — xem ghi chú đầy đủ ở
+  // PlaceExternalIdentifiersController).
   async findVerifiedPrimaryGooglePlaceId(placeId: string): Promise<string | null> {
     const row = await this.repo.findByPlaceAndProvider(placeId, PlaceExternalIdentifierProvider.GOOGLE_PLACES);
     if (!row || !row.isPrimary || row.verifiedAt === null) return null;

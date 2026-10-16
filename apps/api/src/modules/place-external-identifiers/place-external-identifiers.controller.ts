@@ -3,7 +3,11 @@ import { RequirePermissions } from '../authz/decorators/require-permissions.deco
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { PlaceExternalIdentifiersService } from './place-external-identifiers.service';
-import { UpsertGooglePlaceIdDto, ConfirmGooglePlaceIdDto } from './dto/place-external-identifiers.dto';
+import {
+  UpsertGooglePlaceIdDto,
+  ConfirmGooglePlaceIdDto,
+  RevokeGooglePlaceIdVerificationDto,
+} from './dto/place-external-identifiers.dto';
 
 // Dashboard-only — KHÔNG @Public. Route sống ở module riêng (PlaceExternalIdentifiersModule),
 // không gộp vào PlacesController, để giữ đúng ranh giới module đã có (service này vốn export cho
@@ -15,8 +19,16 @@ import { UpsertGooglePlaceIdDto, ConfirmGooglePlaceIdDto } from './dto/place-ext
 // - `confirmGooglePlaceId`/`revokeGooglePlaceIdVerification` (xác nhận hồ sơ Google KHỚP địa
 //   điểm): 'PlaceExternalIdentifier.Verify' — quyền RIÊNG (migration 1720009100000), KHÔNG
 //   AuthorizationContext (vai trò toàn cục, giống Place.Approve/Price.Verify — ai giữ quyền này
-//   xác nhận được MỌI place, không giới hạn "place họ quản lý"). Cố ý KHÔNG dùng Place.Edit.Managed
-//   cho hành động confirm — người nhập ID không được tự xác nhận chính ID mình vừa nhập.
+//   xác nhận được MỌI place, không giới hạn "place họ quản lý").
+//
+// ĐIỀU CHỈNH kết luận (2026-10-16, owner sửa sau khi đọc lại): tách quyền chỉ bảo đảm "người CHỈ
+// giữ Place.Edit.Managed (vd business_manager quản lý MỘT place) không tự xác nhận được" — đây là
+// bất biến THẬT, enforce bằng guard. Nó KHÔNG bảo đảm "người nhập ID không bao giờ là người xác
+// nhận": `content_owner` giữ CẢ HAI permission (Place.Edit.Any thoả mãn Place.Edit.Managed theo
+// xếp hạng scope, VÀ PlaceExternalIdentifier.Verify) nên một content_owner có thể tự nhập rồi tự
+// xác nhận — ĐÚNG Ý ở MVP này (owner xác nhận: content_owner được phép làm cả hai bước, miễn audit
+// ghi đúng actor/thao tác thật — xem AuditService.record() ở service). KHÔNG quảng bá đây là cơ
+// chế duyệt hai người độc lập — nó không phải vậy theo thiết kế hiện tại.
 @Controller('places')
 export class PlaceExternalIdentifiersController {
   constructor(private readonly service: PlaceExternalIdentifiersService) {}
@@ -49,6 +61,9 @@ export class PlaceExternalIdentifiersController {
     return this.service.toResponse(row);
   }
 
+  // `dto.expected_external_id` BẮT BUỘC — ID người xác nhận ĐÃ đọc/đối chiếu, không phải "ID hiện
+  // tại theo server". Lệch → 409 (xem ConflictException trong service), không âm thầm xác nhận ID
+  // vừa bị thay.
   @Post(':id/external-identifiers/google-places/confirm')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('PlaceExternalIdentifier.Verify')
@@ -60,6 +75,7 @@ export class PlaceExternalIdentifiersController {
     const row = await this.service.confirmGooglePlaceId({
       placeId: id,
       actorId: user.sub,
+      expectedExternalId: dto.expected_external_id,
       sourceId: dto.source_id,
       evidenceId: dto.evidence_id,
     });
@@ -69,8 +85,16 @@ export class PlaceExternalIdentifiersController {
   @Post(':id/external-identifiers/google-places/revoke')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('PlaceExternalIdentifier.Verify')
-  async revokeGooglePlaceIdVerification(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
-    const row = await this.service.revokeGooglePlaceIdVerification({ placeId: id, actorId: user.sub });
+  async revokeGooglePlaceIdVerification(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RevokeGooglePlaceIdVerificationDto,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    const row = await this.service.revokeGooglePlaceIdVerification({
+      placeId: id,
+      actorId: user.sub,
+      expectedExternalId: dto.expected_external_id,
+    });
     return this.service.toResponse(row);
   }
 }

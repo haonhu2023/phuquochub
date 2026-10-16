@@ -28,6 +28,9 @@ function confirmErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 403) return FORBIDDEN_CONFIRM_MESSAGE;
     if (err.status === 404) return 'Chưa có Google Place ID nào để xác nhận — nhập ID trước.';
+    // 409: ai đó đổi ID giữa lúc trang này tải và lúc bấm xác nhận/thu hồi — err.message (từ
+    // server) đã nêu rõ ID cũ/mới; thêm hướng xử lý cụ thể ở đây.
+    if (err.status === 409) return `${err.message} Tải lại trang để lấy ID mới nhất.`;
     if (err.status < 500) return err.message;
   }
   return 'Thao tác thất bại. Vui lòng thử lại.';
@@ -42,8 +45,10 @@ function confirmErrorMessage(err: unknown): string {
  * HAI quyền KHÁC NHAU trên cùng form này (xem apps/api PlaceExternalIdentifiersController's ghi
  * chú đầy đủ): nhập/sửa ID dùng `Place.Edit.Managed` (quyền trang này đã yêu cầu để vào được —
  * luôn thành công); xác nhận/thu hồi dùng `PlaceExternalIdentifier.Verify` — RIÊNG, phần lớn
- * người dùng trang này sẽ KHÔNG có quyền đó và sẽ thấy lỗi 403 rõ ràng khi bấm, đây là hành vi
- * ĐÚNG (người nhập ID không tự xác nhận được chính ID mình vừa nhập), không phải lỗi UI.
+ * người quản lý MỘT place cụ thể sẽ KHÔNG có quyền đó và sẽ thấy lỗi 403 rõ ràng khi bấm — đây là
+ * hành vi ĐÚNG, không phải lỗi UI. KHÔNG phải cơ chế duyệt hai người độc lập: `content_owner` giữ
+ * CẢ HAI permission và được phép tự nhập rồi tự xác nhận ở MVP này, miễn đã thật sự đối chiếu
+ * (audit ghi đúng actor/thao tác — server không kiểm tra họ có "đối chiếu thật" hay không).
  */
 export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -120,14 +125,18 @@ export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
     }
   }
 
+  // `expected_external_id` LUÔN lấy từ `current.external_id` ĐÃ TẢI trong state — KHÔNG phải một
+  // giá trị tách rời có thể lệch khỏi màn hình người dùng đang nhìn (xem ghi chú đầy đủ ở
+  // place-external-identifiers.api.ts). Nếu ai đó đổi ID giữa lúc tải và lúc bấm, server trả 409
+  // (confirmErrorMessage xử lý) thay vì âm thầm xác nhận ID mới.
   async function onConfirm() {
     const session = readSession();
-    if (!session) return;
+    if (!session || state.kind !== 'ready' || !state.current) return;
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      const updated = await confirmGooglePlaceId(placeId, {}, session.accessToken);
+      const updated = await confirmGooglePlaceId(placeId, { expected_external_id: state.current.external_id }, session.accessToken);
       setState({ kind: 'ready', current: updated });
       setNotice('Đã xác nhận: hồ sơ Google khớp địa điểm này. (Không xác minh quyền sở hữu, chất lượng cơ sở hay lối vào.)');
     } catch (err) {
@@ -139,12 +148,12 @@ export function GooglePlaceIdEditor({ placeId, placeName }: Props) {
 
   async function onRevoke() {
     const session = readSession();
-    if (!session) return;
+    if (!session || state.kind !== 'ready' || !state.current) return;
     setError(null);
     setNotice(null);
     setBusy(true);
     try {
-      const updated = await revokeGooglePlaceIdVerification(placeId, session.accessToken);
+      const updated = await revokeGooglePlaceIdVerification(placeId, { expected_external_id: state.current.external_id }, session.accessToken);
       setState({ kind: 'ready', current: updated });
       setNotice('Đã thu hồi xác nhận. Định danh vẫn còn, trang công khai quay lại link tìm kiếm.');
     } catch (err) {

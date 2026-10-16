@@ -53,23 +53,30 @@ describe('upsertGooglePlaceId', () => {
 });
 
 describe('confirmGooglePlaceId', () => {
-  it('POSTs to .../google-places/confirm with the payload given', async () => {
+  it('POSTs to .../google-places/confirm with the exact payload given, including expected_external_id', async () => {
     mockPost.mockResolvedValue({ id: 'ext-1', verified_at: '2026-10-16T00:00:00Z' });
-    await confirmGooglePlaceId('place-1', { evidence_id: 'ev-1' }, 'tok-123');
-    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/confirm', 'tok-123', { evidence_id: 'ev-1' });
+    await confirmGooglePlaceId('place-1', { expected_external_id: 'ChIJ-x', evidence_id: 'ev-1' }, 'tok-123');
+    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/confirm', 'tok-123', {
+      expected_external_id: 'ChIJ-x',
+      evidence_id: 'ev-1',
+    });
   });
 
-  it('no evidence given → still posts an (empty) payload, no verified_at ever sent by the client', async () => {
+  it('no evidence given → still posts expected_external_id, no verified_at ever sent by the client', async () => {
     mockPost.mockResolvedValue({ id: 'ext-1' });
-    await confirmGooglePlaceId('place-1', {}, 'tok-123');
-    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/confirm', 'tok-123', {});
+    await confirmGooglePlaceId('place-1', { expected_external_id: 'ChIJ-x' }, 'tok-123');
+    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/confirm', 'tok-123', {
+      expected_external_id: 'ChIJ-x',
+    });
   });
 });
 
 describe('revokeGooglePlaceIdVerification', () => {
-  it('POSTs to .../google-places/revoke with an empty body', async () => {
+  it('POSTs to .../google-places/revoke with expected_external_id', async () => {
     mockPost.mockResolvedValue({ id: 'ext-1', verified_at: null });
-    await revokeGooglePlaceIdVerification('place-1', 'tok-123');
-    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/revoke', 'tok-123', {});
+    await revokeGooglePlaceIdVerification('place-1', { expected_external_id: 'ChIJ-x' }, 'tok-123');
+    expect(mockPost).toHaveBeenCalledWith('/places/place-1/external-identifiers/google-places/revoke', 'tok-123', {
+      expected_external_id: 'ChIJ-x',
+    });
   });
 });

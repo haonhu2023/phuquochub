@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PlaceExternalIdentifiersService } from './place-external-identifiers.service';
 import { PlaceExternalIdentifiersRepository } from './repositories/place-external-identifiers.repository';
 import { PlaceExternalIdentifier } from './entities/place-external-identifier.entity';
@@ -68,6 +68,19 @@ describe('PlaceExternalIdentifiersService', () => {
       expect(repo.save).toHaveBeenCalledTimes(1);
       expect(result.placeId).toBe('place-vinwonders');
       expect(result.externalId).toBe('ChIJ-vinwonders');
+    });
+
+    it('khoá advisory CÙNG keyspace (class 2) với upsertPrimaryGooglePlaceId — đường importer không còn đứng ngoài khoá', async () => {
+      repo.findByProviderAndExternalId.mockResolvedValue(null);
+
+      await service.ensureIdentifier({
+        placeId: 'place-1',
+        provider: PlaceExternalIdentifierProvider.GOOGLE_PLACES,
+        externalId: 'ChIJ-import',
+      });
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+      expect(managerQuery).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock($1, hashtext($2))', [2, 'place-1:GOOGLE_PLACES']);
     });
 
     it('is idempotent — same place, same provider, same external id returns the existing row without a second write', async () => {
@@ -233,7 +246,9 @@ describe('PlaceExternalIdentifiersService', () => {
   describe('confirmGooglePlaceId — xác nhận hồ sơ Google khớp địa điểm', () => {
     it('chưa có identifier nào → NotFoundException, không ghi gì', async () => {
       repo.findByPlaceAndProvider.mockResolvedValue(null);
-      await expect(service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-1' })).rejects.toThrow(NotFoundException);
+      await expect(
+        service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-1', expectedExternalId: 'ChIJ-whatever' }),
+      ).rejects.toThrow(NotFoundException);
       expect(repo.save).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
@@ -242,7 +257,11 @@ describe('PlaceExternalIdentifiersService', () => {
       const existing = makeIdentifier({ verifiedAt: null });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
-      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-1' });
+      const result = await service.confirmGooglePlaceId({
+        placeId: 'place-1',
+        actorId: 'user-mod-1',
+        expectedExternalId: existing.externalId,
+      });
 
       expect(result.verifiedAt).not.toBeNull();
       expect(audit.record).toHaveBeenCalledTimes(1);
@@ -261,7 +280,11 @@ describe('PlaceExternalIdentifiersService', () => {
       const existing = makeIdentifier({ verifiedAt: oldDate });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
-      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-2' });
+      const result = await service.confirmGooglePlaceId({
+        placeId: 'place-1',
+        actorId: 'user-mod-2',
+        expectedExternalId: existing.externalId,
+      });
 
       expect(result.verifiedAt).not.toEqual(oldDate);
       expect(audit.record).toHaveBeenCalledTimes(1);
@@ -271,19 +294,36 @@ describe('PlaceExternalIdentifiersService', () => {
       const existing = makeIdentifier({ sourceId: 'src-proposer', evidenceId: null });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
-      const result = await service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-1', evidenceId: 'ev-confirmer' });
+      const result = await service.confirmGooglePlaceId({
+        placeId: 'place-1',
+        actorId: 'user-mod-1',
+        expectedExternalId: existing.externalId,
+        evidenceId: 'ev-confirmer',
+      });
 
       expect(result.sourceId).toBe('src-proposer'); // không gửi -> giữ nguyên
       expect(result.evidenceId).toBe('ev-confirmer'); // gửi -> cập nhật
+    });
+
+    it('expectedExternalId KHÁC ID hiện tại ở server (đã bị thay từ lúc người xác nhận đọc) → ConflictException, KHÔNG xác nhận nhầm ID mới', async () => {
+      const existing = makeIdentifier({ externalId: 'ChIJ-swapped-in', verifiedAt: null });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      await expect(
+        service.confirmGooglePlaceId({ placeId: 'place-1', actorId: 'user-mod-1', expectedExternalId: 'ChIJ-what-i-saw' }),
+      ).rejects.toThrow(ConflictException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(existing.verifiedAt).toBeNull(); // hàng thật không bị đổi
     });
   });
 
   describe('revokeGooglePlaceIdVerification — thu hồi xác nhận', () => {
     it('chưa có identifier nào → NotFoundException, không ghi gì', async () => {
       repo.findByPlaceAndProvider.mockResolvedValue(null);
-      await expect(service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1', expectedExternalId: 'ChIJ-whatever' }),
+      ).rejects.toThrow(NotFoundException);
       expect(repo.save).not.toHaveBeenCalled();
     });
 
@@ -291,7 +331,11 @@ describe('PlaceExternalIdentifiersService', () => {
       const existing = makeIdentifier({ verifiedAt: new Date('2026-10-16') });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
-      const result = await service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-mod-1' });
+      const result = await service.revokeGooglePlaceIdVerification({
+        placeId: 'place-1',
+        actorId: 'user-mod-1',
+        expectedExternalId: existing.externalId,
+      });
 
       expect(result.verifiedAt).toBeNull();
       expect(audit.record).toHaveBeenCalledWith(
@@ -307,9 +351,24 @@ describe('PlaceExternalIdentifiersService', () => {
       const existing = makeIdentifier({ externalId: 'ChIJ-stays', verifiedAt: new Date('2026-10-16') });
       repo.findByPlaceAndProvider.mockResolvedValue(existing);
 
-      const result = await service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1' });
+      const result = await service.revokeGooglePlaceIdVerification({
+        placeId: 'place-1',
+        actorId: 'user-1',
+        expectedExternalId: 'ChIJ-stays',
+      });
 
       expect(result.externalId).toBe('ChIJ-stays');
+    });
+
+    it('expectedExternalId KHÁC ID hiện tại ở server → ConflictException, KHÔNG thu hồi nhầm xác nhận của ID mới', async () => {
+      const existing = makeIdentifier({ externalId: 'ChIJ-swapped-in', verifiedAt: new Date('2026-10-16') });
+      repo.findByPlaceAndProvider.mockResolvedValue(existing);
+
+      await expect(
+        service.revokeGooglePlaceIdVerification({ placeId: 'place-1', actorId: 'user-1', expectedExternalId: 'ChIJ-what-i-saw' }),
+      ).rejects.toThrow(ConflictException);
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(existing.verifiedAt).not.toBeNull(); // xác nhận thật của ID mới không bị đụng
     });
   });
 });
