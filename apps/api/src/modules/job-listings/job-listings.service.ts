@@ -3,9 +3,16 @@ import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
 import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
+import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
 import { JobListing } from './entities/job-listing.entity';
-import { JobListingStatus } from './job-listings.enums';
-import { AdminListJobListingsQueryDto, DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
+import { JobListingStatus, JobListingTranslationStatus } from './job-listings.enums';
+import {
+  AdminListJobListingsQueryDto,
+  DecideJobListingDto,
+  GetJobListingDetailQueryDto,
+  ListJobListingsQueryDto,
+  UpsertJobListingDto,
+} from './dto/job-listings.dto';
 import { toJobListingAdminView, toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
 
 // Bảng chuyển trạng thái đã chốt (docs/delivery/release-web-candidate-2026-10-04.md §13r):
@@ -22,6 +29,10 @@ export class JobListingsService {
   constructor(
     private readonly repo: JobListingsRepository,
     private readonly authz: AuthorizationService,
+    // Chỉ cho overlay đọc công khai (getPublicById) — KHÔNG inject JobListingTranslationsService
+    // (service kia mới có logic viết/CAS-nhẹ, dùng ở đây sẽ tạo phụ thuộc hai chiều không cần
+    // thiết; đọc repo trực tiếp là đủ cho một overlay thuần đọc).
+    private readonly translationsRepo: JobListingTranslationsRepository,
   ) {}
 
   private static assertSalaryRange(dto: UpsertJobListingDto): void {
@@ -261,11 +272,40 @@ export class JobListingsService {
     return paginate(items.map(toJobListingPublicView), page, limit, total);
   }
 
-  async getPublicById(id: string): Promise<ReturnType<typeof toJobListingPublicView> & { place: { id: string; name: string; slug: string } | null }> {
+  // Gói C (17/10/2026) — `locale` TÙY CHỌN overlay bản dịch tiếng Anh ĐÃ DUYỆT (status='published'
+  // ở job_listing_translations — ĐỘC LẬP với status của chính tin, xem job-listing-translations.
+  // service.ts). KHÔNG dùng `LocalesService`/`supported_locales` của places (owner yêu cầu rõ:
+  // "không ép place model vào listing" — bộ máy đó phục vụ N locale/nhiều nguồn, job_listings chỉ
+  // cần đúng vi→en). Response LUÔN có `locale` phản ánh NỘI DUNG THỰC SỰ đã trả (không phải locale
+  // được YÊU CẦU) — nếu yêu cầu 'en' nhưng chưa có bản dịch đã duyệt, trả `locale:'vi'` và giữ
+  // nguyên văn tiếng Việt, để web tự quyết định hiện ghi chú "chưa có bản dịch" thay vì ngầm nhận
+  // đây là nội dung tiếng Anh (đúng yêu cầu owner: "UI không tuyên bố đã có tiếng Anh khi chỉ
+  // fallback tiếng Việt"). CHỈ áp dụng ở chi tiết MỘT tin — danh sách (`listPublic`) CHƯA overlay,
+  // ghi nhận là khoảng trống còn lại (field dịch chỉ ảnh hưởng nội dung dài, danh sách chỉ hiện vài
+  // field ngắn — ưu tiên thấp hơn, chưa làm trong lượt này).
+  async getPublicById(
+    id: string,
+    locale?: GetJobListingDetailQueryDto['locale'],
+  ): Promise<ReturnType<typeof toJobListingPublicView> & { place: { id: string; name: string; slug: string } | null; locale: 'vi' | 'en' }> {
     const row = await this.repo.getPublicById(id);
     // 404 đồng nhất cho "không tồn tại" và "tồn tại nhưng chưa/không còn công khai" — không rò trạng
     // thái nội bộ qua sự khác biệt giữa hai loại lỗi.
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
-    return this.attachPlace(toJobListingPublicView(row));
+    const withPlace = await this.attachPlace(toJobListingPublicView(row));
+
+    if (locale === 'en') {
+      const translation = await this.translationsRepo.findByJobListingId(id);
+      if (translation && translation.status === JobListingTranslationStatus.PUBLISHED) {
+        return {
+          ...withPlace,
+          title: translation.title ?? withPlace.title,
+          description: translation.description ?? withPlace.description,
+          requirements: translation.requirements ?? withPlace.requirements,
+          benefits: translation.benefits ?? withPlace.benefits,
+          locale: 'en',
+        };
+      }
+    }
+    return { ...withPlace, locale: 'vi' };
   }
 }

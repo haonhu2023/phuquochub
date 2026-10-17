@@ -1,9 +1,30 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { JobListingsService } from './job-listings.service';
 import { JobListing } from './entities/job-listing.entity';
-import { JobListingEmploymentType, JobListingStatus } from './job-listings.enums';
+import { JobListingTranslation } from './entities/job-listing-translation.entity';
+import { JobListingEmploymentType, JobListingStatus, JobListingTranslationStatus } from './job-listings.enums';
 import { UpsertJobListingDto } from './dto/job-listings.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
+
+function translationRow(overrides: Partial<JobListingTranslation> = {}): JobListingTranslation {
+  const t = new JobListingTranslation();
+  t.id = 'tr-1';
+  t.jobListingId = 'job-1';
+  t.locale = 'en';
+  t.title = 'EN title';
+  t.description = 'EN description';
+  t.requirements = null;
+  t.benefits = null;
+  t.status = JobListingTranslationStatus.PUBLISHED;
+  t.reviewNote = null;
+  t.reviewerId = null;
+  t.reviewedAt = null;
+  t.sourceContentHash = 'hash';
+  t.createdAt = new Date('2026-10-07T00:00:00Z');
+  t.updatedAt = new Date('2026-10-07T00:00:00Z');
+  Object.assign(t, overrides);
+  return t;
+}
 
 function baseDto(): UpsertJobListingDto {
   return {
@@ -46,6 +67,7 @@ describe('JobListingsService', () => {
   type Deps = ConstructorParameters<typeof JobListingsService>;
   let repo: LooseMock<Deps[0]>;
   let authz: LooseMock<Deps[1]>;
+  let translationsRepo: LooseMock<Deps[2]>;
   let service: JobListingsService;
 
   beforeEach(() => {
@@ -71,7 +93,8 @@ describe('JobListingsService', () => {
       findCreatorSummaries: jest.fn().mockResolvedValue(new Map()),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
-    service = new JobListingsService(repo, authz);
+    translationsRepo = createMock<Deps[2]>({ findByJobListingId: jest.fn().mockResolvedValue(null) });
+    service = new JobListingsService(repo, authz, translationsRepo);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -334,6 +357,56 @@ describe('JobListingsService', () => {
       expect(result).not.toHaveProperty('status');
       expect(result).not.toHaveProperty('reviewer_id');
       expect(result).not.toHaveProperty('review_note');
+    });
+
+    // Gói C (17/10/2026) — overlay bản dịch tiếng Anh ở chi tiết công khai. `locale` trả về PHẢI
+    // phản ánh NỘI DUNG THỰC SỰ đã trả, không phải locale được yêu cầu (owner yêu cầu rõ: không
+    // được "nhận vơ" là tiếng Anh khi chỉ fallback tiếng Việt).
+    describe('overlay bản dịch tiếng Anh (Gói C)', () => {
+      it('locale=en, có bản dịch PUBLISHED → trả nội dung tiếng Anh, locale="en"', async () => {
+        repo.getPublicById.mockResolvedValue(
+          row({ status: JobListingStatus.PUBLISHED, title: 'VI title', description: 'VI mô tả' }),
+        );
+        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ title: 'EN title', description: 'EN description' }));
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.title).toBe('EN title');
+        expect(result.description).toBe('EN description');
+        expect(result.locale).toBe('en');
+      });
+
+      it('locale=en, CHƯA có bản dịch nào → fallback tiếng Việt, locale="vi" (KHÔNG nhận vơ là tiếng Anh)', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
+        translationsRepo.findByJobListingId.mockResolvedValue(null);
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.title).toBe('VI title');
+        expect(result.locale).toBe('vi');
+      });
+
+      it('locale=en, bản dịch tồn tại nhưng CHƯA published (draft/pending/rejected) → fallback tiếng Việt, locale="vi"', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
+        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PENDING }));
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.title).toBe('VI title');
+        expect(result.locale).toBe('vi');
+      });
+
+      it('không truyền locale (mặc định) → luôn tiếng Việt, locale="vi", KHÔNG tra bản dịch', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
+        const result = await service.getPublicById('job-1');
+        expect(result.title).toBe('VI title');
+        expect(result.locale).toBe('vi');
+        expect(translationsRepo.findByJobListingId).not.toHaveBeenCalled();
+      });
+
+      it('bản dịch PUBLISHED nhưng thiếu requirements/benefits (tuỳ chọn) → giữ bản tiếng Việt cho field thiếu, không lộ null', async () => {
+        repo.getPublicById.mockResolvedValue(
+          row({ status: JobListingStatus.PUBLISHED, requirements: 'VI yêu cầu', benefits: 'VI quyền lợi' }),
+        );
+        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ requirements: null, benefits: null }));
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.requirements).toBe('VI yêu cầu');
+        expect(result.benefits).toBe('VI quyền lợi');
+      });
     });
 
     // Gói B (17/10/2026) — `creator_email`/`creator_display_name` vừa thêm vào mapper CHUNG

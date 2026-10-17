@@ -31,8 +31,14 @@ describe('JobListingsController', () => {
   it('list/getById: công khai, không đụng user', () => {
     controller.list({});
     expect(service.listPublic).toHaveBeenCalledWith({});
-    controller.getById('job-1');
-    expect(service.getPublicById).toHaveBeenCalledWith('job-1');
+    controller.getById('job-1', {});
+    expect(service.getPublicById).toHaveBeenCalledWith('job-1', undefined);
+  });
+
+  // Gói C (17/10/2026) — `?locale=en` chuyển thẳng xuống service, không diễn giải gì ở controller.
+  it('getById: chuyển đúng locale xuống service', () => {
+    controller.getById('job-1', { locale: 'en' });
+    expect(service.getPublicById).toHaveBeenCalledWith('job-1', 'en');
   });
 
   it('listMine/getMine: dùng user.sub, không phải object user nguyên', () => {

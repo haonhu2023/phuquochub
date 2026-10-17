@@ -107,6 +107,14 @@ export class ListJobListingsQueryDto {
   limit?: number;
 }
 
+// Gói C (17/10/2026) — `locale` TÙY CHỌN cho chi tiết công khai MỘT tin. Chỉ 'vi'/'en' (khớp đúng
+// scope đã chốt, KHÔNG tái dùng `LocalesService`/`supported_locales` của places — xem ghi chú
+// job-listings.service.ts's getPublicById()).
+export class GetJobListingDetailQueryDto {
+  @IsOptional() @IsIn(['vi', 'en'])
+  locale?: 'vi' | 'en';
+}
+
 // Màn hình quản lý TOÀN BỘ tin (admin) — khác ListJobListingsQueryDto (công khai, chỉ published).
 export class AdminListJobListingsQueryDto {
   @IsOptional() @IsEnum(JobListingStatus)

@@ -3,7 +3,13 @@ import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { JobListingsService } from './job-listings.service';
-import { AdminListJobListingsQueryDto, DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
+import {
+  AdminListJobListingsQueryDto,
+  DecideJobListingDto,
+  GetJobListingDetailQueryDto,
+  ListJobListingsQueryDto,
+  UpsertJobListingDto,
+} from './dto/job-listings.dto';
 
 // Cùng khuôn PlaceEditProposalsController: route 'mine'/'pending'/'admin' khai TRƯỚC ':id' để tránh
 // ParseUUIDPipe nuốt nhầm. Đọc công khai (list/detail) KHÔNG yêu cầu đăng nhập — @Public().
@@ -43,8 +49,8 @@ export class JobListingsController {
 
   @Get(':id')
   @Public()
-  getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getPublicById(id);
+  getById(@Param('id', ParseUUIDPipe) id: string, @Query() query: GetJobListingDetailQueryDto) {
+    return this.service.getPublicById(id, query.locale);
   }
 
   @Post()
