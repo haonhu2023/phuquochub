@@ -16,6 +16,7 @@ import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
+import placesStyles from '@/modules/places/places.module.css';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -152,7 +153,7 @@ export default async function TourDetailPage({ params }: Params) {
 
       <PlaceGallery media={t.media} placeName={t.name} />
 
-      {t.description && <p>{t.description}</p>}
+      {t.description && <p className={placesStyles.longText}>{t.description}</p>}
 
       {/* Thông tin tour (admin nhập ở editor). Chỉ hiện trường đã có giá trị: thiếu thời lượng/độ khó/
           điểm đón không được diễn đạt thành "miễn phí", "đang mở" hay "không có". */}

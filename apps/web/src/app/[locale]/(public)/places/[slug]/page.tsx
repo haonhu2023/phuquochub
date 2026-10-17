@@ -318,7 +318,7 @@ export default async function PlaceDetailPage({ params }: Params) {
       {place.description && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>{getPlaceAboutTitle(locale, place.category_slug)}</h2>
-          <p>{place.description}</p>
+          <p className={styles.longText}>{place.description}</p>
         </section>
       )}
 

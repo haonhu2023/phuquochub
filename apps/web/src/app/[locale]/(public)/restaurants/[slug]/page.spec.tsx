@@ -329,3 +329,12 @@ describe('RestaurantDetailPage — ẩm thực/đặc sản/liên hệ/giờ m�
     expect(document.body.textContent).not.toContain('★');
   });
 });
+
+// Bug thật đã sửa 2026-10-17 — cùng nguyên nhân với trang tin tuyển dụng/BĐS/khách sạn. Xem ghi
+// chú đầy đủ ở jobs/[id]/page.spec.tsx.
+describe('RestaurantDetailPage — giữ xuống dòng mô tả (bug thật đã sửa)', () => {
+  it('"\\n" của mô tả tới DOM nguyên vẹn khi có nội dung nhiều đoạn', async () => {
+    await renderPage(restaurant({ description: 'Đoạn một.\n\nĐoạn hai, sau một dòng trống.' }));
+    expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai, sau một dòng trống.');
+  });
+});

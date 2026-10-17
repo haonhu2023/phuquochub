@@ -111,19 +111,19 @@ export default async function JobListingDetailPage({ params }: Params) {
       {job.description && (
         <section>
           <h2>{locale === 'en' ? 'Description' : 'Mô tả công việc'}</h2>
-          <p>{job.description}</p>
+          <p className={placesStyles.longText}>{job.description}</p>
         </section>
       )}
       {job.requirements && (
         <section>
           <h2>{locale === 'en' ? 'Requirements' : 'Yêu cầu'}</h2>
-          <p>{job.requirements}</p>
+          <p className={placesStyles.longText}>{job.requirements}</p>
         </section>
       )}
       {job.benefits && (
         <section>
           <h2>{locale === 'en' ? 'Benefits' : 'Quyền lợi'}</h2>
-          <p>{job.benefits}</p>
+          <p className={placesStyles.longText}>{job.benefits}</p>
         </section>
       )}
 

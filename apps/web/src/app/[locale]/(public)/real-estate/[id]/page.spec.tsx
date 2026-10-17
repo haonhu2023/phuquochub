@@ -93,3 +93,31 @@ describe('RealEstateListingDetailPage — ngày đăng/cập nhật/hết hạn 
     expect(screen.getByText('Available until')).toBeInTheDocument();
   });
 });
+
+// Bug thật đã sửa 2026-10-17 — cùng nguyên nhân/cách sửa như trang tin tuyển dụng (<p>/<dd> thường
+// gộp "\n" thành dấu cách). Khoá đúng việc "\n" tới DOM nguyên vẹn cho description/utilities_note
+// (thuê)/legal_status_note (bán) — xem ghi chú đầy đủ ở jobs/[id]/page.spec.tsx (lý do không assert
+// className qua mock CSS Module của dự án).
+describe('RealEstateListingDetailPage — giữ xuống dòng mô tả/tiện ích/pháp lý (bug thật đã sửa)', () => {
+  it('description + utilities_note (cho thuê): "\\n" tới DOM nguyên vẹn', async () => {
+    await renderPage(
+      listing({
+        transaction_type: 'rent',
+        description: 'Đoạn một.\n\nĐoạn hai.',
+        utilities_note: 'Điện: tự trả.\nNước: bao gồm.',
+      }),
+    );
+    expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai.');
+    expect(screen.getByText(/Điện: tự trả/).textContent).toBe('Điện: tự trả.\nNước: bao gồm.');
+  });
+
+  it('legal_status_note (mua bán): "\\n" tới DOM nguyên vẹn', async () => {
+    await renderPage(
+      listing({
+        transaction_type: 'sale',
+        legal_status_note: 'Sổ đỏ riêng.\nChưa tách thửa.',
+      }),
+    );
+    expect(screen.getByText(/Sổ đỏ riêng/).textContent).toBe('Sổ đỏ riêng.\nChưa tách thửa.');
+  });
+});

@@ -482,3 +482,13 @@ describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spe
     expect(screen.getByText(/PHONE: 0909123456/)).toBeInTheDocument();
   });
 });
+
+// Bug thật đã sửa 2026-10-17 — cùng nguyên nhân với trang tin tuyển dụng/BĐS: <p> thường gộp "\n"
+// thành dấu cách khi hiển thị. Khoá đúng việc "\n" tới DOM nguyên vẹn — xem ghi chú đầy đủ ở
+// jobs/[id]/page.spec.tsx.
+describe('HotelDetailPage — giữ xuống dòng mô tả (bug thật đã sửa)', () => {
+  it('"\\n" của mô tả tới DOM nguyên vẹn khi có nội dung nhiều đoạn', async () => {
+    await renderPage(hotel({ description: 'Đoạn một.\n\nĐoạn hai, sau một dòng trống.' }));
+    expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai, sau một dòng trống.');
+  });
+});

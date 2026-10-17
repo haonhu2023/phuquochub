@@ -97,3 +97,29 @@ describe('JobListingDetailPage — liên kết địa điểm (bug thiếu đã 
     expect(screen.queryByText(/Tại:/)).not.toBeInTheDocument();
   });
 });
+
+// Bug thật đã sửa 2026-10-17 (owner tự đăng tin thật, phát hiện qua dùng thực tế): mô tả/yêu cầu/
+// quyền lợi lưu đúng "\n" (DB/API không cắt) nhưng trang công khai render bằng <p> thường — HTML
+// mặc định gộp mọi khoảng trắng liên tiếp (kể cả xuống dòng) thành một dấu cách khi hiển thị, làm
+// nội dung nhiều đoạn/danh sách dồn thành một đoạn duy nhất. Sửa bằng CSS `white-space: pre-wrap`
+// dùng chung (`placesStyles.longText`, lớp CSS Module thật — xem apps/web/src/modules/places/
+// places.module.css). Test ở đây CHỈ khoá đúng việc chuỗi "\n" tới được DOM nguyên vẹn (không bị
+// cắt/thay thế trước khi tới trình duyệt) — bằng chứng việc CSS `pre-wrap` thật sự hiển thị đúng đã
+// kiểm trực tiếp qua browser thật + dữ liệu thật (owner đã đăng), không lặp lại ở đây: jsdom không
+// dựng layout nên không thể assert "có xuống dòng trên màn hình"; mock CSS Module của dự án
+// (jest.cssModuleMock.js) cũng không unwrap đúng ESM default-interop nên không thể assert tên class
+// qua `.className` một cách đáng tin cậy — không sửa mock dùng chung ở đây, ngoài phạm vi bản vá này.
+describe('JobListingDetailPage — giữ xuống dòng mô tả/yêu cầu/quyền lợi (bug thật đã sửa)', () => {
+  it('nội dung "\\n" của cả 3 trường tới DOM nguyên vẹn, không bị cắt/thay thế', async () => {
+    await renderPage(
+      job({
+        description: 'Đoạn một.\n\nĐoạn hai, sau một dòng trống.',
+        requirements: 'Yêu cầu 1.\nYêu cầu 2.',
+        benefits: 'Quyền lợi 1.\nQuyền lợi 2.',
+      }),
+    );
+    expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai, sau một dòng trống.');
+    expect(screen.getByText(/Yêu cầu 1/).textContent).toBe('Yêu cầu 1.\nYêu cầu 2.');
+    expect(screen.getByText(/Quyền lợi 1/).textContent).toBe('Quyền lợi 1.\nQuyền lợi 2.');
+  });
+});

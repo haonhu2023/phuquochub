@@ -343,6 +343,17 @@
   margin: 0 0 0.75rem;
 }
 
+/* Mô tả dài (địa điểm/hotel/restaurant/tour/tuyển dụng/BĐS) — dữ liệu lưu plain text với "\n" giữ
+   nguyên (xác nhận: DB/API không cắt bớt newline), nhưng mặc định HTML gộp mọi khoảng trắng liên
+   tiếp (kể cả "\n") thành một dấu cách khi render trong thẻ khối thường. `pre-wrap` giữ đúng dòng
+   trống/đoạn/ngắt dòng người dùng đã gõ mà KHÔNG cần đổi dữ liệu đã lưu hay thêm renderer mới.
+   `overflow-wrap` phòng một chuỗi dài không dấu cách (vd URL) làm tràn ngang trên mobile — `pre-wrap`
+   một mình không tự ngắt những chuỗi như vậy. */
+.longText {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
 .infoGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

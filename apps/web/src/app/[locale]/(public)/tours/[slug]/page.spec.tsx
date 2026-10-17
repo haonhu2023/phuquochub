@@ -227,3 +227,12 @@ describe('TourDetailPage — generateMetadata EN indexation gate', () => {
     expect(metadataVi.alternates?.canonical).toBe('http://localhost:3000/vi/tours/tour-lan-bien');
   });
 });
+
+// Bug thật đã sửa 2026-10-17 — cùng nguyên nhân với trang tin tuyển dụng/BĐS/khách sạn/nhà hàng.
+// Xem ghi chú đầy đủ ở jobs/[id]/page.spec.tsx.
+describe('TourDetailPage — giữ xuống dòng mô tả (bug thật đã sửa)', () => {
+  it('"\\n" của mô tả tới DOM nguyên vẹn khi có nội dung nhiều đoạn', async () => {
+    await renderPage(tour({ description: 'Đoạn một.\n\nĐoạn hai, sau một dòng trống.' }));
+    expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai, sau một dòng trống.');
+  });
+});

@@ -140,7 +140,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
             {listing.utilities_note && (
               <div className={placesStyles.infoItem}>
                 <dt>{t.utilities}</dt>
-                <dd>{listing.utilities_note}</dd>
+                <dd className={placesStyles.longText}>{listing.utilities_note}</dd>
               </div>
             )}
             {listing.furniture_status && (
@@ -169,7 +169,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
         {listing.transaction_type === 'sale' && listing.legal_status_note && (
           <div className={placesStyles.infoItem}>
             <dt>{t.legalStatus}</dt>
-            <dd>{listing.legal_status_note}</dd>
+            <dd className={placesStyles.longText}>{listing.legal_status_note}</dd>
           </div>
         )}
 
@@ -194,7 +194,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
       {listing.description && (
         <section>
           <h2>{t.description}</h2>
-          <p>{listing.description}</p>
+          <p className={placesStyles.longText}>{listing.description}</p>
         </section>
       )}
 
