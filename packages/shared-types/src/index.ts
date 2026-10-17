@@ -7,3 +7,4 @@ export * from './api-response';
 export * from './health';
 export * from './place';
 export * from './review';
+export * from './rich-doc';
