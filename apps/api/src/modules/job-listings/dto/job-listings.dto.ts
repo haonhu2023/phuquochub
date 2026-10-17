@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -13,7 +14,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { RichDoc } from '@phuquochub/shared-types';
+import { IsRichDoc } from '../../../common/rich-doc';
 import { JobListingEmploymentType, JobListingSalaryPeriod, JobListingStatus } from '../job-listings.enums';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -71,6 +75,16 @@ export class UpsertJobListingDto {
 
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string | null;
+
+  // Gói D — key VẮNG MẶT (undefined) = "client này không biết/không đụng rich text"; key có mặt
+  // (object HOẶC null) = GHI ĐÈ, authoritative, xem JobListingsService.applyDescription() cho quy
+  // tắc nguồn-sự-thật đầy đủ. `@ValidateIf` để `null` đi qua (xoá có chủ đích) mà vẫn kiểm object
+  // thật bằng @IsRichDoc khi có giá trị.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  description_rich?: RichDoc | null;
 
   @IsString() @MinLength(1) @MaxLength(30)
   contact_method!: string;

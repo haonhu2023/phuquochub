@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { RichDoc } from '@phuquochub/shared-types';
 import { JobListingEmploymentType, JobListingSalaryPeriod, JobListingStatus } from '../job-listings.enums';
 
 // `job_listings` (InitJobListings, đợt 3 — 2026-10-07). Xem migration cho bảng chuyển trạng thái đầy đủ.
@@ -62,6 +63,12 @@ export class JobListing {
 
   @Column({ type: 'varchar', length: 4000, nullable: true })
   description!: string | null;
+
+  // Gói D (AddJobListingDescriptionRich) — khi KHÔNG NULL, đây là nguồn sự thật của mô tả; cột
+  // `description` phía trên luôn là PROJECTION phẳng dẫn xuất từ cột này (xem
+  // JobListingsService.applyDescription()). NULL = chưa có rich text, dùng `description` trần.
+  @Column({ type: 'jsonb', nullable: true })
+  descriptionRich!: RichDoc | null;
 
   @Column({ type: 'varchar', length: 30 })
   contactMethod!: string;

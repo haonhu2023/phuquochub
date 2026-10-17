@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { RichDoc, RichDocValidationError, flattenRichDocToPlainText } from '@phuquochub/shared-types';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
+import { parseRichDoc } from '../../common/rich-doc';
 import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
@@ -74,6 +76,59 @@ export class JobListingsService {
     }
   }
 
+  // Gói D — quy tắc nguồn-sự-thật MỘT CHIỀU giữa `description` (plain, cũ) và `description_rich`
+  // (RichDoc, mới), tránh "RichDoc cũ âm thầm che nội dung plain text mới" (owner yêu cầu rõ):
+  //
+  //  1. `dto.description_rich` CÓ MẶT trong payload (object HOẶC null tường minh) → AUTHORITATIVE.
+  //     - object: validate (throw 400 nếu sai), lưu, và `description` ĐƯỢC GHI ĐÈ bằng bản phẳng
+  //       dẫn xuất (flatten) — plain text KHÔNG BAO GIỜ được phép lệch khỏi RichDoc khi RichDoc tồn
+  //       tại, nhờ vậy mọi nơi đọc `description` trần (JSON-LD, meta, thẻ danh sách, hash lỗi thời)
+  //       tiếp tục đúng mà không cần biết gì về RichDoc.
+  //     - null tường minh = XOÁ CÓ CHỦ Ý → cả hai cột đều về null (owner: "chủ động xoá nội dung
+  //       phải xoá đúng cả phần biểu diễn liên quan" — không để `description` trần còn sót lại).
+  //  2. `dto.description_rich` VẮNG MẶT (undefined — client không biết/không đụng rich text):
+  //     - Nếu đang KHÔNG có `descriptionRich` lưu sẵn → ghi `description` bình thường, không gì
+  //       khác để đồng bộ.
+  //     - Nếu ĐANG CÓ `descriptionRich` lưu sẵn: so `dto.description` mới với bản flatten của
+  //       RichDoc đang lưu — KHỚP (client chỉ gửi lại y nguyên bản đã đọc, không thực sự sửa) → GIỮ
+  //       NGUYÊN RichDoc, không demote. LỆCH (client cũ vừa ghi đè một nội dung plain text THỰC SỰ
+  //       khác) → coi là ghi đè có chủ ý qua đường cũ: xoá `descriptionRich` (demote về plain-only),
+  //       không được để RichDoc cũ tiếp tục "che" bản plain text mới hơn.
+  private static applyDescription(entity: JobListing, dto: UpsertJobListingDto): void {
+    if (dto.description_rich !== undefined) {
+      if (dto.description_rich === null) {
+        entity.descriptionRich = null;
+        entity.description = null;
+        return;
+      }
+      let doc: RichDoc;
+      try {
+        doc = parseRichDoc(dto.description_rich);
+      } catch (err) {
+        if (err instanceof RichDocValidationError) throw new BadRequestException(`description_rich: ${err.message}`);
+        throw err;
+      }
+      entity.descriptionRich = doc;
+      entity.description = flattenRichDocToPlainText(doc) || null;
+      return;
+    }
+    const newPlain = dto.description ?? null;
+    const existingRich = entity.descriptionRich ?? null;
+    if (existingRich != null) {
+      const currentFlatten = flattenRichDocToPlainText(existingRich) || null;
+      if (newPlain !== currentFlatten) {
+        entity.descriptionRich = null; // demote: client cũ vừa ghi đè nội dung thực sự khác
+      }
+      // else: round-trip không đổi — giữ nguyên existingRich (đã có sẵn trên entity, không gán lại).
+    } else {
+      // Chưa từng có rich text — gán tường minh null (không để `undefined` lọt tới tầng lưu, dù
+      // TypeORM/Postgres coi hai giá trị này như nhau khi INSERT — entity trong bộ nhớ nên phản ánh
+      // ĐÚNG trạng thái sẽ được lưu, để code gọi sau (vd mapper) đọc được giá trị nhất quán).
+      entity.descriptionRich = null;
+    }
+    entity.description = newPlain;
+  }
+
   private static applyDto(entity: JobListing, dto: UpsertJobListingDto): void {
     entity.employerName = dto.employer_name;
     entity.employerRole = dto.employer_role ?? null;
@@ -91,7 +146,7 @@ export class JobListingsService {
     entity.shiftInfo = dto.shift_info ?? null;
     entity.requirements = dto.requirements ?? null;
     entity.benefits = dto.benefits ?? null;
-    entity.description = dto.description ?? null;
+    JobListingsService.applyDescription(entity, dto);
     entity.contactMethod = dto.contact_method;
     entity.contactValue = dto.contact_value;
     entity.expiresAt = dto.expires_at ?? null;

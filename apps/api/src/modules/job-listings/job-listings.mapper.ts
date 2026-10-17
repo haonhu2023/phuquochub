@@ -25,6 +25,11 @@ function baseFields(row: JobListing) {
     requirements: row.requirements,
     benefits: row.benefits,
     description: row.description,
+    // Gói D — luôn đi kèm `description`: khi không null, renderer dùng RichDoc này thay vì plain
+    // text (diễn giải ĐẦY ĐỦ hơn, `description` chỉ là bản phẳng dẫn xuất — xem
+    // JobListingsService.applyDescription()). NULL ở MỌI view (kể cả public) nếu tin chưa dùng
+    // rich text — hoàn toàn tương thích ngược, client cũ bỏ qua field lạ như thường lệ.
+    description_rich: row.descriptionRich,
     contact_method: row.contactMethod,
     contact_value: row.contactValue,
     expires_at: row.expiresAt,

@@ -357,6 +357,119 @@ describe('JobListingsService', () => {
     });
   });
 
+  // Gói D — quy tắc nguồn-sự-thật giữa `description` (plain) và `description_rich` (RichDoc), xem
+  // ghi chú đầy đủ ở JobListingsService.applyDescription().
+  describe('applyDescription — nguồn sự thật description/description_rich', () => {
+    const doc = (text: string) => ({ v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text }] }] });
+
+    it('create: gửi description_rich → lưu RichDoc, description được DẪN XUẤT (flatten), bỏ qua description trần gửi kèm (nếu có)', async () => {
+      const result = await service.create({ ...baseDto(), description: 'TRẦN KHÔNG LIÊN QUAN', description_rich: doc('Mô tả rich') }, 'u1');
+      const created = repo.create.mock.calls[0][0] as JobListing;
+      expect(created.descriptionRich).toEqual(doc('Mô tả rich'));
+      expect(created.description).toBe('Mô tả rich');
+      expect(result.description).toBe('Mô tả rich');
+    });
+
+    it('create: description_rich không hợp lệ (thiếu v) → BadRequestException, KHÔNG gọi repo.create', async () => {
+      await expect(
+        service.create({ ...baseDto(), description_rich: { blocks: [] } as never }, 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('create: không gửi description_rich → chỉ ghi description trần như cũ, descriptionRich = null', async () => {
+      await service.create({ ...baseDto(), description: 'Chỉ chữ thường' }, 'u1');
+      const created = repo.create.mock.calls[0][0] as JobListing;
+      expect(created.descriptionRich).toBeNull();
+      expect(created.description).toBe('Chỉ chữ thường');
+    });
+
+    it('update: gửi description_rich=null (xoá tường minh) → CẢ HAI cột về null, không còn sót description trần', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.DRAFT, createdBy: 'u1', description: 'cũ', descriptionRich: doc('cũ') }));
+      await service.update('job-1', { ...baseDto(), description_rich: null }, 'u1');
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.descriptionRich).toBeNull();
+      expect(saved.description).toBeNull();
+    });
+
+    it('update: client KHÔNG biết rich text, gửi lại ĐÚNG bản flatten hiện tại (round-trip không đổi) → GIỮ NGUYÊN descriptionRich, không demote', async () => {
+      repo.findById.mockResolvedValue(
+        row({ status: JobListingStatus.DRAFT, createdBy: 'u1', description: 'Mô tả rich', descriptionRich: doc('Mô tả rich') }),
+      );
+      await service.update('job-1', { ...baseDto(), description: 'Mô tả rich', description_rich: undefined }, 'u1');
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.descriptionRich).toEqual(doc('Mô tả rich'));
+      expect(saved.description).toBe('Mô tả rich');
+    });
+
+    it('update: client cũ ghi đè description trần bằng nội dung THỰC SỰ khác, không gửi description_rich → DEMOTE (xoá descriptionRich), plain text mới KHÔNG bị RichDoc cũ che mất', async () => {
+      repo.findById.mockResolvedValue(
+        row({ status: JobListingStatus.DRAFT, createdBy: 'u1', description: 'Mô tả rich', descriptionRich: doc('Mô tả rich') }),
+      );
+      await service.update('job-1', { ...baseDto(), description: 'Nội dung hoàn toàn mới do client cũ gõ', description_rich: undefined }, 'u1');
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.descriptionRich).toBeNull();
+      expect(saved.description).toBe('Nội dung hoàn toàn mới do client cũ gõ');
+    });
+
+    // DTO khớp Y HỆT các trường cấu-thành-hash khác của `row()` mặc định — để hash trước/sau chỉ
+    // còn lệch bởi chính description_rich đang kiểm, không lẫn với việc update() ghi đè toàn bộ
+    // form (employer_name/title/... của baseDto() khác mặc định của row(), sẽ tự đổi hash).
+    const dtoMatchingRowDefaults = (extra: Partial<UpsertJobListingDto>): UpsertJobListingDto => ({
+      employer_name: 'E',
+      title: 'T',
+      job_category: 'c',
+      work_location: 'loc',
+      employment_type: JobListingEmploymentType.FULL_TIME,
+      contact_method: 'phone',
+      contact_value: '0909',
+      ...extra,
+    });
+
+    // Các trường optional phải khớp ĐÚNG giá trị null mà applyDto() sẽ gán (dtoMatchingRowDefaults
+    // không gửi field optional nào) — nếu không, hash lệch vì undefined/null serialize khác nhau
+    // trong canonicalJson(), không liên quan gì tới chính nội dung rich text đang kiểm.
+    const rowMatchingOptionalNulls = (overrides: Partial<JobListing>) =>
+      row({
+        salaryMin: null,
+        salaryMax: null,
+        salaryCurrency: null,
+        salaryPeriod: null,
+        shiftInfo: null,
+        requirements: null,
+        benefits: null,
+        ward: null,
+        employerRole: null,
+        placeId: null,
+        expiresAt: null,
+        ...overrides,
+      });
+
+    it('update: đổi chỉ đậm/nghiêng (text giữ nguyên) → flatten không đổi → description (plain) không đổi, hash nguồn không đổi', async () => {
+      const existing = rowMatchingOptionalNulls({ status: JobListingStatus.DRAFT, createdBy: 'u1', description: 'Quan trọng', descriptionRich: doc('Quan trọng') });
+      const hashBefore = computeJobListingSourceHash(existing);
+      repo.findById.mockResolvedValue(existing);
+      await service.update(
+        'job-1',
+        dtoMatchingRowDefaults({ description_rich: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'Quan trọng', bold: true }] }] } }),
+        'u1',
+      );
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.description).toBe('Quan trọng');
+      expect(computeJobListingSourceHash(saved)).toBe(hashBefore);
+    });
+
+    it('update: đổi chữ thật trong RichDoc → description (plain) đổi, hash nguồn đổi (bản dịch sẽ thành is_stale)', async () => {
+      const existing = rowMatchingOptionalNulls({ status: JobListingStatus.DRAFT, createdBy: 'u1', description: 'Chữ cũ', descriptionRich: doc('Chữ cũ') });
+      const hashBefore = computeJobListingSourceHash(existing);
+      repo.findById.mockResolvedValue(existing);
+      await service.update('job-1', dtoMatchingRowDefaults({ description_rich: doc('Chữ mới hoàn toàn khác') }), 'u1');
+      const saved = repo.save.mock.calls[0][0] as JobListing;
+      expect(saved.description).toBe('Chữ mới hoàn toàn khác');
+      expect(computeJobListingSourceHash(saved)).not.toBe(hashBefore);
+    });
+  });
+
   describe('đọc công khai', () => {
     it('getPublicById: repository trả null (chưa publish/hết hạn/không tồn tại) → NotFoundException đồng nhất', async () => {
       repo.getPublicById.mockResolvedValue(null);
