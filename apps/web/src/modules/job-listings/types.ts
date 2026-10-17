@@ -73,7 +73,10 @@ export interface JobListingBaseView {
   updated_at: string;
 }
 
-export type JobListingPublicView = JobListingBaseView;
+// Gói C (17/10/2026) — `locale` phản ánh NỘI DUNG THỰC SỰ đã trả (không phải locale được yêu cầu
+// trong query) — khớp đúng JobListingsService.getPublicById()/listPublic()'s ghi chú. KHÔNG có
+// trên JobListingSenderView/ModeratorView (chỉ view công khai có khái niệm "locale đã phục vụ").
+export type JobListingPublicView = JobListingBaseView & { locale: 'vi' | 'en' };
 
 // "Tin của tôi": có status + review_note (lý do từ chối — DUY NHẤT field phản hồi của tính năng
 // này, không tách nội bộ/gửi-người-dùng) nhưng KHÔNG có reviewer_id (định danh nội bộ).
@@ -107,7 +110,7 @@ export interface JobListingLinkedPlace {
   slug: string;
 }
 
-export type JobListingPublicDetailView = JobListingPublicView & { place: JobListingLinkedPlace | null };
+export type JobListingPublicDetailView = JobListingPublicView & { place: JobListingLinkedPlace | null; is_translation_stale: boolean };
 export type JobListingSenderDetailView = JobListingSenderView & { place: JobListingLinkedPlace | null };
 
 export interface UpsertJobListingInput {
@@ -146,6 +149,7 @@ export interface ListJobListingsFilter {
   employment_type?: JobListingEmploymentType;
   page?: number;
   limit?: number;
+  locale?: 'vi' | 'en';
 }
 
 // Màn hình quản lý TOÀN BỘ tin (admin) — khác ListJobListingsFilter (công khai, chỉ published).
@@ -154,4 +158,64 @@ export interface AdminListJobListingsFilter {
   created_by?: string;
   page?: number;
   limit?: number;
+}
+
+// Gói C (17/10/2026) — bản dịch tiếng Anh. Vòng đời RIÊNG (draft/pending/published/rejected),
+// ĐỘC LẬP hoàn toàn với JobListingStatus của chính tin — khớp đúng
+// apps/api/.../job-listing-translations.mapper.ts.
+export const JOB_LISTING_TRANSLATION_STATUSES = ['draft', 'pending', 'published', 'rejected'] as const;
+export type JobListingTranslationStatus = (typeof JOB_LISTING_TRANSLATION_STATUSES)[number];
+
+export const JOB_LISTING_TRANSLATION_STATUS_LABELS: Record<JobListingTranslationStatus, string> = {
+  draft: 'Nháp',
+  pending: 'Đang chờ duyệt',
+  published: 'Đã duyệt — đang hiện công khai',
+  rejected: 'Bị từ chối',
+};
+
+// `has_published`/`is_published_stale` tách biệt "có bản dịch đã duyệt" khỏi "bản dịch khớp phiên
+// bản hiện tại" — một bản dịch có thể has_published=true NHƯNG is_published_stale=true (đã duyệt,
+// nhưng dữ kiện tiếng Việt đổi sau đó). `is_stale` là về BẢN NHÁP đang soạn (có thể khác bản đã
+// duyệt), không liên quan gì tới bản đang công khai.
+export interface JobListingTranslationView {
+  id: string;
+  job_listing_id: string;
+  locale: string;
+  title: string | null;
+  description: string | null;
+  requirements: string | null;
+  benefits: string | null;
+  status: JobListingTranslationStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
+  has_published: boolean;
+  published_at: string | null;
+  content_version: number;
+  created_at: string;
+  updated_at: string;
+  is_stale: boolean | null;
+  is_published_stale: boolean | null;
+}
+
+export interface JobListingTranslationModeratorView extends JobListingTranslationView {
+  source_title: string;
+  source_employer_name: string;
+  source_description: string | null;
+  source_requirements: string | null;
+  source_benefits: string | null;
+}
+
+export interface UpsertJobListingTranslationInput {
+  title?: string | null;
+  description?: string | null;
+  requirements?: string | null;
+  benefits?: string | null;
+  // Bắt buộc khi ĐÃ CÓ bản dịch (CAS) — bỏ trống CHỈ hợp lệ cho lần lưu đầu tiên.
+  expected_content_version?: number;
+}
+
+export interface DecideJobListingTranslationInput {
+  decision: JobListingDecision;
+  note?: string;
+  expected_content_version: number;
 }

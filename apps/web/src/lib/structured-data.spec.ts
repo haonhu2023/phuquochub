@@ -488,6 +488,7 @@ function baseJob(overrides: Partial<JobListingPublicView> = {}): JobListingPubli
     published_at: '2026-10-01T00:00:00.000Z',
     created_at: '2026-10-01T00:00:00.000Z',
     updated_at: '2026-10-01T00:00:00.000Z',
+    locale: 'vi',
     ...overrides,
   };
 }

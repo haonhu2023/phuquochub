@@ -41,13 +41,17 @@ export function toJobListingTranslationView(row: JobListingTranslation, parent?:
   };
 }
 
-// Hàng chờ duyệt: thêm chút ngữ cảnh tin GỐC (tiêu đề/đơn vị tiếng Việt) — `title`/`description`
-// của view trên là bản NHÁP ĐANG CHỜ DUYỆT (tiếng Anh), không đủ để moderator biết đang duyệt tin
-// nào nếu không có tên gốc đi kèm.
+// Hàng chờ duyệt: thêm ĐỦ ngữ cảnh tin GỐC tiếng Việt (tiêu đề/đơn vị + CẢ BA trường dịch được) —
+// `title`/`description`/... của view trên là bản NHÁP ĐANG CHỜ DUYỆT (tiếng Anh); moderator cần
+// thấy ĐỦ bản nguồn để đối chiếu chất lượng dịch (owner: "xem bản nguồn và bản dịch cạnh nhau"),
+// không chỉ tiêu đề.
 export function toJobListingTranslationModeratorView(row: JobListingTranslation, parent: JobListingTranslationSourceRow) {
   return {
     ...toJobListingTranslationView(row, parent),
     source_title: parent.title,
     source_employer_name: parent.employerName,
+    source_description: parent.description,
+    source_requirements: parent.requirements,
+    source_benefits: parent.benefits,
   };
 }

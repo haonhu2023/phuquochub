@@ -18,9 +18,12 @@ export async function generateMetadata({ params }: Params) {
   const { id, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const job = await getJobListing(id);
+    // Gói C (17/10/2026) — metadata PHẢI khớp đúng nội dung THỰC SỰ sẽ phục vụ (owner yêu cầu rõ:
+    // "Metadata/title trang phải nhất quán với nội dung thực sự được phục vụ") — truyền `locale`
+    // xuống API, KHÔNG tự dịch tiêu đề trang riêng ở đây rồi lại khác với body.
+    const job = await getJobListing(id, locale);
     return {
-      title: `${job.title} · ${job.employer_name} · Tuyển dụng · PhuQuocHub`,
+      title: `${job.title} · ${job.employer_name} · ${locale === 'en' ? 'Jobs' : 'Tuyển dụng'} · PhuQuocHub`,
       description: job.description ?? undefined,
       alternates: { canonical: localizedHref(locale, `/jobs/${job.id}`) },
     };
@@ -38,7 +41,7 @@ export default async function JobListingDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let job;
   try {
-    job = await getJobListing(id);
+    job = await getJobListing(id, locale);
   } catch (err) {
     if (err instanceof ApiError && err.isNotFound) {
       notFound();
@@ -46,9 +49,29 @@ export default async function JobListingDetailPage({ params }: Params) {
     throw err;
   }
 
+  // Gói C (17/10/2026) — `job.locale` là nội dung THỰC SỰ phục vụ, có thể khác locale của route
+  // (owner yêu cầu rõ: "Nếu fallback VI, giao diện ghi rõ... không chỉ trả locale trong JSON rồi
+  // coi như đã giải quyết"). Hai ghi chú KHÁC nhau, không gộp: (1) route /en nhưng chưa có bản dịch
+  // → fallback tiếng Việt, cần nói RÕ bằng tiếng Anh (người đọc có thể không đọc được tiếng Việt).
+  // (2) có bản dịch nhưng dữ kiện gốc đã đổi sau khi duyệt → vẫn hiện, nhưng cảnh báo có thể lỗi thời.
+  const showViFallbackNotice = locale === 'en' && job.locale === 'vi';
+  const showStaleNotice = job.locale === 'en' && job.is_translation_stale;
+
   return (
     <article>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildJobPostingJsonLd(job)) }} />
+      {showViFallbackNotice && (
+        <p className={placesStyles.state} role="note">
+          This listing has not been translated into English yet. The details below are shown in Vietnamese as originally posted.
+        </p>
+      )}
+      {showStaleNotice && (
+        <p className={placesStyles.state} role="note">
+          {locale === 'en'
+            ? 'This English listing may not reflect the latest details — some information was updated after translation.'
+            : 'Phiên bản tiếng Anh của tin này có thể chưa phản ánh thông tin mới nhất — một số dữ kiện đã thay đổi sau khi dịch.'}
+        </p>
+      )}
       <header className={placesStyles.pageHeader}>
         <h1 className={placesStyles.pageTitle}>{job.title}</h1>
         <p className={placesStyles.pageLede}>

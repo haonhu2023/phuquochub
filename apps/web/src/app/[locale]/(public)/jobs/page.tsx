@@ -78,6 +78,7 @@ export default async function JobListingsPage({ params, searchParams }: Props) {
     job_category: jobCategory,
     ward,
     employment_type: employmentType,
+    locale,
   });
 
   const baseQuery = new URLSearchParams();

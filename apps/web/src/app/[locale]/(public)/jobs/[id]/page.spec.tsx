@@ -45,6 +45,8 @@ function job(overrides: Partial<JobListingPublicDetailView> = {}): JobListingPub
     published_at: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
+    locale: 'vi',
+    is_translation_stale: false,
     ...overrides,
   };
 }
@@ -121,5 +123,35 @@ describe('JobListingDetailPage — giữ xuống dòng mô tả/yêu cầu/quy�
     expect(screen.getByText(/Đoạn một/).textContent).toBe('Đoạn một.\n\nĐoạn hai, sau một dòng trống.');
     expect(screen.getByText(/Yêu cầu 1/).textContent).toBe('Yêu cầu 1.\nYêu cầu 2.');
     expect(screen.getByText(/Quyền lợi 1/).textContent).toBe('Quyền lợi 1.\nQuyền lợi 2.');
+  });
+});
+
+// Gói C (17/10/2026) — `job.locale` là nội dung THỰC SỰ phục vụ, có thể khác locale của route; web
+// phải ghi RÕ cho người đọc trong CẢ HAI tình huống, không chỉ trả field trong JSON.
+describe('JobListingDetailPage — thông báo fallback/lỗi thời bản dịch (Gói C)', () => {
+  it('route /en nhưng CHƯA có bản dịch (locale trả về "vi") → ghi chú bằng tiếng Anh rằng đây là bản tiếng Việt', async () => {
+    await renderPage(job({ locale: 'vi' }), 'en');
+    expect(screen.getByText(/has not been translated into English yet/)).toBeInTheDocument();
+  });
+
+  it('route /vi (hoặc locale="vi" đúng như yêu cầu) → KHÔNG hiện ghi chú fallback nào', async () => {
+    await renderPage(job({ locale: 'vi' }), 'vi');
+    expect(screen.queryByText(/has not been translated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/chưa phản ánh thông tin mới nhất/)).not.toBeInTheDocument();
+  });
+
+  it('có bản dịch (locale="en") nhưng is_translation_stale=true → hiện cảnh báo có thể lỗi thời, bằng tiếng Anh khi route /en', async () => {
+    await renderPage(job({ locale: 'en', is_translation_stale: true }), 'en');
+    expect(screen.getByText(/may not reflect the latest details/)).toBeInTheDocument();
+  });
+
+  it('có bản dịch (locale="en"), is_translation_stale=true, nhưng route /vi → cảnh báo bằng tiếng Việt', async () => {
+    await renderPage(job({ locale: 'en', is_translation_stale: true }), 'vi');
+    expect(screen.getByText(/chưa phản ánh thông tin mới nhất/)).toBeInTheDocument();
+  });
+
+  it('có bản dịch, is_translation_stale=false → KHÔNG hiện cảnh báo lỗi thời nào', async () => {
+    await renderPage(job({ locale: 'en', is_translation_stale: false }), 'en');
+    expect(screen.queryByText(/may not reflect the latest details/)).not.toBeInTheDocument();
   });
 });

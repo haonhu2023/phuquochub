@@ -6,6 +6,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { getMyJobListing } from './api/job-listings.api';
 import { JobListingForm } from './JobListingForm';
+import { JobListingTranslationEditor } from './JobListingTranslationEditor';
 import type { JobListingSenderDetailView, JobListingSenderView } from './types';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
@@ -93,6 +94,7 @@ export function EditJobListingView({ id }: { id: string }) {
         <h1 className={placeStyles.pageTitle}>Sửa tin tuyển dụng</h1>
       </header>
       <JobListingForm existing={state.job} onSaved={(job) => setState({ kind: 'saved', job })} />
+      <JobListingTranslationEditor job={state.job} />
     </main>
   );
 }
