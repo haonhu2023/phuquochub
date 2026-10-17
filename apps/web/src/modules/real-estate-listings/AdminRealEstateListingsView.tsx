@@ -11,45 +11,65 @@ import {
   realEstatePropertyTypeLabel,
   realEstateTransactionTypeLabel,
   type RealEstateListingAdminView,
-  type RealEstateListingStatus,
 } from './types';
 import { formatRealEstatePrice } from './price';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
-import { LISTING_EFFECTIVE_STATUS_LABELS, listingEffectiveStatus, useTodayInVietnam } from '@/lib/listingExpiry';
+import {
+  LISTING_EFFECTIVE_STATUS_LABELS,
+  listingEffectiveStatus,
+  matchesListingFilter,
+  useTodayInVietnam,
+  type ListingFilterValue,
+} from '@/lib/listingExpiry';
+import type { RealEstateListingStatus } from './types';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: RealEstateListingAdminView[] };
+  | { kind: 'ready'; items: RealEstateListingAdminView[]; total: number };
+
+const PAGE_SIZE = 50;
 
 function formatYmd(ymd: string): string {
   const [y, m, d] = ymd.split('-');
   return `${d}/${m}/${y}`;
 }
 
-const STATUS_OPTIONS: Array<{ value: RealEstateListingStatus | 'all'; label: string }> = [
+const FILTER_OPTIONS: Array<{ value: ListingFilterValue; label: string }> = [
   { value: 'all', label: 'Tất cả' },
   { value: 'draft', label: 'Nháp' },
   { value: 'pending', label: 'Chờ duyệt' },
   { value: 'published', label: 'Đang đăng' },
+  { value: 'expiring_soon', label: 'Sắp hết hạn' },
+  { value: 'expired', label: 'Đã hết hạn' },
   { value: 'closed', label: 'Đã đóng' },
   { value: 'rejected', label: 'Bị từ chối' },
 ];
 
+const REAL_STATUS_VALUES = new Set<string>(['draft', 'pending', 'published', 'closed', 'rejected']);
+function toRealStatus(filter: ListingFilterValue): RealEstateListingStatus | undefined {
+  return REAL_STATUS_VALUES.has(filter) ? (filter as RealEstateListingStatus) : undefined;
+}
+
 // Màn hình quản lý TOÀN BỘ tin (Gói B, 17/10/2026) — cùng lý do/mẫu AdminJobListingsView (xem ghi
-// chú đầy đủ ở đó): KHÁC RealEstateListingModerationQueueView (chỉ hàng chờ duyệt, status=pending).
+// chú đầy đủ ở đó), kể cả phần lọc "Hết hạn"/"Sắp hết hạn" theo trạng thái HIỆU LỰC và phân trang.
 export function AdminRealEstateListingsView() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<RealEstateListingStatus | 'all'>('all');
+  const [filter, setFilter] = useState<ListingFilterValue>('all');
   const [posterQuery, setPosterQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const today = useTodayInVietnam();
 
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const reload = useCallback(() => {
+    setPage(1);
+    setReloadKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     const session = readSession();
@@ -66,12 +86,12 @@ export function AdminRealEstateListingsView() {
       .then(() => {
         if (!cancelled) setState({ kind: 'loading' });
         return listRealEstateListingsForAdmin(
-          { status: statusFilter === 'all' ? undefined : statusFilter, limit: 100 },
+          { status: toRealStatus(filter), page: 1, limit: PAGE_SIZE },
           session.accessToken,
         );
       })
-      .then(({ data }) => {
-        if (!cancelled) setState({ kind: 'ready', items: data });
+      .then(({ data, meta }) => {
+        if (!cancelled) setState({ kind: 'ready', items: data, total: meta.total });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -84,7 +104,26 @@ export function AdminRealEstateListingsView() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey, statusFilter]);
+  }, [reloadKey, filter]);
+
+  async function loadMore() {
+    const session = readSession();
+    if (!session || state.kind !== 'ready') return;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    try {
+      const { data } = await listRealEstateListingsForAdmin(
+        { status: toRealStatus(filter), page: nextPage, limit: PAGE_SIZE },
+        session.accessToken,
+      );
+      setPage(nextPage);
+      setState((prev) => (prev.kind === 'ready' ? { ...prev, items: [...prev.items, ...data] } : prev));
+    } catch (err) {
+      setActionError(safeMessage(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function act(id: string, action: 'close' | 'reopen') {
     const session = readSession();
@@ -122,14 +161,17 @@ export function AdminRealEstateListingsView() {
   }
 
   const posterNeedle = posterQuery.trim().toLowerCase();
-  const items = state.kind === 'ready' ? state.items : [];
+  const loaded = state.kind === 'ready' ? state.items : [];
+  const total = state.kind === 'ready' ? state.total : 0;
+  const statusFiltered = loaded.filter((r) => matchesListingFilter(r, filter, today));
   const filtered = posterNeedle
-    ? items.filter(
+    ? statusFiltered.filter(
         (r) =>
           (r.creator_display_name ?? '').toLowerCase().includes(posterNeedle) ||
           (r.creator_email ?? '').toLowerCase().includes(posterNeedle),
       )
-    : items;
+    : statusFiltered;
+  const hasMore = loaded.length < total;
 
   return (
     <main>
@@ -142,17 +184,20 @@ export function AdminRealEstateListingsView() {
         </p>
       </header>
 
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
         <div>
           <label htmlFor="re-admin-status" style={{ marginRight: '0.5rem' }}>
             Trạng thái
           </label>
           <select
             id="re-admin-status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as RealEstateListingStatus | 'all')}
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value as ListingFilterValue);
+              reload();
+            }}
           >
-            {STATUS_OPTIONS.map((opt) => (
+            {FILTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -168,10 +213,23 @@ export function AdminRealEstateListingsView() {
             type="text"
             value={posterQuery}
             onChange={(e) => setPosterQuery(e.target.value)}
-            placeholder="Gõ để lọc trong trang đang xem"
+            placeholder="Gõ để lọc trong số tin đã tải"
           />
         </div>
       </div>
+
+      {state.kind === 'ready' && (
+        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Đã tải {loaded.length}/{total} tin khớp trạng thái đã chọn.
+          {posterNeedle && hasMore && (
+            <strong style={{ color: 'var(--warning, #b45309)' }}>
+              {' '}
+              Bộ lọc người đăng chỉ áp dụng trong {loaded.length} tin ĐÃ TẢI — còn {total - loaded.length} tin chưa
+              tải, có thể còn khớp. Bấm &quot;Tải thêm&quot; trước khi coi đây là toàn bộ kết quả.
+            </strong>
+          )}
+        </p>
+      )}
 
       {actionError && (
         <p className={placeMgmtStyles.alert} role="alert">
@@ -200,15 +258,15 @@ export function AdminRealEstateListingsView() {
         </div>
       )}
 
-      {state.kind === 'ready' && items.length === 0 && (
+      {state.kind === 'ready' && loaded.length === 0 && (
         <div className={placeStyles.state}>
           <p className={placeStyles.stateTitle}>Không có tin nào</p>
         </div>
       )}
 
-      {state.kind === 'ready' && items.length > 0 && filtered.length === 0 && (
+      {state.kind === 'ready' && loaded.length > 0 && filtered.length === 0 && (
         <div className={placeStyles.state}>
-          <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc người đăng</p>
+          <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc trong số đã tải</p>
         </div>
       )}
 
@@ -262,7 +320,7 @@ export function AdminRealEstateListingsView() {
                       disabled={actingId === listing.id}
                       onClick={() => act(listing.id, 'reopen')}
                     >
-                      Mở lại (cần duyệt lại)
+                      Mở lại (về chờ duyệt — người đăng tự sửa nội dung/hạn sau đó)
                     </button>
                   )}
                 </div>
@@ -270,6 +328,14 @@ export function AdminRealEstateListingsView() {
             );
           })}
         </ul>
+      )}
+
+      {state.kind === 'ready' && hasMore && (
+        <div style={{ marginTop: '1rem' }}>
+          <button type="button" className={placeStyles.btn} onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Đang tải…' : `Tải thêm (còn ${total - loaded.length})`}
+          </button>
+        </div>
       )}
     </main>
   );

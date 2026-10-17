@@ -126,21 +126,40 @@ describe('JobListingsService', () => {
     });
   });
 
-  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — owner yêu cầu "chọn hạn mới hợp lệ". KHÔNG phải
-  // chính sách 30/60/90 ngày (chưa duyệt) — chỉ chặn lưu một expires_at đã ở quá khứ.
-  describe('assertValidExpiry (hạn mới hợp lệ khi sửa/gửi đăng lại)', () => {
-    it('create với expires_at ở quá khứ → BadRequestException', async () => {
+  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — owner yêu cầu "chọn hạn mới hợp lệ", NHƯNG sửa lại
+  // 17/10/2026 sau phản hồi owner: kiểm ở update() PHẢI không chặn việc sửa trường khác khi
+  // expires_at KHÔNG đổi (dù đã ở quá khứ) — gate "hạn còn hiệu lực để đăng lại" THẬT nằm ở
+  // submit()/decide() approve (xem describe riêng dưới), không phải ở create()/update().
+  describe('assertValidExpiry (chặn CHỦ ĐỘNG đặt hạn mới ở quá khứ, không chặn giữ nguyên hạn cũ)', () => {
+    it('create với expires_at ở quá khứ → BadRequestException (không có "giá trị cũ" để so sánh)', async () => {
       await expect(service.create({ ...baseDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });
 
-    it('update (sửa+gửi đăng lại) với expires_at ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
-      repo.findById.mockResolvedValue(row({ status: JobListingStatus.REJECTED, createdBy: 'u1' }));
+    it('update: ĐẶT một expires_at MỚI, khác giá trị cũ, và đã ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2099-01-01' }));
       await expect(service.update('job-1', { ...baseDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
         BadRequestException,
       );
       expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('update: GIỮ NGUYÊN expires_at cũ đã quá khứ (chỉ sửa trường khác) → KHÔNG bị chặn, lưu được', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      const result = await service.update(
+        'job-1',
+        { ...baseDto(), title: 'Sửa lỗi chính tả, không đụng hạn', expires_at: '2000-01-01' },
+        'u1',
+      );
+      expect(result.title).toBe('Sửa lỗi chính tả, không đụng hạn');
+      expect(result.expires_at).toBe('2000-01-01');
+    });
+
+    it('update: XOÁ hạn cũ đã quá khứ về null → KHÔNG bị chặn (xoá hạn luôn hợp lệ)', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      const result = await service.update('job-1', { ...baseDto(), expires_at: null }, 'u1');
+      expect(result.expires_at).toBeNull();
     });
 
     it('expires_at = hôm nay hoặc tương lai → hợp lệ, không throw', async () => {
@@ -150,6 +169,42 @@ describe('JobListingsService', () => {
 
     it('expires_at không đặt (null/undefined) → luôn hợp lệ, không bắt buộc phải có hạn', async () => {
       await expect(service.create(baseDto(), 'u1')).resolves.toBeDefined();
+    });
+  });
+
+  // Gate THẬT của "hạn phải còn hiệu lực để đăng lại" — ở submit() (gửi duyệt) và decide() approve
+  // (duyệt), vì một tin có thể còn hạn lúc sửa nhưng hết hạn trong lúc nằm trong hàng chờ duyệt.
+  describe('assertNotAlreadyExpired — gate ở submit()/decide() approve', () => {
+    it('submit khi expires_at đã quá khứ → BadRequestException, KHÔNG đổi status, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.DRAFT, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('submit khi expires_at còn hạn/null → qua bình thường (không bị gate chặn nhầm)', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.DRAFT, createdBy: 'u1', expiresAt: '2099-01-01' }));
+      const result = await service.submit('job-1', 'u1');
+      expect(result.status).toBe(JobListingStatus.PENDING);
+    });
+
+    it('decide approve khi expires_at đã quá khứ (hết hạn TRONG LÚC chờ duyệt) → BadRequestException, không set reviewer/reviewedAt, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.PENDING, expiresAt: '2000-01-01' }));
+      await expect(service.decide('job-1', { decision: 'approve' }, 'mod-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('decide REJECT khi expires_at đã quá khứ → KHÔNG bị gate chặn (từ chối luôn được phép bất kể hạn)', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.PENDING, expiresAt: '2000-01-01' }));
+      const result = await service.decide('job-1', { decision: 'reject', note: 'thiếu ảnh' }, 'mod-1');
+      expect(result.status).toBe(JobListingStatus.REJECTED);
+    });
+
+    it('decide approve khi expires_at còn hạn/null → qua bình thường', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.PENDING, expiresAt: '2099-01-01' }));
+      const result = await service.decide('job-1', { decision: 'approve' }, 'mod-1');
+      expect(result.status).toBe(JobListingStatus.PUBLISHED);
     });
   });
 
@@ -279,6 +334,26 @@ describe('JobListingsService', () => {
       expect(result).not.toHaveProperty('status');
       expect(result).not.toHaveProperty('reviewer_id');
       expect(result).not.toHaveProperty('review_note');
+    });
+
+    // Gói B (17/10/2026) — `creator_email`/`creator_display_name` vừa thêm vào mapper CHUNG
+    // (job-listings.mapper.ts). Owner yêu cầu kiểm TRỰC TIẾP việc này không lộ ra view công khai:
+    // `toJobListingAdminView` CHỈ được gọi từ listAllForAdmin() — toJobListingPublicView/
+    // toJobListingSenderView (dùng ở đây) không spread qua nó, nhưng kiểm trực tiếp thay vì suy ra
+    // từ cấu trúc code, tránh một thay đổi sau này âm thầm làm rò.
+    it('getPublicById/listPublic: KHÔNG có creator_email/creator_display_name/created_by (những field này CHỈ dành cho admin)', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED }));
+      const detail = await service.getPublicById('job-1');
+      expect(detail).not.toHaveProperty('creator_email');
+      expect(detail).not.toHaveProperty('creator_display_name');
+      expect(detail).not.toHaveProperty('created_by');
+
+      repo.listPublic.mockResolvedValue([row({ status: JobListingStatus.PUBLISHED })]);
+      repo.countPublic.mockResolvedValue(1);
+      const list = await service.listPublic({});
+      expect(list.data[0]).not.toHaveProperty('creator_email');
+      expect(list.data[0]).not.toHaveProperty('creator_display_name');
+      expect(list.data[0]).not.toHaveProperty('created_by');
     });
 
     // "Place tùy chọn" (mục V đợt 3) — ghép tên/slug qua lookup riêng, không throw nếu không khớp.

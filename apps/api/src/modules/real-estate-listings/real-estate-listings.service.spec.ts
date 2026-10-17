@@ -317,28 +317,95 @@ describe('RealEstateListingsService', () => {
       );
       expect(result.data).toHaveLength(1);
     });
+
+    // Gói B (17/10/2026) — cùng lý do JobListingsService (xem ghi chú đầy đủ ở đó).
+    it('getPublicById/listPublic: KHÔNG có creator_email/creator_display_name/created_by', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED }));
+      const detail = await service.getPublicById('rel-1');
+      expect(detail).not.toHaveProperty('creator_email');
+      expect(detail).not.toHaveProperty('creator_display_name');
+      expect(detail).not.toHaveProperty('created_by');
+
+      repo.listPublic.mockResolvedValue([row({ status: RealEstateListingStatus.PUBLISHED })]);
+      repo.countPublic.mockResolvedValue(1);
+      const list = await service.listPublic({});
+      expect(list.data[0]).not.toHaveProperty('creator_email');
+      expect(list.data[0]).not.toHaveProperty('creator_display_name');
+      expect(list.data[0]).not.toHaveProperty('created_by');
+    });
   });
 
-  // Gói B (17/10/2026) — cùng lý do/mẫu JobListingsService (xem ghi chú đầy đủ ở đó).
-  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — cùng lý do/mẫu JobListingsService (xem ghi chú đầy
-  // đủ ở đó). KHÔNG phải chính sách 30/60/90 ngày (chưa duyệt).
-  describe('assertValidExpiry (hạn mới hợp lệ khi sửa/gửi đăng lại)', () => {
+  // Gói B (17/10/2026), sửa lại sau phản hồi owner cùng ngày — cùng lý do/mẫu JobListingsService
+  // (xem ghi chú đầy đủ ở đó): update() không chặn giữ-nguyên/xoá hạn cũ đã quá khứ, chỉ chặn khi
+  // CHỦ ĐỘNG đặt một hạn mới khác giá trị cũ và đã ở quá khứ. Gate thật ở submit()/decide() approve.
+  describe('assertValidExpiry (chặn CHỦ ĐỘNG đặt hạn mới ở quá khứ, không chặn giữ nguyên hạn cũ)', () => {
     it('create với expires_at ở quá khứ → BadRequestException', async () => {
       await expect(service.create({ ...rentDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });
 
-    it('update (sửa+gửi đăng lại) với expires_at ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
-      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.REJECTED, createdBy: 'u1' }));
+    it('update: ĐẶT một expires_at MỚI, khác giá trị cũ, và đã ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2099-01-01' }));
       await expect(
         service.update('rel-1', { ...rentDto(), expires_at: '2000-01-01' }, 'u1'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.save).not.toHaveBeenCalled();
     });
 
+    it('update: GIỮ NGUYÊN expires_at cũ đã quá khứ (chỉ sửa trường khác) → KHÔNG bị chặn, lưu được', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      const result = await service.update(
+        'rel-1',
+        { ...rentDto(), title: 'Sửa lỗi chính tả, không đụng hạn', expires_at: '2000-01-01' },
+        'u1',
+      );
+      expect(result.title).toBe('Sửa lỗi chính tả, không đụng hạn');
+      expect(result.expires_at).toBe('2000-01-01');
+    });
+
+    it('update: XOÁ hạn cũ đã quá khứ về null → KHÔNG bị chặn', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.REJECTED, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      const result = await service.update('rel-1', { ...rentDto(), expires_at: null }, 'u1');
+      expect(result.expires_at).toBeNull();
+    });
+
     it('expires_at không đặt (null/undefined) → luôn hợp lệ', async () => {
       await expect(service.create(rentDto(), 'u1')).resolves.toBeDefined();
+    });
+  });
+
+  describe('assertNotAlreadyExpired — gate ở submit()/decide() approve', () => {
+    it('submit khi expires_at đã quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.DRAFT, createdBy: 'u1', expiresAt: '2000-01-01' }));
+      await expect(service.submit('rel-1', 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('submit khi expires_at còn hạn/null → qua bình thường', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.DRAFT, createdBy: 'u1', expiresAt: '2099-01-01' }));
+      const result = await service.submit('rel-1', 'u1');
+      expect(result.status).toBe(RealEstateListingStatus.PENDING);
+    });
+
+    it('decide approve khi expires_at đã quá khứ (hết hạn TRONG LÚC chờ duyệt) → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PENDING, expiresAt: '2000-01-01' }));
+      await expect(service.decide('rel-1', { decision: 'approve' }, 'mod-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('decide REJECT khi expires_at đã quá khứ → KHÔNG bị gate chặn', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PENDING, expiresAt: '2000-01-01' }));
+      const result = await service.decide('rel-1', { decision: 'reject', note: 'thiếu ảnh' }, 'mod-1');
+      expect(result.status).toBe(RealEstateListingStatus.REJECTED);
+    });
+
+    it('decide approve khi expires_at còn hạn/null → qua bình thường', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PENDING, expiresAt: '2099-01-01' }));
+      const result = await service.decide('rel-1', { decision: 'approve' }, 'mod-1');
+      expect(result.status).toBe(RealEstateListingStatus.PUBLISHED);
     });
   });
 

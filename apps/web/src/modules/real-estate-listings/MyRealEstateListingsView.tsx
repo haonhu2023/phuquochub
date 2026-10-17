@@ -296,6 +296,12 @@ export function MyRealEstateListingsView() {
                   </button>
                 )}
               </div>
+              {listing.status === 'closed' && (
+                <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                  Tin đã đóng không sửa trực tiếp được — bấm &quot;Mở lại&quot; trước, tin sẽ về trạng thái chờ duyệt,
+                  sau đó mới bấm &quot;Sửa&quot; được.
+                </p>
+              )}
             </li>
             );
           })}

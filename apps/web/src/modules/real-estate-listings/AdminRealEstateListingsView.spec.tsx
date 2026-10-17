@@ -62,6 +62,10 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function page(data: ReturnType<typeof row>[], total: number) {
+  return { data, meta: { page: 1, pageSize: 50, total, totalPages: Math.ceil(total / 50), timestamp: '' } };
+}
+
 beforeEach(() => {
   mockReadSession.mockReturnValue({ accessToken: 'tok' });
 });
@@ -84,15 +88,24 @@ describe('AdminRealEstateListingsView — quản lý tất cả tin bất độn
     expect(await screen.findByText('Không có quyền truy cập')).toBeInTheDocument();
   });
 
+  it('tải trang đầu: gọi API với page=1/limit=50, không status', async () => {
+    mockList.mockResolvedValue(page([row()], 1));
+    render(<AdminRealEstateListingsView />);
+    await screen.findByText(/Phòng trọ gần biển/);
+    expect(mockList).toHaveBeenCalledWith({ status: undefined, page: 1, limit: 50 }, 'tok');
+  });
+
   it('hiện tin của NHIỀU người đăng, NHIỀU trạng thái cùng lúc (khác hàng chờ duyệt chỉ-pending)', async () => {
-    mockList.mockResolvedValue({
-      data: [
-        row({ id: 'rel-pub', status: 'published', creator_display_name: 'Chủ tin 1' }),
-        row({ id: 'rel-closed', status: 'closed', title: 'Tin đã đóng', creator_display_name: 'Chủ tin 2', creator_email: 'owner2@test.com' }),
-        row({ id: 'rel-draft', status: 'draft', title: 'Tin nháp', creator_display_name: 'Chủ tin 3' }),
-      ],
-      meta: { page: 1, pageSize: 100, total: 3, totalPages: 1, timestamp: '' },
-    });
+    mockList.mockResolvedValue(
+      page(
+        [
+          row({ id: 'rel-pub', status: 'published', creator_display_name: 'Chủ tin 1' }),
+          row({ id: 'rel-closed', status: 'closed', title: 'Tin đã đóng', creator_display_name: 'Chủ tin 2', creator_email: 'owner2@test.com' }),
+          row({ id: 'rel-draft', status: 'draft', title: 'Tin nháp', creator_display_name: 'Chủ tin 3' }),
+        ],
+        3,
+      ),
+    );
     render(<AdminRealEstateListingsView />);
     expect(await screen.findByText(/Tin đã đóng/)).toBeInTheDocument();
     expect(screen.getByText(/Tin nháp/)).toBeInTheDocument();
@@ -101,32 +114,47 @@ describe('AdminRealEstateListingsView — quản lý tất cả tin bất độn
   });
 
   it('người đăng đã bị xoá (creator_display_name null) → hiện ghi chú rõ, không crash', async () => {
-    mockList.mockResolvedValue({
-      data: [row({ creator_display_name: null, creator_email: null })],
-      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1, timestamp: '' },
-    });
+    mockList.mockResolvedValue(page([row({ creator_display_name: null, creator_email: null })], 1));
     render(<AdminRealEstateListingsView />);
     expect(await screen.findByText(/đã xoá tài khoản/)).toBeInTheDocument();
   });
 
-  it('đổi bộ lọc trạng thái → gọi lại API với đúng status (lọc THẬT ở server, không phải client)', async () => {
-    mockList.mockResolvedValue({ data: [row()], meta: { page: 1, pageSize: 100, total: 1, totalPages: 1, timestamp: '' } });
+  it('đổi bộ lọc sang status THẬT (Đã đóng) → gọi lại API với status đó', async () => {
+    mockList.mockResolvedValue(page([row()], 1));
     render(<AdminRealEstateListingsView />);
     await screen.findByText(/Phòng trọ gần biển/);
     fireEvent.change(screen.getByLabelText('Trạng thái'), { target: { value: 'closed' } });
-    await waitFor(() =>
-      expect(mockList).toHaveBeenLastCalledWith({ status: 'closed', limit: 100 }, 'tok'),
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ status: 'closed', page: 1, limit: 50 }, 'tok'));
+  });
+
+  it('đổi bộ lọc sang "Đã hết hạn" (trạng thái SUY RA) → KHÔNG gửi status cho server, lọc CLIENT-SIDE', async () => {
+    mockList.mockResolvedValue(
+      page(
+        [
+          row({ id: 'rel-expired', status: 'published', expires_at: '2026-06-01', title: 'Tin đã hết hạn' }),
+          row({ id: 'rel-ok', status: 'published', expires_at: '2026-12-31', title: 'Tin còn hạn' }),
+        ],
+        2,
+      ),
     );
+    render(<AdminRealEstateListingsView />);
+    await screen.findByText(/Tin đã hết hạn/);
+    fireEvent.change(screen.getByLabelText('Trạng thái'), { target: { value: 'expired' } });
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ status: undefined, page: 1, limit: 50 }, 'tok'));
+    expect(screen.getByText(/Tin đã hết hạn/)).toBeInTheDocument();
+    expect(screen.queryByText(/Tin còn hạn/)).not.toBeInTheDocument();
   });
 
   it('lọc người đăng khớp đúng email → chỉ còn tin của người đó, KHÔNG gọi lại API (lọc client-side)', async () => {
-    mockList.mockResolvedValue({
-      data: [
-        row({ id: 'rel-a', title: 'Tin của A', creator_display_name: 'Người A', creator_email: 'a@test.com' }),
-        row({ id: 'rel-b', title: 'Tin của B', creator_display_name: 'Người B', creator_email: 'b@test.com' }),
-      ],
-      meta: { page: 1, pageSize: 100, total: 2, totalPages: 1, timestamp: '' },
-    });
+    mockList.mockResolvedValue(
+      page(
+        [
+          row({ id: 'rel-a', title: 'Tin của A', creator_display_name: 'Người A', creator_email: 'a@test.com' }),
+          row({ id: 'rel-b', title: 'Tin của B', creator_display_name: 'Người B', creator_email: 'b@test.com' }),
+        ],
+        2,
+      ),
+    );
     render(<AdminRealEstateListingsView />);
     await screen.findByText(/Tin của A/);
     const callsBefore = mockList.mock.calls.length;
@@ -136,8 +164,34 @@ describe('AdminRealEstateListingsView — quản lý tất cả tin bất độn
     expect(mockList.mock.calls.length).toBe(callsBefore);
   });
 
+  it('tổng số (meta.total) nhiều hơn số đã tải + đang lọc người đăng → hiện cảnh báo rõ', async () => {
+    mockList.mockResolvedValue(page([row({ id: 'rel-a', creator_display_name: 'Người A' })], 120));
+    render(<AdminRealEstateListingsView />);
+    await screen.findByText(/Đã tải 1\/120/);
+    fireEvent.change(screen.getByLabelText('Người đăng (tên/email)'), { target: { value: 'ai đó' } });
+    expect(screen.getByText(/còn 119 tin chưa tải/)).toBeInTheDocument();
+  });
+
+  it('"Tải thêm" gọi API trang 2 và NỐI THÊM kết quả, không thay thế', async () => {
+    mockList.mockResolvedValueOnce(page([row({ id: 'rel-a', title: 'Tin trang 1' })], 2));
+    render(<AdminRealEstateListingsView />);
+    await screen.findByText(/Tin trang 1/);
+    mockList.mockResolvedValueOnce(page([row({ id: 'rel-b', title: 'Tin trang 2' })], 2));
+    fireEvent.click(screen.getByRole('button', { name: /Tải thêm/ }));
+    await screen.findByText(/Tin trang 2/);
+    expect(screen.getByText(/Tin trang 1/)).toBeInTheDocument();
+    expect(mockList).toHaveBeenLastCalledWith({ status: undefined, page: 2, limit: 50 }, 'tok');
+  });
+
+  it('đã tải hết (loaded === total) → KHÔNG hiện nút "Tải thêm"', async () => {
+    mockList.mockResolvedValue(page([row()], 1));
+    render(<AdminRealEstateListingsView />);
+    await screen.findByText(/Phòng trọ gần biển/);
+    expect(screen.queryByRole('button', { name: /Tải thêm/ })).not.toBeInTheDocument();
+  });
+
   it('tin published: nút "Đóng tin" gọi closeRealEstateListing đúng id', async () => {
-    mockList.mockResolvedValue({ data: [row({ status: 'published' })], meta: { page: 1, pageSize: 100, total: 1, totalPages: 1, timestamp: '' } });
+    mockList.mockResolvedValue(page([row({ status: 'published' })], 1));
     mockClose.mockResolvedValue(row({ status: 'closed' }));
     render(<AdminRealEstateListingsView />);
     const btn = await screen.findByRole('button', { name: 'Đóng tin' });
@@ -146,7 +200,7 @@ describe('AdminRealEstateListingsView — quản lý tất cả tin bất độn
   });
 
   it('tin closed: nút "Mở lại" gọi reopenRealEstateListing đúng id', async () => {
-    mockList.mockResolvedValue({ data: [row({ status: 'closed' })], meta: { page: 1, pageSize: 100, total: 1, totalPages: 1, timestamp: '' } });
+    mockList.mockResolvedValue(page([row({ status: 'closed' })], 1));
     mockReopen.mockResolvedValue(row({ status: 'pending' }));
     render(<AdminRealEstateListingsView />);
     const btn = await screen.findByRole('button', { name: /Mở lại/ });

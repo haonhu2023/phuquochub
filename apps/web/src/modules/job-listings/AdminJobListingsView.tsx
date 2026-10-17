@@ -5,50 +5,77 @@ import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { closeJobListing, listJobListingsForAdmin, reopenJobListing } from './api/job-listings.api';
-import { JOB_LISTING_STATUS_LABELS, jobListingEmploymentTypeLabel, type JobListingAdminView, type JobListingStatus } from './types';
+import { JOB_LISTING_STATUS_LABELS, jobListingEmploymentTypeLabel, type JobListingAdminView } from './types';
 import { formatSalary } from './salary';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
-import { LISTING_EFFECTIVE_STATUS_LABELS, listingEffectiveStatus, useTodayInVietnam } from '@/lib/listingExpiry';
+import {
+  LISTING_EFFECTIVE_STATUS_LABELS,
+  listingEffectiveStatus,
+  matchesListingFilter,
+  useTodayInVietnam,
+  type ListingFilterValue,
+} from '@/lib/listingExpiry';
+import type { JobListingStatus } from './types';
 
 type State =
   | { kind: 'loading' }
   | { kind: 'forbidden' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; items: JobListingAdminView[] };
+  | { kind: 'ready'; items: JobListingAdminView[]; total: number };
+
+const PAGE_SIZE = 50;
 
 function formatYmd(ymd: string): string {
   const [y, m, d] = ymd.split('-');
   return `${d}/${m}/${y}`;
 }
 
-const STATUS_OPTIONS: Array<{ value: JobListingStatus | 'all'; label: string }> = [
+const FILTER_OPTIONS: Array<{ value: ListingFilterValue; label: string }> = [
   { value: 'all', label: 'Tất cả' },
   { value: 'draft', label: 'Nháp' },
   { value: 'pending', label: 'Chờ duyệt' },
   { value: 'published', label: 'Đang đăng' },
+  { value: 'expiring_soon', label: 'Sắp hết hạn' },
+  { value: 'expired', label: 'Đã hết hạn' },
   { value: 'closed', label: 'Đã đóng' },
   { value: 'rejected', label: 'Bị từ chối' },
 ];
 
+// Chỉ các giá trị NÀY là status thật, gửi được xuống server (?status=...) — "expiring_soon"/
+// "expired"/"all" là trạng thái SUY RA từ status+expires_at (xem listingExpiry.ts), không có cột
+// nào để server lọc; xử lý thuần client qua matchesListingFilter() trên các trang đã tải.
+const REAL_STATUS_VALUES = new Set<string>(['draft', 'pending', 'published', 'closed', 'rejected']);
+function toRealStatus(filter: ListingFilterValue): JobListingStatus | undefined {
+  return REAL_STATUS_VALUES.has(filter) ? (filter as JobListingStatus) : undefined;
+}
+
 // Màn hình quản lý TOÀN BỘ tin (Gói B, 17/10/2026) — KHÁC hẳn JobListingModerationQueueView (hàng
-// chờ duyệt, CHỈ status=pending): ở đây admin tìm tin theo BẤT KỲ trạng thái (đang công khai, hết
-// hạn, đã đóng, bị từ chối, nháp) của BẤT KỲ người đăng, không chỉ tin đang chờ xử lý. Lọc status
-// gọi lại API (GET /job-listings/admin?status=...). Lọc "người đăng" là lọc CLIENT-SIDE theo
-// substring khớp creator_email/creator_display_name TRÊN TRANG ĐÃ TẢI (limit=100/lần, đủ cho quy
-// mô hiện tại) — API cũng nhận `created_by` (uuid) riêng nhưng admin không thuộc UUID để gõ, nên
-// UI chỉ cần ô tìm theo tên/email là đủ dùng.
+// chờ duyệt, CHỈ status=pending): ở đây admin tìm tin theo BẤT KỲ trạng thái, kể cả "Hết hạn"/"Sắp
+// hết hạn" (owner xác nhận: một tin published vẫn mang status đó dù đã hết hạn — bộ lọc phải lọc
+// theo TRẠNG THÁI HIỆU LỰC, không phải chỉ cột status thật), của BẤT KỲ người đăng.
+//
+// Phân trang (sửa 17/10/2026 sau phản hồi owner): trước đó tải cố định 100 bản ghi một lần, không
+// hiện tổng số — một admin lọc theo người đăng trên trang đó có thể nhầm "đã tìm hết" trong khi còn
+// dữ liệu chưa tải. Nay tải theo trang (PAGE_SIZE), hiện rõ "đã tải X/Y", và CẢNH BÁO khi bộ lọc
+// người đăng (client-side) đang chạy trên một tập CHƯA đầy đủ.
 export function AdminJobListingsView() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
-  const [statusFilter, setStatusFilter] = useState<JobListingStatus | 'all'>('all');
+  const [filter, setFilter] = useState<ListingFilterValue>('all');
   const [posterQuery, setPosterQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const today = useTodayInVietnam();
 
-  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  const reload = useCallback(() => {
+    setPage(1);
+    setReloadKey((k) => k + 1);
+  }, []);
 
+  // Đổi bộ lọc status → tải lại TRANG 1 (thay thế danh sách, không nối thêm).
   useEffect(() => {
     const session = readSession();
     let cancelled = false;
@@ -64,12 +91,12 @@ export function AdminJobListingsView() {
       .then(() => {
         if (!cancelled) setState({ kind: 'loading' });
         return listJobListingsForAdmin(
-          { status: statusFilter === 'all' ? undefined : statusFilter, limit: 100 },
+          { status: toRealStatus(filter), page: 1, limit: PAGE_SIZE },
           session.accessToken,
         );
       })
-      .then(({ data }) => {
-        if (!cancelled) setState({ kind: 'ready', items: data });
+      .then(({ data, meta }) => {
+        if (!cancelled) setState({ kind: 'ready', items: data, total: meta.total });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -82,7 +109,26 @@ export function AdminJobListingsView() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey, statusFilter]);
+  }, [reloadKey, filter]);
+
+  async function loadMore() {
+    const session = readSession();
+    if (!session || state.kind !== 'ready') return;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+    try {
+      const { data } = await listJobListingsForAdmin(
+        { status: toRealStatus(filter), page: nextPage, limit: PAGE_SIZE },
+        session.accessToken,
+      );
+      setPage(nextPage);
+      setState((prev) => (prev.kind === 'ready' ? { ...prev, items: [...prev.items, ...data] } : prev));
+    } catch (err) {
+      setActionError(safeMessage(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function act(id: string, action: 'close' | 'reopen') {
     const session = readSession();
@@ -120,14 +166,17 @@ export function AdminJobListingsView() {
   }
 
   const posterNeedle = posterQuery.trim().toLowerCase();
-  const items = state.kind === 'ready' ? state.items : [];
+  const loaded = state.kind === 'ready' ? state.items : [];
+  const total = state.kind === 'ready' ? state.total : 0;
+  const statusFiltered = loaded.filter((j) => matchesListingFilter(j, filter, today));
   const filtered = posterNeedle
-    ? items.filter(
+    ? statusFiltered.filter(
         (j) =>
           (j.creator_display_name ?? '').toLowerCase().includes(posterNeedle) ||
           (j.creator_email ?? '').toLowerCase().includes(posterNeedle),
       )
-    : items;
+    : statusFiltered;
+  const hasMore = loaded.length < total;
 
   return (
     <main>
@@ -140,17 +189,20 @@ export function AdminJobListingsView() {
         </p>
       </header>
 
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
         <div>
           <label htmlFor="jl-admin-status" style={{ marginRight: '0.5rem' }}>
             Trạng thái
           </label>
           <select
             id="jl-admin-status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as JobListingStatus | 'all')}
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value as ListingFilterValue);
+              reload();
+            }}
           >
-            {STATUS_OPTIONS.map((opt) => (
+            {FILTER_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>
@@ -166,10 +218,23 @@ export function AdminJobListingsView() {
             type="text"
             value={posterQuery}
             onChange={(e) => setPosterQuery(e.target.value)}
-            placeholder="Gõ để lọc trong trang đang xem"
+            placeholder="Gõ để lọc trong số tin đã tải"
           />
         </div>
       </div>
+
+      {state.kind === 'ready' && (
+        <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Đã tải {loaded.length}/{total} tin khớp trạng thái đã chọn.
+          {posterNeedle && hasMore && (
+            <strong style={{ color: 'var(--warning, #b45309)' }}>
+              {' '}
+              Bộ lọc người đăng chỉ áp dụng trong {loaded.length} tin ĐÃ TẢI — còn {total - loaded.length} tin chưa
+              tải, có thể còn khớp. Bấm &quot;Tải thêm&quot; trước khi coi đây là toàn bộ kết quả.
+            </strong>
+          )}
+        </p>
+      )}
 
       {actionError && (
         <p className={placeMgmtStyles.alert} role="alert">
@@ -198,15 +263,15 @@ export function AdminJobListingsView() {
         </div>
       )}
 
-      {state.kind === 'ready' && items.length === 0 && (
+      {state.kind === 'ready' && loaded.length === 0 && (
         <div className={placeStyles.state}>
           <p className={placeStyles.stateTitle}>Không có tin nào</p>
         </div>
       )}
 
-      {state.kind === 'ready' && items.length > 0 && filtered.length === 0 && (
+      {state.kind === 'ready' && loaded.length > 0 && filtered.length === 0 && (
         <div className={placeStyles.state}>
-          <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc người đăng</p>
+          <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc trong số đã tải</p>
         </div>
       )}
 
@@ -254,7 +319,7 @@ export function AdminJobListingsView() {
                       disabled={actingId === job.id}
                       onClick={() => act(job.id, 'reopen')}
                     >
-                      Mở lại (cần duyệt lại)
+                      Mở lại (về chờ duyệt — người đăng tự sửa nội dung/hạn sau đó)
                     </button>
                   )}
                 </div>
@@ -262,6 +327,14 @@ export function AdminJobListingsView() {
             );
           })}
         </ul>
+      )}
+
+      {state.kind === 'ready' && hasMore && (
+        <div style={{ marginTop: '1rem' }}>
+          <button type="button" className={placeStyles.btn} onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Đang tải…' : `Tải thêm (còn ${total - loaded.length})`}
+          </button>
+        </div>
       )}
     </main>
   );

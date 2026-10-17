@@ -99,6 +99,16 @@ describe('MyJobListingsView — Tin tuyển dụng của tôi', () => {
     await waitFor(() => expect(mockClose).toHaveBeenCalledWith('job-1', 'tok'));
   });
 
+  // Gói B (17/10/2026), điểm hẹp owner chỉ ra: "làm rõ thao tác trên UI" khi tin đã đóng — không
+  // sửa trực tiếp được (update() chặn CLOSED ở service), phải Mở lại trước.
+  it('tin closed: hiện nút "Mở lại", KHÔNG hiện nút "Sửa", và có ghi chú giải thích phải mở lại trước khi sửa', async () => {
+    mockList.mockResolvedValue([row({ status: 'closed' })]);
+    render(<MyJobListingsView />);
+    expect(await screen.findByRole('button', { name: /Mở lại/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Sửa/ })).toBeNull();
+    expect(screen.getByText(/không sửa trực tiếp được/)).toBeInTheDocument();
+  });
+
   it('tin draft hiện nút Gửi duyệt, bấm gọi submitJobListing đúng id', async () => {
     mockList.mockResolvedValue([row({ status: 'draft' })]);
     mockSubmit.mockResolvedValue(row({ status: 'pending' }));

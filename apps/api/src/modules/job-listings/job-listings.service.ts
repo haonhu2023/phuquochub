@@ -35,15 +35,29 @@ export class JobListingsService {
   }
 
   // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — owner yêu cầu RÕ "chọn hạn mới hợp lệ" khi gửi lại
-  // một tin. KHÔNG phải chính sách 30/60/90 ngày (vẫn chưa được duyệt, không tự áp dụng) — chỉ một
-  // kiểm tra tối thiểu, độc lập với chính sách đó: không cho lưu một `expires_at` đã ở QUÁ KHỨ theo
-  // lịch Việt Nam (so với `todayInVietnam()`, CÙNG quy ước repository dùng để lọc công khai). Trước
-  // khi có kiểm này, một tin có thể được gửi duyệt lại với hạn cũ đã qua — nếu được duyệt, tin
-  // "published" nhưng KHÔNG BAO GIỜ hiện công khai (bị publicQuery() loại ngay), một trạng thái mâu
-  // thuẫn khó phát hiện. `expires_at` null (không đặt hạn) vẫn hợp lệ — không bắt buộc phải có hạn.
-  private static assertValidExpiry(dto: UpsertJobListingDto): void {
-    if (dto.expires_at != null && dto.expires_at < todayInVietnam()) {
+  // một tin, NHƯNG kiểm này KHÔNG được chặn việc sửa một trường KHÁC của một tin đã hết hạn nếu
+  // payload không đổi `expires_at` (phát hiện 17/10/2026: bản đầu chặn MỌI update() có expires_at
+  // cũ đã qua, kể cả khi người dùng chỉ sửa lỗi chính tả mô tả — một tin published-đã-hết-hạn hay
+  // draft/rejected để lâu chưa gửi lại đều có expires_at cũ, không nên tự nhiên không sửa/lưu nháp
+  // được nữa). Vì vậy: chỉ chặn khi dto ĐANG ĐẶT một giá trị KHÁC với giá trị đang lưu (đang chủ động
+  // chọn hạn mới) và giá trị đó đã ở quá khứ; giữ nguyên giá trị cũ (dù đã qua) hoặc xoá về null đều
+  // luôn hợp lệ ở BƯỚC NÀY — "hạn phải còn hiệu lực" là điều kiện ĐĂNG LẠI, kiểm riêng ở submit()/
+  // decide() approve (xem hai hàm đó), không phải điều kiện LƯU. `currentValue` là `expiresAt` đang
+  // lưu trong DB (null khi tạo mới — create() luôn truyền currentValue=null).
+  private static assertValidExpiry(dto: UpsertJobListingDto, currentValue: string | null): void {
+    if (dto.expires_at != null && dto.expires_at !== currentValue && dto.expires_at < todayInVietnam()) {
       throw new BadRequestException('Hạn tuyển không được là một ngày trong quá khứ — chọn hôm nay hoặc sau đó');
+    }
+  }
+
+  // Gate THẬT của "hạn phải còn hiệu lực để đăng lại": kiểm ở submit() (gửi duyệt) VÀ decide()
+  // approve (duyệt) — KHÔNG đủ chỉ kiểm ở create()/update(), vì một tin có thể còn hạn lúc sửa
+  // nhưng hết hạn trong lúc chờ duyệt (hàng chờ có thể để lâu). Không kiểm ở đây thì moderator có
+  // thể "duyệt thành công" một tin sẽ published nhưng KHÔNG BAO GIỜ hiện công khai (publicQuery()
+  // loại ngay) — một trạng thái mâu thuẫn, khó phát hiện sau đó.
+  private static assertNotAlreadyExpired(row: JobListing, message: string): void {
+    if (row.expiresAt != null && row.expiresAt < todayInVietnam()) {
+      throw new BadRequestException(message);
     }
   }
 
@@ -72,7 +86,7 @@ export class JobListingsService {
 
   async create(dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
-    JobListingsService.assertValidExpiry(dto);
+    JobListingsService.assertValidExpiry(dto, null);
     const entity = new JobListing();
     JobListingsService.applyDto(entity, dto);
     entity.createdBy = userId;
@@ -94,8 +108,8 @@ export class JobListingsService {
   // (→ pending, luôn qua duyệt lại) trước khi sửa, tránh một hành vi ngầm gộp "mở lại" và "sửa".
   async update(id: string, dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
-    JobListingsService.assertValidExpiry(dto);
     const row = await this.loadOwned(id, userId);
+    JobListingsService.assertValidExpiry(dto, row.expiresAt);
     if (row.status === JobListingStatus.CLOSED) {
       throw new ConflictException('Không thể sửa tin đã đóng — hãy mở lại tin trước (sẽ cần duyệt lại)');
     }
@@ -122,6 +136,10 @@ export class JobListingsService {
     if (row.status !== JobListingStatus.DRAFT && row.status !== JobListingStatus.REJECTED) {
       throw new ConflictException(`Không thể gửi duyệt từ trạng thái "${row.status}"`);
     }
+    JobListingsService.assertNotAlreadyExpired(
+      row,
+      `Không thể gửi duyệt — hạn tuyển (${row.expiresAt}) đã qua. Sửa tin và đặt hạn mới trước khi gửi duyệt lại.`,
+    );
     row.status = JobListingStatus.PENDING;
     row.reviewNote = null;
     row.reviewerId = null;
@@ -170,6 +188,12 @@ export class JobListingsService {
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
     if (row.status !== JobListingStatus.PENDING) {
       throw new ConflictException(`Không thể duyệt từ trạng thái "${row.status}"`);
+    }
+    if (dto.decision === 'approve') {
+      JobListingsService.assertNotAlreadyExpired(
+        row,
+        `Không thể duyệt — hạn tuyển (${row.expiresAt}) đã qua trong lúc chờ duyệt. Từ chối để người đăng sửa hạn rồi gửi lại, hoặc chờ họ tự sửa trước.`,
+      );
     }
     row.reviewerId = moderatorId;
     row.reviewedAt = new Date();

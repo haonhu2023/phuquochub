@@ -200,6 +200,31 @@ describe('Listings admin "quản lý tất cả tin" (e2e)', () => {
     });
   });
 
+  // Owner yêu cầu kiểm TRỰC TIẾP qua response HTTP thật (không chỉ suy từ cấu trúc mapper):
+  // `creator_email`/`creator_display_name` vừa thêm vào mapper CHUNG cho màn hình admin KHÔNG được
+  // lộ ra hai route công khai. `contact_value` (liên hệ của TIN, chủ tin tự nhập để người xem liên
+  // hệ) là field KHÁC hẳn — vẫn phải còn, không bị nhầm là rò rỉ.
+  describe('public list/detail KHÔNG lộ creator_email/creator_display_name/created_by', () => {
+    it('GET /job-listings (list công khai): không có field định danh người đăng nào trong mapper admin', async () => {
+      const res = await request(app.getHttpServer()).get('/api/job-listings');
+      expect(res.body.data.length).toBeGreaterThan(0);
+      for (const item of res.body.data) {
+        expect(item).not.toHaveProperty('creator_email');
+        expect(item).not.toHaveProperty('creator_display_name');
+        expect(item).not.toHaveProperty('created_by');
+      }
+    });
+
+    it('GET /job-listings/:id (chi tiết công khai, đúng tin published posterA): không lộ, vẫn giữ contact_value của TIN', async () => {
+      const res = await request(app.getHttpServer()).get(`/api/job-listings/${jobIds[2]}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).not.toHaveProperty('creator_email');
+      expect(res.body.data).not.toHaveProperty('creator_display_name');
+      expect(res.body.data).not.toHaveProperty('created_by');
+      expect(res.body.data.contact_value).toBe('0900000000');
+    });
+  });
+
   describe('real-estate-listings: cùng hành vi (mọi status, lọc theo người đăng)', () => {
     it('moderator không lọc gì → thấy cả published/closed/draft', async () => {
       const res = await request(app.getHttpServer())

@@ -62,11 +62,19 @@ export class RealEstateListingsService {
   }
 
   // "Sửa và gửi đăng lại" — cùng lý do/mẫu JobListingsService.assertValidExpiry() (xem ghi chú đầy
-  // đủ ở đó): KHÔNG phải chính sách 30/60/90 ngày (chưa duyệt), chỉ chặn lưu một `expires_at` đã
-  // ở quá khứ theo lịch Việt Nam.
-  private static assertValidExpiry(dto: UpsertRealEstateListingDto): void {
-    if (dto.expires_at != null && dto.expires_at < todayInVietnam()) {
+  // đủ ở đó): chỉ chặn khi dto ĐANG ĐẶT một `expires_at` KHÁC giá trị đang lưu và giá trị đó đã ở
+  // quá khứ — KHÔNG chặn việc sửa trường khác khi giữ nguyên/xoá một hạn cũ đã qua. "Hạn phải còn
+  // hiệu lực để đăng lại" là gate THẬT ở submit()/decide() approve (assertNotAlreadyExpired), không
+  // phải ở đây.
+  private static assertValidExpiry(dto: UpsertRealEstateListingDto, currentValue: string | null): void {
+    if (dto.expires_at != null && dto.expires_at !== currentValue && dto.expires_at < todayInVietnam()) {
       throw new BadRequestException('Hạn đăng không được là một ngày trong quá khứ — chọn hôm nay hoặc sau đó');
+    }
+  }
+
+  private static assertNotAlreadyExpired(row: RealEstateListing, message: string): void {
+    if (row.expiresAt != null && row.expiresAt < todayInVietnam()) {
+      throw new BadRequestException(message);
     }
   }
 
@@ -100,7 +108,7 @@ export class RealEstateListingsService {
   async create(dto: UpsertRealEstateListingDto, userId: string): Promise<ReturnType<typeof toRealEstateListingSenderView>> {
     RealEstateListingsService.assertTransactionScopedFields(dto);
     RealEstateListingsService.assertPriceAndLocation(dto);
-    RealEstateListingsService.assertValidExpiry(dto);
+    RealEstateListingsService.assertValidExpiry(dto, null);
     const entity = new RealEstateListing();
     RealEstateListingsService.applyDto(entity, dto);
     entity.createdBy = userId;
@@ -119,8 +127,8 @@ export class RealEstateListingsService {
   async update(id: string, dto: UpsertRealEstateListingDto, userId: string): Promise<ReturnType<typeof toRealEstateListingSenderView>> {
     RealEstateListingsService.assertTransactionScopedFields(dto);
     RealEstateListingsService.assertPriceAndLocation(dto);
-    RealEstateListingsService.assertValidExpiry(dto);
     const row = await this.loadOwned(id, userId);
+    RealEstateListingsService.assertValidExpiry(dto, row.expiresAt);
     if (row.status === RealEstateListingStatus.CLOSED) {
       throw new ConflictException('Không thể sửa tin đã đóng — hãy mở lại tin trước (sẽ cần duyệt lại)');
     }
@@ -147,6 +155,10 @@ export class RealEstateListingsService {
     if (row.status !== RealEstateListingStatus.DRAFT && row.status !== RealEstateListingStatus.REJECTED) {
       throw new ConflictException(`Không thể gửi duyệt từ trạng thái "${row.status}"`);
     }
+    RealEstateListingsService.assertNotAlreadyExpired(
+      row,
+      `Không thể gửi duyệt — hạn đăng (${row.expiresAt}) đã qua. Sửa tin và đặt hạn mới trước khi gửi duyệt lại.`,
+    );
     row.status = RealEstateListingStatus.PENDING;
     row.reviewNote = null;
     row.reviewerId = null;
@@ -217,6 +229,12 @@ export class RealEstateListingsService {
     if (!row) throw new NotFoundException('Không tìm thấy tin bất động sản');
     if (row.status !== RealEstateListingStatus.PENDING) {
       throw new ConflictException(`Không thể duyệt từ trạng thái "${row.status}"`);
+    }
+    if (dto.decision === 'approve') {
+      RealEstateListingsService.assertNotAlreadyExpired(
+        row,
+        `Không thể duyệt — hạn đăng (${row.expiresAt}) đã qua trong lúc chờ duyệt. Từ chối để người đăng sửa hạn rồi gửi lại, hoặc chờ họ tự sửa trước.`,
+      );
     }
     row.reviewerId = moderatorId;
     row.reviewedAt = new Date();

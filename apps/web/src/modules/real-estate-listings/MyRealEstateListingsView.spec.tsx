@@ -100,6 +100,15 @@ describe('MyRealEstateListingsView', () => {
     expect(screen.getByText(/Đang đăng/, { selector: 'p' })).toBeInTheDocument();
   });
 
+  // Gói B (17/10/2026) — cùng lý do MyJobListingsView.spec.tsx (xem ghi chú ở đó).
+  it('tin closed: hiện nút "Mở lại", KHÔNG hiện nút "Sửa", có ghi chú giải thích', async () => {
+    mockList.mockResolvedValue([row({ status: 'closed' })]);
+    render(<MyRealEstateListingsView />);
+    expect(await screen.findByRole('button', { name: /Mở lại/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Sửa/ })).toBeNull();
+    expect(screen.getByText(/không sửa trực tiếp được/)).toBeInTheDocument();
+  });
+
   it('bấm "Đánh dấu đã cho thuê" gọi đúng API với id', async () => {
     mockList.mockResolvedValue([row({ status: 'published', deal_status: 'available' })]);
     mockMarkRented.mockResolvedValue(row({ status: 'published', deal_status: 'rented' }));
