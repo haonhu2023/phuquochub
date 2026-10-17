@@ -105,6 +105,13 @@ export class ListJobListingsQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50)
   limit?: number;
+
+  // Gói C §3 (17/10/2026) — thẻ tin trong danh sách công khai PHẢI hiện tiêu đề đúng locale (owner
+  // chỉ ra đúng: trước đó chỉ chi tiết có overlay, danh sách vẫn hiện tiêu đề tiếng Việt dù đã có
+  // bản dịch được duyệt — một nguồn nhầm lẫn thật). CHỈ overlay `title` (danh sách không hiện mô
+  // tả dài) — xem JobListingsService.listPublic()'s ghi chú batch-fetch tránh N+1.
+  @IsOptional() @IsIn(['vi', 'en'])
+  locale?: 'vi' | 'en';
 }
 
 // Gói C (17/10/2026) — `locale` TÙY CHỌN cho chi tiết công khai MỘT tin. Chỉ 'vi'/'en' (khớp đúng

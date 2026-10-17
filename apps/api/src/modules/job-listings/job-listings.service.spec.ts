@@ -5,6 +5,7 @@ import { JobListingTranslation } from './entities/job-listing-translation.entity
 import { JobListingEmploymentType, JobListingStatus, JobListingTranslationStatus } from './job-listings.enums';
 import { UpsertJobListingDto } from './dto/job-listings.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
+import { computeJobListingSourceHash } from './job-listing-translation-hash';
 
 function translationRow(overrides: Partial<JobListingTranslation> = {}): JobListingTranslation {
   const t = new JobListingTranslation();
@@ -20,6 +21,15 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.reviewerId = null;
   t.reviewedAt = null;
   t.sourceContentHash = 'hash';
+  // Mặc định: bản nháp hiện tại CHÍNH LÀ bản đã duyệt (test cho overlay công khai đọc published*,
+  // không đọc title/description trần — xem job-listing-translations.service.ts's ghi chú đầu file).
+  t.publishedTitle = 'EN title';
+  t.publishedDescription = 'EN description';
+  t.publishedRequirements = null;
+  t.publishedBenefits = null;
+  t.publishedSourceContentHash = 'hash';
+  t.publishedAt = new Date('2026-10-07T00:00:00Z');
+  t.contentVersion = 1;
   t.createdAt = new Date('2026-10-07T00:00:00Z');
   t.updatedAt = new Date('2026-10-07T00:00:00Z');
   Object.assign(t, overrides);
@@ -93,7 +103,10 @@ describe('JobListingsService', () => {
       findCreatorSummaries: jest.fn().mockResolvedValue(new Map()),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
-    translationsRepo = createMock<Deps[2]>({ findByJobListingId: jest.fn().mockResolvedValue(null) });
+    translationsRepo = createMock<Deps[2]>({
+      findByJobListingId: jest.fn().mockResolvedValue(null),
+      findByJobListingIds: jest.fn().mockResolvedValue(new Map()),
+    });
     service = new JobListingsService(repo, authz, translationsRepo);
   });
 
@@ -362,12 +375,14 @@ describe('JobListingsService', () => {
     // Gói C (17/10/2026) — overlay bản dịch tiếng Anh ở chi tiết công khai. `locale` trả về PHẢI
     // phản ánh NỘI DUNG THỰC SỰ đã trả, không phải locale được yêu cầu (owner yêu cầu rõ: không
     // được "nhận vơ" là tiếng Anh khi chỉ fallback tiếng Việt).
-    describe('overlay bản dịch tiếng Anh (Gói C)', () => {
-      it('locale=en, có bản dịch PUBLISHED → trả nội dung tiếng Anh, locale="en"', async () => {
+    describe('overlay bản dịch tiếng Anh (Gói C, đọc published* — KHÔNG đọc title/description trần)', () => {
+      it('locale=en, có published → trả nội dung tiếng Anh ĐÃ DUYỆT, locale="en"', async () => {
         repo.getPublicById.mockResolvedValue(
           row({ status: JobListingStatus.PUBLISHED, title: 'VI title', description: 'VI mô tả' }),
         );
-        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ title: 'EN title', description: 'EN description' }));
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ publishedTitle: 'EN title', publishedDescription: 'EN description' }),
+        );
         const result = await service.getPublicById('job-1', 'en');
         expect(result.title).toBe('EN title');
         expect(result.description).toBe('EN description');
@@ -382,12 +397,27 @@ describe('JobListingsService', () => {
         expect(result.locale).toBe('vi');
       });
 
-      it('locale=en, bản dịch tồn tại nhưng CHƯA published (draft/pending/rejected) → fallback tiếng Việt, locale="vi"', async () => {
+      it('locale=en, có bản dịch nhưng CHƯA TỪNG được duyệt (publishedTitle=null, dù status=pending/draft) → fallback tiếng Việt', async () => {
         repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
-        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PENDING }));
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ status: JobListingTranslationStatus.PENDING, publishedTitle: null, publishedDescription: null, publishedSourceContentHash: null, publishedAt: null }),
+        );
         const result = await service.getPublicById('job-1', 'en');
         expect(result.title).toBe('VI title');
         expect(result.locale).toBe('vi');
+      });
+
+      // Điểm owner yêu cầu sửa trực tiếp: đang có một bản ĐÃ DUYỆT, và chủ tin VỪA lưu nháp sửa
+      // tiếp (status rớt về draft) — bản ĐÃ DUYỆT (published*) vẫn phải tiếp tục hiện công khai,
+      // KHÔNG rớt về fallback tiếng Việt chỉ vì status hiện tại không còn là 'published'.
+      it('status hiện tại là draft (đang sửa tiếp) nhưng published* vẫn còn từ lần duyệt trước → VẪN phục vụ bản đã duyệt, không fallback', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ status: JobListingTranslationStatus.DRAFT, title: 'Bản nháp đang sửa, CHƯA duyệt', publishedTitle: 'Bản ĐÃ DUYỆT' }),
+        );
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.title).toBe('Bản ĐÃ DUYỆT');
+        expect(result.locale).toBe('en');
       });
 
       it('không truyền locale (mặc định) → luôn tiếng Việt, locale="vi", KHÔNG tra bản dịch', async () => {
@@ -398,14 +428,66 @@ describe('JobListingsService', () => {
         expect(translationsRepo.findByJobListingId).not.toHaveBeenCalled();
       });
 
-      it('bản dịch PUBLISHED nhưng thiếu requirements/benefits (tuỳ chọn) → giữ bản tiếng Việt cho field thiếu, không lộ null', async () => {
+      it('bản đã duyệt nhưng thiếu requirements/benefits (tuỳ chọn) → giữ bản tiếng Việt cho field thiếu, không lộ null', async () => {
         repo.getPublicById.mockResolvedValue(
           row({ status: JobListingStatus.PUBLISHED, requirements: 'VI yêu cầu', benefits: 'VI quyền lợi' }),
         );
-        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ requirements: null, benefits: null }));
+        translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ publishedRequirements: null, publishedBenefits: null }));
         const result = await service.getPublicById('job-1', 'en');
         expect(result.requirements).toBe('VI yêu cầu');
         expect(result.benefits).toBe('VI quyền lợi');
+      });
+
+      it('dữ kiện tiếng Việt CHƯA đổi từ lúc duyệt → is_translation_stale=false', async () => {
+        const viRow = row({ status: JobListingStatus.PUBLISHED });
+        repo.getPublicById.mockResolvedValue(viRow);
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ publishedSourceContentHash: computeJobListingSourceHash(viRow) }),
+        );
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.is_translation_stale).toBe(false);
+      });
+
+      it('lương đổi SAU KHI duyệt → is_translation_stale=true, nhưng VẪN phục vụ bản dịch (không âm thầm ẩn)', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, salaryMin: '20000000' }));
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ publishedSourceContentHash: computeJobListingSourceHash(row({ salaryMin: null })) }),
+        );
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.is_translation_stale).toBe(true);
+        expect(result.title).toBe('EN title'); // vẫn phục vụ, không rớt về VI.
+      });
+
+      it('locale=vi (hoặc không truyền) → is_translation_stale luôn false (chỉ có nghĩa với locale=en)', async () => {
+        repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED }));
+        const result = await service.getPublicById('job-1', 'vi');
+        expect(result.is_translation_stale).toBe(false);
+      });
+    });
+
+    // Gói C §3 (17/10/2026) — thẻ tin trong danh sách công khai cũng phải overlay title, KHÔNG để
+    // trang chi tiết hiện tiếng Anh mà thẻ tin của ĐÚNG tin đó vẫn hiện tiếng Việt.
+    describe('listPublic overlay title theo locale (Gói C §3, batch — không N+1)', () => {
+      it('locale=en → overlay title cho MỖI item có bản dịch đã duyệt, giữ VI cho item chưa có', async () => {
+        repo.listPublic.mockResolvedValue([
+          row({ id: 'job-a', status: JobListingStatus.PUBLISHED, title: 'VI A' }),
+          row({ id: 'job-b', status: JobListingStatus.PUBLISHED, title: 'VI B' }),
+        ]);
+        repo.countPublic.mockResolvedValue(2);
+        translationsRepo.findByJobListingIds.mockResolvedValue(
+          new Map([['job-a', translationRow({ jobListingId: 'job-a', publishedTitle: 'EN A' })]]),
+        );
+        const result = await service.listPublic({ locale: 'en' });
+        expect(translationsRepo.findByJobListingIds).toHaveBeenCalledWith(['job-a', 'job-b']); // MỘT lần gọi cho cả trang.
+        expect(result.data[0]).toMatchObject({ id: 'job-a', title: 'EN A', locale: 'en' });
+        expect(result.data[1]).toMatchObject({ id: 'job-b', title: 'VI B', locale: 'vi' });
+      });
+
+      it('không truyền locale → KHÔNG gọi findByJobListingIds (tránh truy vấn thừa khi không cần)', async () => {
+        repo.listPublic.mockResolvedValue([row({ status: JobListingStatus.PUBLISHED })]);
+        repo.countPublic.mockResolvedValue(1);
+        await service.listPublic({});
+        expect(translationsRepo.findByJobListingIds).not.toHaveBeenCalled();
       });
     });
 

@@ -5,7 +5,7 @@ import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
 import { JobListing } from './entities/job-listing.entity';
-import { JobListingStatus, JobListingTranslationStatus } from './job-listings.enums';
+import { JobListingStatus } from './job-listings.enums';
 import {
   AdminListJobListingsQueryDto,
   DecideJobListingDto,
@@ -14,6 +14,8 @@ import {
   UpsertJobListingDto,
 } from './dto/job-listings.dto';
 import { toJobListingAdminView, toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
+import { isJobListingTranslationStale } from './job-listing-translation-hash';
+import { JobListingTranslation } from './entities/job-listing-translation.entity';
 
 // Bảng chuyển trạng thái đã chốt (docs/delivery/release-web-candidate-2026-10-04.md §13r):
 //   draft --submit--> pending
@@ -261,6 +263,11 @@ export class JobListingsService {
     return this.attachPlace(toJobListingSenderView(row));
   }
 
+  // Gói C §3 (17/10/2026) — `locale=en` overlay ĐÚNG `title` cho mỗi thẻ tin (owner chỉ ra đúng:
+  // trước đó chi tiết có overlay nhưng danh sách không, khiến thẻ tin hiện tiếng Việt dù trang chi
+  // tiết của ĐÚNG tin đó đã hiện tiếng Anh — một mâu thuẫn ngay trên cùng một lượt xem). Batch MỘT
+  // truy vấn cho CẢ TRANG (`findByJobListingIds`) — KHÔNG N+1 (N truy vấn riêng mỗi thẻ tin). Chỉ
+  // overlay `title` (danh sách không hiện description/requirements/benefits).
   async listPublic(query: ListJobListingsQueryDto) {
     const page = clampPage(query.page);
     const limit = clampLimit(query.limit);
@@ -269,43 +276,69 @@ export class JobListingsService {
       this.repo.listPublic(filter, limit, (page - 1) * limit),
       this.repo.countPublic(filter),
     ]);
-    return paginate(items.map(toJobListingPublicView), page, limit, total);
+    const translations =
+      query.locale === 'en' ? await this.translationsRepo.findByJobListingIds(items.map((i) => i.id)) : new Map<string, JobListingTranslation>();
+    const views = items.map((row) => {
+      const base = toJobListingPublicView(row);
+      const translation = translations.get(row.id);
+      if (query.locale === 'en' && translation?.publishedTitle != null) {
+        return { ...base, title: translation.publishedTitle, locale: 'en' as const };
+      }
+      return { ...base, locale: 'vi' as const };
+    });
+    return paginate(views, page, limit, total);
   }
 
-  // Gói C (17/10/2026) — `locale` TÙY CHỌN overlay bản dịch tiếng Anh ĐÃ DUYỆT (status='published'
-  // ở job_listing_translations — ĐỘC LẬP với status của chính tin, xem job-listing-translations.
-  // service.ts). KHÔNG dùng `LocalesService`/`supported_locales` của places (owner yêu cầu rõ:
-  // "không ép place model vào listing" — bộ máy đó phục vụ N locale/nhiều nguồn, job_listings chỉ
-  // cần đúng vi→en). Response LUÔN có `locale` phản ánh NỘI DUNG THỰC SỰ đã trả (không phải locale
-  // được YÊU CẦU) — nếu yêu cầu 'en' nhưng chưa có bản dịch đã duyệt, trả `locale:'vi'` và giữ
-  // nguyên văn tiếng Việt, để web tự quyết định hiện ghi chú "chưa có bản dịch" thay vì ngầm nhận
-  // đây là nội dung tiếng Anh (đúng yêu cầu owner: "UI không tuyên bố đã có tiếng Anh khi chỉ
-  // fallback tiếng Việt"). CHỈ áp dụng ở chi tiết MỘT tin — danh sách (`listPublic`) CHƯA overlay,
-  // ghi nhận là khoảng trống còn lại (field dịch chỉ ảnh hưởng nội dung dài, danh sách chỉ hiện vài
-  // field ngắn — ưu tiên thấp hơn, chưa làm trong lượt này).
+  // Gói C (17/10/2026, thiết kế lại sau phản hồi owner) — `locale` TÙY CHỌN overlay bản dịch tiếng
+  // Anh ĐÃ DUYỆT. Đọc đúng vùng `published*` của job_listing_translations (KHÔNG đọc
+  // title/description/requirements/benefits trần của bảng đó — đó là vùng NHÁP đang soạn, có thể
+  // khác hẳn bản đang công khai, xem job-listing-translations.service.ts's ghi chú đầu file) — kiểm
+  // `publishedTitle != null`, KHÔNG kiểm `status` (một bản dịch có thể đang `draft` mới vì chủ tin
+  // sửa tiếp, nhưng published* từ lần duyệt trước VẪN còn và vẫn phải phục vụ công khai).
+  //
+  // KHÔNG dùng `LocalesService`/`supported_locales` của places (owner yêu cầu rõ: "không ép place
+  // model vào listing"). Response LUÔN có `locale` phản ánh NỘI DUNG THỰC SỰ đã trả (không phải
+  // locale được YÊU CẦU) — yêu cầu 'en' nhưng chưa có bản dịch đã duyệt → trả `locale:'vi'`, không
+  // "nhận vơ" là tiếng Anh. `is_translation_stale` (chỉ có nghĩa khi `locale==='en'`) báo bản đang
+  // công khai có còn khớp dữ kiện tiếng Việt HIỆN TẠI không — vẫn PHỤC VỤ bản cũ (một bản đã qua
+  // duyệt không nên bị rút khỏi công khai chỉ vì một dữ kiện phụ trợ đổi), nhưng không giả vờ không
+  // có vấn đề gì — web đọc cờ này để hiện ghi chú cho người đọc, không chỉ im lặng trong JSON.
   async getPublicById(
     id: string,
     locale?: GetJobListingDetailQueryDto['locale'],
-  ): Promise<ReturnType<typeof toJobListingPublicView> & { place: { id: string; name: string; slug: string } | null; locale: 'vi' | 'en' }> {
+  ): Promise<
+    ReturnType<typeof toJobListingPublicView> & {
+      place: { id: string; name: string; slug: string } | null;
+      locale: 'vi' | 'en';
+      is_translation_stale: boolean;
+    }
+  > {
     const row = await this.repo.getPublicById(id);
     // 404 đồng nhất cho "không tồn tại" và "tồn tại nhưng chưa/không còn công khai" — không rò trạng
-    // thái nội bộ qua sự khác biệt giữa hai loại lỗi.
+    // thái nội bộ qua sự khác biệt giữa hai loại lỗi. Áp dụng BẤT KỂ locale — một bản dịch published
+    // không bao giờ "vượt qua" được tin gốc pending/rejected/closed/hết hạn/xoá (repo.getPublicById()
+    // đã lọc đúng các điều kiện đó CHO TIN GỐC trước khi tới đây; overlay bản dịch chỉ chạy SAU khi
+    // tin gốc đã được xác nhận công khai).
     if (!row) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
     const withPlace = await this.attachPlace(toJobListingPublicView(row));
 
     if (locale === 'en') {
       const translation = await this.translationsRepo.findByJobListingId(id);
-      if (translation && translation.status === JobListingTranslationStatus.PUBLISHED) {
+      if (translation && translation.publishedTitle != null) {
+        const stale = translation.publishedSourceContentHash
+          ? isJobListingTranslationStale(translation.publishedSourceContentHash, row)
+          : false;
         return {
           ...withPlace,
-          title: translation.title ?? withPlace.title,
-          description: translation.description ?? withPlace.description,
-          requirements: translation.requirements ?? withPlace.requirements,
-          benefits: translation.benefits ?? withPlace.benefits,
+          title: translation.publishedTitle,
+          description: translation.publishedDescription ?? withPlace.description,
+          requirements: translation.publishedRequirements ?? withPlace.requirements,
+          benefits: translation.publishedBenefits ?? withPlace.benefits,
           locale: 'en',
+          is_translation_stale: stale,
         };
       }
     }
-    return { ...withPlace, locale: 'vi' };
+    return { ...withPlace, locale: 'vi', is_translation_stale: false };
   }
 }

@@ -2,8 +2,18 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, Update
 import { JobListingTranslationStatus } from '../job-listings.enums';
 
 // `job_listing_translations` (Gói C phần 1/2, 17/10/2026 — xem migration InitJobListingTranslations
-// cho lý do thiết kế đầy đủ: MỘT row/locale cho cả 4 trường dịch, KHÔNG field-granular, KHÔNG giữ
-// lịch sử nhiều revision — khác hẳn place_translations, một bộ máy riêng KHÔNG tái dùng).
+// + AddJobListingTranslationCasAndSnapshot cho lý do thiết kế đầy đủ).
+//
+// HAI vùng dữ liệu TÁCH BIỆT trong cùng một row — đây là điểm mấu chốt (sửa sau phản hồi owner,
+// bản đầu KHÔNG tách, khiến lưu nháp xoá mất nội dung đang công khai):
+//   - title/description/requirements/benefits + sourceContentHash: BẢN NHÁP đang soạn (draft/
+//     pending/rejected) — KHÔNG phải nội dung công khai, đọc công khai KHÔNG BAO GIỜ đụng tới.
+//   - publishedTitle/publishedDescription/publishedRequirements/publishedBenefits +
+//     publishedSourceContentHash + publishedAt: bản ĐÃ DUYỆT gần nhất — ĐÂY là nội dung công khai
+//     thật. Chỉ `decide()` approve viết vào nhóm này; `save()`/`submit()` không bao giờ đụng tới.
+//   - `contentVersion`: CAS (cùng khuôn `places.contentVersion`/`updateScalarsWithCas()`, KHÔNG
+//     dùng TypeORM `@VersionColumn()`) — bảo vệ chống ghi đè khi hai tab cùng sửa hoặc moderator
+//     duyệt trong lúc người đăng sửa.
 @Entity('job_listing_translations')
 @Index('idx_job_listing_translations_status', ['status'])
 export class JobListingTranslation {
@@ -14,10 +24,11 @@ export class JobListingTranslation {
   jobListingId!: string;
 
   // CHECK locale='en' ở DB — cột giữ cho rõ nghĩa/không phải đổi schema lớn nếu cần locale khác
-  // sau này, KHÔNG phải một bộ máy đa-locale đang dùng (xem migration).
+  // sau này, KHÔNG phải một bộ máy đa-locale đang dùng (xem migration InitJobListingTranslations).
   @Column({ type: 'varchar', length: 10 })
   locale!: string;
 
+  // --- Bản nháp đang soạn (KHÔNG phải nội dung công khai) ---
   @Column({ type: 'varchar', length: 200, nullable: true })
   title!: string | null;
 
@@ -29,6 +40,12 @@ export class JobListingTranslation {
 
   @Column({ type: 'varchar', length: 2000, nullable: true })
   benefits!: string | null;
+
+  // sha256 các trường NGUỒN liên quan (xem job-listing-translation-hash.ts — KHÔNG chỉ 4 trường
+  // dịch, còn cả lương/ca làm/nơi làm/hình thức làm việc có thể được tham chiếu trong câu chữ dịch)
+  // TẠI THỜI ĐIỂM bản nháp này được lưu lần gần nhất.
+  @Column({ type: 'char', length: 64 })
+  sourceContentHash!: string;
 
   @Column({ type: 'enum', enum: JobListingTranslationStatus, enumName: 'job_listing_translation_status', default: JobListingTranslationStatus.DRAFT })
   status!: JobListingTranslationStatus;
@@ -42,11 +59,31 @@ export class JobListingTranslation {
   @Column({ type: 'timestamptz', nullable: true })
   reviewedAt!: Date | null;
 
-  // sha256 của {title,description,requirements,benefits} TIẾNG VIỆT (job_listings, không phải
-  // chính bản dịch này) tại thời điểm bản dịch này được lưu lần gần nhất — phát hiện lỗi thời khi
-  // nội dung gốc đổi sau đó (xem job-listing-translation-hash.ts).
-  @Column({ type: 'char', length: 64 })
-  sourceContentHash!: string;
+  // --- Bản ĐÃ DUYỆT gần nhất — nội dung công khai thật (xem ghi chú đầu file) ---
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  publishedTitle!: string | null;
+
+  @Column({ type: 'varchar', length: 4000, nullable: true })
+  publishedDescription!: string | null;
+
+  @Column({ type: 'varchar', length: 2000, nullable: true })
+  publishedRequirements!: string | null;
+
+  @Column({ type: 'varchar', length: 2000, nullable: true })
+  publishedBenefits!: string | null;
+
+  // sha256 các trường nguồn TẠI THỜI ĐIỂM DUYỆT — khác `sourceContentHash` (tại thời điểm LƯU
+  // NHÁP gần nhất): cái này đo "bản ĐANG CÔNG KHAI có còn khớp dữ kiện hiện tại không", cái kia đo
+  // "bản nháp đang soạn có còn khớp dữ kiện hiện tại không" — hai câu hỏi khác nhau.
+  @Column({ type: 'char', length: 64, nullable: true })
+  publishedSourceContentHash!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  publishedAt!: Date | null;
+
+  // CAS — xem ghi chú đầu file.
+  @Column({ type: 'int', default: 1 })
+  contentVersion!: number;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;

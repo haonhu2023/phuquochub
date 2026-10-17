@@ -11,10 +11,18 @@ function listingRow(overrides: Partial<JobListing> = {}): JobListing {
   r.id = 'job-1';
   r.createdBy = 'owner-1';
   r.employerName = 'E';
+  r.employerRole = null;
   r.title = 'Tiêu đề gốc';
   r.jobCategory = 'c';
   r.workLocation = 'loc';
+  r.ward = null;
   r.employmentType = JobListingEmploymentType.FULL_TIME;
+  r.shiftInfo = null;
+  r.salaryMin = null;
+  r.salaryMax = null;
+  r.salaryNegotiable = false;
+  r.salaryCurrency = null;
+  r.salaryPeriod = null;
   r.contactMethod = 'phone';
   r.contactValue = '0909';
   r.description = 'Mô tả gốc';
@@ -38,29 +46,36 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.reviewerId = null;
   t.reviewedAt = null;
   t.sourceContentHash = computeJobListingSourceHash(listingRow());
+  t.publishedTitle = null;
+  t.publishedDescription = null;
+  t.publishedRequirements = null;
+  t.publishedBenefits = null;
+  t.publishedSourceContentHash = null;
+  t.publishedAt = null;
+  t.contentVersion = 1;
   t.createdAt = new Date('2026-10-17T00:00:00Z');
   t.updatedAt = new Date('2026-10-17T00:00:00Z');
   Object.assign(t, overrides);
   return t;
 }
 
-// Vòng đời bản dịch tiếng Anh (Gói C phần 1/2, 17/10/2026) — ĐỘC LẬP hoàn toàn với vòng đời chính
-// của job_listings (xem ghi chú service). Test tập trung vào 3 điều owner đã chốt: (1) owner-only
-// viết/gửi duyệt (quyền kiểm Ở SERVER qua cùng loadOwnedListing như JobListingsService), (2) không
-// tự publish — luôn qua draft→pending→published/rejected, (3) không nhân đôi trường dùng chung
-// (lương/liên hệ/toạ độ/...) — DTO chỉ nhận 4 trường văn bản.
+// Vòng đời bản dịch tiếng Anh (Gói C phần 1/2, thiết kế lại 17/10/2026 sau phản hồi owner) — test
+// tập trung vào ĐÚNG những điểm owner chỉ ra: (1) lưu nháp KHÔNG BAO GIỜ đụng published* (bản đã
+// duyệt không mất khi sửa tiếp), (2) CAS content_version chặn ghi đè khi stale, (3) audit ghi lại
+// ai/khi nào, (4) owner-only viết/gửi duyệt, JobListing.Moderate duyệt (không permission mới).
 describe('JobListingTranslationsService', () => {
   type Deps = ConstructorParameters<typeof JobListingTranslationsService>;
   let translationsRepo: LooseMock<Deps[0]>;
   let listingsRepo: LooseMock<Deps[1]>;
+  let audit: LooseMock<Deps[2]>;
   let service: JobListingTranslationsService;
 
   beforeEach(() => {
     translationsRepo = createMock<Deps[0]>({
       findByJobListingId: jest.fn(),
-      // Giả lập hành vi TypeORM thật: INSERT gán createdAt/updatedAt — cùng mẫu
-      // JobListingsService.spec.ts's repo.create mock (xem ghi chú ở đó).
-      save: jest.fn((entity: JobListingTranslation) => {
+      insertNew: jest.fn((entity: JobListingTranslation) => {
+        entity.id = entity.id || 'tr-new';
+        entity.contentVersion = entity.contentVersion ?? 1;
         entity.createdAt = entity.createdAt ?? new Date('2026-10-17T00:00:00Z');
         entity.updatedAt = entity.updatedAt ?? new Date('2026-10-17T00:00:00Z');
         return Promise.resolve(entity);
@@ -72,10 +87,13 @@ describe('JobListingTranslationsService', () => {
         t.status = JobListingTranslationStatus.DRAFT;
         return t;
       }),
+      updateWithCas: jest.fn().mockResolvedValue(true),
       listPending: jest.fn(),
+      findByJobListingIds: jest.fn(),
     });
     listingsRepo = createMock<Deps[1]>({ findById: jest.fn() });
-    service = new JobListingTranslationsService(translationsRepo, listingsRepo);
+    audit = createMock<Deps[2]>({ record: jest.fn().mockResolvedValue(undefined) });
+    service = new JobListingTranslationsService(translationsRepo, listingsRepo, audit);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -86,10 +104,11 @@ describe('JobListingTranslationsService', () => {
       await expect(service.getMine('job-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('save: tin không thuộc về mình → NotFoundException, KHÔNG gọi translationsRepo.save', async () => {
+    it('save: tin không thuộc về mình → NotFoundException, KHÔNG gọi insertNew/updateWithCas', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'someone-else' }));
       await expect(service.save('job-1', { title: 'x' }, 'u1')).rejects.toBeInstanceOf(NotFoundException);
-      expect(translationsRepo.save).not.toHaveBeenCalled();
+      expect(translationsRepo.insertNew).not.toHaveBeenCalled();
+      expect(translationsRepo.updateWithCas).not.toHaveBeenCalled();
     });
 
     it('submit: tin không thuộc về mình → NotFoundException', async () => {
@@ -104,63 +123,94 @@ describe('JobListingTranslationsService', () => {
       translationsRepo.findByJobListingId.mockResolvedValue(null);
       const result = await service.getMine('job-1', 'u1');
       expect(result).toBeNull();
-      expect(translationsRepo.save).not.toHaveBeenCalled();
     });
 
-    it('đã có bản dịch → trả view kèm is_stale (nguồn chưa đổi → không stale)', async () => {
+    it('có bản dịch nháp (chưa duyệt bao giờ) → has_published=false, is_published_stale=null', async () => {
       const listing = listingRow({ createdBy: 'u1' });
       listingsRepo.findById.mockResolvedValue(listing);
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ sourceContentHash: computeJobListingSourceHash(listing) }));
       const result = await service.getMine('job-1', 'u1');
+      expect(result?.has_published).toBe(false);
       expect(result?.is_stale).toBe(false);
+      expect(result?.is_published_stale).toBeNull();
     });
 
-    it('nguồn tiếng Việt đã đổi sau khi dịch → is_stale=true', async () => {
-      const listing = listingRow({ createdBy: 'u1', title: 'Tiêu đề MỚI (đã sửa sau khi dịch)' });
+    it('đã có published, dữ kiện tiếng Việt CHƯA đổi → has_published=true, is_published_stale=false', async () => {
+      const listing = listingRow({ createdBy: 'u1' });
       listingsRepo.findById.mockResolvedValue(listing);
-      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ sourceContentHash: 'hash-của-tiêu-đề-cũ' }));
+      const hash = computeJobListingSourceHash(listing);
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({ status: JobListingTranslationStatus.PUBLISHED, publishedTitle: 'EN title', publishedSourceContentHash: hash }),
+      );
       const result = await service.getMine('job-1', 'u1');
-      expect(result?.is_stale).toBe(true);
+      expect(result?.has_published).toBe(true);
+      expect(result?.is_published_stale).toBe(false);
+    });
+
+    it('đã có published, nhưng LƯƠNG (không phải chỉ văn bản dịch) đã đổi sau khi duyệt → is_published_stale=true', async () => {
+      const listing = listingRow({ createdBy: 'u1', salaryMin: '10000000' }); // lương đổi sau khi duyệt.
+      listingsRepo.findById.mockResolvedValue(listing);
+      const oldHash = computeJobListingSourceHash(listingRow({ createdBy: 'u1', salaryMin: null })); // hash lúc duyệt (lương cũ).
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({ status: JobListingTranslationStatus.PUBLISHED, publishedTitle: 'EN title', publishedSourceContentHash: oldHash }),
+      );
+      const result = await service.getMine('job-1', 'u1');
+      expect(result?.is_published_stale).toBe(true);
     });
   });
 
-  describe('save (lưu draft)', () => {
-    it('chưa có bản dịch nào → tạo mới, status=draft', async () => {
-      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
-      translationsRepo.findByJobListingId.mockResolvedValue(null);
-      const result = await service.save('job-1', { title: 'EN title', description: 'EN desc' }, 'u1');
-      expect(result.status).toBe(JobListingTranslationStatus.DRAFT);
-      expect(result.title).toBe('EN title');
-    });
-
-    it('CHỈ nhận 4 trường văn bản — không có chỗ cho lương/liên hệ/toạ độ/ngày hết hạn trong DTO (kiểm bằng kiểu, không có test runtime riêng vì DTO tự giới hạn)', async () => {
+  describe('save (lưu nháp) — KHÔNG BAO GIỜ đụng published*', () => {
+    it('chưa có bản dịch nào → INSERT mới, status=draft, không cần expected_content_version', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
       translationsRepo.findByJobListingId.mockResolvedValue(null);
       const result = await service.save('job-1', { title: 'EN title' }, 'u1');
-      expect(result).not.toHaveProperty('salary_min');
-      expect(result).not.toHaveProperty('contact_value');
-      expect(result).not.toHaveProperty('expires_at');
+      expect(result.status).toBe(JobListingTranslationStatus.DRAFT);
+      expect(translationsRepo.insertNew).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'job_listing_translation.saved', actorId: 'u1' }));
     });
 
-    it('đang published → sửa rút về draft (không ngầm đổi nội dung mà vẫn hiện công khai)', async () => {
+    it('đã có bản dịch, KHÔNG gửi expected_content_version → BadRequestException, không ghi gì', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow());
+      await expect(service.save('job-1', { title: 'x' }, 'u1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(translationsRepo.updateWithCas).not.toHaveBeenCalled();
+    });
+
+    it('CAS lỗi thời (updateWithCas trả false) → ConflictException, KHÔNG audit', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ contentVersion: 3 }));
+      translationsRepo.updateWithCas.mockResolvedValue(false);
+      await expect(service.save('job-1', { title: 'x', expected_content_version: 2 }, 'u1')).rejects.toBeInstanceOf(ConflictException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('CAS khớp → cập nhật VÙNG NHÁP, KHÔNG đụng published* (bản đã duyệt vẫn còn nguyên)', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
       translationsRepo.findByJobListingId.mockResolvedValue(
-        translationRow({ status: JobListingTranslationStatus.PUBLISHED, reviewerId: 'mod-1', reviewedAt: new Date() }),
+        translationRow({
+          status: JobListingTranslationStatus.PUBLISHED,
+          contentVersion: 2,
+          publishedTitle: 'Bản ĐÃ DUYỆT — không được đụng',
+          publishedDescription: 'Mô tả đã duyệt',
+          publishedSourceContentHash: 'hash-cu',
+        }),
       );
-      const result = await service.save('job-1', { title: 'Sửa lại' }, 'u1');
+      const result = await service.save('job-1', { title: 'Đang sửa tiếp', expected_content_version: 2 }, 'u1');
+      // Vùng nháp đổi, rút về draft (đang sửa lại một bản đã duyệt).
+      expect(result.title).toBe('Đang sửa tiếp');
       expect(result.status).toBe(JobListingTranslationStatus.DRAFT);
-      const saved = translationsRepo.save.mock.calls[0][0] as JobListingTranslation;
-      expect(saved.reviewerId).toBeNull();
-      expect(saved.reviewedAt).toBeNull();
+      // Vùng CÔNG KHAI (published*) KHÔNG đổi — đây là điểm owner yêu cầu sửa, kiểm trực tiếp patch gửi xuống repo.
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch).not.toHaveProperty('publishedTitle');
+      expect(patch).not.toHaveProperty('publishedDescription');
+      expect(result.has_published).toBe(true); // vẫn còn bản đã duyệt từ trước.
     });
 
-    it('cập nhật source_content_hash theo nội dung tiếng Việt HIỆN TẠI mỗi lần lưu', async () => {
-      const listing = listingRow({ createdBy: 'u1' });
-      listingsRepo.findById.mockResolvedValue(listing);
-      translationsRepo.findByJobListingId.mockResolvedValue(null);
-      await service.save('job-1', { title: 'EN title' }, 'u1');
-      const saved = translationsRepo.save.mock.calls[0][0] as JobListingTranslation;
-      expect(saved.sourceContentHash).toBe(computeJobListingSourceHash(listing));
+    it('CAS khớp đúng → tăng content_version lên expected+1 trong patch', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ contentVersion: 5 }));
+      await service.save('job-1', { title: 'x', expected_content_version: 5 }, 'u1');
+      expect(translationsRepo.updateWithCas).toHaveBeenCalledWith('tr-1', expect.anything(), 5);
     });
   });
 
@@ -171,58 +221,97 @@ describe('JobListingTranslationsService', () => {
       await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('thiếu title/description → BadRequestException (không đủ để hiện trang chi tiết)', async () => {
+    it('thiếu title/description → BadRequestException', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ title: 'EN title', description: null }));
       await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('draft với đủ title+description → pending', async () => {
+    it('draft với đủ title+description → pending, có audit', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.DRAFT }));
       const result = await service.submit('job-1', 'u1');
       expect(result.status).toBe(JobListingTranslationStatus.PENDING);
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'job_listing_translation.submitted' }));
     });
 
-    it('rejected → gửi lại trực tiếp thành pending (cùng quy tắc job_listings chính)', async () => {
+    it('CAS lỗi thời khi submit (bị sửa ngay trước đó) → ConflictException', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
-      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.REJECTED, reviewNote: 'cũ' }));
-      const result = await service.submit('job-1', 'u1');
-      expect(result.status).toBe(JobListingTranslationStatus.PENDING);
-      expect(result.review_note).toBeNull();
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.DRAFT }));
+      translationsRepo.updateWithCas.mockResolvedValue(false);
+      await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('đang pending/published → ConflictException (không phải nguồn hợp lệ)', async () => {
+    it('đang pending/published → ConflictException', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PUBLISHED }));
       await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
-  describe('decide (duyệt bản dịch — JobListing.Moderate kiểm ở controller)', () => {
+  describe('decide (duyệt bản dịch — JobListing.Moderate kiểm ở controller, CAS bắt buộc)', () => {
     it('không tồn tại → NotFoundException', async () => {
       translationsRepo.findByJobListingId.mockResolvedValue(null);
-      await expect(service.decide('job-1', { decision: 'approve' }, 'mod-1')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.decide('job-1', { decision: 'approve', expected_content_version: 1 }, 'mod-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('không ở pending → ConflictException', async () => {
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.DRAFT }));
-      await expect(service.decide('job-1', { decision: 'approve' }, 'mod-1')).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.decide('job-1', { decision: 'approve', expected_content_version: 1 }, 'mod-1')).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
 
-    it('approve từ pending → published, set reviewer/reviewedAt', async () => {
-      listingsRepo.findById.mockResolvedValue(listingRow());
+    it('KHÔNG gửi expected_content_version → BadRequestException ("moderator phải duyệt đúng phiên bản đã đọc")', async () => {
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PENDING }));
-      const result = await service.decide('job-1', { decision: 'approve' }, 'mod-1');
+      await expect(service.decide('job-1', { decision: 'approve' }, 'mod-1')).rejects.toBeInstanceOf(BadRequestException);
+      expect(translationsRepo.updateWithCas).not.toHaveBeenCalled();
+    });
+
+    it('CAS lỗi thời (owner vừa sửa trong lúc moderator đang xem) → ConflictException, KHÔNG audit', async () => {
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PENDING, contentVersion: 4 }));
+      translationsRepo.updateWithCas.mockResolvedValue(false);
+      listingsRepo.findById.mockResolvedValue(listingRow());
+      await expect(
+        service.decide('job-1', { decision: 'approve', expected_content_version: 3 }, 'mod-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it('approve từ pending → published, CHỤP SNAPSHOT nháp hiện tại vào published*', async () => {
+      const listing = listingRow();
+      listingsRepo.findById.mockResolvedValue(listing);
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({ status: JobListingTranslationStatus.PENDING, title: 'EN title mới', description: 'EN desc mới', contentVersion: 1 }),
+      );
+      const result = await service.decide('job-1', { decision: 'approve', expected_content_version: 1 }, 'mod-1');
       expect(result.status).toBe(JobListingTranslationStatus.PUBLISHED);
+      expect(result.has_published).toBe(true);
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch.publishedTitle).toBe('EN title mới');
+      expect(patch.publishedDescription).toBe('EN desc mới');
+      expect(patch.publishedAt).toBeInstanceOf(Date);
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'job_listing_translation.approved' }));
     });
 
-    it('reject từ pending → rejected, giữ note', async () => {
+    it('reject từ pending → rejected, published* KHÔNG đổi (giữ bản cũ nếu có)', async () => {
       listingsRepo.findById.mockResolvedValue(listingRow());
-      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ status: JobListingTranslationStatus.PENDING }));
-      const result = await service.decide('job-1', { decision: 'reject', note: 'dịch sai nghĩa' }, 'mod-1');
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({
+          status: JobListingTranslationStatus.PENDING,
+          contentVersion: 1,
+          publishedTitle: 'Bản cũ vẫn còn',
+          publishedSourceContentHash: 'hash-cu',
+        }),
+      );
+      const result = await service.decide('job-1', { decision: 'reject', note: 'dịch sai nghĩa', expected_content_version: 1 }, 'mod-1');
       expect(result.status).toBe(JobListingTranslationStatus.REJECTED);
       expect(result.review_note).toBe('dịch sai nghĩa');
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch).not.toHaveProperty('publishedTitle');
+      expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'job_listing_translation.rejected' }));
     });
   });
 
@@ -234,7 +323,7 @@ describe('JobListingTranslationsService', () => {
       expect(result[0].source_title).toBe('Tiêu đề gốc tiếng Việt');
     });
 
-    it('tin gốc đã bị xoá (không còn tồn tại) → bỏ qua, KHÔNG throw', async () => {
+    it('tin gốc đã bị xoá → bỏ qua, KHÔNG throw', async () => {
       translationsRepo.listPending.mockResolvedValue([translationRow({ id: 'tr-1', jobListingId: 'ghost' })]);
       listingsRepo.findById.mockResolvedValue(null);
       const result = await service.listPending();
