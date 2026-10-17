@@ -27,7 +27,7 @@ import {
   LISTING_EFFECTIVE_STATUS_LABELS,
   listingEffectiveStatus,
   matchesListingFilter,
-  todayInVietnam,
+  useTodayInVietnam,
   type ListingFilterValue,
 } from '@/lib/listingExpiry';
 
@@ -77,7 +77,8 @@ export function MyRealEstateListingsView() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ListingFilterValue>('all');
-  const today = todayInVietnam();
+  // Tự cập nhật khi sang ngày mới — xem ghi chú đầy đủ ở useTodayInVietnam() trong listingExpiry.ts.
+  const today = useTodayInVietnam();
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 

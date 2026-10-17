@@ -1,4 +1,12 @@
-import { listingEffectiveStatus, matchesListingFilter, todayInVietnam, EXPIRING_SOON_DAYS } from './listingExpiry';
+/** @jest-environment jsdom */
+import { act, renderHook } from '@testing-library/react';
+import {
+  listingEffectiveStatus,
+  matchesListingFilter,
+  todayInVietnam,
+  useTodayInVietnam,
+  EXPIRING_SOON_DAYS,
+} from './listingExpiry';
 
 describe('listingEffectiveStatus', () => {
   it('status khác published -> luôn null, kể cả còn/hết hạn', () => {
@@ -59,5 +67,52 @@ describe('matchesListingFilter', () => {
 describe('todayInVietnam', () => {
   it('trả đúng dạng YYYY-MM-DD', () => {
     expect(todayInVietnam()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// Bug thật đã sửa 2026-10-17: dashboard tính "hôm nay" một lần trong thân component thì không tự
+// cập nhật khi sang ngày mới nếu không có thao tác nào khác ép re-render — một tab mở qua nửa đêm sẽ
+// giữ nhãn/bộ lọc của ngày cũ vô thời hạn. Hook này tự kiểm định kỳ và re-render khi đổi.
+describe('useTodayInVietnam', () => {
+  // Dùng fake timer thật của Jest (ảnh hưởng `new Date()` lẫn `setInterval` bên trong hook) thay vì
+  // mock nội bộ `todayInVietnam()` — thử cách đó trước và xác nhận KHÔNG hoạt động: hàm nội bộ hook
+  // gọi tới vẫn là tham chiếu cục bộ trong cùng module, không phải qua object export bị
+  // `jest.spyOn`/mock ghi đè (CommonJS compile ra lời gọi hàm trực tiếp, không qua `exports.`).
+  // Test này KHÔNG dùng `screen.findByText`/`waitFor` của RTL (nơi fake timer từng làm treo khi thử
+  // ở MyJobListingsView.spec.tsx) — chỉ `act()` + `jest.advanceTimersByTime`, nên an toàn.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('trả giá trị ban đầu đúng theo giờ VN, rồi tự cập nhật khi sang ngày mới — không cần thao tác gì khác', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-15T23:59:30+07:00')); // gần nửa đêm giờ VN
+
+    const { result } = renderHook(() => useTodayInVietnam());
+    expect(result.current).toBe('2026-06-15');
+
+    act(() => {
+      jest.setSystemTime(new Date('2026-06-16T00:00:30+07:00')); // vừa qua nửa đêm giờ VN
+      jest.advanceTimersByTime(60_000); // tới lần kiểm định kỳ tiếp theo của hook
+    });
+    expect(result.current).toBe('2026-06-16');
+  });
+
+  it('không re-render thừa khi "hôm nay" chưa đổi giữa các lần kiểm định kỳ', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-15T10:00:00+07:00'));
+
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useTodayInVietnam();
+    });
+    const countAfterMount = renderCount;
+
+    act(() => {
+      jest.advanceTimersByTime(120_000); // 2 lần kiểm định kỳ, cùng ngày, giá trị không đổi
+    });
+    expect(result.current).toBe('2026-06-15');
+    expect(renderCount).toBe(countAfterMount); // setState(prev => prev) không gây re-render thừa
   });
 });

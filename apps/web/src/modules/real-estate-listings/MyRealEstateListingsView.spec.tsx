@@ -15,10 +15,10 @@ jest.mock('./api/real-estate-listings.api', () => ({
   markRealEstateListingAvailable: jest.fn(),
 }));
 // Cố định "hôm nay" cho test hạn/bộ lọc — xem ghi chú đầy đủ ở MyJobListingsView.spec.tsx (cùng
-// khuôn, KHÔNG dùng jest.useFakeTimers() vì làm treo waitFor/findBy* nội bộ của @testing-library).
+// khuôn: mock THẲNG useTodayInVietnam(), KHÔNG dùng jest.useFakeTimers()).
 jest.mock('@/lib/listingExpiry', () => ({
   ...jest.requireActual('@/lib/listingExpiry'),
-  todayInVietnam: () => '2026-06-15',
+  useTodayInVietnam: () => '2026-06-15',
 }));
 
 const mockReadSession = readSession as jest.Mock;

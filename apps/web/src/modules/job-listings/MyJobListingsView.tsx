@@ -13,7 +13,7 @@ import {
   LISTING_EFFECTIVE_STATUS_LABELS,
   listingEffectiveStatus,
   matchesListingFilter,
-  todayInVietnam,
+  useTodayInVietnam,
   type ListingFilterValue,
 } from '@/lib/listingExpiry';
 
@@ -58,9 +58,9 @@ export function MyJobListingsView() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ListingFilterValue>('all');
-  // Tính một lần mỗi lần render danh sách — tránh lệch "hôm nay" giữa phần lọc và phần hiện badge
-  // nếu người dùng để tab mở qua nửa đêm (không cần render lại theo thời gian thực cho MVP này).
-  const today = todayInVietnam();
+  // Tự cập nhật khi sang ngày mới (kể cả không ai thao tác gì) — xem ghi chú đầy đủ ở
+  // useTodayInVietnam() trong listingExpiry.ts.
+  const today = useTodayInVietnam();
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 

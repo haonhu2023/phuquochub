@@ -11,13 +11,15 @@ jest.mock('./api/job-listings.api', () => ({
   closeJobListing: jest.fn(),
   reopenJobListing: jest.fn(),
 }));
-// Cố định "hôm nay" cho các test hạn/bộ lọc — mock mỗi `todayInVietnam()`, giữ nguyên mọi export
-// khác thật (listingEffectiveStatus/matchesListingFilter vẫn chạy logic thật). KHÔNG dùng
-// jest.useFakeTimers(): @testing-library/react dùng timer thật nội bộ cho waitFor/findBy*, giả lập
-// timer toàn cục sẽ làm các truy vấn đó treo (đã gặp thật khi thử trước).
+// Cố định "hôm nay" cho các test hạn/bộ lọc — mock THẲNG `useTodayInVietnam()` (component gọi hook
+// này, không gọi `todayInVietnam()` trực tiếp nữa — mock export kia không có tác dụng vì closure
+// nội bộ của hook thật vẫn trỏ về `todayInVietnam` gốc, không phải bản bị mock cùng module). Giữ
+// nguyên mọi export khác thật. KHÔNG dùng jest.useFakeTimers(): @testing-library/react dùng timer
+// thật nội bộ cho waitFor/findBy*, giả lập timer toàn cục sẽ làm các truy vấn đó treo (đã gặp thật
+// khi thử trước).
 jest.mock('@/lib/listingExpiry', () => ({
   ...jest.requireActual('@/lib/listingExpiry'),
-  todayInVietnam: () => '2026-06-15',
+  useTodayInVietnam: () => '2026-06-15',
 }));
 
 const mockReadSession = readSession as jest.Mock;

@@ -36,11 +36,24 @@ export class JobListingsRepository {
 
   // Công khai: chỉ PUBLISHED và chưa hết hạn — xét `expires_at` TẠI THỜI ĐIỂM ĐỌC (không đổi cột status),
   // cùng nguyên tắc "cache không làm tin hết hạn tiếp tục hiện như còn hoạt động" áp cho tầng truy vấn.
+  //
+  // Bug thật đã sửa 2026-10-17: `CURRENT_DATE` lấy theo timezone PHIÊN/SERVER Postgres, đã xác nhận
+  // production chạy `Etc/UTC` (`SHOW timezone`) — KHÔNG phải Asia/Ho_Chi_Minh mà dashboard chủ tin
+  // dùng để tính "hôm nay"/trạng thái hết hạn (xem apps/web/src/lib/listingExpiry.ts). Hệ quả đo
+  // được: trong khung ~7 giờ đầu mỗi ngày giờ Việt Nam (00:00–07:00, ứng với UTC 17:00–24:00hôm
+  // trước), một tin đã hết hạn theo lịch Việt Nam (dashboard đã báo "Đã hết hạn") vẫn bị
+  // `CURRENT_DATE` (còn ở "hôm qua" theo UTC) coi là CÒN HẠN — API công khai tiếp tục phục vụ tin
+  // đó quá hạn tới 7 giờ. Xác nhận trực tiếp bằng SQL thật trên production (chỉ đọc, không ghi):
+  // `('2026-10-17 23:00+00'::timestamptz)::date` = 2026-10-17 (UTC) nhưng
+  // `(... AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` = 2026-10-18 (VN, đã sang ngày mới).
+  // Sửa bằng cách tính "hôm nay" tường minh theo Asia/Ho_Chi_Minh NGAY TRONG câu SQL — khớp đúng
+  // quy ước `todayInVietnam()` phía dashboard, không phụ thuộc timezone cấu hình của session/server
+  // Postgres. KHÔNG đổi giá trị `expires_at` nào đã lưu — chỉ đổi điều kiện so sánh tại thời điểm đọc.
   private publicQuery(filter: ListPublicJobListingsFilter) {
     const qb = this.repo
       .createQueryBuilder('j')
       .where('j.status = :status', { status: JobListingStatus.PUBLISHED })
-      .andWhere('(j.expiresAt IS NULL OR j.expiresAt >= CURRENT_DATE)');
+      .andWhere("(j.expiresAt IS NULL OR j.expiresAt >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)");
     if (filter.jobCategory) qb.andWhere('j.jobCategory = :jobCategory', { jobCategory: filter.jobCategory });
     if (filter.ward) qb.andWhere('j.ward = :ward', { ward: filter.ward });
     if (filter.employmentType) qb.andWhere('j.employmentType = :employmentType', { employmentType: filter.employmentType });

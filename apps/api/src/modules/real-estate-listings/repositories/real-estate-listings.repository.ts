@@ -32,12 +32,17 @@ export class RealEstateListingsRepository {
 
   // Công khai: PUBLISHED, deal_status=AVAILABLE (chưa thuê/đã bán — "còn giao dịch", xem §13u),
   // và chưa hết hạn TẠI THỜI ĐIỂM ĐỌC — cùng nguyên tắc job_listings, không chỉ dựa cron.
+  //
+  // Bug thật đã sửa 2026-10-17 — CÙNG nguyên nhân/cách sửa với JobListingsRepository.publicQuery()
+  // (xem ghi chú đầy đủ ở đó): `CURRENT_DATE` theo UTC (production), lệch với "hôm nay" theo
+  // Asia/Ho_Chi_Minh mà dashboard dùng — tới 7 giờ/ngày tin đã hết hạn theo lịch VN vẫn bị API công
+  // khai phục vụ tiếp. Không đổi `expires_at` đã lưu, chỉ đổi điều kiện so sánh.
   private publicQuery(filter: ListPublicRealEstateFilter) {
     const qb = this.repo
       .createQueryBuilder('r')
       .where('r.status = :status', { status: RealEstateListingStatus.PUBLISHED })
       .andWhere('r.dealStatus = :dealStatus', { dealStatus: RealEstateDealStatus.AVAILABLE })
-      .andWhere('(r.expiresAt IS NULL OR r.expiresAt >= CURRENT_DATE)');
+      .andWhere("(r.expiresAt IS NULL OR r.expiresAt >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)");
     if (filter.transactionType) qb.andWhere('r.transactionType = :transactionType', { transactionType: filter.transactionType });
     if (filter.propertyType) qb.andWhere('r.propertyType = :propertyType', { propertyType: filter.propertyType });
     if (filter.ward) qb.andWhere('r.ward = :ward', { ward: filter.ward });
