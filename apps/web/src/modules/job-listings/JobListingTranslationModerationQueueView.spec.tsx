@@ -38,6 +38,7 @@ function translation(overrides: Partial<JobListingTranslationModeratorView> = {}
     source_title: 'Phục vụ bàn',
     source_employer_name: 'Nhà hàng A',
     source_description: 'Mô tả tiếng Việt',
+    source_description_rich: null,
     source_requirements: null,
     source_benefits: null,
     ...overrides,

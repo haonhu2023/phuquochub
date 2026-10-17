@@ -263,7 +263,13 @@ export function JobListingTranslationEditor({ job }: Props) {
 
       {showPreview && (
         <JobListingTranslationCompare
-          source={{ title: job.title, description: job.description, requirements: job.requirements, benefits: job.benefits }}
+          source={{
+            title: job.title,
+            description: job.description,
+            description_rich: job.description_rich,
+            requirements: job.requirements,
+            benefits: job.benefits,
+          }}
           translation={draft}
         />
       )}

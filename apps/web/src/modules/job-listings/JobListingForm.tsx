@@ -5,6 +5,8 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { suggest, type Suggestion } from '@/modules/search/api/search.api';
 import { createJobListing, updateJobListing } from './api/job-listings.api';
+import { RichDescriptionEditor } from '../rich-doc/RichDescriptionEditor';
+import { plainTextToRichDoc } from '../rich-doc/legacy';
 import {
   JOB_LISTING_EMPLOYMENT_TYPES,
   JOB_LISTING_SALARY_PERIODS,
@@ -56,6 +58,9 @@ function toInput(v?: JobListingSenderView): UpsertJobListingInput {
     requirements: v.requirements,
     benefits: v.benefits,
     description: v.description,
+    // CHỦ Ý giữ nguyên (KHÔNG mồi từ plain text ở đây) — xem JSX's ghi chú: mồi chỉ ảnh hưởng
+    // NHỮNG GÌ EDITOR HIỂN THỊ, không ảnh hưởng gì được GỬI ĐI cho tới khi người dùng thực sự soạn.
+    description_rich: v.description_rich,
     contact_method: v.contact_method,
     contact_value: v.contact_value,
     expires_at: v.expires_at,
@@ -436,18 +441,25 @@ export function JobListingForm({ existing, onSaved }: Props) {
       <fieldset className={placeMgmtStyles.section}>
         <legend className={placeMgmtStyles.sectionTitle}>Chi tiết (không bắt buộc)</legend>
         <div className={uiStyles.field}>
-          <label className={uiStyles.fieldLabel} htmlFor="jl-description">
+          {/* RichDescriptionEditor là một nhóm nhiều control (toolbar + vùng soạn + bảng), không có
+             MỘT input/textarea duy nhất để gắn <label htmlFor>; dùng role="group" + aria-labelledby
+             đúng mẫu nhãn-cho-nhóm-điều-khiển thay vì <label> trần (jsx-a11y/label-has-associated-control). */}
+          <span id="jl-description-label" className={uiStyles.fieldLabel}>
             Mô tả công việc
-          </label>
-          <textarea
-            id="jl-description"
-            className={placeMgmtStyles.textarea}
-            rows={4}
-            maxLength={4000}
-            value={input.description ?? ''}
-            onChange={(e) => set('description', e.target.value)}
-            disabled={submitting}
-          />
+          </span>
+          <div role="group" aria-labelledby="jl-description-label">
+            <RichDescriptionEditor
+              // Mồi hiển thị TỪ plain text cũ nếu tin CHƯA có rich text — chỉ ảnh hưởng những gì
+              // editor HIỂN THỊ ban đầu (owner: "không bắt nhập lại"). `input.description_rich`
+              // (giá trị thực sự GỬI ĐI) chỉ đổi khi `onChange` thực sự chạy — tức người dùng có
+              // thao tác soạn thật; nếu họ không đụng tới trường này, request vẫn gửi KHÔNG kèm
+              // description_rich, giữ nguyên đường ghi plain-text cũ, không có rủi ro chuyển đổi
+              // ngoài ý muốn (vd lệch \n khi flatten) trên một tin họ chỉ sửa trường khác.
+              value={input.description_rich ?? (input.description ? plainTextToRichDoc(input.description) : null)}
+              onChange={(doc) => set('description_rich', doc)}
+              disabled={submitting}
+            />
+          </div>
         </div>
         <div className={uiStyles.field}>
           <label className={uiStyles.fieldLabel} htmlFor="jl-requirements">

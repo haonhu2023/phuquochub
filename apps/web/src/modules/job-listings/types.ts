@@ -1,3 +1,5 @@
+import type { RichDoc } from '@phuquochub/shared-types';
+
 // Khớp apps/api/src/modules/job-listings (enums.ts/dto/job-listings.dto.ts/job-listings.mapper.ts).
 // MVP CHỈ 3 kiểu hợp đồng làm việc / 3 kỳ tính lương — không thêm giá trị nào backend chưa validate.
 export const JOB_LISTING_EMPLOYMENT_TYPES = ['full_time', 'part_time', 'seasonal'] as const;
@@ -65,6 +67,9 @@ export interface JobListingBaseView {
   requirements: string | null;
   benefits: string | null;
   description: string | null;
+  // Gói D — khi KHÔNG null, nguồn sự thật của `description` (renderer dùng field này khi có, xem
+  // RichDescriptionRenderer). NULL ở MỌI tin chưa dùng rich text — tương thích ngược hoàn toàn.
+  description_rich: RichDoc | null;
   contact_method: string;
   contact_value: string;
   expires_at: string | null;
@@ -131,6 +136,9 @@ export interface UpsertJobListingInput {
   requirements?: string | null;
   benefits?: string | null;
   description?: string | null;
+  // Gói D — có mặt (object HOẶC null) = ghi đè authoritative; vắng mặt (undefined, không set key)
+  // = "không đụng rich text", xem job-listings.service.ts's applyDescription() cho quy tắc đầy đủ.
+  description_rich?: RichDoc | null;
   contact_method: string;
   contact_value: string;
   expires_at?: string | null;
@@ -201,6 +209,8 @@ export interface JobListingTranslationModeratorView extends JobListingTranslatio
   source_title: string;
   source_employer_name: string;
   source_description: string | null;
+  // Gói D — nguồn sự thật khi không null, cùng ý nghĩa JobListingBaseView.description_rich.
+  source_description_rich: RichDoc | null;
   source_requirements: string | null;
   source_benefits: string | null;
 }

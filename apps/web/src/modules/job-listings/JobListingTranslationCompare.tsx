@@ -1,6 +1,10 @@
+import type { RichDoc } from '@phuquochub/shared-types';
+import { RichDescriptionRenderer } from '../rich-doc/RichDescriptionRenderer';
+
 interface SourceFields {
   title: string;
   description: string | null;
+  description_rich: RichDoc | null;
   requirements: string | null;
   benefits: string | null;
 }
@@ -30,7 +34,7 @@ export function JobListingTranslationCompare({ source, translation }: Props) {
       <div>
         <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Tiếng Việt (đang dùng)</p>
         <p style={{ fontWeight: 600 }}>{source.title}</p>
-        {source.description && <p style={{ whiteSpace: 'pre-wrap' }}>{source.description}</p>}
+        {source.description && <RichDescriptionRenderer richDoc={source.description_rich} plainFallback={source.description} />}
         {source.requirements && (
           <p style={{ whiteSpace: 'pre-wrap' }}>
             <em>Yêu cầu:</em> {source.requirements}

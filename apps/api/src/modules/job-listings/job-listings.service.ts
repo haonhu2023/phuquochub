@@ -402,6 +402,12 @@ export class JobListingsService {
           ...withPlace,
           title: translation.publishedTitle,
           description: translation.publishedDescription ?? withPlace.description,
+          // Gói D — bản dịch EN CHƯA hỗ trợ rich text (ngoài phạm vi luồng đầu tiên, xem
+          // ADR-DELIVERY-002 điểm 5 "mở rộng tuần tự"). PHẢI đặt về null ở NHÁNH NÀY — nếu không,
+          // `...withPlace` phía trên sẽ để lọt RichDoc của bản TIẾNG VIỆT vào response đang phục vụ
+          // tiếng Anh (renderer sẽ hiện nhầm nội dung tiếng Việt có định dạng thay vì bản dịch tiếng
+          // Anh dạng chữ thường) — lỗi thật, không phải phòng hờ.
+          description_rich: null,
           requirements: translation.publishedRequirements ?? withPlace.requirements,
           benefits: translation.publishedBenefits ?? withPlace.benefits,
           locale: 'en',

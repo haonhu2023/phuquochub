@@ -80,6 +80,7 @@ describe('JobListingForm — chọn địa điểm liên quan (bug thiếu đã 
       requirements: null,
       benefits: null,
       description: null,
+      description_rich: null,
       contact_method: 'phone',
       contact_value: '0909000000',
       expires_at: null,

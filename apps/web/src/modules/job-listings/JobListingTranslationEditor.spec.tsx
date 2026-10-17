@@ -39,6 +39,7 @@ function job(overrides: Partial<JobListingSenderDetailView> = {}): JobListingSen
     requirements: 'Nhiệt tình',
     benefits: 'Thưởng lễ',
     description: 'Mô tả tiếng Việt',
+    description_rich: null,
     contact_method: 'phone',
     contact_value: '0909000000',
     expires_at: null,

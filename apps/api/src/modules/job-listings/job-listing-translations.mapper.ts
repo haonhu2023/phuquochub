@@ -1,4 +1,5 @@
 import { JobListingTranslation } from './entities/job-listing-translation.entity';
+import { JobListing } from './entities/job-listing.entity';
 import { isJobListingTranslationStale, type JobListingTranslationSourceRow } from './job-listing-translation-hash';
 
 // Một view DUY NHẤT (khác job-listings.mapper.ts's public/sender/moderator/admin ba-bốn view) —
@@ -45,12 +46,18 @@ export function toJobListingTranslationView(row: JobListingTranslation, parent?:
 // `title`/`description`/... của view trên là bản NHÁP ĐANG CHỜ DUYỆT (tiếng Anh); moderator cần
 // thấy ĐỦ bản nguồn để đối chiếu chất lượng dịch (owner: "xem bản nguồn và bản dịch cạnh nhau"),
 // không chỉ tiêu đề.
-export function toJobListingTranslationModeratorView(row: JobListingTranslation, parent: JobListingTranslationSourceRow) {
+export function toJobListingTranslationModeratorView(
+  row: JobListingTranslation,
+  parent: JobListingTranslationSourceRow & Pick<JobListing, 'descriptionRich'>,
+) {
   return {
     ...toJobListingTranslationView(row, parent),
     source_title: parent.title,
     source_employer_name: parent.employerName,
     source_description: parent.description,
+    // Gói D — cho moderator (và owner's "xem trước") thấy ĐÚNG định dạng nguồn khi đối chiếu, cùng
+    // renderer với public (RichDescriptionRenderer) — null nếu tin nguồn chưa dùng rich text.
+    source_description_rich: parent.descriptionRich,
     source_requirements: parent.requirements,
     source_benefits: parent.benefits,
   };

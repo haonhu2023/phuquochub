@@ -502,6 +502,26 @@ describe('JobListingsService', () => {
         expect(result.locale).toBe('en');
       });
 
+      // Gói D — bug thật đã sửa: overlay EN trước đây để lọt description_rich của BẢN TIẾNG VIỆT
+      // (từ `...withPlace`) vào response đang phục vụ bản dịch tiếng Anh (bản dịch EN CHƯA hỗ trợ
+      // rich text) — renderer sẽ hiện nhầm RichDoc tiếng Việt trên trang tiếng Anh.
+      it('locale=en, có published, tin gốc CÓ description_rich → overlay EN phải trả description_rich=null (không lộ RichDoc tiếng Việt sang trang tiếng Anh)', async () => {
+        repo.getPublicById.mockResolvedValue(
+          row({
+            status: JobListingStatus.PUBLISHED,
+            title: 'VI title',
+            description: 'VI mô tả',
+            descriptionRich: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'VI mô tả có định dạng', bold: true }] }] },
+          }),
+        );
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({ publishedTitle: 'EN title', publishedDescription: 'EN description (plain)' }),
+        );
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.description).toBe('EN description (plain)');
+        expect(result.description_rich).toBeNull();
+      });
+
       it('locale=en, CHƯA có bản dịch nào → fallback tiếng Việt, locale="vi" (KHÔNG nhận vơ là tiếng Anh)', async () => {
         repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, title: 'VI title' }));
         translationsRepo.findByJobListingId.mockResolvedValue(null);

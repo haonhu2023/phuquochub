@@ -8,6 +8,7 @@ import { listPendingJobListings } from './api/job-listings.api';
 import { JobListingDecisionForm } from './JobListingDecisionForm';
 import { jobListingEmploymentTypeLabel, type JobListingModeratorView } from './types';
 import { formatSalary } from './salary';
+import { RichDescriptionRenderer } from '../rich-doc/RichDescriptionRenderer';
 import placeStyles from '@/modules/places/places.module.css';
 
 type State =
@@ -123,7 +124,7 @@ export function JobListingModerationQueueView() {
                 {job.ward ? ` (${job.ward})` : ''} · {jobListingEmploymentTypeLabel(job.employment_type, 'vi')} ·{' '}
                 {formatSalary(job)}
               </p>
-              {job.description && <p>{job.description}</p>}
+              {job.description && <RichDescriptionRenderer richDoc={job.description_rich} plainFallback={job.description} />}
               {job.requirements && (
                 <p>
                   <strong>Yêu cầu:</strong> {job.requirements}

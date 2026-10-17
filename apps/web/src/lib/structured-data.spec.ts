@@ -482,6 +482,7 @@ function baseJob(overrides: Partial<JobListingPublicView> = {}): JobListingPubli
     requirements: null,
     benefits: null,
     description: null,
+    description_rich: null,
     contact_method: 'phone',
     contact_value: '0909xxxxxx',
     expires_at: null,

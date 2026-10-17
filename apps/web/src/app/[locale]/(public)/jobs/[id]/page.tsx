@@ -8,6 +8,7 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { buildJobPostingJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -137,7 +138,7 @@ export default async function JobListingDetailPage({ params }: Params) {
       {job.description && (
         <section>
           <h2>{locale === 'en' ? 'Description' : 'Mô tả công việc'}</h2>
-          <p className={placesStyles.longText}>{job.description}</p>
+          <RichDescriptionRenderer richDoc={job.description_rich} plainFallback={job.description} />
         </section>
       )}
       {job.requirements && (

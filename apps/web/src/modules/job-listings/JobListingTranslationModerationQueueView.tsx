@@ -126,7 +126,13 @@ export function JobListingTranslationModerationQueueView() {
                 </p>
               )}
               <JobListingTranslationCompare
-                source={{ title: t.source_title, description: t.source_description, requirements: t.source_requirements, benefits: t.source_benefits }}
+                source={{
+                  title: t.source_title,
+                  description: t.source_description,
+                  description_rich: t.source_description_rich,
+                  requirements: t.source_requirements,
+                  benefits: t.source_benefits,
+                }}
                 translation={{ title: t.title ?? '', description: t.description ?? '', requirements: t.requirements ?? '', benefits: t.benefits ?? '' }}
               />
               <JobListingTranslationDecisionForm translation={t} onDecided={reload} />

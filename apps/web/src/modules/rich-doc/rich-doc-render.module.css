@@ -1,0 +1,71 @@
+/* Diễn giải RichDoc công khai (RichDescriptionRenderer) — xem ghi chú đầu file .tsx cho lý do
+   "một cách diễn giải dùng chung". */
+
+.root :global(h2) {
+  font-size: 1.25rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.root :global(h3) {
+  font-size: 1.1rem;
+  margin: 1rem 0 0.4rem;
+}
+
+.root :global(p) {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.root :global(blockquote) {
+  margin: 0.75rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--border, #334155);
+  color: var(--muted, #55696d);
+}
+
+.root :global(ul),
+.root :global(ol) {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.root :global(li) {
+  margin-bottom: 0.25rem;
+}
+
+/* Bảng — cuộn NGANG trong khung RIÊNG, không được làm tràn cả trang ở 375px (owner yêu cầu rõ). */
+.tableWrap {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.table :global(caption) {
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--muted, #55696d);
+  margin-bottom: 0.35rem;
+  caption-side: top;
+}
+
+.table :global(th),
+.table :global(td) {
+  border: 1px solid var(--border, #334155);
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  vertical-align: top;
+}
+
+.table :global(th) {
+  background: var(--surface-2, #1e293b);
+  font-weight: 600;
+}
