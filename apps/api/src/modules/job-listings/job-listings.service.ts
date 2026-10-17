@@ -303,6 +303,21 @@ export class JobListingsService {
   // công khai có còn khớp dữ kiện tiếng Việt HIỆN TẠI không — vẫn PHỤC VỤ bản cũ (một bản đã qua
   // duyệt không nên bị rút khỏi công khai chỉ vì một dữ kiện phụ trợ đổi), nhưng không giả vờ không
   // có vấn đề gì — web đọc cờ này để hiện ghi chú cho người đọc, không chỉ im lặng trong JSON.
+  //
+  // Phạm vi ngôn ngữ (addendum Gói C 17/10/2026, trả lời owner điểm 1b/1e): `locale:'vi'` trong
+  // response này là TÊN CỦA CỘT ĐƯỢC PHỤC VỤ (cột gốc title/description/...), KHÔNG phải xác nhận
+  // đã kiểm tra nội dung cột đó thực sự viết bằng tiếng Việt — hệ thống KHÔNG lưu ngôn ngữ gốc người
+  // đăng đã dùng (không có cột `source_language`, không phát hiện ngôn ngữ). Hệ quả: nếu một chủ tin
+  // gõ tin gốc bằng tiếng Anh, cột gốc đã LÀ tiếng Anh — hệ thống phục vụ ĐÚNG NGUYÊN VĂN cho cả hai
+  // route (/vi lẫn /en khi chưa có bản dịch), chỉ nhãn nội bộ `locale` vẫn ghi 'vi' (tên cột, không
+  // phải tuyên bố ngôn ngữ) — KHÔNG có sai lệch nội dung, chỉ có khả năng gây hiểu nhầm ở tên trường
+  // nội bộ, không lộ ra `GET` response's các trường khác và KHÔNG ảnh hưởng JSON-LD (JobPosting không
+  // phát `inLanguage`). Vì vậy bản tiếng Anh route `/en` fallback cột gốc KHÔNG được ghi "shown in
+  // Vietnamese" ở banner Web — chỉ ghi "as originally posted", đúng mức bằng chứng thực có. Tin cũ
+  // chưa rõ ngôn ngữ xử lý CÙNG quy tắc này — không có nhánh riêng, không suy diễn thêm. Không có cơ
+  // chế "khai báo ngôn ngữ gốc là tiếng Anh" tách riêng — với tin gốc tiếng Anh, chủ tin ĐƠN GIẢN
+  // KHÔNG CẦN tạo bản dịch EN (cột gốc đã phục vụ đúng); tạo thêm một trường "nguồn là EN" sẽ là một
+  // tính năng phát hiện/khai báo ngôn ngữ mới, ngoài phạm vi đã giao.
   async getPublicById(
     id: string,
     locale?: GetJobListingDetailQueryDto['locale'],

@@ -52,8 +52,11 @@ export default async function JobListingDetailPage({ params }: Params) {
   // Gói C (17/10/2026) — `job.locale` là nội dung THỰC SỰ phục vụ, có thể khác locale của route
   // (owner yêu cầu rõ: "Nếu fallback VI, giao diện ghi rõ... không chỉ trả locale trong JSON rồi
   // coi như đã giải quyết"). Hai ghi chú KHÁC nhau, không gộp: (1) route /en nhưng chưa có bản dịch
-  // → fallback tiếng Việt, cần nói RÕ bằng tiếng Anh (người đọc có thể không đọc được tiếng Việt).
-  // (2) có bản dịch nhưng dữ kiện gốc đã đổi sau khi duyệt → vẫn hiện, nhưng cảnh báo có thể lỗi thời.
+  // → fallback về cột gốc (`locale:'vi'` nghĩa là "cột gốc", KHÔNG phải xác nhận cột đó thực sự viết
+  // bằng tiếng Việt — hệ thống không lưu/biết ngôn ngữ gốc người đăng đã dùng, xem addendum Gói C
+  // 17/10/2026 §1b). Banner CỐ Ý không nói "shown in Vietnamese" (claim không có căn cứ nếu chủ tin
+  // gốc viết tiếng Anh) — chỉ nói "as originally posted". (2) có bản dịch nhưng dữ kiện gốc đã đổi
+  // sau khi duyệt → vẫn hiện bản dịch cũ kèm cảnh báo, KHÔNG tự rớt về cột gốc (khác hẳn case 1).
   const showViFallbackNotice = locale === 'en' && job.locale === 'vi';
   const showStaleNotice = job.locale === 'en' && job.is_translation_stale;
 
@@ -62,7 +65,7 @@ export default async function JobListingDetailPage({ params }: Params) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildJobPostingJsonLd(job)) }} />
       {showViFallbackNotice && (
         <p className={placesStyles.state} role="note">
-          This listing has not been translated into English yet. The details below are shown in Vietnamese as originally posted.
+          This listing has not been translated into English yet. The details below are shown exactly as originally posted by the lister (the original language is not tracked by this system).
         </p>
       )}
       {showStaleNotice && (

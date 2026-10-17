@@ -99,7 +99,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
       />
       {showViFallbackNotice && (
         <p className={placesStyles.state} role="note">
-          This listing has not been translated into English yet. The details below are shown in Vietnamese as originally posted.
+          This listing has not been translated into English yet. The details below are shown exactly as originally posted by the lister (the original language is not tracked by this system).
         </p>
       )}
       {showStaleNotice && (
