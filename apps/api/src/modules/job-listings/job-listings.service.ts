@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
+import { todayInVietnam } from '../../common/vn-today';
 import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListing } from './entities/job-listing.entity';
 import { JobListingStatus } from './job-listings.enums';
-import { DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
-import { toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
+import { AdminListJobListingsQueryDto, DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
+import { toJobListingAdminView, toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
 
 // Bảng chuyển trạng thái đã chốt (docs/delivery/release-web-candidate-2026-10-04.md §13r):
 //   draft --submit--> pending
@@ -30,6 +31,19 @@ export class JobListingsService {
     const hasAnySalaryField = dto.salary_min != null || dto.salary_max != null;
     if (hasAnySalaryField && !dto.salary_negotiable && !dto.salary_currency) {
       throw new BadRequestException('Có mức lương thì phải có salary_currency (hoặc đánh dấu salary_negotiable)');
+    }
+  }
+
+  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — owner yêu cầu RÕ "chọn hạn mới hợp lệ" khi gửi lại
+  // một tin. KHÔNG phải chính sách 30/60/90 ngày (vẫn chưa được duyệt, không tự áp dụng) — chỉ một
+  // kiểm tra tối thiểu, độc lập với chính sách đó: không cho lưu một `expires_at` đã ở QUÁ KHỨ theo
+  // lịch Việt Nam (so với `todayInVietnam()`, CÙNG quy ước repository dùng để lọc công khai). Trước
+  // khi có kiểm này, một tin có thể được gửi duyệt lại với hạn cũ đã qua — nếu được duyệt, tin
+  // "published" nhưng KHÔNG BAO GIỜ hiện công khai (bị publicQuery() loại ngay), một trạng thái mâu
+  // thuẫn khó phát hiện. `expires_at` null (không đặt hạn) vẫn hợp lệ — không bắt buộc phải có hạn.
+  private static assertValidExpiry(dto: UpsertJobListingDto): void {
+    if (dto.expires_at != null && dto.expires_at < todayInVietnam()) {
+      throw new BadRequestException('Hạn tuyển không được là một ngày trong quá khứ — chọn hôm nay hoặc sau đó');
     }
   }
 
@@ -58,6 +72,7 @@ export class JobListingsService {
 
   async create(dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
+    JobListingsService.assertValidExpiry(dto);
     const entity = new JobListing();
     JobListingsService.applyDto(entity, dto);
     entity.createdBy = userId;
@@ -79,6 +94,7 @@ export class JobListingsService {
   // (→ pending, luôn qua duyệt lại) trước khi sửa, tránh một hành vi ngầm gộp "mở lại" và "sửa".
   async update(id: string, dto: UpsertJobListingDto, userId: string): Promise<ReturnType<typeof toJobListingSenderView>> {
     JobListingsService.assertSalaryRange(dto);
+    JobListingsService.assertValidExpiry(dto);
     const row = await this.loadOwned(id, userId);
     if (row.status === JobListingStatus.CLOSED) {
       throw new ConflictException('Không thể sửa tin đã đóng — hãy mở lại tin trước (sẽ cần duyệt lại)');
@@ -171,6 +187,25 @@ export class JobListingsService {
   async listPending(): Promise<ReturnType<typeof toJobListingModeratorView>[]> {
     const rows = await this.repo.listPending();
     return rows.map(toJobListingModeratorView);
+  }
+
+  // Khác listPending() (chỉ pending): mọi status, lọc tuỳ chọn theo status/người đăng — màn hình
+  // "quản lý tất cả tin" admin cần, PHÂN BIỆT rõ với hàng chờ duyệt (xem job-listings.repository.ts).
+  async listAllForAdmin(query: AdminListJobListingsQueryDto) {
+    const page = clampPage(query.page);
+    const limit = clampLimit(query.limit);
+    const filter = { status: query.status, createdBy: query.created_by };
+    const [items, total] = await Promise.all([
+      this.repo.listAllForAdmin(filter, limit, (page - 1) * limit),
+      this.repo.countAllForAdmin(filter),
+    ]);
+    const creators = await this.repo.findCreatorSummaries([...new Set(items.map((row) => row.createdBy))]);
+    return paginate(
+      items.map((row) => toJobListingAdminView(row, creators.get(row.createdBy) ?? null)),
+      page,
+      limit,
+      total,
+    );
   }
 
   async listMine(userId: string): Promise<ReturnType<typeof toJobListingSenderView>[]> {

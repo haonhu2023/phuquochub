@@ -1,15 +1,18 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
+import { todayInVietnam } from '../../common/vn-today';
 import { AuthorizationService } from '../authz/authorization.service';
 import { RealEstateListingsRepository } from './repositories/real-estate-listings.repository';
 import { RealEstateListing } from './entities/real-estate-listing.entity';
 import { RealEstateAddressPrecision, RealEstateDealStatus, RealEstateListingStatus, RealEstateTransactionType } from './real-estate-listings.enums';
 import {
+  AdminListRealEstateListingsQueryDto,
   DecideRealEstateListingDto,
   ListRealEstateListingsQueryDto,
   UpsertRealEstateListingDto,
 } from './dto/real-estate-listings.dto';
 import {
+  toRealEstateListingAdminView,
   toRealEstateListingModeratorView,
   toRealEstateListingPublicView,
   toRealEstateListingSenderView,
@@ -58,6 +61,15 @@ export class RealEstateListingsService {
     }
   }
 
+  // "Sửa và gửi đăng lại" — cùng lý do/mẫu JobListingsService.assertValidExpiry() (xem ghi chú đầy
+  // đủ ở đó): KHÔNG phải chính sách 30/60/90 ngày (chưa duyệt), chỉ chặn lưu một `expires_at` đã
+  // ở quá khứ theo lịch Việt Nam.
+  private static assertValidExpiry(dto: UpsertRealEstateListingDto): void {
+    if (dto.expires_at != null && dto.expires_at < todayInVietnam()) {
+      throw new BadRequestException('Hạn đăng không được là một ngày trong quá khứ — chọn hôm nay hoặc sau đó');
+    }
+  }
+
   private static applyDto(entity: RealEstateListing, dto: UpsertRealEstateListingDto): void {
     entity.posterRole = dto.poster_role;
     entity.transactionType = dto.transaction_type;
@@ -88,6 +100,7 @@ export class RealEstateListingsService {
   async create(dto: UpsertRealEstateListingDto, userId: string): Promise<ReturnType<typeof toRealEstateListingSenderView>> {
     RealEstateListingsService.assertTransactionScopedFields(dto);
     RealEstateListingsService.assertPriceAndLocation(dto);
+    RealEstateListingsService.assertValidExpiry(dto);
     const entity = new RealEstateListing();
     RealEstateListingsService.applyDto(entity, dto);
     entity.createdBy = userId;
@@ -106,6 +119,7 @@ export class RealEstateListingsService {
   async update(id: string, dto: UpsertRealEstateListingDto, userId: string): Promise<ReturnType<typeof toRealEstateListingSenderView>> {
     RealEstateListingsService.assertTransactionScopedFields(dto);
     RealEstateListingsService.assertPriceAndLocation(dto);
+    RealEstateListingsService.assertValidExpiry(dto);
     const row = await this.loadOwned(id, userId);
     if (row.status === RealEstateListingStatus.CLOSED) {
       throw new ConflictException('Không thể sửa tin đã đóng — hãy mở lại tin trước (sẽ cần duyệt lại)');
@@ -220,6 +234,25 @@ export class RealEstateListingsService {
   async listPending(): Promise<ReturnType<typeof toRealEstateListingModeratorView>[]> {
     const rows = await this.repo.listPending();
     return rows.map(toRealEstateListingModeratorView);
+  }
+
+  // Khác listPending() (chỉ pending): mọi status, lọc tuỳ chọn theo status/người đăng — màn hình
+  // "quản lý tất cả tin" cho admin (Gói B, 17/10/2026), cùng mẫu JobListingsService.listAllForAdmin().
+  async listAllForAdmin(query: AdminListRealEstateListingsQueryDto) {
+    const page = clampPage(query.page);
+    const limit = clampLimit(query.limit);
+    const filter = { status: query.status, createdBy: query.created_by };
+    const [items, total] = await Promise.all([
+      this.repo.listAllForAdmin(filter, limit, (page - 1) * limit),
+      this.repo.countAllForAdmin(filter),
+    ]);
+    const creators = await this.repo.findCreatorSummaries([...new Set(items.map((row) => row.createdBy))]);
+    return paginate(
+      items.map((row) => toRealEstateListingAdminView(row, creators.get(row.createdBy) ?? null)),
+      page,
+      limit,
+      total,
+    );
   }
 
   async listMine(userId: string): Promise<ReturnType<typeof toRealEstateListingSenderView>[]> {

@@ -3,10 +3,10 @@ import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { JobListingsService } from './job-listings.service';
-import { DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
+import { AdminListJobListingsQueryDto, DecideJobListingDto, ListJobListingsQueryDto, UpsertJobListingDto } from './dto/job-listings.dto';
 
-// Cùng khuôn PlaceEditProposalsController: route 'mine' khai TRƯỚC ':id' để tránh ParseUUIDPipe
-// nuốt nhầm. Đọc công khai (list/detail) KHÔNG yêu cầu đăng nhập — @Public().
+// Cùng khuôn PlaceEditProposalsController: route 'mine'/'pending'/'admin' khai TRƯỚC ':id' để tránh
+// ParseUUIDPipe nuốt nhầm. Đọc công khai (list/detail) KHÔNG yêu cầu đăng nhập — @Public().
 @Controller('job-listings')
 export class JobListingsController {
   constructor(private readonly service: JobListingsService) {}
@@ -31,6 +31,14 @@ export class JobListingsController {
   @RequirePermissions('JobListing.Moderate')
   listPending() {
     return this.service.listPending();
+  }
+
+  // Khác 'pending' (chỉ chờ duyệt): mọi status, lọc tuỳ chọn theo status/người đăng — màn hình
+  // "quản lý tất cả tin" cho admin (Gói B, 17/10/2026).
+  @Get('admin')
+  @RequirePermissions('JobListing.Moderate')
+  listAllForAdmin(@Query() query: AdminListJobListingsQueryDto) {
+    return this.service.listAllForAdmin(query);
   }
 
   @Get(':id')

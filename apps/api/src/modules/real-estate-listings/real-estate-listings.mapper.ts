@@ -73,3 +73,12 @@ export function toRealEstateListingModeratorView(row: RealEstateListing) {
     reviewer_id: row.reviewerId,
   };
 }
+
+// Màn hình quản lý TOÀN BỘ tin (Gói B, 17/10/2026) — cùng lý do JobListing's toJobListingAdminView().
+export function toRealEstateListingAdminView(row: RealEstateListing, creator: { email: string; display_name: string } | null) {
+  return {
+    ...toRealEstateListingModeratorView(row),
+    creator_email: creator?.email ?? null,
+    creator_display_name: creator?.display_name ?? null,
+  };
+}

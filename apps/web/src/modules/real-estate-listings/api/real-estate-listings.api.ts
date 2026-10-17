@@ -1,8 +1,10 @@
-import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth, apiPost } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type {
+  AdminListRealEstateListingsFilter,
   DecideRealEstateListingInput,
   ListRealEstateListingsFilter,
+  RealEstateListingAdminView,
   RealEstateListingModeratorView,
   RealEstateListingPublicView,
   RealEstateListingSenderView,
@@ -90,4 +92,26 @@ export async function decideRealEstateListing(
   accessToken: string,
 ): Promise<RealEstateListingModeratorView> {
   return apiPost<RealEstateListingModeratorView>(`/real-estate-listings/${encodeURIComponent(id)}/decide`, accessToken, input);
+}
+
+function adminFilterQuery(filter: AdminListRealEstateListingsFilter): string {
+  const qs = new URLSearchParams();
+  if (filter.status) qs.set('status', filter.status);
+  if (filter.created_by) qs.set('created_by', filter.created_by);
+  if (filter.page) qs.set('page', String(filter.page));
+  if (filter.limit) qs.set('limit', String(filter.limit));
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+/** GET /real-estate-listings/admin (RealEstateListing.Moderate) — mọi status, lọc tuỳ chọn theo
+ *  status/người đăng. Khác listPendingRealEstateListings (chỉ pending) — màn hình quản lý TẤT CẢ
+ *  tin (Gói B, 17/10/2026). */
+export async function listRealEstateListingsForAdmin(
+  filter: AdminListRealEstateListingsFilter,
+  accessToken: string,
+): Promise<{ data: RealEstateListingAdminView[]; meta: PaginationMeta }> {
+  return apiGetPaginatedAuth<RealEstateListingAdminView>(`/real-estate-listings/admin${adminFilterQuery(filter)}`, accessToken, {
+    cache: 'no-store',
+  });
 }

@@ -10,6 +10,11 @@ export interface ListPublicRealEstateFilter {
   ward?: string;
 }
 
+export interface ListAdminRealEstateFilter {
+  status?: RealEstateListingStatus;
+  createdBy?: string;
+}
+
 @Injectable()
 export class RealEstateListingsRepository {
   constructor(@InjectRepository(RealEstateListing) private readonly repo: Repository<RealEstateListing>) {}
@@ -63,5 +68,31 @@ export class RealEstateListingsRepository {
 
   listPending(): Promise<RealEstateListing[]> {
     return this.repo.find({ where: { status: RealEstateListingStatus.PENDING }, order: { createdAt: 'ASC' } });
+  }
+
+  // Màn hình quản lý TOÀN BỘ tin (admin) — cùng lý do/mẫu JobListingsRepository.listAllForAdmin()
+  // (xem ghi chú đầy đủ ở đó): khác listPending() (chỉ pending), mọi status, lọc theo người đăng.
+  private adminQuery(filter: ListAdminRealEstateFilter) {
+    const qb = this.repo.createQueryBuilder('r');
+    if (filter.status) qb.andWhere('r.status = :status', { status: filter.status });
+    if (filter.createdBy) qb.andWhere('r.createdBy = :createdBy', { createdBy: filter.createdBy });
+    return qb;
+  }
+
+  listAllForAdmin(filter: ListAdminRealEstateFilter, limit: number, offset: number): Promise<RealEstateListing[]> {
+    return this.adminQuery(filter).orderBy('r.createdAt', 'DESC').limit(limit).offset(offset).getMany();
+  }
+
+  countAllForAdmin(filter: ListAdminRealEstateFilter): Promise<number> {
+    return this.adminQuery(filter).getCount();
+  }
+
+  async findCreatorSummaries(userIds: string[]): Promise<Map<string, { email: string; display_name: string }>> {
+    if (userIds.length === 0) return new Map();
+    const rows: Array<{ id: string; email: string; display_name: string }> = await this.repo.manager.query(
+      `SELECT id, email, display_name FROM users WHERE id = ANY($1)`,
+      [userIds],
+    );
+    return new Map(rows.map((r) => [r.id, { email: r.email, display_name: r.display_name }]));
   }
 }

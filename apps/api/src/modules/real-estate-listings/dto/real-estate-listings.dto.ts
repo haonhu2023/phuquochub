@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -15,6 +16,7 @@ import {
 import {
   RealEstateAddressPrecision,
   RealEstateFurnitureStatus,
+  RealEstateListingStatus,
   RealEstatePosterRole,
   RealEstatePropertyType,
   RealEstateRentPeriod,
@@ -118,6 +120,21 @@ export class ListRealEstateListingsQueryDto {
 
   @IsOptional() @IsString() @MaxLength(80)
   ward?: string;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50)
+  limit?: number;
+}
+
+// Màn hình quản lý TOÀN BỘ tin (admin) — khác ListRealEstateListingsQueryDto (công khai, chỉ published).
+export class AdminListRealEstateListingsQueryDto {
+  @IsOptional() @IsEnum(RealEstateListingStatus)
+  status?: RealEstateListingStatus;
+
+  @IsOptional() @IsUUID()
+  created_by?: string;
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   page?: number;

@@ -10,6 +10,11 @@ export interface ListPublicJobListingsFilter {
   employmentType?: string;
 }
 
+export interface ListAdminJobListingsFilter {
+  status?: JobListingStatus;
+  createdBy?: string;
+}
+
 @Injectable()
 export class JobListingsRepository {
   constructor(@InjectRepository(JobListing) private readonly repo: Repository<JobListing>) {}
@@ -77,6 +82,37 @@ export class JobListingsRepository {
   // Hàng chờ duyệt cho moderator.
   listPending(): Promise<JobListing[]> {
     return this.repo.find({ where: { status: JobListingStatus.PENDING }, order: { createdAt: 'ASC' } });
+  }
+
+  // Màn hình quản lý TOÀN BỘ tin (admin) — khác hẳn listPending(): mọi status, lọc theo người đăng.
+  // Gói B (17/10/2026): owner xác nhận "hàng chờ duyệt" (pending-only) KHÔNG phải màn hình quản lý
+  // tổng thể — moderator không có cách nào tìm tin đã published/closed/expired của người khác.
+  private adminQuery(filter: ListAdminJobListingsFilter) {
+    const qb = this.repo.createQueryBuilder('j');
+    if (filter.status) qb.andWhere('j.status = :status', { status: filter.status });
+    if (filter.createdBy) qb.andWhere('j.createdBy = :createdBy', { createdBy: filter.createdBy });
+    return qb;
+  }
+
+  listAllForAdmin(filter: ListAdminJobListingsFilter, limit: number, offset: number): Promise<JobListing[]> {
+    return this.adminQuery(filter).orderBy('j.createdAt', 'DESC').limit(limit).offset(offset).getMany();
+  }
+
+  countAllForAdmin(filter: ListAdminJobListingsFilter): Promise<number> {
+    return this.adminQuery(filter).getCount();
+  }
+
+  // Tra tên hiển thị/email người đăng cho màn hình admin — một truy vấn batch (cùng mẫu tránh N+1
+  // của ReviewsRepository.listPublishedByPlace() JOIN users), KHÔNG N truy vấn riêng cho mỗi tin.
+  // `created_by` không có FK đến users ở tầng entity (chỉ cột uuid trần, xem job-listing.entity.ts)
+  // nên tra trực tiếp bằng raw SQL, cùng mẫu findPlaceSummary() ở trên.
+  async findCreatorSummaries(userIds: string[]): Promise<Map<string, { email: string; display_name: string }>> {
+    if (userIds.length === 0) return new Map();
+    const rows: Array<{ id: string; email: string; display_name: string }> = await this.repo.manager.query(
+      `SELECT id, email, display_name FROM users WHERE id = ANY($1)`,
+      [userIds],
+    );
+    return new Map(rows.map((r) => [r.id, { email: r.email, display_name: r.display_name }]));
   }
 
   // "Place tùy chọn" (mục V đợt 3) — chỉ tên/slug để hiện một liên kết có ý nghĩa, KHÔNG injected

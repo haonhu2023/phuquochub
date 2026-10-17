@@ -146,6 +146,12 @@ export interface RealEstateListingModeratorView extends RealEstateListingSenderV
   reviewer_id: string | null;
 }
 
+// Gói B (17/10/2026) — cùng lý do JobListingAdminView (xem ghi chú ở đó).
+export interface RealEstateListingAdminView extends RealEstateListingModeratorView {
+  creator_email: string | null;
+  creator_display_name: string | null;
+}
+
 export interface UpsertRealEstateListingInput {
   poster_role: RealEstatePosterRole;
   transaction_type: RealEstateTransactionType;
@@ -184,6 +190,14 @@ export interface ListRealEstateListingsFilter {
   transaction_type?: RealEstateTransactionType;
   property_type?: RealEstatePropertyType;
   ward?: string;
+  page?: number;
+  limit?: number;
+}
+
+// Màn hình quản lý TOÀN BỘ tin (admin) — khác ListRealEstateListingsFilter (công khai, chỉ published).
+export interface AdminListRealEstateListingsFilter {
+  status?: RealEstateListingStatus;
+  created_by?: string;
   page?: number;
   limit?: number;
 }

@@ -62,3 +62,14 @@ export function toJobListingModeratorView(row: JobListing) {
     reviewed_at: row.reviewedAt ? row.reviewedAt.toISOString() : null,
   };
 }
+
+// Màn hình quản lý TOÀN BỘ tin (Gói B, 17/10/2026) — thêm danh tính người đăng đọc được (khác
+// toJobListingModeratorView's `created_by` UUID trần) vì admin cần "tìm tin theo người đăng", một
+// UUID không đủ để làm việc đó. `creator` null nếu user đã bị xoá (không throw — tin vẫn hiện được).
+export function toJobListingAdminView(row: JobListing, creator: { email: string; display_name: string } | null) {
+  return {
+    ...toJobListingModeratorView(row),
+    creator_email: creator?.email ?? null,
+    creator_display_name: creator?.display_name ?? null,
+  };
+}

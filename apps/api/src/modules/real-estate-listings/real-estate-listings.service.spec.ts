@@ -94,6 +94,9 @@ describe('RealEstateListingsService', () => {
       countPublic: jest.fn(),
       getPublicById: jest.fn(),
       listPending: jest.fn(),
+      listAllForAdmin: jest.fn(),
+      countAllForAdmin: jest.fn(),
+      findCreatorSummaries: jest.fn().mockResolvedValue(new Map()),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
     service = new RealEstateListingsService(repo, authz);
@@ -155,6 +158,13 @@ describe('RealEstateListingsService', () => {
     it('update tin không thuộc về mình → NotFoundException', async () => {
       repo.findById.mockResolvedValue(row({ createdBy: 'someone-else' }));
       await expect(service.update('rel-1', rentDto(), 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // "Sửa và gửi đăng lại" — cùng lý do JobListingsService (xem ghi chú ở đó): kiểm quyền này ở
+    // SERVER cho bước "gửi đăng lại" (submit), không chỉ bước "sửa" (update) đã có test ở trên.
+    it('submit tin không thuộc về mình → NotFoundException (không lộ tồn tại, chặn ở server)', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.DRAFT, createdBy: 'someone-else' }));
+      await expect(service.submit('rel-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('submit draft → pending', async () => {
@@ -306,6 +316,67 @@ describe('RealEstateListingsService', () => {
         0,
       );
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  // Gói B (17/10/2026) — cùng lý do/mẫu JobListingsService (xem ghi chú đầy đủ ở đó).
+  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — cùng lý do/mẫu JobListingsService (xem ghi chú đầy
+  // đủ ở đó). KHÔNG phải chính sách 30/60/90 ngày (chưa duyệt).
+  describe('assertValidExpiry (hạn mới hợp lệ khi sửa/gửi đăng lại)', () => {
+    it('create với expires_at ở quá khứ → BadRequestException', async () => {
+      await expect(service.create({ ...rentDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('update (sửa+gửi đăng lại) với expires_at ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.REJECTED, createdBy: 'u1' }));
+      await expect(
+        service.update('rel-1', { ...rentDto(), expires_at: '2000-01-01' }, 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('expires_at không đặt (null/undefined) → luôn hợp lệ', async () => {
+      await expect(service.create(rentDto(), 'u1')).resolves.toBeDefined();
+    });
+  });
+
+  describe('listAllForAdmin (màn hình quản lý toàn bộ tin)', () => {
+    it('có status/created_by → truyền đúng xuống repository (phân biệt với listPending chỉ-pending)', async () => {
+      repo.listAllForAdmin.mockResolvedValue([]);
+      repo.countAllForAdmin.mockResolvedValue(0);
+      await service.listAllForAdmin({ status: RealEstateListingStatus.CLOSED, created_by: 'owner-1', page: 2, limit: 10 });
+      expect(repo.listAllForAdmin).toHaveBeenCalledWith(
+        { status: RealEstateListingStatus.CLOSED, createdBy: 'owner-1' },
+        10,
+        10,
+      );
+    });
+
+    it('ghép đúng tên/email người đăng theo created_by của MỖI tin', async () => {
+      repo.listAllForAdmin.mockResolvedValue([
+        row({ id: 'rel-1', createdBy: 'owner-1', status: RealEstateListingStatus.PUBLISHED }),
+        row({ id: 'rel-2', createdBy: 'owner-2', status: RealEstateListingStatus.CLOSED }),
+      ]);
+      repo.countAllForAdmin.mockResolvedValue(2);
+      repo.findCreatorSummaries.mockResolvedValue(
+        new Map([
+          ['owner-1', { email: 'owner1@test.com', display_name: 'Chủ tin 1' }],
+          ['owner-2', { email: 'owner2@test.com', display_name: 'Chủ tin 2' }],
+        ]),
+      );
+      const result = await service.listAllForAdmin({});
+      expect(result.data[0]).toMatchObject({ id: 'rel-1', creator_email: 'owner1@test.com', creator_display_name: 'Chủ tin 1' });
+      expect(result.data[1]).toMatchObject({ id: 'rel-2', creator_email: 'owner2@test.com', creator_display_name: 'Chủ tin 2' });
+    });
+
+    it('người đăng đã bị xoá (không có trong map) → creator_email/creator_display_name null, KHÔNG throw', async () => {
+      repo.listAllForAdmin.mockResolvedValue([row({ id: 'rel-1', createdBy: 'ghost' })]);
+      repo.countAllForAdmin.mockResolvedValue(1);
+      repo.findCreatorSummaries.mockResolvedValue(new Map());
+      const result = await service.listAllForAdmin({});
+      expect(result.data[0]).toMatchObject({ creator_email: null, creator_display_name: null });
     });
   });
 });

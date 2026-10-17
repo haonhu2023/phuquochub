@@ -17,6 +17,7 @@ describe('JobListingsController', () => {
       listMine: jest.fn(),
       getMine: jest.fn(),
       listPending: jest.fn(),
+      listAllForAdmin: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       submit: jest.fn(),
@@ -67,5 +68,13 @@ describe('JobListingsController', () => {
   it('listPending: không tham số (service tự lọc PENDING)', () => {
     controller.listPending();
     expect(service.listPending).toHaveBeenCalledWith();
+  });
+
+  // Gói B (17/10/2026) — route riêng, KHÔNG dùng chung với listPending (hàng chờ duyệt KHÔNG phải
+  // màn hình quản lý tổng thể). Chuyển thẳng query xuống service (DTO đã validate hình dạng).
+  it('listAllForAdmin: chuyển thẳng query xuống service', () => {
+    const query = { created_by: 'owner-1' };
+    controller.listAllForAdmin(query);
+    expect(service.listAllForAdmin).toHaveBeenCalledWith(query);
   });
 });

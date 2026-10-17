@@ -14,6 +14,7 @@ describe('RealEstateListingsController', () => {
       listMine: jest.fn(),
       getMine: jest.fn(),
       listPending: jest.fn(),
+      listAllForAdmin: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       submit: jest.fn(),
@@ -73,5 +74,11 @@ describe('RealEstateListingsController', () => {
   it('listPending: không tham số', () => {
     controller.listPending();
     expect(service.listPending).toHaveBeenCalledWith();
+  });
+
+  it('listAllForAdmin: chuyển thẳng query xuống service', () => {
+    const query = { created_by: 'owner-1' };
+    controller.listAllForAdmin(query);
+    expect(service.listAllForAdmin).toHaveBeenCalledWith(query);
   });
 });

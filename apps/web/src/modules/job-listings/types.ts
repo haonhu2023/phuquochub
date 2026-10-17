@@ -88,6 +88,13 @@ export interface JobListingModeratorView extends JobListingSenderView {
   reviewer_id: string | null;
 }
 
+// Gói B (17/10/2026) — màn hình quản lý TOÀN BỘ tin (khác hàng chờ duyệt): cần danh tính người
+// đăng đọc được, `created_by` (UUID trần) không đủ để admin "tìm tin theo người đăng" trên UI.
+export interface JobListingAdminView extends JobListingModeratorView {
+  creator_email: string | null;
+  creator_display_name: string | null;
+}
+
 // Bug thiếu đã sửa (2026-10-11): "place tùy chọn" (mục V đợt 3) đã ghi được qua place_id từ lâu
 // nhưng response chỉ có id trần — không đủ để hiện lại cho người dùng chọn gì. Backend ghép thêm
 // tên/slug (JobListingsService.attachPlace()) CHỈ ở hai lời gọi đọc MỘT bản ghi (getMine/
@@ -137,6 +144,14 @@ export interface ListJobListingsFilter {
   job_category?: string;
   ward?: string;
   employment_type?: JobListingEmploymentType;
+  page?: number;
+  limit?: number;
+}
+
+// Màn hình quản lý TOÀN BỘ tin (admin) — khác ListJobListingsFilter (công khai, chỉ published).
+export interface AdminListJobListingsFilter {
+  status?: JobListingStatus;
+  created_by?: string;
   page?: number;
   limit?: number;
 }

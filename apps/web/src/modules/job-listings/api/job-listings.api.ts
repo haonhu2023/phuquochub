@@ -1,7 +1,9 @@
-import { apiGet, apiGetAuth, apiGetPaginated, apiPatchAuth, apiPost } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type {
+  AdminListJobListingsFilter,
   DecideJobListingInput,
+  JobListingAdminView,
   JobListingModeratorView,
   JobListingPublicDetailView,
   JobListingPublicView,
@@ -87,4 +89,26 @@ export async function decideJobListing(
   accessToken: string,
 ): Promise<JobListingModeratorView> {
   return apiPost<JobListingModeratorView>(`/job-listings/${encodeURIComponent(id)}/decide`, accessToken, input);
+}
+
+function adminFilterQuery(filter: AdminListJobListingsFilter): string {
+  const qs = new URLSearchParams();
+  if (filter.status) qs.set('status', filter.status);
+  if (filter.created_by) qs.set('created_by', filter.created_by);
+  if (filter.page) qs.set('page', String(filter.page));
+  if (filter.limit) qs.set('limit', String(filter.limit));
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+/** GET /job-listings/admin (JobListing.Moderate) — mọi status, lọc tuỳ chọn theo status/người
+ *  đăng. Khác listPendingJobListings (chỉ pending) — màn hình quản lý TẤT CẢ tin, không chỉ hàng
+ *  chờ duyệt (Gói B, 17/10/2026). */
+export async function listJobListingsForAdmin(
+  filter: AdminListJobListingsFilter,
+  accessToken: string,
+): Promise<{ data: JobListingAdminView[]; meta: PaginationMeta }> {
+  return apiGetPaginatedAuth<JobListingAdminView>(`/job-listings/admin${adminFilterQuery(filter)}`, accessToken, {
+    cache: 'no-store',
+  });
 }

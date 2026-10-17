@@ -66,6 +66,9 @@ describe('JobListingsService', () => {
       getPublicById: jest.fn(),
       listPending: jest.fn(),
       findPlaceSummary: jest.fn().mockResolvedValue(null),
+      listAllForAdmin: jest.fn(),
+      countAllForAdmin: jest.fn(),
+      findCreatorSummaries: jest.fn().mockResolvedValue(new Map()),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
     service = new JobListingsService(repo, authz);
@@ -112,6 +115,41 @@ describe('JobListingsService', () => {
     it('submit tin không tồn tại → NotFoundException', async () => {
       repo.findById.mockResolvedValue(null);
       await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    // "Sửa và gửi đăng lại" — owner yêu cầu kiểm quyền này Ở SERVER, không chỉ ẩn nút phía web.
+    // update() đã có test tương ứng ở trên; submit() (bước "gửi đăng lại" sau khi sửa) CHƯA có,
+    // thêm ở đây cho đủ cả hai bước của luồng.
+    it('submit tin không thuộc về mình → NotFoundException (không lộ tồn tại, chặn ở server)', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.DRAFT, createdBy: 'someone-else' }));
+      await expect(service.submit('job-1', 'u1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  // "Sửa và gửi đăng lại" (Gói B, 17/10/2026) — owner yêu cầu "chọn hạn mới hợp lệ". KHÔNG phải
+  // chính sách 30/60/90 ngày (chưa duyệt) — chỉ chặn lưu một expires_at đã ở quá khứ.
+  describe('assertValidExpiry (hạn mới hợp lệ khi sửa/gửi đăng lại)', () => {
+    it('create với expires_at ở quá khứ → BadRequestException', async () => {
+      await expect(service.create({ ...baseDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
+    it('update (sửa+gửi đăng lại) với expires_at ở quá khứ → BadRequestException, KHÔNG gọi repo.save', async () => {
+      repo.findById.mockResolvedValue(row({ status: JobListingStatus.REJECTED, createdBy: 'u1' }));
+      await expect(service.update('job-1', { ...baseDto(), expires_at: '2000-01-01' }, 'u1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('expires_at = hôm nay hoặc tương lai → hợp lệ, không throw', async () => {
+      const farFuture = '2099-12-31';
+      await expect(service.create({ ...baseDto(), expires_at: farFuture }, 'u1')).resolves.toBeDefined();
+    });
+
+    it('expires_at không đặt (null/undefined) → luôn hợp lệ, không bắt buộc phải có hạn', async () => {
+      await expect(service.create(baseDto(), 'u1')).resolves.toBeDefined();
     });
   });
 
@@ -284,6 +322,55 @@ describe('JobListingsService', () => {
       );
       expect(result.meta.page).toBe(2);
       expect(result.data).toHaveLength(1);
+    });
+  });
+
+  // Gói B (17/10/2026) — khác listPending() (chỉ pending): mọi status, lọc theo người đăng, kèm
+  // danh tính người đăng đọc được (owner xác nhận "hàng chờ duyệt" KHÔNG phải màn hình quản lý tổng thể).
+  describe('listAllForAdmin (màn hình quản lý toàn bộ tin)', () => {
+    it('không lọc status/created_by → chuyển filter {} xuống repository, không ép status nào', async () => {
+      repo.listAllForAdmin.mockResolvedValue([]);
+      repo.countAllForAdmin.mockResolvedValue(0);
+      await service.listAllForAdmin({});
+      expect(repo.listAllForAdmin).toHaveBeenCalledWith({ status: undefined, createdBy: undefined }, 20, 0);
+      expect(repo.countAllForAdmin).toHaveBeenCalledWith({ status: undefined, createdBy: undefined });
+    });
+
+    it('có status/created_by → truyền đúng xuống repository (phân biệt với listPending chỉ-pending)', async () => {
+      repo.listAllForAdmin.mockResolvedValue([]);
+      repo.countAllForAdmin.mockResolvedValue(0);
+      await service.listAllForAdmin({ status: JobListingStatus.CLOSED, created_by: 'owner-1', page: 2, limit: 10 });
+      expect(repo.listAllForAdmin).toHaveBeenCalledWith(
+        { status: JobListingStatus.CLOSED, createdBy: 'owner-1' },
+        10,
+        10,
+      );
+    });
+
+    it('ghép đúng tên/email người đăng theo created_by của MỖI tin (không phải một giá trị cố định)', async () => {
+      repo.listAllForAdmin.mockResolvedValue([
+        row({ id: 'job-1', createdBy: 'owner-1', status: JobListingStatus.PUBLISHED }),
+        row({ id: 'job-2', createdBy: 'owner-2', status: JobListingStatus.CLOSED }),
+      ]);
+      repo.countAllForAdmin.mockResolvedValue(2);
+      repo.findCreatorSummaries.mockResolvedValue(
+        new Map([
+          ['owner-1', { email: 'owner1@test.com', display_name: 'Chủ tin 1' }],
+          ['owner-2', { email: 'owner2@test.com', display_name: 'Chủ tin 2' }],
+        ]),
+      );
+      const result = await service.listAllForAdmin({});
+      expect(repo.findCreatorSummaries).toHaveBeenCalledWith(['owner-1', 'owner-2']);
+      expect(result.data[0]).toMatchObject({ id: 'job-1', creator_email: 'owner1@test.com', creator_display_name: 'Chủ tin 1' });
+      expect(result.data[1]).toMatchObject({ id: 'job-2', creator_email: 'owner2@test.com', creator_display_name: 'Chủ tin 2' });
+    });
+
+    it('người đăng đã bị xoá (không có trong map) → creator_email/creator_display_name null, KHÔNG throw', async () => {
+      repo.listAllForAdmin.mockResolvedValue([row({ id: 'job-1', createdBy: 'ghost' })]);
+      repo.countAllForAdmin.mockResolvedValue(1);
+      repo.findCreatorSummaries.mockResolvedValue(new Map());
+      const result = await service.listAllForAdmin({});
+      expect(result.data[0]).toMatchObject({ creator_email: null, creator_display_name: null });
     });
   });
 });

@@ -14,7 +14,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { JobListingEmploymentType, JobListingSalaryPeriod } from '../job-listings.enums';
+import { JobListingEmploymentType, JobListingSalaryPeriod, JobListingStatus } from '../job-listings.enums';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -99,6 +99,21 @@ export class ListJobListingsQueryDto {
 
   @IsOptional() @IsEnum(JobListingEmploymentType)
   employment_type?: JobListingEmploymentType;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50)
+  limit?: number;
+}
+
+// Màn hình quản lý TOÀN BỘ tin (admin) — khác ListJobListingsQueryDto (công khai, chỉ published).
+export class AdminListJobListingsQueryDto {
+  @IsOptional() @IsEnum(JobListingStatus)
+  status?: JobListingStatus;
+
+  @IsOptional() @IsUUID()
+  created_by?: string;
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1)
   page?: number;

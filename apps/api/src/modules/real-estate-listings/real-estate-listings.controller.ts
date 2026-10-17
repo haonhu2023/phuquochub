@@ -3,9 +3,14 @@ import { Public } from '../authz/decorators/public.decorator';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { RealEstateListingsService } from './real-estate-listings.service';
-import { DecideRealEstateListingDto, ListRealEstateListingsQueryDto, UpsertRealEstateListingDto } from './dto/real-estate-listings.dto';
+import {
+  AdminListRealEstateListingsQueryDto,
+  DecideRealEstateListingDto,
+  ListRealEstateListingsQueryDto,
+  UpsertRealEstateListingDto,
+} from './dto/real-estate-listings.dto';
 
-// Cùng khuôn JobListingsController: route 'mine'/'pending' khai TRƯỚC ':id'. Đọc công khai
+// Cùng khuôn JobListingsController: route 'mine'/'pending'/'admin' khai TRƯỚC ':id'. Đọc công khai
 // KHÔNG yêu cầu đăng nhập. close/reopen/mark-* không có @RequirePermissions tĩnh — quyết định
 // sở hữu-hoặc-moderator nằm trong service (xem RealEstateListingsService.loadOwnedOrModerated()).
 @Controller('real-estate-listings')
@@ -32,6 +37,14 @@ export class RealEstateListingsController {
   @RequirePermissions('RealEstateListing.Moderate')
   listPending() {
     return this.service.listPending();
+  }
+
+  // Khác 'pending' (chỉ chờ duyệt): mọi status, lọc tuỳ chọn theo status/người đăng — màn hình
+  // "quản lý tất cả tin" cho admin (Gói B, 17/10/2026).
+  @Get('admin')
+  @RequirePermissions('RealEstateListing.Moderate')
+  listAllForAdmin(@Query() query: AdminListRealEstateListingsQueryDto) {
+    return this.service.listAllForAdmin(query);
   }
 
   @Get(':id')
