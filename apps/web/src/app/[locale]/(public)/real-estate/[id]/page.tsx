@@ -23,9 +23,11 @@ export async function generateMetadata({ params }: Params) {
   const { id, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
-    const listing = await getRealEstateListing(id);
+    // Gói C (17/10/2026) — truyền `locale` để metadata khớp đúng nội dung thực sự phục vụ (cùng
+    // lý do jobs/[id]/page.tsx — xem ghi chú ở đó).
+    const listing = await getRealEstateListing(id, locale);
     return {
-      title: `${listing.title} · Bất động sản · PhuQuocHub`,
+      title: `${listing.title} · ${locale === 'en' ? 'Real Estate' : 'Bất động sản'} · PhuQuocHub`,
       description: listing.description ?? undefined,
       alternates: { canonical: localizedHref(locale, `/real-estate/${listing.id}`) },
     };
@@ -44,13 +46,18 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
   const locale = localeParam as Locale;
   let listing;
   try {
-    listing = await getRealEstateListing(id);
+    listing = await getRealEstateListing(id, locale);
   } catch (err) {
     if (err instanceof ApiError && err.isNotFound) {
       notFound();
     }
     throw err;
   }
+
+  // Gói C (17/10/2026) — cùng lý do jobs/[id]/page.tsx (xem ghi chú đầy đủ ở đó): `listing.locale`
+  // là nội dung THỰC SỰ phục vụ, có thể khác locale của route.
+  const showViFallbackNotice = locale === 'en' && listing.locale === 'vi';
+  const showStaleNotice = listing.locale === 'en' && listing.is_translation_stale;
 
   const t = {
     location: locale === 'en' ? 'Location' : 'Khu vực',
@@ -90,6 +97,18 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRealEstateListingJsonLd(listing)) }}
       />
+      {showViFallbackNotice && (
+        <p className={placesStyles.state} role="note">
+          This listing has not been translated into English yet. The details below are shown in Vietnamese as originally posted.
+        </p>
+      )}
+      {showStaleNotice && (
+        <p className={placesStyles.state} role="note">
+          {locale === 'en'
+            ? 'This English listing may not reflect the latest details — some information was updated after translation.'
+            : 'Phiên bản tiếng Anh của tin này có thể chưa phản ánh thông tin mới nhất — một số dữ kiện đã thay đổi sau khi dịch.'}
+        </p>
+      )}
       <header className={placesStyles.pageHeader}>
         <h1 className={placesStyles.pageTitle}>{listing.title}</h1>
         <p className={placesStyles.pageLede}>

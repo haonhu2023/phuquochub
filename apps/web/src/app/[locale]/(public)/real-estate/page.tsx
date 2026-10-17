@@ -81,6 +81,7 @@ export default async function RealEstateListingsPage({ params, searchParams }: P
     transaction_type: transactionType,
     property_type: propertyType,
     ward,
+    locale,
   });
 
   const baseQuery = new URLSearchParams();

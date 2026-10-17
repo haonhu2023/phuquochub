@@ -133,7 +133,13 @@ export interface RealEstateListingBaseView {
   updated_at: string;
 }
 
-export type RealEstateListingPublicView = RealEstateListingBaseView;
+// Gói C (17/10/2026) — `locale` phản ánh NỘI DUNG THỰC SỰ đã trả, không phải locale yêu cầu trong
+// query (cùng lý do JobListingPublicView — xem ghi chú ở đó). Dùng cho CẢ danh sách (chỉ overlay
+// `title`, không có `is_translation_stale`) lẫn chi tiết — `RealEstateListingPublicDetailView`
+// dưới đây thêm `is_translation_stale` (chỉ có nghĩa — và chỉ backend trả — ở chi tiết MỘT tin).
+export type RealEstateListingPublicView = RealEstateListingBaseView & { locale: 'vi' | 'en' };
+
+export type RealEstateListingPublicDetailView = RealEstateListingPublicView & { is_translation_stale: boolean };
 
 export interface RealEstateListingSenderView extends RealEstateListingBaseView {
   status: RealEstateListingStatus;
@@ -192,6 +198,7 @@ export interface ListRealEstateListingsFilter {
   ward?: string;
   page?: number;
   limit?: number;
+  locale?: 'vi' | 'en';
 }
 
 // Màn hình quản lý TOÀN BỘ tin (admin) — khác ListRealEstateListingsFilter (công khai, chỉ published).
@@ -200,4 +207,58 @@ export interface AdminListRealEstateListingsFilter {
   created_by?: string;
   page?: number;
   limit?: number;
+}
+
+// Gói C phần 2/2 (17/10/2026) — bản dịch tiếng Anh. Vòng đời RIÊNG, ĐỘC LẬP với RealEstateListingStatus
+// (cùng khuôn JobListingTranslationView — xem ghi chú ở đó). Field dịch KHÁC job_listings (schema
+// BĐS khác): title/description/utilities_note/legal_status_note.
+export const REAL_ESTATE_LISTING_TRANSLATION_STATUSES = ['draft', 'pending', 'published', 'rejected'] as const;
+export type RealEstateListingTranslationStatus = (typeof REAL_ESTATE_LISTING_TRANSLATION_STATUSES)[number];
+
+export const REAL_ESTATE_LISTING_TRANSLATION_STATUS_LABELS: Record<RealEstateListingTranslationStatus, string> = {
+  draft: 'Nháp',
+  pending: 'Đang chờ duyệt',
+  published: 'Đã duyệt — đang hiện công khai',
+  rejected: 'Bị từ chối',
+};
+
+export interface RealEstateListingTranslationView {
+  id: string;
+  real_estate_listing_id: string;
+  locale: string;
+  title: string | null;
+  description: string | null;
+  utilities_note: string | null;
+  legal_status_note: string | null;
+  status: RealEstateListingTranslationStatus;
+  review_note: string | null;
+  reviewed_at: string | null;
+  has_published: boolean;
+  published_at: string | null;
+  content_version: number;
+  created_at: string;
+  updated_at: string;
+  is_stale: boolean | null;
+  is_published_stale: boolean | null;
+}
+
+export interface RealEstateListingTranslationModeratorView extends RealEstateListingTranslationView {
+  source_title: string;
+  source_description: string | null;
+  source_utilities_note: string | null;
+  source_legal_status_note: string | null;
+}
+
+export interface UpsertRealEstateListingTranslationInput {
+  title?: string | null;
+  description?: string | null;
+  utilities_note?: string | null;
+  legal_status_note?: string | null;
+  expected_content_version?: number;
+}
+
+export interface DecideRealEstateListingTranslationInput {
+  decision: RealEstateDecision;
+  note?: string;
+  expected_content_version: number;
 }

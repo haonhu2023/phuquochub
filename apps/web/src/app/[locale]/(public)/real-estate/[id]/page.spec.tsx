@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import { render, screen } from '@testing-library/react';
 import { getRealEstateListing } from '@/modules/real-estate-listings/api/real-estate-listings.api';
-import type { RealEstateListingPublicView } from '@/modules/real-estate-listings/types';
+import type { RealEstateListingPublicDetailView } from '@/modules/real-estate-listings/types';
 import RealEstateListingDetailPage from './page';
 
 jest.mock('@/modules/real-estate-listings/api/real-estate-listings.api', () => ({ getRealEstateListing: jest.fn() }));
@@ -11,7 +11,7 @@ jest.mock('@/modules/real-estate-listing-photos/RealEstateListingPhotoGallery', 
 
 const mockGetListing = getRealEstateListing as jest.Mock;
 
-function listing(overrides: Partial<RealEstateListingPublicView> = {}): RealEstateListingPublicView {
+function listing(overrides: Partial<RealEstateListingPublicDetailView> = {}): RealEstateListingPublicDetailView {
   return {
     id: 'r1',
     poster_role: 'owner',
@@ -42,11 +42,13 @@ function listing(overrides: Partial<RealEstateListingPublicView> = {}): RealEsta
     published_at: '2026-01-05T00:00:00.000Z',
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-05T00:00:00.000Z',
+    locale: 'vi',
+    is_translation_stale: false,
     ...overrides,
   };
 }
 
-async function renderPage(l: RealEstateListingPublicView, locale = 'vi') {
+async function renderPage(l: RealEstateListingPublicDetailView, locale = 'vi') {
   mockGetListing.mockResolvedValueOnce(l);
   render(await RealEstateListingDetailPage({ params: Promise.resolve({ id: l.id, locale }) }));
 }
@@ -119,5 +121,34 @@ describe('RealEstateListingDetailPage — giữ xuống dòng mô tả/tiện í
       }),
     );
     expect(screen.getByText(/Sổ đỏ riêng/).textContent).toBe('Sổ đỏ riêng.\nChưa tách thửa.');
+  });
+});
+
+// Gói C (17/10/2026) — cùng lý do jobs/[id]/page.spec.tsx (xem ghi chú ở đó).
+describe('RealEstateListingDetailPage — thông báo fallback/lỗi thời bản dịch (Gói C)', () => {
+  it('route /en nhưng CHƯA có bản dịch (locale trả về "vi") → ghi chú bằng tiếng Anh', async () => {
+    await renderPage(listing({ locale: 'vi' }), 'en');
+    expect(screen.getByText(/has not been translated into English yet/)).toBeInTheDocument();
+  });
+
+  it('route /vi → KHÔNG hiện ghi chú fallback/lỗi thời nào', async () => {
+    await renderPage(listing({ locale: 'vi' }), 'vi');
+    expect(screen.queryByText(/has not been translated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/chưa phản ánh thông tin mới nhất/)).not.toBeInTheDocument();
+  });
+
+  it('có bản dịch nhưng is_translation_stale=true, route /en → cảnh báo bằng tiếng Anh', async () => {
+    await renderPage(listing({ locale: 'en', is_translation_stale: true }), 'en');
+    expect(screen.getByText(/may not reflect the latest details/)).toBeInTheDocument();
+  });
+
+  it('có bản dịch, is_translation_stale=true, route /vi → cảnh báo bằng tiếng Việt', async () => {
+    await renderPage(listing({ locale: 'en', is_translation_stale: true }), 'vi');
+    expect(screen.getByText(/chưa phản ánh thông tin mới nhất/)).toBeInTheDocument();
+  });
+
+  it('is_translation_stale=false → KHÔNG hiện cảnh báo', async () => {
+    await renderPage(listing({ locale: 'en', is_translation_stale: false }), 'en');
+    expect(screen.queryByText(/may not reflect the latest details/)).not.toBeInTheDocument();
   });
 });

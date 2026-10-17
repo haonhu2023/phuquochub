@@ -49,6 +49,7 @@ export function DashboardNav() {
     { href: '/dashboard/job-listings/admin', label: 'Quản lý tất cả tin tuyển dụng', show: caps.canReviewJobListings },
     { href: '/dashboard/real-estate', label: 'Tin bất động sản của tôi', show: true },
     { href: '/dashboard/real-estate/moderation', label: 'Duyệt tin bất động sản', show: caps.canReviewRealEstateListings },
+    { href: '/dashboard/real-estate/translations', label: 'Duyệt bản dịch tiếng Anh (BĐS)', show: caps.canReviewRealEstateListings },
     { href: '/dashboard/real-estate/admin', label: 'Quản lý tất cả tin bất động sản', show: caps.canReviewRealEstateListings },
     { href: '/dashboard/saved', label: 'Tin đã lưu', show: true },
     {

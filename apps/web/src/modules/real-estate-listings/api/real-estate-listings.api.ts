@@ -1,14 +1,19 @@
-import { apiGet, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost } from '@/lib/http';
+import { apiGet, apiGetAuth, apiGetPaginated, apiGetPaginatedAuth, apiPatchAuth, apiPost, apiPutAuth } from '@/lib/http';
 import type { PaginationMeta } from '@phuquochub/shared-types';
 import type {
   AdminListRealEstateListingsFilter,
   DecideRealEstateListingInput,
+  DecideRealEstateListingTranslationInput,
   ListRealEstateListingsFilter,
   RealEstateListingAdminView,
   RealEstateListingModeratorView,
+  RealEstateListingPublicDetailView,
   RealEstateListingPublicView,
   RealEstateListingSenderView,
+  RealEstateListingTranslationModeratorView,
+  RealEstateListingTranslationView,
   UpsertRealEstateListingInput,
+  UpsertRealEstateListingTranslationInput,
 } from '../types';
 
 function filterQuery(filter: ListRealEstateListingsFilter): string {
@@ -18,6 +23,7 @@ function filterQuery(filter: ListRealEstateListingsFilter): string {
   if (filter.ward) qs.set('ward', filter.ward);
   if (filter.page) qs.set('page', String(filter.page));
   if (filter.limit) qs.set('limit', String(filter.limit));
+  if (filter.locale) qs.set('locale', filter.locale);
   const s = qs.toString();
   return s ? `?${s}` : '';
 }
@@ -28,8 +34,12 @@ export async function listRealEstateListings(
   return apiGetPaginated<RealEstateListingPublicView>(`/real-estate-listings${filterQuery(filter)}`, { cache: 'no-store' });
 }
 
-export async function getRealEstateListing(id: string): Promise<RealEstateListingPublicView> {
-  return apiGet<RealEstateListingPublicView>(`/real-estate-listings/${encodeURIComponent(id)}`, { cache: 'no-store' });
+/** `locale` (Gói C) — response LUÔN có field `locale` phản ánh nội dung THỰC SỰ đã trả, có thể
+ *  khác locale yêu cầu (chưa có bản dịch đã duyệt → vẫn tiếng Việt) — trang gọi hàm này phải ĐỌC
+ *  lại field đó, không giả định. */
+export async function getRealEstateListing(id: string, locale?: 'vi' | 'en'): Promise<RealEstateListingPublicDetailView> {
+  const qs = locale ? `?${new URLSearchParams({ locale }).toString()}` : '';
+  return apiGet<RealEstateListingPublicDetailView>(`/real-estate-listings/${encodeURIComponent(id)}${qs}`, { cache: 'no-store' });
 }
 
 export async function listMyRealEstateListings(accessToken: string): Promise<RealEstateListingSenderView[]> {
@@ -114,4 +124,38 @@ export async function listRealEstateListingsForAdmin(
   return apiGetPaginatedAuth<RealEstateListingAdminView>(`/real-estate-listings/admin${adminFilterQuery(filter)}`, accessToken, {
     cache: 'no-store',
   });
+}
+
+// --- Gói C phần 2/2 (17/10/2026) — bản dịch tiếng Anh ---
+
+export async function getMyRealEstateListingTranslation(id: string, accessToken: string): Promise<RealEstateListingTranslationView | null> {
+  return apiGetAuth<RealEstateListingTranslationView | null>(`/real-estate-listings/${encodeURIComponent(id)}/translations/en`, accessToken, {
+    cache: 'no-store',
+  });
+}
+
+export async function saveRealEstateListingTranslation(
+  id: string,
+  input: UpsertRealEstateListingTranslationInput,
+  accessToken: string,
+): Promise<RealEstateListingTranslationView> {
+  return apiPutAuth<RealEstateListingTranslationView>(`/real-estate-listings/${encodeURIComponent(id)}/translations/en`, accessToken, input);
+}
+
+export async function submitRealEstateListingTranslation(id: string, accessToken: string): Promise<RealEstateListingTranslationView> {
+  return apiPost<RealEstateListingTranslationView>(`/real-estate-listings/${encodeURIComponent(id)}/translations/en/submit`, accessToken);
+}
+
+export async function listPendingRealEstateListingTranslations(accessToken: string): Promise<RealEstateListingTranslationModeratorView[]> {
+  return apiGetAuth<RealEstateListingTranslationModeratorView[]>('/real-estate-listings/translations/en/pending', accessToken, {
+    cache: 'no-store',
+  });
+}
+
+export async function decideRealEstateListingTranslation(
+  id: string,
+  input: DecideRealEstateListingTranslationInput,
+  accessToken: string,
+): Promise<RealEstateListingTranslationView> {
+  return apiPost<RealEstateListingTranslationView>(`/real-estate-listings/${encodeURIComponent(id)}/translations/en/decide`, accessToken, input);
 }
