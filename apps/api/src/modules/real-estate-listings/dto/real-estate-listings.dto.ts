@@ -126,6 +126,16 @@ export class ListRealEstateListingsQueryDto {
 
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50)
   limit?: number;
+
+  // Gói C §3 (17/10/2026) — cùng lý do ListJobListingsQueryDto's `locale` (xem ghi chú ở đó).
+  @IsOptional() @IsIn(['vi', 'en'])
+  locale?: 'vi' | 'en';
+}
+
+// Gói C (17/10/2026) — cùng lý do GetJobListingDetailQueryDto (xem ghi chú ở đó).
+export class GetRealEstateListingDetailQueryDto {
+  @IsOptional() @IsIn(['vi', 'en'])
+  locale?: 'vi' | 'en';
 }
 
 // Màn hình quản lý TOÀN BỘ tin (admin) — khác ListRealEstateListingsQueryDto (công khai, chỉ published).

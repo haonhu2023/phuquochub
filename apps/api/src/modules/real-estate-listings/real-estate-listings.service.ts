@@ -3,11 +3,14 @@ import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
 import { AuthorizationService } from '../authz/authorization.service';
 import { RealEstateListingsRepository } from './repositories/real-estate-listings.repository';
+import { RealEstateListingTranslationsRepository } from './repositories/real-estate-listing-translations.repository';
 import { RealEstateListing } from './entities/real-estate-listing.entity';
+import { RealEstateListingTranslation } from './entities/real-estate-listing-translation.entity';
 import { RealEstateAddressPrecision, RealEstateDealStatus, RealEstateListingStatus, RealEstateTransactionType } from './real-estate-listings.enums';
 import {
   AdminListRealEstateListingsQueryDto,
   DecideRealEstateListingDto,
+  GetRealEstateListingDetailQueryDto,
   ListRealEstateListingsQueryDto,
   UpsertRealEstateListingDto,
 } from './dto/real-estate-listings.dto';
@@ -17,6 +20,7 @@ import {
   toRealEstateListingPublicView,
   toRealEstateListingSenderView,
 } from './real-estate-listings.mapper';
+import { isRealEstateListingTranslationStale } from './real-estate-listing-translation-hash';
 
 // Bảng chuyển trạng thái — CÙNG job_listings (§13r/§13u), cộng deal_status ĐỘC LẬP:
 //   status: draft --submit--> pending --decide--> published/rejected ; rejected --submit--> pending
@@ -30,6 +34,7 @@ export class RealEstateListingsService {
   constructor(
     private readonly repo: RealEstateListingsRepository,
     private readonly authz: AuthorizationService,
+    private readonly translationsRepo: RealEstateListingTranslationsRepository,
   ) {}
 
   private static assertTransactionScopedFields(dto: UpsertRealEstateListingDto): void {
@@ -283,6 +288,8 @@ export class RealEstateListingsService {
     return toRealEstateListingSenderView(row);
   }
 
+  // Gói C §3 (17/10/2026) — cùng lý do JobListingsService.listPublic() (xem ghi chú đầy đủ ở đó):
+  // overlay title theo locale, batch MỘT truy vấn cho cả trang — không N+1.
   async listPublic(query: ListRealEstateListingsQueryDto) {
     const page = clampPage(query.page);
     const limit = clampLimit(query.limit);
@@ -291,12 +298,50 @@ export class RealEstateListingsService {
       this.repo.listPublic(filter, limit, (page - 1) * limit),
       this.repo.countPublic(filter),
     ]);
-    return paginate(items.map(toRealEstateListingPublicView), page, limit, total);
+    const translations =
+      query.locale === 'en'
+        ? await this.translationsRepo.findByRealEstateListingIds(items.map((i) => i.id))
+        : new Map<string, RealEstateListingTranslation>();
+    const views = items.map((row) => {
+      const base = toRealEstateListingPublicView(row);
+      const translation = translations.get(row.id);
+      if (query.locale === 'en' && translation?.publishedTitle != null) {
+        return { ...base, title: translation.publishedTitle, locale: 'en' as const };
+      }
+      return { ...base, locale: 'vi' as const };
+    });
+    return paginate(views, page, limit, total);
   }
 
-  async getPublicById(id: string): Promise<ReturnType<typeof toRealEstateListingPublicView>> {
+  // Gói C (17/10/2026) — cùng lý do JobListingsService.getPublicById() (xem ghi chú đầy đủ ở đó):
+  // đọc published* (KHÔNG title/description trần của bảng dịch — đó là vùng nháp), kiểm
+  // `publishedTitle != null` KHÔNG kiểm `status`. `locale` trong response LUÔN phản ánh nội dung
+  // THỰC SỰ đã trả.
+  async getPublicById(
+    id: string,
+    locale?: GetRealEstateListingDetailQueryDto['locale'],
+  ): Promise<ReturnType<typeof toRealEstateListingPublicView> & { locale: 'vi' | 'en'; is_translation_stale: boolean }> {
     const row = await this.repo.getPublicById(id);
     if (!row) throw new NotFoundException('Không tìm thấy tin bất động sản');
-    return toRealEstateListingPublicView(row);
+    const base = toRealEstateListingPublicView(row);
+
+    if (locale === 'en') {
+      const translation = await this.translationsRepo.findByRealEstateListingId(id);
+      if (translation && translation.publishedTitle != null) {
+        const stale = translation.publishedSourceContentHash
+          ? isRealEstateListingTranslationStale(translation.publishedSourceContentHash, row)
+          : false;
+        return {
+          ...base,
+          title: translation.publishedTitle,
+          description: translation.publishedDescription ?? base.description,
+          utilities_note: translation.publishedUtilitiesNote ?? base.utilities_note,
+          legal_status_note: translation.publishedLegalStatusNote ?? base.legal_status_note,
+          locale: 'en',
+          is_translation_stale: stale,
+        };
+      }
+    }
+    return { ...base, locale: 'vi', is_translation_stale: false };
   }
 }

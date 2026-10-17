@@ -31,8 +31,13 @@ describe('RealEstateListingsController', () => {
   it('list/getById: công khai, không đụng user', () => {
     controller.list({});
     expect(service.listPublic).toHaveBeenCalledWith({});
-    controller.getById('rel-1');
-    expect(service.getPublicById).toHaveBeenCalledWith('rel-1');
+    controller.getById('rel-1', {});
+    expect(service.getPublicById).toHaveBeenCalledWith('rel-1', undefined);
+  });
+
+  it('getById: chuyển đúng locale xuống service', () => {
+    controller.getById('rel-1', { locale: 'en' });
+    expect(service.getPublicById).toHaveBeenCalledWith('rel-1', 'en');
   });
 
   it('listMine/getMine: dùng user.sub', () => {

@@ -6,6 +6,7 @@ import { RealEstateListingsService } from './real-estate-listings.service';
 import {
   AdminListRealEstateListingsQueryDto,
   DecideRealEstateListingDto,
+  GetRealEstateListingDetailQueryDto,
   ListRealEstateListingsQueryDto,
   UpsertRealEstateListingDto,
 } from './dto/real-estate-listings.dto';
@@ -49,8 +50,8 @@ export class RealEstateListingsController {
 
   @Get(':id')
   @Public()
-  getById(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getPublicById(id);
+  getById(@Param('id', ParseUUIDPipe) id: string, @Query() query: GetRealEstateListingDetailQueryDto) {
+    return this.service.getPublicById(id, query.locale);
   }
 
   @Post()

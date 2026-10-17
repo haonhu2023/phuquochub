@@ -66,3 +66,13 @@ export const REAL_ESTATE_DEAL_STATUS_LABELS: Record<RealEstateDealStatus, string
   [RealEstateDealStatus.RENTED]: 'Đã cho thuê',
   [RealEstateDealStatus.SOLD]: 'Đã bán',
 };
+
+// Gói C phần 2/2 (17/10/2026) — vòng đời bản dịch tiếng Anh, cùng khuôn JobListingTranslationStatus
+// (xem ghi chú đầy đủ ở đó): vocabulary chung nhưng state machine RIÊNG, độc lập hoàn toàn với
+// RealEstateListingStatus.
+export enum RealEstateListingTranslationStatus {
+  DRAFT = 'draft',
+  PENDING = 'pending',
+  PUBLISHED = 'published',
+  REJECTED = 'rejected',
+}

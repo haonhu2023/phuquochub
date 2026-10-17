@@ -11,6 +11,36 @@ import {
 } from './real-estate-listings.enums';
 import { UpsertRealEstateListingDto } from './dto/real-estate-listings.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
+import { RealEstateListingTranslation } from './entities/real-estate-listing-translation.entity';
+import { RealEstateListingTranslationStatus } from './real-estate-listings.enums';
+import { computeRealEstateListingSourceHash } from './real-estate-listing-translation-hash';
+
+function translationRow(overrides: Partial<RealEstateListingTranslation> = {}): RealEstateListingTranslation {
+  const t = new RealEstateListingTranslation();
+  t.id = 'tr-1';
+  t.realEstateListingId = 'rel-1';
+  t.locale = 'en';
+  t.title = 'EN title';
+  t.description = 'EN description';
+  t.utilitiesNote = null;
+  t.legalStatusNote = null;
+  t.status = RealEstateListingTranslationStatus.DRAFT;
+  t.reviewNote = null;
+  t.reviewerId = null;
+  t.reviewedAt = null;
+  t.sourceContentHash = 'hash';
+  t.publishedTitle = 'EN title';
+  t.publishedDescription = 'EN description';
+  t.publishedUtilitiesNote = null;
+  t.publishedLegalStatusNote = null;
+  t.publishedSourceContentHash = 'hash';
+  t.publishedAt = new Date('2026-10-07T00:00:00Z');
+  t.contentVersion = 1;
+  t.createdAt = new Date('2026-10-07T00:00:00Z');
+  t.updatedAt = new Date('2026-10-07T00:00:00Z');
+  Object.assign(t, overrides);
+  return t;
+}
 
 function rentDto(): UpsertRealEstateListingDto {
   return {
@@ -78,6 +108,7 @@ describe('RealEstateListingsService', () => {
   type Deps = ConstructorParameters<typeof RealEstateListingsService>;
   let repo: LooseMock<Deps[0]>;
   let authz: LooseMock<Deps[1]>;
+  let translationsRepo: LooseMock<Deps[2]>;
   let service: RealEstateListingsService;
 
   beforeEach(() => {
@@ -99,7 +130,11 @@ describe('RealEstateListingsService', () => {
       findCreatorSummaries: jest.fn().mockResolvedValue(new Map()),
     });
     authz = createMock<Deps[1]>({ can: jest.fn() });
-    service = new RealEstateListingsService(repo, authz);
+    translationsRepo = createMock<Deps[2]>({
+      findByRealEstateListingId: jest.fn().mockResolvedValue(null),
+      findByRealEstateListingIds: jest.fn().mockResolvedValue(new Map()),
+    });
+    service = new RealEstateListingsService(repo, authz, translationsRepo);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -332,6 +367,67 @@ describe('RealEstateListingsService', () => {
       expect(list.data[0]).not.toHaveProperty('creator_email');
       expect(list.data[0]).not.toHaveProperty('creator_display_name');
       expect(list.data[0]).not.toHaveProperty('created_by');
+    });
+  });
+
+  // Gói C phần 2/2 (17/10/2026) — cùng mẫu JobListingsService's overlay tests (xem ghi chú đầy đủ ở đó).
+  describe('overlay bản dịch tiếng Anh (Gói C)', () => {
+    it('locale=en, có published → trả nội dung tiếng Anh ĐÃ DUYỆT, locale="en"', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, title: 'VI title' }));
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(translationRow({ publishedTitle: 'EN title', publishedDescription: 'EN description' }));
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.title).toBe('EN title');
+      expect(result.description).toBe('EN description');
+      expect(result.locale).toBe('en');
+    });
+
+    it('locale=en, CHƯA có bản dịch nào → fallback tiếng Việt, locale="vi"', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, title: 'VI title' }));
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(null);
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.title).toBe('VI title');
+      expect(result.locale).toBe('vi');
+    });
+
+    it('status hiện tại là draft (đang sửa tiếp) nhưng published* vẫn còn → VẪN phục vụ bản đã duyệt', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, title: 'VI title' }));
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(
+        translationRow({ status: RealEstateListingTranslationStatus.DRAFT, title: 'Bản nháp CHƯA duyệt', publishedTitle: 'Bản ĐÃ DUYỆT' }),
+      );
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.title).toBe('Bản ĐÃ DUYỆT');
+    });
+
+    it('không truyền locale → luôn tiếng Việt, KHÔNG tra bản dịch', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, title: 'VI title' }));
+      const result = await service.getPublicById('rel-1');
+      expect(result.locale).toBe('vi');
+      expect(translationsRepo.findByRealEstateListingId).not.toHaveBeenCalled();
+    });
+
+    it('điều kiện giao dịch (giá) đổi SAU KHI duyệt → is_translation_stale=true, vẫn phục vụ', async () => {
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, price: '5000000' }));
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(
+        translationRow({ publishedSourceContentHash: computeRealEstateListingSourceHash(row({ price: null })) }),
+      );
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.is_translation_stale).toBe(true);
+      expect(result.title).toBe('EN title');
+    });
+
+    it('listPublic locale=en → overlay title cho item có bản dịch, giữ VI cho item chưa có (batch, không N+1)', async () => {
+      repo.listPublic.mockResolvedValue([
+        row({ id: 'rel-a', status: RealEstateListingStatus.PUBLISHED, title: 'VI A' }),
+        row({ id: 'rel-b', status: RealEstateListingStatus.PUBLISHED, title: 'VI B' }),
+      ]);
+      repo.countPublic.mockResolvedValue(2);
+      translationsRepo.findByRealEstateListingIds.mockResolvedValue(
+        new Map([['rel-a', translationRow({ realEstateListingId: 'rel-a', publishedTitle: 'EN A' })]]),
+      );
+      const result = await service.listPublic({ locale: 'en' });
+      expect(translationsRepo.findByRealEstateListingIds).toHaveBeenCalledWith(['rel-a', 'rel-b']);
+      expect(result.data[0]).toMatchObject({ id: 'rel-a', title: 'EN A', locale: 'en' });
+      expect(result.data[1]).toMatchObject({ id: 'rel-b', title: 'VI B', locale: 'vi' });
     });
   });
 
