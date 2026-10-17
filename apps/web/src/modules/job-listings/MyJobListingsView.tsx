@@ -9,6 +9,13 @@ import { JOB_LISTING_STATUS_LABELS, jobListingEmploymentTypeLabel, type JobListi
 import { formatSalary } from './salary';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
+import {
+  LISTING_EFFECTIVE_STATUS_LABELS,
+  listingEffectiveStatus,
+  matchesListingFilter,
+  todayInVietnam,
+  type ListingFilterValue,
+} from '@/lib/listingExpiry';
 
 type State =
   | { kind: 'loading' }
@@ -21,6 +28,26 @@ function formatDate(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? 'chưa có' : d.toLocaleDateString('vi-VN');
 }
 
+// Hạn tuyển dùng CHÍNH cột `expires_at` (YYYY-MM-DD, không có giờ) — format trực tiếp, KHÔNG qua
+// `new Date(iso)` như formatDate() ở trên (đổi "2026-06-01" qua Date rồi toLocaleDateString có thể
+// lệch một ngày tuỳ múi giờ trình duyệt người xem; chuỗi YYYY-MM-DD tự nó đã rõ ràng, chỉ cần đảo
+// thứ tự hiển thị).
+function formatYmd(ymd: string): string {
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+const FILTER_OPTIONS: Array<{ value: ListingFilterValue; label: string }> = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'draft', label: 'Nháp' },
+  { value: 'pending', label: 'Chờ duyệt' },
+  { value: 'published', label: 'Đang đăng' },
+  { value: 'expiring_soon', label: 'Sắp hết hạn' },
+  { value: 'expired', label: 'Đã hết hạn' },
+  { value: 'closed', label: 'Đã đóng' },
+  { value: 'rejected', label: 'Bị từ chối' },
+];
+
 // "Tin của tôi": mọi trạng thái (draft/pending/published/rejected/closed). Mỗi hành động (gửi
 // duyệt/đóng/mở lại) gọi THẲNG API tương ứng rồi nạp lại toàn bộ danh sách (KHÔNG optimistic) —
 // cùng quy ước MyProposalsView/ClaimsReviewView: trạng thái hiển thị luôn là trạng thái backend
@@ -30,6 +57,10 @@ export function MyJobListingsView() {
   const [reloadKey, setReloadKey] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ListingFilterValue>('all');
+  // Tính một lần mỗi lần render danh sách — tránh lệch "hôm nay" giữa phần lọc và phần hiện badge
+  // nếu người dùng để tab mở qua nửa đêm (không cần render lại theo thời gian thực cho MVP này).
+  const today = todayInVietnam();
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -94,6 +125,21 @@ export function MyJobListingsView() {
         </Link>
       </div>
 
+      {state.kind === 'ready' && state.items.length > 0 && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label htmlFor="jl-filter" style={{ marginRight: '0.5rem' }}>
+            Lọc theo trạng thái
+          </label>
+          <select id="jl-filter" value={filter} onChange={(e) => setFilter(e.target.value as ListingFilterValue)}>
+            {FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {actionError && (
         <p className={placeMgmtStyles.alert} role="alert">
           {actionError}
@@ -128,12 +174,29 @@ export function MyJobListingsView() {
         </div>
       )}
 
-      {state.kind === 'ready' && state.items.length > 0 && (
+      {state.kind === 'ready' && state.items.length > 0 && (() => {
+        const filtered = state.items.filter((job) => matchesListingFilter(job, filter, today));
+        if (filtered.length === 0) {
+          return (
+            <div className={placeStyles.state}>
+              <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc</p>
+              <p>Đổi bộ lọc ở trên để xem các tin khác.</p>
+            </div>
+          );
+        }
+        return (
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.75rem' }}>
-          {state.items.map((job) => (
+          {filtered.map((job) => {
+            const effectiveStatus = listingEffectiveStatus(job.status, job.expires_at, today);
+            return (
             <li key={job.id} className={placeStyles.state}>
               <p className={placeStyles.stateTitle}>
                 {job.title} — {JOB_LISTING_STATUS_LABELS[job.status]}
+                {effectiveStatus && (
+                  <span style={{ color: effectiveStatus === 'expired' ? 'var(--danger, #b91c1c)' : 'var(--warning, #b45309)' }}>
+                    {' '}· {LISTING_EFFECTIVE_STATUS_LABELS[effectiveStatus]}
+                  </span>
+                )}
               </p>
               <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
                 {job.employer_name} · {jobListingEmploymentTypeLabel(job.employment_type, 'vi')} · {formatSalary(job)}
@@ -144,7 +207,13 @@ export function MyJobListingsView() {
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
                 Tạo ngày {formatDate(job.created_at)}
                 {job.reviewed_at ? `; xử lý ngày ${formatDate(job.reviewed_at)}` : ''}
+                {job.expires_at ? `; hạn tuyển ${formatYmd(job.expires_at)}` : ''}
               </p>
+              {effectiveStatus === 'expired' && (
+                <p style={{ color: 'var(--danger, #b91c1c)', fontSize: '0.85rem' }}>
+                  Tin đã quá hạn tuyển ({formatYmd(job.expires_at as string)}) nên không còn hiện công khai, dù trạng thái vẫn &quot;Đang đăng&quot;. Sửa tin và đặt hạn mới rồi gửi duyệt lại để đăng tiếp.
+                </p>
+              )}
 
               <div className={placeMgmtStyles.actions}>
                 {(job.status === 'draft' || job.status === 'pending' || job.status === 'rejected') && (
@@ -189,9 +258,11 @@ export function MyJobListingsView() {
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
-      )}
+        );
+      })()}
     </main>
   );
 }

@@ -14,6 +14,12 @@ jest.mock('./api/real-estate-listings.api', () => ({
   markRealEstateListingSold: jest.fn(),
   markRealEstateListingAvailable: jest.fn(),
 }));
+// Cố định "hôm nay" cho test hạn/bộ lọc — xem ghi chú đầy đủ ở MyJobListingsView.spec.tsx (cùng
+// khuôn, KHÔNG dùng jest.useFakeTimers() vì làm treo waitFor/findBy* nội bộ của @testing-library).
+jest.mock('@/lib/listingExpiry', () => ({
+  ...jest.requireActual('@/lib/listingExpiry'),
+  todayInVietnam: () => '2026-06-15',
+}));
 
 const mockReadSession = readSession as jest.Mock;
 const mockList = listMyRealEstateListings as jest.Mock;
@@ -90,7 +96,8 @@ describe('MyRealEstateListingsView', () => {
     expect(await screen.findByRole('button', { name: 'Đánh dấu còn giao dịch' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Đánh dấu đã cho thuê' })).toBeNull();
     // status (kiểm duyệt) KHÔNG đổi chỉ vì deal_status đổi — vẫn hiện "Đang đăng", không phải nhãn khác.
-    expect(screen.getByText(/Đang đăng/)).toBeInTheDocument();
+    // `selector: 'p'` loại trừ <option value="published">Đang đăng</option> của bộ lọc trạng thái mới thêm.
+    expect(screen.getByText(/Đang đăng/, { selector: 'p' })).toBeInTheDocument();
   });
 
   it('bấm "Đánh dấu đã cho thuê" gọi đúng API với id', async () => {
@@ -100,5 +107,46 @@ describe('MyRealEstateListingsView', () => {
     const btn = await screen.findByRole('button', { name: 'Đánh dấu đã cho thuê' });
     fireEvent.click(btn);
     await waitFor(() => expect(mockMarkRented).toHaveBeenCalledWith('rel-1', 'tok'));
+  });
+});
+
+// Gói B (17/10/2026) — cùng bản vá/lý do với MyJobListingsView (xem ghi chú ở đó).
+describe('MyRealEstateListingsView — hạn đăng + bộ lọc (Gói B)', () => {
+  it('có expires_at → hiện đúng ngày dạng dd/mm/yyyy', async () => {
+    mockList.mockResolvedValue([row({ status: 'published', expires_at: '2026-12-31' })]);
+    render(<MyRealEstateListingsView />);
+    expect(await screen.findByText(/hạn đăng 31\/12\/2026/)).toBeInTheDocument();
+  });
+
+  it('published + hạn đã qua → nhãn "Đã hết hạn" + ghi chú giải thích', async () => {
+    mockList.mockResolvedValue([row({ status: 'published', expires_at: '2026-06-01' })]);
+    render(<MyRealEstateListingsView />);
+    expect(await screen.findByText(/Đã hết hạn/, { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText(/Tin đã quá hạn đăng/)).toBeInTheDocument();
+  });
+
+  it('published + còn ≤ 7 ngày → nhãn "Sắp hết hạn"', async () => {
+    mockList.mockResolvedValue([row({ status: 'published', expires_at: '2026-06-20' })]);
+    render(<MyRealEstateListingsView />);
+    expect(await screen.findByText(/Sắp hết hạn/, { selector: 'span' })).toBeInTheDocument();
+  });
+
+  it('bộ lọc "Đã hết hạn" chỉ hiện tin published đã quá expires_at', async () => {
+    mockList.mockResolvedValue([
+      row({ id: 'expired-1', title: 'Tin đã hết hạn', status: 'published', expires_at: '2026-06-01' }),
+      row({ id: 'ok-1', title: 'Tin còn hạn', status: 'published', expires_at: '2026-12-31' }),
+    ]);
+    render(<MyRealEstateListingsView />);
+    await screen.findByText(/Tin đã hết hạn/);
+    fireEvent.change(screen.getByLabelText('Lọc theo trạng thái'), { target: { value: 'expired' } });
+    expect(screen.getByText(/Tin đã hết hạn/)).toBeInTheDocument();
+    expect(screen.queryByText(/Tin còn hạn/)).not.toBeInTheDocument();
+  });
+
+  it('không có tin nào khớp bộ lọc → thông báo rõ', async () => {
+    mockList.mockResolvedValue([row({ status: 'draft' })]);
+    render(<MyRealEstateListingsView />);
+    fireEvent.change(await screen.findByLabelText('Lọc theo trạng thái'), { target: { value: 'expired' } });
+    expect(screen.getByText('Không có tin nào khớp bộ lọc')).toBeInTheDocument();
   });
 });

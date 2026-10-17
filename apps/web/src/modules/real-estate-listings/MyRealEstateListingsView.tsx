@@ -23,6 +23,13 @@ import {
 import { formatRealEstatePrice } from './price';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
+import {
+  LISTING_EFFECTIVE_STATUS_LABELS,
+  listingEffectiveStatus,
+  matchesListingFilter,
+  todayInVietnam,
+  type ListingFilterValue,
+} from '@/lib/listingExpiry';
 
 type State =
   | { kind: 'loading' }
@@ -34,6 +41,24 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? 'chưa có' : d.toLocaleDateString('vi-VN');
 }
+
+// Cùng lý do với MyJobListingsView.tsx: `expires_at` là YYYY-MM-DD không giờ — format trực tiếp từ
+// chuỗi, không qua `new Date(iso)` (tránh lệch ngày theo múi giờ trình duyệt người xem).
+function formatYmd(ymd: string): string {
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+const FILTER_OPTIONS: Array<{ value: ListingFilterValue; label: string }> = [
+  { value: 'all', label: 'Tất cả' },
+  { value: 'draft', label: 'Nháp' },
+  { value: 'pending', label: 'Chờ duyệt' },
+  { value: 'published', label: 'Đang đăng' },
+  { value: 'expiring_soon', label: 'Sắp hết hạn' },
+  { value: 'expired', label: 'Đã hết hạn' },
+  { value: 'closed', label: 'Đã đóng' },
+  { value: 'rejected', label: 'Bị từ chối' },
+];
 
 type Action = 'submit' | 'close' | 'reopen' | 'mark-rented' | 'mark-sold' | 'mark-available';
 
@@ -51,6 +76,8 @@ export function MyRealEstateListingsView() {
   const [reloadKey, setReloadKey] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ListingFilterValue>('all');
+  const today = todayInVietnam();
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -112,6 +139,21 @@ export function MyRealEstateListingsView() {
         </Link>
       </div>
 
+      {state.kind === 'ready' && state.items.length > 0 && (
+        <div style={{ marginBottom: '1rem' }}>
+          <label htmlFor="re-filter" style={{ marginRight: '0.5rem' }}>
+            Lọc theo trạng thái
+          </label>
+          <select id="re-filter" value={filter} onChange={(e) => setFilter(e.target.value as ListingFilterValue)}>
+            {FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {actionError && (
         <p className={placeMgmtStyles.alert} role="alert">
           {actionError}
@@ -146,15 +188,32 @@ export function MyRealEstateListingsView() {
         </div>
       )}
 
-      {state.kind === 'ready' && state.items.length > 0 && (
+      {state.kind === 'ready' && state.items.length > 0 && (() => {
+        const filtered = state.items.filter((listing) => matchesListingFilter(listing, filter, today));
+        if (filtered.length === 0) {
+          return (
+            <div className={placeStyles.state}>
+              <p className={placeStyles.stateTitle}>Không có tin nào khớp bộ lọc</p>
+              <p>Đổi bộ lọc ở trên để xem các tin khác.</p>
+            </div>
+          );
+        }
+        return (
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.75rem' }}>
-          {state.items.map((listing) => (
+          {filtered.map((listing) => {
+            const effectiveStatus = listingEffectiveStatus(listing.status, listing.expires_at, today);
+            return (
             <li key={listing.id} className={placeStyles.state}>
               <p className={placeStyles.stateTitle}>
                 {listing.title} — {REAL_ESTATE_LISTING_STATUS_LABELS[listing.status]}
                 {listing.status === 'published' || listing.status === 'closed'
                   ? ` · ${REAL_ESTATE_DEAL_STATUS_LABELS[listing.deal_status]}`
                   : ''}
+                {effectiveStatus && (
+                  <span style={{ color: effectiveStatus === 'expired' ? 'var(--danger, #b91c1c)' : 'var(--warning, #b45309)' }}>
+                    {' '}· {LISTING_EFFECTIVE_STATUS_LABELS[effectiveStatus]}
+                  </span>
+                )}
               </p>
               <p style={{ color: 'var(--muted)', fontSize: '0.9rem' }}>
                 {realEstateTransactionTypeLabel(listing.transaction_type, 'vi')} ·{' '}
@@ -166,7 +225,13 @@ export function MyRealEstateListingsView() {
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
                 Tạo ngày {formatDate(listing.created_at)}
                 {listing.reviewed_at ? `; xử lý ngày ${formatDate(listing.reviewed_at)}` : ''}
+                {listing.expires_at ? `; hạn đăng ${formatYmd(listing.expires_at)}` : ''}
               </p>
+              {effectiveStatus === 'expired' && (
+                <p style={{ color: 'var(--danger, #b91c1c)', fontSize: '0.85rem' }}>
+                  Tin đã quá hạn đăng ({formatYmd(listing.expires_at as string)}) nên không còn hiện công khai, dù trạng thái vẫn &quot;Đang đăng&quot;. Sửa tin và đặt hạn mới rồi gửi duyệt lại để đăng tiếp.
+                </p>
+              )}
 
               <div className={placeMgmtStyles.actions}>
                 {(listing.status === 'draft' || listing.status === 'pending' || listing.status === 'rejected') && (
@@ -231,9 +296,11 @@ export function MyRealEstateListingsView() {
                 )}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
-      )}
+        );
+      })()}
     </main>
   );
 }
