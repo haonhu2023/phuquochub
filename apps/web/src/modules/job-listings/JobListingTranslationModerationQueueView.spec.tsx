@@ -23,6 +23,7 @@ function translation(overrides: Partial<JobListingTranslationModeratorView> = {}
     locale: 'en',
     title: 'Waiter',
     description: 'English description',
+    description_rich: null,
     requirements: null,
     benefits: null,
     status: 'pending',
@@ -40,7 +41,9 @@ function translation(overrides: Partial<JobListingTranslationModeratorView> = {}
     source_description: 'Mô tả tiếng Việt',
     source_description_rich: null,
     source_requirements: null,
+    source_requirements_rich: null,
     source_benefits: null,
+    source_benefits_rich: null,
     ...overrides,
   };
 }

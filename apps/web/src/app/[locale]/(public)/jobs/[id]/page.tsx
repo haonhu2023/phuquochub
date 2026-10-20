@@ -144,13 +144,13 @@ export default async function JobListingDetailPage({ params }: Params) {
       {job.requirements && (
         <section>
           <h2>{locale === 'en' ? 'Requirements' : 'Yêu cầu'}</h2>
-          <p className={placesStyles.longText}>{job.requirements}</p>
+          <RichDescriptionRenderer richDoc={job.requirements_rich} plainFallback={job.requirements} />
         </section>
       )}
       {job.benefits && (
         <section>
           <h2>{locale === 'en' ? 'Benefits' : 'Quyền lợi'}</h2>
-          <p className={placesStyles.longText}>{job.benefits}</p>
+          <RichDescriptionRenderer richDoc={job.benefits_rich} plainFallback={job.benefits} />
         </section>
       )}
 

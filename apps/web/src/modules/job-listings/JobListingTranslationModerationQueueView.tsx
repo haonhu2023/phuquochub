@@ -131,9 +131,17 @@ export function JobListingTranslationModerationQueueView() {
                   description: t.source_description,
                   description_rich: t.source_description_rich,
                   requirements: t.source_requirements,
+                  requirements_rich: t.source_requirements_rich,
                   benefits: t.source_benefits,
+                  benefits_rich: t.source_benefits_rich,
                 }}
-                translation={{ title: t.title ?? '', description: t.description ?? '', requirements: t.requirements ?? '', benefits: t.benefits ?? '' }}
+                translation={{
+                  title: t.title ?? '',
+                  description: t.description ?? '',
+                  description_rich: t.description_rich,
+                  requirements: t.requirements ?? '',
+                  benefits: t.benefits ?? '',
+                }}
               />
               <JobListingTranslationDecisionForm translation={t} onDecided={reload} />
             </li>

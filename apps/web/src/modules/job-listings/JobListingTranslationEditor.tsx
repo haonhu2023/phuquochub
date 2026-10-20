@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { RichDoc } from '@phuquochub/shared-types';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { getMyJobListingTranslation, saveJobListingTranslation, submitJobListingTranslation } from './api/job-listings.api';
 import { JOB_LISTING_TRANSLATION_STATUS_LABELS, type JobListingSenderDetailView, type JobListingTranslationView } from './types';
 import { JobListingTranslationCompare } from './JobListingTranslationCompare';
+import { RichDescriptionEditor } from '../rich-doc/RichDescriptionEditor';
+import { plainTextToRichDoc } from '../rich-doc/legacy';
 import uiStyles from '@/components/ui/ui.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
@@ -18,6 +21,12 @@ interface Props {
 interface DraftState {
   title: string;
   description: string;
+  // Gói D — `undefined` = "chưa thực sự soạn qua editor rich-text" → KHÔNG gửi key này khi lưu
+  // (field vắng mặt, không phải null tường minh — xoá-tường-minh sẽ xoá CẢ `description` plain,
+  // một bug thật nếu gửi `null` mặc định cho mọi bản dịch chưa từng dùng rich text). Chỉ có giá trị
+  // thật khi: (a) bản dịch đã tải VỀ sẵn có rich (round-trip giữ nguyên), hoặc (b) `onChange` của
+  // editor thực sự chạy (người dùng vừa soạn) — cùng kỷ luật JobListingForm's description_rich.
+  descriptionRich: RichDoc | null | undefined;
   requirements: string;
   benefits: string;
 }
@@ -26,6 +35,7 @@ function toDraft(t: JobListingTranslationView | null): DraftState {
   return {
     title: t?.title ?? '',
     description: t?.description ?? '',
+    descriptionRich: t?.description_rich ?? undefined,
     requirements: t?.requirements ?? '',
     benefits: t?.benefits ?? '',
   };
@@ -104,6 +114,7 @@ export function JobListingTranslationEditor({ job }: Props) {
         {
           title: draft.title.trim() || null,
           description: draft.description.trim() || null,
+          description_rich: draft.descriptionRich,
           requirements: draft.requirements.trim() || null,
           benefits: draft.benefits.trim() || null,
           expected_content_version: state.translation?.content_version,
@@ -152,8 +163,9 @@ export function JobListingTranslationEditor({ job }: Props) {
   }
 
   const translation = state.translation;
+  const hasDescription = Boolean(draft.description.trim()) || draft.descriptionRich != null;
   const canSubmit =
-    Boolean(draft.title.trim()) && Boolean(draft.description.trim()) && (!translation || translation.status === 'draft' || translation.status === 'rejected');
+    Boolean(draft.title.trim()) && hasDescription && (!translation || translation.status === 'draft' || translation.status === 'rejected');
 
   return (
     <fieldset className={placeMgmtStyles.section}>
@@ -207,18 +219,16 @@ export function JobListingTranslationEditor({ job }: Props) {
         />
       </div>
       <div className={uiStyles.field}>
-        <label className={uiStyles.fieldLabel} htmlFor="jlt-description">
+        <span id="jlt-description-label" className={uiStyles.fieldLabel}>
           Mô tả công việc (tiếng Anh)
-        </label>
-        <textarea
-          id="jlt-description"
-          className={placeMgmtStyles.textarea}
-          rows={4}
-          maxLength={4000}
-          value={draft.description}
-          onChange={(e) => set('description', e.target.value)}
-          disabled={submitting}
-        />
+        </span>
+        <div role="group" aria-labelledby="jlt-description-label">
+          <RichDescriptionEditor
+            value={draft.descriptionRich ?? (draft.description ? plainTextToRichDoc(draft.description) : null)}
+            onChange={(doc) => set('descriptionRich', doc)}
+            disabled={submitting}
+          />
+        </div>
       </div>
       <div className={uiStyles.field}>
         <label className={uiStyles.fieldLabel} htmlFor="jlt-requirements">
@@ -268,9 +278,11 @@ export function JobListingTranslationEditor({ job }: Props) {
             description: job.description,
             description_rich: job.description_rich,
             requirements: job.requirements,
+            requirements_rich: job.requirements_rich,
             benefits: job.benefits,
+            benefits_rich: job.benefits_rich,
           }}
-          translation={draft}
+          translation={{ ...draft, description_rich: draft.descriptionRich }}
         />
       )}
     </fieldset>

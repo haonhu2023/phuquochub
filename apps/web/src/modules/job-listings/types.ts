@@ -65,10 +65,13 @@ export interface JobListingBaseView {
   salary_period: JobListingSalaryPeriod | null;
   shift_info: string | null;
   requirements: string | null;
+  // Gói D — khi KHÔNG null, nguồn sự thật của trường cùng tên trần (renderer dùng field này khi có,
+  // xem RichDescriptionRenderer). NULL nếu tin chưa dùng rich text HOẶC vừa phát hiện lệch hash
+  // (cơ chế chống rollback, xem apps/api/src/common/rich-text-field.ts) — tương thích ngược hoàn toàn.
+  requirements_rich: RichDoc | null;
   benefits: string | null;
+  benefits_rich: RichDoc | null;
   description: string | null;
-  // Gói D — khi KHÔNG null, nguồn sự thật của `description` (renderer dùng field này khi có, xem
-  // RichDescriptionRenderer). NULL ở MỌI tin chưa dùng rich text — tương thích ngược hoàn toàn.
   description_rich: RichDoc | null;
   contact_method: string;
   contact_value: string;
@@ -134,10 +137,13 @@ export interface UpsertJobListingInput {
   salary_period?: JobListingSalaryPeriod | null;
   shift_info?: string | null;
   requirements?: string | null;
-  benefits?: string | null;
-  description?: string | null;
   // Gói D — có mặt (object HOẶC null) = ghi đè authoritative; vắng mặt (undefined, không set key)
-  // = "không đụng rich text", xem job-listings.service.ts's applyDescription() cho quy tắc đầy đủ.
+  // = "không đụng rich text", xem apps/api/src/common/rich-text-field.ts's applyRichTextField() cho
+  // quy tắc đầy đủ (dùng chung cho cả ba trường dưới đây).
+  requirements_rich?: RichDoc | null;
+  benefits?: string | null;
+  benefits_rich?: RichDoc | null;
+  description?: string | null;
   description_rich?: RichDoc | null;
   contact_method: string;
   contact_value: string;
@@ -191,6 +197,9 @@ export interface JobListingTranslationView {
   locale: string;
   title: string | null;
   description: string | null;
+  // Gói D — nguồn sự thật khi không null (vùng NHÁP). Bản dịch CHỈ `description` có rich text
+  // (requirements/benefits bản dịch ngoài phạm vi, theo đúng yêu cầu owner).
+  description_rich: RichDoc | null;
   requirements: string | null;
   benefits: string | null;
   status: JobListingTranslationStatus;
@@ -212,12 +221,15 @@ export interface JobListingTranslationModeratorView extends JobListingTranslatio
   // Gói D — nguồn sự thật khi không null, cùng ý nghĩa JobListingBaseView.description_rich.
   source_description_rich: RichDoc | null;
   source_requirements: string | null;
+  source_requirements_rich: RichDoc | null;
   source_benefits: string | null;
+  source_benefits_rich: RichDoc | null;
 }
 
 export interface UpsertJobListingTranslationInput {
   title?: string | null;
   description?: string | null;
+  description_rich?: RichDoc | null;
   requirements?: string | null;
   benefits?: string | null;
   // Bắt buộc khi ĐÃ CÓ bản dịch (CAS) — bỏ trống CHỈ hợp lệ cho lần lưu đầu tiên.

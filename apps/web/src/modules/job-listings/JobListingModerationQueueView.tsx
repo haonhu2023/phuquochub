@@ -126,9 +126,10 @@ export function JobListingModerationQueueView() {
               </p>
               {job.description && <RichDescriptionRenderer richDoc={job.description_rich} plainFallback={job.description} />}
               {job.requirements && (
-                <p>
-                  <strong>Yêu cầu:</strong> {job.requirements}
-                </p>
+                <div>
+                  <strong>Yêu cầu:</strong>
+                  <RichDescriptionRenderer richDoc={job.requirements_rich} plainFallback={job.requirements} />
+                </div>
               )}
               <p>
                 Liên hệ: {job.contact_method} — {job.contact_value}

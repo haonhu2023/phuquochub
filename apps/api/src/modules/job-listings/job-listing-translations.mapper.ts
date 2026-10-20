@@ -53,7 +53,11 @@ export function toJobListingTranslationView(row: JobListingTranslation, parent?:
 // không chỉ tiêu đề.
 export function toJobListingTranslationModeratorView(
   row: JobListingTranslation,
-  parent: JobListingTranslationSourceRow & Pick<JobListing, 'descriptionRich' | 'descriptionRichHash'>,
+  parent: JobListingTranslationSourceRow &
+    Pick<
+      JobListing,
+      'descriptionRich' | 'descriptionRichHash' | 'requirementsRich' | 'requirementsRichHash' | 'benefitsRich' | 'benefitsRichHash'
+    >,
 ) {
   return {
     ...toJobListingTranslationView(row, parent),
@@ -65,6 +69,8 @@ export function toJobListingTranslationModeratorView(
     // vừa phát hiện lệch hash (cùng cơ chế chống rollback, không phải một đường đọc riêng bỏ qua nó).
     source_description_rich: serveRichDoc(parent.description, parent.descriptionRich, parent.descriptionRichHash),
     source_requirements: parent.requirements,
+    source_requirements_rich: serveRichDoc(parent.requirements, parent.requirementsRich, parent.requirementsRichHash),
     source_benefits: parent.benefits,
+    source_benefits_rich: serveRichDoc(parent.benefits, parent.benefitsRich, parent.benefitsRichHash),
   };
 }

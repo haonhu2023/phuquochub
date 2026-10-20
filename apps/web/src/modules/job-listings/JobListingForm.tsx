@@ -56,10 +56,12 @@ function toInput(v?: JobListingSenderView): UpsertJobListingInput {
     salary_period: v.salary_period,
     shift_info: v.shift_info,
     requirements: v.requirements,
-    benefits: v.benefits,
-    description: v.description,
     // CHỦ Ý giữ nguyên (KHÔNG mồi từ plain text ở đây) — xem JSX's ghi chú: mồi chỉ ảnh hưởng
     // NHỮNG GÌ EDITOR HIỂN THỊ, không ảnh hưởng gì được GỬI ĐI cho tới khi người dùng thực sự soạn.
+    requirements_rich: v.requirements_rich,
+    benefits: v.benefits,
+    benefits_rich: v.benefits_rich,
+    description: v.description,
     description_rich: v.description_rich,
     contact_method: v.contact_method,
     contact_value: v.contact_value,
@@ -462,32 +464,28 @@ export function JobListingForm({ existing, onSaved }: Props) {
           </div>
         </div>
         <div className={uiStyles.field}>
-          <label className={uiStyles.fieldLabel} htmlFor="jl-requirements">
+          <span id="jl-requirements-label" className={uiStyles.fieldLabel}>
             Yêu cầu
-          </label>
-          <textarea
-            id="jl-requirements"
-            className={placeMgmtStyles.textarea}
-            rows={3}
-            maxLength={2000}
-            value={input.requirements ?? ''}
-            onChange={(e) => set('requirements', e.target.value)}
-            disabled={submitting}
-          />
+          </span>
+          <div role="group" aria-labelledby="jl-requirements-label">
+            <RichDescriptionEditor
+              value={input.requirements_rich ?? (input.requirements ? plainTextToRichDoc(input.requirements) : null)}
+              onChange={(doc) => set('requirements_rich', doc)}
+              disabled={submitting}
+            />
+          </div>
         </div>
         <div className={uiStyles.field}>
-          <label className={uiStyles.fieldLabel} htmlFor="jl-benefits">
+          <span id="jl-benefits-label" className={uiStyles.fieldLabel}>
             Quyền lợi
-          </label>
-          <textarea
-            id="jl-benefits"
-            className={placeMgmtStyles.textarea}
-            rows={3}
-            maxLength={2000}
-            value={input.benefits ?? ''}
-            onChange={(e) => set('benefits', e.target.value)}
-            disabled={submitting}
-          />
+          </span>
+          <div role="group" aria-labelledby="jl-benefits-label">
+            <RichDescriptionEditor
+              value={input.benefits_rich ?? (input.benefits ? plainTextToRichDoc(input.benefits) : null)}
+              onChange={(doc) => set('benefits_rich', doc)}
+              disabled={submitting}
+            />
+          </div>
         </div>
         <div className={uiStyles.field}>
           <label className={uiStyles.fieldLabel} htmlFor="jl-expires-at">

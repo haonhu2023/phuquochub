@@ -6,12 +6,15 @@ interface SourceFields {
   description: string | null;
   description_rich: RichDoc | null;
   requirements: string | null;
+  requirements_rich: RichDoc | null;
   benefits: string | null;
+  benefits_rich: RichDoc | null;
 }
 
 interface TranslatedFields {
   title: string;
   description: string;
+  description_rich?: RichDoc | null;
   requirements: string;
   benefits: string;
 }
@@ -36,14 +39,16 @@ export function JobListingTranslationCompare({ source, translation }: Props) {
         <p style={{ fontWeight: 600 }}>{source.title}</p>
         {source.description && <RichDescriptionRenderer richDoc={source.description_rich} plainFallback={source.description} />}
         {source.requirements && (
-          <p style={{ whiteSpace: 'pre-wrap' }}>
-            <em>Yêu cầu:</em> {source.requirements}
-          </p>
+          <div>
+            <em>Yêu cầu:</em>
+            <RichDescriptionRenderer richDoc={source.requirements_rich} plainFallback={source.requirements} />
+          </div>
         )}
         {source.benefits && (
-          <p style={{ whiteSpace: 'pre-wrap' }}>
-            <em>Quyền lợi:</em> {source.benefits}
-          </p>
+          <div>
+            <em>Quyền lợi:</em>
+            <RichDescriptionRenderer richDoc={source.benefits_rich} plainFallback={source.benefits} />
+          </div>
         )}
       </div>
       <div>
@@ -51,7 +56,9 @@ export function JobListingTranslationCompare({ source, translation }: Props) {
         <p style={{ fontWeight: 600, color: translation.title ? undefined : 'var(--muted)' }}>
           {translation.title || '(chưa có tiêu đề)'}
         </p>
-        {translation.description && <p style={{ whiteSpace: 'pre-wrap' }}>{translation.description}</p>}
+        {translation.description && (
+          <RichDescriptionRenderer richDoc={translation.description_rich ?? null} plainFallback={translation.description} />
+        )}
         {translation.requirements && (
           <p style={{ whiteSpace: 'pre-wrap' }}>
             <em>Requirements:</em> {translation.requirements}

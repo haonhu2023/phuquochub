@@ -37,7 +37,9 @@ function job(overrides: Partial<JobListingSenderDetailView> = {}): JobListingSen
     salary_period: null,
     shift_info: null,
     requirements: 'Nhiệt tình',
+    requirements_rich: null,
     benefits: 'Thưởng lễ',
+    benefits_rich: null,
     description: 'Mô tả tiếng Việt',
     description_rich: null,
     contact_method: 'phone',
@@ -60,6 +62,7 @@ function translation(overrides: Partial<JobListingTranslationView> = {}): JobLis
     locale: 'en',
     title: 'Waiter',
     description: 'English description',
+    description_rich: null,
     requirements: null,
     benefits: null,
     status: 'draft',
@@ -116,21 +119,25 @@ describe('JobListingTranslationEditor', () => {
     expect(await screen.findByText(/Dịch chưa tự nhiên/)).toBeInTheDocument();
   });
 
-  it('lưu nháp lần đầu (chưa có bản dịch) → gọi API KHÔNG kèm expected_content_version', async () => {
+  it('lưu nháp lần đầu (chưa có bản dịch) → gọi API KHÔNG kèm expected_content_version, mô tả soạn qua editor rich-text gửi đúng description_rich', async () => {
     mockGet.mockResolvedValue(null);
     mockSave.mockResolvedValue(translation());
     render(<JobListingTranslationEditor job={job()} />);
     await screen.findByLabelText('Tiêu đề (tiếng Anh)');
     fireEvent.change(screen.getByLabelText('Tiêu đề (tiếng Anh)'), { target: { value: 'Waiter' } });
-    fireEvent.change(screen.getByLabelText('Mô tả công việc (tiếng Anh)'), { target: { value: 'English description' } });
+    const editable = await waitFor(() => {
+      const el = document.querySelector('.ProseMirror');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(editable);
+    fireEvent.input(editable, { target: { textContent: 'English description' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp tiếng Anh' }));
-    await waitFor(() =>
-      expect(mockSave).toHaveBeenCalledWith(
-        'job-1',
-        expect.objectContaining({ title: 'Waiter', description: 'English description', expected_content_version: undefined }),
-        'tok',
-      ),
-    );
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    const [, payload] = mockSave.mock.calls[0] as [string, { title: string; description_rich: unknown; expected_content_version: undefined }];
+    expect(payload.title).toBe('Waiter');
+    expect(payload.expected_content_version).toBeUndefined();
+    expect(payload.description_rich).not.toBeNull();
   });
 
   it('lưu nháp khi đã có bản dịch → gửi ĐÚNG content_version hiện tại', async () => {
@@ -187,6 +194,10 @@ describe('JobListingTranslationEditor', () => {
     expect(screen.getByText('Phục vụ bàn')).toBeInTheDocument();
     expect(screen.getByText('Mô tả tiếng Việt')).toBeInTheDocument();
     expect(screen.getByText('Waiter')).toBeInTheDocument();
-    expect(screen.getByText('English description', { selector: 'p' })).toBeInTheDocument();
+    // "English description" xuất hiện HAI LẦN có chủ đích: một lần trong chính vùng soạn (editor tự
+    // mồi hiển thị từ plain text, xem RichDescriptionEditor), một lần trong khối đối chiếu xem
+    // trước (JobListingTranslationCompare) — cùng mẫu đã dùng ở
+    // JobListingTranslationModerationQueueView.spec.tsx cho "Phục vụ bàn".
+    expect(screen.getAllByText('English description')).toHaveLength(2);
   });
 });
