@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { RichDoc } from '@phuquochub/shared-types';
 import { useAuth } from '@/modules/auth/AuthProvider';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
@@ -22,6 +23,9 @@ import {
 } from './api/place-description.api';
 import styles from './place-description-editor.module.css';
 import { getEditorialCategory } from '@/modules/editorial/editorialCategories';
+import { RichDescriptionEditor } from '../rich-doc/RichDescriptionEditor';
+import { RichDescriptionRenderer } from '../rich-doc/RichDescriptionRenderer';
+import { plainTextToRichDoc } from '../rich-doc/legacy';
 
 interface Props {
   placeId: string;
@@ -32,10 +36,18 @@ interface Props {
 interface FieldState {
   vi: string;
   en: string;
+  // Gói D (20/10/2026) — CHỈ trường 'description' dùng hai field này (xem RICH_FIELDS bên dưới);
+  // name/short_description giữ undefined suốt vòng đời component, vô hại với isDirty/saveDirtyDrafts
+  // (so sánh undefined===undefined luôn false, không ảnh hưởng hành vi plain cũ của hai trường đó).
+  viRich?: RichDoc | null;
+  enRich?: RichDoc | null;
 }
 
 const FIELDS = ['name', 'short_description', 'description'] as const;
 type FieldKey = (typeof FIELDS)[number];
+
+// Trường có rich text — CHỈ mô tả chi tiết (owner yêu cầu rõ, không mở rộng sang tên/mô tả ngắn).
+const RICH_FIELDS = new Set<FieldKey>(['description']);
 
 const FIELD_LABELS: Record<FieldKey, string> = {
   name: 'Tên hiển thị',
@@ -127,6 +139,8 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
         description: {
           vi: description.vi?.text ?? description.fallback_description ?? '',
           en: description.en?.text ?? '',
+          viRich: description.vi?.rich ?? null,
+          enRich: description.en?.rich ?? null,
         },
       };
       setPanel({
@@ -160,10 +174,29 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     setPanel((p) => (p.kind === 'ready' ? { ...p, fields: { ...p.fields, [field]: { ...p.fields[field], [locale]: value } } } : p));
   }
 
-  // Trường được coi là ĐÃ SỬA khi VI hoặc EN khác bản đã tải.
-  // Có thay đổi GỬI ĐƯỢC: VI đã đổi, hoặc EN đã đổi và không rỗng (EN rỗng không được lưu).
+  // CHỈ field trong RICH_FIELDS gọi hàm này (description). Không tự flatten richDoc vào `vi`/`en`
+  // ở đây — CÙNG quy ước job_listings/real_estate_listings: client gửi cả hai, SERVER là nơi
+  // flatten có thẩm quyền (applyRichTextField-style), `vi`/`en` client giữ chỉ mang tính tham khảo.
+  function updateDescriptionRich(locale: 'vi' | 'en', doc: RichDoc) {
+    setPanel((p) =>
+      p.kind === 'ready'
+        ? { ...p, fields: { ...p.fields, description: { ...p.fields.description, [locale === 'vi' ? 'viRich' : 'enRich']: doc } } }
+        : p,
+    );
+  }
+
+  // Trường được coi là ĐÃ SỬA khi VI hoặc EN khác bản đã tải — hoặc (Gói D, field rich) khi richDoc
+  // khác bản đã tải, dù bản flatten phẳng tình cờ giống hệt (vd chỉ đổi đậm/nghiêng, không đổi chữ —
+  // so sánh plain text một mình sẽ bỏ sót thay đổi này).
+  // Có thay đổi GỬI ĐƯỢC: VI đã đổi, hoặc EN đã đổi và không rỗng (EN rỗng không được lưu) — với
+  // field rich, "không rỗng" xét cả richDoc (owner có thể soạn EN rich mà chưa từng gõ EN plain).
   function isDirty(field: FieldKey, fields: Record<FieldKey, FieldState>, loaded: Record<FieldKey, FieldState>): boolean {
-    return fields[field].vi !== loaded[field].vi || (fields[field].en !== loaded[field].en && fields[field].en.trim() !== '');
+    const f = fields[field];
+    const l = loaded[field];
+    const viChanged = f.vi !== l.vi || f.viRich !== l.viRich;
+    const enHasContent = f.en.trim() !== '' || f.enRich != null;
+    const enChanged = (f.en !== l.en || f.enRich !== l.enRich) && enHasContent;
+    return viChanged || enChanged;
   }
 
   const PENDING_REVIEW = ['PENDING', 'NEEDS_CHANGES'];
@@ -197,13 +230,20 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
     const outcomes = await Promise.allSettled(
       dirty.map((field) => {
         const ids = draftIds[field];
-        const viChanged = fields[field].vi !== loaded[field].vi;
-        const enChanged = fields[field].en !== loaded[field].en && fields[field].en.trim() !== '';
+        const isRich = RICH_FIELDS.has(field);
+        const viChanged = fields[field].vi !== loaded[field].vi || fields[field].viRich !== loaded[field].viRich;
+        const enHasContent = fields[field].en.trim() !== '' || fields[field].enRich != null;
+        const enChanged = (fields[field].en !== loaded[field].en || fields[field].enRich !== loaded[field].enRich) && enHasContent;
         // Chỉ gửi locale ĐÃ ĐỔI, kèm id của chính locale đó: locale không đổi không bị ghi lại
-        // và không bị kéo theo conflict của locale khác.
+        // và không bị kéo theo conflict của locale khác. vi_rich/en_rich CHỈ gửi cho field rich
+        // (name/short_description không khai báo hai key này ở DTO phía API — gửi nhầm bị 400).
         const input: DraftSaveInput = {
-          ...(viChanged ? { vi: fields[field].vi, expected_vi_id: ids.vi?.id ?? null } : {}),
-          ...(enChanged ? { en: fields[field].en, expected_en_id: ids.en?.id ?? null } : {}),
+          ...(viChanged
+            ? { vi: fields[field].vi, ...(isRich ? { vi_rich: fields[field].viRich ?? null } : {}), expected_vi_id: ids.vi?.id ?? null }
+            : {}),
+          ...(enChanged
+            ? { en: fields[field].en, ...(isRich ? { en_rich: fields[field].enRich ?? null } : {}), expected_en_id: ids.en?.id ?? null }
+            : {}),
         };
         if (field === 'name') return saveNameDraft(placeId, input, accessToken);
         return field === 'description'
@@ -253,8 +293,13 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
       const unsavedChange = isDirty(field, fields, loaded) && !saved.includes(field);
       if (unsavedChange) continue;
       const wanted: Array<'vi' | 'en'> = [];
+      // Gói D — field rich (description) có thể có nội dung EN CHỈ qua richDoc (chưa từng gõ en
+      // plain, client không tự đồng bộ hai thứ với nhau — xem updateDescriptionRich()'s ghi chú).
+      // Kiểm tra "EN có nội dung" phải xét cả hai, không chỉ chuỗi phẳng, kẻo bỏ sót EN đã lưu nháp
+      // thành công (có id thật) nhưng chưa từng được coi là "wanted" để công khai.
+      const enHasContent = fields[field].en.trim() !== '' || fields[field].enRich != null;
       if (locales.vi && needsReview(ids[field].vi)) wanted.push('vi');
-      if (locales.en && fields[field].en.trim() !== '' && needsReview(ids[field].en)) wanted.push('en');
+      if (locales.en && enHasContent && needsReview(ids[field].en)) wanted.push('en');
       if (wanted.length > 0) plans.push({ field, locales: wanted });
     }
     return plans;
@@ -398,22 +443,43 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
                     <legend>{FIELD_LABELS[field]}</legend>
                     {editorialGroup && field === 'short_description' && <p className={styles.categoryGuidance}>{editorialGroup.shortPrompt}</p>}
                     {editorialGroup && field === 'description' && <p className={styles.categoryGuidance}>{editorialGroup.detailPrompt}</p>}
-                    <label className={styles.field}>
-                      <span>{FIELD_LABELS[field]} (Tiếng Việt)</span>
-                      <textarea
-                        value={panel.fields[field].vi}
-                        onChange={(e) => updateField(field, 'vi', e.target.value)}
-                        rows={field === 'description' ? 5 : 2}
-                      />
-                    </label>
-                    <label className={styles.field}>
-                      <span>{FIELD_LABELS[field]} (English)</span>
-                      <textarea
-                        value={panel.fields[field].en}
-                        onChange={(e) => updateField(field, 'en', e.target.value)}
-                        rows={field === 'description' ? 5 : 2}
-                      />
-                    </label>
+                    {field === 'description' ? (
+                      <>
+                        <div className={styles.field}>
+                          <span>{FIELD_LABELS[field]} (Tiếng Việt)</span>
+                          <RichDescriptionEditor
+                            value={panel.fields.description.viRich ?? (panel.fields.description.vi ? plainTextToRichDoc(panel.fields.description.vi) : null)}
+                            onChange={(doc) => updateDescriptionRich('vi', doc)}
+                          />
+                        </div>
+                        <div className={styles.field}>
+                          <span>{FIELD_LABELS[field]} (English)</span>
+                          <RichDescriptionEditor
+                            value={panel.fields.description.enRich ?? (panel.fields.description.en ? plainTextToRichDoc(panel.fields.description.en) : null)}
+                            onChange={(doc) => updateDescriptionRich('en', doc)}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <label className={styles.field}>
+                          <span>{FIELD_LABELS[field]} (Tiếng Việt)</span>
+                          <textarea
+                            value={panel.fields[field].vi}
+                            onChange={(e) => updateField(field, 'vi', e.target.value)}
+                            rows={2}
+                          />
+                        </label>
+                        <label className={styles.field}>
+                          <span>{FIELD_LABELS[field]} (English)</span>
+                          <textarea
+                            value={panel.fields[field].en}
+                            onChange={(e) => updateField(field, 'en', e.target.value)}
+                            rows={2}
+                          />
+                        </label>
+                      </>
+                    )}
                   </fieldset>
                 ))}
 
@@ -422,16 +488,46 @@ export function PlaceDescriptionEditor({ placeId, categorySlug, triggerLabel }: 
                 </button>
                 {preview && (
                   <div className={styles.previewBox}>
-                    {FIELDS.map((field) => (
-                      <div key={field}>
-                        <p>
-                          <strong>{FIELD_LABELS[field]} — VI:</strong> {panel.fields[field].vi || '(trống)'}
-                        </p>
-                        <p>
-                          <strong>{FIELD_LABELS[field]} — EN:</strong> {panel.fields[field].en || '(trống)'}
-                        </p>
-                      </div>
-                    ))}
+                    {FIELDS.map((field) =>
+                      field === 'description' ? (
+                        // Gói D — preview DÙNG CHUNG đúng renderer với moderation/public (point 2
+                        // yêu cầu rõ), không phải chuỗi phẳng như hai field còn lại — bảng/đậm/liên
+                        // kết hiện đúng y hệt những gì sẽ lên trang công khai.
+                        <div key={field}>
+                          <p>
+                            <strong>{FIELD_LABELS[field]} — VI:</strong>
+                          </p>
+                          {panel.fields.description.viRich || panel.fields.description.vi ? (
+                            <RichDescriptionRenderer
+                              richDoc={panel.fields.description.viRich ?? null}
+                              plainFallback={panel.fields.description.vi}
+                            />
+                          ) : (
+                            <p>(trống)</p>
+                          )}
+                          <p>
+                            <strong>{FIELD_LABELS[field]} — EN:</strong>
+                          </p>
+                          {panel.fields.description.enRich || panel.fields.description.en ? (
+                            <RichDescriptionRenderer
+                              richDoc={panel.fields.description.enRich ?? null}
+                              plainFallback={panel.fields.description.en}
+                            />
+                          ) : (
+                            <p>(trống)</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div key={field}>
+                          <p>
+                            <strong>{FIELD_LABELS[field]} — VI:</strong> {panel.fields[field].vi || '(trống)'}
+                          </p>
+                          <p>
+                            <strong>{FIELD_LABELS[field]} — EN:</strong> {panel.fields[field].en || '(trống)'}
+                          </p>
+                        </div>
+                      ),
+                    )}
                   </div>
                 )}
 

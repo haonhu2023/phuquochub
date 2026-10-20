@@ -1,4 +1,5 @@
 import { apiGetAuth, apiPost } from '@/lib/http';
+import type { RichDoc } from '@phuquochub/shared-types';
 
 // Mô tả/tên/mô tả ngắn VI/EN — đi qua place_translations THẬT (Public Place i18n Read Path phía
 // API), KHÔNG phải cột places.<col>. "Lưu nháp" không ảnh hưởng gì tới trang công khai — mọi bản
@@ -11,6 +12,10 @@ import { apiGetAuth, apiPost } from '@/lib/http';
 export interface DescriptionDraftSlot {
   id: string;
   text: string;
+  // Gói D (20/10/2026) — chỉ field `description` có giá trị khác null (name/short_description
+  // chưa từng ghi rich text, API luôn trả null cho hai field đó — xem places.service.ts's
+  // getFieldTranslationDraft()).
+  rich: RichDoc | null;
   human_review_status: string;
   is_public: boolean;
 }
@@ -44,7 +49,11 @@ export interface PublishDescriptionResult {
 /** Body lưu nháp: vi/en kèm id bản nháp đã đọc (CAS). Bắt buộc expected_*_id khi gửi text tương ứng. */
 export interface DraftSaveInput {
   vi?: string;
+  // Gói D — CHỈ saveDescriptionDraft (route /description/draft) nhận vi_rich/en_rich; gửi vào
+  // /name/draft hay /short-description/draft bị 400 (ValidationPipe forbidNonWhitelisted phía API).
+  vi_rich?: RichDoc | null;
   en?: string;
+  en_rich?: RichDoc | null;
   expected_vi_id?: string | null;
   expected_en_id?: string | null;
 }

@@ -46,7 +46,17 @@ export function ProseSegmentEditor({ blocks, onChange, disabled }: Props) {
     content: proseBlocksToTiptapJSON(blocks),
     onUpdate: ({ editor: ed }) => {
       const next = tiptapJSONToProseBlocks(ed.getJSON());
-      lastEmitted.current = JSON.stringify(next);
+      const nextJson = JSON.stringify(next);
+      // Tiptap có thể tự phát `onUpdate` một lần khi gắn/chuẩn hoá nội dung ban đầu (vd
+      // `immediatelyRender: false` hoãn render DOM sang effect kế tiếp), KHÔNG do người dùng gõ gì.
+      // Nếu nội dung phát ra giống hệt những gì đã ghi nhận lần cuối (ban đầu = CHÍNH `blocks` được
+      // truyền vào), đây là tiếng ồn chuẩn hoá — bỏ qua, không gọi onChange. Thiếu guard này khiến
+      // mọi field rich text (kể cả field CHƯA từng được người dùng chạm tới) phát ra một RichDoc
+      // "rỗng nhưng khác null" ngay sau khi mount — nơi gọi dựa vào "richDoc khác null" để suy ra
+      // "đã có nội dung/người dùng đã sửa" (vd PlaceDescriptionEditor's isDirty/saveDirtyDrafts) sẽ
+      // hiểu nhầm field đó đã bị sửa dù chưa ai chạm vào.
+      if (nextJson === lastEmitted.current) return;
+      lastEmitted.current = nextJson;
       onChange(next);
     },
   });
