@@ -126,12 +126,16 @@ export function RealEstateListingTranslationModerationQueueView() {
                 source={{
                   title: t.source_title,
                   description: t.source_description,
+                  descriptionRich: t.source_description_rich,
                   utilitiesNote: t.source_utilities_note,
+                  utilitiesNoteRich: t.source_utilities_note_rich,
                   legalStatusNote: t.source_legal_status_note,
+                  legalStatusNoteRich: t.source_legal_status_note_rich,
                 }}
                 translation={{
                   title: t.title ?? '',
                   description: t.description ?? '',
+                  descriptionRich: t.description_rich,
                   utilitiesNote: t.utilities_note ?? '',
                   legalStatusNote: t.legal_status_note ?? '',
                 }}

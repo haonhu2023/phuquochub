@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { RichDoc } from '@phuquochub/shared-types';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { getMyRealEstateListingTranslation, saveRealEstateListingTranslation, submitRealEstateListingTranslation } from './api/real-estate-listings.api';
 import { REAL_ESTATE_LISTING_TRANSLATION_STATUS_LABELS, type RealEstateListingSenderView, type RealEstateListingTranslationView } from './types';
 import { RealEstateListingTranslationCompare } from './RealEstateListingTranslationCompare';
+import { RichDescriptionEditor } from '../rich-doc/RichDescriptionEditor';
+import { plainTextToRichDoc } from '../rich-doc/legacy';
 import uiStyles from '@/components/ui/ui.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
@@ -16,6 +19,9 @@ interface Props {
 interface DraftState {
   title: string;
   description: string;
+  // Gói D — `undefined` = chưa thực sự soạn qua editor rich-text, KHÔNG gửi key khi lưu (cùng kỷ
+  // luật JobListingTranslationEditor — xem ghi chú đầy đủ ở đó cho lý do không mặc định null).
+  descriptionRich: RichDoc | null | undefined;
   utilitiesNote: string;
   legalStatusNote: string;
 }
@@ -24,6 +30,7 @@ function toDraft(t: RealEstateListingTranslationView | null): DraftState {
   return {
     title: t?.title ?? '',
     description: t?.description ?? '',
+    descriptionRich: t?.description_rich ?? undefined,
     utilitiesNote: t?.utilities_note ?? '',
     legalStatusNote: t?.legal_status_note ?? '',
   };
@@ -96,6 +103,7 @@ export function RealEstateListingTranslationEditor({ listing }: Props) {
         {
           title: draft.title.trim() || null,
           description: draft.description.trim() || null,
+          description_rich: draft.descriptionRich,
           utilities_note: draft.utilitiesNote.trim() || null,
           legal_status_note: draft.legalStatusNote.trim() || null,
           expected_content_version: state.translation?.content_version,
@@ -144,8 +152,9 @@ export function RealEstateListingTranslationEditor({ listing }: Props) {
   }
 
   const translation = state.translation;
+  const hasDescription = Boolean(draft.description.trim()) || draft.descriptionRich != null;
   const canSubmit =
-    Boolean(draft.title.trim()) && Boolean(draft.description.trim()) && (!translation || translation.status === 'draft' || translation.status === 'rejected');
+    Boolean(draft.title.trim()) && hasDescription && (!translation || translation.status === 'draft' || translation.status === 'rejected');
 
   return (
     <fieldset className={placeMgmtStyles.section}>
@@ -199,18 +208,16 @@ export function RealEstateListingTranslationEditor({ listing }: Props) {
         />
       </div>
       <div className={uiStyles.field}>
-        <label className={uiStyles.fieldLabel} htmlFor="relt-description">
+        <span id="relt-description-label" className={uiStyles.fieldLabel}>
           Mô tả (tiếng Anh)
-        </label>
-        <textarea
-          id="relt-description"
-          className={placeMgmtStyles.textarea}
-          rows={4}
-          maxLength={4000}
-          value={draft.description}
-          onChange={(e) => set('description', e.target.value)}
-          disabled={submitting}
-        />
+        </span>
+        <div role="group" aria-labelledby="relt-description-label">
+          <RichDescriptionEditor
+            value={draft.descriptionRich ?? (draft.description ? plainTextToRichDoc(draft.description) : null)}
+            onChange={(doc) => set('descriptionRich', doc)}
+            disabled={submitting}
+          />
+        </div>
       </div>
       <div className={uiStyles.field}>
         <label className={uiStyles.fieldLabel} htmlFor="relt-utilities">
@@ -255,7 +262,15 @@ export function RealEstateListingTranslationEditor({ listing }: Props) {
 
       {showPreview && (
         <RealEstateListingTranslationCompare
-          source={{ title: listing.title, description: listing.description, utilitiesNote: listing.utilities_note, legalStatusNote: listing.legal_status_note }}
+          source={{
+            title: listing.title,
+            description: listing.description,
+            descriptionRich: listing.description_rich,
+            utilitiesNote: listing.utilities_note,
+            utilitiesNoteRich: listing.utilities_note_rich,
+            legalStatusNote: listing.legal_status_note,
+            legalStatusNoteRich: listing.legal_status_note_rich,
+          }}
           translation={draft}
         />
       )}

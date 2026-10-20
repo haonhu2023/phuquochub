@@ -13,6 +13,7 @@ import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { RealEstateListingPhotoGallery } from '@/modules/real-estate-listing-photos/RealEstateListingPhotoGallery';
 import { buildRealEstateListingJsonLd, serializeJsonLd } from '@/lib/structured-data';
+import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import placesStyles from '@/modules/places/places.module.css';
 
 interface Params {
@@ -159,7 +160,9 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
             {listing.utilities_note && (
               <div className={placesStyles.infoItem}>
                 <dt>{t.utilities}</dt>
-                <dd className={placesStyles.longText}>{listing.utilities_note}</dd>
+                <dd>
+                  <RichDescriptionRenderer richDoc={listing.utilities_note_rich} plainFallback={listing.utilities_note} />
+                </dd>
               </div>
             )}
             {listing.furniture_status && (
@@ -188,7 +191,9 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
         {listing.transaction_type === 'sale' && listing.legal_status_note && (
           <div className={placesStyles.infoItem}>
             <dt>{t.legalStatus}</dt>
-            <dd className={placesStyles.longText}>{listing.legal_status_note}</dd>
+            <dd>
+              <RichDescriptionRenderer richDoc={listing.legal_status_note_rich} plainFallback={listing.legal_status_note} />
+            </dd>
           </div>
         )}
 
@@ -213,7 +218,7 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
       {listing.description && (
         <section>
           <h2>{t.description}</h2>
-          <p className={placesStyles.longText}>{listing.description}</p>
+          <RichDescriptionRenderer richDoc={listing.description_rich} plainFallback={listing.description} />
         </section>
       )}
 

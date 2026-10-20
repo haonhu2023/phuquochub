@@ -8,6 +8,7 @@ import { listPendingRealEstateListings } from './api/real-estate-listings.api';
 import { RealEstateListingDecisionForm } from './RealEstateListingDecisionForm';
 import { realEstatePropertyTypeLabel, realEstateTransactionTypeLabel, type RealEstateListingModeratorView } from './types';
 import { formatRealEstatePrice } from './price';
+import { RichDescriptionRenderer } from '../rich-doc/RichDescriptionRenderer';
 import placeStyles from '@/modules/places/places.module.css';
 
 type State =
@@ -118,7 +119,7 @@ export function RealEstateListingModerationQueueView() {
                 {realEstatePropertyTypeLabel(listing.property_type, 'vi')}
                 {listing.ward ? ` · ${listing.ward}` : ''} · {formatRealEstatePrice(listing)}
               </p>
-              {listing.description && <p>{listing.description}</p>}
+              {listing.description && <RichDescriptionRenderer richDoc={listing.description_rich} plainFallback={listing.description} />}
               <p>
                 Liên hệ: {listing.contact_method} — {listing.contact_value}
               </p>

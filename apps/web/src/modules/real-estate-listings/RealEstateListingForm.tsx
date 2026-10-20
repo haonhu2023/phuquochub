@@ -21,6 +21,8 @@ import {
   type RealEstateListingSenderView,
   type UpsertRealEstateListingInput,
 } from './types';
+import { RichDescriptionEditor } from '../rich-doc/RichDescriptionEditor';
+import { plainTextToRichDoc } from '../rich-doc/legacy';
 import uiStyles from '@/components/ui/ui.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
@@ -57,11 +59,16 @@ function toInput(v?: RealEstateListingSenderView): UpsertRealEstateListingInput 
     sale_price_basis: v.sale_price_basis,
     deposit_amount: v.deposit_amount,
     utilities_note: v.utilities_note,
+    // CHỦ Ý giữ nguyên (KHÔNG mồi từ plain text ở đây) — xem JSX's ghi chú: mồi chỉ ảnh hưởng
+    // NHỮNG GÌ EDITOR HIỂN THỊ, không ảnh hưởng gì được GỬI ĐI cho tới khi người dùng thực sự soạn.
+    utilities_note_rich: v.utilities_note_rich,
     furniture_status: v.furniture_status,
     move_in_date: v.move_in_date,
     lease_term_months: v.lease_term_months,
     legal_status_note: v.legal_status_note,
+    legal_status_note_rich: v.legal_status_note_rich,
     description: v.description,
+    description_rich: v.description_rich,
     contact_method: v.contact_method,
     contact_value: v.contact_value,
     expires_at: v.expires_at,
@@ -446,47 +453,41 @@ export function RealEstateListingForm({ existing, onSaved }: Props) {
             </div>
           </div>
           <div className={uiStyles.field}>
-            <label className={uiStyles.fieldLabel} htmlFor="re-utilities">
+            <span id="re-utilities-label" className={uiStyles.fieldLabel}>
               Điện/nước/phí
-            </label>
-            <input
-              id="re-utilities"
-              className={placeMgmtStyles.input}
-              value={input.utilities_note ?? ''}
-              onChange={(e) => set('utilities_note', e.target.value)}
-              maxLength={500}
-              disabled={submitting}
-            />
+            </span>
+            <div role="group" aria-labelledby="re-utilities-label">
+              <RichDescriptionEditor
+                value={input.utilities_note_rich ?? (input.utilities_note ? plainTextToRichDoc(input.utilities_note) : null)}
+                onChange={(doc) => set('utilities_note_rich', doc)}
+                disabled={submitting}
+              />
+            </div>
           </div>
         </fieldset>
       ) : (
         <fieldset className={placeMgmtStyles.section}>
           <legend className={placeMgmtStyles.sectionTitle}>Chi tiết mua bán (không bắt buộc)</legend>
           <div className={uiStyles.field}>
-            <label className={uiStyles.fieldLabel} htmlFor="re-legal-status">
+            <span id="re-legal-status-label" className={uiStyles.fieldLabel}>
               Tình trạng pháp lý (do bạn tự khai — hệ thống không xác minh/đảm bảo)
-            </label>
-            <textarea
-              id="re-legal-status"
-              className={placeMgmtStyles.textarea}
-              rows={3}
-              maxLength={500}
-              value={input.legal_status_note ?? ''}
-              onChange={(e) => set('legal_status_note', e.target.value)}
-              disabled={submitting}
-            />
+            </span>
+            <div role="group" aria-labelledby="re-legal-status-label">
+              <RichDescriptionEditor
+                value={input.legal_status_note_rich ?? (input.legal_status_note ? plainTextToRichDoc(input.legal_status_note) : null)}
+                onChange={(doc) => set('legal_status_note_rich', doc)}
+                disabled={submitting}
+              />
+            </div>
           </div>
         </fieldset>
       )}
 
       <fieldset className={placeMgmtStyles.section}>
         <legend className={placeMgmtStyles.sectionTitle}>Mô tả (không bắt buộc)</legend>
-        <textarea
-          className={placeMgmtStyles.textarea}
-          rows={4}
-          maxLength={4000}
-          value={input.description ?? ''}
-          onChange={(e) => set('description', e.target.value)}
+        <RichDescriptionEditor
+          value={input.description_rich ?? (input.description ? plainTextToRichDoc(input.description) : null)}
+          onChange={(doc) => set('description_rich', doc)}
           disabled={submitting}
         />
         <div className={uiStyles.field} style={{ marginTop: '0.75rem' }}>

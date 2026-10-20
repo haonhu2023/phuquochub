@@ -1,3 +1,5 @@
+import type { RichDoc } from '@phuquochub/shared-types';
+
 // Khớp apps/api/src/modules/real-estate-listings (enums.ts/dto/real-estate-listings.dto.ts/
 // real-estate-listings.mapper.ts). Taxonomy cố định — không free text.
 export const REAL_ESTATE_PROPERTY_TYPES = ['room', 'apartment', 'house', 'land', 'retail'] as const;
@@ -119,11 +121,17 @@ export interface RealEstateListingBaseView {
   sale_price_basis: RealEstateSalePriceBasis | null;
   deposit_amount: number | null;
   utilities_note: string | null;
+  // Gói D — khi KHÔNG null, nguồn sự thật của trường cùng tên trần (renderer dùng field này khi có,
+  // xem RichDescriptionRenderer). NULL nếu tin chưa dùng rich text HOẶC vừa phát hiện lệch hash
+  // (cơ chế chống rollback, xem apps/api/src/common/rich-text-field.ts).
+  utilities_note_rich: RichDoc | null;
   furniture_status: RealEstateFurnitureStatus | null;
   move_in_date: string | null;
   lease_term_months: number | null;
   legal_status_note: string | null;
+  legal_status_note_rich: RichDoc | null;
   description: string | null;
+  description_rich: RichDoc | null;
   contact_method: string;
   contact_value: string;
   deal_status: RealEstateDealStatus;
@@ -175,11 +183,17 @@ export interface UpsertRealEstateListingInput {
   sale_price_basis?: RealEstateSalePriceBasis | null;
   deposit_amount?: number | null;
   utilities_note?: string | null;
+  // Gói D — có mặt (object HOẶC null) = ghi đè authoritative; vắng mặt (undefined, không set key)
+  // = "không đụng rich text", xem apps/api/src/common/rich-text-field.ts's applyRichTextField() cho
+  // quy tắc đầy đủ (dùng chung cho cả ba trường dưới đây).
+  utilities_note_rich?: RichDoc | null;
   furniture_status?: RealEstateFurnitureStatus | null;
   move_in_date?: string | null;
   lease_term_months?: number | null;
   legal_status_note?: string | null;
+  legal_status_note_rich?: RichDoc | null;
   description?: string | null;
+  description_rich?: RichDoc | null;
   contact_method: string;
   contact_value: string;
   expires_at?: string | null;
@@ -228,6 +242,9 @@ export interface RealEstateListingTranslationView {
   locale: string;
   title: string | null;
   description: string | null;
+  // Gói D — nguồn sự thật khi không null (vùng NHÁP). Bản dịch CHỈ `description` có rich text
+  // (utilities_note/legal_status_note bản dịch ngoài phạm vi).
+  description_rich: RichDoc | null;
   utilities_note: string | null;
   legal_status_note: string | null;
   status: RealEstateListingTranslationStatus;
@@ -245,13 +262,17 @@ export interface RealEstateListingTranslationView {
 export interface RealEstateListingTranslationModeratorView extends RealEstateListingTranslationView {
   source_title: string;
   source_description: string | null;
+  source_description_rich: RichDoc | null;
   source_utilities_note: string | null;
+  source_utilities_note_rich: RichDoc | null;
   source_legal_status_note: string | null;
+  source_legal_status_note_rich: RichDoc | null;
 }
 
 export interface UpsertRealEstateListingTranslationInput {
   title?: string | null;
   description?: string | null;
+  description_rich?: RichDoc | null;
   utilities_note?: string | null;
   legal_status_note?: string | null;
   expected_content_version?: number;

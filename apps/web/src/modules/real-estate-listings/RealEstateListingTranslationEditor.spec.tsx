@@ -37,11 +37,14 @@ function listing(overrides: Partial<RealEstateListingSenderView> = {}): RealEsta
     sale_price_basis: null,
     deposit_amount: null,
     utilities_note: 'Điện nước tự trả',
+    utilities_note_rich: null,
     furniture_status: null,
     move_in_date: null,
     lease_term_months: null,
     legal_status_note: null,
+    legal_status_note_rich: null,
     description: 'Mô tả tiếng Việt',
+    description_rich: null,
     contact_method: 'phone',
     contact_value: '0909000000',
     deal_status: 'available',
@@ -63,6 +66,7 @@ function translation(overrides: Partial<RealEstateListingTranslationView> = {}):
     locale: 'en',
     title: 'Room for rent',
     description: 'English description',
+    description_rich: null,
     utilities_note: null,
     legal_status_note: null,
     status: 'draft',
@@ -95,21 +99,25 @@ describe('RealEstateListingTranslationEditor', () => {
     expect(screen.getByText(/Nháp/)).toBeInTheDocument();
   });
 
-  it('lưu nháp lần đầu → gọi API KHÔNG kèm expected_content_version, gửi đủ 4 trường', async () => {
+  it('lưu nháp lần đầu → gọi API KHÔNG kèm expected_content_version, mô tả soạn qua editor rich-text gửi đúng description_rich', async () => {
     mockGet.mockResolvedValue(null);
     mockSave.mockResolvedValue(translation());
     render(<RealEstateListingTranslationEditor listing={listing()} />);
     await screen.findByLabelText('Tiêu đề (tiếng Anh)');
     fireEvent.change(screen.getByLabelText('Tiêu đề (tiếng Anh)'), { target: { value: 'Room for rent' } });
-    fireEvent.change(screen.getByLabelText('Mô tả (tiếng Anh)'), { target: { value: 'English description' } });
+    const editable = await waitFor(() => {
+      const el = document.querySelector('.ProseMirror');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(editable);
+    fireEvent.input(editable, { target: { textContent: 'English description' } });
     fireEvent.click(screen.getByRole('button', { name: 'Lưu nháp tiếng Anh' }));
-    await waitFor(() =>
-      expect(mockSave).toHaveBeenCalledWith(
-        'rel-1',
-        expect.objectContaining({ title: 'Room for rent', description: 'English description', expected_content_version: undefined }),
-        'tok',
-      ),
-    );
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    const [, payload] = mockSave.mock.calls[0] as [string, { title: string; description_rich: unknown; expected_content_version: undefined }];
+    expect(payload.title).toBe('Room for rent');
+    expect(payload.expected_content_version).toBeUndefined();
+    expect(payload.description_rich).not.toBeNull();
   });
 
   // Điểm owner yêu cầu trực tiếp: 409 KHÔNG xoá nội dung người dùng đang nhập.
@@ -143,6 +151,9 @@ describe('RealEstateListingTranslationEditor', () => {
     expect(screen.getByText('Phòng trọ gần biển')).toBeInTheDocument();
     expect(screen.getByText('Mô tả tiếng Việt')).toBeInTheDocument();
     expect(screen.getByText('Room for rent')).toBeInTheDocument();
-    expect(screen.getByText('English description', { selector: 'p' })).toBeInTheDocument();
+    // "English description" xuất hiện HAI LẦN có chủ đích: một lần trong vùng soạn (editor tự mồi
+    // hiển thị từ plain text), một lần trong khối đối chiếu xem trước — cùng mẫu đã dùng ở
+    // JobListingTranslationEditor.spec.tsx.
+    expect(screen.getAllByText('English description')).toHaveLength(2);
   });
 });

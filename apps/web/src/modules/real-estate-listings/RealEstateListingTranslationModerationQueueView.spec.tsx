@@ -23,6 +23,7 @@ function translation(overrides: Partial<RealEstateListingTranslationModeratorVie
     locale: 'en',
     title: 'Room for rent',
     description: 'English description',
+    description_rich: null,
     utilities_note: null,
     legal_status_note: null,
     status: 'pending',
@@ -37,8 +38,11 @@ function translation(overrides: Partial<RealEstateListingTranslationModeratorVie
     is_published_stale: null,
     source_title: 'Phòng trọ gần biển',
     source_description: 'Mô tả tiếng Việt',
+    source_description_rich: null,
     source_utilities_note: null,
+    source_utilities_note_rich: null,
     source_legal_status_note: null,
+    source_legal_status_note_rich: null,
     ...overrides,
   };
 }

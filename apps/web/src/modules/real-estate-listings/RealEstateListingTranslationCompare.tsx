@@ -1,13 +1,20 @@
+import type { RichDoc } from '@phuquochub/shared-types';
+import { RichDescriptionRenderer } from '../rich-doc/RichDescriptionRenderer';
+
 interface SourceFields {
   title: string;
   description: string | null;
+  descriptionRich: RichDoc | null;
   utilitiesNote: string | null;
+  utilitiesNoteRich: RichDoc | null;
   legalStatusNote: string | null;
+  legalStatusNoteRich: RichDoc | null;
 }
 
 interface TranslatedFields {
   title: string;
   description: string;
+  descriptionRich?: RichDoc | null;
   utilitiesNote: string;
   legalStatusNote: string;
 }
@@ -30,16 +37,18 @@ export function RealEstateListingTranslationCompare({ source, translation }: Pro
       <div>
         <p style={{ fontWeight: 600, marginBottom: '0.25rem' }}>Tiếng Việt (đang dùng)</p>
         <p style={{ fontWeight: 600 }}>{source.title}</p>
-        {source.description && <p style={{ whiteSpace: 'pre-wrap' }}>{source.description}</p>}
+        {source.description && <RichDescriptionRenderer richDoc={source.descriptionRich} plainFallback={source.description} />}
         {source.utilitiesNote && (
-          <p style={{ whiteSpace: 'pre-wrap' }}>
-            <em>Điện/nước/phí:</em> {source.utilitiesNote}
-          </p>
+          <div>
+            <em>Điện/nước/phí:</em>
+            <RichDescriptionRenderer richDoc={source.utilitiesNoteRich} plainFallback={source.utilitiesNote} />
+          </div>
         )}
         {source.legalStatusNote && (
-          <p style={{ whiteSpace: 'pre-wrap' }}>
-            <em>Pháp lý:</em> {source.legalStatusNote}
-          </p>
+          <div>
+            <em>Pháp lý:</em>
+            <RichDescriptionRenderer richDoc={source.legalStatusNoteRich} plainFallback={source.legalStatusNote} />
+          </div>
         )}
       </div>
       <div>
@@ -47,7 +56,9 @@ export function RealEstateListingTranslationCompare({ source, translation }: Pro
         <p style={{ fontWeight: 600, color: translation.title ? undefined : 'var(--muted)' }}>
           {translation.title || '(chưa có tiêu đề)'}
         </p>
-        {translation.description && <p style={{ whiteSpace: 'pre-wrap' }}>{translation.description}</p>}
+        {translation.description && (
+          <RichDescriptionRenderer richDoc={translation.descriptionRich ?? null} plainFallback={translation.description} />
+        )}
         {translation.utilitiesNote && (
           <p style={{ whiteSpace: 'pre-wrap' }}>
             <em>Utilities:</em> {translation.utilitiesNote}
