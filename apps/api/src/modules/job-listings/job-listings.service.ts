@@ -1,8 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { RichDoc, RichDocValidationError, flattenRichDocToPlainText } from '@phuquochub/shared-types';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
-import { parseRichDoc } from '../../common/rich-doc';
+import { applyRichTextField, RichTextFieldAccessors, serveRichDoc } from '../../common/rich-text-field';
 import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
@@ -76,58 +75,29 @@ export class JobListingsService {
     }
   }
 
-  // Gói D — quy tắc nguồn-sự-thật MỘT CHIỀU giữa `description` (plain, cũ) và `description_rich`
-  // (RichDoc, mới), tránh "RichDoc cũ âm thầm che nội dung plain text mới" (owner yêu cầu rõ):
-  //
-  //  1. `dto.description_rich` CÓ MẶT trong payload (object HOẶC null tường minh) → AUTHORITATIVE.
-  //     - object: validate (throw 400 nếu sai), lưu, và `description` ĐƯỢC GHI ĐÈ bằng bản phẳng
-  //       dẫn xuất (flatten) — plain text KHÔNG BAO GIỜ được phép lệch khỏi RichDoc khi RichDoc tồn
-  //       tại, nhờ vậy mọi nơi đọc `description` trần (JSON-LD, meta, thẻ danh sách, hash lỗi thời)
-  //       tiếp tục đúng mà không cần biết gì về RichDoc.
-  //     - null tường minh = XOÁ CÓ CHỦ Ý → cả hai cột đều về null (owner: "chủ động xoá nội dung
-  //       phải xoá đúng cả phần biểu diễn liên quan" — không để `description` trần còn sót lại).
-  //  2. `dto.description_rich` VẮNG MẶT (undefined — client không biết/không đụng rich text):
-  //     - Nếu đang KHÔNG có `descriptionRich` lưu sẵn → ghi `description` bình thường, không gì
-  //       khác để đồng bộ.
-  //     - Nếu ĐANG CÓ `descriptionRich` lưu sẵn: so `dto.description` mới với bản flatten của
-  //       RichDoc đang lưu — KHỚP (client chỉ gửi lại y nguyên bản đã đọc, không thực sự sửa) → GIỮ
-  //       NGUYÊN RichDoc, không demote. LỆCH (client cũ vừa ghi đè một nội dung plain text THỰC SỰ
-  //       khác) → coi là ghi đè có chủ ý qua đường cũ: xoá `descriptionRich` (demote về plain-only),
-  //       không được để RichDoc cũ tiếp tục "che" bản plain text mới hơn.
-  private static applyDescription(entity: JobListing, dto: UpsertJobListingDto): void {
-    if (dto.description_rich !== undefined) {
-      if (dto.description_rich === null) {
-        entity.descriptionRich = null;
-        entity.description = null;
-        return;
-      }
-      let doc: RichDoc;
-      try {
-        doc = parseRichDoc(dto.description_rich);
-      } catch (err) {
-        if (err instanceof RichDocValidationError) throw new BadRequestException(`description_rich: ${err.message}`);
-        throw err;
-      }
-      entity.descriptionRich = doc;
-      entity.description = flattenRichDocToPlainText(doc) || null;
-      return;
-    }
-    const newPlain = dto.description ?? null;
-    const existingRich = entity.descriptionRich ?? null;
-    if (existingRich != null) {
-      const currentFlatten = flattenRichDocToPlainText(existingRich) || null;
-      if (newPlain !== currentFlatten) {
-        entity.descriptionRich = null; // demote: client cũ vừa ghi đè nội dung thực sự khác
-      }
-      // else: round-trip không đổi — giữ nguyên existingRich (đã có sẵn trên entity, không gán lại).
-    } else {
-      // Chưa từng có rich text — gán tường minh null (không để `undefined` lọt tới tầng lưu, dù
-      // TypeORM/Postgres coi hai giá trị này như nhau khi INSERT — entity trong bộ nhớ nên phản ánh
-      // ĐÚNG trạng thái sẽ được lưu, để code gọi sau (vd mapper) đọc được giá trị nhất quán).
-      entity.descriptionRich = null;
-    }
-    entity.description = newPlain;
-  }
+  // Gói D (mở rộng 18/10/2026) — quy tắc nguồn-sự-thật + cơ chế hash chống rollback dùng CHUNG cho
+  // cả ba trường dài (description/requirements/benefits), xem apps/api/src/common/rich-text-field.ts
+  // cho logic đầy đủ. KHÔNG viết lại riêng cho từng trường — chỉ khai accessor.
+  private static readonly DESCRIPTION_ACCESSORS: RichTextFieldAccessors<JobListing> = {
+    setPlain: (e, v) => (e.description = v),
+    getRich: (e) => e.descriptionRich,
+    setRich: (e, v) => (e.descriptionRich = v),
+    setRichHash: (e, v) => (e.descriptionRichHash = v),
+  };
+
+  private static readonly REQUIREMENTS_ACCESSORS: RichTextFieldAccessors<JobListing> = {
+    setPlain: (e, v) => (e.requirements = v),
+    getRich: (e) => e.requirementsRich,
+    setRich: (e, v) => (e.requirementsRich = v),
+    setRichHash: (e, v) => (e.requirementsRichHash = v),
+  };
+
+  private static readonly BENEFITS_ACCESSORS: RichTextFieldAccessors<JobListing> = {
+    setPlain: (e, v) => (e.benefits = v),
+    getRich: (e) => e.benefitsRich,
+    setRich: (e, v) => (e.benefitsRich = v),
+    setRichHash: (e, v) => (e.benefitsRichHash = v),
+  };
 
   private static applyDto(entity: JobListing, dto: UpsertJobListingDto): void {
     entity.employerName = dto.employer_name;
@@ -144,9 +114,9 @@ export class JobListingsService {
     entity.salaryCurrency = dto.salary_currency ?? null;
     entity.salaryPeriod = dto.salary_period ?? null;
     entity.shiftInfo = dto.shift_info ?? null;
-    entity.requirements = dto.requirements ?? null;
-    entity.benefits = dto.benefits ?? null;
-    JobListingsService.applyDescription(entity, dto);
+    applyRichTextField(entity, JobListingsService.REQUIREMENTS_ACCESSORS, dto.requirements_rich, dto.requirements, 'requirements_rich');
+    applyRichTextField(entity, JobListingsService.BENEFITS_ACCESSORS, dto.benefits_rich, dto.benefits, 'benefits_rich');
+    applyRichTextField(entity, JobListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
     entity.contactMethod = dto.contact_method;
     entity.contactValue = dto.contact_value;
     entity.expiresAt = dto.expires_at ?? null;
@@ -402,14 +372,20 @@ export class JobListingsService {
           ...withPlace,
           title: translation.publishedTitle,
           description: translation.publishedDescription ?? withPlace.description,
-          // Gói D — bản dịch EN CHƯA hỗ trợ rich text (ngoài phạm vi luồng đầu tiên, xem
-          // ADR-DELIVERY-002 điểm 5 "mở rộng tuần tự"). PHẢI đặt về null ở NHÁNH NÀY — nếu không,
-          // `...withPlace` phía trên sẽ để lọt RichDoc của bản TIẾNG VIỆT vào response đang phục vụ
-          // tiếng Anh (renderer sẽ hiện nhầm nội dung tiếng Việt có định dạng thay vì bản dịch tiếng
-          // Anh dạng chữ thường) — lỗi thật, không phải phòng hờ.
-          description_rich: null,
+          description_rich: serveRichDoc(
+            translation.publishedDescription,
+            translation.publishedDescriptionRich,
+            translation.publishedDescriptionRichHash,
+          ),
           requirements: translation.publishedRequirements ?? withPlace.requirements,
+          // requirements/benefits bản dịch CHƯA hỗ trợ rich text (ngoài phạm vi — chỉ `description`
+          // bản dịch có rich, theo đúng yêu cầu owner). PHẢI đặt null tường minh ở nhánh này — nếu
+          // không, `...withPlace` phía trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (requirements/
+          // benefits NGUỒN) vào response đang phục vụ tiếng Anh — lỗi thật y hệt description_rich đã
+          // tìm thấy trước đó, không phải phòng hờ.
+          requirements_rich: null,
           benefits: translation.publishedBenefits ?? withPlace.benefits,
+          benefits_rich: null,
           locale: 'en',
           is_translation_stale: stale,
         };

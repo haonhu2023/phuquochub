@@ -58,17 +58,35 @@ export class JobListing {
   @Column({ type: 'varchar', length: 2000, nullable: true })
   requirements!: string | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  requirementsRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  requirementsRichHash!: string | null;
+
   @Column({ type: 'varchar', length: 2000, nullable: true })
   benefits!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  benefitsRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  benefitsRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 4000, nullable: true })
   description!: string | null;
 
-  // Gói D (AddJobListingDescriptionRich) — khi KHÔNG NULL, đây là nguồn sự thật của mô tả; cột
-  // `description` phía trên luôn là PROJECTION phẳng dẫn xuất từ cột này (xem
-  // JobListingsService.applyDescription()). NULL = chưa có rich text, dùng `description` trần.
+  // Gói D (AddJobListingDescriptionRich + AddJobListingRichTextHashes) — khi KHÔNG NULL, đây là
+  // nguồn sự thật của mô tả; cột `description` phía trên luôn là PROJECTION phẳng dẫn xuất từ cột
+  // này (xem apps/api/src/common/rich-text-field.ts's applyRichTextField()). `descriptionRichHash`
+  // = sha256(description) TẠI THỜI ĐIỂM descriptionRich được ghi có thẩm quyền — đọc phải so khớp
+  // qua `serveRichDoc()` trước khi phục vụ (cơ chế đóng rủi ro rollback: lệch = coi như chưa có,
+  // KHÔNG phục vụ RichDoc lỗi thời — xem rich-text-field.ts's ghi chú đầy đủ).
   @Column({ type: 'jsonb', nullable: true })
   descriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  descriptionRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 30 })
   contactMethod!: string;

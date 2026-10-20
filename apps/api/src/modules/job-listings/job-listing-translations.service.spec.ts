@@ -39,6 +39,8 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.locale = 'en';
   t.title = 'EN title';
   t.description = 'EN description';
+  t.descriptionRich = null;
+  t.descriptionRichHash = null;
   t.requirements = null;
   t.benefits = null;
   t.status = JobListingTranslationStatus.DRAFT;
@@ -48,6 +50,8 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.sourceContentHash = computeJobListingSourceHash(listingRow());
   t.publishedTitle = null;
   t.publishedDescription = null;
+  t.publishedDescriptionRich = null;
+  t.publishedDescriptionRichHash = null;
   t.publishedRequirements = null;
   t.publishedBenefits = null;
   t.publishedSourceContentHash = null;
@@ -211,6 +215,64 @@ describe('JobListingTranslationsService', () => {
       translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ contentVersion: 5 }));
       await service.save('job-1', { title: 'x', expected_content_version: 5 }, 'u1');
       expect(translationsRepo.updateWithCas).toHaveBeenCalledWith('tr-1', expect.anything(), 5);
+    });
+  });
+
+  // Gói D (mở rộng 18/10/2026) — "Bổ sung rich-text cho mô tả bản dịch EN tuyển dụng". Chỉ test
+  // HÀNH VI MỚI (wiring) — quy tắc nguồn-sự-thật/demote/hash tự nó đã có 11 test riêng ở
+  // rich-text-field.spec.ts, không lặp lại ở đây.
+  describe('save — rich text cho description bản dịch (vùng NHÁP)', () => {
+    const doc = (text: string) => ({ v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text }] }] });
+
+    it('lần lưu ĐẦU TIÊN, gửi description_rich → INSERT kèm rich + hash', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
+      translationsRepo.findByJobListingId.mockResolvedValue(null);
+      await service.save('job-1', { title: 'EN title', description_rich: doc('EN rich') }, 'u1');
+      const inserted = translationsRepo.insertNew.mock.calls[0][0] as JobListingTranslation;
+      expect(inserted.descriptionRich).toEqual(doc('EN rich'));
+      expect(inserted.description).toBe('EN rich');
+      expect(inserted.descriptionRichHash).toBeTruthy();
+    });
+
+    it('CAS khớp, gửi description_rich → patch gửi xuống repo có rich + hash, KHÔNG đụng published*', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow({ createdBy: 'u1' }));
+      translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ contentVersion: 2 }));
+      await service.save('job-1', { title: 'x', description_rich: doc('Cập nhật'), expected_content_version: 2 }, 'u1');
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch.descriptionRich).toEqual(doc('Cập nhật'));
+      expect(patch).not.toHaveProperty('publishedDescriptionRich');
+    });
+  });
+
+  describe('decide approve — snapshot CẢ rich + hash từ nháp sang published (không tính lại)', () => {
+    const doc = (text: string) => ({ v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text, bold: true }] }] });
+
+    it('nháp có description_rich → published_description_rich/hash là BẢN SAO chính xác (không tạo hash mới)', async () => {
+      const listing = listingRow();
+      listingsRepo.findById.mockResolvedValue(listing);
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({
+          status: JobListingTranslationStatus.PENDING,
+          description: 'EN rich text',
+          descriptionRich: doc('EN rich text'),
+          descriptionRichHash: 'hash-cua-nhap',
+          contentVersion: 1,
+        }),
+      );
+      await service.decide('job-1', { decision: 'approve', expected_content_version: 1 }, 'mod-1');
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch.publishedDescriptionRich).toEqual(doc('EN rich text'));
+      expect(patch.publishedDescriptionRichHash).toBe('hash-cua-nhap'); // copy nguyên, không tính lại
+    });
+
+    it('nháp KHÔNG có rich (chỉ plain) → published_description_rich = null (không tự tạo rich từ plain)', async () => {
+      listingsRepo.findById.mockResolvedValue(listingRow());
+      translationsRepo.findByJobListingId.mockResolvedValue(
+        translationRow({ status: JobListingTranslationStatus.PENDING, description: 'Chỉ chữ thường', descriptionRich: null, contentVersion: 1 }),
+      );
+      await service.decide('job-1', { decision: 'approve', expected_content_version: 1 }, 'mod-1');
+      const patch = translationsRepo.updateWithCas.mock.calls[0][1];
+      expect(patch.publishedDescriptionRich).toBeNull();
     });
   });
 

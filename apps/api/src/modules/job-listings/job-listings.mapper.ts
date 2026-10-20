@@ -1,4 +1,5 @@
 import { JobListing } from './entities/job-listing.entity';
+import { serveRichDoc } from '../../common/rich-text-field';
 
 // Khác place-edit-proposals (không có đọc công khai): tin tuyển dụng CÓ một view công khai — mục
 // đích của tính năng là để người tìm việc thấy `contact_method`/`contact_value` và liên hệ trực
@@ -23,13 +24,16 @@ function baseFields(row: JobListing) {
     salary_period: row.salaryPeriod,
     shift_info: row.shiftInfo,
     requirements: row.requirements,
+    // Gói D — `serveRichDoc()` (apps/api/src/common/rich-text-field.ts) chỉ trả RichDoc khi hash đã
+    // lưu còn KHỚP bản plain hiện tại — đây CHÍNH LÀ cơ chế đóng rủi ro rollback (lệch do app cũ
+    // từng sửa một mình cột plain → coi như chưa có rich, không phục vụ bản lỗi thời). NULL ở MỌI
+    // view (kể cả public) nếu tin chưa dùng rich text hoặc vừa phát hiện lệch — tương thích ngược
+    // hoàn toàn, client cũ bỏ qua field lạ như thường lệ.
+    requirements_rich: serveRichDoc(row.requirements, row.requirementsRich, row.requirementsRichHash),
     benefits: row.benefits,
+    benefits_rich: serveRichDoc(row.benefits, row.benefitsRich, row.benefitsRichHash),
     description: row.description,
-    // Gói D — luôn đi kèm `description`: khi không null, renderer dùng RichDoc này thay vì plain
-    // text (diễn giải ĐẦY ĐỦ hơn, `description` chỉ là bản phẳng dẫn xuất — xem
-    // JobListingsService.applyDescription()). NULL ở MỌI view (kể cả public) nếu tin chưa dùng
-    // rich text — hoàn toàn tương thích ngược, client cũ bỏ qua field lạ như thường lệ.
-    description_rich: row.descriptionRich,
+    description_rich: serveRichDoc(row.description, row.descriptionRich, row.descriptionRichHash),
     contact_method: row.contactMethod,
     contact_value: row.contactValue,
     expires_at: row.expiresAt,

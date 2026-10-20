@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { applyRichTextField, RichTextFieldAccessors } from '../../common/rich-text-field';
 import { AuditService } from '../../core/audit/audit.service';
 import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
 import { JobListingsRepository } from './repositories/job-listings.repository';
@@ -33,6 +34,16 @@ export class JobListingTranslationsService {
     private readonly audit: AuditService,
   ) {}
 
+  // Gói D — vùng NHÁP dùng CHUNG quy tắc nguồn-sự-thật + hash chống rollback với job_listings
+  // (apps/api/src/common/rich-text-field.ts). Vùng ĐÃ DUYỆT (published*) KHÔNG dùng accessor này —
+  // đó là một snapshot COPY trực tiếp từ nháp lúc approve (xem decide()), không phải một write mới.
+  private static readonly DRAFT_DESCRIPTION_ACCESSORS: RichTextFieldAccessors<JobListingTranslation> = {
+    setPlain: (e, v) => (e.description = v),
+    getRich: (e) => e.descriptionRich,
+    setRich: (e, v) => (e.descriptionRich = v),
+    setRichHash: (e, v) => (e.descriptionRichHash = v),
+  };
+
   private async loadOwnedListing(jobListingId: string, userId: string): Promise<JobListing> {
     const row = await this.listingsRepo.findById(jobListingId);
     if (!row || row.createdBy !== userId) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
@@ -56,7 +67,7 @@ export class JobListingTranslationsService {
     if (!existing) {
       const entity = this.translationsRepo.create(jobListingId);
       entity.title = dto.title ?? null;
-      entity.description = dto.description ?? null;
+      applyRichTextField(entity, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
       entity.requirements = dto.requirements ?? null;
       entity.benefits = dto.benefits ?? null;
       entity.sourceContentHash = newHash;
@@ -74,9 +85,15 @@ export class JobListingTranslationsService {
     if (dto.expected_content_version == null) {
       throw new BadRequestException('Thiếu expected_content_version — tải lại bản dịch hiện tại trước khi lưu tiếp');
     }
+    // Áp quy tắc rich-text TRƯỚC khi gom patch — applyRichTextField() đọc `existing.descriptionRich`
+    // hiện tại để quyết định demote hay giữ nguyên (xem ghi chú hàm), nên phải chạy trên `existing`
+    // (entity đã tải), không phải một entity rỗng.
+    applyRichTextField(existing, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
     const patch: Partial<JobListingTranslation> = {
       title: dto.title ?? null,
-      description: dto.description ?? null,
+      description: existing.description,
+      descriptionRich: existing.descriptionRich,
+      descriptionRichHash: existing.descriptionRichHash,
       requirements: dto.requirements ?? null,
       benefits: dto.benefits ?? null,
       sourceContentHash: newHash,
@@ -165,6 +182,12 @@ export class JobListingTranslationsService {
       // published* thay đổi (xem ghi chú đầu file).
       patch.publishedTitle = translation.title;
       patch.publishedDescription = translation.description;
+      // Snapshot COPY trực tiếp từ nháp (KHÔNG qua applyRichTextField — đây không phải một write từ
+      // DTO, là "chốt lại đúng nháp đang có" lúc duyệt, xem ghi chú đầu file). Copy CẢ hash: hash của
+      // published area đo so với published area's plain, không phải tính lại — copy nguyên cặp giữ
+      // đúng bất biến "hash luôn khớp plain cùng vùng tại thời điểm ghi".
+      patch.publishedDescriptionRich = translation.descriptionRich;
+      patch.publishedDescriptionRichHash = translation.descriptionRichHash;
       patch.publishedRequirements = translation.requirements;
       patch.publishedBenefits = translation.benefits;
       patch.publishedSourceContentHash = listing ? computeJobListingSourceHash(listing) : translation.sourceContentHash;

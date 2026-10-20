@@ -1,4 +1,6 @@
-import { IsIn, IsInt, IsOptional, IsString, Min, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, Min, MaxLength, ValidateIf } from 'class-validator';
+import { RichDoc } from '@phuquochub/shared-types';
+import { IsRichDoc } from '../../../common/rich-doc';
 
 // Lưu DRAFT bản dịch — CHỈ 4 trường văn bản dịch được (Gói C, khớp đúng field list owner đã chốt:
 // title/description/requirements/benefits). KHÔNG có salary/contact/expires_at/... — những trường
@@ -14,6 +16,15 @@ export class UpsertJobListingTranslationDto {
 
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string | null;
+
+  // Gói D (mở rộng 18/10/2026) — CHỈ `description` bản dịch có rich text (owner yêu cầu rõ, không
+  // mở rộng sang requirements/benefits bản dịch). Cùng quy tắc vắng-mặt/null-tường-minh với
+  // job_listings.description_rich, xem apps/api/src/common/rich-text-field.ts.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  description_rich?: RichDoc | null;
 
   @IsOptional() @IsString() @MaxLength(2000)
   requirements?: string | null;

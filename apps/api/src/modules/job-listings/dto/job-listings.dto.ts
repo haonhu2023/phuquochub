@@ -70,16 +70,28 @@ export class UpsertJobListingDto {
   @IsOptional() @IsString() @MaxLength(2000)
   requirements?: string | null;
 
+  // Gói D — key VẮNG MẶT (undefined) = "client này không biết/không đụng rich text"; key có mặt
+  // (object HOẶC null) = GHI ĐÈ, authoritative — xem apps/api/src/common/rich-text-field.ts's
+  // applyRichTextField() cho quy tắc nguồn-sự-thật đầy đủ (dùng chung cho cả ba trường dưới đây).
+  // `@ValidateIf` để `null` đi qua (xoá có chủ đích) mà vẫn kiểm object thật bằng @IsRichDoc.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  requirements_rich?: RichDoc | null;
+
   @IsOptional() @IsString() @MaxLength(2000)
   benefits?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  benefits_rich?: RichDoc | null;
 
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string | null;
 
-  // Gói D — key VẮNG MẶT (undefined) = "client này không biết/không đụng rich text"; key có mặt
-  // (object HOẶC null) = GHI ĐÈ, authoritative, xem JobListingsService.applyDescription() cho quy
-  // tắc nguồn-sự-thật đầy đủ. `@ValidateIf` để `null` đi qua (xoá có chủ đích) mà vẫn kiểm object
-  // thật bằng @IsRichDoc khi có giá trị.
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsObject()

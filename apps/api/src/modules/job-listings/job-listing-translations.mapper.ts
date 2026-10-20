@@ -1,6 +1,7 @@
 import { JobListingTranslation } from './entities/job-listing-translation.entity';
 import { JobListing } from './entities/job-listing.entity';
 import { isJobListingTranslationStale, type JobListingTranslationSourceRow } from './job-listing-translation-hash';
+import { serveRichDoc } from '../../common/rich-text-field';
 
 // Một view DUY NHẤT (khác job-listings.mapper.ts's public/sender/moderator/admin ba-bốn view) —
 // bản dịch không có thông tin nhạy cảm nào cần ẩn khác nhau giữa chủ tin và moderator; chủ tin và
@@ -24,6 +25,10 @@ export function toJobListingTranslationView(row: JobListingTranslation, parent?:
     locale: row.locale,
     title: row.title,
     description: row.description,
+    // Gói D — `serveRichDoc()` chỉ trả rich khi hash còn khớp bản plain NHÁP hiện tại (cơ chế đóng
+    // rủi ro rollback, xem apps/api/src/common/rich-text-field.ts). View này LUÔN là vùng NHÁP —
+    // bản ĐÃ DUYỆT (published*) không nằm trong view chung này, xem JobListingsService.getPublicById().
+    description_rich: serveRichDoc(row.description, row.descriptionRich, row.descriptionRichHash),
     requirements: row.requirements,
     benefits: row.benefits,
     status: row.status,
@@ -48,7 +53,7 @@ export function toJobListingTranslationView(row: JobListingTranslation, parent?:
 // không chỉ tiêu đề.
 export function toJobListingTranslationModeratorView(
   row: JobListingTranslation,
-  parent: JobListingTranslationSourceRow & Pick<JobListing, 'descriptionRich'>,
+  parent: JobListingTranslationSourceRow & Pick<JobListing, 'descriptionRich' | 'descriptionRichHash'>,
 ) {
   return {
     ...toJobListingTranslationView(row, parent),
@@ -56,8 +61,9 @@ export function toJobListingTranslationModeratorView(
     source_employer_name: parent.employerName,
     source_description: parent.description,
     // Gói D — cho moderator (và owner's "xem trước") thấy ĐÚNG định dạng nguồn khi đối chiếu, cùng
-    // renderer với public (RichDescriptionRenderer) — null nếu tin nguồn chưa dùng rich text.
-    source_description_rich: parent.descriptionRich,
+    // renderer với public (RichDescriptionRenderer) — null nếu tin nguồn chưa dùng rich text HOẶC
+    // vừa phát hiện lệch hash (cùng cơ chế chống rollback, không phải một đường đọc riêng bỏ qua nó).
+    source_description_rich: serveRichDoc(parent.description, parent.descriptionRich, parent.descriptionRichHash),
     source_requirements: parent.requirements,
     source_benefits: parent.benefits,
   };

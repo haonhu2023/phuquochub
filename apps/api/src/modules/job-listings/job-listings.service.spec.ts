@@ -476,6 +476,23 @@ describe('JobListingsService', () => {
       await expect(service.getPublicById('job-1')).rejects.toBeInstanceOf(NotFoundException);
     });
 
+    // Gói D — khoá đúng điểm nối giữa mapper (serveRichDoc) và route đọc công khai thật: hash lệch
+    // (mô phỏng đúng dấu vết rollback — xem rich-text-field.spec.ts's test chuỗi đầy đủ) phải khiến
+    // response công khai KHÔNG lộ description_rich lỗi thời, dù entity vẫn còn giữ nó trong DB.
+    it('getPublicById: description_rich_hash LỆCH description hiện tại (dấu vết rollback) → response KHÔNG lộ description_rich, vẫn trả đúng description plain', async () => {
+      repo.getPublicById.mockResolvedValue(
+        row({
+          status: JobListingStatus.PUBLISHED,
+          description: 'Nội dung do app cũ sửa trong lúc rollback',
+          descriptionRich: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'Nội dung rich CŨ', bold: true }] }] },
+          descriptionRichHash: 'hash-cua-noi-dung-cu-khong-con-khop',
+        }),
+      );
+      const result = await service.getPublicById('job-1');
+      expect(result.description).toBe('Nội dung do app cũ sửa trong lúc rollback');
+      expect(result.description_rich).toBeNull();
+    });
+
     it('getPublicById: view công khai có contact_value (mục đích của tính năng) nhưng KHÔNG có status/reviewer_id', async () => {
       repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, contactValue: '0909999999' }));
       const result = await service.getPublicById('job-1');
@@ -520,6 +537,36 @@ describe('JobListingsService', () => {
         const result = await service.getPublicById('job-1', 'en');
         expect(result.description).toBe('EN description (plain)');
         expect(result.description_rich).toBeNull();
+      });
+
+      // Gói D (mở rộng 18/10/2026) — "Bổ sung rich-text cho mô tả bản dịch EN tuyển dụng": khi bản
+      // dịch ĐÃ DUYỆT có rich text riêng (hash khớp), overlay PHẢI phục vụ ĐÚNG RichDoc của bản dịch
+      // — không phải của tiếng Việt (đã kiểm ở trên) và không phải null một cách vô căn cứ.
+      it('locale=en, bản dịch ĐÃ DUYỆT có published_description_rich riêng (hash khớp) → overlay trả ĐÚNG RichDoc của bản dịch, requirements_rich/benefits_rich vẫn null (bản dịch chưa hỗ trợ)', async () => {
+        const enDoc = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'EN rich content', bold: true }] }] };
+        repo.getPublicById.mockResolvedValue(
+          row({
+            status: JobListingStatus.PUBLISHED,
+            title: 'VI title',
+            description: 'VI mô tả',
+            requirements: 'VI yêu cầu',
+            requirementsRich: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'VI yêu cầu' }] }] },
+          }),
+        );
+        // Hash thật phải khớp đúng flatten('EN rich content') — tính qua cùng helper production dùng.
+        const { hashPlainTextForRichDoc } = jest.requireActual('../../common/rich-text-field');
+        translationsRepo.findByJobListingId.mockResolvedValue(
+          translationRow({
+            publishedTitle: 'EN title',
+            publishedDescription: 'EN rich content',
+            publishedDescriptionRich: enDoc,
+            publishedDescriptionRichHash: hashPlainTextForRichDoc('EN rich content'),
+          }),
+        );
+        const result = await service.getPublicById('job-1', 'en');
+        expect(result.description_rich).toEqual(enDoc);
+        expect(result.requirements_rich).toBeNull();
+        expect(result.benefits_rich).toBeNull();
       });
 
       it('locale=en, CHƯA có bản dịch nào → fallback tiếng Việt, locale="vi" (KHÔNG nhận vơ là tiếng Anh)', async () => {

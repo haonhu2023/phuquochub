@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { RichDoc } from '@phuquochub/shared-types';
 import { JobListingTranslationStatus } from '../job-listings.enums';
 
 // `job_listing_translations` (Gói C phần 1/2, 17/10/2026 — xem migration InitJobListingTranslations
@@ -35,6 +36,18 @@ export class JobListingTranslation {
   @Column({ type: 'varchar', length: 4000, nullable: true })
   description!: string | null;
 
+  // Gói D (mở rộng 18/10/2026) — rich-text CHỈ cho `description` bản dịch (owner yêu cầu rõ:
+  // "Bổ sung rich-text cho mô tả bản dịch EN tuyển dụng" — requirements/benefits bản dịch NGOÀI
+  // phạm vi). Cùng quy tắc nguồn-sự-thật + cơ chế hash chống rollback với job_listings.description,
+  // xem apps/api/src/common/rich-text-field.ts. `descriptionRichHash` cho vùng NHÁP;
+  // `publishedDescriptionRichHash` (dưới) cho vùng ĐÃ DUYỆT — hai hash ĐỘC LẬP, đúng tinh thần tách
+  // nháp/công khai đã có của entity này.
+  @Column({ type: 'jsonb', nullable: true })
+  descriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  descriptionRichHash!: string | null;
+
   @Column({ type: 'varchar', length: 2000, nullable: true })
   requirements!: string | null;
 
@@ -65,6 +78,12 @@ export class JobListingTranslation {
 
   @Column({ type: 'varchar', length: 4000, nullable: true })
   publishedDescription!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  publishedDescriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  publishedDescriptionRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 2000, nullable: true })
   publishedRequirements!: string | null;
