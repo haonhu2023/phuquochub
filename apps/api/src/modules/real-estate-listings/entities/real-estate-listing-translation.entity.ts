@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { RichDoc } from '@phuquochub/shared-types';
 import { RealEstateListingTranslationStatus } from '../real-estate-listings.enums';
 
 // `real_estate_listing_translations` (Gói C phần 2/2, 17/10/2026 — xem migration
@@ -22,6 +23,14 @@ export class RealEstateListingTranslation {
 
   @Column({ type: 'varchar', length: 4000, nullable: true })
   description!: string | null;
+
+  // Gói D (18/10/2026) — CHỈ `description` bản dịch có rich text (cùng phạm vi job_listings:
+  // "mô tả bản dịch EN", không mở rộng utilitiesNote/legalStatusNote bản dịch).
+  @Column({ type: 'jsonb', nullable: true })
+  descriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  descriptionRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   utilitiesNote!: string | null;
@@ -55,6 +64,12 @@ export class RealEstateListingTranslation {
 
   @Column({ type: 'varchar', length: 4000, nullable: true })
   publishedDescription!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  publishedDescriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  publishedDescriptionRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   publishedUtilitiesNote!: string | null;

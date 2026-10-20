@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { RichDoc } from '@phuquochub/shared-types';
 import {
   RealEstateAddressPrecision,
   RealEstateDealStatus,
@@ -76,6 +77,12 @@ export class RealEstateListing {
   @Column({ type: 'varchar', length: 500, nullable: true })
   utilitiesNote!: string | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  utilitiesNoteRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  utilitiesNoteRichHash!: string | null;
+
   @Column({ type: 'enum', enum: RealEstateFurnitureStatus, enumName: 'real_estate_furniture_status', nullable: true })
   furnitureStatus!: RealEstateFurnitureStatus | null;
 
@@ -88,8 +95,22 @@ export class RealEstateListing {
   @Column({ type: 'varchar', length: 500, nullable: true })
   legalStatusNote!: string | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  legalStatusNoteRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  legalStatusNoteRichHash!: string | null;
+
+  // Gói D (18/10/2026, mở rộng sau job_listings) — cùng mẫu + cơ chế hash chống rollback với
+  // job_listings (apps/api/src/common/rich-text-field.ts) — không viết lại logic, chỉ nhân bản cột.
   @Column({ type: 'varchar', length: 4000, nullable: true })
   description!: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  descriptionRich!: RichDoc | null;
+
+  @Column({ type: 'char', length: 64, nullable: true })
+  descriptionRichHash!: string | null;
 
   @Column({ type: 'varchar', length: 30 })
   contactMethod!: string;

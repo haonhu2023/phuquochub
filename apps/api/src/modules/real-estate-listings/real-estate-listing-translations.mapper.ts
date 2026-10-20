@@ -1,5 +1,7 @@
 import { RealEstateListingTranslation } from './entities/real-estate-listing-translation.entity';
+import { RealEstateListing } from './entities/real-estate-listing.entity';
 import { isRealEstateListingTranslationStale, type RealEstateListingTranslationSourceRow } from './real-estate-listing-translation-hash';
+import { serveRichDoc } from '../../common/rich-text-field';
 
 // Cùng khuôn job-listing-translations.mapper.ts (xem ghi chú đầy đủ ở đó) — một view duy nhất,
 // has_published/is_published_stale/is_stale phân biệt rõ "có bản dịch đã duyệt" khỏi "bản dịch
@@ -12,6 +14,9 @@ export function toRealEstateListingTranslationView(row: RealEstateListingTransla
     locale: row.locale,
     title: row.title,
     description: row.description,
+    // Gói D — `serveRichDoc()` chỉ trả rich khi hash còn khớp bản plain NHÁP hiện tại (cơ chế đóng
+    // rủi ro rollback, xem apps/api/src/common/rich-text-field.ts). View này LUÔN là vùng NHÁP.
+    description_rich: serveRichDoc(row.description, row.descriptionRich, row.descriptionRichHash),
     utilities_note: row.utilitiesNote,
     legal_status_note: row.legalStatusNote,
     status: row.status,
@@ -30,12 +35,21 @@ export function toRealEstateListingTranslationView(row: RealEstateListingTransla
   };
 }
 
-export function toRealEstateListingTranslationModeratorView(row: RealEstateListingTranslation, parent: RealEstateListingTranslationSourceRow & { title: string }) {
+export function toRealEstateListingTranslationModeratorView(
+  row: RealEstateListingTranslation,
+  parent: RealEstateListingTranslationSourceRow &
+    Pick<RealEstateListing, 'descriptionRich' | 'descriptionRichHash' | 'utilitiesNoteRich' | 'utilitiesNoteRichHash' | 'legalStatusNoteRich' | 'legalStatusNoteRichHash'> & {
+      title: string;
+    },
+) {
   return {
     ...toRealEstateListingTranslationView(row, parent),
     source_title: parent.title,
     source_description: parent.description,
+    source_description_rich: serveRichDoc(parent.description, parent.descriptionRich, parent.descriptionRichHash),
     source_utilities_note: parent.utilitiesNote,
+    source_utilities_note_rich: serveRichDoc(parent.utilitiesNote, parent.utilitiesNoteRich, parent.utilitiesNoteRichHash),
     source_legal_status_note: parent.legalStatusNote,
+    source_legal_status_note_rich: serveRichDoc(parent.legalStatusNote, parent.legalStatusNoteRich, parent.legalStatusNoteRichHash),
   };
 }

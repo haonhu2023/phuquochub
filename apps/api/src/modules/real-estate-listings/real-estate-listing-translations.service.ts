@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { applyRichTextField, RichTextFieldAccessors } from '../../common/rich-text-field';
 import { AuditService } from '../../core/audit/audit.service';
 import { RealEstateListingTranslationsRepository } from './repositories/real-estate-listing-translations.repository';
 import { RealEstateListingsRepository } from './repositories/real-estate-listings.repository';
@@ -28,6 +29,16 @@ export class RealEstateListingTranslationsService {
     private readonly audit: AuditService,
   ) {}
 
+  // Gói D — vùng NHÁP dùng CHUNG quy tắc nguồn-sự-thật + hash chống rollback với job_listings (xem
+  // apps/api/src/common/rich-text-field.ts). Vùng ĐÃ DUYỆT (published*) là snapshot COPY trực tiếp
+  // lúc approve (xem decide()), không qua accessor này.
+  private static readonly DRAFT_DESCRIPTION_ACCESSORS: RichTextFieldAccessors<RealEstateListingTranslation> = {
+    setPlain: (e, v) => (e.description = v),
+    getRich: (e) => e.descriptionRich,
+    setRich: (e, v) => (e.descriptionRich = v),
+    setRichHash: (e, v) => (e.descriptionRichHash = v),
+  };
+
   private async loadOwnedListing(realEstateListingId: string, userId: string): Promise<RealEstateListing> {
     const row = await this.listingsRepo.findById(realEstateListingId);
     if (!row || row.createdBy !== userId) throw new NotFoundException('Không tìm thấy tin bất động sản');
@@ -48,7 +59,7 @@ export class RealEstateListingTranslationsService {
     if (!existing) {
       const entity = this.translationsRepo.create(realEstateListingId);
       entity.title = dto.title ?? null;
-      entity.description = dto.description ?? null;
+      applyRichTextField(entity, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
       entity.utilitiesNote = dto.utilities_note ?? null;
       entity.legalStatusNote = dto.legal_status_note ?? null;
       entity.sourceContentHash = newHash;
@@ -66,9 +77,12 @@ export class RealEstateListingTranslationsService {
     if (dto.expected_content_version == null) {
       throw new BadRequestException('Thiếu expected_content_version — tải lại bản dịch hiện tại trước khi lưu tiếp');
     }
+    applyRichTextField(existing, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
     const patch: Partial<RealEstateListingTranslation> = {
       title: dto.title ?? null,
-      description: dto.description ?? null,
+      description: existing.description,
+      descriptionRich: existing.descriptionRich,
+      descriptionRichHash: existing.descriptionRichHash,
       utilitiesNote: dto.utilities_note ?? null,
       legalStatusNote: dto.legal_status_note ?? null,
       sourceContentHash: newHash,
@@ -147,6 +161,9 @@ export class RealEstateListingTranslationsService {
     if (isApprove) {
       patch.publishedTitle = translation.title;
       patch.publishedDescription = translation.description;
+      // Snapshot COPY trực tiếp từ nháp (KHÔNG qua applyRichTextField — cùng lý do job_listings).
+      patch.publishedDescriptionRich = translation.descriptionRich;
+      patch.publishedDescriptionRichHash = translation.descriptionRichHash;
       patch.publishedUtilitiesNote = translation.utilitiesNote;
       patch.publishedLegalStatusNote = translation.legalStatusNote;
       patch.publishedSourceContentHash = listing ? computeRealEstateListingSourceHash(listing) : translation.sourceContentHash;

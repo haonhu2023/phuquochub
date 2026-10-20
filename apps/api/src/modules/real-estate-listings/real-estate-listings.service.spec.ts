@@ -22,6 +22,8 @@ function translationRow(overrides: Partial<RealEstateListingTranslation> = {}): 
   t.locale = 'en';
   t.title = 'EN title';
   t.description = 'EN description';
+  t.descriptionRich = null;
+  t.descriptionRichHash = null;
   t.utilitiesNote = null;
   t.legalStatusNote = null;
   t.status = RealEstateListingTranslationStatus.DRAFT;
@@ -31,6 +33,8 @@ function translationRow(overrides: Partial<RealEstateListingTranslation> = {}): 
   t.sourceContentHash = 'hash';
   t.publishedTitle = 'EN title';
   t.publishedDescription = 'EN description';
+  t.publishedDescriptionRich = null;
+  t.publishedDescriptionRichHash = null;
   t.publishedUtilitiesNote = null;
   t.publishedLegalStatusNote = null;
   t.publishedSourceContentHash = 'hash';
@@ -86,11 +90,17 @@ function row(overrides: Partial<RealEstateListing> = {}): RealEstateListing {
   r.salePriceBasis = null;
   r.depositAmount = null;
   r.utilitiesNote = null;
+  r.utilitiesNoteRich = null;
+  r.utilitiesNoteRichHash = null;
   r.furnitureStatus = null;
   r.moveInDate = null;
   r.leaseTermMonths = null;
   r.legalStatusNote = null;
+  r.legalStatusNoteRich = null;
+  r.legalStatusNoteRichHash = null;
   r.description = null;
+  r.descriptionRich = null;
+  r.descriptionRichHash = null;
   r.contactMethod = 'phone';
   r.contactValue = '0909';
   r.reviewNote = null;
@@ -186,6 +196,52 @@ describe('RealEstateListingsService', () => {
         'u1',
       );
       expect(result.status).toBe(RealEstateListingStatus.DRAFT);
+    });
+
+    // Gói D — legal_status_note_rich phải chịu CÙNG ràng buộc "chỉ tin bán" như legal_status_note
+    // trần, không để client "lách" kiểm tra bằng cách chỉ gửi mỗi field rich.
+    it('tin thuê mang legal_status_note_rich (không mang legal_status_note trần) → BadRequestException', async () => {
+      await expect(
+        service.create({ ...rentDto(), legal_status_note_rich: { v: 1, blocks: [] } }, 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  // Gói D (mở rộng 18/10/2026) — rich-text cho description/utilities_note/legal_status_note. Chỉ
+  // test WIRING (gọi đúng applyRichTextField với đúng accessor) — quy tắc nguồn-sự-thật/demote/hash
+  // tự nó đã có 11 test riêng ở rich-text-field.spec.ts, không lặp lại ở đây (cùng kỷ luật đã dùng
+  // cho job_listings.description).
+  describe('rich-text: description/utilities_note/legal_status_note (Gói D)', () => {
+    const doc = (text: string) => ({ v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text }] }] });
+
+    it('create: gửi cả ba field rich → lưu đúng RichDoc + plain dẫn xuất cho từng trường', async () => {
+      const result = await service.create(
+        { ...saleDto(), description_rich: doc('Mô tả rich'), legal_status_note_rich: doc('Sổ hồng riêng') },
+        'u1',
+      );
+      const created = repo.create.mock.calls[0][0] as RealEstateListing;
+      expect(created.descriptionRich).toEqual(doc('Mô tả rich'));
+      expect(created.description).toBe('Mô tả rich');
+      expect(created.legalStatusNoteRich).toEqual(doc('Sổ hồng riêng'));
+      expect(created.legalStatusNote).toBe('Sổ hồng riêng');
+      expect(result.description).toBe('Mô tả rich');
+    });
+
+    it('create: gửi utilities_note_rich (tin thuê) → lưu đúng', async () => {
+      const result = await service.create({ ...rentDto(), utilities_note_rich: doc('Điện nước tự trả') }, 'u1');
+      const created = repo.create.mock.calls[0][0] as RealEstateListing;
+      expect(created.utilitiesNoteRich).toEqual(doc('Điện nước tự trả'));
+      expect(result.utilities_note).toBe('Điện nước tự trả');
+    });
+
+    it('update: client cũ ghi đè description trần bằng nội dung khác, không gửi description_rich → demote (xoá descriptionRich)', async () => {
+      repo.findById.mockResolvedValue(
+        row({ status: RealEstateListingStatus.DRAFT, createdBy: 'u1', description: 'Mô tả rich', descriptionRich: doc('Mô tả rich') }),
+      );
+      await service.update('rel-1', { ...rentDto(), description: 'Nội dung hoàn toàn mới do client cũ gõ' }, 'u1');
+      const saved = repo.save.mock.calls[0][0] as RealEstateListing;
+      expect(saved.descriptionRich).toBeNull();
+      expect(saved.description).toBe('Nội dung hoàn toàn mới do client cũ gõ');
     });
   });
 
@@ -379,6 +435,42 @@ describe('RealEstateListingsService', () => {
       expect(result.title).toBe('EN title');
       expect(result.description).toBe('EN description');
       expect(result.locale).toBe('en');
+    });
+
+    // Gói D — cùng lớp lỗi đã tìm thấy và sửa ở job_listings: overlay EN KHÔNG được để lọt RichDoc
+    // của bản TIẾNG VIỆT (utilities_note/legal_status_note NGUỒN) sang response đang phục vụ tiếng
+    // Anh — bản dịch chưa hỗ trợ rich cho hai trường đó.
+    it('locale=en, có published, tin gốc CÓ utilities_note_rich/legal_status_note_rich → overlay EN phải trả cả hai = null', async () => {
+      repo.getPublicById.mockResolvedValue(
+        row({
+          status: RealEstateListingStatus.PUBLISHED,
+          title: 'VI title',
+          utilitiesNote: 'VI tiện ích',
+          utilitiesNoteRich: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'VI tiện ích có định dạng', bold: true }] }] },
+        }),
+      );
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(
+        translationRow({ publishedTitle: 'EN title', publishedDescription: 'EN description (plain)' }),
+      );
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.utilities_note_rich).toBeNull();
+      expect(result.legal_status_note_rich).toBeNull();
+    });
+
+    it('locale=en, bản dịch ĐÃ DUYỆT có published_description_rich riêng (hash khớp) → overlay trả ĐÚNG RichDoc của bản dịch', async () => {
+      const enDoc = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'EN rich content', bold: true }] }] };
+      repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, title: 'VI title' }));
+      const { hashPlainTextForRichDoc } = jest.requireActual('../../common/rich-text-field');
+      translationsRepo.findByRealEstateListingId.mockResolvedValue(
+        translationRow({
+          publishedTitle: 'EN title',
+          publishedDescription: 'EN rich content',
+          publishedDescriptionRich: enDoc,
+          publishedDescriptionRichHash: hashPlainTextForRichDoc('EN rich content'),
+        }),
+      );
+      const result = await service.getPublicById('rel-1', 'en');
+      expect(result.description_rich).toEqual(enDoc);
     });
 
     it('locale=en, CHƯA có bản dịch nào → fallback tiếng Việt, locale="vi"', async () => {

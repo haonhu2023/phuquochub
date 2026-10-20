@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -12,7 +13,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { RichDoc } from '@phuquochub/shared-types';
+import { IsRichDoc } from '../../../common/rich-doc';
 import {
   RealEstateAddressPrecision,
   RealEstateFurnitureStatus,
@@ -78,6 +82,15 @@ export class UpsertRealEstateListingDto {
   @IsOptional() @IsString() @MaxLength(500)
   utilities_note?: string | null;
 
+  // Gói D — key VẮNG MẶT (undefined) = "không đụng rich text"; có mặt (object HOẶC null) = ghi đè
+  // authoritative, xem apps/api/src/common/rich-text-field.ts's applyRichTextField() cho quy tắc
+  // đầy đủ (dùng chung cho cả ba trường rich-text trong DTO này).
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  utilities_note_rich?: RichDoc | null;
+
   @IsOptional() @IsEnum(RealEstateFurnitureStatus)
   furniture_status?: RealEstateFurnitureStatus | null;
 
@@ -90,8 +103,20 @@ export class UpsertRealEstateListingDto {
   @IsOptional() @IsString() @MaxLength(500)
   legal_status_note?: string | null;
 
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  legal_status_note_rich?: RichDoc | null;
+
   @IsOptional() @IsString() @MaxLength(4000)
   description?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  description_rich?: RichDoc | null;
 
   @IsString() @MinLength(1) @MaxLength(30)
   contact_method!: string;

@@ -1,5 +1,6 @@
 import { RealEstateListing } from './entities/real-estate-listing.entity';
 import { RealEstateAddressPrecision } from './real-estate-listings.enums';
+import { serveRichDoc } from '../../common/rich-text-field';
 
 // `ward` LUÔN công khai. `address_text`/`lat`/`lng` CHỈ vào response khi `addressPrecision='exact'`
 // — đây là nơi DUY NHẤT quyết định việc đó; không phải một bước ẩn ở UI (task requirement nguyên
@@ -32,11 +33,17 @@ function baseFields(row: RealEstateListing) {
     sale_price_basis: row.salePriceBasis,
     deposit_amount: row.depositAmount !== null ? Number(row.depositAmount) : null,
     utilities_note: row.utilitiesNote,
+    // Gói D — `serveRichDoc()` chỉ trả rich khi hash còn khớp bản plain hiện tại (cơ chế đóng rủi
+    // ro rollback, xem apps/api/src/common/rich-text-field.ts). NULL ở MỌI view (kể cả public) nếu
+    // tin chưa dùng rich text hoặc vừa phát hiện lệch — tương thích ngược hoàn toàn.
+    utilities_note_rich: serveRichDoc(row.utilitiesNote, row.utilitiesNoteRich, row.utilitiesNoteRichHash),
     furniture_status: row.furnitureStatus,
     move_in_date: row.moveInDate,
     lease_term_months: row.leaseTermMonths,
     legal_status_note: row.legalStatusNote,
+    legal_status_note_rich: serveRichDoc(row.legalStatusNote, row.legalStatusNoteRich, row.legalStatusNoteRichHash),
     description: row.description,
+    description_rich: serveRichDoc(row.description, row.descriptionRich, row.descriptionRichHash),
     contact_method: row.contactMethod,
     contact_value: row.contactValue,
     deal_status: row.dealStatus,

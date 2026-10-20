@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
+import { applyRichTextField, RichTextFieldAccessors, serveRichDoc } from '../../common/rich-text-field';
 import { AuthorizationService } from '../authz/authorization.service';
 import { RealEstateListingsRepository } from './repositories/real-estate-listings.repository';
 import { RealEstateListingTranslationsRepository } from './repositories/real-estate-listing-translations.repository';
@@ -39,7 +40,9 @@ export class RealEstateListingsService {
 
   private static assertTransactionScopedFields(dto: UpsertRealEstateListingDto): void {
     if (dto.transaction_type === RealEstateTransactionType.RENT) {
-      if (dto.sale_price_basis != null || dto.legal_status_note != null) {
+      // Gói D — `legal_status_note_rich` cùng phạm vi chỉ-tin-bán với `legal_status_note` (kiểm cả
+      // hai, không để client gửi rich text "lách" qua kiểm tra này bằng cách chỉ gửi mỗi field rich).
+      if (dto.sale_price_basis != null || dto.legal_status_note != null || dto.legal_status_note_rich !== undefined) {
         throw new BadRequestException('sale_price_basis/legal_status_note chỉ áp dụng cho tin bán, không phải tin thuê');
       }
     } else {
@@ -83,6 +86,29 @@ export class RealEstateListingsService {
     }
   }
 
+  // Gói D — accessor dùng chung cho cả ba trường dài (description/utilities_note/legal_status_note),
+  // xem apps/api/src/common/rich-text-field.ts cho logic applyRichTextField() đầy đủ.
+  private static readonly DESCRIPTION_ACCESSORS: RichTextFieldAccessors<RealEstateListing> = {
+    setPlain: (e, v) => (e.description = v),
+    getRich: (e) => e.descriptionRich,
+    setRich: (e, v) => (e.descriptionRich = v),
+    setRichHash: (e, v) => (e.descriptionRichHash = v),
+  };
+
+  private static readonly UTILITIES_NOTE_ACCESSORS: RichTextFieldAccessors<RealEstateListing> = {
+    setPlain: (e, v) => (e.utilitiesNote = v),
+    getRich: (e) => e.utilitiesNoteRich,
+    setRich: (e, v) => (e.utilitiesNoteRich = v),
+    setRichHash: (e, v) => (e.utilitiesNoteRichHash = v),
+  };
+
+  private static readonly LEGAL_STATUS_NOTE_ACCESSORS: RichTextFieldAccessors<RealEstateListing> = {
+    setPlain: (e, v) => (e.legalStatusNote = v),
+    getRich: (e) => e.legalStatusNoteRich,
+    setRich: (e, v) => (e.legalStatusNoteRich = v),
+    setRichHash: (e, v) => (e.legalStatusNoteRichHash = v),
+  };
+
   private static applyDto(entity: RealEstateListing, dto: UpsertRealEstateListingDto): void {
     entity.posterRole = dto.poster_role;
     entity.transactionType = dto.transaction_type;
@@ -99,12 +125,12 @@ export class RealEstateListingsService {
     entity.rentPeriod = dto.rent_period ?? null;
     entity.salePriceBasis = dto.sale_price_basis ?? null;
     entity.depositAmount = dto.deposit_amount != null ? String(dto.deposit_amount) : null;
-    entity.utilitiesNote = dto.utilities_note ?? null;
+    applyRichTextField(entity, RealEstateListingsService.UTILITIES_NOTE_ACCESSORS, dto.utilities_note_rich, dto.utilities_note, 'utilities_note_rich');
     entity.furnitureStatus = dto.furniture_status ?? null;
     entity.moveInDate = dto.move_in_date ?? null;
     entity.leaseTermMonths = dto.lease_term_months ?? null;
-    entity.legalStatusNote = dto.legal_status_note ?? null;
-    entity.description = dto.description ?? null;
+    applyRichTextField(entity, RealEstateListingsService.LEGAL_STATUS_NOTE_ACCESSORS, dto.legal_status_note_rich, dto.legal_status_note, 'legal_status_note_rich');
+    applyRichTextField(entity, RealEstateListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
     entity.contactMethod = dto.contact_method;
     entity.contactValue = dto.contact_value;
     entity.expiresAt = dto.expires_at ?? null;
@@ -335,8 +361,19 @@ export class RealEstateListingsService {
           ...base,
           title: translation.publishedTitle,
           description: translation.publishedDescription ?? base.description,
+          description_rich: serveRichDoc(
+            translation.publishedDescription,
+            translation.publishedDescriptionRich,
+            translation.publishedDescriptionRichHash,
+          ),
           utilities_note: translation.publishedUtilitiesNote ?? base.utilities_note,
+          // utilities_note/legal_status_note bản dịch CHƯA hỗ trợ rich text (chỉ `description` bản
+          // dịch có, cùng phạm vi job_listings). PHẢI đặt null tường minh — nếu không, `...base` phía
+          // trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (utilities_note/legal_status_note NGUỒN) vào
+          // response đang phục vụ tiếng Anh — cùng lớp lỗi đã tìm thấy và sửa ở job_listings.
+          utilities_note_rich: null,
           legal_status_note: translation.publishedLegalStatusNote ?? base.legal_status_note,
+          legal_status_note_rich: null,
           locale: 'en',
           is_translation_stale: stale,
         };
