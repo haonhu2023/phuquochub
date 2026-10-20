@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
-import { HOTEL_TYPE_LABELS } from '@/modules/hotels/types';
+import { HOTEL_TYPE_LABELS, HOTEL_TYPE_LABELS_EN } from '@/modules/hotels/types';
 import { ApiError } from '@/lib/http';
 import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
@@ -26,6 +26,10 @@ const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en
 const SECTION_HOTEL_INFO_LABEL: Record<Locale, string> = { vi: 'Thông tin khách sạn', en: 'Hotel information' };
 const LABEL_HOTEL_TYPE: Record<Locale, string> = { vi: 'Loại hình', en: 'Type' };
 const SECTION_AMENITIES_LABEL: Record<Locale, string> = { vi: 'Tiện nghi', en: 'Amenities' };
+// Nghiệm thu 20/10/2026 (sau `7629b50`) — cùng khoảng trống i18n ghi chú ở trên, phát hiện thêm
+// khi owner tự đọc `/en/hotels/novotel-phu-quoc`: nhãn này vẫn hardcode tiếng Việt dù đứng cạnh
+// các nhãn đã song ngữ. Có từ commit `6d31587`, trước cả baseline `5b04cac` — không phải lỗi mới.
+const LABEL_CHECK_IN_OUT: Record<Locale, string> = { vi: 'Giờ nhận/trả phòng', en: 'Check-in/Check-out' };
 
 interface Params {
   params: Promise<{ slug: string; locale: string }>;
@@ -47,13 +51,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
-      title: `${h.name} · Khách sạn · PhuQuocHub`,
+      title: `${h.name} · ${BREADCRUMB_HOTELS_LABEL[locale]} · PhuQuocHub`,
       description: h.short_description ?? undefined,
       alternates: { canonical, languages },
       ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
     };
   } catch {
-    return { title: 'Khách sạn · PhuQuocHub' };
+    // Nghiệm thu 20/10/2026 — `locale` đã có từ trước try (dòng 39), tái dùng ĐÚNG hằng số
+    // BREADCRUMB_HOTELS_LABEL đã có sẵn thay vì hardcode "Khách sạn" riêng ở đây.
+    return { title: `${BREADCRUMB_HOTELS_LABEL[locale]} · PhuQuocHub` };
   }
 }
 
@@ -147,7 +153,7 @@ export default async function HotelDetailPage({ params }: Params) {
           <h2>{SECTION_HOTEL_INFO_LABEL[locale]}</h2>
           <dl>
             <dt>{LABEL_HOTEL_TYPE[locale]}</dt>
-            <dd>{HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
+            <dd>{locale === 'en' ? HOTEL_TYPE_LABELS_EN[h.hotel_details.hotel_type] : HOTEL_TYPE_LABELS[h.hotel_details.hotel_type]}</dd>
             {h.hotel_details.access_route && (
               <>
                 <dt>Đường vào</dt>
@@ -176,7 +182,7 @@ export default async function HotelDetailPage({ params }: Params) {
             )}
             {(h.hotel_details.check_in || h.hotel_details.check_out) && (
               <>
-                <dt>Giờ nhận/trả phòng</dt>
+                <dt>{LABEL_CHECK_IN_OUT[locale]}</dt>
                 <dd>
                   {h.hotel_details.check_in ? `Nhận: ${h.hotel_details.check_in.slice(0, 5)}` : 'Chưa có thông tin nhận phòng'}
                   {' · '}

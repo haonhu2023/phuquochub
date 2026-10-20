@@ -484,6 +484,64 @@ describe('HotelDetailPage — thông tin khách sạn + tiện nghi (product spe
   });
 });
 
+// Nghiệm thu 20/10/2026 (sau `7629b50`, owner tự đọc /en/hotels/novotel-phu-quoc) — 3 chuỗi giao
+// diện hardcode tiếng Việt trên route /en, có từ trước (commit 6d31587, trước cả baseline
+// `5b04cac`), không phải lỗi release này gây ra. Sửa hẹp đúng 3 chỗ, giữ nguyên VI.
+describe('HotelDetailPage — nghiệm thu 3 chuỗi giao diện /en (20/10/2026)', () => {
+  it('route /en: nhãn "Check-in/Check-out" (không còn "Giờ nhận/trả phòng")', async () => {
+    mockGetHotel.mockResolvedValueOnce(
+      hotel({ hotel_details: { hotel_type: 'hotel', star_rating: null, check_in: '15:00:00', check_out: '12:00:00', cancellation_policy: null, star_rating_source: null } }),
+    );
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: 'khach-san-bien-xanh', locale: 'en' }) }));
+    expect(screen.getByText('Check-in/Check-out')).toBeInTheDocument();
+    expect(screen.queryByText('Giờ nhận/trả phòng')).not.toBeInTheDocument();
+  });
+
+  it('route /vi: vẫn giữ nguyên nhãn "Giờ nhận/trả phòng"', async () => {
+    mockGetHotel.mockResolvedValueOnce(
+      hotel({ hotel_details: { hotel_type: 'hotel', star_rating: null, check_in: '15:00:00', check_out: '12:00:00', cancellation_policy: null, star_rating_source: null } }),
+    );
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: 'khach-san-bien-xanh', locale: 'vi' }) }));
+    expect(screen.getByText('Giờ nhận/trả phòng')).toBeInTheDocument();
+  });
+
+  it('route /en, hotel_type="hotel": giá trị "Hotel" (không còn "Khách sạn")', async () => {
+    mockGetHotel.mockResolvedValueOnce(
+      hotel({ hotel_details: { hotel_type: 'hotel', star_rating: null, check_in: null, check_out: null, cancellation_policy: null, star_rating_source: null } }),
+    );
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: 'khach-san-bien-xanh', locale: 'en' }) }));
+    expect(screen.getByText('Hotel')).toBeInTheDocument();
+    expect(screen.queryByText('Khách sạn')).not.toBeInTheDocument();
+  });
+
+  it('route /vi, hotel_type="hotel": vẫn giữ nguyên giá trị "Khách sạn"', async () => {
+    mockGetHotel.mockResolvedValueOnce(
+      hotel({ hotel_details: { hotel_type: 'hotel', star_rating: null, check_in: null, check_out: null, cancellation_policy: null, star_rating_source: null } }),
+    );
+    render(await HotelDetailPage({ params: Promise.resolve({ slug: 'khach-san-bien-xanh', locale: 'vi' }) }));
+    // Có 2 chỗ render đúng chữ "Khách sạn" ở /vi (breadcrumb + giá trị dd) — xác nhận riêng dd.
+    expect(screen.getByText('Loại hình').nextElementSibling).toHaveTextContent('Khách sạn');
+  });
+
+  it('generateMetadata /en: title dùng "Hotels" (tái dùng BREADCRUMB_HOTELS_LABEL, không còn hardcode "Khách sạn")', async () => {
+    mockGetHotel.mockResolvedValueOnce(hotel({ name: 'Novotel Phu Quoc Resort' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: 'novotel-phu-quoc', locale: 'en' }) });
+    expect(metadata.title).toBe('Novotel Phu Quoc Resort · Hotels · PhuQuocHub');
+  });
+
+  it('generateMetadata /vi: title vẫn giữ nguyên "Khách sạn"', async () => {
+    mockGetHotel.mockResolvedValueOnce(hotel({ name: 'Novotel Phu Quoc Resort' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: 'novotel-phu-quoc', locale: 'vi' }) });
+    expect(metadata.title).toBe('Novotel Phu Quoc Resort · Khách sạn · PhuQuocHub');
+  });
+
+  it('generateMetadata /en, lỗi fetch (catch-fallback): title vẫn dùng "Hotels", không hardcode "Khách sạn"', async () => {
+    mockGetHotel.mockRejectedValueOnce(new Error('network'));
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: 'bat-ky', locale: 'en' }) });
+    expect(metadata.title).toBe('Hotels · PhuQuocHub');
+  });
+});
+
 // Bug thật đã sửa 2026-10-17 — cùng nguyên nhân với trang tin tuyển dụng/BĐS: <p> thường gộp "\n"
 // thành dấu cách khi hiển thị. Khoá đúng việc "\n" tới DOM nguyên vẹn — xem ghi chú đầy đủ ở
 // jobs/[id]/page.spec.tsx.

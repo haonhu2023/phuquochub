@@ -15,6 +15,19 @@ export const HOTEL_TYPE_LABELS: Record<HotelType, string> = {
   apartment: 'Căn hộ',
 };
 
+// Bản tiếng Anh CHỈ cho giá trị "Loại hình" ở trang chi tiết `/en/hotels/:slug` (nghiệm thu
+// 20/10/2026, sau release `7629b50` — không phải lỗi mới, có từ trước). KHÔNG đổi shape/giá trị
+// `HOTEL_TYPE_LABELS` ở trên vì nó còn dùng ở HotelCard.tsx/HotelDetailsEditor.tsx (VI-only,
+// ngoài phạm vi sửa hẹp lần này).
+export const HOTEL_TYPE_LABELS_EN: Record<HotelType, string> = {
+  resort: 'Resort',
+  hotel: 'Hotel',
+  homestay: 'Homestay',
+  villa: 'Villa',
+  guesthouse: 'Guesthouse',
+  apartment: 'Apartment',
+};
+
 // Thẻ khách sạn cho trang browse (/hotels) — khớp HotelsService.list() (apps/api), KHÔNG phải
 // schema `Hotel` đầy đủ trong openapi.yaml (schema đó dành cho chi tiết, có rooms/amenities).
 export interface HotelCard {
