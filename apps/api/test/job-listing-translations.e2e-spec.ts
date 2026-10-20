@@ -308,6 +308,18 @@ describe('Job listing translations (en) — e2e', () => {
     expect(en.body.data.locale).toBe('vi'); // FALLBACK — không phục vụ bản dịch cũ kèm cảnh báo nữa.
     expect(en.body.data.title).toBe('Tiêu đề tiếng Việt');
     expect(en.body.data.translation_hidden_reason).toBe('critical_fact_mismatch');
+
+    // Khôi phục lại lương về trạng thái gốc (baseJob không có lương) để không ảnh hưởng test khác
+    // chạy sau — cùng kỷ luật "khôi phục sau khi mutate fixture dùng chung" như describe block bên
+    // dưới. update() lại đẩy published→pending; phải duyệt lại để public trở lại trước test kế tiếp.
+    await request(app.getHttpServer())
+      .patch(`/api/job-listings/${jobId}`)
+      .set('Authorization', `Bearer ${posterToken}`)
+      .send({ ...baseJob, salary_min: null, salary_currency: null });
+    await request(app.getHttpServer())
+      .post(`/api/job-listings/${jobId}/decide`)
+      .set('Authorization', `Bearer ${moderatorToken}`)
+      .send({ decision: 'approve' });
   });
 
   it('?locale=en trên DANH SÁCH công khai cũng overlay title (không chỉ chi tiết)', async () => {
