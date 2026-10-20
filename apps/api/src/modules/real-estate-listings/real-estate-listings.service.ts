@@ -130,12 +130,12 @@ export class RealEstateListingsService {
     entity.rentPeriod = dto.rent_period ?? null;
     entity.salePriceBasis = dto.sale_price_basis ?? null;
     entity.depositAmount = dto.deposit_amount != null ? String(dto.deposit_amount) : null;
-    applyRichTextField(entity, RealEstateListingsService.UTILITIES_NOTE_ACCESSORS, dto.utilities_note_rich, dto.utilities_note, 'utilities_note_rich');
+    applyRichTextField(entity, RealEstateListingsService.UTILITIES_NOTE_ACCESSORS, dto.utilities_note_rich, dto.utilities_note, 'utilities_note_rich', 500);
     entity.furnitureStatus = dto.furniture_status ?? null;
     entity.moveInDate = dto.move_in_date ?? null;
     entity.leaseTermMonths = dto.lease_term_months ?? null;
-    applyRichTextField(entity, RealEstateListingsService.LEGAL_STATUS_NOTE_ACCESSORS, dto.legal_status_note_rich, dto.legal_status_note, 'legal_status_note_rich');
-    applyRichTextField(entity, RealEstateListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+    applyRichTextField(entity, RealEstateListingsService.LEGAL_STATUS_NOTE_ACCESSORS, dto.legal_status_note_rich, dto.legal_status_note, 'legal_status_note_rich', 500);
+    applyRichTextField(entity, RealEstateListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
     entity.contactMethod = dto.contact_method;
     entity.contactValue = dto.contact_value;
     entity.expiresAt = dto.expires_at ?? null;

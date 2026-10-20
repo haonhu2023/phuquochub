@@ -59,7 +59,7 @@ export class RealEstateListingTranslationsService {
     if (!existing) {
       const entity = this.translationsRepo.create(realEstateListingId);
       entity.title = dto.title ?? null;
-      applyRichTextField(entity, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+      applyRichTextField(entity, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
       entity.utilitiesNote = dto.utilities_note ?? null;
       entity.legalStatusNote = dto.legal_status_note ?? null;
       entity.sourceContentHash = newHash;
@@ -77,7 +77,7 @@ export class RealEstateListingTranslationsService {
     if (dto.expected_content_version == null) {
       throw new BadRequestException('Thiếu expected_content_version — tải lại bản dịch hiện tại trước khi lưu tiếp');
     }
-    applyRichTextField(existing, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+    applyRichTextField(existing, RealEstateListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
     const patch: Partial<RealEstateListingTranslation> = {
       title: dto.title ?? null,
       description: existing.description,

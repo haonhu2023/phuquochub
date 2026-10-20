@@ -67,7 +67,7 @@ export class JobListingTranslationsService {
     if (!existing) {
       const entity = this.translationsRepo.create(jobListingId);
       entity.title = dto.title ?? null;
-      applyRichTextField(entity, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+      applyRichTextField(entity, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
       entity.requirements = dto.requirements ?? null;
       entity.benefits = dto.benefits ?? null;
       entity.sourceContentHash = newHash;
@@ -88,7 +88,7 @@ export class JobListingTranslationsService {
     // Áp quy tắc rich-text TRƯỚC khi gom patch — applyRichTextField() đọc `existing.descriptionRich`
     // hiện tại để quyết định demote hay giữ nguyên (xem ghi chú hàm), nên phải chạy trên `existing`
     // (entity đã tải), không phải một entity rỗng.
-    applyRichTextField(existing, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+    applyRichTextField(existing, JobListingTranslationsService.DRAFT_DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
     const patch: Partial<JobListingTranslation> = {
       title: dto.title ?? null,
       description: existing.description,

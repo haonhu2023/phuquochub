@@ -26,21 +26,35 @@ const doc = (text: string, bold = false): RichDoc => ({
 describe('applyRichTextField', () => {
   it('dtoRich là object hợp lệ → ghi rich + plain (flatten) + hash(plain)', () => {
     const e = entity();
-    applyRichTextField(e, accessors, doc('Nội dung mới', true), undefined, 'x');
+    applyRichTextField(e, accessors, doc('Nội dung mới', true), undefined, 'x', 100000);
     expect(e.rich).toEqual(doc('Nội dung mới', true));
     expect(e.plain).toBe('Nội dung mới');
     expect(e.richHash).toBe(hashPlainTextForRichDoc('Nội dung mới'));
   });
 
+  // Bug thật phát hiện qua rà bảo mật (20/10/2026): validateRichDoc() chỉ giới hạn kích thước CHUNG
+  // (200k ký tự), không biết giới hạn RIÊNG của cột plain đích — một RichDoc hợp lệ vẫn có thể
+  // flatten ra chuỗi dài hơn cột plain cho phép, trước đây vượt qua mọi kiểm tra ứng dụng rồi vỡ ở
+  // Postgres thành lỗi driver thô (500). Test này khoá đúng: vượt maxPlainLength → 400 sạch, KHÔNG
+  // chạm DB, entity không bị sửa dở dang.
+  it('dtoRich flatten ra chuỗi dài hơn maxPlainLength → BadRequestException, entity không bị sửa', () => {
+    const e = entity({ plain: 'cũ', rich: doc('cũ'), richHash: hashPlainTextForRichDoc('cũ') });
+    const longDoc = doc('a'.repeat(50));
+    expect(() => applyRichTextField(e, accessors, longDoc, undefined, 'x', 10)).toThrow(/x:.*50.*vượt quá.*10/);
+    expect(e.plain).toBe('cũ');
+    expect(e.rich).toEqual(doc('cũ'));
+    expect(e.richHash).toBe(hashPlainTextForRichDoc('cũ'));
+  });
+
   it('dtoRich không hợp lệ → BadRequestException, entity không bị sửa', () => {
     const e = entity({ plain: 'cũ', rich: doc('cũ'), richHash: hashPlainTextForRichDoc('cũ') });
-    expect(() => applyRichTextField(e, accessors, { blocks: [] } as never, undefined, 'x')).toThrow(/x:/);
+    expect(() => applyRichTextField(e, accessors, { blocks: [] } as never, undefined, 'x', 100000)).toThrow(/x:/);
     expect(e.plain).toBe('cũ'); // không đổi vì throw trước khi gán
   });
 
   it('dtoRich=null tường minh → xoá cả ba (rich/hash/plain)', () => {
     const e = entity({ plain: 'cũ', rich: doc('cũ'), richHash: hashPlainTextForRichDoc('cũ') });
-    applyRichTextField(e, accessors, null, undefined, 'x');
+    applyRichTextField(e, accessors, null, undefined, 'x', 100000);
     expect(e.rich).toBeNull();
     expect(e.richHash).toBeNull();
     expect(e.plain).toBeNull();
@@ -49,14 +63,14 @@ describe('applyRichTextField', () => {
   it('dtoRich vắng mặt, round-trip plain khớp bản flatten hiện tại → giữ nguyên rich+hash', () => {
     const hash = hashPlainTextForRichDoc('Nội dung');
     const e = entity({ plain: 'Nội dung', rich: doc('Nội dung'), richHash: hash });
-    applyRichTextField(e, accessors, undefined, 'Nội dung', 'x');
+    applyRichTextField(e, accessors, undefined, 'Nội dung', 'x', 100000);
     expect(e.rich).toEqual(doc('Nội dung'));
     expect(e.richHash).toBe(hash);
   });
 
   it('dtoRich vắng mặt, plain mới KHÁC bản flatten → demote (xoá rich+hash), ghi plain mới', () => {
     const e = entity({ plain: 'Nội dung cũ', rich: doc('Nội dung cũ'), richHash: hashPlainTextForRichDoc('Nội dung cũ') });
-    applyRichTextField(e, accessors, undefined, 'Nội dung hoàn toàn khác', 'x');
+    applyRichTextField(e, accessors, undefined, 'Nội dung hoàn toàn khác', 'x', 100000);
     expect(e.rich).toBeNull();
     expect(e.richHash).toBeNull();
     expect(e.plain).toBe('Nội dung hoàn toàn khác');
@@ -64,7 +78,7 @@ describe('applyRichTextField', () => {
 
   it('chưa từng có rich, dtoRich vắng mặt → chỉ ghi plain, rich/hash vẫn null tường minh (không để undefined)', () => {
     const e = entity();
-    applyRichTextField(e, accessors, undefined, 'Chỉ chữ thường', 'x');
+    applyRichTextField(e, accessors, undefined, 'Chỉ chữ thường', 'x', 100000);
     expect(e.rich).toBeNull();
     expect(e.richHash).toBeNull();
     expect(e.plain).toBe('Chỉ chữ thường');
@@ -100,7 +114,7 @@ describe('isRichDocCurrent / serveRichDoc — cơ chế đóng rủi ro rollback
   it('chuỗi đầy đủ: tạo rich → rollback (app cũ sửa plain trực tiếp) → đọc lại qua serveRichDoc → KHÔNG phục vụ rich cũ, phục vụ đúng plain mới', () => {
     const e = entity();
     // 1. App mới tạo RichDoc.
-    applyRichTextField(e, accessors, doc('Nội dung ban đầu', true), undefined, 'x');
+    applyRichTextField(e, accessors, doc('Nội dung ban đầu', true), undefined, 'x', 100000);
     expect(serveRichDoc(e.plain, e.rich, e.richHash)).toEqual(doc('Nội dung ban đầu', true));
 
     // 2. Rollback app — app CŨ không biết rich/hash, chỉ UPDATE cột plain (mô phỏng đúng TypeORM
@@ -117,7 +131,7 @@ describe('isRichDocCurrent / serveRichDoc — cơ chế đóng rủi ro rollback
 
     // 5. Nếu sau đó chủ tin sửa tiếp qua app mới (dù chỉ sửa plain, không chạm rich) — demote dọn
     //    sạch rich/hash đã lỗi thời luôn, không chỉ "ẩn khi đọc" mà còn "dọn khi ghi".
-    applyRichTextField(e, accessors, undefined, e.plain, 'x');
+    applyRichTextField(e, accessors, undefined, e.plain, 'x', 100000);
     expect(e.rich).toBeNull();
     expect(e.richHash).toBeNull();
   });

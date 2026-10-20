@@ -114,9 +114,9 @@ export class JobListingsService {
     entity.salaryCurrency = dto.salary_currency ?? null;
     entity.salaryPeriod = dto.salary_period ?? null;
     entity.shiftInfo = dto.shift_info ?? null;
-    applyRichTextField(entity, JobListingsService.REQUIREMENTS_ACCESSORS, dto.requirements_rich, dto.requirements, 'requirements_rich');
-    applyRichTextField(entity, JobListingsService.BENEFITS_ACCESSORS, dto.benefits_rich, dto.benefits, 'benefits_rich');
-    applyRichTextField(entity, JobListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich');
+    applyRichTextField(entity, JobListingsService.REQUIREMENTS_ACCESSORS, dto.requirements_rich, dto.requirements, 'requirements_rich', 2000);
+    applyRichTextField(entity, JobListingsService.BENEFITS_ACCESSORS, dto.benefits_rich, dto.benefits, 'benefits_rich', 2000);
+    applyRichTextField(entity, JobListingsService.DESCRIPTION_ACCESSORS, dto.description_rich, dto.description, 'description_rich', 4000);
     entity.contactMethod = dto.contact_method;
     entity.contactValue = dto.contact_value;
     entity.expiresAt = dto.expires_at ?? null;

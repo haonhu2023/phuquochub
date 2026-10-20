@@ -58,6 +58,15 @@ export interface RichTextFieldAccessors<E> {
  *     plain).
  *  2. `dtoRich` VẮNG MẶT: nếu plain MỚI khác bản flatten của rich ĐANG LƯU → demote (xoá rich+hash).
  *     Khớp → giữ nguyên rich+hash (round-trip không đổi).
+ *
+ * `maxPlainLength` (phát hiện qua rà bảo mật 20/10/2026) — `validateRichDoc()` chỉ giới hạn kích
+ * thước CHUNG của toàn bộ RichDoc (200k ký tự, xem packages/shared-types/src/rich-doc.ts), KHÔNG
+ * biết giới hạn RIÊNG của từng cột plain (vd `description` varchar(4000), `requirements` varchar
+ * (2000)) — một RichDoc hợp lệ (dưới 200k) vẫn có thể flatten ra chuỗi DÀI HƠN cột plain cho phép,
+ * vượt qua mọi kiểm tra tầng ứng dụng rồi vỡ ở Postgres thành lỗi driver thô (500, không phải 400
+ * sạch) khi INSERT/UPDATE. Truyền đúng @MaxLength của cột plain tương ứng (caller đã biết, vì DTO
+ * đã khai @MaxLength cho property plain cùng tên) để chặn SỚM, trả đúng 400 có thông điệp rõ ràng
+ * thay vì để lộ lỗi DB thô ra client.
  */
 export function applyRichTextField<E>(
   entity: E,
@@ -65,6 +74,7 @@ export function applyRichTextField<E>(
   dtoRich: RichDoc | null | undefined,
   dtoPlain: string | null | undefined,
   fieldNameForError: string,
+  maxPlainLength: number,
 ): void {
   if (dtoRich !== undefined) {
     if (dtoRich === null) {
@@ -81,6 +91,11 @@ export function applyRichTextField<E>(
       throw err;
     }
     const plain = flattenRichDocToPlainText(doc) || null;
+    if (plain != null && plain.length > maxPlainLength) {
+      throw new BadRequestException(
+        `${fieldNameForError}: nội dung rút gọn thành văn bản thuần dài ${plain.length} ký tự, vượt quá giới hạn ${maxPlainLength} ký tự của trường này.`,
+      );
+    }
     accessors.setRich(entity, doc);
     accessors.setPlain(entity, plain);
     accessors.setRichHash(entity, plain != null ? hashPlainTextForRichDoc(plain) : null);
