@@ -306,7 +306,14 @@ export class JobListingsService {
     const views = items.map((row) => {
       const base = toJobListingPublicView(row);
       const translation = translations.get(row.id);
-      if (query.locale === 'en' && translation?.publishedTitle != null) {
+      // Gói D điểm 4 — thẻ tin PHẢI nhất quán với chi tiết: nếu dữ kiện quan trọng đã lệch khiến
+      // chi tiết fallback về tiếng Việt, thẻ tin cũng KHÔNG được overlay tiêu đề tiếng Anh — tránh
+      // tình huống thẻ hiện tiếng Anh nhưng bấm vào lại thấy tiếng Việt (gây hiểu nhầm).
+      if (
+        query.locale === 'en' &&
+        translation?.publishedTitle != null &&
+        !isJobListingTranslationCriticallyStale(translation.publishedCriticalFieldsHash, row)
+      ) {
         return { ...base, title: translation.publishedTitle, locale: 'en' as const };
       }
       return { ...base, locale: 'vi' as const };

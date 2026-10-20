@@ -725,6 +725,29 @@ describe('JobListingsService', () => {
         await service.listPublic({});
         expect(translationsRepo.findByJobListingIds).not.toHaveBeenCalled();
       });
+
+      // Gói D điểm 4 — thẻ tin PHẢI nhất quán với chi tiết: nếu dữ kiện quan trọng đã lệch (chi
+      // tiết sẽ fallback tiếng Việt), thẻ tin KHÔNG được overlay tiêu đề tiếng Anh — tránh "thẻ hiện
+      // tiếng Anh, bấm vào lại thấy tiếng Việt".
+      it('dữ kiện quan trọng (lương) đã lệch kể từ lúc duyệt bản dịch → thẻ tin KHÔNG overlay tiêu đề tiếng Anh, giữ VI', async () => {
+        const viRowAtApproval = row({ id: 'job-a', salaryMin: null });
+        repo.listPublic.mockResolvedValue([row({ id: 'job-a', status: JobListingStatus.PUBLISHED, title: 'VI A', salaryMin: '20000000' })]);
+        repo.countPublic.mockResolvedValue(1);
+        translationsRepo.findByJobListingIds.mockResolvedValue(
+          new Map([
+            [
+              'job-a',
+              translationRow({
+                jobListingId: 'job-a',
+                publishedTitle: 'EN A',
+                publishedCriticalFieldsHash: computeJobListingCriticalFieldsHash(viRowAtApproval),
+              }),
+            ],
+          ]),
+        );
+        const result = await service.listPublic({ locale: 'en' });
+        expect(result.data[0]).toMatchObject({ id: 'job-a', title: 'VI A', locale: 'vi' });
+      });
     });
 
     // Gói B (17/10/2026) — `creator_email`/`creator_display_name` vừa thêm vào mapper CHUNG

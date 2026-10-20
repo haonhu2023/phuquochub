@@ -331,7 +331,12 @@ export class RealEstateListingsService {
     const views = items.map((row) => {
       const base = toRealEstateListingPublicView(row);
       const translation = translations.get(row.id);
-      if (query.locale === 'en' && translation?.publishedTitle != null) {
+      // Gói D điểm 4 — cùng lý do job_listings: thẻ tin phải nhất quán với chi tiết.
+      if (
+        query.locale === 'en' &&
+        translation?.publishedTitle != null &&
+        !isRealEstateListingTranslationCriticallyStale(translation.publishedCriticalFieldsHash, row)
+      ) {
         return { ...base, title: translation.publishedTitle, locale: 'en' as const };
       }
       return { ...base, locale: 'vi' as const };

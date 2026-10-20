@@ -557,6 +557,27 @@ describe('RealEstateListingsService', () => {
       expect(result.data[0]).toMatchObject({ id: 'rel-a', title: 'EN A', locale: 'en' });
       expect(result.data[1]).toMatchObject({ id: 'rel-b', title: 'VI B', locale: 'vi' });
     });
+
+    // Gói D điểm 4 — cùng lý do job_listings: thẻ tin phải nhất quán với chi tiết.
+    it('dữ kiện quan trọng (giá) đã lệch kể từ lúc duyệt bản dịch → thẻ tin KHÔNG overlay tiêu đề tiếng Anh, giữ VI', async () => {
+      const viRowAtApproval = row({ id: 'rel-a', price: null });
+      repo.listPublic.mockResolvedValue([row({ id: 'rel-a', status: RealEstateListingStatus.PUBLISHED, title: 'VI A', price: '8000000' })]);
+      repo.countPublic.mockResolvedValue(1);
+      translationsRepo.findByRealEstateListingIds.mockResolvedValue(
+        new Map([
+          [
+            'rel-a',
+            translationRow({
+              realEstateListingId: 'rel-a',
+              publishedTitle: 'EN A',
+              publishedCriticalFieldsHash: computeRealEstateListingCriticalFieldsHash(viRowAtApproval),
+            }),
+          ],
+        ]),
+      );
+      const result = await service.listPublic({ locale: 'en' });
+      expect(result.data[0]).toMatchObject({ id: 'rel-a', title: 'VI A', locale: 'vi' });
+    });
   });
 
   // Gói B (17/10/2026), sửa lại sau phản hồi owner cùng ngày — cùng lý do/mẫu JobListingsService
