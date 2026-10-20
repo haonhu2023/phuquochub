@@ -58,12 +58,25 @@ export default async function JobListingDetailPage({ params }: Params) {
   // 17/10/2026 §1b). Banner CỐ Ý không nói "shown in Vietnamese" (claim không có căn cứ nếu chủ tin
   // gốc viết tiếng Anh) — chỉ nói "as originally posted". (2) có bản dịch nhưng dữ kiện gốc đã đổi
   // sau khi duyệt → vẫn hiện bản dịch cũ kèm cảnh báo, KHÔNG tự rớt về cột gốc (khác hẳn case 1).
-  const showViFallbackNotice = locale === 'en' && job.locale === 'vi';
+  // Gói D điểm 4 (18/10/2026) — phân biệt THÊM một nhánh thứ ba: `job.locale==='vi'` trên route
+  // `/en` không còn chỉ có nghĩa "chưa từng dịch" — có thể là "CÓ bản dịch, nhưng vừa bị ẩn vì dữ
+  // kiện quan trọng (lương/ca làm/địa điểm/điều kiện giao dịch) đã đổi sau khi duyệt". Hai tình
+  // huống khác nhau, cần hai thông báo khác nhau — gộp chung sẽ khiến người đọc hiểu nhầm
+  // "chưa ai dịch" trong khi thực ra có bản dịch đang chờ duyệt lại.
+  const showCriticalMismatchNotice = locale === 'en' && job.translation_hidden_reason === 'critical_fact_mismatch';
+  const showViFallbackNotice = locale === 'en' && job.locale === 'vi' && !showCriticalMismatchNotice;
   const showStaleNotice = job.locale === 'en' && job.is_translation_stale;
 
   return (
     <article>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildJobPostingJsonLd(job)) }} />
+      {showCriticalMismatchNotice && (
+        <p className={placesStyles.state} role="note">
+          An English version of this listing exists but has been temporarily hidden: important details (salary, shift, location, or
+          deal terms) changed after it was approved, and the translation has not been re-approved against the new facts yet. Showing
+          the original Vietnamese listing below.
+        </p>
+      )}
       {showViFallbackNotice && (
         <p className={placesStyles.state} role="note">
           This listing has not been translated into English yet. The details below are shown exactly as originally posted by the lister (the original language is not tracked by this system).

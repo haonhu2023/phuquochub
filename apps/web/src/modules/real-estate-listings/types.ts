@@ -147,7 +147,12 @@ export interface RealEstateListingBaseView {
 // dưới đây thêm `is_translation_stale` (chỉ có nghĩa — và chỉ backend trả — ở chi tiết MỘT tin).
 export type RealEstateListingPublicView = RealEstateListingBaseView & { locale: 'vi' | 'en' };
 
-export type RealEstateListingPublicDetailView = RealEstateListingPublicView & { is_translation_stale: boolean };
+export type RealEstateListingPublicDetailView = RealEstateListingPublicView & {
+  is_translation_stale: boolean;
+  // Gói D điểm 4 — 'critical_fact_mismatch' khi bản dịch đã duyệt mâu thuẫn với dữ kiện quan trọng
+  // (địa điểm/giá/điều kiện giao dịch) đã đổi — response khi đó LUÔN có locale:'vi' (đã fallback).
+  translation_hidden_reason: 'critical_fact_mismatch' | null;
+};
 
 export interface RealEstateListingSenderView extends RealEstateListingBaseView {
   status: RealEstateListingStatus;

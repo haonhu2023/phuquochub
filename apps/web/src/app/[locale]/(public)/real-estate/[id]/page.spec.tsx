@@ -47,6 +47,7 @@ function listing(overrides: Partial<RealEstateListingPublicDetailView> = {}): Re
     updated_at: '2026-01-05T00:00:00.000Z',
     locale: 'vi',
     is_translation_stale: false,
+    translation_hidden_reason: null,
     ...overrides,
   };
 }
@@ -153,5 +154,24 @@ describe('RealEstateListingDetailPage — thông báo fallback/lỗi thời bả
   it('is_translation_stale=false → KHÔNG hiện cảnh báo', async () => {
     await renderPage(listing({ locale: 'en', is_translation_stale: false }), 'en');
     expect(screen.queryByText(/may not reflect the latest details/)).not.toBeInTheDocument();
+  });
+});
+
+describe('RealEstateListingDetailPage — ẩn bản dịch khi dữ kiện quan trọng mâu thuẫn (Gói D điểm 4)', () => {
+  it('translation_hidden_reason="critical_fact_mismatch" trên route /en → ghi chú ẩn bản dịch, KHÔNG phải ghi chú "chưa dịch"', async () => {
+    await renderPage(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }), 'en');
+    expect(screen.getByText(/temporarily hidden/)).toBeInTheDocument();
+    expect(screen.queryByText(/has not been translated into English yet/)).not.toBeInTheDocument();
+  });
+
+  it('translation_hidden_reason=null, locale="vi" (chưa từng dịch) → vẫn là ghi chú "chưa dịch" như cũ', async () => {
+    await renderPage(listing({ locale: 'vi', translation_hidden_reason: null }), 'en');
+    expect(screen.getByText(/has not been translated into English yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/temporarily hidden/)).not.toBeInTheDocument();
+  });
+
+  it('route /vi → KHÔNG hiện ghi chú ẩn bản dịch dù translation_hidden_reason="critical_fact_mismatch"', async () => {
+    await renderPage(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }), 'vi');
+    expect(screen.queryByText(/temporarily hidden/)).not.toBeInTheDocument();
   });
 });

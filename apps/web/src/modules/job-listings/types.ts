@@ -118,7 +118,14 @@ export interface JobListingLinkedPlace {
   slug: string;
 }
 
-export type JobListingPublicDetailView = JobListingPublicView & { place: JobListingLinkedPlace | null; is_translation_stale: boolean };
+export type JobListingPublicDetailView = JobListingPublicView & {
+  place: JobListingLinkedPlace | null;
+  is_translation_stale: boolean;
+  // Gói D điểm 4 — 'critical_fact_mismatch' khi bản dịch đã duyệt mâu thuẫn với dữ kiện quan trọng
+  // (ca làm/địa điểm/giá/điều kiện giao dịch) đã đổi — response khi đó LUÔN có locale:'vi' (đã
+  // fallback), null ở mọi trường hợp khác.
+  translation_hidden_reason: 'critical_fact_mismatch' | null;
+};
 export type JobListingSenderDetailView = JobListingSenderView & { place: JobListingLinkedPlace | null };
 
 export interface UpsertJobListingInput {

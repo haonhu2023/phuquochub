@@ -57,7 +57,11 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
 
   // Gói C (17/10/2026) — cùng lý do jobs/[id]/page.tsx (xem ghi chú đầy đủ ở đó): `listing.locale`
   // là nội dung THỰC SỰ phục vụ, có thể khác locale của route.
-  const showViFallbackNotice = locale === 'en' && listing.locale === 'vi';
+  // Gói D điểm 4 (18/10/2026) — cùng nhánh thứ ba jobs/[id]/page.tsx vừa thêm: `locale==='vi'` trên
+  // route `/en` có thể là "có bản dịch nhưng vừa bị ẩn vì dữ kiện quan trọng đã đổi", không chỉ
+  // "chưa từng dịch" — hai thông báo khác nhau, không gộp.
+  const showCriticalMismatchNotice = locale === 'en' && listing.translation_hidden_reason === 'critical_fact_mismatch';
+  const showViFallbackNotice = locale === 'en' && listing.locale === 'vi' && !showCriticalMismatchNotice;
   const showStaleNotice = listing.locale === 'en' && listing.is_translation_stale;
 
   const t = {
@@ -98,6 +102,13 @@ export default async function RealEstateListingDetailPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(buildRealEstateListingJsonLd(listing)) }}
       />
+      {showCriticalMismatchNotice && (
+        <p className={placesStyles.state} role="note">
+          An English version of this listing exists but has been temporarily hidden: important details (location, price, or
+          deal terms) changed after it was approved, and the translation has not been re-approved against the new facts yet.
+          Showing the original Vietnamese listing below.
+        </p>
+      )}
       {showViFallbackNotice && (
         <p className={placesStyles.state} role="note">
           This listing has not been translated into English yet. The details below are shown exactly as originally posted by the lister (the original language is not tracked by this system).
