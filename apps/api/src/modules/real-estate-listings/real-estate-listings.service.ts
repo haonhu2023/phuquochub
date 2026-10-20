@@ -42,7 +42,12 @@ export class RealEstateListingsService {
     if (dto.transaction_type === RealEstateTransactionType.RENT) {
       // Gói D — `legal_status_note_rich` cùng phạm vi chỉ-tin-bán với `legal_status_note` (kiểm cả
       // hai, không để client gửi rich text "lách" qua kiểm tra này bằng cách chỉ gửi mỗi field rich).
-      if (dto.sale_price_basis != null || dto.legal_status_note != null || dto.legal_status_note_rich !== undefined) {
+      // Bug thật đã sửa (20/10/2026): `!== undefined` coi `null` tường minh là "có mặt" nên chặn
+      // NHẦM mọi lần sửa tin thuê qua form Web — form luôn gửi lại `legal_status_note_rich: null`
+      // (giá trị đã tải) cho MỌI lần lưu, không chỉ khi người dùng đụng tới trường đó. Dùng `!= null`
+      // như hai điều kiện kia: field vắng mặt HOẶC xoá tường minh (null) đều hợp lệ, chỉ nội dung
+      // rich THẬT (object khác null) mới bị chặn — đúng mục đích ban đầu của điều kiện này.
+      if (dto.sale_price_basis != null || dto.legal_status_note != null || dto.legal_status_note_rich != null) {
         throw new BadRequestException('sale_price_basis/legal_status_note chỉ áp dụng cho tin bán, không phải tin thuê');
       }
     } else {

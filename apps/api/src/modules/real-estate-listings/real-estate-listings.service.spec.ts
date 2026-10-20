@@ -234,6 +234,49 @@ describe('RealEstateListingsService', () => {
       expect(result.utilities_note).toBe('Điện nước tự trả');
     });
 
+    // Bug thật đã sửa (20/10/2026, phát hiện qua kiểm browser thật): form Web luôn gửi lại
+    // `legal_status_note_rich: null` (giá trị đã tải từ GET, dù null) trên MỌI lần lưu tin thuê —
+    // không chỉ khi người dùng đụng tới trường đó. assertTransactionScopedFields() trước đó dùng
+    // `!== undefined` nên coi `null` tường minh là "có mặt" → chặn NHẦM mọi lần sửa giá/tiêu
+    // đề/bất kỳ trường nào khác của MỌI tin thuê. Test này khoá đúng: field vắng mặt HOẶC null
+    // tường minh đều phải lưu được; chỉ RichDoc thật mới bị chặn (test kế tiếp).
+    it('update tin thuê: legal_status_note_rich=null tường minh (đúng như form Web luôn gửi) → lưu được, KHÔNG BadRequestException', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, createdBy: 'u1', price: '3000000' }));
+      const result = await service.update(
+        'rel-1',
+        { ...rentDto(), price: 5000000, price_currency: 'VND', legal_status_note_rich: null, sale_price_basis: null },
+        'u1',
+      );
+      expect(result.price).toBe(5000000);
+    });
+
+    it('update tin thuê: legal_status_note_rich là RichDoc thật (không null) → vẫn BadRequestException đúng như trước', async () => {
+      repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, createdBy: 'u1' }));
+      await expect(
+        service.update('rel-1', { ...rentDto(), legal_status_note_rich: doc('Lách kiểm tra') }, 'u1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('update tin BÁN: legal_status_note_rich đã lưu, gửi lại y hệt → nội dung KHÔNG đổi (fix không ảnh hưởng nhánh bán)', async () => {
+      repo.findById.mockResolvedValue(
+        row({
+          status: RealEstateListingStatus.PUBLISHED,
+          createdBy: 'u1',
+          transactionType: RealEstateTransactionType.SALE,
+          legalStatusNote: 'Sổ hồng riêng',
+          legalStatusNoteRich: doc('Sổ hồng riêng'),
+        }),
+      );
+      const result = await service.update(
+        'rel-1',
+        { ...saleDto(), legal_status_note: 'Sổ hồng riêng', legal_status_note_rich: doc('Sổ hồng riêng') },
+        'u1',
+      );
+      expect(result.legal_status_note).toBe('Sổ hồng riêng');
+      const saved = repo.save.mock.calls[0][0] as RealEstateListing;
+      expect(saved.legalStatusNoteRich).toEqual(doc('Sổ hồng riêng'));
+    });
+
     it('update: client cũ ghi đè description trần bằng nội dung khác, không gửi description_rich → demote (xoá descriptionRich)', async () => {
       repo.findById.mockResolvedValue(
         row({ status: RealEstateListingStatus.DRAFT, createdBy: 'u1', description: 'Mô tả rich', descriptionRich: doc('Mô tả rich') }),
