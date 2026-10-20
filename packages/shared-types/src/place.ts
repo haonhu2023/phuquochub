@@ -1,3 +1,5 @@
+import type { RichDoc } from './rich-doc';
+
 // Hợp đồng response cluster Place (khớp api/openapi.yaml PlaceCard/Place) — nguồn sự thật
 // DUY NHẤT cho cả apps/api và apps/web. Trước đây mỗi bên tự khai báo một bản (GAP-11).
 //
@@ -231,6 +233,14 @@ export interface PlaceDetail extends PlaceCard {
   /** Đơn vị hành chính cấp xã hiện hành (vd `Đặc khu Phú Quốc`) → `addressLocality`. */
   admin_area: string | null;
   description: string | null;
+  /**
+   * Gói D (20/10/2026) — RichDoc của mô tả dài nếu bản dịch current+public+production hiện hành
+   * đã ghi rich text (qua `PlacesService.saveDescriptionDraft()`/`publishDescriptionDraft()`, đi
+   * qua `place_translations`); `null` nếu chưa có hoặc bản hiện hành là plain thuần. `description`
+   * ở trên LUÔN là bản flatten phẳng dẫn xuất — renderer null-check: null → hiển thị y hệt
+   * `description` plain cũ (RichDescriptionRenderer, dùng chung job_listings/real_estate_listings).
+   */
+  description_rich: RichDoc | null;
   opening_hours: OpeningHours | null;
   osm_id: number | null;
   created_at: string;

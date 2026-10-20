@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager } from 'typeorm';
+import { flattenRichDocToPlainText, RichDoc, validateRichDoc } from '@phuquochub/shared-types';
 import { PlaceTranslationsRepository } from './repositories/place-translations.repository';
 import { PlaceTranslationRoutesRepository } from './repositories/place-translation-routes.repository';
 import { PlaceTranslationSeoRepository } from './repositories/place-translation-seo.repository';
@@ -113,6 +114,18 @@ export class PlaceTranslationsService {
       );
     }
 
+    // Gói D — khi caller truyền richDoc (chỉ field_key 'description'), đây là nguồn sự thật:
+    // translatedText được GHI ĐÈ bằng bản flatten phẳng, caller không tự flatten (cùng quy tắc
+    // job_listings.applyDescription() — một cách diễn giải duy nhất, mọi nơi đọc translatedText
+    // plain hiện có — hash lỗi thời, SEO, danh sách — tiếp tục đúng không cần sửa gì thêm).
+    // `richDoc === undefined` (field không mang rich text — display_name/short_description, hoặc
+    // owner lưu lại dạng plain thuần) giữ nguyên hành vi CŨ.
+    let translatedText = item.translatedText;
+    if (item.richDoc !== undefined && item.richDoc !== null) {
+      validateRichDoc(item.richDoc);
+      translatedText = flattenRichDocToPlainText(item.richDoc);
+    }
+
     const existing = await this.translationsRepo.findCurrent(placeId, item.fieldKey, item.localeCode, manager);
     const sourceTextHash = computeSourceTextHash(item.sourceText);
 
@@ -126,7 +139,7 @@ export class PlaceTranslationsService {
     // by TranslationReviewService, not part of a row's content identity — comparing them here would
     // make a harmless re-import (unchanged text) look like a "content change" whenever it disagrees
     // with the current governance flags, silently stripping a real approval on every rerun.
-    if (existing && this.isSameTranslationContent(existing, item, sourceTextHash)) {
+    if (existing && this.isSameTranslationContent(existing, item, translatedText, sourceTextHash)) {
       return existing;
     }
 
@@ -149,8 +162,9 @@ export class PlaceTranslationsService {
           fieldKey: item.fieldKey,
           localeCode: item.localeCode,
           sourceLocaleCode: item.sourceLocaleCode,
-          translatedText: item.translatedText,
+          translatedText,
           textFormat: item.textFormat ?? TextFormat.PLAIN_TEXT,
+          richDoc: item.richDoc ?? null,
           sourceTextHash,
           translationMethod: item.translationMethod,
           translationStatus: 'PENDING',
@@ -178,8 +192,9 @@ export class PlaceTranslationsService {
       fieldKey: item.fieldKey,
       localeCode: item.localeCode,
       sourceLocaleCode: item.sourceLocaleCode,
-      translatedText: item.translatedText,
+      translatedText,
       textFormat: item.textFormat ?? TextFormat.PLAIN_TEXT,
+      richDoc: item.richDoc ?? null,
       sourceTextHash,
       translationMethod: item.translationMethod,
       translationStatus: 'PENDING',
@@ -245,6 +260,7 @@ export class PlaceTranslationsService {
             sourceLocaleCode: target.sourceLocaleCode,
             translatedText: target.translatedText,
             textFormat: target.textFormat,
+            richDoc: target.richDoc,
             sourceTextHash: target.sourceTextHash,
             translationMethod: target.translationMethod,
             translationStatus: 'PENDING',
@@ -269,6 +285,7 @@ export class PlaceTranslationsService {
         sourceLocaleCode: target.sourceLocaleCode,
         translatedText: target.translatedText,
         textFormat: target.textFormat,
+        richDoc: target.richDoc,
         sourceTextHash: target.sourceTextHash,
         translationMethod: target.translationMethod,
         translationStatus: 'PENDING',
@@ -307,6 +324,14 @@ export class PlaceTranslationsService {
   ): Promise<string | null> {
     const row = await this.translationsRepo.findCurrentPublic(placeId, fieldKey, localeCode);
     return row ? row.translatedText : null;
+  }
+
+  // Gói D — cùng seam/cùng eligibility (current+public+production) với getCurrentPublicTranslatedText()
+  // ở trên, chỉ khác trả `richDoc` thay vì `translatedText`. CHỈ field_key 'description' có giá trị
+  // khác null; gọi với field_key khác luôn trả null (đúng — các field đó chưa từng ghi richDoc).
+  async getCurrentPublicRichDoc(placeId: string, fieldKey: string, localeCode: string): Promise<RichDoc | null> {
+    const row = await this.translationsRepo.findCurrentPublic(placeId, fieldKey, localeCode);
+    return row ? row.richDoc : null;
   }
 
   /**
@@ -465,20 +490,23 @@ export class PlaceTranslationsService {
   private isSameTranslationContent(
     existing: PlaceTranslation,
     incoming: PublishTranslationItem,
+    incomingTranslatedText: string,
     incomingSourceTextHash: string,
   ): boolean {
     return (
       canonicalJson({
         translatedText: existing.translatedText,
         textFormat: existing.textFormat,
+        richDoc: existing.richDoc,
         sourceLocaleCode: existing.sourceLocaleCode,
         sourceTextHash: existing.sourceTextHash,
         translationMethod: existing.translationMethod,
         qualityGate: existing.qualityGate,
       }) ===
       canonicalJson({
-        translatedText: incoming.translatedText,
+        translatedText: incomingTranslatedText,
         textFormat: incoming.textFormat ?? TextFormat.PLAIN_TEXT,
+        richDoc: incoming.richDoc ?? null,
         sourceLocaleCode: incoming.sourceLocaleCode,
         sourceTextHash: incomingSourceTextHash,
         translationMethod: incoming.translationMethod,

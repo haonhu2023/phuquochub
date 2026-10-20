@@ -12,10 +12,13 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { RichDoc } from '@phuquochub/shared-types';
 import { PriceRange } from '../place.enums';
 import { IsOpeningHours } from '../../../common/opening-hours';
+import { IsRichDoc } from '../../../common/rich-doc';
 
 export class GeoPointDto {
   // OD-F-1 (F1-C): hộp Phú Quốc là PROVISIONAL nên KHÔNG còn từ chối ở đây — toạ độ ngoài hộp
@@ -189,12 +192,30 @@ export class SaveDescriptionDraftDto {
   @IsOptional() @IsString()
   vi?: string;
 
+  // Gói D (20/10/2026) — CHỈ mô tả DÀI (field này) có rich text, KHÔNG mở rộng sang tên hiển thị/mô
+  // tả ngắn (SaveNameDraftDto/SaveShortDescriptionDraftDto không khai báo field này — ValidationPipe
+  // toàn cục dùng forbidNonWhitelisted:true, xem main.ts, nên gửi nhầm vào hai route đó bị 400 thẳng,
+  // không lặng lẽ bị bỏ qua). Khi có mặt (kể cả null tường minh), là nguồn sự thật — service tự dẫn
+  // xuất `vi` plain bằng flatten, không cần client tự làm. Cùng quy tắc vắng-mặt/null-tường-minh với
+  // job_listings.description_rich.
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  vi_rich?: RichDoc | null;
+
   // CAS: id hàng current owner đã đọc (GET …/description/draft). null = chưa có bản nào. Bắt buộc khi gửi vi.
   @IsOptional() @IsUUID()
   expected_vi_id?: string | null;
 
   @IsOptional() @IsString()
   en?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  @IsRichDoc()
+  en_rich?: RichDoc | null;
 
   @IsOptional() @IsUUID()
   expected_en_id?: string | null;
@@ -276,7 +297,9 @@ export class PublishFieldDraftDto {
 
 export type SaveFieldDraftInput = {
   vi?: string;
+  vi_rich?: RichDoc | null;
   en?: string;
+  en_rich?: RichDoc | null;
   expected_vi_id?: string | null;
   expected_en_id?: string | null;
 };

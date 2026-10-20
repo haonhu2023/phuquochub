@@ -1,3 +1,4 @@
+import { RichDoc } from '@phuquochub/shared-types';
 import { TextFormat, TranslationMethod } from '../place-translations.enums';
 import { RevisionOrigin } from '../../revisions/revision.enums';
 
@@ -12,6 +13,11 @@ export interface PublishTranslationItem {
   translatedText: string;
   sourceText: string;
   textFormat?: TextFormat;
+  // Gói D (20/10/2026) — CHỈ caller của field_key 'description' truyền giá trị khác undefined.
+  // Khi có mặt (kể cả null tường minh), đây là nguồn sự thật: service tự dẫn xuất `translatedText`
+  // bằng flattenRichDocToPlainText(), caller không tự flatten. `undefined` = field này không mang
+  // rich text (hành vi CŨ, y hệt trước khi cột này tồn tại).
+  richDoc?: RichDoc | null;
   translationMethod: TranslationMethod;
   translationStatus: string;
   humanReviewStatus: string;

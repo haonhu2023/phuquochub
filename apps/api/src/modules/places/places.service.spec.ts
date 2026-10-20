@@ -117,6 +117,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     // dedicated 'locale overlay' describe block below overrides these per-test.
     placeTranslationsService = createMock<Ctor[12]>({
       getCurrentPublicTranslatedText: jest.fn().mockResolvedValue(null),
+      getCurrentPublicRichDoc: jest.fn().mockResolvedValue(null),
       getCurrentTranslation: jest.fn().mockResolvedValue(null),
       publishTranslationBundle: jest.fn(),
       saveDraftIfCurrent: jest.fn(),
@@ -780,6 +781,47 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       placeTranslationsService.saveDraftIfCurrent.mockRejectedValue(new ConflictException('đã đổi'));
       await expect(service.saveDescriptionDraft('p1', { vi: 'X', expected_vi_id: 't-old' }, 'u1')).rejects.toBeInstanceOf(ConflictException);
     });
+
+    // Gói D (20/10/2026) — chỉ saveDescriptionDraft (field_key='description') nhận vi_rich/en_rich;
+    // saveNameDraft/saveShortDescriptionDraft dùng CHUNG saveFieldDraftIfCurrent nhưng DTO của hai
+    // route đó không khai báo field này (ValidationPipe forbidNonWhitelisted chặn trước khi tới
+    // service — xem SaveDescriptionDraftDto's ghi chú) nên không cần test riêng ở đây.
+    it('gửi vi_rich → truyền đúng richDoc vào item vi, KHÔNG tự flatten ở tầng này (service con tự làm)', async () => {
+      const richDoc = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'Mô tả rich', bold: true }] }] };
+      await service.saveDescriptionDraft(
+        'p1',
+        { vi: 'Mô tả rich', vi_rich: richDoc, expected_vi_id: null },
+        'u1',
+      );
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      expect(input.items[0].item.richDoc).toEqual(richDoc);
+    });
+
+    it('không gửi vi_rich (field_key khác, hoặc owner lưu plain) → richDoc undefined trong item, không ép null', async () => {
+      await service.saveDescriptionDraft('p1', { vi: 'Plain thuần', expected_vi_id: null }, 'u1');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      expect(input.items[0].item.richDoc).toBeUndefined();
+    });
+
+    it('vi_rich=null tường minh (owner xoá rich, quay về plain) → truyền đúng null, không phải undefined', async () => {
+      await service.saveDescriptionDraft('p1', { vi: 'Quay lại plain', vi_rich: null, expected_vi_id: 't-old' }, 'u1');
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      expect(input.items[0].item.richDoc).toBeNull();
+    });
+
+    it('gửi en_rich → item en mang đúng richDoc, độc lập với vi_rich', async () => {
+      const enRich = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'Rich EN' }] }] };
+      await service.saveDescriptionDraft(
+        'p1',
+        { vi: 'VI thuần', expected_vi_id: null, en: 'EN rich', en_rich: enRich, expected_en_id: null },
+        'u1',
+      );
+      const [input] = placeTranslationsService.saveDraftIfCurrent.mock.calls[0];
+      const vi = input.items.find((i: { item: { localeCode: string } }) => i.item.localeCode === 'vi');
+      const en = input.items.find((i: { item: { localeCode: string } }) => i.item.localeCode === 'en');
+      expect(vi.item.richDoc).toBeUndefined();
+      expect(en.item.richDoc).toEqual(enRich);
+    });
   });
 
   describe('getDescriptionDraft', () => {
@@ -799,8 +841,24 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       const result = await service.getDescriptionDraft('p1');
 
       expect(result.fallback_description).toBe('gốc');
-      expect(result.vi).toEqual({ id: 't-vi', text: 'nháp VI', human_review_status: 'PENDING', is_public: false });
+      expect(result.vi).toEqual({ id: 't-vi', text: 'nháp VI', rich: undefined, human_review_status: 'PENDING', is_public: false });
       expect(result.en).toBeNull();
+    });
+
+    // Gói D — owner mở lại editor phải thấy ĐÚNG richDoc đã lưu (không chỉ bản flatten phẳng), nếu
+    // không mọi lần sửa tiếp theo sẽ mất định dạng cũ (đúng point 2's "nội dung cũ vẫn đọc/sửa được").
+    it('bản nháp hiện hành có richDoc → trả nguyên trong result.vi.rich/result.en.rich', async () => {
+      const richDoc = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'Có rich', bold: true }] }] };
+      placesRepo.getCardByIdIncludingInactive.mockResolvedValue({ id: 'p1', description: 'gốc' });
+      placeTranslationsService.getCurrentTranslation.mockImplementation((_id: string, _field: string, locale: string) =>
+        locale === 'vi'
+          ? Promise.resolve({ id: 't-vi', translatedText: 'Có rich', richDoc, humanReviewStatus: 'PENDING', isPublic: false })
+          : Promise.resolve(null),
+      );
+
+      const result = await service.getDescriptionDraft('p1');
+
+      expect(result.vi?.rich).toEqual(richDoc);
     });
   });
 
@@ -1696,6 +1754,50 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
           'description',
           'en',
         );
+      });
+
+      // Gói D (20/10/2026) — response công khai phải mang đúng richDoc của bản dịch HIỆN HÀNH, cùng
+      // locale đã resolve (không phải locale request thô) — getBySlug() là nơi DUY NHẤT lắp
+      // description_rich vào response công khai (hotels/restaurants/tours đọc CÙNG field này qua
+      // chung bảng `places`, không có nhánh riêng).
+      it('bản dịch hiện hành có richDoc → description_rich mang đúng giá trị, gọi getCurrentPublicRichDoc đúng (placeId, field_key, locale đã resolve)', async () => {
+        const richDoc = { v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text: 'Rich EN', bold: true }] }] };
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', description: 'Bản gốc' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        mockTranslations({ description: 'Long description translated to English.' });
+        placeTranslationsService.getCurrentPublicRichDoc.mockResolvedValue(richDoc);
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.description_rich).toEqual(richDoc);
+        expect(placeTranslationsService.getCurrentPublicRichDoc).toHaveBeenCalledWith('p1', 'description', 'en');
+      });
+
+      it('bản dịch hiện hành CHỈ plain (chưa từng ghi rich) → description_rich null, description vẫn đúng text', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', description: 'Bản gốc' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'vi' });
+        mockTranslations({ description: 'Bản dịch plain thuần.' });
+        placeTranslationsService.getCurrentPublicRichDoc.mockResolvedValue(null);
+
+        const res = await service.getBySlug('some-place', 'vi');
+
+        expect(res.description).toBe('Bản dịch plain thuần.');
+        expect(res.description_rich).toBeNull();
+      });
+
+      it('không có bản dịch đủ điều kiện → description fallback về gốc VÀ description_rich null (raw scalar không bao giờ có rich)', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p2', description: 'Mô tả gốc, chưa có bản dịch.' });
+        commonMocks();
+        localesService.resolveRequestLocale.mockResolvedValue({ localeCode: 'en' });
+        placeTranslationsService.getCurrentPublicTranslatedText.mockResolvedValue(null);
+        placeTranslationsService.getCurrentPublicRichDoc.mockResolvedValue(null);
+
+        const res = await service.getBySlug('some-place', 'en');
+
+        expect(res.description).toBe('Mô tả gốc, chưa có bản dịch.');
+        expect(res.description_rich).toBeNull();
       });
 
       it('eligible VI translation → description là bản dịch tiếng Việt (không chỉ EN mới overlay)', async () => {

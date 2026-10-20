@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { RichDoc } from '@phuquochub/shared-types';
 import type { PublishFieldDraftInput, SaveFieldDraftInput } from './dto/places.dto';
 import { EntityManager } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -303,7 +304,7 @@ export class PlacesService {
       this.resolveTrustSources(row.id),
       this.resolveLocalizedField(row.id, DISPLAY_NAME_FIELD_KEY, locale),
       this.resolveLocalizedField(row.id, SHORT_DESCRIPTION_FIELD_KEY, locale),
-      this.resolveLocalizedField(row.id, DESCRIPTION_FIELD_KEY, locale),
+      this.resolveLocalizedDescription(row.id, locale),
       // Public detail opening-hours evidence gate (2026-09-09 fix/public-opening-hours-evidence-gate):
       // Right Now/Nearby already refuse to show an opening_hours claim without a gate-passing,
       // source-authoritative CURRENT-value evidence link (PlacesRepository's shared
@@ -343,7 +344,12 @@ export class PlacesService {
       // giờ nằm trong overlay này — identity không đổi theo locale.
       name: localizedDisplayName ?? row.name,
       short_description: localizedShortDescription ?? row.short_description,
-      description: localizedDescription ?? row.description,
+      description: localizedDescription.text ?? row.description,
+      // Gói D — null khi chưa có bản dịch current+public+production (fallback đã ở trên là
+      // `row.description`, raw scalar KHÔNG BAO GIỜ có rich — xem DESCRIPTION_FIELD_KEY's ghi chú)
+      // HOẶC khi bản dịch hiện hành chỉ là plain thuần (chưa từng ghi rich). Renderer coi null là
+      // "chưa có rich text, dùng `description` plain" — CÙNG quy ước job_listings/real_estate_listings.
+      description_rich: localizedDescription.rich,
       // `null` khi opening_hours đã có giá trị nhưng KHÔNG có bằng chứng hiện hành đạt gate — không
       // đổi giá trị trong DB, không 404 place, không ẩn field nào khác.
       opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
@@ -400,6 +406,25 @@ export class PlacesService {
   ): Promise<string | null> {
     const locale = await this.localesService.resolveRequestLocale(requestedLocale);
     return this.placeTranslationsService.getCurrentPublicTranslatedText(placeId, fieldKey, locale.localeCode);
+  }
+
+  /**
+   * Gói D — biến thể của resolveLocalizedField() ở trên CHO RIÊNG `description`: cùng seam
+   * (resolveRequestLocale + eligibility current+public+production ở repository), chỉ gọi thêm
+   * getCurrentPublicRichDoc() SONG SONG trên ĐÚNG locale đã resolve — không phải field khác (`name`/
+   * `short_description`) nên không cần một tham số fieldKey chung; nếu một field dịch được khác có
+   * rich text trong tương lai, nhân bản helper này theo field đó thay vì tổng quát hoá sớm.
+   */
+  private async resolveLocalizedDescription(
+    placeId: string,
+    requestedLocale?: string,
+  ): Promise<{ text: string | null; rich: RichDoc | null }> {
+    const locale = await this.localesService.resolveRequestLocale(requestedLocale);
+    const [text, rich] = await Promise.all([
+      this.placeTranslationsService.getCurrentPublicTranslatedText(placeId, DESCRIPTION_FIELD_KEY, locale.localeCode),
+      this.placeTranslationsService.getCurrentPublicRichDoc(placeId, DESCRIPTION_FIELD_KEY, locale.localeCode),
+    ]);
+    return { text, rich };
   }
 
   /**
@@ -853,11 +878,25 @@ export class PlacesService {
       this.placeTranslationsService.getCurrentTranslation(id, fieldKey, 'en'),
     ]);
     return {
+      // `rich` khác null CHỈ với field_key 'description' (xem PlaceTranslation.richDoc) — vô hại với
+      // display_name/short_description, luôn null ở đó vì chưa từng được ghi.
       vi: vi
-        ? { id: vi.id, text: vi.translatedText, human_review_status: vi.humanReviewStatus, is_public: vi.isPublic }
+        ? {
+            id: vi.id,
+            text: vi.translatedText,
+            rich: vi.richDoc,
+            human_review_status: vi.humanReviewStatus,
+            is_public: vi.isPublic,
+          }
         : null,
       en: en
-        ? { id: en.id, text: en.translatedText, human_review_status: en.humanReviewStatus, is_public: en.isPublic }
+        ? {
+            id: en.id,
+            text: en.translatedText,
+            rich: en.richDoc,
+            human_review_status: en.humanReviewStatus,
+            is_public: en.isPublic,
+          }
         : null,
     };
   }
@@ -947,6 +986,10 @@ export class PlacesService {
           localeCode: 'vi',
           sourceLocaleCode: 'vi',
           translatedText: dto.vi,
+          // Gói D — CHỈ truyền khi field_key cho phép rich text (SaveDescriptionDraftDto là DTO DUY
+          // NHẤT khai báo vi_rich/en_rich — xem ghi chú ở đó). `undefined` ở name/short-description
+          // giữ nguyên hành vi plain cũ.
+          richDoc: dto.vi_rich,
           sourceText: dto.vi,
           textFormat: TextFormat.PLAIN_TEXT,
           translationMethod: TranslationMethod.ORIGINAL,
@@ -967,6 +1010,7 @@ export class PlacesService {
           localeCode: 'en',
           sourceLocaleCode: 'vi',
           translatedText: dto.en,
+          richDoc: dto.en_rich,
           sourceText: dto.vi ?? fallbackForEnSource ?? '',
           textFormat: TextFormat.PLAIN_TEXT,
           translationMethod: TranslationMethod.HUMAN,

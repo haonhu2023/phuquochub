@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { RichDoc } from '@phuquochub/shared-types';
 import { TextFormat, TranslationMethod } from '../place-translations.enums';
 
 // Bảng `place_translations` (ADR-020 §"Decision 2", MAP-028/029/030). Một hàng = một field/locale
@@ -34,6 +35,17 @@ export class PlaceTranslation {
 
   @Column({ type: 'enum', enum: TextFormat, enumName: 'text_format', default: TextFormat.PLAIN_TEXT })
   textFormat!: TextFormat;
+
+  // Gói D (20/10/2026) — chỉ field_key 'description' dùng cột này; 'display_name'/'short_description'
+  // luôn null. Khi khác null, đây là NGUỒN SỰ THẬT, `translatedText` phía trên luôn là flatten phẳng
+  // dẫn xuất từ đây (cùng quy tắc job_listings/real_estate_listings — xem
+  // apps/api/src/common/rich-text-field.ts). KHÔNG có cột hash đi kèm như hai module kia: bảng này
+  // vốn đã insert-only + supersede-theo-is_current cho MỖI LẦN lưu (không UPDATE tại chỗ) — một app
+  // cũ không biết cột này mà sửa mô tả sẽ tự tạo một hàng current MỚI với richDoc=null (TypeORM
+  // insert thiếu cột = NULL), tự nhiên supersede đúng hàng rich cũ, không cần cơ chế phát hiện lệch
+  // nào thêm. Rollback-an toàn theo đúng THIẾT KẾ của bảng, không phải một cơ chế được thêm riêng.
+  @Column({ type: 'jsonb', nullable: true })
+  richDoc!: RichDoc | null;
 
   // sha256 hex (64 ký tự) của văn bản nguồn đã canonical-serialize — dùng để phát hiện bản dịch bị
   // "stale" khi nguồn tiếng Việt thay đổi sau khi đã dịch (canonicalJson() + sha256, cùng cơ chế

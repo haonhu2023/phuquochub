@@ -42,6 +42,7 @@ function currentRow(overrides: Partial<PlaceTranslation> = {}): PlaceTranslation
     sourceLocaleCode: 'vi',
     translatedText: 'The most beautiful beach in Phu Quoc',
     textFormat: TextFormat.PLAIN_TEXT,
+    richDoc: null,
     sourceTextHash: 'placeholder',
     translationMethod: TranslationMethod.HUMAN,
     translationStatus: 'TRANSLATED',
@@ -211,6 +212,91 @@ describe('PlaceTranslationsService', () => {
       expect(translationsRepo.insert).not.toHaveBeenCalled();
       expect(translationsRepo.markNotCurrent).not.toHaveBeenCalled();
       expect(result).toBe(existing);
+    });
+  });
+
+  describe('Gói D — richDoc (chỉ field_key description dùng, các field khác không truyền)', () => {
+    const doc = (text: string) => ({ v: 1 as const, blocks: [{ type: 'p' as const, runs: [{ text, bold: true }] }] });
+
+    it('richDoc hợp lệ → translatedText được GHI ĐÈ bằng bản flatten, không dùng translatedText client tự gửi', async () => {
+      translationsRepo.findCurrent.mockResolvedValue(null);
+      const item = baseItem({
+        fieldKey: 'description',
+        translatedText: 'client tự gõ sai, không được tin',
+        richDoc: doc('Bãi biển tuyệt đẹp'),
+      });
+
+      const result = await service.publishTranslation(PLACE_ID, item, RevisionOrigin.OWNER_UPDATE);
+
+      expect(result.translatedText).toBe('Bãi biển tuyệt đẹp');
+      expect(result.richDoc).toEqual(doc('Bãi biển tuyệt đẹp'));
+    });
+
+    it('richDoc sai cấu trúc (bảng răng cưa) → ném lỗi, không ghi gì', async () => {
+      translationsRepo.findCurrent.mockResolvedValue(null);
+      const item = baseItem({
+        fieldKey: 'description',
+        richDoc: { v: 1, blocks: [{ type: 'table', rows: [[[{ text: 'a' }]], [[{ text: 'b' }, { text: 'c' }]]] }] } as never,
+      });
+
+      await expect(service.publishTranslation(PLACE_ID, item, RevisionOrigin.OWNER_UPDATE)).rejects.toThrow();
+      expect(translationsRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('richDoc=undefined (display_name/short_description, hoặc owner lưu lại dạng plain) → hành vi CŨ, richDoc lưu null, translatedText giữ nguyên client gửi', async () => {
+      translationsRepo.findCurrent.mockResolvedValue(null);
+      const item = baseItem({ fieldKey: 'short_description', translatedText: 'Plain thuần, không rich' });
+
+      const result = await service.publishTranslation(PLACE_ID, item, RevisionOrigin.OWNER_UPDATE);
+
+      expect(result.translatedText).toBe('Plain thuần, không rich');
+      expect(result.richDoc).toBeNull();
+    });
+
+    it('richDoc=null tường minh (owner xoá rich, quay về plain) → lưu đúng, richDoc null, translatedText dùng client gửi (không flatten gì)', async () => {
+      translationsRepo.findCurrent.mockResolvedValue(null);
+      const item = baseItem({ fieldKey: 'description', translatedText: 'Quay lại plain', richDoc: null });
+
+      const result = await service.publishTranslation(PLACE_ID, item, RevisionOrigin.OWNER_UPDATE);
+
+      expect(result.translatedText).toBe('Quay lại plain');
+      expect(result.richDoc).toBeNull();
+    });
+
+    it('sửa CHỈ richDoc (plain flatten ra giống hệt bản cũ) vẫn tạo hàng MỚI — nội dung không "giống nhau" theo isSameTranslationContent vì richDoc khác', async () => {
+      const existing = currentRow({
+        id: 'row-1',
+        fieldKey: 'description',
+        translatedText: 'Bãi biển đẹp',
+        richDoc: doc('Bãi biển đẹp') as never,
+        sourceTextHash: computeSourceTextHash('Bãi biển đẹp'),
+      });
+      translationsRepo.findCurrent.mockResolvedValue(existing);
+      // Cùng chữ, khác định dạng (không đậm) — flatten ra translatedText GIỐNG HỆT bản cũ, nhưng
+      // richDoc khác → phải vẫn tạo bản mới (đúng thiết kế: mọi sửa, kể cả chỉ đổi định dạng, phải
+      // qua lại PENDING, không được coi là no-op).
+      const item = baseItem({
+        fieldKey: 'description',
+        sourceText: 'Bãi biển đẹp',
+        richDoc: { v: 1, blocks: [{ type: 'p', runs: [{ text: 'Bãi biển đẹp' }] }] },
+      });
+
+      const result = await service.publishTranslation(PLACE_ID, item, RevisionOrigin.OWNER_UPDATE);
+
+      expect(translationsRepo.insert).toHaveBeenCalledTimes(1);
+      expect(result.supersedesTranslationId).toBe('row-1');
+    });
+
+    it('rollbackTranslationTo() phục hồi đúng richDoc của revision cũ, không chỉ translatedText phẳng', async () => {
+      const target = currentRow({ id: 'row-old', fieldKey: 'description', richDoc: doc('Bản cũ có rich') as never });
+      const current = currentRow({ id: 'row-current', fieldKey: 'description', richDoc: null });
+      translationsRepo.findById.mockResolvedValue(target);
+      translationsRepo.findCurrent.mockResolvedValue(current);
+
+      const result = await service.rollbackTranslationTo('row-old');
+
+      expect(result.richDoc).toEqual(doc('Bản cũ có rich'));
+      expect(translationsRepo.markNotCurrent).toHaveBeenCalledWith('row-current', fakeManager);
     });
   });
 
