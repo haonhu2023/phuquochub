@@ -27,10 +27,16 @@ export async function generateMetadata({ params }: Params) {
     // Gói C (17/10/2026) — truyền `locale` để metadata khớp đúng nội dung thực sự phục vụ (cùng
     // lý do jobs/[id]/page.tsx — xem ghi chú ở đó).
     const listing = await getRealEstateListing(id, locale);
+    // Rà SEO 20/10/2026 — cùng lý do jobs/[id]/page.tsx (xem ghi chú đầy đủ ở đó): route `/en` khi
+    // `listing.locale !== 'en'` đang phục vụ nguyên văn tiếng Việt, trước đây không có robots/
+    // canonical bù lại cho `<html lang="en">` (layout.tsx) nói dối. Sửa tối thiểu: noindex,follow +
+    // canonical trỏ đúng URL có nội dung thật.
+    const isLocaleFallback = locale === 'en' && listing.locale !== 'en';
     return {
       title: `${listing.title} · ${locale === 'en' ? 'Real Estate' : 'Bất động sản'} · PhuQuocHub`,
       description: listing.description ?? undefined,
-      alternates: { canonical: localizedHref(locale, `/real-estate/${listing.id}`) },
+      alternates: { canonical: localizedHref(listing.locale as Locale, `/real-estate/${listing.id}`) },
+      ...(isLocaleFallback ? { robots: { index: false, follow: true } } : {}),
     };
   } catch {
     return { title: 'Bất động sản · PhuQuocHub' };

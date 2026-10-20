@@ -23,10 +23,21 @@ export async function generateMetadata({ params }: Params) {
     // "Metadata/title trang phải nhất quán với nội dung thực sự được phục vụ") — truyền `locale`
     // xuống API, KHÔNG tự dịch tiêu đề trang riêng ở đây rồi lại khác với body.
     const job = await getJobListing(id, locale);
+    // Rà SEO 20/10/2026 (phát hiện thật, không có cổng lập chỉ mục nào cho job/real-estate — khác
+    // hẳn places/hotels/restaurants/tours đã có `isEnDetailIndexable`): route `/en` khi
+    // `job.locale !== 'en'` đang phục vụ NGUYÊN VĂN tiếng Việt (chưa dịch, HOẶC bản dịch vừa bị ẩn
+    // vì lệch dữ kiện quan trọng — translation_hidden_reason='critical_fact_mismatch', xem banner
+    // cùng điều kiện trong body bên dưới) — `<html lang="en">` (layout.tsx) sẽ nói dối. Trước đây
+    // không có robots/canonical nào bù lại. Sửa tối thiểu: noindex,follow trang này VÀ trỏ canonical
+    // về đúng URL đang có nội dung thật (`job.locale`), không phải URL route đã gọi. CHƯA làm hreflang
+    // hai chiều đầy đủ (cần cờ "có bản dịch EN đủ điều kiện" tính SẴN không phụ thuộc locale request,
+    // giống `en_display_name_approved` của place — việc lớn hơn, để riêng).
+    const isLocaleFallback = locale === 'en' && job.locale !== 'en';
     return {
       title: `${job.title} · ${job.employer_name} · ${locale === 'en' ? 'Jobs' : 'Tuyển dụng'} · PhuQuocHub`,
       description: job.description ?? undefined,
-      alternates: { canonical: localizedHref(locale, `/jobs/${job.id}`) },
+      alternates: { canonical: localizedHref(job.locale as Locale, `/jobs/${job.id}`) },
+      ...(isLocaleFallback ? { robots: { index: false, follow: true } } : {}),
     };
   } catch {
     return { title: 'Tuyển dụng · PhuQuocHub' };

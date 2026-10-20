@@ -2,7 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import { getRealEstateListing } from '@/modules/real-estate-listings/api/real-estate-listings.api';
 import type { RealEstateListingPublicDetailView } from '@/modules/real-estate-listings/types';
-import RealEstateListingDetailPage from './page';
+import RealEstateListingDetailPage, { generateMetadata } from './page';
 
 jest.mock('@/modules/real-estate-listings/api/real-estate-listings.api', () => ({ getRealEstateListing: jest.fn() }));
 jest.mock('@/modules/saved-items/SaveButton', () => ({ SaveButton: () => null }));
@@ -173,5 +173,35 @@ describe('RealEstateListingDetailPage — ẩn bản dịch khi dữ kiện quan
   it('route /vi → KHÔNG hiện ghi chú ẩn bản dịch dù translation_hidden_reason="critical_fact_mismatch"', async () => {
     await renderPage(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }), 'vi');
     expect(screen.queryByText(/temporarily hidden/)).not.toBeInTheDocument();
+  });
+});
+
+// Rà SEO 20/10/2026 — cùng lý do jobs/[id]/page.spec.tsx (xem ghi chú đầy đủ ở đó).
+describe('RealEstateListingDetailPage — generateMetadata, noindex khi /en đang fallback về VI', () => {
+  it('route /en, chưa từng dịch (listing.locale="vi") → robots noindex,follow + canonical trỏ về URL /vi', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: null }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'en' }) });
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+    expect(metadata.alternates?.canonical).toBe('/vi/real-estate/r1');
+  });
+
+  it('route /en, bản dịch bị ẩn vì lệch dữ kiện quan trọng → vẫn noindex,follow', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'en' }) });
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+  });
+
+  it('route /en, có bản dịch EN thật (listing.locale="en") → KHÔNG noindex, canonical trỏ về URL /en', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'en', translation_hidden_reason: null }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'en' }) });
+    expect(metadata.robots).toBeUndefined();
+    expect(metadata.alternates?.canonical).toBe('/en/real-estate/r1');
+  });
+
+  it('route /vi → KHÔNG noindex dù translation_hidden_reason khác null', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'vi' }) });
+    expect(metadata.robots).toBeUndefined();
+    expect(metadata.alternates?.canonical).toBe('/vi/real-estate/r1');
   });
 });

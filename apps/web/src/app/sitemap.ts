@@ -201,11 +201,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       { changeFrequency: 'daily', priority: 0.5 },
     ),
     ...guideEntries(site, [...guidesVi, ...guidesEn]),
-    // Tuyển dụng/bất động sản: URL chi tiết dùng id thẳng (/jobs/{id}, không có slug), và không có
-    // bản dịch EN song song (đăng một ngôn ngữ, khác place) — cùng khuôn `events` ở trên (không
-    // truyền enIndexableIds, chỉ vào sitemap bản vi). Mục VI: "Danh sách/chi tiết/.../sitemap...
-    // nhất quán" — trước candidate này, sitemap chỉ có hai trang hub /jobs//real-estate, thiếu
-    // chi tiết từng tin (đã ghi là giới hạn biết trước ở §13t/§13v/§13y).
+    // Tuyển dụng/bất động sản: URL chi tiết dùng id thẳng (/jobs/{id}, không có slug). KHÔNG truyền
+    // enIndexableIds — CHỈ vào sitemap bản vi, cùng khuôn `events` ở trên. Ghi chú SỬA LẠI 20/10/2026
+    // (rà SEO): dòng bình luận cũ ở đây nói "không có bản dịch EN song song" — KHÔNG còn đúng, Gói C
+    // (17/10/2026, commit c41772b) đã thêm luồng dịch EN cho cả hai module. Lý do THẬT loại EN khỏi
+    // sitemap bây giờ là CHƯA CÓ một endpoint liệt kê hàng loạt "id nào có bản dịch EN đã duyệt +
+    // KHÔNG đang bị ẩn vì lệch dữ kiện quan trọng" (tương đương `listEnIndexablePlaceIds` của place)
+    // — một bản dịch EN đã duyệt, đủ điều kiện công khai hôm nay vẫn KHÔNG được quảng cáo qua sitemap/
+    // hreflang. Đây là khoảng trống SEO còn lại (xem checkpoint.md), không phải vì tính năng dịch
+    // không tồn tại. Mục VI: "Danh sách/chi tiết/.../sitemap... nhất quán" — trước candidate chứa dòng
+    // này, sitemap chỉ có hai trang hub /jobs//real-estate, thiếu chi tiết từng tin (đã ghi là giới
+    // hạn biết trước ở §13t/§13v/§13y).
     ...detailEntries(
       site,
       jobListings.map((j) => ({ slug: j.id })),
