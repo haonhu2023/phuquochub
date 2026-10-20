@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getJobListing } from '@/modules/job-listings/api/job-listings.api';
@@ -5,6 +6,7 @@ import { jobListingEmploymentTypeLabel } from '@/modules/job-listings/types';
 import { formatSalary } from '@/modules/job-listings/salary';
 import { ApiError } from '@/lib/http';
 import { localizedHref, type Locale } from '@/lib/locale';
+import { buildRouteAlternates, NOINDEX_FOLLOW } from '@/lib/seo';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { buildJobPostingJsonLd, serializeJsonLd } from '@/lib/structured-data';
@@ -15,7 +17,7 @@ interface Params {
   params: Promise<{ id: string; locale: string }>;
 }
 
-export async function generateMetadata({ params }: Params) {
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
@@ -23,21 +25,26 @@ export async function generateMetadata({ params }: Params) {
     // "Metadata/title trang phải nhất quán với nội dung thực sự được phục vụ") — truyền `locale`
     // xuống API, KHÔNG tự dịch tiêu đề trang riêng ở đây rồi lại khác với body.
     const job = await getJobListing(id, locale);
-    // Rà SEO 20/10/2026 (phát hiện thật, không có cổng lập chỉ mục nào cho job/real-estate — khác
-    // hẳn places/hotels/restaurants/tours đã có `isEnDetailIndexable`): route `/en` khi
-    // `job.locale !== 'en'` đang phục vụ NGUYÊN VĂN tiếng Việt (chưa dịch, HOẶC bản dịch vừa bị ẩn
-    // vì lệch dữ kiện quan trọng — translation_hidden_reason='critical_fact_mismatch', xem banner
-    // cùng điều kiện trong body bên dưới) — `<html lang="en">` (layout.tsx) sẽ nói dối. Trước đây
-    // không có robots/canonical nào bù lại. Sửa tối thiểu: noindex,follow trang này VÀ trỏ canonical
-    // về đúng URL đang có nội dung thật (`job.locale`), không phải URL route đã gọi. CHƯA làm hreflang
-    // hai chiều đầy đủ (cần cờ "có bản dịch EN đủ điều kiện" tính SẴN không phụ thuộc locale request,
-    // giống `en_display_name_approved` của place — việc lớn hơn, để riêng).
-    const isLocaleFallback = locale === 'en' && job.locale !== 'en';
+    // Rà SEO 20/10/2026, sửa lại cho ĐÚNG + ĐỦ sau phản hồi owner (bản đầu nói sai "cần hạ tầng
+    // mới" — không đúng, chỉ cần một lệnh gọi API thứ hai, cùng dữ liệu đã có sẵn trên response).
+    // `job.locale` cho biết locale THỰC SỰ đang phục vụ ở request NÀY; để biết EN có ĐỦ ĐIỀU KIỆN lập
+    // chỉ mục hay không — ĐỘC LẬP với locale route hiện tại (một trang /vi cũng cần biết để phát đúng
+    // hreflang="en") — xác nhận bằng CHÍNH endpoint này với `locale=en` cố định, cùng seam response
+    // `locale`/`translation_hidden_reason` đã tồn tại, không cần field/endpoint mới (khác place, vốn
+    // cần cờ RIÊNG vì place không có khái niệm "response tự khai locale thực sự phục vụ" như job/BĐS).
+    const enEligible = locale === 'en' ? job.locale === 'en' : await getJobListing(id, 'en').then((r) => r.locale === 'en').catch(() => false);
+    const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, `/jobs/${job.id}`);
+    // Chỉ phát hreflang="en" khi THẬT SỰ đủ điều kiện — không trỏ sang một URL đang noindex (owner
+    // yêu cầu rõ "tránh trỏ tới trang EN đang noindex"). x-default luôn là vi (ngôn ngữ nguồn).
+    const languages = enEligible ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
       title: `${job.title} · ${job.employer_name} · ${locale === 'en' ? 'Jobs' : 'Tuyển dụng'} · PhuQuocHub`,
       description: job.description ?? undefined,
-      alternates: { canonical: localizedHref(job.locale as Locale, `/jobs/${job.id}`) },
-      ...(isLocaleFallback ? { robots: { index: false, follow: true } } : {}),
+      alternates: { canonical, languages },
+      // `locale==='en' && !enEligible` bao trọn CẢ HAI tình huống: chưa từng dịch, VÀ bản dịch đã
+      // duyệt nhưng đang bị ẩn vì lệch dữ kiện quan trọng (critical_fact_mismatch) — cả hai đều đang
+      // phục vụ nguyên văn tiếng Việt dưới `<html lang="en">`, không được lập chỉ mục như tiếng Anh.
+      ...(locale === 'en' && !enEligible ? { robots: NOINDEX_FOLLOW } : {}),
     };
   } catch {
     return { title: 'Tuyển dụng · PhuQuocHub' };

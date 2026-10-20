@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getRealEstateListing } from '@/modules/real-estate-listings/api/real-estate-listings.api';
 import {
@@ -8,7 +9,8 @@ import {
 } from '@/modules/real-estate-listings/types';
 import { formatRealEstatePrice } from '@/modules/real-estate-listings/price';
 import { ApiError } from '@/lib/http';
-import { localizedHref, type Locale } from '@/lib/locale';
+import type { Locale } from '@/lib/locale';
+import { buildRouteAlternates, NOINDEX_FOLLOW } from '@/lib/seo';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { RealEstateListingPhotoGallery } from '@/modules/real-estate-listing-photos/RealEstateListingPhotoGallery';
@@ -20,23 +22,23 @@ interface Params {
   params: Promise<{ id: string; locale: string }>;
 }
 
-export async function generateMetadata({ params }: Params) {
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { id, locale: localeParam } = await params;
   const locale = localeParam as Locale;
   try {
     // Gói C (17/10/2026) — truyền `locale` để metadata khớp đúng nội dung thực sự phục vụ (cùng
     // lý do jobs/[id]/page.tsx — xem ghi chú ở đó).
     const listing = await getRealEstateListing(id, locale);
-    // Rà SEO 20/10/2026 — cùng lý do jobs/[id]/page.tsx (xem ghi chú đầy đủ ở đó): route `/en` khi
-    // `listing.locale !== 'en'` đang phục vụ nguyên văn tiếng Việt, trước đây không có robots/
-    // canonical bù lại cho `<html lang="en">` (layout.tsx) nói dối. Sửa tối thiểu: noindex,follow +
-    // canonical trỏ đúng URL có nội dung thật.
-    const isLocaleFallback = locale === 'en' && listing.locale !== 'en';
+    // Rà SEO 20/10/2026, sửa lại cho ĐÚNG + ĐỦ — cùng lý do jobs/[id]/page.tsx (xem ghi chú đầy đủ ở đó).
+    const enEligible =
+      locale === 'en' ? listing.locale === 'en' : await getRealEstateListing(id, 'en').then((r) => r.locale === 'en').catch(() => false);
+    const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, `/real-estate/${listing.id}`);
+    const languages = enEligible ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
     return {
       title: `${listing.title} · ${locale === 'en' ? 'Real Estate' : 'Bất động sản'} · PhuQuocHub`,
       description: listing.description ?? undefined,
-      alternates: { canonical: localizedHref(listing.locale as Locale, `/real-estate/${listing.id}`) },
-      ...(isLocaleFallback ? { robots: { index: false, follow: true } } : {}),
+      alternates: { canonical, languages },
+      ...(locale === 'en' && !enEligible ? { robots: NOINDEX_FOLLOW } : {}),
     };
   } catch {
     return { title: 'Bất động sản · PhuQuocHub' };

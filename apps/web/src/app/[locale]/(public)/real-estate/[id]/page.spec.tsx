@@ -176,13 +176,16 @@ describe('RealEstateListingDetailPage — ẩn bản dịch khi dữ kiện quan
   });
 });
 
-// Rà SEO 20/10/2026 — cùng lý do jobs/[id]/page.spec.tsx (xem ghi chú đầy đủ ở đó).
+// Rà SEO 20/10/2026 — cùng lý do jobs/[id]/page.spec.tsx (xem ghi chú đầy đủ ở đó): canonical LUÔN
+// self-reference locale của route (nhất quán với hotel/place), `languages` mới là chỗ thu hẹp lại.
 describe('RealEstateListingDetailPage — generateMetadata, noindex khi /en đang fallback về VI', () => {
-  it('route /en, chưa từng dịch (listing.locale="vi") → robots noindex,follow + canonical trỏ về URL /vi', async () => {
+  it('route /en, chưa từng dịch (listing.locale="vi") → robots noindex,follow + canonical tự trỏ /en, hreflang thu hẹp còn vi/x-default', async () => {
     mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: null }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'en' }) });
     expect(metadata.robots).toEqual({ index: false, follow: true });
-    expect(metadata.alternates?.canonical).toBe('/vi/real-estate/r1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/en/real-estate/r1');
+    expect(metadata.alternates?.languages?.en).toBeUndefined();
+    expect(metadata.alternates?.languages?.['x-default']).toBe('http://localhost:3000/vi/real-estate/r1');
   });
 
   it('route /en, bản dịch bị ẩn vì lệch dữ kiện quan trọng → vẫn noindex,follow', async () => {
@@ -191,17 +194,34 @@ describe('RealEstateListingDetailPage — generateMetadata, noindex khi /en đan
     expect(metadata.robots).toEqual({ index: false, follow: true });
   });
 
-  it('route /en, có bản dịch EN thật (listing.locale="en") → KHÔNG noindex, canonical trỏ về URL /en', async () => {
+  it('route /en, có bản dịch EN thật (listing.locale="en") → KHÔNG noindex, canonical /en, hreflang đủ cả vi+en', async () => {
     mockGetListing.mockResolvedValueOnce(listing({ locale: 'en', translation_hidden_reason: null }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'en' }) });
     expect(metadata.robots).toBeUndefined();
-    expect(metadata.alternates?.canonical).toBe('/en/real-estate/r1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/en/real-estate/r1');
+    expect(metadata.alternates?.languages?.en).toBe('http://localhost:3000/en/real-estate/r1');
+    expect(metadata.alternates?.languages?.vi).toBe('http://localhost:3000/vi/real-estate/r1');
   });
 
   it('route /vi → KHÔNG noindex dù translation_hidden_reason khác null', async () => {
-    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }));
+    mockGetListing
+      .mockResolvedValueOnce(listing({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }))
+      .mockResolvedValueOnce(listing({ locale: 'vi' }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'vi' }) });
     expect(metadata.robots).toBeUndefined();
-    expect(metadata.alternates?.canonical).toBe('/vi/real-estate/r1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/vi/real-estate/r1');
+  });
+
+  it('route /vi, bản EN đã duyệt thật → vẫn phát hreflang="en" (gọi getRealEstateListing thứ hai để xác nhận)', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi' })).mockResolvedValueOnce(listing({ locale: 'en' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'vi' }) });
+    expect(mockGetListing).toHaveBeenNthCalledWith(2, 'r1', 'en');
+    expect(metadata.alternates?.languages?.en).toBe('http://localhost:3000/en/real-estate/r1');
+  });
+
+  it('route /vi, bản EN chưa có → hreflang thu hẹp, không quảng cáo "en" giả', async () => {
+    mockGetListing.mockResolvedValueOnce(listing({ locale: 'vi' })).mockResolvedValueOnce(listing({ locale: 'vi' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'r1', locale: 'vi' }) });
+    expect(metadata.alternates?.languages?.en).toBeUndefined();
   });
 });

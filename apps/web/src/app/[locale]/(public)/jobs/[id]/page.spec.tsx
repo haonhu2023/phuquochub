@@ -181,13 +181,19 @@ describe('JobListingDetailPage — ẩn bản dịch khi dữ kiện quan trọn
 
 // Rà SEO 20/10/2026 — phát hiện thật: route /en khi job.locale !== 'en' phục vụ nguyên văn tiếng
 // Việt dưới <html lang="en">, trước đây không có robots/canonical bù lại (khác hẳn place/hotel/
-// restaurant/tour đã có isEnDetailIndexable từ trước). Khoá đúng cơ chế mới.
+// restaurant/tour đã có isEnDetailIndexable từ trước). Bản sửa ĐẦU TIÊN (bf3fff9) trỏ canonical
+// sang locale ĐANG PHỤC VỤ (/vi) khi fallback — KHÁC quy ước đã có ở hotel/place (canonical LUÔN
+// tự trỏ về chính locale của route, xem hotels/[slug]/page.spec.tsx dòng ~199). Sửa lại cho ĐÚNG +
+// NHẤT QUÁN: canonical luôn self-reference; `languages` mới là chỗ thu hẹp lại khi EN chưa đủ điều
+// kiện (không bao giờ quảng cáo hreflang="en" trỏ tới một URL đang noindex).
 describe('JobListingDetailPage — generateMetadata, noindex khi /en đang fallback về VI', () => {
-  it('route /en, chưa từng dịch (job.locale="vi") → robots noindex,follow + canonical trỏ về URL /vi', async () => {
+  it('route /en, chưa từng dịch (job.locale="vi") → robots noindex,follow + canonical tự trỏ /en, hreflang thu hẹp còn vi/x-default', async () => {
     mockGetJobListing.mockResolvedValueOnce(job({ locale: 'vi', translation_hidden_reason: null }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'j1', locale: 'en' }) });
     expect(metadata.robots).toEqual({ index: false, follow: true });
-    expect(metadata.alternates?.canonical).toBe('/vi/jobs/j1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/en/jobs/j1');
+    expect(metadata.alternates?.languages?.en).toBeUndefined();
+    expect(metadata.alternates?.languages?.['x-default']).toBe('http://localhost:3000/vi/jobs/j1');
   });
 
   it('route /en, bản dịch bị ẩn vì lệch dữ kiện quan trọng (job.locale="vi", translation_hidden_reason) → vẫn noindex,follow', async () => {
@@ -196,17 +202,39 @@ describe('JobListingDetailPage — generateMetadata, noindex khi /en đang fallb
     expect(metadata.robots).toEqual({ index: false, follow: true });
   });
 
-  it('route /en, có bản dịch EN thật (job.locale="en") → KHÔNG noindex, canonical trỏ về URL /en', async () => {
+  it('route /en, có bản dịch EN thật (job.locale="en") → KHÔNG noindex, canonical /en, hreflang đủ cả vi+en', async () => {
     mockGetJobListing.mockResolvedValueOnce(job({ locale: 'en', translation_hidden_reason: null }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'j1', locale: 'en' }) });
     expect(metadata.robots).toBeUndefined();
-    expect(metadata.alternates?.canonical).toBe('/en/jobs/j1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/en/jobs/j1');
+    expect(metadata.alternates?.languages?.en).toBe('http://localhost:3000/en/jobs/j1');
+    expect(metadata.alternates?.languages?.vi).toBe('http://localhost:3000/vi/jobs/j1');
   });
 
   it('route /vi (luôn có nội dung gốc thật) → KHÔNG noindex dù translation_hidden_reason khác null', async () => {
-    mockGetJobListing.mockResolvedValueOnce(job({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }));
+    mockGetJobListing
+      .mockResolvedValueOnce(job({ locale: 'vi', translation_hidden_reason: 'critical_fact_mismatch' }))
+      .mockResolvedValueOnce(job({ locale: 'vi' }));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 'j1', locale: 'vi' }) });
     expect(metadata.robots).toBeUndefined();
-    expect(metadata.alternates?.canonical).toBe('/vi/jobs/j1');
+    expect(metadata.alternates?.canonical).toBe('http://localhost:3000/vi/jobs/j1');
+  });
+
+  // Rà SEO 20/10/2026 — route /vi KHÔNG có nghĩa bỏ qua việc kiểm tra EN đủ điều kiện hay chưa:
+  // trang /vi vẫn cần phát đúng hreflang="en" (cho người tìm bằng tiếng Anh) nếu bản EN đã duyệt.
+  // Khoá đúng lệnh gọi getJobListing(id,'en') THỨ HAI khi route hiện tại không phải /en.
+  it('route /vi, bản EN đã duyệt thật → vẫn phát hreflang="en" (gọi getJobListing thứ hai để xác nhận)', async () => {
+    mockGetJobListing
+      .mockResolvedValueOnce(job({ locale: 'vi' }))
+      .mockResolvedValueOnce(job({ locale: 'en' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'j1', locale: 'vi' }) });
+    expect(mockGetJobListing).toHaveBeenNthCalledWith(2, 'j1', 'en');
+    expect(metadata.alternates?.languages?.en).toBe('http://localhost:3000/en/jobs/j1');
+  });
+
+  it('route /vi, bản EN chưa có (lệnh gọi thứ hai cũng rơi về "vi") → hreflang thu hẹp, không quảng cáo "en" giả', async () => {
+    mockGetJobListing.mockResolvedValueOnce(job({ locale: 'vi' })).mockResolvedValueOnce(job({ locale: 'vi' }));
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: 'j1', locale: 'vi' }) });
+    expect(metadata.alternates?.languages?.en).toBeUndefined();
   });
 });
