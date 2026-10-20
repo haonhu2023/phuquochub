@@ -273,7 +273,14 @@ describe('Job listing translations (en) — e2e', () => {
     expect(en.body.data.locale).toBe('en');
   });
 
-  it('sửa tiếng Việt gốc (LƯƠNG, không phải chỉ văn bản dịch) SAU KHI bản dịch đã duyệt → is_published_stale=true, nhưng public EN vẫn phục vụ (báo rõ, không âm thầm ẩn)', async () => {
+  // Gói D điểm 4 (18/10/2026, owner yêu cầu rõ sau khi xem bản đầu) — hành vi CHO DỮ KIỆN QUAN
+  // TRỌNG (lương nằm trong nhóm "giá") nay KHÁC với trước: "không coi một cảnh báo chung là đủ" —
+  // KHÔNG còn "vẫn phục vụ bản dịch cũ kèm cảnh báo" nữa, mà FALLBACK hẳn về tiếng Việt
+  // (translation_hidden_reason='critical_fact_mismatch'). Bản dịch KHÔNG bị xoá (vẫn has_published,
+  // moderator vẫn thấy được) — chỉ KHÔNG được chọn phục vụ public cho tới khi ai đó duyệt lại bản
+  // dịch khớp dữ kiện mới. Case "chỉ văn xuôi đổi, dữ kiện quan trọng không đổi" (cảnh báo chung,
+  // vẫn phục vụ) đã có test riêng ở job-listings.service.spec.ts, không lặp lại ở e2e này.
+  it('sửa tiếng Việt gốc (LƯƠNG — dữ kiện QUAN TRỌNG) SAU KHI bản dịch đã duyệt → public EN fallback hẳn về tiếng Việt, không chỉ cảnh báo chung', async () => {
     await request(app.getHttpServer())
       .patch(`/api/job-listings/${jobId}`)
       .set('Authorization', `Bearer ${posterToken}`)
@@ -288,10 +295,9 @@ describe('Job listing translations (en) — e2e', () => {
       .get(`/api/job-listings/${jobId}/translations/en`)
       .set('Authorization', `Bearer ${posterToken}`);
     expect(mine.body.data.is_published_stale).toBe(true); // lương đổi, chưa ai cập nhật lại câu chữ.
-    expect(mine.body.data.has_published).toBe(true); // bản dịch KHÔNG bị xoá.
+    expect(mine.body.data.has_published).toBe(true); // bản dịch KHÔNG bị xoá — chủ tin vẫn thấy, vẫn sửa được.
 
-    // Duyệt lại tin gốc (không đổi gì về bản dịch) để public lại — rồi xác nhận is_translation_stale=true
-    // ở CHI TIẾT CÔNG KHAI (không chỉ trong API riêng cho chủ tin).
+    // Duyệt lại tin gốc (không đổi gì về bản dịch) để public lại.
     await request(app.getHttpServer())
       .post(`/api/job-listings/${jobId}/decide`)
       .set('Authorization', `Bearer ${moderatorToken}`)
@@ -299,8 +305,9 @@ describe('Job listing translations (en) — e2e', () => {
 
     const en = await request(app.getHttpServer()).get(`/api/job-listings/${jobId}?locale=en`);
     expect(en.status).toBe(200);
-    expect(en.body.data.title).toBe('English title'); // vẫn phục vụ bản cũ — KHÔNG âm thầm ẩn.
-    expect(en.body.data.is_translation_stale).toBe(true); // nhưng báo rõ cho web biết để hiện ghi chú.
+    expect(en.body.data.locale).toBe('vi'); // FALLBACK — không phục vụ bản dịch cũ kèm cảnh báo nữa.
+    expect(en.body.data.title).toBe('Tiêu đề tiếng Việt');
+    expect(en.body.data.translation_hidden_reason).toBe('critical_fact_mismatch');
   });
 
   it('?locale=en trên DANH SÁCH công khai cũng overlay title (không chỉ chi tiết)', async () => {

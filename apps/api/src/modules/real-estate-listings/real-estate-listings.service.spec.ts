@@ -13,7 +13,7 @@ import { UpsertRealEstateListingDto } from './dto/real-estate-listings.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 import { RealEstateListingTranslation } from './entities/real-estate-listing-translation.entity';
 import { RealEstateListingTranslationStatus } from './real-estate-listings.enums';
-import { computeRealEstateListingSourceHash } from './real-estate-listing-translation-hash';
+import { computeRealEstateListingCriticalFieldsHash, computeRealEstateListingSourceHash } from './real-estate-listing-translation-hash';
 
 function translationRow(overrides: Partial<RealEstateListingTranslation> = {}): RealEstateListingTranslation {
   const t = new RealEstateListingTranslation();
@@ -497,7 +497,7 @@ describe('RealEstateListingsService', () => {
       expect(translationsRepo.findByRealEstateListingId).not.toHaveBeenCalled();
     });
 
-    it('điều kiện giao dịch (giá) đổi SAU KHI duyệt → is_translation_stale=true, vẫn phục vụ', async () => {
+    it('điều kiện giao dịch (giá) đổi SAU KHI duyệt → is_translation_stale=true, vẫn phục vụ (bản dịch CŨ hơn tính năng Gói D điểm 4, chưa có publishedCriticalFieldsHash)', async () => {
       repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, price: '5000000' }));
       translationsRepo.findByRealEstateListingId.mockResolvedValue(
         translationRow({ publishedSourceContentHash: computeRealEstateListingSourceHash(row({ price: null })) }),
@@ -505,6 +505,42 @@ describe('RealEstateListingsService', () => {
       const result = await service.getPublicById('rel-1', 'en');
       expect(result.is_translation_stale).toBe(true);
       expect(result.title).toBe('EN title');
+    });
+
+    // Gói D điểm 4 (18/10/2026, owner yêu cầu rõ) — "không coi một cảnh báo chung là đủ" khi dữ
+    // kiện QUAN TRỌNG (địa điểm/giá/điều kiện giao dịch) đã đổi — khác test ngay trên (bản dịch
+    // CHƯA có publishedCriticalFieldsHash, xử lý "chưa biết, không ẩn") vì ở đây hash CÓ, nên hệ
+    // thống biết CHẮC CHẮN.
+    describe('dữ kiện QUAN TRỌNG (địa điểm/giá/điều kiện giao dịch) đổi SAU KHI duyệt → ẩn bản dịch, fallback tiếng Việt', () => {
+      it('giá đổi → fallback locale=vi, translation_hidden_reason="critical_fact_mismatch"', async () => {
+        const viRowAtApproval = row({ price: null });
+        repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, price: '8000000', priceCurrency: 'VND', title: 'VI title' }));
+        translationsRepo.findByRealEstateListingId.mockResolvedValue(
+          translationRow({
+            publishedSourceContentHash: computeRealEstateListingSourceHash(viRowAtApproval),
+            publishedCriticalFieldsHash: computeRealEstateListingCriticalFieldsHash(viRowAtApproval),
+          }),
+        );
+        const result = await service.getPublicById('rel-1', 'en');
+        expect(result.locale).toBe('vi');
+        expect(result.translation_hidden_reason).toBe('critical_fact_mismatch');
+        expect(result.title).toBe('VI title');
+      });
+
+      it('CHỈ mô tả đổi, dữ kiện quan trọng KHÔNG đổi → vẫn phục vụ bản dịch kèm cảnh báo chung (không fallback)', async () => {
+        const viRowAtApproval = row({ description: 'Mô tả cũ' });
+        repo.getPublicById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, description: 'Mô tả MỚI' }));
+        translationsRepo.findByRealEstateListingId.mockResolvedValue(
+          translationRow({
+            publishedSourceContentHash: computeRealEstateListingSourceHash(viRowAtApproval),
+            publishedCriticalFieldsHash: computeRealEstateListingCriticalFieldsHash(viRowAtApproval),
+          }),
+        );
+        const result = await service.getPublicById('rel-1', 'en');
+        expect(result.locale).toBe('en');
+        expect(result.translation_hidden_reason).toBeNull();
+        expect(result.is_translation_stale).toBe(true);
+      });
     });
 
     it('listPublic locale=en → overlay title cho item có bản dịch, giữ VI cho item chưa có (batch, không N+1)', async () => {

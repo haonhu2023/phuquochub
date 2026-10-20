@@ -55,6 +55,7 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.publishedRequirements = null;
   t.publishedBenefits = null;
   t.publishedSourceContentHash = null;
+  t.publishedCriticalFieldsHash = null;
   t.publishedAt = null;
   t.contentVersion = 1;
   t.createdAt = new Date('2026-10-17T00:00:00Z');
@@ -355,6 +356,10 @@ describe('JobListingTranslationsService', () => {
       expect(patch.publishedTitle).toBe('EN title mới');
       expect(patch.publishedDescription).toBe('EN desc mới');
       expect(patch.publishedAt).toBeInstanceOf(Date);
+      // Gói D điểm 4 — approve PHẢI chụp cả hash hẹp "dữ kiện quan trọng" (ca làm/địa điểm/giá/điều
+      // kiện giao dịch), không chỉ hash tổng — đây là dữ liệu getPublicById() sau này dùng để biết
+      // CHÍNH XÁC khi nào cần ẩn/fallback bản dịch thay vì chỉ cảnh báo chung.
+      expect(patch.publishedCriticalFieldsHash).toBeTruthy();
       expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ event: 'job_listing_translation.approved' }));
     });
 

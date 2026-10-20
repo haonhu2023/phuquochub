@@ -8,7 +8,7 @@ import { RealEstateListingTranslation } from './entities/real-estate-listing-tra
 import { RealEstateListingTranslationStatus } from './real-estate-listings.enums';
 import { DecideRealEstateListingTranslationDto, UpsertRealEstateListingTranslationDto } from './dto/real-estate-listing-translations.dto';
 import { toRealEstateListingTranslationModeratorView, toRealEstateListingTranslationView } from './real-estate-listing-translations.mapper';
-import { computeRealEstateListingSourceHash } from './real-estate-listing-translation-hash';
+import { computeRealEstateListingCriticalFieldsHash, computeRealEstateListingSourceHash } from './real-estate-listing-translation-hash';
 
 const DRAFT_REVIEW_STATUSES = new Set([
   RealEstateListingTranslationStatus.PUBLISHED,
@@ -167,6 +167,8 @@ export class RealEstateListingTranslationsService {
       patch.publishedUtilitiesNote = translation.utilitiesNote;
       patch.publishedLegalStatusNote = translation.legalStatusNote;
       patch.publishedSourceContentHash = listing ? computeRealEstateListingSourceHash(listing) : translation.sourceContentHash;
+      // Gói D điểm 4 — chụp cả hash hẹp "dữ kiện quan trọng", cùng lý do job_listings.
+      patch.publishedCriticalFieldsHash = listing ? computeRealEstateListingCriticalFieldsHash(listing) : null;
       patch.publishedAt = new Date();
     }
     const ok = await this.translationsRepo.updateWithCas(translation.id, patch, dto.expected_content_version);

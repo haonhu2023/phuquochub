@@ -271,6 +271,9 @@ describe('RealEstateListingTranslationsService', () => {
       expect(result.status).toBe(RealEstateListingTranslationStatus.PUBLISHED);
       const patch = translationsRepo.updateWithCas.mock.calls[0][1];
       expect(patch.publishedTitle).toBe('EN mới');
+      // Gói D điểm 4 — approve phải chụp cả hash hẹp "dữ kiện quan trọng" (địa điểm/giá/điều kiện
+      // giao dịch), dùng để sau này phát hiện CHÍNH XÁC khi cần ẩn/fallback bản dịch.
+      expect(patch.publishedCriticalFieldsHash).toBeTruthy();
     });
 
     it('reject → rejected, published* KHÔNG đổi', async () => {

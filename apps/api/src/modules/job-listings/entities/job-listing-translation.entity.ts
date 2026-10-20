@@ -97,6 +97,15 @@ export class JobListingTranslation {
   @Column({ type: 'char', length: 64, nullable: true })
   publishedSourceContentHash!: string | null;
 
+  // Gói D điểm 4 (18/10/2026) — hash HẸP chỉ phủ "ca làm/địa điểm/giá/điều kiện giao dịch" (xem
+  // job-listing-translation-hash.ts's criticalFields()) — TÁCH biệt với publishedSourceContentHash
+  // (hash TỔNG, phủ cả văn xuôi) để biết CHÍNH XÁC khi nào một bản dịch cũ mâu thuẫn với dữ kiện
+  // QUAN TRỌNG (phải ẩn/fallback, không chỉ cảnh báo chung) thay vì chỉ "có gì đó đổi" (vẫn phục vụ
+  // kèm cảnh báo như trước). NULL = bản dịch được duyệt TRƯỚC khi tính năng này tồn tại — không suy
+  // diễn, coi như chưa biết (không ẩn).
+  @Column({ type: 'char', length: 64, nullable: true })
+  publishedCriticalFieldsHash!: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   publishedAt!: Date | null;
 

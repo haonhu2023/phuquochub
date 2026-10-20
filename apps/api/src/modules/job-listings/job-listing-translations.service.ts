@@ -8,7 +8,7 @@ import { JobListingTranslation } from './entities/job-listing-translation.entity
 import { JobListingTranslationStatus } from './job-listings.enums';
 import { DecideJobListingTranslationDto, UpsertJobListingTranslationDto } from './dto/job-listing-translations.dto';
 import { toJobListingTranslationModeratorView, toJobListingTranslationView } from './job-listing-translations.mapper';
-import { computeJobListingSourceHash } from './job-listing-translation-hash';
+import { computeJobListingCriticalFieldsHash, computeJobListingSourceHash } from './job-listing-translation-hash';
 
 const DRAFT_REVIEW_STATUSES = new Set([
   JobListingTranslationStatus.PUBLISHED,
@@ -191,6 +191,10 @@ export class JobListingTranslationsService {
       patch.publishedRequirements = translation.requirements;
       patch.publishedBenefits = translation.benefits;
       patch.publishedSourceContentHash = listing ? computeJobListingSourceHash(listing) : translation.sourceContentHash;
+      // Gói D điểm 4 — chụp CẢ hash hẹp "dữ kiện quan trọng" tại đúng thời điểm duyệt (xem
+      // job-listing-translation-hash.ts's criticalFields()) — dùng để sau này phát hiện CHÍNH XÁC
+      // khi nào cần ẩn/fallback bản dịch thay vì chỉ cảnh báo chung.
+      patch.publishedCriticalFieldsHash = listing ? computeJobListingCriticalFieldsHash(listing) : null;
       patch.publishedAt = new Date();
     }
     const ok = await this.translationsRepo.updateWithCas(translation.id, patch, dto.expected_content_version);

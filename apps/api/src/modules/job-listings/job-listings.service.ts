@@ -15,7 +15,7 @@ import {
   UpsertJobListingDto,
 } from './dto/job-listings.dto';
 import { toJobListingAdminView, toJobListingModeratorView, toJobListingPublicView, toJobListingSenderView } from './job-listings.mapper';
-import { isJobListingTranslationStale } from './job-listing-translation-hash';
+import { isJobListingTranslationCriticallyStale, isJobListingTranslationStale } from './job-listing-translation-hash';
 import { JobListingTranslation } from './entities/job-listing-translation.entity';
 
 // Bảng chuyển trạng thái đã chốt (docs/delivery/release-web-candidate-2026-10-04.md §13r):
@@ -351,6 +351,12 @@ export class JobListingsService {
       place: { id: string; name: string; slug: string } | null;
       locale: 'vi' | 'en';
       is_translation_stale: boolean;
+      // Gói D điểm 4 — 'critical_fact_mismatch' khi bản dịch đã duyệt mâu thuẫn với dữ kiện quan
+      // trọng (ca làm/địa điểm/giá/điều kiện giao dịch) ĐÃ đổi sau khi duyệt — response khi đó
+      // fallback NGUYÊN bản tiếng Việt (locale:'vi'), KHÔNG chỉ cảnh báo chung trên bản dịch cũ
+      // (xem nhánh bên dưới). null ở mọi trường hợp khác (kể cả is_translation_stale=true nhưng CHỈ
+      // văn xuôi đổi — vẫn phục vụ bản dịch kèm cảnh báo như trước, không phải lỗi mới).
+      translation_hidden_reason: 'critical_fact_mismatch' | null;
     }
   > {
     const row = await this.repo.getPublicById(id);
@@ -365,32 +371,42 @@ export class JobListingsService {
     if (locale === 'en') {
       const translation = await this.translationsRepo.findByJobListingId(id);
       if (translation && translation.publishedTitle != null) {
-        const stale = translation.publishedSourceContentHash
-          ? isJobListingTranslationStale(translation.publishedSourceContentHash, row)
-          : false;
-        return {
-          ...withPlace,
-          title: translation.publishedTitle,
-          description: translation.publishedDescription ?? withPlace.description,
-          description_rich: serveRichDoc(
-            translation.publishedDescription,
-            translation.publishedDescriptionRich,
-            translation.publishedDescriptionRichHash,
-          ),
-          requirements: translation.publishedRequirements ?? withPlace.requirements,
-          // requirements/benefits bản dịch CHƯA hỗ trợ rich text (ngoài phạm vi — chỉ `description`
-          // bản dịch có rich, theo đúng yêu cầu owner). PHẢI đặt null tường minh ở nhánh này — nếu
-          // không, `...withPlace` phía trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (requirements/
-          // benefits NGUỒN) vào response đang phục vụ tiếng Anh — lỗi thật y hệt description_rich đã
-          // tìm thấy trước đó, không phải phòng hờ.
-          requirements_rich: null,
-          benefits: translation.publishedBenefits ?? withPlace.benefits,
-          benefits_rich: null,
-          locale: 'en',
-          is_translation_stale: stale,
-        };
+        // Gói D điểm 4 — kiểm dữ kiện QUAN TRỌNG TRƯỚC (hẹp hơn, chỉ ca làm/địa điểm/giá/điều kiện
+        // giao dịch). Lệch → KHÔNG phục vụ bản dịch (dù đã duyệt) — "ẩn phần dịch lỗi thời", fallback
+        // nguyên bản tiếng Việt, một cảnh báo chung sẽ KHÔNG đủ rõ cho mức rủi ro này (owner yêu cầu
+        // rõ). Chỉ kiểm hash tổng (is_translation_stale) khi dữ kiện quan trọng VẪN khớp — nghĩa là
+        // chỉ văn xuôi (hoặc dữ kiện phụ ngoài 4 nhóm) đổi, mức rủi ro thấp hơn, cảnh báo chung vẫn đủ.
+        const criticallyStale = isJobListingTranslationCriticallyStale(translation.publishedCriticalFieldsHash, row);
+        if (!criticallyStale) {
+          const stale = translation.publishedSourceContentHash
+            ? isJobListingTranslationStale(translation.publishedSourceContentHash, row)
+            : false;
+          return {
+            ...withPlace,
+            title: translation.publishedTitle,
+            description: translation.publishedDescription ?? withPlace.description,
+            description_rich: serveRichDoc(
+              translation.publishedDescription,
+              translation.publishedDescriptionRich,
+              translation.publishedDescriptionRichHash,
+            ),
+            requirements: translation.publishedRequirements ?? withPlace.requirements,
+            // requirements/benefits bản dịch CHƯA hỗ trợ rich text (ngoài phạm vi — chỉ `description`
+            // bản dịch có rich, theo đúng yêu cầu owner). PHẢI đặt null tường minh ở nhánh này — nếu
+            // không, `...withPlace` phía trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (requirements/
+            // benefits NGUỒN) vào response đang phục vụ tiếng Anh — lỗi thật y hệt description_rich đã
+            // tìm thấy trước đó, không phải phòng hờ.
+            requirements_rich: null,
+            benefits: translation.publishedBenefits ?? withPlace.benefits,
+            benefits_rich: null,
+            locale: 'en',
+            is_translation_stale: stale,
+            translation_hidden_reason: null,
+          };
+        }
+        return { ...withPlace, locale: 'vi', is_translation_stale: false, translation_hidden_reason: 'critical_fact_mismatch' };
       }
     }
-    return { ...withPlace, locale: 'vi', is_translation_stale: false };
+    return { ...withPlace, locale: 'vi', is_translation_stale: false, translation_hidden_reason: null };
   }
 }

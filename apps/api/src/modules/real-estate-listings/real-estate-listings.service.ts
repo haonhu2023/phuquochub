@@ -21,7 +21,7 @@ import {
   toRealEstateListingPublicView,
   toRealEstateListingSenderView,
 } from './real-estate-listings.mapper';
-import { isRealEstateListingTranslationStale } from './real-estate-listing-translation-hash';
+import { isRealEstateListingTranslationCriticallyStale, isRealEstateListingTranslationStale } from './real-estate-listing-translation-hash';
 
 // Bảng chuyển trạng thái — CÙNG job_listings (§13r/§13u), cộng deal_status ĐỘC LẬP:
 //   status: draft --submit--> pending --decide--> published/rejected ; rejected --submit--> pending
@@ -346,7 +346,14 @@ export class RealEstateListingsService {
   async getPublicById(
     id: string,
     locale?: GetRealEstateListingDetailQueryDto['locale'],
-  ): Promise<ReturnType<typeof toRealEstateListingPublicView> & { locale: 'vi' | 'en'; is_translation_stale: boolean }> {
+  ): Promise<
+    ReturnType<typeof toRealEstateListingPublicView> & {
+      locale: 'vi' | 'en';
+      is_translation_stale: boolean;
+      // Gói D điểm 4 — cùng ý nghĩa JobListingsService.getPublicById()'s field cùng tên.
+      translation_hidden_reason: 'critical_fact_mismatch' | null;
+    }
+  > {
     const row = await this.repo.getPublicById(id);
     if (!row) throw new NotFoundException('Không tìm thấy tin bất động sản');
     const base = toRealEstateListingPublicView(row);
@@ -354,31 +361,38 @@ export class RealEstateListingsService {
     if (locale === 'en') {
       const translation = await this.translationsRepo.findByRealEstateListingId(id);
       if (translation && translation.publishedTitle != null) {
-        const stale = translation.publishedSourceContentHash
-          ? isRealEstateListingTranslationStale(translation.publishedSourceContentHash, row)
-          : false;
-        return {
-          ...base,
-          title: translation.publishedTitle,
-          description: translation.publishedDescription ?? base.description,
-          description_rich: serveRichDoc(
-            translation.publishedDescription,
-            translation.publishedDescriptionRich,
-            translation.publishedDescriptionRichHash,
-          ),
-          utilities_note: translation.publishedUtilitiesNote ?? base.utilities_note,
-          // utilities_note/legal_status_note bản dịch CHƯA hỗ trợ rich text (chỉ `description` bản
-          // dịch có, cùng phạm vi job_listings). PHẢI đặt null tường minh — nếu không, `...base` phía
-          // trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (utilities_note/legal_status_note NGUỒN) vào
-          // response đang phục vụ tiếng Anh — cùng lớp lỗi đã tìm thấy và sửa ở job_listings.
-          utilities_note_rich: null,
-          legal_status_note: translation.publishedLegalStatusNote ?? base.legal_status_note,
-          legal_status_note_rich: null,
-          locale: 'en',
-          is_translation_stale: stale,
-        };
+        // Gói D điểm 4 — cùng lý do job_listings: kiểm dữ kiện QUAN TRỌNG (địa điểm/giá/điều kiện
+        // giao dịch) TRƯỚC, lệch → fallback tiếng Việt hẳn (không chỉ cảnh báo chung).
+        const criticallyStale = isRealEstateListingTranslationCriticallyStale(translation.publishedCriticalFieldsHash, row);
+        if (!criticallyStale) {
+          const stale = translation.publishedSourceContentHash
+            ? isRealEstateListingTranslationStale(translation.publishedSourceContentHash, row)
+            : false;
+          return {
+            ...base,
+            title: translation.publishedTitle,
+            description: translation.publishedDescription ?? base.description,
+            description_rich: serveRichDoc(
+              translation.publishedDescription,
+              translation.publishedDescriptionRich,
+              translation.publishedDescriptionRichHash,
+            ),
+            utilities_note: translation.publishedUtilitiesNote ?? base.utilities_note,
+            // utilities_note/legal_status_note bản dịch CHƯA hỗ trợ rich text (chỉ `description` bản
+            // dịch có, cùng phạm vi job_listings). PHẢI đặt null tường minh — nếu không, `...base` phía
+            // trên sẽ để lọt RichDoc của bản TIẾNG VIỆT (utilities_note/legal_status_note NGUỒN) vào
+            // response đang phục vụ tiếng Anh — cùng lớp lỗi đã tìm thấy và sửa ở job_listings.
+            utilities_note_rich: null,
+            legal_status_note: translation.publishedLegalStatusNote ?? base.legal_status_note,
+            legal_status_note_rich: null,
+            locale: 'en',
+            is_translation_stale: stale,
+            translation_hidden_reason: null,
+          };
+        }
+        return { ...base, locale: 'vi', is_translation_stale: false, translation_hidden_reason: 'critical_fact_mismatch' };
       }
     }
-    return { ...base, locale: 'vi', is_translation_stale: false };
+    return { ...base, locale: 'vi', is_translation_stale: false, translation_hidden_reason: null };
   }
 }

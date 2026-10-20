@@ -68,3 +68,44 @@ export function computeJobListingSourceHash(row: JobListingTranslationSourceRow)
 export function isJobListingTranslationStale(storedSourceHash: string, currentRow: JobListingTranslationSourceRow): boolean {
   return storedSourceHash !== computeJobListingSourceHash(currentRow);
 }
+
+// Gói D điểm 4 (18/10/2026, owner yêu cầu rõ) — "không coi một cảnh báo chung là đủ" khi bản dịch
+// đã biết MÂU THUẪN với dữ kiện QUAN TRỌNG (ca làm/địa điểm/giá/điều kiện giao dịch — nguyên văn
+// owner). Hash TỔNG (sourceFields ở trên) không phân biệt được "chỉ mô tả đổi chút ít" với "lương
+// đổi hẳn" — cần một hash THỨ HAI, hẹp hơn, chỉ phủ đúng 4 nhóm owner nêu, để biết CHÍNH XÁC có
+// phải dữ kiện QUAN TRỌNG đã lệch hay không (không phải suy đoán từ hash tổng).
+//   - "ca làm": shiftInfo.
+//   - "địa điểm": workLocation, ward.
+//   - "giá": salaryMin/salaryMax/salaryNegotiable/salaryCurrency/salaryPeriod.
+//   - "điều kiện giao dịch": employmentType (toàn thời gian/bán thời gian/thời vụ LÀ một điều kiện
+//     giao dịch của việc làm).
+// CHỦ Ý LOẠI employerName/employerRole/jobCategory — đây là "ai tuyển/làm nghề gì", không phải một
+// trong bốn nhóm owner liệt kê; đổi tên công ty không kích hoạt xử lý mạnh tay hơn cảnh báo chung.
+function criticalFields(row: Pick<JobListing, 'workLocation' | 'ward' | 'employmentType' | 'shiftInfo' | 'salaryMin' | 'salaryMax' | 'salaryNegotiable' | 'salaryCurrency' | 'salaryPeriod'>) {
+  return {
+    workLocation: row.workLocation,
+    ward: row.ward,
+    employmentType: row.employmentType,
+    shiftInfo: row.shiftInfo,
+    salaryMin: row.salaryMin,
+    salaryMax: row.salaryMax,
+    salaryNegotiable: row.salaryNegotiable,
+    salaryCurrency: row.salaryCurrency,
+    salaryPeriod: row.salaryPeriod,
+  };
+}
+
+export type JobListingTranslationCriticalFieldsRow = Parameters<typeof criticalFields>[0];
+
+export function computeJobListingCriticalFieldsHash(row: JobListingTranslationCriticalFieldsRow): string {
+  const bytes = Buffer.from(canonicalJson(criticalFields(row)), 'utf8');
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+export function isJobListingTranslationCriticallyStale(
+  storedCriticalHash: string | null,
+  currentRow: JobListingTranslationCriticalFieldsRow,
+): boolean {
+  if (storedCriticalHash == null) return false; // bản dịch cũ hơn tính năng này, chưa từng lưu hash — không suy diễn.
+  return storedCriticalHash !== computeJobListingCriticalFieldsHash(currentRow);
+}

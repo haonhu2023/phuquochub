@@ -80,6 +80,12 @@ export class RealEstateListingTranslation {
   @Column({ type: 'char', length: 64, nullable: true })
   publishedSourceContentHash!: string | null;
 
+  // Gói D điểm 4 (18/10/2026) — hash HẸP "địa điểm/giá/điều kiện giao dịch", xem
+  // real-estate-listing-translation-hash.ts's criticalFields(). Cùng vai trò
+  // JobListingTranslation.publishedCriticalFieldsHash.
+  @Column({ type: 'char', length: 64, nullable: true })
+  publishedCriticalFieldsHash!: string | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   publishedAt!: Date | null;
 

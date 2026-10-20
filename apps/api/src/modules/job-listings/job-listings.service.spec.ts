@@ -5,7 +5,7 @@ import { JobListingTranslation } from './entities/job-listing-translation.entity
 import { JobListingEmploymentType, JobListingStatus, JobListingTranslationStatus } from './job-listings.enums';
 import { UpsertJobListingDto } from './dto/job-listings.dto';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
-import { computeJobListingSourceHash } from './job-listing-translation-hash';
+import { computeJobListingCriticalFieldsHash, computeJobListingSourceHash } from './job-listing-translation-hash';
 
 function translationRow(overrides: Partial<JobListingTranslation> = {}): JobListingTranslation {
   const t = new JobListingTranslation();
@@ -28,6 +28,7 @@ function translationRow(overrides: Partial<JobListingTranslation> = {}): JobList
   t.publishedRequirements = null;
   t.publishedBenefits = null;
   t.publishedSourceContentHash = 'hash';
+  t.publishedCriticalFieldsHash = null;
   t.publishedAt = new Date('2026-10-07T00:00:00Z');
   t.contentVersion = 1;
   t.createdAt = new Date('2026-10-07T00:00:00Z');
@@ -642,6 +643,61 @@ describe('JobListingsService', () => {
         repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED }));
         const result = await service.getPublicById('job-1', 'vi');
         expect(result.is_translation_stale).toBe(false);
+      });
+
+      // Gói D điểm 4 (18/10/2026, owner yêu cầu rõ) — "không coi một cảnh báo chung là đủ" khi dữ
+      // kiện QUAN TRỌNG (ca làm/địa điểm/giá/điều kiện giao dịch) đã đổi. Phân biệt RÕ với test
+      // "lương đổi... VẪN phục vụ bản dịch" ở trên — khác nhau ở chỗ bản dịch đó KHÔNG có
+      // publishedCriticalFieldsHash (duyệt trước khi tính năng này tồn tại, xử lý "chưa biết, không
+      // ẩn"); ở đây bản dịch CÓ hash, nên hệ thống biết CHẮC CHẮN dữ kiện quan trọng đã lệch.
+      describe('dữ kiện QUAN TRỌNG (ca làm/địa điểm/giá/điều kiện giao dịch) đổi SAU KHI duyệt → ẩn bản dịch, fallback tiếng Việt (không chỉ cảnh báo chung)', () => {
+        it('lương đổi (nằm trong nhóm "giá") → fallback locale=vi, translation_hidden_reason="critical_fact_mismatch"', async () => {
+          const viRowAtApproval = row({ salaryMin: null });
+          repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, salaryMin: '20000000', salaryCurrency: 'VND' }));
+          translationsRepo.findByJobListingId.mockResolvedValue(
+            translationRow({
+              publishedSourceContentHash: computeJobListingSourceHash(viRowAtApproval),
+              publishedCriticalFieldsHash: computeJobListingCriticalFieldsHash(viRowAtApproval),
+            }),
+          );
+          const result = await service.getPublicById('job-1', 'en');
+          expect(result.locale).toBe('vi');
+          expect(result.translation_hidden_reason).toBe('critical_fact_mismatch');
+          expect(result.title).toBe('T'); // tiêu đề TIẾNG VIỆT (row() mặc định), KHÔNG phải 'EN title'.
+        });
+
+        it('ca làm (shift_info) đổi → cũng kích hoạt fallback (không chỉ riêng lương)', async () => {
+          const viRowAtApproval = row({ shiftInfo: 'Ca sáng' });
+          repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, shiftInfo: 'Ca tối' }));
+          translationsRepo.findByJobListingId.mockResolvedValue(
+            translationRow({ publishedCriticalFieldsHash: computeJobListingCriticalFieldsHash(viRowAtApproval) }),
+          );
+          const result = await service.getPublicById('job-1', 'en');
+          expect(result.translation_hidden_reason).toBe('critical_fact_mismatch');
+        });
+
+        it('CHỈ mô tả (văn xuôi) đổi, dữ kiện quan trọng KHÔNG đổi → vẫn phục vụ bản dịch kèm cảnh báo chung như trước (không fallback)', async () => {
+          const viRowAtApproval = row({ description: 'Mô tả cũ' });
+          repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, description: 'Mô tả MỚI, chỉ đổi câu chữ' }));
+          translationsRepo.findByJobListingId.mockResolvedValue(
+            translationRow({
+              publishedSourceContentHash: computeJobListingSourceHash(viRowAtApproval),
+              publishedCriticalFieldsHash: computeJobListingCriticalFieldsHash(viRowAtApproval),
+            }),
+          );
+          const result = await service.getPublicById('job-1', 'en');
+          expect(result.locale).toBe('en'); // VẪN phục vụ bản dịch.
+          expect(result.translation_hidden_reason).toBeNull();
+          expect(result.is_translation_stale).toBe(true); // cảnh báo chung vẫn đúng (hash tổng lệch).
+        });
+
+        it('bản dịch được duyệt TRƯỚC khi có tính năng này (publishedCriticalFieldsHash=null) → KHÔNG tự suy diễn, không fallback dù lương đổi', async () => {
+          repo.getPublicById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, salaryMin: '20000000' }));
+          translationsRepo.findByJobListingId.mockResolvedValue(translationRow({ publishedCriticalFieldsHash: null }));
+          const result = await service.getPublicById('job-1', 'en');
+          expect(result.translation_hidden_reason).toBeNull();
+          expect(result.locale).toBe('en');
+        });
       });
     });
 
