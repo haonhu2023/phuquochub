@@ -16,7 +16,7 @@ import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { getPlaceMapLinks } from '@/modules/map/mapLinks';
-import placesStyles from '@/modules/places/places.module.css';
+import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
@@ -146,7 +146,7 @@ export default async function RestaurantDetailPage({ params }: Params) {
 
       <PlaceGallery media={r.media} placeName={r.name} />
 
-      {r.description && <p className={placesStyles.longText}>{r.description}</p>}
+      {r.description && <RichDescriptionRenderer richDoc={r.description_rich} plainFallback={r.description} />}
       {r.cuisines.length > 0 && (
         <p style={{ color: '#6b7280' }}>Ẩm thực: {r.cuisines.map((c) => c.label_vi).join(' · ')}</p>
       )}

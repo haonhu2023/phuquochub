@@ -151,6 +151,7 @@ function detail(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     category_id: 'c1',
     category_slug: 'beach',
     short_description: null,
+    description_rich: null,
     price_range: null,
     cover_image_url: null,
     rating_avg: null,

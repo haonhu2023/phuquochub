@@ -46,6 +46,7 @@ function restaurant(overrides: Partial<RestaurantDetail> = {}): RestaurantDetail
     province: null,
     admin_area: null,
     description: null,
+    description_rich: null,
     opening_hours: null,
     osm_id: null,
     google_place_id: null,

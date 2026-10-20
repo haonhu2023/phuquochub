@@ -14,7 +14,7 @@ import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { getPlaceMapLinks } from '@/modules/map/mapLinks';
-import placesStyles from '@/modules/places/places.module.css';
+import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -140,7 +140,7 @@ export default async function HotelDetailPage({ params }: Params) {
 
       <PlaceGallery media={h.media} placeName={h.name} />
 
-      {h.description && <p className={placesStyles.longText}>{h.description}</p>}
+      {h.description && <RichDescriptionRenderer richDoc={h.description_rich} plainFallback={h.description} />}
 
       {h.hotel_details && (
         <section>

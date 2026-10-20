@@ -15,6 +15,7 @@ function makePlace(slug: string): PlaceDetail {
     slug,
     category_id: 'c1',
     short_description: null,
+    description_rich: null,
     price_range: null,
     cover_image_url: null,
     rating_avg: null,

@@ -21,6 +21,7 @@ import { getPlaceAboutTitle, getPlaceDetailCopy } from '@/modules/places/placeDe
 import { ApiError } from '@/lib/http';
 import type { PlaceContact, PlaceDetail, VerificationStatusValue } from '@/modules/places/types';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
+import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import styles from '@/modules/places/places.module.css';
 import { buildBreadcrumbJsonLd, buildPlaceJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { listReviews } from '@/modules/reviews/api/reviews.api';
@@ -318,7 +319,7 @@ export default async function PlaceDetailPage({ params }: Params) {
       {place.description && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>{getPlaceAboutTitle(locale, place.category_slug)}</h2>
-          <p className={styles.longText}>{place.description}</p>
+          <RichDescriptionRenderer richDoc={place.description_rich} plainFallback={place.description} />
         </section>
       )}
 
