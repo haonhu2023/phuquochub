@@ -1,8 +1,14 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
-**Baseline production (21/10/2026, SAU cutover Giai đoạn 3):** API `6d6cc5c4ba8206913d77d222eaa73eb15228cf40` (`sha256:4c38771af9...`) · Web cùng commit (`sha256:3f22705a79...`) · DB **106 migrations** (105→106, `AddBookingManagedPermissions`). Rollback về API/Web `312425a532319c9d4f69602193ac53f5e91b83c9` (`scripts/rollback.sh 312425a532319c9d4f69602193ac53f5e91b83c9`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (permission/grant mới thuần cộng thêm, app cũ không biết/không đụng tới).
+**Baseline production (21/10/2026, SAU cutover Giai đoạn 4):** API `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`sha256:1e1d8743c9...`) · Web cùng commit (`sha256:e93606a8d6...`) · DB **107 migrations** (106→107, `AddReviewConfirmedVisit`). Rollback về API/Web `6d6cc5c4ba8206913d77d222eaa73eb15228cf40` (`scripts/rollback.sh 6d6cc5c4ba8206913d77d222eaa73eb15228cf40`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (cột mới thuần cộng thêm, app cũ không biết/không đụng tới).
 
-### Giai đoạn 4 (21/10/2026, commit local `6406952`) — "Đã xác nhận từng đến" cho đánh giá — ĐÃ code + test + xác nhận dev + production rehearsal, CHƯA deploy
+### Cutover 6406952 (21/10/2026) — Giai đoạn 4: "Đã xác nhận từng đến" cho đánh giá — THÀNH CÔNG, không cần rollback
+
+Backup trước deploy: `phuquochub-20261021T083917Z.sql.gz` (SHA256 `a2294cbe...`, validated). Dry-run trước cutover: clean no-op. `deploy.sh 6406952...` chạy đủ 11 bước với `SKIP_BUILD=1` + `EXPECTED_API_IMAGE_ID`/`EXPECTED_WEB_IMAGE_ID` khớp đúng 2 image đã rehearsal (`1e1d8743c9.../e93606a8d6...`) — Step 7 áp ĐÚNG 1 migration mới (`AddReviewConfirmedVisit1720010500000`) lên DB production thật, Step 8 smoke-test image mới pass trước khi cutover, Step 9 cutover api+web, Step 9b ghi tag vào `.env`.
+
+**Hậu kiểm:** `verify-release-pins.sh` → "all pins consistent". DB = **107 migrations** (106→107). `smoke-test.sh` qua domain thật pass đủ. Mục "Đánh giá" xác nhận ĐÃ hiện trên trang khách sạn VÀ nhà hàng thật (`novotel-phu-quoc`, `crab-house-phu-quoc`) — trước cutover này hoàn toàn không có. Review thật CÓ SẴN từ trước (place `19c35a9c...`, tác giả "Test PhuQuocHub") qua `GET /api/places/{id}/reviews` xác nhận trường `confirmed_visit` tồn tại và đúng `false` (review này được tạo trước khi hệ thống đặt chỗ ra đời — không có booking confirmed nào đứng sau, migration additive xử lý đúng dữ liệu cũ, không lỗi/mất dữ liệu). **Không tạo dữ liệu test/giả nào trên production** — toàn bộ hậu kiểm chỉ đọc. Image rollback (`6d6cc5c`) còn giữ trên VPS.
+
+### Giai đoạn 4 (21/10/2026, commit local `6406952`) — "Đã xác nhận từng đến" cho đánh giá — chuẩn bị trước khi deploy (ĐÃ deploy, xem mục cutover ở trên)
 
 Theo chiến lược [strategy-data-hub-2026-10-21.md](strategy-data-hub-2026-10-21.md) §Giai đoạn 4. "Không bắt buộc ngay" (nguyên văn chiến lược): KHÔNG chặn tạo review khi không có booking — chỉ đánh dấu KHÁC review ẩn danh khi người viết CÓ một booking `confirmed` tại địa điểm đó. **Có 1 migration mới** (`1720010500000-AddReviewConfirmedVisit`, additive, `ALTER TABLE reviews ADD COLUMN verified_booking_id` nullable FK → `bookings`, `ON DELETE SET NULL`, `down()` từ chối nếu có dữ liệu thật — cùng kỷ luật `AddMediaProposalOwner`).
 
@@ -20,7 +26,7 @@ Dựng Postgres/Redis **cô lập hoàn toàn** (`phase4-rehearsal-*`, không vo
 
 Dọn sạch sau rehearsal: toàn bộ container/network cô lập đã xoá (Postgres cô lập không volume nên dữ liệu test biến mất cùng container). Container production xác nhận LẦN NỮA không đổi sau khi dọn. Candidate image giữ lại trên VPS để tái dùng cho `deploy.sh` (`SKIP_BUILD=1`, `EXPECTED_API_IMAGE_ID=sha256:1e1d8743c9...`, `EXPECTED_WEB_IMAGE_ID=sha256:e93606a8d6...`) khi được duyệt.
 
-**Chưa deploy lên production — chờ duyệt riêng bước cutover** (chạy `deploy.sh` thật: Step 7 áp migration lên DB production thật + Step 9 thay container đang sống).
+**Đã deploy lên production (xem mục cutover 6406952 ở trên)** — chủ owner duyệt rõ ràng trước khi chạy `deploy.sh` thật.
 
 ### Cutover 6d6cc5c (21/10/2026) — Giai đoạn 3: Nối "đặt chỗ" vào web — THÀNH CÔNG, không cần rollback
 
