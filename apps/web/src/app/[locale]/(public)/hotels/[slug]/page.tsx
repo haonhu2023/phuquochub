@@ -18,6 +18,9 @@ import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRende
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { BookingButton } from '@/modules/bookings/BookingButton';
+import { listReviews } from '@/modules/reviews/api/reviews.api';
+import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
+import type { Review } from '@/modules/reviews/types';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -83,6 +86,15 @@ export default async function HotelDetailPage({ params }: Params) {
     throw err;
   }
   const openingWeek = getOpeningWeek(h.opening_hours, new Date(), locale);
+
+  // Giai đoạn 4 (chiến lược data-hub) — đánh giá là khối phụ trợ, lỗi ở đây không được làm sập cả
+  // trang chi tiết khách sạn (cùng nguyên tắc places/[slug]/page.tsx).
+  let reviews: Review[] = [];
+  try {
+    reviews = await listReviews(h.id);
+  } catch {
+    reviews = [];
+  }
 
   return (
     <article>
@@ -300,6 +312,7 @@ export default async function HotelDetailPage({ params }: Params) {
           {h.prices.some((p) => !canDisplayPrice(p.verification_status)) && <p>{PRICE_VERIFYING_TEXT}</p>}
         </section>
       )}
+      <ReviewsSection placeId={h.id} initialReviews={reviews} />
     </article>
   );
 }

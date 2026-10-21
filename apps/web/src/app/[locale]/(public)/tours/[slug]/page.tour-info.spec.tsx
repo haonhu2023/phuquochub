@@ -1,12 +1,19 @@
 /** @jest-environment jsdom */
 import { render, screen } from '@testing-library/react';
 import { getItinerary, getSchedule, getTour, type TourDetail } from '@/modules/tours/api/tours.api';
+import { listReviews } from '@/modules/reviews/api/reviews.api';
 import TourDetailPage from './page';
 
 jest.mock('@/modules/tours/api/tours.api', () => ({
   getTour: jest.fn(),
   getItinerary: jest.fn(),
   getSchedule: jest.fn(),
+}));
+jest.mock('@/modules/reviews/api/reviews.api', () => ({ listReviews: jest.fn() }));
+// ReviewsSection cần AuthProvider context (useAuth) — không liên quan tới hành vi được test ở
+// đây, mock để tách rời, cùng cách places/[slug]/page.spec.tsx mock ReviewsSection.
+jest.mock('@/modules/reviews/ReviewsSection', () => ({
+  ReviewsSection: () => null,
 }));
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -20,6 +27,8 @@ jest.mock('next/link', () => ({
 const mockGetTour = getTour as jest.Mock;
 const mockGetItinerary = getItinerary as jest.Mock;
 const mockGetSchedule = getSchedule as jest.Mock;
+const mockListReviews = listReviews as jest.Mock;
+mockListReviews.mockResolvedValue([]);
 
 // Fixture tối thiểu cho trang tour; chỉ các trường trang đọc. Không dùng dữ liệu thật.
 function tourWithDetails(details: Record<string, unknown> | null): TourDetail {

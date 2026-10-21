@@ -20,6 +20,9 @@ import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRende
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { BookingButton } from '@/modules/bookings/BookingButton';
+import { listReviews } from '@/modules/reviews/api/reviews.api';
+import { ReviewsSection } from '@/modules/reviews/ReviewsSection';
+import type { Review } from '@/modules/reviews/types';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
@@ -86,6 +89,15 @@ export default async function RestaurantDetailPage({ params }: Params) {
     menu = [];
   }
   const openingWeek = getOpeningWeek(r.opening_hours, new Date(), locale);
+
+  // Giai đoạn 4 (chiến lược data-hub) — đánh giá là khối phụ trợ, lỗi ở đây không được làm sập cả
+  // trang chi tiết nhà hàng (cùng nguyên tắc places/[slug]/page.tsx).
+  let reviews: Review[] = [];
+  try {
+    reviews = await listReviews(r.id);
+  } catch {
+    reviews = [];
+  }
 
   return (
     <article>
@@ -274,6 +286,7 @@ export default async function RestaurantDetailPage({ params }: Params) {
           </ul>
         </section>
       ))}
+      <ReviewsSection placeId={r.id} initialReviews={reviews} />
     </article>
   );
 }

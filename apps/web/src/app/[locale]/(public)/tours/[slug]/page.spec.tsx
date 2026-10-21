@@ -8,6 +8,7 @@ import {
   type TourSchedule,
   type TourStop,
 } from '@/modules/tours/api/tours.api';
+import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import TourDetailPage, { generateMetadata } from './page';
 
@@ -15,6 +16,12 @@ jest.mock('@/modules/tours/api/tours.api', () => ({
   getTour: jest.fn(),
   getItinerary: jest.fn(),
   getSchedule: jest.fn(),
+}));
+jest.mock('@/modules/reviews/api/reviews.api', () => ({ listReviews: jest.fn() }));
+// ReviewsSection cần AuthProvider context (useAuth) — không liên quan tới hành vi được test ở
+// đây, mock để tách rời, cùng cách places/[slug]/page.spec.tsx mock ReviewsSection.
+jest.mock('@/modules/reviews/ReviewsSection', () => ({
+  ReviewsSection: () => null,
 }));
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -28,6 +35,8 @@ jest.mock('next/link', () => ({
 const mockGetTour = getTour as jest.Mock;
 const mockGetItinerary = getItinerary as jest.Mock;
 const mockGetSchedule = getSchedule as jest.Mock;
+const mockListReviews = listReviews as jest.Mock;
+mockListReviews.mockResolvedValue([]);
 
 function tour(overrides: Partial<TourDetail> = {}): TourDetail {
   return {
@@ -93,6 +102,22 @@ describe('TourDetailPage — nút Đặt chỗ (giai đoạn 3)', () => {
   it('render nút "Đặt chỗ"', async () => {
     await renderPage(tour());
     expect(screen.getByRole('button', { name: 'Đặt chỗ' })).toBeInTheDocument();
+  });
+});
+
+// Giai đoạn 4 (chiến lược data-hub) — mục đánh giá trước đây KHÔNG tồn tại trên trang tour (phát
+// hiện khi rà soát Giai đoạn 4), gắn thêm ở đây. Hành vi render/badge thật đã test riêng ở
+// ReviewsSection.spec.tsx — chỉ xác nhận trang gọi đúng API với đúng id của tour đang xem.
+describe('TourDetailPage — mục đánh giá (giai đoạn 4)', () => {
+  it('gọi listReviews với đúng id tour', async () => {
+    await renderPage(tour({ id: 't-review-test' }));
+    expect(mockListReviews).toHaveBeenCalledWith('t-review-test');
+  });
+
+  it('listReviews lỗi → KHÔNG làm sập trang (reviews rỗng)', async () => {
+    mockListReviews.mockRejectedValueOnce(new Error('network'));
+    await renderPage(tour());
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
   });
 });
 
