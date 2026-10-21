@@ -1,8 +1,14 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
-**Baseline production (21/10/2026, SAU cutover Giai đoạn 2):** API `312425a532319c9d4f69602193ac53f5e91b83c9` (`sha256:40d83193e4...`) · Web cùng commit (`sha256:1ab98f901e...`) · DB **105 migrations** (104→105, `AddListingReportStillValidLoop`). Rollback về API/Web `adcf76a12f90ce812e048253ee62c5fa4e661eaf` (`scripts/rollback.sh adcf76a12f90ce812e048253ee62c5fa4e661eaf`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (giá trị enum mới thuần cộng thêm, app cũ không biết/không đụng tới).
+**Baseline production (21/10/2026, SAU cutover Giai đoạn 3):** API `6d6cc5c4ba8206913d77d222eaa73eb15228cf40` (`sha256:4c38771af9...`) · Web cùng commit (`sha256:3f22705a79...`) · DB **106 migrations** (105→106, `AddBookingManagedPermissions`). Rollback về API/Web `312425a532319c9d4f69602193ac53f5e91b83c9` (`scripts/rollback.sh 312425a532319c9d4f69602193ac53f5e91b83c9`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (permission/grant mới thuần cộng thêm, app cũ không biết/không đụng tới).
 
-### Giai đoạn 3 (21/10/2026, commit local `323770a`) — Nối "đặt chỗ" vào web — ĐÃ code + test + xác nhận dev, CHƯA deploy
+### Cutover 6d6cc5c (21/10/2026) — Giai đoạn 3: Nối "đặt chỗ" vào web — THÀNH CÔNG, không cần rollback
+
+Backup trước deploy: `phuquochub-20261021T052950Z.sql.gz` (SHA256 `e231dc6c...`, validated). Dry-run trước cutover: clean no-op. `deploy.sh 6d6cc5c...` chạy đủ 11 bước với `SKIP_BUILD=1` + `EXPECTED_API_IMAGE_ID`/`EXPECTED_WEB_IMAGE_ID` khớp đúng 2 image đã rehearsal (`4c38771af9.../3f22705a79...`) — Step 7 áp ĐÚNG 1 migration mới (`AddBookingManagedPermissions1720010400000`) lên DB production thật, Step 8 smoke-test image mới pass trước khi cutover, Step 9 cutover api+web, Step 9b ghi tag vào `.env`.
+
+**Hậu kiểm:** `verify-release-pins.sh` → "all pins consistent". DB = **106 migrations** (105→106). `smoke-test.sh` qua domain thật pass đủ. 3 route mới xác nhận đúng trên domain thật: `GET /api/bookings/mine`, `POST /api/bookings/:id/confirm`, `POST /api/bookings/:id/cancel` không có token → cả ba `401`; `GET /dashboard/bookings` tải `200`. Nút "Đặt chỗ" xác nhận HIỆN THẬT trên trang khách sạn thật (`https://phuquochub.com/vi/hotels/novotel-phu-quoc`, đọc HTML qua `curl`, không bấm/gửi gì). **Không tạo dữ liệu test/giả nào trên production.** Image rollback (`312425a`) còn giữ trên VPS.
+
+### Giai đoạn 3 (21/10/2026, commit local `323770a`) — Nối "đặt chỗ" vào web — chuẩn bị trước khi deploy (ĐÃ deploy, xem mục cutover ở trên)
 
 Theo chiến lược [strategy-data-hub-2026-10-21.md](strategy-data-hub-2026-10-21.md) §Giai đoạn 3. MVP: giữ chỗ KHÔNG thanh toán — `bookings`/`availability` đã có API đầy đủ từ trước, phần thiếu là UI web (100% greenfield, 0 nơi nào trong `apps/web` từng gọi tới) + quyền quản lý cho CHỦ CƠ SỞ ĐÃ XÁC MINH (qua `business_claims`, đã migrate từ lâu — lý do cũ "chưa có bảng ownership" trong migration gán quyền ban đầu đã lỗi thời). **Có 1 migration mới** (`1720010400000-AddBookingManagedPermissions`, additive, seed 3 permission `.Managed` mới + grant cho `business_manager`, không đụng permission/grant cũ của `moderator`).
 
@@ -20,7 +26,7 @@ Dựng Postgres/Redis **cô lập hoàn toàn** (`phase3-rehearsal-*`, không vo
 
 Dọn sạch sau rehearsal: toàn bộ container/network cô lập đã xoá (Postgres cô lập không volume nên dữ liệu test biến mất cùng container). Container production xác nhận LẦN NỮA không đổi sau khi dọn. Candidate image giữ lại trên VPS để tái dùng cho `deploy.sh` (`SKIP_BUILD=1`, `EXPECTED_API_IMAGE_ID=sha256:4c38771af9...`, `EXPECTED_WEB_IMAGE_ID=sha256:3f22705a79...`) khi được duyệt.
 
-**Chưa deploy lên production — chờ duyệt riêng bước cutover** (chạy `deploy.sh` thật: Step 7 áp migration lên DB production thật + Step 9 thay container đang sống).
+**Đã deploy lên production (xem mục cutover 6d6cc5c ở trên)** — chủ owner duyệt rõ ràng trước khi chạy `deploy.sh` thật.
 
 ### Cutover 312425a (21/10/2026) — Giai đoạn 2: Vòng lặp "còn đúng không?" cho tin tuyển dụng — THÀNH CÔNG, không cần rollback
 
