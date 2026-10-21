@@ -30,6 +30,8 @@ import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 import type { Review } from '@/modules/reviews/types';
 import { ClaimCta } from '@/modules/business-claims/ClaimCta';
 import { ProposeEditCta } from '@/modules/place-edit-proposals/ProposeEditCta';
+import { SaveButton } from '@/modules/saved-items/SaveButton';
+import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 
@@ -310,6 +312,13 @@ export default async function PlaceDetailPage({ params }: Params) {
           locale={locale}
         />
       </header>
+
+      {/* Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng từ chỉ tin tuyển dụng/BĐS sang CẢ địa
+          điểm (cùng target_type='place' cho mọi trang vệ tinh — hotel/restaurant/tour, ADR-002). */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <SaveButton targetType="place" targetId={place.id} locale={locale} />
+        <ReportButton targetType="place" targetId={place.id} />
+      </div>
 
       <ClaimCta placeId={place.id} placeName={place.name} locale={locale} />
       <ProposeEditCta placeId={place.id} placeName={place.name} placeSlug={place.slug} locale={locale} />

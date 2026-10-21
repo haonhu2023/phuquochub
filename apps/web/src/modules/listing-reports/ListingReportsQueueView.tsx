@@ -6,7 +6,7 @@ import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { listPendingListingReports } from './api/listing-reports.api';
 import { ListingReportDecisionForm } from './ListingReportDecisionForm';
-import { LISTING_REPORT_REASON_LABELS, type ListingReportView } from './types';
+import { LISTING_REPORT_REASON_LABELS, type ListingReportTargetType, type ListingReportView } from './types';
 import placeStyles from '@/modules/places/places.module.css';
 
 type State =
@@ -19,6 +19,19 @@ function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('vi-VN');
 }
+
+// Giai đoạn 1 (21/10/2026) — `PlaceDetail` dùng `.name`, job/BĐS dùng `.title`; phân biệt ở ĐÚNG
+// MỘT nơi này thay vì đoán theo cấu trúc object ở nơi gọi.
+function listingLabel(listing: ListingReportView['listing']): string {
+  if (!listing) return '(tin không còn khả dụng)';
+  return 'title' in listing ? listing.title : listing.name;
+}
+
+const TARGET_TYPE_LABELS: Record<ListingReportTargetType, string> = {
+  job_listing: 'Tuyển dụng',
+  real_estate_listing: 'Bất động sản',
+  place: 'Địa điểm',
+};
 
 // Hàng chờ "Báo sai/báo trùng" — GỘP cả job_listing lẫn real_estate_listing trong MỘT trang
 // (API tự lọc theo quyền Moderate của từng loại caller giữ, xem listing-reports.service.ts).
@@ -108,12 +121,11 @@ export function ListingReportsQueueView() {
           {state.items.map((report) => (
             <li key={report.id} className={placeStyles.state}>
               <p className={placeStyles.stateTitle}>
-                {LISTING_REPORT_REASON_LABELS[report.reason]} —{' '}
-                {report.listing ? report.listing.title : '(tin không còn khả dụng)'}
+                {LISTING_REPORT_REASON_LABELS[report.reason]} — {report.listing ? listingLabel(report.listing) : '(tin không còn khả dụng)'}
               </p>
               {report.description && <p>{report.description}</p>}
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-                Gửi ngày {formatDate(report.created_at)} · Loại: {report.target_type === 'job_listing' ? 'Tuyển dụng' : 'Bất động sản'}
+                Gửi ngày {formatDate(report.created_at)} · Loại: {TARGET_TYPE_LABELS[report.target_type]}
               </p>
               <ListingReportDecisionForm report={report} onResolved={reload} />
             </li>

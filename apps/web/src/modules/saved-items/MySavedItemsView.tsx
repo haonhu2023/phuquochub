@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import { listMySavedItems, unsaveItem } from './api/saved-items.api';
-import type { SavedItemView } from './types';
+import type { SavedItemTargetType, SavedItemView } from './types';
 import { JobListingCard } from '../job-listings/JobListingCard';
 import { RealEstateListingCard } from '../real-estate-listings/RealEstateListingCard';
+import { PlaceCard } from '../places/PlaceCard';
 import type { JobListingPublicView } from '../job-listings/types';
 import type { RealEstateListingPublicView } from '../real-estate-listings/types';
+import type { PlaceDetail } from '../places/types';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 
@@ -17,9 +19,20 @@ type State =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; items: SavedItemView[] };
 
-// Tái sử dụng NGUYÊN hai card công khai (JobListingCard/RealEstateListingCard) thay vì tự dựng
-// card riêng cho trang này — cùng dữ liệu (JobListingPublicView/RealEstateListingPublicView),
-// cùng cách hiển thị giá/trạng thái đã có, không nhân đôi logic định dạng.
+const UNAVAILABLE_TYPE_LABELS: Record<SavedItemTargetType, string> = {
+  job_listing: 'tuyển dụng',
+  real_estate_listing: 'bất động sản',
+  place: 'địa điểm',
+};
+
+function listingLabel(listing: NonNullable<SavedItemView['listing']>): string {
+  return 'title' in listing ? listing.title : listing.name;
+}
+
+// Tái sử dụng NGUYÊN ba card công khai (JobListingCard/RealEstateListingCard/PlaceCard — giai
+// đoạn 1, 21/10/2026, thêm PlaceCard) thay vì tự dựng card riêng cho trang này — cùng dữ liệu
+// (JobListingPublicView/RealEstateListingPublicView/PlaceDetail), cùng cách hiển thị giá/trạng
+// thái đã có, không nhân đôi logic định dạng.
 export function MySavedItemsView() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [reloadKey, setReloadKey] = useState(0);
@@ -70,7 +83,7 @@ export function MySavedItemsView() {
     <main>
       <header className={placeStyles.pageHeader}>
         <h1 className={placeStyles.pageTitle}>Tin đã lưu</h1>
-        <p className={placeStyles.pageLede}>Tin tuyển dụng và bất động sản bạn đã lưu để xem lại.</p>
+        <p className={placeStyles.pageLede}>Tin tuyển dụng, bất động sản và địa điểm bạn đã lưu để xem lại.</p>
       </header>
 
       {state.kind === 'loading' && (
@@ -108,8 +121,13 @@ export function MySavedItemsView() {
               <div key={item.id} style={{ position: 'relative' }}>
                 {item.target_type === 'job_listing' ? (
                   <JobListingCard job={item.listing as JobListingPublicView} />
-                ) : (
+                ) : item.target_type === 'real_estate_listing' ? (
                   <RealEstateListingCard listing={item.listing as RealEstateListingPublicView} />
+                ) : (
+                  <PlaceCard
+                    place={item.listing as PlaceDetail}
+                    categorySlug={(item.listing as PlaceDetail).category_slug}
+                  />
                 )}
                 <div className={placeMgmtStyles.actions} style={{ marginTop: '0.5rem' }}>
                   {/* aria-label kèm tiêu đề — nhiều nút "Bỏ lưu" lặp lại trên trang không phân biệt
@@ -120,7 +138,7 @@ export function MySavedItemsView() {
                     className={placeStyles.btn}
                     disabled={removingId === item.id}
                     onClick={() => remove(item)}
-                    aria-label={`Bỏ lưu ${item.listing.title}`}
+                    aria-label={`Bỏ lưu ${listingLabel(item.listing)}`}
                   >
                     Bỏ lưu
                   </button>
@@ -135,7 +153,7 @@ export function MySavedItemsView() {
                   className={placeStyles.btn}
                   disabled={removingId === item.id}
                   onClick={() => remove(item)}
-                  aria-label={`Bỏ lưu tin ${item.target_type === 'job_listing' ? 'tuyển dụng' : 'bất động sản'} không còn khả dụng`}
+                  aria-label={`Bỏ lưu tin ${UNAVAILABLE_TYPE_LABELS[item.target_type]} không còn khả dụng`}
                 >
                   Bỏ lưu
                 </button>

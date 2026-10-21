@@ -17,6 +17,8 @@ import { localizedHref, type Locale } from '@/lib/locale';
 import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
+import { SaveButton } from '@/modules/saved-items/SaveButton';
+import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -150,6 +152,11 @@ export default async function TourDetailPage({ params }: Params) {
         <span aria-current="page">{t.name}</span>
       </nav>
       <h1>{t.name}</h1>
+      {/* Giai đoạn 1 (21/10/2026) — target_type='place' (tour LÀ một dòng places, ADR-002). */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <SaveButton targetType="place" targetId={t.id} locale={locale} />
+        <ReportButton targetType="place" targetId={t.id} />
+      </div>
 
       <PlaceGallery media={t.media} placeName={t.name} />
 

@@ -237,6 +237,17 @@ describe('PlaceDetailPage — gallery ảnh công khai (dùng chung PlaceGallery
   });
 });
 
+// Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng sang trang địa điểm (trước đây chỉ có ở tin
+// tuyển dụng/BĐS). Chỉ cần xác nhận hai nút CÓ render — hành vi bấm/gửi đã có test riêng ở chính
+// SaveButton.spec.tsx/ReportButton.spec.tsx, không lặp lại ở đây.
+describe('PlaceDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026)', () => {
+  it('render cả hai nút "Lưu tin" và "Báo sai / báo trùng"', async () => {
+    await renderPage(place({ id: 'place-xyz' }));
+    expect(screen.getByRole('button', { name: /Lưu tin/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Báo sai \/ báo trùng/ })).toBeInTheDocument();
+  });
+});
+
 describe('PlaceDetailPage — Public Beta trust disclosure', () => {
   describe('pending disclosure', () => {
     it('place pending → hiển thị đúng câu "Thông tin đang được xác minh"', async () => {

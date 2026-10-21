@@ -7,4 +7,8 @@
 export enum ListableTargetType {
   JOB_LISTING = 'job_listing',
   REAL_ESTATE_LISTING = 'real_estate_listing',
+  // Giai đoạn 1 (21/10/2026) — phủ CẢ bốn loại trang chi tiết công khai (địa điểm/khách sạn/nhà
+  // hàng/tour): theo ADR-002, hotel/restaurant/tour là satellite table của `places` (id = place_id,
+  // không có id riêng) nên một giá trị 'place' DUY NHẤT là đủ cho cả bốn loại trang.
+  PLACE = 'place',
 }

@@ -3,6 +3,7 @@ import { SavedItemsRepository } from './repositories/saved-items.repository';
 import { SavedItemTargetType } from './saved-items.enums';
 import { JobListingsService } from '../job-listings/job-listings.service';
 import { RealEstateListingsService } from '../real-estate-listings/real-estate-listings.service';
+import { PlacesService } from '../places/places.service';
 
 // "Lưu tin" dùng chung (mục VII/đợt 3/đợt 4 — xem migration InitSavedItems cho lý do không có
 // cơ chế nào trước đó để tái dùng). Đi qua ĐÚNG service công khai của từng loại entity
@@ -15,6 +16,7 @@ export class SavedItemsService {
     private readonly repo: SavedItemsRepository,
     private readonly jobListingsService: JobListingsService,
     private readonly realEstateListingsService: RealEstateListingsService,
+    private readonly placesService: PlacesService,
   ) {}
 
   // Trả về view công khai nếu tin còn công khai, null nếu không (tin đã đóng/hết hạn/gỡ sau khi
@@ -25,7 +27,14 @@ export class SavedItemsService {
       if (targetType === SavedItemTargetType.JOB_LISTING) {
         return await this.jobListingsService.getPublicById(targetId);
       }
-      return await this.realEstateListingsService.getPublicById(targetId);
+      if (targetType === SavedItemTargetType.REAL_ESTATE_LISTING) {
+        return await this.realEstateListingsService.getPublicById(targetId);
+      }
+      // 'place' (phủ hotel/restaurant/tour — cùng id, ADR-002) — cùng lý do resolveTargetPublic()
+      // của ListingReportsService: getBySlug() là nơi DUY NHẤT quyết định "có công khai không".
+      const meta = await this.placesService.getSlugAndStatus(targetId);
+      if (!meta) return null;
+      return await this.placesService.getBySlug(meta.slug);
     } catch {
       return null;
     }

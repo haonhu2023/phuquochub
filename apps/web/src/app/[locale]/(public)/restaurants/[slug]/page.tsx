@@ -17,6 +17,8 @@ import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/plac
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
+import { SaveButton } from '@/modules/saved-items/SaveButton';
+import { ReportButton } from '@/modules/listing-reports/ReportButton';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_RESTAURANTS_LABEL: Record<Locale, string> = { vi: 'Nhà hàng', en: 'Restaurants' };
@@ -114,6 +116,11 @@ export default async function RestaurantDetailPage({ params }: Params) {
         <span aria-current="page">{r.name}</span>
       </nav>
       <h1>{r.name}</h1>
+      {/* Giai đoạn 1 (21/10/2026) — target_type='place' (nhà hàng LÀ một dòng places, ADR-002). */}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <SaveButton targetType="place" targetId={r.id} locale={locale} />
+        <ReportButton targetType="place" targetId={r.id} />
+      </div>
       {r.address && <p style={{ color: '#4b5563' }}>{r.address}</p>}
       {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts.
           `googlePlaceId: r.google_place_id` (bổ sung cùng ngày) — API chỉ trả giá trị này khi ĐỦ

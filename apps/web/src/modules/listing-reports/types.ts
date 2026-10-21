@@ -1,10 +1,11 @@
 import type { JobListingPublicView } from '../job-listings/types';
 import type { RealEstateListingPublicView } from '../real-estate-listings/types';
+import type { PlaceDetail } from '../places/types';
 
 // Khớp apps/api/src/modules/listing-reports. Dùng CHUNG registry loại entity với saved-items
 // (common/listable-target-type.enum.ts phía API) — giữ TÊN riêng ở web vì hai module độc lập,
 // không có import chéo giữa chúng.
-export const LISTING_REPORT_TARGET_TYPES = ['job_listing', 'real_estate_listing'] as const;
+export const LISTING_REPORT_TARGET_TYPES = ['job_listing', 'real_estate_listing', 'place'] as const;
 export type ListingReportTargetType = (typeof LISTING_REPORT_TARGET_TYPES)[number];
 
 export const LISTING_REPORT_REASONS = ['wrong_info', 'duplicate', 'spam', 'scam', 'other'] as const;
@@ -31,8 +32,9 @@ export interface ListingReportView {
   resolved_at: string | null;
   created_at: string;
   // Chỉ GET /listing-reports/pending điền — null khi tin không còn công khai tại thời điểm xem
-  // hàng chờ (xem listing-reports.service.ts's comment phía API).
-  listing: JobListingPublicView | RealEstateListingPublicView | null;
+  // hàng chờ (xem listing-reports.service.ts's comment phía API). `PlaceDetail` dùng `.name`, KHÔNG
+  // phải `.title` như hai loại kia — nơi hiển thị (ListingReportsQueueView) phải tự phân biệt.
+  listing: JobListingPublicView | RealEstateListingPublicView | PlaceDetail | null;
 }
 
 export interface CreateListingReportInput {

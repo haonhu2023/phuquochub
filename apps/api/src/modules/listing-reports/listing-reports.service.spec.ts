@@ -26,7 +26,8 @@ describe('ListingReportsService', () => {
   let repo: LooseMock<Deps[0]>;
   let jobListingsService: LooseMock<Deps[1]>;
   let realEstateListingsService: LooseMock<Deps[2]>;
-  let authz: LooseMock<Deps[3]>;
+  let placesService: LooseMock<Deps[3]>;
+  let authz: LooseMock<Deps[4]>;
   let service: ListingReportsService;
 
   beforeEach(() => {
@@ -38,8 +39,9 @@ describe('ListingReportsService', () => {
     });
     jobListingsService = createMock<Deps[1]>({ getPublicById: jest.fn(), getMine: jest.fn() });
     realEstateListingsService = createMock<Deps[2]>({ getPublicById: jest.fn(), getMine: jest.fn() });
-    authz = createMock<Deps[3]>({ can: jest.fn() });
-    service = new ListingReportsService(repo, jobListingsService, realEstateListingsService, authz);
+    placesService = createMock<Deps[3]>({ getSlugAndStatus: jest.fn(), getBySlug: jest.fn() });
+    authz = createMock<Deps[4]>({ can: jest.fn() });
+    service = new ListingReportsService(repo, jobListingsService, realEstateListingsService, placesService, authz);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -83,6 +85,46 @@ describe('ListingReportsService', () => {
       expect(realEstateListingsService.getPublicById).toHaveBeenCalledWith('rel-1');
       expect(jobListingsService.getPublicById).not.toHaveBeenCalled();
     });
+
+    // Giai đoạn 1 (21/10/2026) — 'place' đi qua getSlugAndStatus() rồi getBySlug() (ĐÚNG đường công
+    // khai thật, xem resolveTargetPublic()'s comment), không đụng job/real-estate service nào.
+    it('place dùng ĐÚNG placesService (getSlugAndStatus rồi getBySlug), không đụng job/real-estate', async () => {
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'bai-sao', status: 'published', content_version: 1 });
+      placesService.getBySlug.mockResolvedValue({ id: 'place-1', name: 'Bãi Sao' });
+      const result = await service.create('reporter-1', { target_type: ListableTargetType.PLACE, target_id: 'place-1', reason: ListingReportReason.WRONG_INFO });
+      expect(placesService.getSlugAndStatus).toHaveBeenCalledWith('place-1');
+      expect(placesService.getBySlug).toHaveBeenCalledWith('bai-sao');
+      expect(jobListingsService.getPublicById).not.toHaveBeenCalled();
+      expect(realEstateListingsService.getPublicById).not.toHaveBeenCalled();
+      expect(result.status).toBe(ListingReportStatus.OPEN);
+    });
+
+    it('place không tồn tại (getSlugAndStatus trả null) → NotFoundException', async () => {
+      placesService.getSlugAndStatus.mockResolvedValue(null);
+      await expect(
+        service.create('reporter-1', { target_type: ListableTargetType.PLACE, target_id: 'place-x', reason: ListingReportReason.WRONG_INFO }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(placesService.getBySlug).not.toHaveBeenCalled();
+    });
+
+    it('place CHƯA công khai (getBySlug ném lỗi vì status khác published) → NotFoundException, không tạo báo cáo', async () => {
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'noi-dung-nhap', status: 'draft', content_version: 1 });
+      placesService.getBySlug.mockRejectedValue(new NotFoundException());
+      await expect(
+        service.create('reporter-1', { target_type: ListableTargetType.PLACE, target_id: 'place-x', reason: ListingReportReason.WRONG_INFO }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    // isOwnListing() luôn false cho 'place' (không có khái niệm chủ tin đơn) — không chặn tự báo cáo.
+    it('place: isOwnListing luôn false, không gọi getMine của job/real-estate nào', async () => {
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'bai-sao', status: 'published', content_version: 1 });
+      placesService.getBySlug.mockResolvedValue({ id: 'place-1', name: 'Bãi Sao' });
+      await service.create('any-user', { target_type: ListableTargetType.PLACE, target_id: 'place-1', reason: ListingReportReason.WRONG_INFO });
+      expect(jobListingsService.getMine).not.toHaveBeenCalled();
+      expect(realEstateListingsService.getMine).not.toHaveBeenCalled();
+      expect(repo.create).toHaveBeenCalled();
+    });
   });
 
   describe('listPending()', () => {
@@ -113,13 +155,16 @@ describe('ListingReportsService', () => {
       expect(result.find((r) => r.id === 'lr-b')?.listing).toBeNull();
     });
 
-    it('giữ CẢ hai quyền → gộp báo cáo của cả hai loại', async () => {
+    it('giữ CẢ ba quyền (job/BĐS/địa điểm) → gộp báo cáo của cả ba loại', async () => {
       authz.can.mockResolvedValue(true);
+      placesService.getSlugAndStatus.mockResolvedValue({ slug: 'bai-sao', status: 'published', content_version: 1 });
+      placesService.getBySlug.mockResolvedValue({ id: 'place-1', name: 'Bãi Sao' });
       repo.listOpenByTargetType.mockImplementation((t: ListableTargetType) =>
         Promise.resolve([row({ targetType: t, id: `lr-${t}` })]),
       );
       const result = await service.listPending('admin-1');
-      expect(result).toHaveLength(2);
+      expect(result).toHaveLength(3);
+      expect(result.find((r) => r.target_type === ListableTargetType.PLACE)?.listing).toEqual({ id: 'place-1', name: 'Bãi Sao' });
     });
   });
 
@@ -134,6 +179,15 @@ describe('ListingReportsService', () => {
       authz.can.mockResolvedValue(false);
       await expect(service.resolve('lr-1', { decision: 'resolved' }, 'stranger')).rejects.toBeInstanceOf(ForbiddenException);
       expect(authz.can).toHaveBeenCalledWith('stranger', 'JobListing.Moderate');
+    });
+
+    // Giai đoạn 1 (21/10/2026) — báo cáo loại 'place' kiểm ĐÚNG permission đã xử lý mọi đóng góp
+    // cộng đồng khác về địa điểm (PlaceEditProposal.Moderate), không phải JobListing.Moderate.
+    it('báo cáo loại place → kiểm ĐÚNG permission PlaceEditProposal.Moderate', async () => {
+      repo.findById.mockResolvedValue(row({ targetType: ListableTargetType.PLACE, targetId: 'place-1' }));
+      authz.can.mockResolvedValue(false);
+      await expect(service.resolve('lr-1', { decision: 'resolved' }, 'stranger')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(authz.can).toHaveBeenCalledWith('stranger', 'PlaceEditProposal.Moderate');
     });
 
     it('đã xử lý rồi (không còn open) → ConflictException', async () => {

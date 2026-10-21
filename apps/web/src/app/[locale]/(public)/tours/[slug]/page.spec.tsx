@@ -77,6 +77,16 @@ async function renderPage(t: TourDetail, itinerary: TourStop[] = [], schedule: T
   render(await TourDetailPage({ params: Promise.resolve({ slug: t.slug, locale: 'vi' }) }));
 }
 
+// Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng sang trang tour (target_type='place', khớp
+// ADR-002 — tour LÀ một dòng places). Chỉ xác nhận render.
+describe('TourDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026)', () => {
+  it('render cả hai nút "Lưu tin" và "Báo sai / báo trùng"', async () => {
+    await renderPage(tour());
+    expect(screen.getByRole('button', { name: /Lưu tin/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Báo sai \/ báo trùng/ })).toBeInTheDocument();
+  });
+});
+
 // 2026-09-17 (real-data pass): trước bản sửa này, getTour() được gọi KHÔNG kèm locale nên
 // /en/tours/{slug} luôn nhận nội dung mặc định của server bất kể route.
 describe('TourDetailPage/generateMetadata — getTour() phải nhận đúng locale từ route', () => {

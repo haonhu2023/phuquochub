@@ -6,11 +6,16 @@ import { CreateListingReportDto, ResolveListingReportDto } from './dto/listing-r
 import { ListingReport } from './entities/listing-report.entity';
 import { JobListingsService } from '../job-listings/job-listings.service';
 import { RealEstateListingsService } from '../real-estate-listings/real-estate-listings.service';
+import { PlacesService } from '../places/places.service';
 import { AuthorizationService } from '../authz/authorization.service';
 
+// Giai đoạn 1 (21/10/2026) — 'place' tái dùng ĐÚNG permission đã xử lý mọi đóng góp cộng đồng khác
+// về địa điểm (`place_edit_proposals`), cùng role (content_owner) đã quen xử lý loại việc này —
+// không xin permission mới.
 const MODERATE_PERMISSION: Record<ListableTargetType, string> = {
   [ListableTargetType.JOB_LISTING]: 'JobListing.Moderate',
   [ListableTargetType.REAL_ESTATE_LISTING]: 'RealEstateListing.Moderate',
+  [ListableTargetType.PLACE]: 'PlaceEditProposal.Moderate',
 };
 
 function toView(row: ListingReport, listing: unknown | null = null) {
@@ -41,6 +46,7 @@ export class ListingReportsService {
     private readonly repo: ListingReportsRepository,
     private readonly jobListingsService: JobListingsService,
     private readonly realEstateListingsService: RealEstateListingsService,
+    private readonly placesService: PlacesService,
     private readonly authz: AuthorizationService,
   ) {}
 
@@ -49,7 +55,16 @@ export class ListingReportsService {
       if (targetType === ListableTargetType.JOB_LISTING) {
         return await this.jobListingsService.getPublicById(targetId);
       }
-      return await this.realEstateListingsService.getPublicById(targetId);
+      if (targetType === ListableTargetType.REAL_ESTATE_LISTING) {
+        return await this.realEstateListingsService.getPublicById(targetId);
+      }
+      // 'place' (phủ cả hotel/restaurant/tour — cùng id, xem ADR-002): tra slug qua đường đặc
+      // quyền (getSlugAndStatus, không lọc status) CHỈ để biết slug, sau đó đọc qua getBySlug() —
+      // CHÍNH đường công khai thật đang dùng — để quyết định "có công khai không" luôn chỉ có MỘT
+      // nơi quyết (getDetailBySlug()'s status filter), không tự suy một luật thứ hai ở đây.
+      const meta = await this.placesService.getSlugAndStatus(targetId);
+      if (!meta) return null;
+      return await this.placesService.getBySlug(meta.slug);
     } catch {
       return null;
     }
@@ -57,13 +72,16 @@ export class ListingReportsService {
 
   // true nếu reporterId CHÍNH LÀ chủ tin — dùng getMine() đã có sẵn của từng module (ném
   // NotFoundException khi không sở hữu, cùng ĐÚNG đường kiểm quyền "Tin của tôi" đang dùng, không
-  // tự đọc created_by qua đường khác).
+  // tự đọc created_by qua đường khác). Địa điểm KHÔNG có khái niệm "chủ tin" đơn (cộng đồng/
+  // business_members cùng quản lý) — luôn trả `false`, không chặn tự báo cáo cho loại này.
   private async isOwnListing(targetType: ListableTargetType, targetId: string, userId: string): Promise<boolean> {
     try {
       if (targetType === ListableTargetType.JOB_LISTING) {
         await this.jobListingsService.getMine(targetId, userId);
-      } else {
+      } else if (targetType === ListableTargetType.REAL_ESTATE_LISTING) {
         await this.realEstateListingsService.getMine(targetId, userId);
+      } else {
+        return false;
       }
       return true;
     } catch {

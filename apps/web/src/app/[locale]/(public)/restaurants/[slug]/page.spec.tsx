@@ -73,6 +73,16 @@ async function renderPage(r: RestaurantDetail, menu: MenuSection[] = []) {
   render(await RestaurantDetailPage({ params: Promise.resolve({ slug: r.slug, locale: 'vi' }) }));
 }
 
+// Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng sang trang nhà hàng (target_type='place',
+// khớp ADR-002 — nhà hàng LÀ một dòng places). Chỉ xác nhận render.
+describe('RestaurantDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026)', () => {
+  it('render cả hai nút "Lưu tin" và "Báo sai / báo trùng"', async () => {
+    await renderPage(restaurant());
+    expect(screen.getByRole('button', { name: /Lưu tin/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Báo sai \/ báo trùng/ })).toBeInTheDocument();
+  });
+});
+
 // 2026-09-17 (real-data pass): trước bản sửa này, getRestaurant() được gọi KHÔNG kèm locale nên
 // /en/restaurants/{slug} luôn nhận nội dung mặc định của server bất kể route.
 describe('RestaurantDetailPage/generateMetadata — getRestaurant() phải nhận đúng locale từ route', () => {

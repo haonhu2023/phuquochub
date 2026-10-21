@@ -74,6 +74,17 @@ async function renderPage(h: HotelDetail) {
   render(await HotelDetailPage({ params: Promise.resolve({ slug: h.slug, locale: 'vi' }) }));
 }
 
+// Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng sang trang khách sạn (target_type='place',
+// khớp ADR-002 — hotel LÀ một dòng places). Chỉ xác nhận render, hành vi đã test riêng ở chính
+// SaveButton.spec.tsx/ReportButton.spec.tsx.
+describe('HotelDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026)', () => {
+  it('render cả hai nút "Lưu tin" và "Báo sai / báo trùng"', async () => {
+    await renderPage(hotel());
+    expect(screen.getByRole('button', { name: /Lưu tin/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Báo sai \/ báo trùng/ })).toBeInTheDocument();
+  });
+});
+
 // 2026-09-17 (real-data pass): trước bản sửa này, getHotel() được gọi KHÔNG kèm locale nên
 // /en/hotels/{slug} luôn nhận nội dung mặc định của server bất kể route — xác nhận trực tiếp trên
 // production rằng API đã hỗ trợ ?locale= (trả nội dung en THẬT), lỗi chỉ ở phía web.
