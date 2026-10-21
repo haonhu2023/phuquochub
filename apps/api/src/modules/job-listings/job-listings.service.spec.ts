@@ -79,6 +79,7 @@ describe('JobListingsService', () => {
   let repo: LooseMock<Deps[0]>;
   let authz: LooseMock<Deps[1]>;
   let translationsRepo: LooseMock<Deps[2]>;
+  let audit: LooseMock<Deps[3]>;
   let service: JobListingsService;
 
   beforeEach(() => {
@@ -108,7 +109,8 @@ describe('JobListingsService', () => {
       findByJobListingId: jest.fn().mockResolvedValue(null),
       findByJobListingIds: jest.fn().mockResolvedValue(new Map()),
     });
-    service = new JobListingsService(repo, authz, translationsRepo);
+    audit = createMock<Deps[3]>({ record: jest.fn().mockResolvedValue(undefined) });
+    service = new JobListingsService(repo, authz, translationsRepo, audit);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -320,6 +322,9 @@ describe('JobListingsService', () => {
       repo.findById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, createdBy: 'u1' }));
       const result = await service.close('job-1', 'u1');
       expect(result.status).toBe(JobListingStatus.CLOSED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'job_listing.closed', entityId: 'job-1', actorId: 'u1' }),
+      );
     });
 
     it('close: người khác không phải chủ tin và không có quyền Moderate → ForbiddenException', async () => {
@@ -328,12 +333,15 @@ describe('JobListingsService', () => {
       await expect(service.close('job-1', 'stranger')).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    it('close: moderator (không phải chủ tin) được đóng nhờ JobListing.Moderate', async () => {
+    it('close: moderator (không phải chủ tin) được đóng nhờ JobListing.Moderate — audit ghi actorId là moderator, không phải chủ tin', async () => {
       repo.findById.mockResolvedValue(row({ status: JobListingStatus.PUBLISHED, createdBy: 'owner-1' }));
       authz.can.mockResolvedValue(true);
       const result = await service.close('job-1', 'mod-1');
       expect(result.status).toBe(JobListingStatus.CLOSED);
       expect(authz.can).toHaveBeenCalledWith('mod-1', 'JobListing.Moderate');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'job_listing.closed', entityId: 'job-1', actorId: 'mod-1' }),
+      );
     });
 
     it('close từ draft (chưa từng published) → ConflictException', async () => {
@@ -350,6 +358,9 @@ describe('JobListingsService', () => {
       expect(result.published_at).toBeNull();
       const saved = repo.save.mock.calls[0][0] as JobListing;
       expect(saved.reviewerId).toBeNull();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'job_listing.reopened', entityId: 'job-1', actorId: 'u1' }),
+      );
     });
 
     it('reopen từ pending (chưa closed) → ConflictException', async () => {

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
 import { applyRichTextField, RichTextFieldAccessors, serveRichDoc } from '../../common/rich-text-field';
+import { AuditService } from '../../core/audit/audit.service';
 import { AuthorizationService } from '../authz/authorization.service';
 import { JobListingsRepository } from './repositories/job-listings.repository';
 import { JobListingTranslationsRepository } from './repositories/job-listing-translations.repository';
@@ -36,6 +37,7 @@ export class JobListingsService {
     // (service kia mới có logic viết/CAS-nhẹ, dùng ở đây sẽ tạo phụ thuộc hai chiều không cần
     // thiết; đọc repo trực tiếp là đủ cho một overlay thuần đọc).
     private readonly translationsRepo: JobListingTranslationsRepository,
+    private readonly audit: AuditService,
   ) {}
 
   private static assertSalaryRange(dto: UpsertJobListingDto): void {
@@ -202,8 +204,19 @@ export class JobListingsService {
     if (row.status !== JobListingStatus.PUBLISHED) {
       throw new ConflictException(`Không thể đóng từ trạng thái "${row.status}"`);
     }
+    const fromStatus = row.status;
     row.status = JobListingStatus.CLOSED;
     const saved = await this.repo.save(row);
+    // ADR-016: `loadOwnedOrModerated` cho phép CẢ chủ tin lẫn moderator gọi hành động này —
+    // ghi actorId để phân biệt "chủ tin tự đóng" với "moderator buộc đóng" (gap đã ghi trong
+    // checkpoint.md §"Đối chiếu điểm 3", cột trạng thái không tự phân biệt được hai tình huống đó).
+    await this.audit.record({
+      event: 'job_listing.closed',
+      entityType: 'job_listing',
+      entityId: id,
+      actorId: userId,
+      context: { from: fromStatus, to: JobListingStatus.CLOSED },
+    });
     return toJobListingSenderView(saved);
   }
 
@@ -218,6 +231,13 @@ export class JobListingsService {
     row.reviewedAt = null;
     row.publishedAt = null;
     const saved = await this.repo.save(row);
+    await this.audit.record({
+      event: 'job_listing.reopened',
+      entityType: 'job_listing',
+      entityId: id,
+      actorId: userId,
+      context: { from: JobListingStatus.CLOSED, to: JobListingStatus.PENDING },
+    });
     return toJobListingSenderView(saved);
   }
 

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { clampLimit, clampPage, paginate } from '../../common/pagination';
 import { todayInVietnam } from '../../common/vn-today';
 import { applyRichTextField, RichTextFieldAccessors, serveRichDoc } from '../../common/rich-text-field';
+import { AuditService } from '../../core/audit/audit.service';
 import { AuthorizationService } from '../authz/authorization.service';
 import { RealEstateListingsRepository } from './repositories/real-estate-listings.repository';
 import { RealEstateListingTranslationsRepository } from './repositories/real-estate-listing-translations.repository';
@@ -36,6 +37,7 @@ export class RealEstateListingsService {
     private readonly repo: RealEstateListingsRepository,
     private readonly authz: AuthorizationService,
     private readonly translationsRepo: RealEstateListingTranslationsRepository,
+    private readonly audit: AuditService,
   ) {}
 
   private static assertTransactionScopedFields(dto: UpsertRealEstateListingDto): void {
@@ -216,8 +218,19 @@ export class RealEstateListingsService {
     if (row.status !== RealEstateListingStatus.PUBLISHED) {
       throw new ConflictException(`Không thể đóng từ trạng thái "${row.status}"`);
     }
+    const fromStatus = row.status;
     row.status = RealEstateListingStatus.CLOSED;
     const saved = await this.repo.save(row);
+    // ADR-016: `loadOwnedOrModerated` cho phép CẢ chủ tin lẫn moderator gọi hành động này —
+    // ghi actorId để phân biệt "chủ tin tự đóng" với "moderator buộc đóng" (gap đã ghi trong
+    // checkpoint.md §"Đối chiếu điểm 3", cột trạng thái không tự phân biệt được hai tình huống đó).
+    await this.audit.record({
+      event: 'real_estate_listing.closed',
+      entityType: 'real_estate_listing',
+      entityId: id,
+      actorId: userId,
+      context: { from: fromStatus, to: RealEstateListingStatus.CLOSED },
+    });
     return toRealEstateListingSenderView(saved);
   }
 
@@ -232,6 +245,13 @@ export class RealEstateListingsService {
     row.reviewedAt = null;
     row.publishedAt = null;
     const saved = await this.repo.save(row);
+    await this.audit.record({
+      event: 'real_estate_listing.reopened',
+      entityType: 'real_estate_listing',
+      entityId: id,
+      actorId: userId,
+      context: { from: RealEstateListingStatus.CLOSED, to: RealEstateListingStatus.PENDING },
+    });
     return toRealEstateListingSenderView(saved);
   }
 
@@ -243,8 +263,18 @@ export class RealEstateListingsService {
     if (row.status !== RealEstateListingStatus.PUBLISHED) {
       throw new ConflictException(`Chỉ đánh dấu giao dịch cho tin đang published (hiện tại: "${row.status}")`);
     }
+    const fromDealStatus = row.dealStatus;
     row.dealStatus = dealStatus;
     const saved = await this.repo.save(row);
+    // Cùng gap §"Đối chiếu điểm 3": loadOwnedOrModerated cho cả chủ tin lẫn moderator gọi,
+    // actorId chưa từng được ghi ở đâu trước bản sửa này.
+    await this.audit.record({
+      event: 'real_estate_listing.deal_status_changed',
+      entityType: 'real_estate_listing',
+      entityId: id,
+      actorId: userId,
+      context: { from: fromDealStatus, to: dealStatus },
+    });
     return toRealEstateListingSenderView(saved);
   }
 

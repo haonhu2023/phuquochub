@@ -119,6 +119,7 @@ describe('RealEstateListingsService', () => {
   let repo: LooseMock<Deps[0]>;
   let authz: LooseMock<Deps[1]>;
   let translationsRepo: LooseMock<Deps[2]>;
+  let audit: LooseMock<Deps[3]>;
   let service: RealEstateListingsService;
 
   beforeEach(() => {
@@ -144,7 +145,8 @@ describe('RealEstateListingsService', () => {
       findByRealEstateListingId: jest.fn().mockResolvedValue(null),
       findByRealEstateListingIds: jest.fn().mockResolvedValue(new Map()),
     });
-    service = new RealEstateListingsService(repo, authz, translationsRepo);
+    audit = createMock<Deps[3]>({ record: jest.fn().mockResolvedValue(undefined) });
+    service = new RealEstateListingsService(repo, authz, translationsRepo, audit);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -345,6 +347,9 @@ describe('RealEstateListingsService', () => {
       repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, createdBy: 'u1' }));
       const result = await service.close('rel-1', 'u1');
       expect(result.status).toBe(RealEstateListingStatus.CLOSED);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'real_estate_listing.closed', entityId: 'rel-1', actorId: 'u1' }),
+      );
     });
 
     it('close: người lạ không có quyền Moderate → ForbiddenException', async () => {
@@ -357,6 +362,9 @@ describe('RealEstateListingsService', () => {
       repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.CLOSED, createdBy: 'u1' }));
       const result = await service.reopen('rel-1', 'u1');
       expect(result.status).toBe(RealEstateListingStatus.PENDING);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'real_estate_listing.reopened', entityId: 'rel-1', actorId: 'u1' }),
+      );
     });
   });
 
@@ -381,12 +389,20 @@ describe('RealEstateListingsService', () => {
       expect(result.deal_status).toBe(RealEstateDealStatus.AVAILABLE);
     });
 
-    it('moderator (không sở hữu) cũng đánh dấu được nhờ RealEstateListing.Moderate', async () => {
+    it('moderator (không sở hữu) cũng đánh dấu được nhờ RealEstateListing.Moderate — audit ghi actorId là moderator', async () => {
       repo.findById.mockResolvedValue(row({ status: RealEstateListingStatus.PUBLISHED, createdBy: 'owner-1' }));
       authz.can.mockResolvedValue(true);
       const result = await service.markRented('rel-1', 'mod-1');
       expect(result.deal_status).toBe(RealEstateDealStatus.RENTED);
       expect(authz.can).toHaveBeenCalledWith('mod-1', 'RealEstateListing.Moderate');
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'real_estate_listing.deal_status_changed',
+          entityId: 'rel-1',
+          actorId: 'mod-1',
+          context: { from: RealEstateDealStatus.AVAILABLE, to: RealEstateDealStatus.RENTED },
+        }),
+      );
     });
   });
 
