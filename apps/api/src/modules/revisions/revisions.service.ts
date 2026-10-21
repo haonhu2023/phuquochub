@@ -105,6 +105,12 @@ export class RevisionsService {
     return rows.map(toWikiRevision);
   }
 
+  /** Giai đoạn 5 — LOẠI người sửa gần nhất (origin) cho trang chi tiết công khai, null nếu place
+   * chưa có revision nào đã duyệt. Xem RevisionsRepository.getLatestApprovedOrigin()'s ghi chú. */
+  getLatestApprovedPlaceOrigin(placeId: string): Promise<RevisionOrigin | null> {
+    return this.revisionsRepo.getLatestApprovedOrigin(RevisionEntityType.PLACE, placeId);
+  }
+
   // ADR-020 §5: one wiki_revisions row per changed place_translations/route/seo RECORD, never one
   // shared row per publish-bundle. Those tables are insert-only (a new locale-slot value is a new
   // row, the old one flips is_current=false) — so unlike PLACE, entityId cannot be a stable id that

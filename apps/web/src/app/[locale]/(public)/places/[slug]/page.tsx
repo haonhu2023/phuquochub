@@ -11,6 +11,8 @@ import {
   formatVerifiedAt,
   getTrustBadge,
   isPendingVerification,
+  lastUpdateOriginLabel,
+  openingHoursEvidenceLabel,
   pendingDisclosureText,
   priceVerifyingText,
   resolvePriceDisplay,
@@ -311,6 +313,12 @@ export default async function PlaceDetailPage({ params }: Params) {
           sourceUrl={trustSource.url}
           locale={locale}
         />
+        {/* Giai đoạn 5 (chiến lược data-hub) — độc lập với badge xác minh ở trên: một place "chưa
+            xác minh" vẫn có thể hiện dòng này (minh bạch nguồn gốc chỉnh sửa, không phải một khẳng
+            định đã xác minh). null khi chưa có revision nào đã duyệt — không bịa. */}
+        {place.last_update_origin && (
+          <p className={styles.trustNote}>{lastUpdateOriginLabel(place.last_update_origin, locale)}</p>
+        )}
       </header>
 
       {/* Giai đoạn 1 (21/10/2026) — Báo sai/Lưu tin mở rộng từ chỉ tin tuyển dụng/BĐS sang CẢ địa
@@ -444,6 +452,11 @@ export default async function PlaceDetailPage({ params }: Params) {
                 ))}
               </ul>
             </details>
+          )}
+          {/* Giai đoạn 5 (chiến lược data-hub) — field DUY NHẤT hôm nay có bằng chứng tới từng giá
+              trị cụ thể (Evidence Field-Binding V2). null khi không có — không bịa ngày/nguồn. */}
+          {place.opening_hours_evidence && (
+            <p className={styles.trustNote}>{openingHoursEvidenceLabel(place.opening_hours_evidence, locale)}</p>
           )}
         </section>
       )}

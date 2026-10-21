@@ -93,6 +93,22 @@ export class RevisionsRepository {
   }
 
   /**
+   * Giai đoạn 5 (chiến lược data-hub) — "tín hiệu tin cậy nhìn thấy được" cho trang công khai: LOẠI
+   * người sửa gần nhất (origin), KHÔNG phải danh tính cụ thể (editor_id/tên thật) — ADR-022 cảnh báo
+   * rõ về việc lộ danh tính người kiểm duyệt ra public, origin (community_edit/owner_update/...) thì
+   * không có rủi ro đó. Chỉ tính revision ĐÃ `approved` (bản chưa duyệt không phải một xác nhận).
+   */
+  async getLatestApprovedOrigin(entityType: RevisionEntityType, entityId: string): Promise<RevisionOrigin | null> {
+    const rows: Array<{ origin: RevisionOrigin }> = await this.repo.query(
+      `SELECT origin FROM wiki_revisions
+       WHERE entity_type = $1::revision_entity_type AND entity_id = $2 AND status = 'approved'::revision_status
+       ORDER BY revision_number DESC LIMIT 1`,
+      [entityType, entityId],
+    );
+    return rows[0]?.origin ?? null;
+  }
+
+  /**
    * Đọc MỘT revision cụ thể của MỘT entity — khoá cả entityType/entityId (không chỉ id) để
    * publishDraft() không thể vô tình áp snapshot của place A lên place B nếu id revision bị gửi
    * sai (WikiRevision không FK cứng tới entity đích — đa hình tầng app, ADR-014).

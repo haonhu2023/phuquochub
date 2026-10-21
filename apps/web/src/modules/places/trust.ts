@@ -1,4 +1,4 @@
-import type { PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
+import type { PlaceLastUpdateOrigin, PlaceOpeningHoursEvidence, PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
 import type { Locale } from '@/lib/locale';
 
 /**
@@ -201,4 +201,51 @@ export function summarizeTrustSources(sources: readonly PlaceTrustSource[], loca
 export function fieldLabel(field: string | null): string {
   if (!field) return 'thông tin';
   return FIELD_LABELS[field] ?? 'thông tin';
+}
+
+/**
+ * Giai đoạn 5 (chiến lược data-hub, strategy-data-hub-2026-10-21.md) — "tín hiệu tin cậy nhìn thấy
+ * được": LOẠI người sửa gần nhất (`place.last_update_origin`), KHÔNG phải danh tính cụ thể (ADR-022
+ * — danh tính người kiểm duyệt không lộ ra public mà không có quyết định riêng). Độc lập với
+ * `TrustBadge`/verification_status ở trên — một place "chưa xác minh" vẫn có thể hiện dòng này
+ * (minh bạch về nguồn gốc chỉnh sửa khác với khẳng định đã xác minh).
+ */
+const LAST_UPDATE_ORIGIN_LABEL: Record<PlaceLastUpdateOrigin, string> = {
+  community_edit: 'Cộng đồng cập nhật',
+  owner_update: 'Chủ cơ sở cập nhật',
+  moderator_edit: 'Kiểm duyệt viên cập nhật',
+  osm_sync: 'Đồng bộ từ OpenStreetMap',
+  ai_generation: 'Hệ thống tạo tự động',
+  import: 'Nhập liệu từ dữ liệu có sẵn',
+};
+
+const LAST_UPDATE_ORIGIN_LABEL_EN: Record<PlaceLastUpdateOrigin, string> = {
+  community_edit: 'Updated by the community',
+  owner_update: 'Updated by the business owner',
+  moderator_edit: 'Updated by a moderator',
+  osm_sync: 'Synced from OpenStreetMap',
+  ai_generation: 'Auto-generated',
+  import: 'Imported from existing data',
+};
+
+export function lastUpdateOriginLabel(origin: PlaceLastUpdateOrigin, locale: Locale): string {
+  return locale === 'en' ? LAST_UPDATE_ORIGIN_LABEL_EN[origin] : LAST_UPDATE_ORIGIN_LABEL[origin];
+}
+
+/**
+ * Giai đoạn 5 — chi tiết bằng chứng giờ mở cửa hiện hành (`place.opening_hours_evidence`), field
+ * DUY NHẤT hôm nay có bằng chứng tới từng giá trị cụ thể. Chỉ nói những gì CÓ: ngày xác nhận +
+ * nguồn (nếu publisher có tên) — KHÔNG lộ danh tính người kiểm duyệt (cùng nguyên tắc
+ * lastUpdateOriginLabel ở trên).
+ */
+export function openingHoursEvidenceLabel(evidence: PlaceOpeningHoursEvidence, locale: Locale): string {
+  const confirmedAt = formatVerifiedAt(evidence.confirmed_at, locale);
+  if (locale === 'en') {
+    return evidence.publisher
+      ? `Opening hours confirmed on ${confirmedAt} · source: ${evidence.publisher}.`
+      : `Opening hours confirmed on ${confirmedAt}.`;
+  }
+  return evidence.publisher
+    ? `Giờ mở cửa xác nhận lần cuối: ${confirmedAt} · nguồn: ${evidence.publisher}.`
+    : `Giờ mở cửa xác nhận lần cuối: ${confirmedAt}.`;
 }

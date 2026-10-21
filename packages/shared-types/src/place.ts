@@ -176,6 +176,28 @@ export interface PlaceTrustSource {
   retrieved_at: string | null;
 }
 
+/**
+ * Giai đoạn 5 (chiến lược data-hub, strategy-data-hub-2026-10-21.md) — chi tiết bằng chứng giờ mở
+ * cửa HIỆN HÀNH, khi có (null nếu không — KHÔNG bịa). Field DUY NHẤT hôm nay có bằng chứng tới
+ * từng GIÁ TRỊ cụ thể (Evidence Field-Binding V2) — khác `trust_sources` (chỉ có nguồn, không có
+ * ngày xác nhận/hạn hiệu lực). `publisher`/`title`/`url` cùng khuôn `PlaceTrustSource` — web tự
+ * quyết định cách hiển thị, không có hai định nghĩa "tên nguồn" lệch nhau.
+ */
+export interface PlaceOpeningHoursEvidence {
+  confirmed_at: string;
+  expires_at: string;
+  publisher: string | null;
+  title: string | null;
+  url: string | null;
+}
+
+/**
+ * Giai đoạn 5 — LOẠI người sửa gần nhất đã qua duyệt cho place này (wiki_revisions.origin), KHÔNG
+ * phải danh tính cụ thể (ADR-022: danh tính người kiểm duyệt không lộ ra public mà không có quyết
+ * định riêng). Khớp apps/api/src/modules/revisions/revision.enums.ts's RevisionOrigin.
+ */
+export type PlaceLastUpdateOrigin = 'community_edit' | 'owner_update' | 'moderator_edit' | 'osm_sync' | 'ai_generation' | 'import';
+
 /** Một khung giờ trong ngày. Cho phép khung qua đêm (22:00–02:00) — KHÔNG ép open < close. */
 export interface OpeningHoursRange {
   open: string;
@@ -258,6 +280,10 @@ export interface PlaceDetail extends PlaceCard {
   faqs: PlaceFaq[];
   /** Nguồn đã đối chiếu cho các trường của place này. Mảng rỗng = chưa trường nào được đối chiếu. */
   trust_sources: PlaceTrustSource[];
+  /** Giai đoạn 5 — chi tiết bằng chứng giờ mở cửa hiện hành, null nếu không có (xem PlaceOpeningHoursEvidence). */
+  opening_hours_evidence: PlaceOpeningHoursEvidence | null;
+  /** Giai đoạn 5 — loại người sửa gần nhất đã qua duyệt, null nếu chưa có revision nào đã duyệt. */
+  last_update_origin: PlaceLastUpdateOrigin | null;
   /**
    * EN indexation gate v2 — LUÔN phản ánh trạng thái công khai THẬT của bản dịch locale 'en' cho
    * đúng field này (current + is_public + is_production_data), bất kể `?locale=` của request là

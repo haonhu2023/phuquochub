@@ -20,6 +20,7 @@ describe('RevisionsService', () => {
           created_at: new Date('2026-07-14T00:00:00.000Z'),
         },
       ]),
+      getLatestApprovedOrigin: jest.fn(),
     });
     service = new RevisionsService(repo);
   });
@@ -94,6 +95,20 @@ describe('RevisionsService', () => {
       editor_id: 'u1',
       change_note: null,
       created_at: new Date('2026-07-14T00:00:00.000Z'),
+    });
+  });
+
+  describe('getLatestApprovedPlaceOrigin (Giai đoạn 5 — chiến lược data-hub)', () => {
+    it('uỷ quyền repository với entityType=PLACE', async () => {
+      repo.getLatestApprovedOrigin.mockResolvedValue(RevisionOrigin.OWNER_UPDATE);
+      const res = await service.getLatestApprovedPlaceOrigin('p1');
+      expect(repo.getLatestApprovedOrigin).toHaveBeenCalledWith(RevisionEntityType.PLACE, 'p1');
+      expect(res).toBe(RevisionOrigin.OWNER_UPDATE);
+    });
+
+    it('chưa có revision nào đã duyệt → null', async () => {
+      repo.getLatestApprovedOrigin.mockResolvedValue(null);
+      await expect(service.getLatestApprovedPlaceOrigin('p1')).resolves.toBeNull();
     });
   });
 });

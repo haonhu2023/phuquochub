@@ -33,6 +33,8 @@ function makePlace(slug: string): PlaceDetail {
     opening_hours: null,
     osm_id: null,
     google_place_id: null,
+    opening_hours_evidence: null,
+    last_update_origin: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     verified_at: null,

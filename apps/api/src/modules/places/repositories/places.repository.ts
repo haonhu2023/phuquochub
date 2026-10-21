@@ -327,27 +327,58 @@ export class PlacesRepository {
   }
 
   /**
-   * Public detail opening-hours evidence gate (2026-09-09 fix/public-opening-hours-evidence-gate) —
-   * the smallest reusable answer to "does THIS CURRENT opening_hours value have qualifying current
-   * evidence", for exactly one place. Wraps the SAME two private helpers `rightNow()`/`nearbyTrusted()`
-   * already use (`getVerifiedOpeningHoursHashes()`/`hasVerifiedOpeningHours()` above) — no duplicated
-   * trust constants, no new SQL shape, one bounded query and only when `currentValue` is non-null
-   * (nothing to have evidence for otherwise). Named for the one field this repository's evidence gate
-   * actually covers today (`getVerifiedOpeningHoursHashes()`'s query is opening_hours-specific) rather
-   * than a generic `fieldName` parameter the underlying query doesn't support — extend both together
-   * if a second gated field is ever needed, not just this method's signature.
+   * Giai đoạn 5 (chiến lược data-hub) — bản chi tiết của `hasCurrentQualifiedOpeningHoursEvidence()`
+   * ở trên: thay vì chỉ boolean gate, trả luôn CHI TIẾT bằng chứng (ngày xác nhận/nguồn/hạn hiệu
+   * lực) đã có sẵn trong `evidence_reviews`/`evidence_artifacts`/`sources` nhưng trước đây bị bỏ đi
+   * sau khi dùng để quyết định boolean (xem ghi chú cũ của hàm trên). CÙNG MỘT câu truy vấn/điều
+   * kiện gate — chỉ SELECT thêm cột, không nới lỏng hay siết chặt điều kiện nào. `publisher`/`title`/
+   * `url` (không gộp sẵn thành một chuỗi tên nguồn) — cùng khuôn `resolveTrustSources()`, để web tự
+   * quyết định cách hiển thị, không có hai định nghĩa "tên nguồn" lệch nhau.
    *
-   * Used by `PlacesService.getBySlug()` to decide the PUBLIC response's `opening_hours` value —
-   * deliberately NOT inlined into `getDetailBySlug()` itself, which stays a raw pass-through for its
-   * other, privileged callers (see that method's own comment).
+   * KHÔNG trả `reviewer_name` — ADR-022: danh tính người kiểm duyệt không lộ ra public mà không có
+   * quyết định riêng, origin (xem RevisionsRepository.getLatestApprovedOrigin) đã đủ cho tín hiệu
+   * "có người xác nhận" mà không lộ danh tính cụ thể.
    */
-  async hasCurrentQualifiedOpeningHoursEvidence(
+  async getCurrentOpeningHoursEvidenceDetail(
     placeId: string,
     currentValue: Record<string, unknown> | null,
-  ): Promise<boolean> {
-    if (currentValue === null) return false;
-    const hashesByPlace = await this.getVerifiedOpeningHoursHashes([placeId]);
-    return this.hasVerifiedOpeningHours(placeId, currentValue, hashesByPlace);
+  ): Promise<{ confirmedAt: Date; expiresAt: Date; publisher: string | null; title: string | null; url: string | null } | null> {
+    if (currentValue === null) return null;
+    const hash = computeFieldValueHash(currentValue);
+    const rows: Array<{
+      confirmed_at: Date;
+      expires_at: Date;
+      publisher: string | null;
+      title: string | null;
+      url: string | null;
+    }> = await this.repo.query(
+      `SELECT latest_review.reviewed_at AS confirmed_at, latest_review.verification_expires_at AS expires_at,
+              s.publisher, s.title, s.url
+       FROM place_field_evidence_links pfel
+       JOIN evidence_artifacts ea ON ea.id = pfel.evidence_artifact_id
+       JOIN sources s ON s.id = ea.source_id
+       JOIN LATERAL (
+         SELECT er.decision, er.verification_expires_at, er.reviewed_at
+         FROM evidence_reviews er
+         WHERE er.evidence_artifact_id = pfel.evidence_artifact_id
+           AND er.place_id = pfel.place_id
+           AND er.field_name = pfel.field_name
+           AND er.field_value_hash = pfel.field_value_hash
+         ORDER BY er.reviewed_at DESC, er.created_at DESC,
+                  (CASE WHEN er.decision = 'APPROVE' THEN 1 ELSE 0 END) ASC, er.id DESC
+         LIMIT 1
+       ) latest_review ON TRUE
+       WHERE pfel.place_id = $1 AND pfel.field_name = 'opening_hours' AND pfel.field_value_hash = $2
+         AND s.type = ANY($3)
+         AND latest_review.decision = 'APPROVE'
+         AND latest_review.verification_expires_at IS NOT NULL
+         AND latest_review.verification_expires_at > NOW()
+       LIMIT 1`,
+      [placeId, hash, [...OFFICIAL_SOURCE_TYPES]],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { confirmedAt: row.confirmed_at, expiresAt: row.expires_at, publisher: row.publisher, title: row.title, url: row.url };
   }
 
   /** FAQ đã duyệt của Place (place_faqs — satellite của places). */

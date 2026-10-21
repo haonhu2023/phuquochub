@@ -3579,6 +3579,27 @@ components:
             # Nguồn đã đối chiếu cho các trường của place này (source_attributions + sources,
             # ADR-008 §5) — mảng rỗng = chưa trường nào được đối chiếu, KHÔNG suy ra một nguồn mặc định.
             trust_sources: { type: array, items: { $ref: '#/components/schemas/PlaceTrustSource' } }
+            # Giai đoạn 5 (chiến lược data-hub, strategy-data-hub-2026-10-21.md) — chi tiết bằng
+            # chứng giờ mở cửa HIỆN HÀNH, null nếu không có (KHÔNG bịa). Field DUY NHẤT hôm nay có
+            # bằng chứng tới từng GIÁ TRỊ cụ thể (Evidence Field-Binding V2).
+            opening_hours_evidence:
+              oneOf:
+                - { type: 'null' }
+                - $ref: '#/components/schemas/PlaceOpeningHoursEvidence'
+            # Giai đoạn 5 — LOẠI người sửa gần nhất đã qua duyệt (wiki_revisions.origin), null nếu
+            # chưa có revision nào đã duyệt. KHÔNG phải danh tính cụ thể — ADR-022 (xem comment
+            # RevisionsRepository.getLatestApprovedOrigin).
+            last_update_origin:
+              type: [string, 'null']
+              enum: [community_edit, owner_update, moderator_edit, osm_sync, ai_generation, import, null]
+    PlaceOpeningHoursEvidence:
+      type: object
+      properties:
+        confirmed_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        publisher: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        url: { type: [string, 'null'], format: uri }
     PlaceTrustSource:
       type: object
       properties:

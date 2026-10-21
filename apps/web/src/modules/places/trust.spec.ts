@@ -1,4 +1,4 @@
-import type { PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
+import type { PlaceOpeningHoursEvidence, PlaceTrustSource, VerificationStatusValue } from '@phuquochub/shared-types';
 import {
   canDisplayPrice,
   fieldLabel,
@@ -6,6 +6,8 @@ import {
   getTrustBadge,
   isPendingVerification,
   isTrustedVerification,
+  lastUpdateOriginLabel,
+  openingHoursEvidenceLabel,
   PRICE_VERIFYING_TEXT,
   resolvePriceDisplay,
   summarizeTrustSources,
@@ -184,5 +186,52 @@ describe('fieldLabel', () => {
 
   it('field lạ (chưa có trong bảng nhãn) → fallback trung tính, không lộ tên cột kỹ thuật', () => {
     expect(fieldLabel('some_future_column')).toBe('thông tin');
+  });
+});
+
+// Giai đoạn 5 (chiến lược data-hub) — LOẠI người sửa, KHÔNG danh tính cụ thể (ADR-022).
+describe('lastUpdateOriginLabel', () => {
+  it('mỗi origin → đúng nhãn tiếng Việt tương ứng, không có tên/UUID cụ thể nào', () => {
+    expect(lastUpdateOriginLabel('community_edit', 'vi')).toBe('Cộng đồng cập nhật');
+    expect(lastUpdateOriginLabel('owner_update', 'vi')).toBe('Chủ cơ sở cập nhật');
+    expect(lastUpdateOriginLabel('moderator_edit', 'vi')).toBe('Kiểm duyệt viên cập nhật');
+    expect(lastUpdateOriginLabel('osm_sync', 'vi')).toBe('Đồng bộ từ OpenStreetMap');
+    expect(lastUpdateOriginLabel('ai_generation', 'vi')).toBe('Hệ thống tạo tự động');
+    expect(lastUpdateOriginLabel('import', 'vi')).toBe('Nhập liệu từ dữ liệu có sẵn');
+  });
+
+  it('locale en → nhãn tiếng Anh tương ứng', () => {
+    expect(lastUpdateOriginLabel('owner_update', 'en')).toBe('Updated by the business owner');
+  });
+});
+
+describe('openingHoursEvidenceLabel', () => {
+  function evidence(overrides: Partial<PlaceOpeningHoursEvidence> = {}): PlaceOpeningHoursEvidence {
+    return {
+      confirmed_at: '2026-10-01T00:00:00Z',
+      expires_at: '2027-01-01T00:00:00Z',
+      publisher: 'Sở Du lịch Kiên Giang',
+      title: null,
+      url: null,
+      ...overrides,
+    };
+  }
+
+  it('có publisher → gồm cả ngày xác nhận lẫn tên nguồn', () => {
+    expect(openingHoursEvidenceLabel(evidence(), 'vi')).toBe(
+      'Giờ mở cửa xác nhận lần cuối: 01/10/2026 · nguồn: Sở Du lịch Kiên Giang.',
+    );
+  });
+
+  it('publisher null → chỉ nói ngày xác nhận, KHÔNG bịa tên nguồn', () => {
+    expect(openingHoursEvidenceLabel(evidence({ publisher: null }), 'vi')).toBe(
+      'Giờ mở cửa xác nhận lần cuối: 01/10/2026.',
+    );
+  });
+
+  it('locale en → câu tiếng Anh tương ứng', () => {
+    expect(openingHoursEvidenceLabel(evidence(), 'en')).toBe(
+      'Opening hours confirmed on 10/01/2026 · source: Sở Du lịch Kiên Giang.',
+    );
   });
 });

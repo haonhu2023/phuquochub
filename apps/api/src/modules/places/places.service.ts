@@ -292,7 +292,8 @@ export class PlacesService {
       localizedDisplayName,
       localizedShortDescription,
       localizedDescription,
-      hasQualifiedOpeningHoursEvidence,
+      openingHoursEvidence,
+      lastUpdateOrigin,
       enDisplayNameApproved,
       enShortDescriptionApproved,
       googlePlaceId,
@@ -314,7 +315,14 @@ export class PlacesService {
       // its one evidence row sits at NEEDS_REVIEW). Response-level only: the DB value is untouched,
       // and getDetailBySlug() stays a raw pass-through for its other, privileged callers (audit/
       // ingestion — see that method's own comment) that must keep seeing the real stored value.
-      applyOpeningHoursGate ? this.placesRepo.hasCurrentQualifiedOpeningHoursEvidence(row.id, row.opening_hours) : Promise.resolve(true),
+      // Giai đoạn 5: giờ trả CHI TIẾT bằng chứng (không chỉ boolean) — `applyOpeningHoursGate=false`
+      // (preview()) giữ nguyên hành vi cũ, coi như đã qua gate nhưng KHÔNG có chi tiết nào để hiện
+      // (preview không cần tín hiệu tin cậy công khai).
+      applyOpeningHoursGate
+        ? this.placesRepo.getCurrentOpeningHoursEvidenceDetail(row.id, row.opening_hours)
+        : Promise.resolve(null),
+      // Giai đoạn 5 — LOẠI người sửa gần nhất (origin), KHÔNG phải danh tính cụ thể (ADR-022).
+      this.revisionsService.getLatestApprovedPlaceOrigin(row.id),
       // EN indexation gate (Phase 20 v2) — CỐ Ý luôn tra cứu locale 'en' cố định ở đây, KHÔNG
       // theo `locale` của request: một trang /vi cũng cần biết bản EN có đủ điều kiện index hay
       // không để dựng đúng hreflang="en" (xem web `isEnDetailIndexable`). Dùng lại ĐÚNG seam
@@ -351,8 +359,27 @@ export class PlacesService {
       // "chưa có rich text, dùng `description` plain" — CÙNG quy ước job_listings/real_estate_listings.
       description_rich: localizedDescription.rich,
       // `null` khi opening_hours đã có giá trị nhưng KHÔNG có bằng chứng hiện hành đạt gate — không
-      // đổi giá trị trong DB, không 404 place, không ẩn field nào khác.
-      opening_hours: hasQualifiedOpeningHoursEvidence ? row.opening_hours : null,
+      // đổi giá trị trong DB, không 404 place, không ẩn field nào khác. `!applyOpeningHoursGate` giữ
+      // đúng hành vi cũ của preview() (gate tắt hẳn, luôn hiện giá trị thật) — KHÔNG suy từ
+      // `openingHoursEvidence !== null` trong trường hợp đó vì preview() cố ý không gọi truy vấn
+      // bằng chứng (xem Promise.all ở trên).
+      opening_hours: !applyOpeningHoursGate || openingHoursEvidence !== null ? row.opening_hours : null,
+      // Giai đoạn 5 (chiến lược data-hub) — "tín hiệu tin cậy nhìn thấy được": chi tiết bằng chứng
+      // giờ mở cửa (ngày xác nhận/hạn hiệu lực/nguồn) khi có, KHÔNG bịa khi không có (null). Field
+      // DUY NHẤT hôm nay có bằng chứng tới từng giá trị cụ thể (Evidence Field-Binding V2) — các
+      // field khác chỉ có trust_sources (nguồn, không có ngày xác nhận/hạn hiệu lực).
+      opening_hours_evidence: openingHoursEvidence
+        ? {
+            confirmed_at: openingHoursEvidence.confirmedAt,
+            expires_at: openingHoursEvidence.expiresAt,
+            publisher: openingHoursEvidence.publisher,
+            title: openingHoursEvidence.title,
+            url: openingHoursEvidence.url,
+          }
+        : null,
+      // Giai đoạn 5 — LOẠI người sửa gần nhất đã qua duyệt (origin), null nếu chưa có revision nào
+      // đã duyệt. KHÔNG phải danh tính cụ thể — xem RevisionsRepository.getLatestApprovedOrigin.
+      last_update_origin: lastUpdateOrigin,
       en_display_name_approved: enDisplayNameApproved,
       en_short_description_approved: enShortDescriptionApproved,
       google_place_id: googlePlaceId,

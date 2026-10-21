@@ -102,6 +102,8 @@ function place(overrides: Partial<PlaceDetail> = {}): PlaceDetail {
     opening_hours: null,
     osm_id: null,
     google_place_id: null,
+    opening_hours_evidence: null,
+    last_update_origin: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
     verified_at: null,
@@ -693,6 +695,47 @@ describe('PlaceDetailPage — Public Beta trust disclosure', () => {
       mockListReviews.mockResolvedValueOnce([]);
       render(await PlaceDetailPage({ params: Promise.resolve({ slug: 'bai-sao', locale: 'vi' }) }));
       expect(screen.getByRole('heading', { name: 'Về bãi biển này' })).toBeInTheDocument();
+    });
+  });
+});
+
+// Giai đoạn 5 (chiến lược data-hub) — "tín hiệu tin cậy nhìn thấy được": LOẠI người sửa gần nhất
+// (last_update_origin, ĐỘC LẬP với badge xác minh) + bằng chứng giờ mở cửa cụ thể
+// (opening_hours_evidence). Cả hai null khi không có — không bịa.
+describe('PlaceDetailPage — Giai đoạn 5 (chiến lược data-hub)', () => {
+  describe('last_update_origin', () => {
+    it('có origin → hiện đúng nhãn, ĐỘC LẬP với trạng thái xác minh (place pending vẫn hiện)', async () => {
+      await renderPage(place({ verification_status: 'pending', last_update_origin: 'owner_update' }));
+      expect(screen.getByText('Chủ cơ sở cập nhật')).toBeInTheDocument();
+    });
+
+    it('null (chưa có revision nào đã duyệt) → không hiện dòng nào, không bịa', async () => {
+      await renderPage(place({ last_update_origin: null }));
+      expect(screen.queryByText('Chủ cơ sở cập nhật')).not.toBeInTheDocument();
+      expect(screen.queryByText('Cộng đồng cập nhật')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('opening_hours_evidence', () => {
+    const OH = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '08:00', close: '22:00' }] } };
+    const EVIDENCE = {
+      confirmed_at: '2026-10-01T00:00:00Z',
+      expires_at: '2027-01-01T00:00:00Z',
+      publisher: 'Sở Du lịch Kiên Giang',
+      title: null,
+      url: null,
+    };
+
+    it('có bằng chứng → hiện đúng ngày xác nhận + nguồn', async () => {
+      await renderPage(place({ opening_hours: OH, opening_hours_evidence: EVIDENCE }));
+      expect(
+        screen.getByText('Giờ mở cửa xác nhận lần cuối: 01/10/2026 · nguồn: Sở Du lịch Kiên Giang.'),
+      ).toBeInTheDocument();
+    });
+
+    it('null (không có bằng chứng đạt gate) → không hiện dòng xác nhận giờ mở cửa nào', async () => {
+      await renderPage(place({ opening_hours: OH, opening_hours_evidence: null }));
+      expect(screen.queryByText(/Giờ mở cửa xác nhận lần cuối/)).not.toBeInTheDocument();
     });
   });
 });

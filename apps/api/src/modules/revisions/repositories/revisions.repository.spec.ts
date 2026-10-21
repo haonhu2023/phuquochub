@@ -87,3 +87,29 @@ describe('RevisionsRepository.markApproved / findByIdForEntity — content_owner
     });
   });
 });
+
+describe('RevisionsRepository.getLatestApprovedOrigin (Giai đoạn 5 — chiến lược data-hub)', () => {
+  function makeRepo(queryImpl: jest.Mock) {
+    return { query: queryImpl } as unknown as Repository<WikiRevision>;
+  }
+
+  it('có revision đã approved → trả đúng origin của bản mới nhất', async () => {
+    const query = jest.fn().mockResolvedValue([{ origin: RevisionOrigin.OWNER_UPDATE }]);
+    const sut = new RevisionsRepository(makeRepo(query));
+
+    const res = await sut.getLatestApprovedOrigin(RevisionEntityType.PLACE, 'p1');
+
+    expect(res).toBe(RevisionOrigin.OWNER_UPDATE);
+    const [sqlText, params] = query.mock.calls[0];
+    expect(sqlText).toContain("status = 'approved'::revision_status");
+    expect(sqlText).toContain('ORDER BY revision_number DESC LIMIT 1');
+    expect(params).toEqual([RevisionEntityType.PLACE, 'p1']);
+  });
+
+  it('chưa có revision nào đã approved (0 dòng) → null, KHÔNG throw', async () => {
+    const query = jest.fn().mockResolvedValue([]);
+    const sut = new RevisionsRepository(makeRepo(query));
+
+    await expect(sut.getLatestApprovedOrigin(RevisionEntityType.PLACE, 'p1')).resolves.toBeNull();
+  });
+});

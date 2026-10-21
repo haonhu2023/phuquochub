@@ -74,11 +74,12 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       createPlace: jest.fn(),
       getCardByIdIncludingInactive: jest.fn(),
       getDetailBySlug: jest.fn(),
-      // Public detail opening-hours evidence gate — default `false` keeps every EXISTING getBySlug
-      // test in this file passing unchanged (none of them assert on opening_hours, and most rows
-      // don't even set it, so it stays null either way). The dedicated describe block below
-      // overrides this per-test to prove the gate's actual PASS/HOLD behavior.
-      hasCurrentQualifiedOpeningHoursEvidence: jest.fn().mockResolvedValue(false),
+      // Public detail opening-hours evidence gate (Giai đoạn 5 — now returns detail-or-null instead
+      // of boolean) — default `null` keeps every EXISTING getBySlug test in this file passing
+      // unchanged (none of them assert on opening_hours, and most rows don't even set it, so it
+      // stays null either way). The dedicated describe block below overrides this per-test to prove
+      // the gate's actual PASS/HOLD behavior.
+      getCurrentOpeningHoursEvidenceDetail: jest.fn().mockResolvedValue(null),
       listFaqs: jest.fn(),
       listFaqsForOwner: jest.fn(),
       replaceFaqs: jest.fn(),
@@ -101,6 +102,10 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       recordPlaceRevision: jest.fn(),
       getPendingPlaceRevision: jest.fn(),
       markApproved: jest.fn(),
+      // Giai đoạn 5 — default null keeps every EXISTING getBySlug test in this file passing
+      // unchanged (none of them assert on last_update_origin). Dedicated describe block below
+      // overrides per-test.
+      getLatestApprovedPlaceOrigin: jest.fn().mockResolvedValue(null),
     });
     audit = createMock<Ctor[6]>({ record: jest.fn() });
     mediaUrl = createMock<Ctor[7]>({ fileUrl: jest.fn() });
@@ -1073,7 +1078,7 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       const res = await service.preview('p1');
 
       expect(res.opening_hours).toEqual(OH);
-      expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).not.toHaveBeenCalled();
+      expect(placesRepo.getCurrentOpeningHoursEvidenceDetail).not.toHaveBeenCalled();
     });
 
     // Bug THỨ HAI phát hiện 15/10/2026 (owner chất vấn trực tiếp "liệu sửa field khác có vô tình
@@ -1284,11 +1289,13 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
     // source-authoritative CURRENT-value field-evidence link. Confirmed live via VinWonders Phú Quốc:
     // production detail exposed its full weekly schedule while GET /places/now correctly excluded it
     // (its one evidence row sits at NEEDS_REVIEW). The actual gate query lives in
-    // PlacesRepository.hasCurrentQualifiedOpeningHoursEvidence() (own repository spec covers the 6
-    // DETAIL cases against real SQL/hash logic) — these tests prove getBySlug() wires that boolean
-    // into the response correctly: unchanged value on true, null (never a 404, never another field
-    // dropped) on false, and the repository call is skipped entirely when opening_hours is already
-    // null (nothing to have evidence for).
+    // PlacesRepository.getCurrentOpeningHoursEvidenceDetail() (own repository spec covers the 6
+    // DETAIL cases against real SQL/hash logic) — these tests prove getBySlug() wires that
+    // detail-or-null into the response correctly: unchanged value + opening_hours_evidence detail on
+    // non-null, opening_hours = null (never a 404, never another field dropped) on null, and the
+    // repository call is skipped entirely when opening_hours is already null (nothing to have
+    // evidence for). Giai đoạn 5 (chiến lược data-hub) — upgraded from a bare boolean gate to also
+    // surface the evidence detail itself (confirmed_at/expires_at/publisher/title/url) publicly.
     describe('opening-hours evidence gate', () => {
       function commonMocks() {
         contactsRepo.listByOwner.mockResolvedValue([]);
@@ -1299,34 +1306,49 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
       }
 
       const OH = { timezone: 'Asia/Ho_Chi_Minh', regular: { mon: [{ open: '09:00', close: '19:30' }] } };
+      const EVIDENCE = {
+        confirmedAt: new Date('2026-10-01T00:00:00Z'),
+        expiresAt: new Date('2027-01-01T00:00:00Z'),
+        publisher: 'Sở Du lịch Kiên Giang',
+        title: null,
+        url: 'https://example.gov.vn',
+      };
 
-      it('qualifying current evidence (true) → opening_hours truyền qua nguyên trạng', async () => {
+      it('qualifying current evidence (detail) → opening_hours truyền qua nguyên trạng + opening_hours_evidence đúng chi tiết', async () => {
         placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: OH });
-        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(true);
+        placesRepo.getCurrentOpeningHoursEvidenceDetail.mockResolvedValue(EVIDENCE);
         commonMocks();
 
         const res = await service.getBySlug('vinwonders-phu-quoc');
 
         expect(res.opening_hours).toEqual(OH);
-        expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).toHaveBeenCalledWith('p1', OH);
+        expect(res.opening_hours_evidence).toEqual({
+          confirmed_at: EVIDENCE.confirmedAt,
+          expires_at: EVIDENCE.expiresAt,
+          publisher: EVIDENCE.publisher,
+          title: EVIDENCE.title,
+          url: EVIDENCE.url,
+        });
+        expect(placesRepo.getCurrentOpeningHoursEvidenceDetail).toHaveBeenCalledWith('p1', OH);
       });
 
       // The VinWonders regression case: DB/API raw value 09:00-19:30 daily, but its supporting
-      // evidence is NEEDS_REVIEW (gate query resolves false) -> detail must expose null, not the
+      // evidence is NEEDS_REVIEW (gate query resolves null) -> detail must expose null, not the
       // raw value, and every OTHER field on the response must stay exactly as returned.
-      it('KHÔNG có qualifying current evidence (false) → opening_hours = null, các field khác không đổi', async () => {
+      it('KHÔNG có qualifying current evidence (null) → opening_hours = null, opening_hours_evidence = null, các field khác không đổi', async () => {
         placesRepo.getDetailBySlug.mockResolvedValue({
           id: 'p1',
           name: 'VinWonders Phú Quốc',
           verification_status: 'pending',
           opening_hours: OH,
         });
-        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(false);
+        placesRepo.getCurrentOpeningHoursEvidenceDetail.mockResolvedValue(null);
         commonMocks();
 
         const res = await service.getBySlug('vinwonders-phu-quoc');
 
         expect(res.opening_hours).toBeNull();
+        expect(res.opening_hours_evidence).toBeNull();
         // mapper có test riêng (places-detail.mapper.spec.ts) — ở đây chỉ chứng minh gate KHÔNG
         // đụng tới bất kỳ field nào khác ngoài opening_hours: id/verification_status vẫn đi qua
         // toPlaceDetail (mocked ở đầu file) nguyên vẹn, name vẫn đi qua overlay locale như cũ.
@@ -1335,22 +1357,56 @@ describe('PlacesService — đường ghi & kiểm duyệt', () => {
         expect(res.name).toBe('VinWonders Phú Quốc');
       });
 
-      it('opening_hours đã null trên row → null, KHÔNG gọi hasCurrentQualifiedOpeningHoursEvidence (không có gì để có bằng chứng)', async () => {
+      it('opening_hours đã null trên row → null, KHÔNG gọi getCurrentOpeningHoursEvidenceDetail (không có gì để có bằng chứng)', async () => {
         placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: null });
         commonMocks();
 
         const res = await service.getBySlug('bai-sao');
 
         expect(res.opening_hours).toBeNull();
-        expect(placesRepo.hasCurrentQualifiedOpeningHoursEvidence).toHaveBeenCalledWith('p1', null);
+        expect(res.opening_hours_evidence).toBeNull();
+        expect(placesRepo.getCurrentOpeningHoursEvidenceDetail).toHaveBeenCalledWith('p1', null);
       });
 
       it('place vẫn được trả về bình thường (không 404) khi gate fail — chỉ opening_hours bị ảnh hưởng', async () => {
         placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1', opening_hours: OH });
-        placesRepo.hasCurrentQualifiedOpeningHoursEvidence.mockResolvedValue(false);
+        placesRepo.getCurrentOpeningHoursEvidenceDetail.mockResolvedValue(null);
         commonMocks();
 
         await expect(service.getBySlug('vinwonders-phu-quoc')).resolves.toMatchObject({ id: 'p1' });
+      });
+    });
+
+    // Giai đoạn 5 (chiến lược data-hub) — LOẠI người sửa gần nhất (last_update_origin), KHÔNG danh
+    // tính cụ thể (ADR-022). Nguồn: RevisionsService.getLatestApprovedPlaceOrigin(placeId).
+    describe('last_update_origin (Giai đoạn 5)', () => {
+      function commonMocks() {
+        contactsRepo.listByOwner.mockResolvedValue([]);
+        pricesRepo.current.mockResolvedValue([]);
+        mediaRepo.listPublishedByPlace.mockResolvedValue([]);
+        placesRepo.listFaqs.mockResolvedValue([]);
+        sourceAttributionsRepo.listByEntity.mockResolvedValue([]);
+      }
+
+      it('có revision đã duyệt gần nhất → last_update_origin đúng origin đó', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+        revisions.getLatestApprovedPlaceOrigin.mockResolvedValue('owner_update');
+        commonMocks();
+
+        const res = await service.getBySlug('p1-slug');
+
+        expect(res.last_update_origin).toBe('owner_update');
+        expect(revisions.getLatestApprovedPlaceOrigin).toHaveBeenCalledWith('p1');
+      });
+
+      it('chưa có revision nào đã duyệt → null, KHÔNG bịa origin', async () => {
+        placesRepo.getDetailBySlug.mockResolvedValue({ id: 'p1' });
+        revisions.getLatestApprovedPlaceOrigin.mockResolvedValue(null);
+        commonMocks();
+
+        const res = await service.getBySlug('p1-slug');
+
+        expect(res.last_update_origin).toBeNull();
       });
     });
 
