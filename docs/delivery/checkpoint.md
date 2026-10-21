@@ -1,8 +1,14 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
-**Baseline production (21/10/2026, SAU cutover Giai đoạn 4):** API `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`sha256:1e1d8743c9...`) · Web cùng commit (`sha256:e93606a8d6...`) · DB **107 migrations** (106→107, `AddReviewConfirmedVisit`). Rollback về API/Web `6d6cc5c4ba8206913d77d222eaa73eb15228cf40` (`scripts/rollback.sh 6d6cc5c4ba8206913d77d222eaa73eb15228cf40`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (cột mới thuần cộng thêm, app cũ không biết/không đụng tới).
+**Baseline production (21/10/2026, SAU cutover Giai đoạn 5):** API `06b1bee2cca8b676d557f92df73cbc044236bc26` (`sha256:538eb9ce024f...`) · Web cùng commit (`sha256:281286243f7e...`) · DB **107 migrations** (không đổi — Giai đoạn 5 không có migration mới). Rollback về API/Web `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`scripts/rollback.sh 6406952622cad0dc5ae85e8b995ba3c48e9e3431`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (không có migration nào để revert lần này).
 
-### Giai đoạn 5 (21/10/2026, commit local `06b1bee`) — Hiện bằng chứng/nguồn gốc cho người xem — ĐÃ code + test + xác nhận dev + production rehearsal, CHƯA deploy
+### Cutover 06b1bee (21/10/2026) — Giai đoạn 5: hiện bằng chứng/nguồn gốc cho người xem — THÀNH CÔNG, không cần rollback
+
+Backup trước deploy: `phuquochub-20261021T133909Z.sql.gz` (SHA256 `8eb7a964400f...`, validated). Dry-run trước cutover: clean no-op (toàn bộ service `Running`/`Healthy`, không `Recreate`). Candidate image đã rehearsal được gắn lại tag commit thường (`06b1bee2cca8b676d557f92df73cbc044236bc26`), `docker image inspect` xác nhận ID giữ nguyên hệt lúc rehearsal (`538eb9ce024f.../281286243f7e...`). `deploy.sh 06b1bee...` chạy đủ 11 bước với `SKIP_BUILD=1` + `EXPECTED_API_IMAGE_ID`/`EXPECTED_WEB_IMAGE_ID` khớp đúng — Step 7 chạy migrate báo **"No migrations are pending"** đúng kỳ vọng (Giai đoạn 5 không có migration), Step 8 smoke-test image mới pass trước khi cutover, Step 9 cutover api+web, Step 9b ghi tag mới vào `.env` (tag cũ `6406952...` được ghi lại để rollback).
+
+**Hậu kiểm:** `verify-release-pins.sh` → "all pins consistent and immutable". DB vẫn **107 migrations** (không đổi, đúng kỳ vọng). `smoke-test.sh` qua domain thật (`https://phuquochub.com`) pass đủ. `GET /api/places/dinh-cau` (địa điểm thật, không tạo dữ liệu gì) xác nhận hai field mới đã lên production: `last_update_origin: "owner_update"` (đúng lịch sử sửa thật của Đình Cậu) và `opening_hours_evidence: null` (đúng — chưa có place thật nào trong production đạt gate bằng chứng giờ mở cửa, hiện đúng `null` chứ không bịa). **Không tạo dữ liệu test/giả nào trên production** — toàn bộ hậu kiểm chỉ đọc. Image rollback (`6406952`) còn giữ trên VPS.
+
+### Giai đoạn 5 (21/10/2026, commit local `06b1bee`) — Hiện bằng chứng/nguồn gốc cho người xem — chuẩn bị trước khi deploy (ĐÃ deploy, xem mục cutover ở trên)
 
 Theo chiến lược [strategy-data-hub-2026-10-21.md](strategy-data-hub-2026-10-21.md) §Giai đoạn 5. **KHÔNG migration nào** — hiện LẠI dữ liệu đã có (`wiki_revisions`/`evidence_reviews`), không thu thập mới, không đổi schema. Phạm vi theo quyết định chủ: chỉ làm giàu khối "tin cậy" đã có sẵn trên `places/[slug]` (không xây trang lịch sử sửa đổi riêng); chỉ hiện LOẠI người sửa (origin), KHÔNG hiện danh tính cụ thể (ADR-022).
 
@@ -17,8 +23,6 @@ Theo chiến lược [strategy-data-hub-2026-10-21.md](strategy-data-hub-2026-10
 Dựng Postgres/Redis **cô lập hoàn toàn** (`phase5-rehearsal-*`, không volume, không publish cổng, mạng riêng) → áp 107 migration SẠCH TỪ ĐẦU bằng candidate migrate image, xác nhận đúng 107/107 (migration cuối vẫn `AddReviewConfirmedVisit`, không có migration mới — đúng kỳ vọng). Chạy candidate API (`NODE_ENV=production`, build thật) — `/api/health` healthy. Vì DB cô lập trống, dựng lại CHÍNH chuỗi bằng chứng đã kiểm trên dev (place + source + evidence_artifacts + place_field_evidence_links + evidence_reviews + wiki_revisions, cùng hash thật) cho một place tổng hợp — xác nhận qua HTTP thật trên CHÍNH candidate API (build production, không phải dev ts-node): `opening_hours_evidence` và `last_update_origin` đều đúng chi tiết. Candidate web image boot-smoke trên cổng loopback-only: `/vi` trả `200`.
 
 Dọn sạch sau rehearsal: toàn bộ container/network cô lập đã xoá (Postgres cô lập không volume nên dữ liệu test biến mất cùng container). Container production xác nhận LẦN NỮA không đổi sau khi dọn. Candidate image giữ lại trên VPS để tái dùng cho `deploy.sh` (`SKIP_BUILD=1`, `EXPECTED_API_IMAGE_ID=sha256:538eb9ce02...`, `EXPECTED_WEB_IMAGE_ID=sha256:28128624...`) khi được duyệt.
-
-**Chưa deploy lên production — chờ duyệt riêng bước cutover** (chạy `deploy.sh` thật: Step 7 chạy migrate — sẽ báo "không có migration chờ" đúng kỳ vọng — + Step 9 thay container đang sống).
 
 ### Cutover 6406952 (21/10/2026) — Giai đoạn 4: "Đã xác nhận từng đến" cho đánh giá — THÀNH CÔNG, không cần rollback
 
