@@ -1,8 +1,14 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
-**Baseline production (21/10/2026, SAU cutover Giai đoạn 1):** API `adcf76a12f90ce812e048253ee62c5fa4e661eaf` (`sha256:fa33d9607763...`) · Web cùng commit (`sha256:75e44a226574...`) · DB **104 migrations** (103→104, `AddPlaceListableTargetType`). Rollback về API `7629b50c444045728796349b7d2a25e0921bb153` (`sha256:b34f52bfa6a0...`) + Web `2c0c9124cf6539c2bb0fd4ff36be4cddaab7cf30` (`sha256:e5f820e140f3...`) nếu cần (Web trước/API sau). **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (giá trị enum mới thuần cộng thêm, app cũ không biết/không đụng tới).
+**Baseline production (21/10/2026, SAU cutover Giai đoạn 2):** API `312425a532319c9d4f69602193ac53f5e91b83c9` (`sha256:40d83193e4...`) · Web cùng commit (`sha256:1ab98f901e...`) · DB **105 migrations** (104→105, `AddListingReportStillValidLoop`). Rollback về API/Web `adcf76a12f90ce812e048253ee62c5fa4e661eaf` (`scripts/rollback.sh adcf76a12f90ce812e048253ee62c5fa4e661eaf`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (giá trị enum mới thuần cộng thêm, app cũ không biết/không đụng tới).
 
-### Giai đoạn 2 (21/10/2026, commit local `c8afe8e`) — Vòng lặp "còn đúng không?" cho tin tuyển dụng — ĐÃ code + test + xác nhận dev, CHƯA deploy
+### Cutover 312425a (21/10/2026) — Giai đoạn 2: Vòng lặp "còn đúng không?" cho tin tuyển dụng — THÀNH CÔNG, không cần rollback
+
+Backup trước deploy: `phuquochub-20261021T033450Z.sql.gz` (SHA256 `387f6603...`, validated). Dry-run trước cutover: clean no-op (mọi service `Running/Waiting/Healthy`, không `Recreate` nào). `deploy.sh 312425a... ` chạy đủ 11 bước với `SKIP_BUILD=1` + `EXPECTED_API_IMAGE_ID`/`EXPECTED_WEB_IMAGE_ID` khớp đúng 2 image đã rehearsal (`40d83193e4.../1ab98f901e...`) — Step 7 áp ĐÚNG 1 migration mới (`AddListingReportStillValidLoop1720010300000`) lên DB production thật, Step 8 smoke-test image mới pass trước khi cutover, Step 9 cutover api+web, Step 9b ghi tag vào `.env`.
+
+**Hậu kiểm:** `verify-release-pins.sh` → "all pins consistent". DB = **105 migrations** (104→105). `smoke-test.sh` qua domain thật (`https://phuquochub.com`) pass đủ (health/root redirect/`/vi`/404). 2 route mới xác nhận tồn tại và đúng yêu cầu xác thực trên domain thật: `GET /api/listing-reports/mine` và `POST /api/listing-reports/:id/confirm-still-valid` không có token → cả hai `401` (không phải `404`, không lộ dữ liệu). `/dashboard/job-listings` tải `200` không lỗi. **Không tạo dữ liệu test/giả nào trên production** — hậu kiểm hoàn toàn không-phá-hoại, đúng quy tắc đã thống nhất. Image rollback (`adcf76a`) còn giữ trên VPS.
+
+### Giai đoạn 2 (21/10/2026, commit local `c8afe8e`) — Vòng lặp "còn đúng không?" cho tin tuyển dụng — chuẩn bị trước khi deploy (ĐÃ deploy, xem mục cutover ở trên)
 
 Theo chiến lược [strategy-data-hub-2026-10-21.md](strategy-data-hub-2026-10-21.md) §Giai đoạn 2, áp dụng TRƯỚC cho tin tuyển dụng (chưa nối vào real-estate/địa điểm, dù backend đã đủ tổng quát để làm vậy). **Có 1 migration mới** (`1720010300000-AddListingReportStillValidLoop`, additive, `ALTER TYPE ... ADD VALUE` cho 2 lý do báo cáo mới `not_reachable`/`no_longer_available` + 1 trạng thái mới `self_confirmed`, không ALTER/DROP dữ liệu đang có).
 
@@ -18,7 +24,7 @@ Dựng Postgres/Redis **cô lập hoàn toàn** (network/container riêng `phase
 
 Dọn sạch sau rehearsal: 3 container cô lập + network + file tạm trên VPS đã xoá hết (`docker rm -f`/`docker network rm`, Postgres cô lập không có volume nên dữ liệu test biến mất cùng container — không cần dọn DB). Container production xác nhận LẦN NỮA không đổi sau khi dọn (vẫn `adcf76a`, cùng uptime). Candidate image (API/migrate/web, tag `candidate-312425a...`) giữ lại trên VPS để tái dùng cho `deploy.sh` (`SKIP_BUILD=1`, `EXPECTED_API_IMAGE_ID=sha256:40d83193e4...`, `EXPECTED_WEB_IMAGE_ID=sha256:1ab98f901e...`) khi được duyệt, tránh build lại một artifact khác với cái đã rehearsal.
 
-**Chưa deploy lên production — chờ duyệt riêng bước cutover** (chạy `deploy.sh` thật: Step 7 áp migration lên DB production thật + Step 9 thay container đang sống). Phạm vi CHỈ tin tuyển dụng — chưa sửa UI cho real-estate/địa điểm.
+**Đã deploy lên production (xem mục cutover 312425a ở trên)** — chủ owner duyệt rõ ràng trước khi chạy `deploy.sh` thật. Phạm vi CHỈ tin tuyển dụng — chưa sửa UI cho real-estate/địa điểm.
 
 ### Cutover adcf76a (21/10/2026) — Giai đoạn 1: Báo sai/Lưu tin mở rộng sang địa điểm/khách sạn/nhà hàng/tour — THÀNH CÔNG, không cần rollback
 
