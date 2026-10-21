@@ -138,4 +138,47 @@ export class ListingReportsService {
     const saved = await this.repo.save(row);
     return toView(saved);
   }
+
+  // Giai đoạn 2 (21/10/2026) — báo cáo đang mở trên CHÍNH tin của userId, để người đăng tự xem và
+  // xác nhận "vẫn còn" (xem confirmStillValid() bên dưới). Server TỰ SUY tập id tin của userId qua
+  // listMine() đã có sẵn (cùng đường "Tin của tôi" đang dùng) — KHÔNG tin id nào client tự gửi lên,
+  // tránh một người dò được báo cáo của tin người khác qua tham số target_id tự chọn.
+  //
+  // Chỉ job_listing hôm nay (owner yêu cầu rõ: áp dụng TRƯỚC cho tin tuyển dụng) — real_estate_listing
+  // dùng được NGAY nếu mở rộng sau (cùng listMine() shape), 'place' không có khái niệm chủ tin đơn
+  // (xem isOwnListing()'s comment) nên trả mảng rỗng, không lỗi.
+  async listMineOpen(userId: string, targetType: ListableTargetType): Promise<ReturnType<typeof toView>[]> {
+    let myIds: string[];
+    if (targetType === ListableTargetType.JOB_LISTING) {
+      myIds = (await this.jobListingsService.listMine(userId)).map((j) => j.id);
+    } else if (targetType === ListableTargetType.REAL_ESTATE_LISTING) {
+      myIds = (await this.realEstateListingsService.listMine(userId)).map((r) => r.id);
+    } else {
+      return [];
+    }
+    const rows = await this.repo.listOpenByTargetTypeAndIds(targetType, myIds);
+    return Promise.all(rows.map(async (row) => toView(row, await this.resolveTargetPublic(row.targetType, row.targetId))));
+  }
+
+  // Giai đoạn 2 (21/10/2026) — người ĐĂNG (không phải moderator) tự xác nhận tin của mình vẫn đúng.
+  // Trạng thái riêng SELF_CONFIRMED (không dùng RESOLVED) — xem migration
+  // AddListingReportStillValidLoop1720010300000's ghi chú: lời tự khai một phía KHÔNG mang trọng
+  // lượng như một quyết định moderator độc lập, không gộp chung để tránh hiểu nhầm đã được bên thứ
+  // ba xác minh. Dùng ĐÚNG isOwnListing() đã có (không tự suy luật sở hữu thứ hai) — 'place' luôn
+  // `false` nên luôn bị chặn ở đây, nhất quán với isOwnListing()'s thiết kế.
+  async confirmStillValid(id: string, userId: string): Promise<ReturnType<typeof toView>> {
+    const row = await this.repo.findById(id);
+    if (!row) throw new NotFoundException('Không tìm thấy báo cáo');
+    if (!(await this.isOwnListing(row.targetType, row.targetId, userId))) {
+      throw new ForbiddenException();
+    }
+    if (row.status !== ListingReportStatus.OPEN) {
+      throw new ConflictException(`Báo cáo này đã được xử lý (trạng thái hiện tại: "${row.status}")`);
+    }
+    row.status = ListingReportStatus.SELF_CONFIRMED;
+    row.resolverId = userId;
+    row.resolvedAt = new Date();
+    const saved = await this.repo.save(row);
+    return toView(saved);
+  }
 }

@@ -8,7 +8,8 @@ import type { PlaceDetail } from '../places/types';
 export const LISTING_REPORT_TARGET_TYPES = ['job_listing', 'real_estate_listing', 'place'] as const;
 export type ListingReportTargetType = (typeof LISTING_REPORT_TARGET_TYPES)[number];
 
-export const LISTING_REPORT_REASONS = ['wrong_info', 'duplicate', 'spam', 'scam', 'other'] as const;
+// Giai đoạn 2 (21/10/2026) — 2 lý do mới cho vòng lặp "còn đúng không?".
+export const LISTING_REPORT_REASONS = ['wrong_info', 'duplicate', 'spam', 'scam', 'other', 'not_reachable', 'no_longer_available'] as const;
 export type ListingReportReason = (typeof LISTING_REPORT_REASONS)[number];
 
 export const LISTING_REPORT_REASON_LABELS: Record<ListingReportReason, string> = {
@@ -17,9 +18,13 @@ export const LISTING_REPORT_REASON_LABELS: Record<ListingReportReason, string> =
   spam: 'Spam',
   scam: 'Nghi lừa đảo',
   other: 'Khác',
+  not_reachable: 'Không liên hệ được',
+  no_longer_available: 'Đã hết / đã tuyển đủ',
 };
 
-export const LISTING_REPORT_STATUSES = ['open', 'resolved', 'dismissed'] as const;
+// Giai đoạn 2 (21/10/2026) — `self_confirmed`: người ĐĂNG tự xác nhận, KHÔNG phải moderator xử lý
+// (resolved) — xem apps/api's AddListingReportStillValidLoop migration cho lý do đầy đủ.
+export const LISTING_REPORT_STATUSES = ['open', 'resolved', 'dismissed', 'self_confirmed'] as const;
 export type ListingReportStatus = (typeof LISTING_REPORT_STATUSES)[number];
 
 export interface ListingReportView {

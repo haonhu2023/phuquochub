@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { ListingReportsService } from './listing-reports.service';
-import { CreateListingReportDto, ResolveListingReportDto } from './dto/listing-reports.dto';
+import { CreateListingReportDto, ListMineOpenReportsQueryDto, ResolveListingReportDto } from './dto/listing-reports.dto';
 
 // Không @RequirePermissions tĩnh — báo cáo chỉ cần đăng nhập; xem hàng chờ/xử lý được lọc theo
 // quyền duyệt của TỪNG loại tin ngay trong service (xem ListingReportsService's comment ở đầu file).
@@ -22,6 +22,14 @@ export class ListingReportsController {
     return this.service.listPending(user.sub);
   }
 
+  // Giai đoạn 2 (21/10/2026) — báo cáo đang mở trên CHÍNH tin của người gọi, để tự xem + xác nhận
+  // "vẫn còn" (xem confirmStillValid() bên dưới). 'mine' là đoạn tĩnh, không xung đột với bất kỳ
+  // route `:id` nào trong controller này.
+  @Get('mine')
+  listMineOpen(@Query() query: ListMineOpenReportsQueryDto, @CurrentUser() user: AuthPrincipal) {
+    return this.service.listMineOpen(user.sub, query.target_type);
+  }
+
   @Post(':id/resolve')
   @HttpCode(200)
   async resolve(
@@ -30,5 +38,14 @@ export class ListingReportsController {
     @CurrentUser() user: AuthPrincipal,
   ) {
     return this.service.resolve(id, dto, user.sub);
+  }
+
+  // Giai đoạn 2 (21/10/2026) — người ĐĂNG tự xác nhận tin của mình vẫn đúng (không phải moderator
+  // xử lý — xem resolve() ở trên, route khác, quyền khác). Không @RequirePermissions tĩnh — chỉ
+  // cần đăng nhập, isOwnListing() trong service tự kiểm có đúng chủ tin không.
+  @Post(':id/confirm-still-valid')
+  @HttpCode(200)
+  async confirmStillValid(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
+    return this.service.confirmStillValid(id, user.sub);
   }
 }

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MyJobListingsView } from './MyJobListingsView';
 import { readSession } from '@/modules/auth/session';
 import { closeJobListing, listMyJobListings, submitJobListing } from './api/job-listings.api';
+import { confirmListingStillValid, listMyOpenListingReports } from '@/modules/listing-reports/api/listing-reports.api';
 
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('./api/job-listings.api', () => ({
@@ -10,6 +11,10 @@ jest.mock('./api/job-listings.api', () => ({
   submitJobListing: jest.fn(),
   closeJobListing: jest.fn(),
   reopenJobListing: jest.fn(),
+}));
+jest.mock('@/modules/listing-reports/api/listing-reports.api', () => ({
+  listMyOpenListingReports: jest.fn(),
+  confirmListingStillValid: jest.fn(),
 }));
 // Cố định "hôm nay" cho các test hạn/bộ lọc — mock THẲNG `useTodayInVietnam()` (component gọi hook
 // này, không gọi `todayInVietnam()` trực tiếp nữa — mock export kia không có tác dụng vì closure
@@ -26,9 +31,13 @@ const mockReadSession = readSession as jest.Mock;
 const mockList = listMyJobListings as jest.Mock;
 const mockSubmit = submitJobListing as jest.Mock;
 const mockClose = closeJobListing as jest.Mock;
+const mockListReports = listMyOpenListingReports as jest.Mock;
+const mockConfirmStillValid = confirmListingStillValid as jest.Mock;
 
 beforeEach(() => {
   mockReadSession.mockReturnValue({ accessToken: 'tok' });
+  // Mặc định không có báo cáo nào — các test ngoài mục "giai đoạn 2" dưới đây không cần quan tâm.
+  mockListReports.mockResolvedValue([]);
 });
 
 afterEach(() => jest.clearAllMocks());
@@ -185,5 +194,67 @@ describe('MyJobListingsView — hạn tuyển + bộ lọc (Gói B)', () => {
     render(<MyJobListingsView />);
     fireEvent.change(await screen.findByLabelText('Lọc theo trạng thái'), { target: { value: 'expired' } });
     expect(screen.getByText('Không có tin nào khớp bộ lọc')).toBeInTheDocument();
+  });
+});
+
+function report(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'lr-1',
+    target_type: 'job_listing',
+    target_id: 'job-1',
+    reason: 'not_reachable',
+    description: null,
+    status: 'open',
+    resolved_at: null,
+    created_at: '2026-06-10T00:00:00.000Z',
+    listing: null,
+    ...overrides,
+  };
+}
+
+// Giai đoạn 2 (21/10/2026) — vòng lặp "còn đúng không?".
+describe('MyJobListingsView — xác nhận "vẫn đang tuyển" (giai đoạn 2, 21/10/2026)', () => {
+  it('không có báo cáo nào đang mở → KHÔNG hiện khối cảnh báo', async () => {
+    mockList.mockResolvedValue([row({ status: 'published' })]);
+    mockListReports.mockResolvedValue([]);
+    render(<MyJobListingsView />);
+    await screen.findByText('Phục vụ bàn — Đang đăng');
+    expect(screen.queryByRole('button', { name: 'Xác nhận vẫn đang tuyển' })).not.toBeInTheDocument();
+  });
+
+  it('có báo cáo đang mở trên tin của mình → hiện đúng lý do + nút xác nhận', async () => {
+    mockList.mockResolvedValue([row({ status: 'published' })]);
+    mockListReports.mockResolvedValue([report({ reason: 'not_reachable' }), report({ id: 'lr-2', reason: 'no_longer_available' })]);
+    render(<MyJobListingsView />);
+    expect(await screen.findByText(/2 người báo: Không liên hệ được, Đã hết \/ đã tuyển đủ/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Xác nhận vẫn đang tuyển' })).toBeInTheDocument();
+  });
+
+  it('báo cáo của TIN KHÁC không hiện lẫn vào tin này (lọc đúng target_id)', async () => {
+    mockList.mockResolvedValue([row({ id: 'job-1', status: 'published' })]);
+    mockListReports.mockResolvedValue([report({ target_id: 'job-OTHER' })]);
+    render(<MyJobListingsView />);
+    await screen.findByText('Phục vụ bàn — Đang đăng');
+    expect(screen.queryByRole('button', { name: 'Xác nhận vẫn đang tuyển' })).not.toBeInTheDocument();
+  });
+
+  it('bấm "Xác nhận vẫn đang tuyển" → gọi confirmListingStillValid cho ĐÚNG từng report id, rồi tải lại', async () => {
+    mockList.mockResolvedValueOnce([row({ status: 'published' })]).mockResolvedValueOnce([row({ status: 'published' })]);
+    mockListReports.mockResolvedValue([report({ id: 'lr-a' }), report({ id: 'lr-b' })]);
+    mockConfirmStillValid.mockResolvedValue(report({ status: 'self_confirmed' }));
+    render(<MyJobListingsView />);
+    const btn = await screen.findByRole('button', { name: 'Xác nhận vẫn đang tuyển' });
+    fireEvent.click(btn);
+    await waitFor(() => expect(mockConfirmStillValid).toHaveBeenNthCalledWith(1, 'lr-a', 'tok'));
+    await waitFor(() => expect(mockConfirmStillValid).toHaveBeenNthCalledWith(2, 'lr-b', 'tok'));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+  });
+
+  it('lỗi khi tải báo cáo không chặn trang chính (danh sách tin vẫn hiện bình thường)', async () => {
+    mockList.mockResolvedValue([row({ status: 'published' })]);
+    mockListReports.mockRejectedValue(new Error('network down'));
+    render(<MyJobListingsView />);
+    expect(await screen.findByText('Phục vụ bàn — Đang đăng')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

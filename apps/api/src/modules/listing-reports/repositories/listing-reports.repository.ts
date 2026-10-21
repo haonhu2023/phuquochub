@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ListingReport } from '../entities/listing-report.entity';
 import { ListableTargetType } from '../../../common/listable-target-type.enum';
 import { ListingReportStatus } from '../listing-reports.enums';
@@ -26,6 +26,17 @@ export class ListingReportsRepository {
   listOpenByTargetType(targetType: ListableTargetType): Promise<ListingReport[]> {
     return this.repo.find({
       where: { targetType, status: ListingReportStatus.OPEN },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // Giai đoạn 2 (21/10/2026) — báo cáo đang mở cho ĐÚNG tập id tin của MỘT người đăng cụ thể
+  // (service tự suy tập id này từ listMine() của job/real-estate, không tin id client gửi — xem
+  // ListingReportsService.listMineOpen()'s comment). targetIds rỗng → trả mảng rỗng, không query.
+  listOpenByTargetTypeAndIds(targetType: ListableTargetType, targetIds: string[]): Promise<ListingReport[]> {
+    if (targetIds.length === 0) return Promise.resolve([]);
+    return this.repo.find({
+      where: { targetType, targetId: In(targetIds), status: ListingReportStatus.OPEN },
       order: { createdAt: 'ASC' },
     });
   }

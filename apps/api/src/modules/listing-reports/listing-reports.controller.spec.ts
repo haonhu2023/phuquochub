@@ -10,7 +10,13 @@ describe('ListingReportsController', () => {
   const user = { sub: 'u1', email: 'u1@example.com' };
 
   beforeEach(() => {
-    service = createMock<Ctor[0]>({ create: jest.fn(), listPending: jest.fn(), resolve: jest.fn() });
+    service = createMock<Ctor[0]>({
+      create: jest.fn(),
+      listPending: jest.fn(),
+      resolve: jest.fn(),
+      listMineOpen: jest.fn(),
+      confirmStillValid: jest.fn(),
+    });
     controller = new ListingReportsController(service);
   });
 
@@ -29,5 +35,16 @@ describe('ListingReportsController', () => {
     const dto = { decision: 'resolved' as const };
     controller.resolve('lr-1', dto, user);
     expect(service.resolve).toHaveBeenCalledWith('lr-1', dto, 'u1');
+  });
+
+  // Giai đoạn 2 (21/10/2026)
+  it('listMineOpen: dùng user.sub + target_type từ query', () => {
+    controller.listMineOpen({ target_type: ListableTargetType.JOB_LISTING }, user);
+    expect(service.listMineOpen).toHaveBeenCalledWith('u1', ListableTargetType.JOB_LISTING);
+  });
+
+  it('confirmStillValid: id + user.sub', () => {
+    controller.confirmStillValid('lr-1', user);
+    expect(service.confirmStillValid).toHaveBeenCalledWith('lr-1', 'u1');
   });
 });

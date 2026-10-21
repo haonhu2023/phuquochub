@@ -7,6 +7,8 @@ import { ApiError } from '@/lib/http';
 import { closeJobListing, listMyJobListings, reopenJobListing, submitJobListing } from './api/job-listings.api';
 import { JOB_LISTING_STATUS_LABELS, jobListingEmploymentTypeLabel, type JobListingSenderView } from './types';
 import { formatSalary } from './salary';
+import { confirmListingStillValid, listMyOpenListingReports } from '@/modules/listing-reports/api/listing-reports.api';
+import { LISTING_REPORT_REASON_LABELS, type ListingReportView } from '@/modules/listing-reports/types';
 import placeStyles from '@/modules/places/places.module.css';
 import placeMgmtStyles from '@/modules/place-management/place-management.module.css';
 import {
@@ -58,6 +60,10 @@ export function MyJobListingsView() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<ListingFilterValue>('all');
+  // Giai đoạn 2 (21/10/2026) — báo cáo "còn đúng không?" đang mở trên tin của mình, gộp theo
+  // target_id. Tải RIÊNG, không chặn danh sách tin chính nếu lỗi (chỉ là thông tin bổ sung — một
+  // tin vẫn phải hiện được dù không tải được báo cáo của nó).
+  const [openReports, setOpenReports] = useState<ListingReportView[]>([]);
   // Tự cập nhật khi sang ngày mới (kể cả không ai thao tác gì) — xem ghi chú đầy đủ ở
   // useTodayInVietnam() trong listingExpiry.ts.
   const today = useTodayInVietnam();
@@ -86,6 +92,13 @@ export function MyJobListingsView() {
       .catch((err: unknown) => {
         if (!cancelled) setState({ kind: 'error', message: safeMessage(err) });
       });
+    listMyOpenListingReports('job_listing', session.accessToken)
+      .then((items) => {
+        if (!cancelled) setOpenReports(items);
+      })
+      .catch(() => {
+        /* không chặn trang chính nếu lỗi — xem ghi chú state ở trên */
+      });
     return () => {
       cancelled = true;
     };
@@ -102,6 +115,30 @@ export function MyJobListingsView() {
     try {
       const fn = action === 'submit' ? submitJobListing : action === 'close' ? closeJobListing : reopenJobListing;
       await fn(id, session.accessToken);
+      reload();
+    } catch (err) {
+      setActionError(safeMessage(err));
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  // Giai đoạn 2 (21/10/2026) — xác nhận TẤT CẢ báo cáo đang mở trên MỘT tin trong một lần bấm (một
+  // tin có thể bị nhiều người báo cùng lý do) — gọi tuần tự, không song song, để lỗi giữa chừng
+  // không để lại trạng thái nửa vời khó debug. Dùng CHÍNH jobId làm khoá actingId (giống
+  // submit/close/reopen) để không cho bấm hai hành động cùng lúc trên cùng một tin.
+  async function confirmStillHiring(jobId: string, reportIds: string[]) {
+    const session = readSession();
+    if (!session) {
+      setActionError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+    setActingId(jobId);
+    setActionError(null);
+    try {
+      for (const reportId of reportIds) {
+        await confirmListingStillValid(reportId, session.accessToken);
+      }
       reload();
     } catch (err) {
       setActionError(safeMessage(err));
@@ -188,6 +225,7 @@ export function MyJobListingsView() {
         <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: '0.75rem' }}>
           {filtered.map((job) => {
             const effectiveStatus = listingEffectiveStatus(job.status, job.expires_at, today);
+            const jobOpenReports = openReports.filter((r) => r.target_id === job.id);
             return (
             <li key={job.id} className={placeStyles.state}>
               <p className={placeStyles.stateTitle}>
@@ -203,6 +241,25 @@ export function MyJobListingsView() {
               </p>
               {job.status === 'rejected' && job.review_note && (
                 <p style={{ color: 'var(--danger, #b91c1c)' }}>Lý do từ chối: {job.review_note}</p>
+              )}
+              {/* Giai đoạn 2 (21/10/2026) — "còn đúng không?": người xem đã báo, chờ CHÍNH người
+                  đăng xác nhận. Lời tự khai một phía — KHÔNG tự đổi trạng thái tin, chỉ đóng báo
+                  cáo (xem confirmStillValid()'s comment phía API). */}
+              {jobOpenReports.length > 0 && (
+                <div style={{ background: 'var(--warning-bg, #fffbeb)', border: '1px solid var(--warning, #b45309)', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', margin: '0.5rem 0' }}>
+                  <p style={{ margin: 0, color: 'var(--warning, #b45309)' }}>
+                    {jobOpenReports.length} người báo: {jobOpenReports.map((r) => LISTING_REPORT_REASON_LABELS[r.reason]).join(', ')}
+                  </p>
+                  <button
+                    type="button"
+                    className={placeMgmtStyles.submitBtn}
+                    disabled={actingId === job.id}
+                    onClick={() => confirmStillHiring(job.id, jobOpenReports.map((r) => r.id))}
+                    style={{ marginTop: '0.4rem' }}
+                  >
+                    Xác nhận vẫn đang tuyển
+                  </button>
+                </div>
               )}
               <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
                 Tạo ngày {formatDate(job.created_at)}

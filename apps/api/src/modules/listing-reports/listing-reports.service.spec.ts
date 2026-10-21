@@ -36,9 +36,10 @@ describe('ListingReportsService', () => {
       findById: jest.fn(),
       save: jest.fn((entity) => Promise.resolve(entity)),
       listOpenByTargetType: jest.fn(),
+      listOpenByTargetTypeAndIds: jest.fn(),
     });
-    jobListingsService = createMock<Deps[1]>({ getPublicById: jest.fn(), getMine: jest.fn() });
-    realEstateListingsService = createMock<Deps[2]>({ getPublicById: jest.fn(), getMine: jest.fn() });
+    jobListingsService = createMock<Deps[1]>({ getPublicById: jest.fn(), getMine: jest.fn(), listMine: jest.fn() });
+    realEstateListingsService = createMock<Deps[2]>({ getPublicById: jest.fn(), getMine: jest.fn(), listMine: jest.fn() });
     placesService = createMock<Deps[3]>({ getSlugAndStatus: jest.fn(), getBySlug: jest.fn() });
     authz = createMock<Deps[4]>({ can: jest.fn() });
     service = new ListingReportsService(repo, jobListingsService, realEstateListingsService, placesService, authz);
@@ -209,6 +210,76 @@ describe('ListingReportsService', () => {
       authz.can.mockResolvedValue(true);
       const result = await service.resolve('lr-1', { decision: 'dismissed' }, 'mod-1');
       expect(result.status).toBe(ListingReportStatus.DISMISSED);
+    });
+  });
+
+  // Giai đoạn 2 (21/10/2026) — vòng lặp "còn đúng không?"
+  describe('listMineOpen()', () => {
+    it('job_listing: tự suy tập id qua listMine(), KHÔNG tin id client gửi', async () => {
+      jobListingsService.listMine.mockResolvedValue([{ id: 'job-1' }, { id: 'job-2' }]);
+      repo.listOpenByTargetTypeAndIds.mockResolvedValue([row({ id: 'lr-a', targetId: 'job-1' })]);
+      const result = await service.listMineOpen('owner-1', ListableTargetType.JOB_LISTING);
+      expect(jobListingsService.listMine).toHaveBeenCalledWith('owner-1');
+      expect(repo.listOpenByTargetTypeAndIds).toHaveBeenCalledWith(ListableTargetType.JOB_LISTING, ['job-1', 'job-2']);
+      expect(result).toHaveLength(1);
+    });
+
+    it('real_estate_listing: tự suy tập id qua listMine() của module tương ứng', async () => {
+      realEstateListingsService.listMine.mockResolvedValue([{ id: 'rel-1' }]);
+      repo.listOpenByTargetTypeAndIds.mockResolvedValue([]);
+      await service.listMineOpen('owner-1', ListableTargetType.REAL_ESTATE_LISTING);
+      expect(realEstateListingsService.listMine).toHaveBeenCalledWith('owner-1');
+      expect(repo.listOpenByTargetTypeAndIds).toHaveBeenCalledWith(ListableTargetType.REAL_ESTATE_LISTING, ['rel-1']);
+      expect(jobListingsService.listMine).not.toHaveBeenCalled();
+    });
+
+    it('place: trả mảng rỗng ngay, KHÔNG gọi repo (không có khái niệm chủ tin đơn)', async () => {
+      const result = await service.listMineOpen('owner-1', ListableTargetType.PLACE);
+      expect(result).toEqual([]);
+      expect(repo.listOpenByTargetTypeAndIds).not.toHaveBeenCalled();
+    });
+
+    it('không có tin nào -> không gọi repo với mảng rỗng vô ích (repo tự xử lý, nhưng service vẫn gọi đúng tham số rỗng)', async () => {
+      jobListingsService.listMine.mockResolvedValue([]);
+      repo.listOpenByTargetTypeAndIds.mockResolvedValue([]);
+      const result = await service.listMineOpen('owner-1', ListableTargetType.JOB_LISTING);
+      expect(repo.listOpenByTargetTypeAndIds).toHaveBeenCalledWith(ListableTargetType.JOB_LISTING, []);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('confirmStillValid()', () => {
+    it('báo cáo không tồn tại -> NotFoundException', async () => {
+      repo.findById.mockResolvedValue(null);
+      await expect(service.confirmStillValid('lr-x', 'owner-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('không phải chủ tin -> ForbiddenException, KHÔNG đổi trạng thái', async () => {
+      repo.findById.mockResolvedValue(row({ targetType: ListableTargetType.JOB_LISTING, targetId: 'job-1' }));
+      jobListingsService.getMine.mockRejectedValue(new NotFoundException());
+      await expect(service.confirmStillValid('lr-1', 'stranger')).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('đã xử lý rồi (không còn open) -> ConflictException', async () => {
+      repo.findById.mockResolvedValue(row({ targetType: ListableTargetType.JOB_LISTING, targetId: 'job-1', status: ListingReportStatus.RESOLVED }));
+      jobListingsService.getMine.mockResolvedValue({ id: 'job-1' });
+      await expect(service.confirmStillValid('lr-1', 'owner-1')).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('chủ tin, báo cáo đang open -> đổi SELF_CONFIRMED (KHÔNG phải RESOLVED), gắn resolver_id/resolved_at', async () => {
+      repo.findById.mockResolvedValue(row({ targetType: ListableTargetType.JOB_LISTING, targetId: 'job-1', status: ListingReportStatus.OPEN }));
+      jobListingsService.getMine.mockResolvedValue({ id: 'job-1' });
+      const result = await service.confirmStillValid('lr-1', 'owner-1');
+      expect(result.status).toBe(ListingReportStatus.SELF_CONFIRMED);
+      expect(result.status).not.toBe(ListingReportStatus.RESOLVED);
+      expect(result.resolved_at).not.toBeNull();
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ resolverId: 'owner-1', status: ListingReportStatus.SELF_CONFIRMED }));
+    });
+
+    it('place: isOwnListing luôn false -> ForbiddenException ngay cả khi gọi đúng id thật', async () => {
+      repo.findById.mockResolvedValue(row({ targetType: ListableTargetType.PLACE, targetId: 'place-1', status: ListingReportStatus.OPEN }));
+      await expect(service.confirmStillValid('lr-1', 'any-user')).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 });
