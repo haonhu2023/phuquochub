@@ -39,6 +39,8 @@ describe('DashboardNav', () => {
 
     expect(screen.getByRole('link', { name: 'Tổng quan' })).toHaveAttribute('href', '/dashboard');
     expect(screen.getByRole('link', { name: 'Địa điểm của tôi' })).toHaveAttribute('href', '/dashboard/places');
+    // Giai đoạn 3 (chiến lược data-hub) — luôn hiện, cùng lý do 'Địa điểm của tôi'.
+    expect(screen.getByRole('link', { name: 'Đặt chỗ của cơ sở tôi' })).toHaveAttribute('href', '/dashboard/bookings');
     expect(screen.getByRole('link', { name: 'Hướng dẫn' })).toHaveAttribute('href', '/dashboard/help');
     expect(screen.queryByRole('link', { name: 'Bài viết' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Nội dung website' })).not.toBeInTheDocument();

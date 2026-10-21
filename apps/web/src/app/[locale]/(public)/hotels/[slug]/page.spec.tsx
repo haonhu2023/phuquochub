@@ -85,6 +85,15 @@ describe('HotelDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026)', (
   });
 });
 
+// Giai đoạn 3 (chiến lược data-hub) — "đặt chỗ" nối vào web. Chỉ xác nhận render + entityType đúng
+// loại trang, hành vi submit đã test riêng ở BookingButton.spec.tsx.
+describe('HotelDetailPage — nút Đặt chỗ (giai đoạn 3)', () => {
+  it('render nút "Đặt chỗ"', async () => {
+    await renderPage(hotel());
+    expect(screen.getByRole('button', { name: 'Đặt chỗ' })).toBeInTheDocument();
+  });
+});
+
 // 2026-09-17 (real-data pass): trước bản sửa này, getHotel() được gọi KHÔNG kèm locale nên
 // /en/hotels/{slug} luôn nhận nội dung mặc định của server bất kể route — xác nhận trực tiếp trên
 // production rằng API đã hỗ trợ ?locale= (trả nội dung en THẬT), lỗi chỉ ở phía web.

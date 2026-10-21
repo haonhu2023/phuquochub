@@ -40,6 +40,10 @@ export function DashboardNav() {
   const items: Array<{ href: string; label: string; show: boolean }> = [
     { href: '/dashboard', label: 'Tổng quan', show: true },
     { href: '/dashboard/places', label: 'Địa điểm của tôi', show: !caps.canEditorial },
+    // Giai đoạn 3 (chiến lược data-hub) — LUÔN hiện, cùng lý do 'Địa điểm của tôi': không cần quyền
+    // đặc biệt để VÀO trang (GET /bookings/mine tự lọc theo grant của người gọi, trả rỗng nếu
+    // không quản lý cơ sở nào — xem MyBookingsView's empty-state copy, không phải bấm vào để nhận 403).
+    { href: '/dashboard/bookings', label: 'Đặt chỗ của cơ sở tôi', show: true },
     { href: '/dashboard/editorial/places', label: 'Quản lý địa điểm', show: caps.canEditorial },
     { href: '/dashboard/editorial/guides', label: 'Bài viết', show: caps.canEditGuides },
     { href: '/dashboard/content', label: 'Nội dung website', show: caps.canEditSiteContent },

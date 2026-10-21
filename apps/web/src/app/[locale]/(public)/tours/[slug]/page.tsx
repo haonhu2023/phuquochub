@@ -19,6 +19,7 @@ import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/plac
 import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
+import { BookingButton } from '@/modules/bookings/BookingButton';
 import { getPlaceDetailCopy } from '@/modules/places/placeDetail.copy';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
@@ -157,6 +158,8 @@ export default async function TourDetailPage({ params }: Params) {
         <SaveButton targetType="place" targetId={t.id} locale={locale} />
         <ReportButton targetType="place" targetId={t.id} />
       </div>
+      {/* Giai đoạn 3 (chiến lược data-hub) — entity_id = place_id = t.id (ADR-002, cùng id). */}
+      <BookingButton entityType="tour" placeId={t.id} />
 
       <PlaceGallery media={t.media} placeName={t.name} />
 

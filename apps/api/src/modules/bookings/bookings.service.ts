@@ -4,6 +4,10 @@ import { PlacesRepository } from '../places/repositories/places.repository';
 import { AuditService } from '../../core/audit/audit.service';
 import { AvailabilitySlotsRepository } from '../availability/repositories/availability-slots.repository';
 import { AvailabilityService } from '../availability/availability.service';
+import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
+import { AuthorizationService } from '../authz/authorization.service';
+import { grantSatisfies } from '../authz/authorization.util';
+import type { AuthorizationContext } from '../authz/authorization-context';
 import { CreateBookingRequestDto, ListBookingsQueryDto } from './dto/bookings.dto';
 import { generateBookingCode, isValidBookingCodeFormat } from './booking-code';
 import { toBooking, toBookingAdminCard, BookingResponse } from './bookings.mapper';
@@ -18,6 +22,11 @@ import {
 } from './events/booking-events';
 import { paginate, clampLimit, clampPage } from '../../common/pagination';
 
+// Giai đoạn 3 — mã permission GET /bookings/mine dùng để lọc cơ sở caller quản lý (business_claims
+// -> user_roles scope 'managed', xem listMine() bên dưới). Cùng khuôn PLACE_EDIT_MANAGED ở
+// PlacesService.listMine().
+const BOOKING_LIST_MANAGED = 'Booking.List.Managed';
+
 const MAX_CODE_ATTEMPTS = 5;
 
 // Availability & Inventory Foundation — mặc định TTL hold khi client không gửi hold_ttl_minutes
@@ -27,9 +36,14 @@ const DEFAULT_HOLD_TTL_MINUTES = 30;
 
 // Nhãn hành động dùng cho audit `event`/`permission` — khớp quy ước place.status_changed /
 // Place.Approve đã có (ADR-016), KHÔNG phát minh format audit mới.
+// Giai đoạn 3 — confirm/cancel nay có thể được gọi qua Booking.Confirm.Managed/Booking.Cancel.Managed
+// (chủ cơ sở) THAY VÌ chỉ Booking.Confirm/Booking.Cancel (moderator, xem bookings.controller.ts) —
+// audit phải ghi ĐÚNG mã permission route hiện yêu cầu (nhãn hành động, không phải grant cụ thể
+// caller đang giữ), cùng quy ước PlacesService.updateFaqs ghi 'Place.Edit.Managed'. markExpired
+// giữ nguyên Booking.MarkExpired — ngoài phạm vi Giai đoạn 3.
 const TRANSITION_META: Record<BookingTransitionAction, { event: string; permission: string }> = {
-  confirm: { event: 'booking.status_changed', permission: 'Booking.Confirm' },
-  cancel: { event: 'booking.status_changed', permission: 'Booking.Cancel' },
+  confirm: { event: 'booking.status_changed', permission: 'Booking.Confirm.Managed' },
+  cancel: { event: 'booking.status_changed', permission: 'Booking.Cancel.Managed' },
   markExpired: { event: 'booking.status_changed', permission: 'Booking.MarkExpired' },
 };
 
@@ -42,6 +56,8 @@ export class BookingsService {
     @Inject(BOOKING_EVENT_PUBLISHER) private readonly events: BookingEventPublisher,
     private readonly availabilitySlotsRepo: AvailabilitySlotsRepository,
     private readonly availabilityService: AvailabilityService,
+    private readonly userRolesRepo: UserRolesRepository,
+    private readonly authz: AuthorizationService,
   ) {}
 
   async create(dto: CreateBookingRequestDto, customerUserId: string): Promise<BookingResponse> {
@@ -118,6 +134,62 @@ export class BookingsService {
   /** Phase 2 — GET /bookings (Booking.List, admin/staff). KHÔNG public, KHÔNG lọc theo
    * customer_user_id (đây là kênh đặc quyền xem MỌI booking, khác getByCodeForUser). */
   async list(query: ListBookingsQueryDto) {
+    const page = clampPage(query.page);
+    const limit = clampLimit(query.limit);
+    const { items, total } = await this.bookingsRepo.list({
+      ...this.parseListFilters(query),
+      limit,
+      offset: (page - 1) * limit,
+    });
+    return paginate(items.map(toBookingAdminCard), page, limit, total);
+  }
+
+  /** Giai đoạn 3 — GET /bookings/mine (Booking.List.Managed). Chủ/nhân sự cơ sở xem booking của
+   * ĐÚNG cơ sở họ quản lý — KHÔNG nhận place_id từ client (yêu cầu mục Giai đoạn 2 đã thiết lập:
+   * server tự suy id từ grant, không tin id do client gửi lên). Cùng khuôn PlacesService.listMine():
+   * lọc ứng viên theo scope 'managed' + grantSatisfies, rồi RE-CONFIRM qua PDP thật
+   * (authz.canWithGrants) trước khi tin — không chỉ đọc thẳng cột businessId trên grant. */
+  async listMine(userId: string, query: ListBookingsQueryDto) {
+    const grants = await this.userRolesRepo.getScopedGrants(userId);
+    const candidateIds = [
+      ...new Set(
+        grants
+          .filter((g) => g.effect === 'allow' && g.scopeType === 'managed' && g.businessId !== null)
+          .filter((g) => grantSatisfies(g.code, BOOKING_LIST_MANAGED))
+          .map((g) => g.businessId as string),
+      ),
+    ];
+
+    const confirmed = await Promise.all(
+      candidateIds.map(async (placeId) => {
+        const context: AuthorizationContext = {
+          resourceType: 'place',
+          resourceId: placeId,
+          businessId: placeId,
+          ownerId: null,
+        };
+        const canManage = await this.authz.canWithGrants(grants, userId, BOOKING_LIST_MANAGED, () =>
+          Promise.resolve(context),
+        );
+        return canManage ? placeId : null;
+      }),
+    );
+    const placeIds = confirmed.filter((id): id is string => id !== null);
+
+    const page = clampPage(query.page);
+    const limit = clampLimit(query.limit);
+    const { items, total } = await this.bookingsRepo.list({
+      ...this.parseListFilters(query),
+      placeIds,
+      limit,
+      offset: (page - 1) * limit,
+    });
+    return paginate(items.map(toBookingAdminCard), page, limit, total);
+  }
+
+  /** Phần lọc/sắp xếp DÙNG CHUNG giữa list()/listMine() — tách riêng page/limit/placeIds vì mỗi
+   * nơi gọi tính khác nhau (listMine() thêm placeIds sau khi đã xác nhận quyền). */
+  private parseListFilters(query: ListBookingsQueryDto) {
     // module_code là bí danh của entity_type (xem ghi chú tại ListBookingsQueryDto) — nếu cả hai
     // được truyền và khác nhau, đó là input mâu thuẫn, không phải "module_code thắng" hay
     // "entity_type thắng" một cách ngầm định.
@@ -129,25 +201,16 @@ export class BookingsService {
       throw new BadRequestException('entity_type/module_code không hợp lệ');
     }
 
-    const page = clampPage(query.page);
-    const limit = clampLimit(query.limit);
-    const sortBy = query.sort_by ?? 'created_at';
-    const sortDir = query.sort_dir === 'asc' ? 'ASC' : 'DESC'; // mặc định DESC — mới nhất trước
-
-    const { items, total } = await this.bookingsRepo.list({
+    return {
       bookingStatus: query.booking_status,
       paymentStatus: query.payment_status,
       fulfillmentStatus: query.fulfillment_status,
       entityType,
       dateFrom: query.date_from ? new Date(query.date_from) : undefined,
       dateTo: query.date_to ? new Date(query.date_to) : undefined,
-      sortBy,
-      sortDir,
-      limit,
-      offset: (page - 1) * limit,
-    });
-
-    return paginate(items.map(toBookingAdminCard), page, limit, total);
+      sortBy: query.sort_by ?? 'created_at',
+      sortDir: (query.sort_dir === 'asc' ? 'ASC' : 'DESC') as 'ASC' | 'DESC', // mặc định DESC — mới nhất trước
+    };
   }
 
   /** Phase 2 — POST /bookings/:id/confirm (Booking.Confirm). pending -> confirmed. */

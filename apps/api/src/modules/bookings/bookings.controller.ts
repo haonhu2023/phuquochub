@@ -1,9 +1,11 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { RequirePermissions } from '../authz/decorators/require-permissions.decorator';
+import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { CurrentUser, AuthPrincipal } from '../authz/decorators/current-user.decorator';
 import { BookingsService } from './bookings.service';
 import { CreateBookingRequestDto, ListBookingsQueryDto } from './dto/bookings.dto';
+import { BOOKING_AUTHZ_RESOLVER } from './resolvers/booking-authz.resolver';
 
 // Booking Request Foundation (create + đọc theo booking_code) + Phase 2 Booking Application Layer
 // (query/update trạng thái đặc quyền cho admin/staff). KHÔNG payment/inventory thật ở cả hai.
@@ -18,6 +20,19 @@ export class BookingsController {
   @RequirePermissions('Booking.List')
   list(@Query() query: ListBookingsQueryDto) {
     return this.bookingsService.list(query);
+  }
+
+  // Giai đoạn 3 — ĐẶT TRƯỚC ':bookingCode' (một segment, cùng rủi ro "literal vs param" mà
+  // comment ở list() đã nêu): nếu đặt sau, 'mine' sẽ bị :bookingCode nuốt mất, gọi nhầm
+  // getByCodeForUser('mine', ...) thay vì route này. KHÔNG @RequirePermissions (cùng khuôn
+  // PlacesController.listMine): nội dung trả về đã TỰ lọc theo đúng userId của người gọi
+  // (BookingsService.listMine tự suy + re-confirm từng cơ sở qua PDP thật), không có MỘT tài
+  // nguyên chung nào để đặt permission tĩnh/@AuthorizationContext lên — chỉ cần đã đăng nhập
+  // (JwtAuthGuard chặn trước); permissions.guard.ts's nhánh "không khai permission → chỉ cần xác
+  // thực" áp dụng ở đây.
+  @Get('mine')
+  listMine(@Query() query: ListBookingsQueryDto, @CurrentUser() user: AuthPrincipal) {
+    return this.bookingsService.listMine(user.sub, query);
   }
 
   @Post()
@@ -40,14 +55,29 @@ export class BookingsController {
   // Phase 2 — chỉ 3 hành động chuyển trạng thái được phép, KHÔNG có PATCH tuỳ ý toàn bộ entity
   // (yêu cầu mục B). `:id` là uuid nội bộ (kênh đặc quyền, khác booking_code công khai ở trên) —
   // cùng khuôn PlacesController (`PATCH/DELETE/:id/approve` dùng id, không dùng slug).
+  // Giai đoạn 3 — hậu tố .Managed (thay vì .Confirm/.Cancel trơn): grant unscoped của moderator
+  // (rank "any") vẫn thoả yêu cầu này qua grantSatisfies (ADR-019 D6, SCOPE_RANK any ≥ managed) —
+  // KHÔNG cần đổi migration cũ của moderator. Mới mở thêm: business_manager/business_owner giữ
+  // grant CÓ hậu tố .Managed (AddBookingManagedPermissions) + context đúng cơ sở của chính
+  // booking này (BookingAuthzResolver, vì :id là id của booking, KHÔNG phải id của place).
   @Post(':id/confirm')
-  @RequirePermissions('Booking.Confirm')
+  @RequirePermissions('Booking.Confirm.Managed')
+  @AuthorizationContext({
+    resourceType: 'booking',
+    resource: { from: 'param', name: 'id' },
+    resolver: BOOKING_AUTHZ_RESOLVER,
+  })
   confirm(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
     return this.bookingsService.confirm(id, user.sub);
   }
 
   @Post(':id/cancel')
-  @RequirePermissions('Booking.Cancel')
+  @RequirePermissions('Booking.Cancel.Managed')
+  @AuthorizationContext({
+    resourceType: 'booking',
+    resource: { from: 'param', name: 'id' },
+    resolver: BOOKING_AUTHZ_RESOLVER,
+  })
   cancel(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthPrincipal) {
     return this.bookingsService.cancel(id, user.sub);
   }

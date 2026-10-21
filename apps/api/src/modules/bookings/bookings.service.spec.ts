@@ -16,6 +16,8 @@ import { AuditService } from '../../core/audit/audit.service';
 import { BookingEventPublisher } from './events/booking-events';
 import { AvailabilitySlotsRepository } from '../availability/repositories/availability-slots.repository';
 import { AvailabilityService } from '../availability/availability.service';
+import { UserRolesRepository } from '../rbac/repositories/user-roles.repository';
+import { AuthorizationService } from '../authz/authorization.service';
 import { generateBookingCode } from './booking-code';
 import { BookingStatus } from './booking.enums';
 import { createMock, LooseMock } from '../../../test/helpers/create-mock';
@@ -29,6 +31,8 @@ describe('BookingsService', () => {
   let events: LooseMock<BookingEventPublisher>;
   let availabilitySlotsRepo: LooseMock<AvailabilitySlotsRepository>;
   let availabilityService: LooseMock<AvailabilityService>;
+  let userRolesRepo: LooseMock<UserRolesRepository>;
+  let authz: LooseMock<AuthorizationService>;
   let service: BookingsService;
 
   const dto = {
@@ -57,7 +61,18 @@ describe('BookingsService', () => {
       confirmHoldForBooking: jest.fn(),
       releaseHoldForBooking: jest.fn(),
     });
-    service = new BookingsService(bookingsRepo, placesRepo, audit, events, availabilitySlotsRepo, availabilityService);
+    userRolesRepo = createMock<UserRolesRepository>({ getScopedGrants: jest.fn() });
+    authz = createMock<AuthorizationService>({ canWithGrants: jest.fn() });
+    service = new BookingsService(
+      bookingsRepo,
+      placesRepo,
+      audit,
+      events,
+      availabilitySlotsRepo,
+      availabilityService,
+      userRolesRepo,
+      authz,
+    );
     generateBookingCodeMock.mockReturnValue('ABC23456');
   });
 
@@ -303,7 +318,7 @@ describe('BookingsService', () => {
           entityType: 'booking',
           entityId: 'b1',
           actorId: 'staff1',
-          permission: 'Booking.Confirm',
+          permission: 'Booking.Confirm.Managed',
           context: { from: BookingStatus.PENDING, to: BookingStatus.CONFIRMED },
         }),
       );
@@ -421,6 +436,100 @@ describe('BookingsService', () => {
       await expect(service.confirm('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
       await expect(service.cancel('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
       await expect(service.markExpired('b1', 's1')).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+  });
+
+  describe('listMine (Giai đoạn 3 — GET /bookings/mine, cùng khuôn PlacesService.listMine)', () => {
+    it('không có grant nào → danh sách rỗng (placeIds rỗng truyền xuống repository, nơi thực sự chặn query IN () rỗng)', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([]);
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      const res = await service.listMine('u1', {} as never);
+
+      expect(res).toMatchObject({ data: [], meta: { total: 0 } });
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ placeIds: [] }));
+    });
+
+    it('grant Any/global (businessId null) → KHÔNG phải ứng viên, không gọi PDP, placeIds rỗng', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List', effect: 'allow', scopeType: 'global', businessId: null },
+      ]);
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listMine('u1', {} as never);
+
+      expect(authz.canWithGrants).not.toHaveBeenCalled();
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ placeIds: [] }));
+    });
+
+    it('có grant Booking.List.Managed hiệu lực trên một place → re-confirm qua PDP rồi truyền placeIds xuống repository', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      bookingsRepo.list.mockResolvedValue({ items: [{ id: 'b1' }], total: 1 });
+
+      const res = await service.listMine('u1', {} as never);
+
+      expect(authz.canWithGrants).toHaveBeenCalledWith(expect.any(Array), 'u1', 'Booking.List.Managed', expect.any(Function));
+      const ctx = await authz.canWithGrants.mock.calls[0][3]();
+      expect(ctx).toEqual({ resourceType: 'place', resourceId: 'p1', businessId: 'p1', ownerId: null });
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ placeIds: ['p1'] }));
+      expect(res).toMatchObject({ data: [{ id: 'b1', mapped: 'admin-card' }] });
+    });
+
+    it('PDP xác nhận KHÔNG cho quản lý (vd deny) → loại khỏi placeIds dù có grant candidate', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(false);
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listMine('u1', {} as never);
+
+      expect(bookingsRepo.list).toHaveBeenCalledWith(expect.objectContaining({ placeIds: [] }));
+    });
+
+    it('nhiều business_id quản lý được, grant trùng lặp → placeIds mỗi id một lần', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+        { code: 'Booking.Confirm.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p2' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listMine('u1', {} as never);
+
+      const call = bookingsRepo.list.mock.calls[0][0] as { placeIds: string[] };
+      expect(new Set(call.placeIds)).toEqual(new Set(['p1', 'p2']));
+      expect(call.placeIds).toHaveLength(2);
+    });
+
+    it('entity_type lọc thêm, vẫn kết hợp cùng placeIds đã xác nhận', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+      bookingsRepo.list.mockResolvedValue({ items: [], total: 0 });
+
+      await service.listMine('u1', { entity_type: 'hotel' } as never);
+
+      expect(bookingsRepo.list).toHaveBeenCalledWith(
+        expect.objectContaining({ placeIds: ['p1'], entityType: 'hotel' }),
+      );
+    });
+
+    it('module_code/entity_type mâu thuẫn → BadRequest, không query repository', async () => {
+      userRolesRepo.getScopedGrants.mockResolvedValue([
+        { code: 'Booking.List.Managed', effect: 'allow', scopeType: 'managed', businessId: 'p1' },
+      ]);
+      authz.canWithGrants.mockResolvedValue(true);
+
+      await expect(
+        service.listMine('u1', { module_code: 'hotel', entity_type: 'tour' } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(bookingsRepo.list).not.toHaveBeenCalled();
     });
   });
 });

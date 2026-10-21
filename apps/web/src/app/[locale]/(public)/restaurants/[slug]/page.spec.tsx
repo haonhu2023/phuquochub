@@ -83,6 +83,15 @@ describe('RestaurantDetailPage — Báo sai/Lưu tin (giai đoạn 1, 21/10/2026
   });
 });
 
+// Giai đoạn 3 (chiến lược data-hub) — "đặt chỗ" nối vào web. Chỉ xác nhận render, hành vi submit đã
+// test riêng ở BookingButton.spec.tsx.
+describe('RestaurantDetailPage — nút Đặt chỗ (giai đoạn 3)', () => {
+  it('render nút "Đặt chỗ"', async () => {
+    await renderPage(restaurant());
+    expect(screen.getByRole('button', { name: 'Đặt chỗ' })).toBeInTheDocument();
+  });
+});
+
 // 2026-09-17 (real-data pass): trước bản sửa này, getRestaurant() được gọi KHÔNG kèm locale nên
 // /en/restaurants/{slug} luôn nhận nội dung mặc định của server bất kể route.
 describe('RestaurantDetailPage/generateMetadata — getRestaurant() phải nhận đúng locale từ route', () => {

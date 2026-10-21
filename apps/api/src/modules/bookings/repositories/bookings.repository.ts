@@ -61,7 +61,12 @@ export class BookingsRepository {
 
   /** Phase 2 — GET /bookings (Booking.List). QueryBuilder (không raw SQL — Booking không có cột
    * geography cần ST_* như PlacesRepository, nên QueryBuilder là công cụ phù hợp hơn, cùng tiền
-   * lệ đã có ở SourceAttributionsRepository). */
+   * lệ đã có ở SourceAttributionsRepository).
+   *
+   * Giai đoạn 3 — `placeIds` (optional) giới hạn kết quả về đúng các cơ sở BookingsService đã xác
+   * nhận caller quản lý (GET /bookings/mine) — repository KHÔNG tự quyết định quyền, chỉ áp bộ lọc
+   * đã được service tính toán sẵn. `placeIds` là mảng RỖNG (khác undefined) nghĩa là caller không
+   * quản lý cơ sở nào — trả rỗng ngay, không query (mệnh đề `IN ()` rỗng không hợp lệ trong SQL). */
   async list(params: {
     bookingStatus?: BookingStatus;
     paymentStatus?: BookingPaymentStatus;
@@ -69,13 +74,21 @@ export class BookingsRepository {
     entityType?: string;
     dateFrom?: Date;
     dateTo?: Date;
+    placeIds?: string[];
     sortBy: BookingSortField;
     sortDir: 'ASC' | 'DESC';
     limit: number;
     offset: number;
   }): Promise<{ items: Booking[]; total: number }> {
+    if (params.placeIds && params.placeIds.length === 0) {
+      return { items: [], total: 0 };
+    }
+
     const qb = this.bookings.createQueryBuilder('b');
 
+    if (params.placeIds) {
+      qb.andWhere('b.placeId IN (:...placeIds)', { placeIds: params.placeIds });
+    }
     if (params.bookingStatus) {
       qb.andWhere('b.bookingStatus = :bookingStatus', { bookingStatus: params.bookingStatus });
     }

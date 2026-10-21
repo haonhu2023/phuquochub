@@ -17,6 +17,7 @@ import { getPlaceMapLinks } from '@/modules/map/mapLinks';
 import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
+import { BookingButton } from '@/modules/bookings/BookingButton';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_HOTELS_LABEL: Record<Locale, string> = { vi: 'Khách sạn', en: 'Hotels' };
@@ -123,6 +124,8 @@ export default async function HotelDetailPage({ params }: Params) {
         <ReportButton targetType="place" targetId={h.id} />
       </div>
       {h.address && <p style={{ color: '#4b5563' }}>{h.address}</p>}
+      {/* Giai đoạn 3 (chiến lược data-hub) — entity_id = place_id = h.id (ADR-002, cùng id). */}
+      <BookingButton entityType="hotel" placeId={h.id} />
       {/* Lỗi thật đã sửa 16/10/2026: trước đây CHỈ mở toạ độ — xem ghi chú đầy đủ ở mapLinks.ts.
           `googlePlaceId: h.google_place_id` (bổ sung cùng ngày) — API chỉ trả giá trị này khi ĐỦ
           ĐIỀU KIỆN (đã xác minh); `null` thì helper tự fallback sang tìm theo tên/địa chỉ. */}

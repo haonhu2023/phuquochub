@@ -2,6 +2,8 @@ import { THROTTLER_LIMIT, THROTTLER_TTL } from '@nestjs/throttler/dist/throttler
 import { BookingsController } from './bookings.controller';
 import { IS_PUBLIC_KEY } from '../authz/decorators/public.decorator';
 import { PERMISSIONS_KEY } from '../authz/decorators/require-permissions.decorator';
+import { AUTHZ_CONTEXT_KEY } from '../authz/authorization-context';
+import { BOOKING_AUTHZ_RESOLVER } from './resolvers/booking-authz.resolver';
 
 // Controller mỏng (chỉ uỷ quyền) — giá trị kiểm thử nằm ở METADATA của decorator, nơi ranh giới
 // bảo mật thực sự được khai báo (cùng khuôn PlacesController spec).
@@ -12,7 +14,7 @@ function handlerOf(name: Handler): object {
 }
 
 describe('BookingsController — ranh giới công khai / đặc quyền / rate-limit', () => {
-  it.each<Handler>(['create', 'getByCode', 'list', 'confirm', 'cancel', 'markExpired'])(
+  it.each<Handler>(['create', 'getByCode', 'list', 'listMine', 'confirm', 'cancel', 'markExpired'])(
     'route `%s` KHÔNG @Public() — tất cả đều yêu cầu đăng nhập',
     (name) => {
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, handlerOf(name))).not.toBe(true);
@@ -31,17 +33,32 @@ describe('BookingsController — ranh giới công khai / đặc quyền / rate-
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('list'))).toEqual(['Booking.List']);
   });
 
-  it('confirm yêu cầu Booking.Confirm', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('confirm'))).toEqual(['Booking.Confirm']);
+  it('confirm yêu cầu Booking.Confirm.Managed (Giai đoạn 3 — rank "any" của grant moderator cũ vẫn thoả, xem ADR-019 D6)', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('confirm'))).toEqual(['Booking.Confirm.Managed']);
   });
 
-  it('cancel yêu cầu Booking.Cancel', () => {
-    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('cancel'))).toEqual(['Booking.Cancel']);
+  it('cancel yêu cầu Booking.Cancel.Managed', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('cancel'))).toEqual(['Booking.Cancel.Managed']);
   });
 
-  it('markExpired yêu cầu Booking.MarkExpired', () => {
+  it('markExpired yêu cầu Booking.MarkExpired (không đổi — ngoài phạm vi Giai đoạn 3)', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('markExpired'))).toEqual(['Booking.MarkExpired']);
   });
+
+  it('listMine (Giai đoạn 3) KHÔNG khai @RequirePermissions — tự lọc theo userId trong service, cùng khuôn PlacesController.listMine', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, handlerOf('listMine'))).toBeUndefined();
+  });
+
+  it.each<Handler>(['confirm', 'cancel'])(
+    'route `%s` (Giai đoạn 3, hậu tố .Managed) khai @AuthorizationContext đúng BOOKING_AUTHZ_RESOLVER, resource từ param :id',
+    (name) => {
+      expect(Reflect.getMetadata(AUTHZ_CONTEXT_KEY, handlerOf(name))).toEqual({
+        resourceType: 'booking',
+        resource: { from: 'param', name: 'id' },
+        resolver: BOOKING_AUTHZ_RESOLVER,
+      });
+    },
+  );
 
   it('create bị throttle (chống spam tạo booking)', () => {
     const target = handlerOf('create');

@@ -112,6 +112,33 @@ describe('BookingsRepository', () => {
       expect(res.total).toBe(42);
       expect(res.items).toHaveLength(2);
     });
+
+    describe('placeIds (Giai đoạn 3 — GET /bookings/mine)', () => {
+      it('placeIds RỖNG → trả rỗng ngay, KHÔNG gọi createQueryBuilder (mệnh đề IN () rỗng không hợp lệ trong SQL)', async () => {
+        const res = await sut.list({ sortBy: 'created_at', sortDir: 'DESC', limit: 20, offset: 0, placeIds: [] });
+
+        expect(bookings.createQueryBuilder).not.toHaveBeenCalled();
+        expect(res).toEqual({ items: [], total: 0 });
+      });
+
+      it('placeIds có giá trị → thêm andWhere IN đúng danh sách', async () => {
+        const qb = makeQb();
+        bookings.createQueryBuilder.mockReturnValue(qb);
+
+        await sut.list({ sortBy: 'created_at', sortDir: 'DESC', limit: 20, offset: 0, placeIds: ['p1', 'p2'] });
+
+        expect(qb.andWhere).toHaveBeenCalledWith('b.placeId IN (:...placeIds)', { placeIds: ['p1', 'p2'] });
+      });
+
+      it('placeIds vắng mặt (undefined, kênh admin GET /bookings) → KHÔNG thêm andWhere nào theo place', async () => {
+        const qb = makeQb();
+        bookings.createQueryBuilder.mockReturnValue(qb);
+
+        await sut.list({ sortBy: 'created_at', sortDir: 'DESC', limit: 20, offset: 0 });
+
+        expect(qb.andWhere).not.toHaveBeenCalledWith(expect.stringContaining('placeId'), expect.anything());
+      });
+    });
   });
 
   it('existsByCode: uỷ quyền repo.exists theo bookingCode', async () => {
