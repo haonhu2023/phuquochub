@@ -46,6 +46,11 @@
   color: var(--muted);
   font-size: 0.8rem;
 }
+.confirmedVisitBadge {
+  color: var(--success, #15803d);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
 .reviewContent {
   margin: 0.4rem 0 0;
   color: var(--fg);

@@ -33,6 +33,26 @@ describe('BookingsRepository', () => {
     expect(res).toEqual({ id: 'b1' });
   });
 
+  describe('findLatestConfirmedByUserAndPlace (Giai đoạn 4 — "đã xác nhận từng đến")', () => {
+    it('lọc ĐÚNG customerUserId + placeId + bookingStatus=confirmed, mới nhất trước', async () => {
+      bookings.findOne.mockResolvedValue({ id: 'bk-1' });
+
+      const res = await sut.findLatestConfirmedByUserAndPlace('u1', 'p1');
+
+      expect(bookings.findOne).toHaveBeenCalledWith({
+        where: { customerUserId: 'u1', placeId: 'p1', bookingStatus: BookingStatus.CONFIRMED },
+        order: { createdAt: 'DESC' },
+      });
+      expect(res).toEqual({ id: 'bk-1' });
+    });
+
+    it('không có booking confirmed nào → null', async () => {
+      bookings.findOne.mockResolvedValue(null);
+      const res = await sut.findLatestConfirmedByUserAndPlace('u1', 'p1');
+      expect(res).toBeNull();
+    });
+  });
+
   it('updateStatus: chỉ update cột bookingStatus, không đụng trường nào khác', async () => {
     await sut.updateStatus('b1', BookingStatus.CONFIRMED);
     expect(bookings.update).toHaveBeenCalledWith({ id: 'b1' }, { bookingStatus: BookingStatus.CONFIRMED });

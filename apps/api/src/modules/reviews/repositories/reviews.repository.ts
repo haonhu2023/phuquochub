@@ -16,6 +16,8 @@ export interface ReviewRow {
   user_id: string;
   author_name: string;
   author_avatar_url: string | null;
+  /** Giai đoạn 4 — null khi review không gắn booking confirmed nào lúc tạo. */
+  verified_booking_id: string | null;
   /** Media đã published, non-deleted của review này, theo sort_order rồi created_at/id — nạp
    * bằng một truy vấn batch riêng (MediaRepository.listPublishedByReviewIds), KHÔNG phải từ SQL
    * SELECT phía trên (join reviews+users) nên không camelCase lẫn snake_case trong CÙNG câu SQL. */
@@ -28,6 +30,9 @@ export interface NewReviewWithMedia {
   rating: number;
   content: string | null;
   mediaIds: string[];
+  /** Giai đoạn 4 — id booking confirmed đã xác nhận ở ReviewsService.create(), hoặc null nếu
+   * không có. Repository KHÔNG tự tra cứu booking — chỉ ghi giá trị đã được quyết định sẵn. */
+  verifiedBookingId: string | null;
 }
 
 export interface CreatedReviewWithMedia {
@@ -71,7 +76,7 @@ export class ReviewsRepository {
    */
   async listPublishedByPlace(placeId: string): Promise<ReviewRow[]> {
     const rows: Array<Omit<ReviewRow, 'media'>> = await this.repo.query(
-      `SELECT r.id, r.rating, r.content, r.status, r.created_at,
+      `SELECT r.id, r.rating, r.content, r.status, r.created_at, r.verified_booking_id,
               r.user_id, u.display_name AS author_name, u.avatar_url AS author_avatar_url
        FROM reviews r
        JOIN users u ON u.id = r.user_id
@@ -113,6 +118,7 @@ export class ReviewsRepository {
         rating: data.rating,
         content: data.content,
         status: ReviewStatus.PUBLISHED, // O1 — giữ nguyên auto-publish, không đổi hành vi
+        verifiedBookingId: data.verifiedBookingId,
       });
       const saved = await reviewRepo.save(review);
 

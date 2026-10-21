@@ -13,6 +13,7 @@ jest.mock('./reviews.mapper', () => ({
 import { ReviewsService } from './reviews.service';
 import { ReviewsRepository } from './repositories/reviews.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
+import { BookingsRepository } from '../bookings/repositories/bookings.repository';
 import { AuditService } from '../../core/audit/audit.service';
 import type { ModerationEventPublisher } from '../moderation/events/moderation-events';
 import type { ModerationReportsService } from '../moderation/moderation-reports.service';
@@ -23,6 +24,7 @@ import { createMock, LooseMock } from '../../../test/helpers/create-mock';
 describe('ReviewsService', () => {
   let reviewsRepo: LooseMock<ReviewsRepository>;
   let placesRepo: LooseMock<PlacesRepository>;
+  let bookingsRepo: LooseMock<BookingsRepository>;
   let audit: LooseMock<AuditService>;
   let events: LooseMock<ModerationEventPublisher>;
   let moderationReports: LooseMock<ModerationReportsService>;
@@ -37,11 +39,15 @@ describe('ReviewsService', () => {
       existsPublished: jest.fn(),
     });
     placesRepo = createMock<PlacesRepository>({ existsById: jest.fn() });
+    bookingsRepo = createMock<BookingsRepository>({ findLatestConfirmedByUserAndPlace: jest.fn() });
     audit = createMock<AuditService>({ record: jest.fn() });
     events = createMock<ModerationEventPublisher>({ publish: jest.fn() });
     moderationReports = createMock<ModerationReportsService>({ report: jest.fn() });
     mediaUrl = createMock<MediaUrlService>({ fileUrl: jest.fn() });
-    service = new ReviewsService(reviewsRepo, placesRepo, audit, events, moderationReports, mediaUrl);
+    // Mặc định KHÔNG có booking confirmed nào — giữ nguyên hành vi mọi test create() hiện có
+    // (Giai đoạn 4 chưa tồn tại với các test đó); describe riêng bên dưới override thành có booking.
+    bookingsRepo.findLatestConfirmedByUserAndPlace.mockResolvedValue(null);
+    service = new ReviewsService(reviewsRepo, placesRepo, bookingsRepo, audit, events, moderationReports, mediaUrl);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -91,6 +97,7 @@ describe('ReviewsService', () => {
       rating: 5,
       content: 'Đẹp',
       mediaIds: [],
+      verifiedBookingId: null,
     });
   });
 
@@ -104,6 +111,35 @@ describe('ReviewsService', () => {
     expect(reviewsRepo.createWithMedia).toHaveBeenCalledWith(
       expect.objectContaining({ mediaIds: ['m1', 'm2'] }),
     );
+  });
+
+  describe('create — "đã xác nhận từng đến" (Giai đoạn 4, chiến lược data-hub)', () => {
+    it('có booking confirmed cho ĐÚNG user+place → truyền verifiedBookingId xuống repository', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+      reviewsRepo.existsByUser.mockResolvedValue(false);
+      bookingsRepo.findLatestConfirmedByUserAndPlace.mockResolvedValue({ id: 'bk-1' } as never);
+      reviewsRepo.createWithMedia.mockResolvedValue({ review: { id: 'r9' }, publishedMediaIds: [] });
+
+      await service.create('p1', { rating: 5 }, 'u1');
+
+      expect(bookingsRepo.findLatestConfirmedByUserAndPlace).toHaveBeenCalledWith('u1', 'p1');
+      expect(reviewsRepo.createWithMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ verifiedBookingId: 'bk-1' }),
+      );
+    });
+
+    it('không có booking confirmed nào → verifiedBookingId null, KHÔNG chặn tạo review ("không bắt buộc ngay")', async () => {
+      placesRepo.existsById.mockResolvedValue(true);
+      reviewsRepo.existsByUser.mockResolvedValue(false);
+      bookingsRepo.findLatestConfirmedByUserAndPlace.mockResolvedValue(null);
+      reviewsRepo.createWithMedia.mockResolvedValue({ review: { id: 'r9' }, publishedMediaIds: [] });
+
+      await expect(service.create('p1', { rating: 5 }, 'u1')).resolves.toBeUndefined();
+
+      expect(reviewsRepo.createWithMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ verifiedBookingId: null }),
+      );
+    });
   });
 
   it('create: sau khi commit ghi audit review.created + media.auto_published cho MỖI media đã publish', async () => {

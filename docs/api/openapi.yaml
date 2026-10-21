@@ -4071,6 +4071,13 @@ components:
             theo sort_order rồi created_at/id. Media pending/hidden/rejected/xoá mềm không bao giờ
             xuất hiện ở đây.
           items: { $ref: '#/components/schemas/Media' }
+        confirmed_visit:
+          type: boolean
+          description: >-
+            Giai đoạn 4 (chiến lược data-hub) — true khi người viết có một booking `confirmed` tại
+            địa điểm này lúc tạo review ("đã xác nhận từng đến"), khác với đánh giá ẩn danh. Tự
+            server xác định lúc tạo (không nhận từ client), bất biến sau đó. Không bắt buộc — review
+            vẫn tạo được bình thường khi false/không có booking nào.
     BookingItem:
       type: object
       properties:

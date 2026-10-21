@@ -19,6 +19,7 @@ function baseRow(overrides: Partial<ReviewRow> = {}): ReviewRow {
     author_name: 'Nhu',
     author_avatar_url: null,
     media: [],
+    verified_booking_id: null,
     ...overrides,
   };
 }
@@ -37,7 +38,25 @@ describe('toReview', () => {
       status: ReviewStatus.PUBLISHED,
       created_at: row.created_at,
       media: [],
+      confirmed_visit: false,
     });
+  });
+
+  it('Giai đoạn 4 — verified_booking_id CÓ giá trị → confirmed_visit true, KHÔNG lộ chính verified_booking_id ra response', () => {
+    const row = baseRow({ verified_booking_id: 'bk-1' });
+
+    const res = toReview(row, noResolve);
+
+    expect(res.confirmed_visit).toBe(true);
+    expect(res).not.toHaveProperty('verified_booking_id');
+  });
+
+  it('Giai đoạn 4 — verified_booking_id null → confirmed_visit false', () => {
+    const row = baseRow({ verified_booking_id: null });
+
+    const res = toReview(row, noResolve);
+
+    expect(res.confirmed_visit).toBe(false);
   });
 
   it('review có một media published → media chứa đúng một phần tử đã qua toMedia()', () => {

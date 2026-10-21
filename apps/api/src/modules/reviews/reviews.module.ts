@@ -7,6 +7,7 @@ import { ReviewsController } from './reviews.controller';
 import { PlacesModule } from '../places/places.module';
 import { MediaModule } from '../media/media.module';
 import { ModerationCoreModule } from '../moderation/moderation-core.module';
+import { BookingsModule } from '../bookings/bookings.module';
 
 // `ModerationCoreModule` (not the full `ModerationModule`) imported for MODERATION_EVENT_PUBLISHER
 // (T1 emits ReviewCreated/MediaAutoPublished through it, ADR-018 D12) and, since M5,
@@ -18,7 +19,7 @@ import { ModerationCoreModule } from '../moderation/moderation-core.module';
 // `moderation-core.module.ts`'s comment for the full explanation). No cycle: `ModerationCoreModule`
 // imports nothing beyond TypeORM entities.
 @Module({
-  imports: [TypeOrmModule.forFeature([Review]), PlacesModule, MediaModule, ModerationCoreModule],
+  imports: [TypeOrmModule.forFeature([Review]), PlacesModule, MediaModule, ModerationCoreModule, BookingsModule],
   controllers: [ReviewsController],
   providers: [ReviewsRepository, ReviewsService],
   exports: [ReviewsRepository, ReviewsService],

@@ -12,6 +12,10 @@ export interface ReviewResponse {
   status: string;
   created_at: Date;
   media: MediaResponse[];
+  /** Giai đoạn 4 (chiến lược data-hub) — true khi review gắn một booking confirmed lúc tạo. Chỉ
+   * boolean ra ngoài — KHÔNG lộ verified_booking_id thật (chi tiết booking của người viết là
+   * riêng tư, badge công khai chỉ cần biết có/không). */
+  confirmed_visit: boolean;
 }
 
 // `resolveFileUrl` (nhận MEDIA ID) truyền xuống toMedia() cho từng ảnh gắn theo review — cùng
@@ -29,5 +33,6 @@ export function toReview(row: ReviewRow, resolveFileUrl: (mediaId: string) => st
     status: row.status,
     created_at: row.created_at,
     media: row.media.map((m) => toMedia(m, resolveFileUrl)),
+    confirmed_visit: row.verified_booking_id !== null,
   };
 }

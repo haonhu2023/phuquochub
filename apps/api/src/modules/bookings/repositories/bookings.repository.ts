@@ -59,6 +59,20 @@ export class BookingsRepository {
     return this.bookings.findOne({ where: { id } });
   }
 
+  /** Giai đoạn 4 (chiến lược data-hub) — dùng cho ReviewsService.create() để gắn "đã xác nhận từng
+   * đến" (verified_booking_id). CHỈ `confirmed` tính — `pending` (chưa ai xác nhận) và
+   * `cancelled`/`expired` (không hề diễn ra) không phải bằng chứng đã từng đến; `fulfillmentStatus`
+   * KHÔNG dùng được ở đây dù tên gợi ý phù hợp hơn — cột đó chưa từng được ghi bởi bất kỳ luồng nào
+   * trong codebase (xem booking-status.transition.ts), nên `confirmed` là tín hiệu thật mạnh nhất
+   * đang có. Mới nhất trước — nếu khách có nhiều booking confirmed tại cùng địa điểm, gắn với lần
+   * gần nhất (không ảnh hưởng ý nghĩa "đã từng đến", chỉ chọn một đại diện duy nhất). */
+  findLatestConfirmedByUserAndPlace(customerUserId: string, placeId: string): Promise<Booking | null> {
+    return this.bookings.findOne({
+      where: { customerUserId, placeId, bookingStatus: BookingStatus.CONFIRMED },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   /** Phase 2 — GET /bookings (Booking.List). QueryBuilder (không raw SQL — Booking không có cột
    * geography cần ST_* như PlacesRepository, nên QueryBuilder là công cụ phù hợp hơn, cùng tiền
    * lệ đã có ở SourceAttributionsRepository).

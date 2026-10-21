@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ReviewsRepository } from './repositories/reviews.repository';
 import { PlacesRepository } from '../places/repositories/places.repository';
+import { BookingsRepository } from '../bookings/repositories/bookings.repository';
 import { AuditService } from '../../core/audit/audit.service';
 import { MediaUrlService } from '../../core/media-url/media-url.service';
 import {
@@ -22,6 +23,7 @@ export class ReviewsService {
   constructor(
     private readonly reviewsRepo: ReviewsRepository,
     private readonly placesRepo: PlacesRepository,
+    private readonly bookingsRepo: BookingsRepository,
     private readonly audit: AuditService,
     @Inject(MODERATION_EVENT_PUBLISHER)
     private readonly events: ModerationEventPublisher,
@@ -66,12 +68,18 @@ export class ReviewsService {
       throw new ConflictException('Bạn đã đánh giá địa điểm này rồi');
     }
 
+    // Giai đoạn 4 (chiến lược data-hub) — "không bắt buộc ngay": KHÔNG chặn tạo review nếu không
+    // có booking, chỉ gắn bằng chứng khi CÓ. Server tự tra cứu (không nhận booking_id từ client —
+    // cùng nguyên tắc "server tự suy, không tin client" đã áp dụng xuyên suốt Giai đoạn 2/3).
+    const confirmedBooking = await this.bookingsRepo.findLatestConfirmedByUserAndPlace(userId, placeId);
+
     const { review, publishedMediaIds } = await this.reviewsRepo.createWithMedia({
       placeId,
       userId,
       rating: dto.rating,
       content: dto.content ?? null,
       mediaIds: dto.media_ids ?? [],
+      verifiedBookingId: confirmedBooking?.id ?? null,
     });
 
     // Đến được đây nghĩa là transaction đã COMMIT thành công (createWithMedia ném lỗi và rollback

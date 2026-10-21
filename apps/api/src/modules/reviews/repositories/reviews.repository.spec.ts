@@ -118,6 +118,7 @@ describe('ReviewsRepository', () => {
         rating: 5,
         content: 'Đẹp',
         mediaIds: [],
+        verifiedBookingId: null,
       });
 
       expect(reviewRepoInManager.create).toHaveBeenCalledWith({
@@ -126,11 +127,27 @@ describe('ReviewsRepository', () => {
         rating: 5,
         content: 'Đẹp',
         status: ReviewStatus.PUBLISHED,
+        verifiedBookingId: null,
       });
       expect(mediaRepo.attachAndPublish).not.toHaveBeenCalled();
       expect(placesRepo.recalculateRating).toHaveBeenCalledWith('p1', manager);
       expect(result.review.id).toBe('r9');
       expect(result.publishedMediaIds).toEqual([]);
+    });
+
+    it('verifiedBookingId CÓ giá trị (Giai đoạn 4) → ghi thẳng vào entity lúc create (bất biến, ghi một lần)', async () => {
+      await sut.createWithMedia({
+        placeId: 'p1',
+        userId: 'u1',
+        rating: 5,
+        content: null,
+        mediaIds: [],
+        verifiedBookingId: 'bk-1',
+      });
+
+      expect(reviewRepoInManager.create).toHaveBeenCalledWith(
+        expect.objectContaining({ verifiedBookingId: 'bk-1' }),
+      );
     });
 
     it('có media_ids, TẤT CẢ hợp lệ → attachAndPublish trả đủ số lượng, không rollback', async () => {
@@ -142,6 +159,7 @@ describe('ReviewsRepository', () => {
         rating: 4,
         content: null,
         mediaIds: ['m1', 'm2'],
+        verifiedBookingId: null,
       });
 
       expect(mediaRepo.attachAndPublish).toHaveBeenCalledWith(manager, ['m1', 'm2'], 'r9', 'u1');
@@ -153,7 +171,7 @@ describe('ReviewsRepository', () => {
       mediaRepo.attachAndPublish.mockResolvedValue(['m1']); // chỉ 1/2
 
       await expect(
-        sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1', 'm2'] }),
+        sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1', 'm2'], verifiedBookingId: null }),
       ).rejects.toThrow(UnprocessableEntityException);
       expect(placesRepo.recalculateRating).not.toHaveBeenCalled();
     });
@@ -162,13 +180,13 @@ describe('ReviewsRepository', () => {
       mediaRepo.attachAndPublish.mockRejectedValue(new Error('DB lỗi'));
 
       await expect(
-        sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1'] }),
+        sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1'], verifiedBookingId: null }),
       ).rejects.toThrow('DB lỗi');
     });
 
     it('dùng ĐÚNG MỘT transaction cho toàn bộ (ds.transaction chỉ gọi 1 lần)', async () => {
       mediaRepo.attachAndPublish.mockResolvedValue(['m1']);
-      await sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1'] });
+      await sut.createWithMedia({ placeId: 'p1', userId: 'u1', rating: 4, content: null, mediaIds: ['m1'], verifiedBookingId: null });
       expect(ds.transaction).toHaveBeenCalledTimes(1);
     });
   });

@@ -38,6 +38,12 @@ export class Review {
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
+  // Giai đoạn 4 (chiến lược data-hub, AddReviewConfirmedVisit1720010500000) — "đã xác nhận từng
+  // đến", ghi MỘT LẦN lúc tạo (bất biến, cùng nguyên tắc review không có updated_at). null = không
+  // có booking confirmed nào tại thời điểm viết — KHÔNG phải lỗi, chỉ là chưa/không có bằng chứng.
+  @Column({ type: 'uuid', nullable: true })
+  verifiedBookingId!: string | null;
+
   @ManyToOne(() => Place, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'place_id' })
   place!: Place;

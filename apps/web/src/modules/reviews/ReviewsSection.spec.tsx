@@ -35,6 +35,7 @@ function baseReview(overrides: Partial<Review> = {}): Review {
     status: 'published',
     created_at: '2026-07-26T00:00:00Z',
     media: [],
+    confirmed_visit: false,
     ...overrides,
   };
 }
@@ -233,6 +234,25 @@ describe('ReviewsSection', () => {
     // Chỉ có ảnh xem trước cục bộ (nếu có) — không có ảnh review nào được render vì item optimistic
     // luôn có media: [] (createReview trả EmptySuccess, không có media thật để hiển thị ngay).
     expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước).*/ })).toHaveLength(0);
+  });
+
+  describe('confirmed_visit badge (Giai đoạn 4 — "đã xác nhận từng đến")', () => {
+    it('review có confirmed_visit=true → hiện badge', () => {
+      render(<ReviewsSection placeId="p1" initialReviews={[baseReview({ confirmed_visit: true })]} />);
+      expect(screen.getByText('✓ Đã xác nhận từng đến')).toBeInTheDocument();
+    });
+
+    it('review có confirmed_visit=false → KHÔNG hiện badge', () => {
+      render(<ReviewsSection placeId="p1" initialReviews={[baseReview({ confirmed_visit: false })]} />);
+      expect(screen.queryByText('✓ Đã xác nhận từng đến')).not.toBeInTheDocument();
+    });
+
+    it('review mới gửi (optimistic append) KHÔNG tự hiện badge — chưa chắc server có gắn được bằng chứng', async () => {
+      render(<ReviewsSection placeId="p1" initialReviews={[]} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Gửi đánh giá' }));
+      await waitFor(() => expect(mockCreateReview).toHaveBeenCalled());
+      expect(screen.queryByText('✓ Đã xác nhận từng đến')).not.toBeInTheDocument();
+    });
   });
 
   it('does not render the review form for unauthenticated users', () => {

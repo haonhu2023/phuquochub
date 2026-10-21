@@ -24,13 +24,20 @@ interface Props {
 // nhập) — `locale` đã có sẵn trong component (dòng dưới, trước đây không dùng cho văn bản). Phần
 // còn lại của component (form đánh giá khi đã đăng nhập) CHƯA được xác nhận trong lượt nghiệm thu
 // này, cố tình để nguyên, không mở rộng phạm vi sửa.
-const TEXT: Record<Locale, { sectionLabel: string; title: (n: number) => string; empty: string; loginCta: string; loginSuffix: string }> = {
+const TEXT: Record<
+  Locale,
+  { sectionLabel: string; title: (n: number) => string; empty: string; loginCta: string; loginSuffix: string; confirmedVisit: string }
+> = {
   vi: {
     sectionLabel: 'Đánh giá',
     title: (n) => `Đánh giá (${n})`,
     empty: 'Chưa có đánh giá nào. Hãy là người đầu tiên!',
     loginCta: 'Đăng nhập',
     loginSuffix: 'để viết đánh giá.',
+    // Giai đoạn 4 — cố ý KHÔNG dùng "đã xác minh"/"chính thức" (cùng kỷ luật trust.ts: tránh cụm từ
+    // tạo cảm giác bảo đảm pháp lý mà hệ thống không chứng minh được) — chỉ nói đúng những gì biết:
+    // người viết có một lượt đặt chỗ đã được cơ sở xác nhận tại địa điểm này.
+    confirmedVisit: '✓ Đã xác nhận từng đến',
   },
   en: {
     sectionLabel: 'Reviews',
@@ -38,6 +45,7 @@ const TEXT: Record<Locale, { sectionLabel: string; title: (n: number) => string;
     empty: 'No reviews yet. Be the first!',
     loginCta: 'Log in',
     loginSuffix: 'to write a review.',
+    confirmedVisit: '✓ Confirmed visit',
   },
 };
 
@@ -85,6 +93,10 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
           status: 'published',
           created_at: new Date().toISOString(),
           media: [],
+          // Giai đoạn 4 — createReview() trả null (EmptySuccess), không biết thật server có gắn
+          // được booking confirmed hay không ngay lúc này. Mặc định false (KHÔNG tự nhận có bằng
+          // chứng khi chưa chắc) — giá trị thật chỉ hiện sau khi tải lại trang.
+          confirmed_visit: false,
         },
         ...prev,
       ]);
@@ -126,6 +138,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
                 <time className={styles.reviewDate} dateTime={r.created_at}>
                   {formatReviewDate(r.created_at)}
                 </time>
+                {r.confirmed_visit && <span className={styles.confirmedVisitBadge}>{t.confirmedVisit}</span>}
               </div>
               {r.content && <p className={styles.reviewContent}>{r.content}</p>}
               {r.media.length > 0 && (
