@@ -521,7 +521,12 @@ describe('EvidenceService', () => {
       expect(result.evaluation.reasonCodes).toContain('CAPTURE_TOO_OLD');
       expect(result.evidenceVerified).toBe(false);
       expect(reviewsRepo.save).toHaveBeenCalledTimes(1); // still audited
-      expect(repo.save).not.toHaveBeenCalled(); // never flips to VERIFIED
+      // 2026-10-22 (vá gap "kẹt hàng chờ"): một APPROVE không đủ điều kiện vẫn PHẢI rời
+      // NEEDS_REVIEW — không được để verificationStatus nguyên, nếu không listPending() sẽ cứ
+      // trả về artifact này mãi mãi dù đã có quyết định ghi nhận.
+      expect(repo.save).toHaveBeenCalledTimes(1); // rời NEEDS_REVIEW, nhưng KHÔNG phải VERIFIED
+      const savedEvidence = repo.save.mock.calls[0][0] as EvidenceArtifact;
+      expect(savedEvidence.verificationStatus).toBe('NEEDS_CHANGES');
       const savedReview = reviewsRepo.save.mock.calls[0][0] as EvidenceReview;
       expect(savedReview.verificationExpiresAt).toBeNull(); // no expiry persisted for a non-eligible outcome
     });
@@ -530,7 +535,8 @@ describe('EvidenceService', () => {
       const result = await service.reviewEvidenceArtifact(baseInput({ evidenceContentSha256: 'b'.repeat(64) }));
       expect(result.evaluation.reasonCodes).toContain('EVIDENCE_HASH_MISMATCH');
       expect(result.evidenceVerified).toBe(false);
-      expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.save).toHaveBeenCalledTimes(1); // rời NEEDS_REVIEW (vá gap "kẹt hàng chờ")
+      expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('NEEDS_CHANGES');
     });
 
     it('source is not first-party (e.g. community/aggregator) -> SOURCE_NOT_FIRST_PARTY, not verified', async () => {
@@ -538,14 +544,16 @@ describe('EvidenceService', () => {
       const result = await service.reviewEvidenceArtifact(baseInput());
       expect(result.evaluation.reasonCodes).toContain('SOURCE_NOT_FIRST_PARTY');
       expect(result.evidenceVerified).toBe(false);
-      expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.save).toHaveBeenCalledTimes(1); // rời NEEDS_REVIEW (vá gap "kẹt hàng chờ")
+      expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('NEEDS_CHANGES');
     });
 
     it('temporary/event schedule -> TEMPORARY_SCHEDULE_UNSUPPORTED, held for a future policy, not verified', async () => {
       const result = await service.reviewEvidenceArtifact(baseInput({ scheduleStability: 'TEMPORARY' }));
       expect(result.evaluation.reasonCodes).toContain('TEMPORARY_SCHEDULE_UNSUPPORTED');
       expect(result.evidenceVerified).toBe(false);
-      expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.save).toHaveBeenCalledTimes(1); // rời NEEDS_REVIEW (vá gap "kẹt hàng chờ")
+      expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('NEEDS_CHANGES');
     });
 
     it('decision = NEEDS_CHANGES -> audited, never verified even though every other gate would pass', async () => {
@@ -553,12 +561,29 @@ describe('EvidenceService', () => {
       expect(result.evaluation.reasonCodes).toContain('DECISION_NOT_APPROVED');
       expect(result.evidenceVerified).toBe(false);
       expect(reviewsRepo.save).toHaveBeenCalledTimes(1);
-      expect(repo.save).not.toHaveBeenCalled();
+      // 2026-10-22 (vá gap "kẹt hàng chờ"): NEEDS_CHANGES vẫn phải rời NEEDS_REVIEW, không phải
+      // VERIFIED — nếu không, listPending() trả về CHÍNH artifact này mỗi lần tải trang.
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('NEEDS_CHANGES');
     });
 
-    it('decision = REJECT -> audited, never verified', async () => {
+    it('decision = REJECT -> audited, never verified, moves to REJECTED (không còn kẹt ở NEEDS_REVIEW)', async () => {
       const result = await service.reviewEvidenceArtifact(baseInput({ decision: 'REJECT' }));
       expect(result.evidenceVerified).toBe(false);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+      expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('REJECTED');
+    });
+
+    // 2026-10-22 (vá gap "mục bị từ chối kẹt vĩnh viễn trong hàng chờ" — rà soát kiểm duyệt toàn
+    // site, phát hiện qua OpeningHoursEvidenceQueueView's comment thừa nhận hiện tượng này).
+    it('một evidence ĐÃ VERIFIED (lần review trước) không bị lùi trạng thái bởi một REJECT sau đó cho tuple KHÁC (H2 semantics, xem evidence_reviews là nguồn sự thật per-tuple)', async () => {
+      repo.findById.mockResolvedValue(
+        makeEvidence({ id: 'evd-1', sourceId: 'src-1', capturedAt, contentHashSha256: contentHash, verificationStatus: 'VERIFIED' }),
+      );
+      const result = await service.reviewEvidenceArtifact(baseInput({ decision: 'REJECT' }));
+      expect(result.evidenceVerified).toBe(false);
+      // verificationStatus GIỮ NGUYÊN 'VERIFIED' — guard `=== 'NEEDS_REVIEW'` không khớp nên nhánh
+      // mới KHÔNG chạy, repo.save hoàn toàn không được gọi (đúng bất biến H2 đã kiểm ở test khác).
       expect(repo.save).not.toHaveBeenCalled();
     });
 
@@ -748,7 +773,9 @@ describe('EvidenceService', () => {
         expect(result.evaluation.eligible).toBe(false);
         expect(result.evaluation.reasonCodes).toContain('FIELD_VALUE_HASH_MISMATCH');
         expect(result.evidenceVerified).toBe(false);
-        expect(repo.save).not.toHaveBeenCalled();
+        // 2026-10-22 (vá gap "kẹt hàng chờ"): rời NEEDS_REVIEW dù inelgible, không phải VERIFIED.
+        expect(repo.save).toHaveBeenCalledTimes(1);
+        expect((repo.save.mock.calls[0][0] as EvidenceArtifact).verificationStatus).toBe('NEEDS_CHANGES');
         // The review row is an immutable record of what the RECEIPT actually attested to
         // (input.fieldValueHash) — never silently swapped for the server's independently-recomputed
         // current value, even though that recomputed value (boundHash here) is what DECIDED

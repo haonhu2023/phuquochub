@@ -31,9 +31,13 @@ export class EvidenceArtifactsRepository {
   }
 
   // Hàng chờ duyệt cho một evidenceType cụ thể — dùng cho hàng chờ moderator (Opening-Hours
-  // Evidence Workflow). NEEDS_REVIEW là trạng thái khởi tạo của ensureEvidenceArtifact; một khi
-  // reviewEvidenceArtifact ghi APPROVE+eligible, verificationStatus chuyển VERIFIED và hàng tự rời
-  // khỏi danh sách này (không cần xoá/đánh dấu riêng).
+  // Evidence Workflow). NEEDS_REVIEW là trạng thái khởi tạo của ensureEvidenceArtifact; MỌI quyết
+  // định review ghi nhận được (APPROVE+eligible → VERIFIED, REJECT → REJECTED, NEEDS_CHANGES hoặc
+  // một APPROVE không đủ điều kiện → NEEDS_CHANGES — xem EvidenceService.reviewEvidenceArtifact)
+  // đều đưa hàng RỜI khỏi NEEDS_REVIEW, nên hàng tự rời khỏi danh sách này (không cần xoá/đánh dấu
+  // riêng). Sửa 2026-10-22: trước đó CHỈ nhánh APPROVE+eligible đổi trạng thái — REJECT/
+  // NEEDS_CHANGES để nguyên NEEDS_REVIEW, khiến artifact quay lại danh sách này MÃI MÃI dù đã có
+  // quyết định ghi nhận (gap "kẹt hàng chờ" phát hiện khi rà soát kiểm duyệt toàn site).
   listByTypeAndStatus(evidenceType: string, verificationStatus: string, manager?: EntityManager): Promise<EvidenceArtifact[]> {
     return this.target(manager).find({ where: { evidenceType, verificationStatus }, order: { createdAt: 'ASC' } });
   }

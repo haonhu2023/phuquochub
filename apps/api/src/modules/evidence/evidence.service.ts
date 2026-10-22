@@ -532,6 +532,23 @@ export class EvidenceService {
           evidence.freshnessPolicyKey = evaluation.policyKey;
           evidence.freshnessPolicyVersion = evaluation.policyVersion;
           await this.repo.save(evidence, manager);
+        } else if (evidence.verificationStatus === 'NEEDS_REVIEW') {
+          // 2026-10-22 (vá gap "mục bị từ chối kẹt vĩnh viễn trong hàng chờ" — rà soát kiểm duyệt
+          // toàn site): `listByTypeAndStatus()` lọc THUẦN theo verificationStatus — trước dòng
+          // này, MỌI quyết định khác APPROVE+eligible (REJECT, NEEDS_CHANGES, hoặc một APPROVE
+          // không đủ điều kiện) để nguyên verificationStatus ở NEEDS_REVIEW, nên artifact cứ quay
+          // lại `OpeningHoursEvidenceService.listPending()` MÃI MÃI dù đã có quyết định ghi nhận
+          // — moderator phải từ chối lại CHÍNH artifact đó ở mỗi lần tải trang.
+          //
+          // Guard `=== 'NEEDS_REVIEW'` (không set vô điều kiện) để giữ NGUYÊN bất biến đã kiểm ở
+          // test 'APPROVE -> REJECT latest-review semantics (H2)': verificationStatus là mirror
+          // CỦA BẢN THÂN evidence (nội dung này CÓ TỪNG được xác minh hợp lệ hay chưa), không phải
+          // mirror của lần review gần nhất cho MỘT field-binding cụ thể — một REJECT đến SAU một
+          // APPROVE đã verified (tuple khác, hoặc giá trị place đã đổi) không được lùi trạng thái
+          // về chưa-duyệt; gate đọc công khai (PlacesRepository) đã tự đọc evidence_reviews mới
+          // nhất theo tuple, không tin denormalized mirror này cho việc đó.
+          evidence.verificationStatus = input.decision === 'REJECT' ? 'REJECTED' : 'NEEDS_CHANGES';
+          await this.repo.save(evidence, manager);
         }
 
         return { review, evaluation, evidenceVerified: willVerify, idempotentReplay: false };
