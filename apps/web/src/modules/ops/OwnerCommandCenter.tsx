@@ -107,7 +107,7 @@ export function OwnerCommandCenter() {
       <div className={styles.actions}><button disabled={page <= 1} onClick={() => reload(page-1)}>Trang trước</button>
         <span>Trang {page} / {Math.max(1, Math.ceil(data.total / data.page_size))}</span>
         <button disabled={page * data.page_size >= data.total} onClick={() => reload(page+1)}>Trang sau</button></div>
-      <h3>Nhật ký quản trị gần nhất</h3><p>20 sự kiện mới nhất. Chỉ hiển thị định danh người thao tác và thay đổi trạng thái; không hiển thị mật khẩu, IP hoặc nội dung riêng tư.</p>
+      <h3>Nhật ký quản trị gần nhất</h3><p>20 sự kiện mới nhất. Chỉ hiển thị định danh người thao tác và thay đổi trạng thái; không hiển thị mật khẩu, IP hoặc nội dung riêng tư. <Link href="/dashboard/audit-log">Xem toàn bộ, lọc theo đối tượng/người thao tác/sự kiện/khoảng ngày →</Link></p>
       {!data.audit.length && <p>Chưa có sự kiện.</p>}
       <ul className={styles.records}>{data.audit.map(a => <li key={a.id}>
         <strong>{a.event}</strong> · {a.result}<br />

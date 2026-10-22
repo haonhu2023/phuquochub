@@ -86,6 +86,24 @@ describe('DashboardNav', () => {
     expect(screen.queryByRole('link', { name: 'Duyệt bằng chứng giờ mở cửa' })).not.toBeInTheDocument();
   });
 
+  // 2026-10-22 (gap vá: audit log trước đây chỉ xem được 20 dòng gần nhất, nhúng trong Tổng quan).
+  it('content_owner (canViewCommandCenter: true) → thấy "Nhật ký quản trị"', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue({ ...NO_CAPABILITIES, canViewCommandCenter: true });
+    render(<DashboardNav />);
+
+    expect(await screen.findByRole('link', { name: 'Nhật ký quản trị' })).toHaveAttribute('href', '/dashboard/audit-log');
+  });
+
+  it('member thường (canViewCommandCenter: false) → KHÔNG thấy "Nhật ký quản trị"', async () => {
+    mockReadSession.mockReturnValue(SESSION);
+    mockFetchCapabilities.mockResolvedValue(NO_CAPABILITIES);
+    render(<DashboardNav />);
+
+    await waitFor(() => expect(mockFetchCapabilities).toHaveBeenCalled());
+    expect(screen.queryByRole('link', { name: 'Nhật ký quản trị' })).not.toBeInTheDocument();
+  });
+
   it('chưa xác định capabilities (đang tải) → ẩn hai mục đặc quyền cho tới khi biết chắc, không hiện nhầm rồi ẩn lại', () => {
     mockReadSession.mockReturnValue(SESSION);
     mockFetchCapabilities.mockReturnValue(new Promise(() => {})); // không bao giờ resolve trong test này

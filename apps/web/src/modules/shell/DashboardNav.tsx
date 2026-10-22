@@ -66,6 +66,9 @@ export function DashboardNav() {
       label: 'Duyệt bằng chứng giờ mở cửa',
       show: caps.canReviewOpeningHoursEvidence,
     },
+    // 2026-10-22 (gap vá: audit log trước đây chỉ xem được 20 dòng gần nhất, nhúng trong Tổng
+    // quan) — cùng quyền Ops.Dashboard.View với Tổng quan, cùng cờ canViewCommandCenter.
+    { href: '/dashboard/audit-log', label: 'Nhật ký quản trị', show: caps.canViewCommandCenter },
     { href: '/dashboard/help', label: 'Hướng dẫn', show: true },
   ];
 

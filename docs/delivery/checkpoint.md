@@ -2,6 +2,20 @@
 
 **Baseline production (21/10/2026, SAU cutover Giai đoạn 5):** API `06b1bee2cca8b676d557f92df73cbc044236bc26` (`sha256:538eb9ce024f...`) · Web cùng commit (`sha256:281286243f7e...`) · DB **107 migrations** (không đổi — Giai đoạn 5 không có migration mới). Rollback về API/Web `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`scripts/rollback.sh 6406952622cad0dc5ae85e8b995ba3c48e9e3431`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (không có migration nào để revert lần này).
 
+### Trang tra cứu nhật ký quản trị riêng (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 3), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration
+
+**Phát hiện:** `audit_logs` trước đây chỉ xem được qua 20 dòng gần nhất nhúng trong `OwnerCommandCenter` (dashboard home) — không lọc/tìm/phân trang. Tra "ai đã đóng tin X tuần trước" chỉ làm được bằng SQL tay. Vừa thêm actor cho close/reopen/deal-status (commit `eafa802`, 21/10) càng cần cách tra cứu thật.
+
+**Đã code — KHÔNG migration mới** (index đủ dùng từ `InitAuditLogs1720001500000`: `(entity_type,entity_id,created_at)`, `(actor_id,created_at)`, `(event,created_at)`):
+- API: `GET /admin/ops/audit-log` (`apps/api/src/modules/ops/audit-log.{controller,service}.ts`) — lọc `entity_type`/`entity_id`/`actor_id` (khớp tuyệt đối), `event` (khớp MỘT PHẦN, ILIKE — vd "job_listing" tìm mọi `job_listing.*`), `result`, khoảng ngày `from`/`to`; phân trang chuẩn (`paginate()` dùng chung toàn app, không phải shape riêng như owner-dashboard). Cùng quyền `Ops.Dashboard.View` với owner-dashboard — KHÔNG permission mới (cùng đối tượng content_owner, comment gốc migration seed: "Do not reuse content editing permissions for audit access" nói về việc tách khỏi quyền biên tập, không phải lý do tách thêm permission cho một trang sibling trong CÙNG module Ops). **Giữ NGUYÊN projection nghiêm ngặt đã chốt ở `OWNER_AUDIT_SQL`** (không ip/user_agent/before/after/context thô, chỉ scalar status) — chỉ thêm `correlation_id` (an toàn, chỉ là UUID theo dõi request) để tra chéo với Sentry vừa thêm (`AllExceptionsFilter`'s `Sentry.captureException(..., { tags: { correlationId } })`).
+- Web: `/dashboard/audit-log` (`AuditLogView.tsx`) — form lọc 7 trường, lọc hoàn toàn phía SERVER (khác `AdminJobListingsView`'s lọc client — `audit_logs` có thể lớn hơn nhiều mức "tải hết rồi lọc" còn hợp lý), phân trang trang-trước/trang-sau. Thêm mục nav "Nhật ký quản trị" (gác bởi `caps.canViewCommandCenter` tái dùng — cùng audience content_owner, không thêm cờ capability mới) + liên kết chéo từ khối "Nhật ký quản trị gần nhất" hiện có trên dashboard home.
+
+**Lỗi thật bắt được bởi chính test tự viết (trước khi lên production):** bản đầu cho form filter tự tải lại MỖI LẦN GÕ PHÍM (do đưa object filter sống thẳng vào dependency array của `useEffect`) thay vì CHỈ khi bấm "Lọc" — test `fireEvent.change` rồi đếm số lần gọi API phát hiện ngay. Sửa bằng tách `appliedFilter` (chỉ cập nhật lúc submit) khỏi input nháp.
+
+**Test:** API — `audit-log.spec.ts` (17 case: quyền, validate DTO, xây WHERE động cho từng filter + kết hợp, projection không lộ ip/user_agent/context, total=0 khi rỗng). Web — `AuditLogView.spec.tsx` (9 case) + 2 case mới trong `DashboardNav.spec.tsx`. Full suite API/Web không regression (số liệu xem lần chạy gần nhất).
+
+**Chưa deploy.** Không cần owner cấu hình gì thêm (không permission/env var mới) — sẵn sàng đi cùng lần deploy app kế tiếp.
+
 ### Thêm error tracking (Sentry) — API + web (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 2), ĐÃ code + test pass, CHƯA deploy, CHƯA có Sentry project thật
 
 **Phát hiện:** không có error-tracking/APM nào trong toàn bộ codebase trước đây (grep 0 kết quả cả API lẫn web) — một lỗi 500 thật cho người dùng hoàn toàn vô hình trừ khi ai đó tự đọc log server.
