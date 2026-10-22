@@ -1,12 +1,17 @@
-import { apiGetAuth } from '@/lib/http';
+import { apiGetAuth, apiPost } from '@/lib/http';
 import type { OwnerDecisionItem } from '../types';
 import { previewPlace } from '@/modules/place-management/api/place-management.api';
 
-// Trang "Việc cần làm" — TÁI SỬ DỤNG hai endpoint đã có, không thêm route API mới:
+// Trang "Việc cần làm" — TÁI SỬ DỤNG các endpoint đã có, không thêm route API mới:
 //   GET /owner-decisions?status=pending  (Place.Approve — content_owner giữ trực tiếp, xem
 //     SeedContentOwnerRole1720006200000) — danh sách câu hỏi đang chờ quyết định.
 //   GET /places/:id/preview              (Place.Edit.Managed/.Any — content_owner giữ .Any) — lấy
 //     tên/slug địa điểm để hiển thị, cùng endpoint EditPlaceView đã dùng để tải form sửa.
+//   POST /owner-decisions/:id/resolve, POST /owner-decisions/:id/withdraw — 2026-10-22 (vá gap: hai
+//     route này tồn tại từ 2026-09-18 nhưng CHƯA từng được gọi ở web — trang này trước đó chỉ ĐỌC
+//     hàng chờ, không có cách nào đóng một mục lại trừ gọi API tay. `resolution` là `Record<string,
+//     unknown>` tự do ở backend (không ràng buộc shape) — web tự chọn gửi { action, note }, khớp
+//     đúng vốn từ vựng `OdqFailSafe` pipeline đã định nghĩa cho field này (xem types.ts).
 // KHÔNG có mapper snake_case ở phía API cho owner-decisions (xem types.ts) nên đọc thẳng camelCase.
 
 /** GET /owner-decisions?status=pending&limit=&offset= */
@@ -16,6 +21,22 @@ export async function listPendingOwnerDecisions(
 ): Promise<OwnerDecisionItem[]> {
   const qs = new URLSearchParams({ status: 'pending', limit: String(limit), offset: String(offset) });
   return apiGetAuth<OwnerDecisionItem[]>(`/owner-decisions?${qs.toString()}`, accessToken, { cache: 'no-store' });
+}
+
+export async function resolveOwnerDecision(
+  id: string,
+  resolution: { action: string; note?: string },
+  accessToken: string,
+): Promise<OwnerDecisionItem> {
+  return apiPost<OwnerDecisionItem>(`/owner-decisions/${encodeURIComponent(id)}/resolve`, accessToken, { resolution });
+}
+
+export async function withdrawOwnerDecision(
+  id: string,
+  reason: string,
+  accessToken: string,
+): Promise<OwnerDecisionItem> {
+  return apiPost<OwnerDecisionItem>(`/owner-decisions/${encodeURIComponent(id)}/withdraw`, accessToken, { reason });
 }
 
 // Trần số request previewPlace() đồng thời (2026-09-25, rà soát Gói A). QUEUE_LIMIT ở

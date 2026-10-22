@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { OwnerTodoView } from './OwnerTodoView';
-import { listPendingOwnerDecisions, resolvePlaceNames } from './api/owner-todo.api';
+import { listPendingOwnerDecisions, resolveOwnerDecision, resolvePlaceNames, withdrawOwnerDecision } from './api/owner-todo.api';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
 import type { OwnerDecisionItem } from './types';
@@ -9,6 +9,8 @@ import type { OwnerDecisionItem } from './types';
 jest.mock('./api/owner-todo.api', () => ({
   listPendingOwnerDecisions: jest.fn(),
   resolvePlaceNames: jest.fn(),
+  resolveOwnerDecision: jest.fn(),
+  withdrawOwnerDecision: jest.fn(),
 }));
 jest.mock('@/modules/auth/session', () => ({ readSession: jest.fn() }));
 jest.mock('next/link', () => ({
@@ -21,6 +23,8 @@ jest.mock('next/link', () => ({
 const mockList = listPendingOwnerDecisions as jest.Mock;
 const mockNames = resolvePlaceNames as jest.Mock;
 const mockSession = readSession as jest.Mock;
+const mockResolve = resolveOwnerDecision as jest.Mock;
+const mockWithdraw = withdrawOwnerDecision as jest.Mock;
 
 const anItem = (over: Partial<OwnerDecisionItem> = {}): OwnerDecisionItem => ({
   id: 'i1',
@@ -44,6 +48,8 @@ beforeEach(() => {
   mockSession.mockReset().mockReturnValue({ accessToken: 'tok' });
   mockList.mockReset();
   mockNames.mockReset().mockResolvedValue(new Map());
+  mockResolve.mockReset();
+  mockWithdraw.mockReset();
 });
 
 it('render danh sách việc cần làm khi tải thành công, gồm tên địa điểm đã ghép', async () => {
@@ -153,4 +159,89 @@ it('chưa đăng nhập (không có session) -> forbidden state, KHÔNG gọi AP
   render(<OwnerTodoView />);
   expect(await screen.findByText('Không có quyền truy cập')).toBeInTheDocument();
   expect(mockList).not.toHaveBeenCalled();
+});
+
+// 2026-10-22 (vá gap: trang trước đó chỉ ĐỌC hàng chờ — POST /owner-decisions/:id/resolve|withdraw
+// tồn tại từ 2026-09-18 nhưng chưa từng được gọi ở web, không có cách nào đóng một mục).
+describe('Đánh dấu đã xử lý / Rút lại', () => {
+  it('bấm "Đánh dấu đã xử lý" rồi xác nhận -> gọi API đúng id/action/note, bỏ dòng khỏi danh sách', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    mockResolve.mockResolvedValue(anItem({ status: 'resolved' }));
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đánh dấu đã xử lý' }));
+    fireEvent.change(screen.getByLabelText('Đã xử lý bằng cách nào?'), { target: { value: 'use_source_b' } });
+    fireEvent.change(screen.getByLabelText('Ghi chú (tuỳ chọn)'), { target: { value: 'Đã xác nhận qua điện thoại' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xử lý' }));
+
+    await waitFor(() =>
+      expect(mockResolve).toHaveBeenCalledWith('i1', { action: 'use_source_b', note: 'Đã xác nhận qua điện thoại' }, 'tok'),
+    );
+    await waitFor(() => expect(screen.queryByText('Địa chỉ — nguồn không khớp')).not.toBeInTheDocument());
+  });
+
+  it('xác nhận đã xử lý không nhập ghi chú -> note gửi undefined, không phải chuỗi rỗng', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    mockResolve.mockResolvedValue(anItem({ status: 'resolved' }));
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đánh dấu đã xử lý' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xử lý' }));
+
+    await waitFor(() => expect(mockResolve).toHaveBeenCalledWith('i1', { action: 'use_source_a', note: undefined }, 'tok'));
+  });
+
+  it('bấm "Rút lại / Bỏ qua" mà không nhập lý do -> báo lỗi tại chỗ, KHÔNG gọi API', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rút lại / Bỏ qua' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận rút lại' }));
+
+    expect(await screen.findByText('Cần nhập lý do trước khi rút lại.')).toBeInTheDocument();
+    expect(mockWithdraw).not.toHaveBeenCalled();
+  });
+
+  it('rút lại kèm lý do -> gọi API đúng id/reason, bỏ dòng khỏi danh sách', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    mockWithdraw.mockResolvedValue(anItem({ status: 'withdrawn' }));
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rút lại / Bỏ qua' }));
+    fireEvent.change(screen.getByLabelText('Lý do rút lại / bỏ qua'), { target: { value: 'Đã xoá địa điểm' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận rút lại' }));
+
+    await waitFor(() => expect(mockWithdraw).toHaveBeenCalledWith('i1', 'Đã xoá địa điểm', 'tok'));
+    await waitFor(() => expect(screen.queryByText('Địa chỉ — nguồn không khớp')).not.toBeInTheDocument());
+  });
+
+  it('lỗi khi xử lý -> báo lỗi tại chỗ, GIỮ NGUYÊN dòng trong danh sách', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    mockResolve.mockRejectedValue(new ApiError('conflict', 409));
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đánh dấu đã xử lý' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận đã xử lý' }));
+
+    expect(await screen.findByText('conflict')).toBeInTheDocument();
+    expect(screen.getByText('Địa chỉ — nguồn không khớp')).toBeInTheDocument();
+  });
+
+  it('bấm "Huỷ" trong form đang xử lý -> quay lại hai nút ban đầu, không gọi API', async () => {
+    mockList.mockResolvedValue([anItem()]);
+    render(<OwnerTodoView />);
+    await screen.findByText('Địa chỉ — nguồn không khớp');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đánh dấu đã xử lý' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Huỷ' }));
+
+    expect(screen.getByRole('button', { name: 'Đánh dấu đã xử lý' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Rút lại / Bỏ qua' })).toBeInTheDocument();
+    expect(mockResolve).not.toHaveBeenCalled();
+  });
 });

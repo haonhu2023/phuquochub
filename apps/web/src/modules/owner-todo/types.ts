@@ -50,3 +50,17 @@ export interface OwnerTodoRow extends OwnerDecisionItem {
   placeName: string | null;
   placeSlug: string | null;
 }
+
+// 2026-10-22 (vá gap: không có cách nào đóng một mục từ web) — vốn từ vựng hành động KHỚP ĐÚNG
+// `OdqFailSafe` phía API (owner-decision-queue.entity.ts) trừ 'hold_publish' (đó là trạng thái
+// fail-safe TỰ ĐỘNG áp dụng khi hết hạn mà chưa ai quyết định, không phải một lựa chọn chủ động
+// người duyệt bấm). `resolution` là JSON tự do ở backend — web chọn gửi { action, note }, không bị
+// ép shape nào khác, nhưng dùng ĐÚNG từ vựng pipeline đã định nghĩa để có ý nghĩa nếu đọc lại sau.
+export type OdqResolveAction = 'use_source_a' | 'use_source_b' | 'skip_field' | 'publish_anyway';
+
+export const ODQ_RESOLVE_ACTION_LABELS: Record<OdqResolveAction, string> = {
+  use_source_a: 'Dùng nguồn A',
+  use_source_b: 'Dùng nguồn B',
+  skip_field: 'Bỏ qua trường này',
+  publish_anyway: 'Vẫn xuất bản (chấp nhận xung đột)',
+};

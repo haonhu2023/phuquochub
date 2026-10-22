@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { readSession } from '@/modules/auth/session';
 import { ApiError } from '@/lib/http';
-import { listPendingOwnerDecisions, resolvePlaceNames } from './api/owner-todo.api';
-import { QUESTION_TYPE_LABELS, type OwnerTodoRow } from './types';
+import { listPendingOwnerDecisions, resolveOwnerDecision, resolvePlaceNames, withdrawOwnerDecision } from './api/owner-todo.api';
+import { ODQ_RESOLVE_ACTION_LABELS, QUESTION_TYPE_LABELS, type OdqResolveAction, type OwnerTodoRow } from './types';
 import placeStyles from '@/modules/places/places.module.css';
 
 // Trần cứng của API (ListDecisionsQueryDto: @Max(200) — owner-decision-queue.controller.ts). Lấy
@@ -70,6 +70,13 @@ export function OwnerTodoView() {
   }, [reloadKey]);
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // 2026-10-22 (vá gap: không có cách nào đóng một mục từ web, chỉ đọc được) — bỏ item khỏi danh
+  // sách NGAY sau khi resolve/withdraw thành công (item không còn "pending" nữa, API list chỉ lọc
+  // status=pending) — không reload cả trang, giữ nguyên vị trí cuộn và các mục khác đã tải.
+  const removeRow = useCallback((id: string) => {
+    setState((prev) => (prev.kind === 'ready' ? { ...prev, rows: prev.rows.filter((r) => r.id !== id) } : prev));
+  }, []);
 
   // "Tải thêm" (rà soát Gói A, 2026-09-25) — API GET /owner-decisions hỗ trợ offset/skip thật
   // (owner-decision-queue.repository.ts's findAll: `skip: offset`), trước đây trang này chỉ đọc
@@ -198,6 +205,7 @@ export function OwnerTodoView() {
                   </Link>
                 </p>
               )}
+              <OwnerTodoRowActions id={row.id} onResolved={removeRow} />
             </li>
           ))}
         </ul>
@@ -222,4 +230,128 @@ export function OwnerTodoView() {
 function safeMessage(err: unknown): string {
   if (err instanceof ApiError && err.status < 500) return err.message;
   return 'Đã xảy ra lỗi khi tải danh sách việc cần làm. Vui lòng thử lại.';
+}
+
+type RowActionMode = 'idle' | 'resolving' | 'withdrawing';
+
+// 2026-10-22 (vá gap: trang trước đó chỉ ĐỌC hàng chờ, không có cách nào đóng một mục — các mục
+// đã thực sự xử lý xong [vd đã sửa địa điểm qua "Sửa địa điểm →"] ở lại "pending" MÃI MÃI, không
+// ai gọi POST /owner-decisions/:id/resolve|withdraw). Tách thành component riêng để state nháp
+// (action/note/reason) của TỪNG hàng độc lập, không làm phình state của OwnerTodoView.
+function OwnerTodoRowActions({ id, onResolved }: { id: string; onResolved: (id: string) => void }) {
+  const [mode, setMode] = useState<RowActionMode>('idle');
+  const [action, setAction] = useState<OdqResolveAction>('use_source_a');
+  const [note, setNote] = useState('');
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submitResolve() {
+    const session = readSession();
+    if (!session) {
+      setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await resolveOwnerDecision(id, { action, note: note.trim() || undefined }, session.accessToken);
+      onResolved(id);
+    } catch (err) {
+      setError(safeMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitWithdraw() {
+    const session = readSession();
+    if (!session) {
+      setError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      return;
+    }
+    if (!reason.trim()) {
+      setError('Cần nhập lý do trước khi rút lại.');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await withdrawOwnerDecision(id, reason.trim(), session.accessToken);
+      onResolved(id);
+    } catch (err) {
+      setError(safeMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (mode === 'idle') {
+    return (
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <button type="button" className={placeStyles.btn} onClick={() => setMode('resolving')}>
+          Đánh dấu đã xử lý
+        </button>
+        <button type="button" className={placeStyles.btn} onClick={() => setMode('withdrawing')}>
+          Rút lại / Bỏ qua
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === 'resolving') {
+    return (
+      <div style={{ marginTop: '0.5rem' }}>
+        {error && (
+          <p role="alert" style={{ marginBottom: '0.5rem' }}>
+            {error}
+          </p>
+        )}
+        <label htmlFor={`odq-action-${id}`} style={{ display: 'block' }}>
+          Đã xử lý bằng cách nào?
+        </label>
+        <select id={`odq-action-${id}`} value={action} onChange={(e) => setAction(e.target.value as OdqResolveAction)}>
+          {(Object.keys(ODQ_RESOLVE_ACTION_LABELS) as OdqResolveAction[]).map((value) => (
+            <option key={value} value={value}>
+              {ODQ_RESOLVE_ACTION_LABELS[value]}
+            </option>
+          ))}
+        </select>
+        <label htmlFor={`odq-note-${id}`} style={{ display: 'block', marginTop: '0.5rem' }}>
+          Ghi chú (tuỳ chọn)
+        </label>
+        <textarea id={`odq-note-${id}`} value={note} onChange={(e) => setNote(e.target.value)} rows={2} style={{ width: '100%' }} />
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <button type="button" className={placeStyles.btn} onClick={() => void submitResolve()} disabled={submitting}>
+            {submitting ? 'Đang gửi…' : 'Xác nhận đã xử lý'}
+          </button>
+          <button type="button" className={placeStyles.btn} onClick={() => setMode('idle')} disabled={submitting}>
+            Huỷ
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: '0.5rem' }}>
+      {error && (
+        <p role="alert" style={{ marginBottom: '0.5rem' }}>
+          {error}
+        </p>
+      )}
+      <label htmlFor={`odq-reason-${id}`} style={{ display: 'block' }}>
+        Lý do rút lại / bỏ qua
+      </label>
+      <textarea id={`odq-reason-${id}`} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} style={{ width: '100%' }} />
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <button type="button" className={placeStyles.btn} onClick={() => void submitWithdraw()} disabled={submitting}>
+          {submitting ? 'Đang gửi…' : 'Xác nhận rút lại'}
+        </button>
+        <button type="button" className={placeStyles.btn} onClick={() => setMode('idle')} disabled={submitting}>
+          Huỷ
+        </button>
+      </div>
+    </div>
+  );
 }

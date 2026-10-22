@@ -2,6 +2,20 @@
 
 **Baseline production (21/10/2026, SAU cutover Giai đoạn 5):** API `06b1bee2cca8b676d557f92df73cbc044236bc26` (`sha256:538eb9ce024f...`) · Web cùng commit (`sha256:281286243f7e...`) · DB **107 migrations** (không đổi — Giai đoạn 5 không có migration mới). Rollback về API/Web `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`scripts/rollback.sh 6406952622cad0dc5ae85e8b995ba3c48e9e3431`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (không có migration nào để revert lần này).
 
+### Vá gap "Owner Decision Queue thiếu UI" — HOÁ RA đã có UI, chỉ thiếu nút đóng mục (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 4), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration, KHÔNG route API mới
+
+**Sửa lại phát hiện ban đầu:** báo cáo rà soát ban đầu ghi "Owner Decision Queue có API đầy đủ nhưng không có màn hình duyệt riêng" — SAI, kiểm trực tiếp code phát hiện `/dashboard/todo` (`OwnerTodoView.tsx`, module `owner-todo`) đã là trang duyệt đầy đủ từ trước (tái dùng `GET /owner-decisions?status=pending`, ghép tên địa điểm, phân trang "Tải thêm", đã có 12 test case). Gap THẬT, hẹp hơn nhiều: trang chỉ ĐỌC — không có nút nào gọi `POST /owner-decisions/:id/resolve` hay `/withdraw` (hai route tồn tại từ 2026-09-18, `owner-todo.api.ts` trước đó chỉ export `listPendingOwnerDecisions`/`resolvePlaceNames`). Hệ quả thật: một mục đã thực sự xử lý xong (vd owner đã bấm "Sửa địa điểm →" và sửa xong) vẫn ở lại "pending" MÃI MÃI trong hàng chờ — không ai đóng nó lại được từ web.
+
+**Đã code — KHÔNG route API mới** (resolve/withdraw đã tồn tại sẵn, chỉ chưa có UI gọi tới):
+- `owner-todo.api.ts`: thêm `resolveOwnerDecision()`/`withdrawOwnerDecision()`. `resolution` là `Record<string, unknown>` tự do ở backend (không ràng buộc shape) — web gửi `{ action, note }`, dùng ĐÚNG vốn từ vựng `OdqFailSafe` pipeline đã định nghĩa (`use_source_a`/`use_source_b`/`skip_field`/`publish_anyway` — trừ `hold_publish`, đó là trạng thái TỰ ĐỘNG áp dụng khi hết hạn, không phải lựa chọn chủ động).
+- `OwnerTodoView.tsx`: mỗi dòng thêm 2 nút "Đánh dấu đã xử lý" (mở form chọn hành động + ghi chú tuỳ chọn) / "Rút lại / Bỏ qua" (bắt buộc nhập lý do — khớp `@MinLength(1)` phía API). Thành công → bỏ dòng khỏi danh sách ngay (không reload cả trang, không mất vị trí cuộn). Thất bại → báo lỗi tại chỗ, GIỮ dòng.
+
+**Phạm vi KHÔNG làm trong lượt này (gap khác, sâu hơn, phát hiện khi đọc code):** nhánh phân quyền `Place.Edit.Managed` cho business_owner tự xử lý quyết định CỦA CHÍNH place mình (đã viết sẵn trong `assertResolutionAccess()`) hiện KHÔNG có cách nào tự phát hiện — `getPendingByPlace()`/`getPendingByCandidate()` ở service tồn tại nhưng KHÔNG route nào gọi tới (xác nhận bằng grep — 0 nơi gọi). Đây là thiếu MỘT route API mới, không phải thiếu UI cho route đã có — khác bản chất với gap đã vá ở trên, cần quyết định phạm vi riêng trước khi làm.
+
+**Test:** `OwnerTodoView.spec.tsx` thêm 6 case mới (gọi đúng action/note/reason, validate lý do bắt buộc, bỏ dòng khi thành công, giữ dòng + báo lỗi khi thất bại, Huỷ không gọi API) — 12 case cũ vẫn pass nguyên, không regression.
+
+**Chưa deploy.** Không cần owner cấu hình gì thêm.
+
 ### Trang tra cứu nhật ký quản trị riêng (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 3), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration
 
 **Phát hiện:** `audit_logs` trước đây chỉ xem được qua 20 dòng gần nhất nhúng trong `OwnerCommandCenter` (dashboard home) — không lọc/tìm/phân trang. Tra "ai đã đóng tin X tuần trước" chỉ làm được bằng SQL tay. Vừa thêm actor cho close/reopen/deal-status (commit `eafa802`, 21/10) càng cần cách tra cứu thật.
