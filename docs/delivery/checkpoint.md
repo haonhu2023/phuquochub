@@ -1,5 +1,9 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
+### Quyết định owner (22/10/2026) — review "Test PhuQuocHub" trên Dinh Cậu: GIỮ NGUYÊN, không sửa
+
+Phát hiện khi rà soát vận hành toàn site: review DUY NHẤT của Dinh Cậu (một trong các địa điểm biểu tượng nhất) có tên tác giả hiển thị công khai là "Test PhuQuocHub" — mâu thuẫn bề ngoài với thông điệp "Thông tin rõ nguồn, dễ kiểm tra" ở trang chủ. Dữ liệu có thật từ trước (không phải tạo trong phiên này). Owner đã quyết định GIỮ NGUYÊN, không đổi tên hiển thị, không ẩn review. Không cần làm gì thêm — ghi lại để không bị flag lại ở lần rà soát sau.
+
 **Baseline production (21/10/2026, SAU cutover Giai đoạn 5):** API `06b1bee2cca8b676d557f92df73cbc044236bc26` (`sha256:538eb9ce024f...`) · Web cùng commit (`sha256:281286243f7e...`) · DB **107 migrations** (không đổi — Giai đoạn 5 không có migration mới). Rollback về API/Web `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`scripts/rollback.sh 6406952622cad0dc5ae85e8b995ba3c48e9e3431`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (không có migration nào để revert lần này).
 
 ### Sitemap tự loại hub rỗng thật — tránh thin-content (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 5), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration
