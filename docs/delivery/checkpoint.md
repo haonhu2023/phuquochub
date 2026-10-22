@@ -1,6 +1,6 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
-### Ảnh qua next/image — resize/nén tự động thay vì phục vụ nguyên bản gốc (22/10/2026) — phát hiện khi rà soát hiệu năng toàn site (mục 8), ĐÃ code + test pass, CHƯA deploy, **CÓ MỘT ĐIỂM CHƯA KIỂM CHỨNG ĐƯỢC — xem mục cuối**
+### Ảnh qua next/image — resize/nén tự động thay vì phục vụ nguyên bản gốc (22/10/2026) — phát hiện khi rà soát hiệu năng toàn site (mục 8), ĐÃ code + test pass + **rehearsal VPS thật XÁC NHẬN hoạt động đúng**, CHƯA deploy
 
 **Phát hiện (đo thật trên production):** ảnh gallery khách sạn nặng 137-459KB/ảnh, phục vụ NGUYÊN BẢN GỐC — không resize, không nén, không WebP/AVIF. Không chỉ gallery: cùng mẫu `<img>` trần lặp lại ở 6 component thẻ (Place/Hotel/Restaurant/Tour/Beach/Attraction — hiện ở TRANG CHỦ + MỌI trang danh sách, tần suất cao hơn cả gallery), `RealEstateListingPhotoGallery`, và `HeroVisual` (ảnh hero trang chủ — gần như chắc chắn là phần tử LCP). Cả 9 nơi đều có cùng comment cũ: "next/image cần remotePatterns (ngoài phạm vi)".
 
@@ -10,11 +10,15 @@
 
 **Lỗi thật phát hiện qua kiểm chứng trực tiếp (quan trọng, sửa ngay):** giả định ban đầu "URL tuyệt đối cùng hostname với chính app thì next/image tự coi là an toàn, không cần `remotePatterns`" — **SAI**. Gọi trực tiếp `/_next/image?url=<media URL thật>` cục bộ → bị từ chối `400 "url" parameter is not allowed` cho tới khi thêm `images.remotePatterns` vào `next.config.mjs` (lấy origin từ `NEXT_PUBLIC_API_URL`, build-arg đã có sẵn — không cần biến mới). Nếu không bắt lỗi này bằng cách THỬ THẬT (không chỉ đọc code suy luận), toàn bộ 9 component sẽ lỗi 400 âm thầm khi lên production.
 
-**⚠️ CHƯA KIỂM CHỨNG ĐƯỢC — cần xác nhận ở bước production rehearsal (VPS Linux thật) trước khi deploy:** sau khi sửa `remotePatterns`, gọi optimizer thật trả về `200` và ảnh thật qua đúng chuỗi redirect presigned S3 — nhưng **kích thước byte trả về giống HỆT bản gốc (422035 bytes, không giảm)**. Điều tra trực tiếp: `sharp` (bản native `win32-x64`) **không load được trên máy Windows đang dùng để phát triển** (`ERR_DLOPEN_FAILED`) — Next tự âm thầm fallback về phục vụ nguyên bản khi sharp lỗi, không trả lỗi HTTP nào. Đã xác nhận `sharp`'s `optionalDependencies` CÓ `@img/sharp-linuxmusl-x64` (bản Alpine, cùng version `0.35.5`) — cơ chế chọn binary theo platform của npm sẽ tự cài đúng bản này khi build THẬT trong Docker (`node:20-alpine`), khác hẳn môi trường Windows đang gặp lỗi. Đây là cách kết hợp sharp+Alpine cực kỳ phổ biến trong hệ sinh thái Next.js, nhưng **tôi không có Docker khả dụng trong phiên này để tự kiểm chứng trên đúng mục tiêu Linux** — bắt buộc phải xác nhận thật (gọi optimizer trên candidate image thật, so byte trước/sau) ở bước production rehearsal trước khi deploy, KHÔNG giả định suông.
+**Khoảng trống Windows đã nêu trước đó, ĐÃ đóng bằng rehearsal thật trên VPS (22/10/2026):** build candidate thật trên VPS (`sync-release-source.sh` commit `9024682`, 107 migration không đổi) xác nhận `node_modules/@img/sharp-linuxmusl-x64` + `sharp-libvips-linuxmusl-x64` CÓ MẶT trong image (đúng bản Alpine, khác win32-x64 lỗi trên máy dev). Chạy container cô lập (`phuquoc-web-image-rehearsal`, cổng chỉ `127.0.0.1:3095`, không đụng container sống), gọi trực tiếp `/_next/image` với ĐÚNG URL ảnh thật đã đo trước đó:
+- `w=384,q=75`, JPEG: **17.032 bytes** (bản gốc 422.035 bytes) — **giảm 96%**, đúng kích thước `384×215` yêu cầu.
+- Cùng ảnh với `Accept: image/webp`: **16.796 bytes**, xác nhận đúng định dạng WebP — thương lượng định dạng hoạt động đúng.
+
+Container cô lập đã xoá sau khi kiểm xong. Container production xác nhận KHÔNG đổi (vẫn `06b1bee...`, cùng uptime 16 giờ trước/sau rehearsal). Candidate image (`phuquochub-web:candidate-9024682...`) giữ lại trên VPS để tái dùng cho `deploy.sh` khi được duyệt.
 
 **Test:** 5 file spec cập nhật assertion `src` (next/image bọc qua `/_next/image?url=...`, đọc lại URL gốc từ query param thay vì so khớp trực tiếp) + 5 file spec tích hợp trang chi tiết (places/hotels/restaurants/tours + HomeHero) cùng lý do. Full suite web **188 suite/1953 test pass**, không regression. Build production + typecheck + lint sạch cả với `NEXT_PUBLIC_API_URL` mặc định lẫn giá trị production thật.
 
-**Chưa deploy — và KHÔNG nên deploy cho tới khi xác nhận được phần resize ở bước rehearsal.**
+**Chưa deploy — chờ duyệt riêng bước cutover.**
 
 ### Vá lỗ hổng bảo mật `next` nghiêm trọng (critical) + dọn audit còn lại (22/10/2026) — phát hiện khi rà soát bảo mật toàn site (mục 7), ĐÃ code + test pass, CHƯA deploy
 
