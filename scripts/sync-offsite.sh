@@ -35,6 +35,12 @@
 #      directly; this script builds an ephemeral remote from them. Avoid for cron -- it puts the
 #      secret key in the cron environment.
 #
+# BACKUP_STATUS_OFFSITE_FILE (optional) -- where the JSON status file below is written. Defaults to
+# $BACKUP_DIR/offsite-status.json, which the production cron entry leaves at its default (already
+# inside the bind-mounted ./backups tree) -- override only if BackupStatusService's own
+# BACKUP_STATUS_DB_DIR is pointed somewhere else inside the container than this script's BACKUP_DIR
+# maps to on the host.
+#
 # Usage: scripts/sync-offsite.sh [compose-project-dir]
 set -euo pipefail
 
@@ -71,6 +77,25 @@ else
   echo "[sync-offsite] credentials are supplied." >&2
   exit 0
 fi
+
+# Status file for BackupStatusService (apps/api/src/modules/ops/) to read via the SAME read-only
+# bind mount `./backups:/repo/backups:ro` already used for the DB/media trees (see
+# docker-compose.prod.yml) -- no new volume needed since the default lives under $BACKUP_DIR. Written
+# unconditionally on exit via the trap below, success or failure, so a stuck/crashed cron job is
+# visible as "last known status is old" rather than the dashboard having nothing to say at all. Only
+# registered AFTER the credential check above passes -- the "R2 not configured, skipping" early exit
+# must NOT produce a status file (that would misreport "failed" when offsite sync was never attempted).
+OFFSITE_STATUS_FILE="${BACKUP_STATUS_OFFSITE_FILE:-$BACKUP_DIR/offsite-status.json}"
+write_offsite_status() {
+  ws_exit_code=$?
+  ws_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  if [ "$ws_exit_code" -eq 0 ]; then
+    printf '{"timestampUtc":"%s","success":true,"exitCode":0}\n' "$ws_ts" > "$OFFSITE_STATUS_FILE"
+  else
+    printf '{"timestampUtc":"%s","success":false,"exitCode":%s}\n' "$ws_ts" "$ws_exit_code" > "$OFFSITE_STATUS_FILE"
+  fi
+}
+trap write_offsite_status EXIT
 
 if ! command -v "$RCLONE_BIN" >/dev/null 2>&1; then
   echo "[sync-offsite] ERROR: rclone is not installed, but R2 credentials ARE configured -- so an" >&2

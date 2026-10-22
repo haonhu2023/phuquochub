@@ -5,8 +5,9 @@ import type { ConfigService } from '@nestjs/config';
 import { BackupStatusService } from './backup-status.service';
 import type { AppConfig } from '../../core/config/configuration';
 
-function fakeConfig(backupStatus: AppConfig['backupStatus']): ConfigService {
-  return { get: () => backupStatus } as unknown as ConfigService;
+function fakeConfig(backupStatus: Partial<AppConfig['backupStatus']>): ConfigService {
+  const full: AppConfig['backupStatus'] = { dbDir: null, mediaDir: null, offsiteStatusFile: null, ...backupStatus };
+  return { get: () => full } as unknown as ConfigService;
 }
 
 describe('BackupStatusService (BK1, 2026-09-22)', () => {
@@ -115,5 +116,59 @@ describe('BackupStatusService (BK1, 2026-09-22)', () => {
     const service = new BackupStatusService(fakeConfig({ dbDir, mediaDir: null }));
 
     expect(service.getStatus().database).toEqual({ configured: true, count: 0, latest: null, oldest: null });
+  });
+
+  describe('offsite (R2) sync status — reads scripts/sync-offsite.sh\'s own JSON status file', () => {
+    it('reports configured: false when BACKUP_STATUS_OFFSITE_FILE is unset', () => {
+      const service = new BackupStatusService(fakeConfig({}));
+      expect(service.getStatus().offsite).toEqual({ configured: false, data: null });
+    });
+
+    it('reports configured: true, data: null when configured but the file does not exist yet (never run)', () => {
+      const service = new BackupStatusService(fakeConfig({ offsiteStatusFile: join(root, 'does-not-exist.json') }));
+      expect(service.getStatus().offsite).toEqual({ configured: true, data: null });
+    });
+
+    it('parses a successful run, computing ageHours from the recorded timestamp', () => {
+      const file = join(root, 'offsite-status.json');
+      const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString();
+      writeFileSync(file, JSON.stringify({ timestampUtc: oneHourAgo, success: true, exitCode: 0 }));
+
+      const service = new BackupStatusService(fakeConfig({ offsiteStatusFile: file }));
+      const offsite = service.getStatus().offsite;
+
+      expect(offsite.configured).toBe(true);
+      expect(offsite.data?.success).toBe(true);
+      expect(offsite.data?.exitCode).toBe(0);
+      expect(offsite.data?.ageHours).toBeGreaterThan(0.9);
+      expect(offsite.data?.ageHours).toBeLessThan(1.1);
+    });
+
+    it('parses a failed run (non-zero exitCode, success: false) without throwing', () => {
+      const file = join(root, 'offsite-status.json');
+      writeFileSync(file, JSON.stringify({ timestampUtc: new Date().toISOString(), success: false, exitCode: 1 }));
+
+      const service = new BackupStatusService(fakeConfig({ offsiteStatusFile: file }));
+      const offsite = service.getStatus().offsite;
+
+      expect(offsite.data?.success).toBe(false);
+      expect(offsite.data?.exitCode).toBe(1);
+    });
+
+    it('reports data: null (not a throw) for a corrupt/malformed status file', () => {
+      const file = join(root, 'offsite-status.json');
+      writeFileSync(file, 'not valid json {{{');
+
+      const service = new BackupStatusService(fakeConfig({ offsiteStatusFile: file }));
+      expect(service.getStatus().offsite).toEqual({ configured: true, data: null });
+    });
+
+    it('reports data: null for a well-formed JSON file missing required fields', () => {
+      const file = join(root, 'offsite-status.json');
+      writeFileSync(file, JSON.stringify({ someOtherShape: true }));
+
+      const service = new BackupStatusService(fakeConfig({ offsiteStatusFile: file }));
+      expect(service.getStatus().offsite).toEqual({ configured: true, data: null });
+    });
   });
 });

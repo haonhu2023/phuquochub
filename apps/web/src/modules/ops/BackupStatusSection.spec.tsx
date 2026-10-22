@@ -27,6 +27,7 @@ const READY_STATUS: BackupStatusSummary = {
     latest: { name: 'phuquochub-20260920T020000Z.sql.gz', timestampUtc: '2026-09-20T02:00:00.000Z', ageHours: 12, sizeBytes: 1_048_576, hasChecksumSidecar: true },
   },
   media: { configured: false, count: 0, latest: null, oldest: null },
+  offsite: { configured: true, data: { timestampUtc: '2026-09-22T03:00:00.000Z', success: true, exitCode: 0, ageHours: 5 } },
   checkedAtUtc: '2026-09-22T08:00:00.000Z',
 };
 
@@ -66,6 +67,7 @@ describe('BackupStatusSection', () => {
     expect(screen.getByRole('heading', { name: /Tình trạng sao lưu/i })).toBeInTheDocument();
     expect(await screen.findByText(/3 bản, gần nhất 12 giờ trước \(1\.0 MB, có checksum\)/)).toBeInTheDocument();
     expect(screen.getByText(/chưa cấu hình trên máy chủ này/)).toBeInTheDocument();
+    expect(screen.getByText(/thành công \(5 giờ trước\)/)).toBeInTheDocument();
   });
 
   it('lỗi khi tải trạng thái → báo lỗi, không làm sập cả trang', async () => {
@@ -84,12 +86,14 @@ describe('BackupStatusSection', () => {
     mockGetBackupStatus.mockResolvedValue({
       database: { configured: true, count: 0, latest: null, oldest: null },
       media: { configured: true, count: 0, latest: null, oldest: null },
+      offsite: { configured: true, data: null },
       checkedAtUtc: '2026-09-22T08:00:00.000Z',
     } satisfies BackupStatusSummary);
 
     render(<BackupStatusSection />);
 
     expect(await screen.findAllByText(/đã cấu hình, nhưng chưa thấy bản sao lưu nào/)).toHaveLength(2);
+    expect(screen.getByText(/đã cấu hình, nhưng chưa thấy lần chạy nào/)).toBeInTheDocument();
   });
 
   // Cron DB thật chạy hằng ngày (0 2 * * *) — bản gần nhất quá 30 giờ nghĩa là job có thể đã hỏng/
@@ -105,6 +109,7 @@ describe('BackupStatusSection', () => {
         latest: { name: 'phuquochub-20260918T020000Z.sql.gz', timestampUtc: '2026-09-18T02:00:00.000Z', ageHours: 72, sizeBytes: 900_000, hasChecksumSidecar: true },
       },
       media: { configured: false, count: 0, latest: null, oldest: null },
+      offsite: { configured: false, data: null },
       checkedAtUtc: '2026-09-22T08:00:00.000Z',
     } satisfies BackupStatusSummary);
 
@@ -123,5 +128,46 @@ describe('BackupStatusSection', () => {
 
     await screen.findByText(/3 bản, gần nhất 12 giờ trước/);
     expect(screen.queryByText(/Quá hạn/)).not.toBeInTheDocument();
+  });
+
+  // 2026-10-22 (R2 offsite visibility gap) — trước đây owner không có cách nào biết offsite sync
+  // (lớp bảo vệ nếu mất cả máy chủ) có chạy được hay không ngoài SSH đọc log tay.
+  describe('Sao lưu offsite (R2)', () => {
+    function statusWith(offsite: BackupStatusSummary['offsite']): BackupStatusSummary {
+      return {
+        database: { configured: false, count: 0, latest: null, oldest: null },
+        media: { configured: false, count: 0, latest: null, oldest: null },
+        offsite,
+        checkedAtUtc: '2026-09-22T08:00:00.000Z',
+      };
+    }
+
+    it('lần chạy gần nhất THẤT BẠI → cảnh báo rõ, kèm mã lỗi và gợi ý xem log', async () => {
+      mockReadSession.mockReturnValue(SESSION);
+      mockFetchCapabilities.mockResolvedValue(OWNER_CAPS);
+      mockGetBackupStatus.mockResolvedValue(
+        statusWith({ configured: true, data: { timestampUtc: '2026-09-22T03:00:00.000Z', success: false, exitCode: 1, ageHours: 5 } }),
+      );
+
+      render(<BackupStatusSection />);
+
+      expect(await screen.findByText(/THẤT BẠI/)).toBeInTheDocument();
+      expect(screen.getByText(/thất bại \(5 giờ trước, mã lỗi 1\)/)).toBeInTheDocument();
+      expect(screen.getByText(/Kiểm tra phuquochub-offsite-backup\.log trên máy chủ/)).toBeInTheDocument();
+    });
+
+    it('lần chạy gần nhất thành công nhưng đã quá 30 giờ → cảnh báo quá hạn (không phải "thất bại")', async () => {
+      mockReadSession.mockReturnValue(SESSION);
+      mockFetchCapabilities.mockResolvedValue(OWNER_CAPS);
+      mockGetBackupStatus.mockResolvedValue(
+        statusWith({ configured: true, data: { timestampUtc: '2026-09-19T03:00:00.000Z', success: true, exitCode: 0, ageHours: 72 } }),
+      );
+
+      render(<BackupStatusSection />);
+
+      expect(await screen.findByText(/Quá hạn/)).toBeInTheDocument();
+      expect(screen.queryByText(/THẤT BẠI/)).not.toBeInTheDocument();
+      expect(screen.getByText(/kiểm tra cron trên máy chủ/)).toBeInTheDocument();
+    });
   });
 });

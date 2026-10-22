@@ -16,8 +16,14 @@ export interface BackupTreeStatus {
   oldest: BackupSnapshotSummary | null;
 }
 
+export interface OffsiteSyncStatus {
+  configured: boolean;
+  data: { timestampUtc: string; success: boolean; exitCode: number; ageHours: number } | null;
+}
+
 export interface BackupStatusSummary {
   database: BackupTreeStatus;
   media: BackupTreeStatus;
+  offsite: OffsiteSyncStatus;
   checkedAtUtc: string;
 }

@@ -60,7 +60,11 @@ export interface AppConfig {
   // directory unless it is explicitly bind-mounted (see docker-compose.prod.yml's `api.volumes`) —
   // guessing a path here would silently report "no backups found" instead of "not configured",
   // which look identical to an owner unless the two are kept distinct.
-  backupStatus: { dbDir: string | null; mediaDir: string | null };
+  // `offsiteStatusFile` (2026-10-22, R2 offsite backup visibility gap): scripts/sync-offsite.sh
+  // writes a small JSON status file after every run (success or failure) under $BACKUP_DIR — the
+  // SAME read-only bind mount as dbDir/mediaDir above, no new volume needed. `null` when unset,
+  // same "not configured" convention as the other two fields.
+  backupStatus: { dbDir: string | null; mediaDir: string | null; offsiteStatusFile: string | null };
   // C1 follow-up (2026-09-22) — server-side cache invalidation. The web app's Next.js server holds
   // the Data Cache; this API has no access to it directly, so a real place mutation (create/
   // update/publish/unpublish) tells the web app's `POST /api/revalidate` to invalidate the
@@ -163,6 +167,7 @@ export default (): AppConfig => ({
   backupStatus: {
     dbDir: process.env.BACKUP_STATUS_DB_DIR?.trim() || null,
     mediaDir: process.env.BACKUP_STATUS_MEDIA_DIR?.trim() || null,
+    offsiteStatusFile: process.env.BACKUP_STATUS_OFFSITE_FILE?.trim() || null,
   },
   cacheInvalidation: {
     webInternalUrl: process.env.WEB_INTERNAL_URL?.trim().replace(/\/+$/, '') || null,

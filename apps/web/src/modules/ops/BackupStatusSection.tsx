@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { readSession } from '@/modules/auth/session';
 import { fetchCapabilities } from '@/modules/auth/api/me.api';
 import { getBackupStatus } from './api/ops.api';
-import type { BackupStatusSummary, BackupTreeStatus } from './types';
+import type { BackupStatusSummary, BackupTreeStatus, OffsiteSyncStatus } from './types';
 
 type State =
   | { kind: 'hidden' } // chưa đăng nhập, hoặc không có quyền — KHÔNG hiện gì, không phải lỗi 403
@@ -100,9 +100,36 @@ export function BackupStatusSection() {
           </p>
           <BackupTreeSummary title="Cơ sở dữ liệu" tree={state.status.database} />
           <BackupTreeSummary title="Ảnh/media" tree={state.status.media} />
+          <OffsiteSyncSummary offsite={state.status.offsite} />
         </>
       )}
     </section>
+  );
+}
+
+// 2026-10-22 (R2 offsite visibility gap — phát hiện khi rà soát vận hành) — trước bản này, dashboard
+// chỉ đọc 2 cây backup LOCAL, hoàn toàn không biết bản sao offsite (lớp bảo vệ nếu mất cả máy chủ)
+// có đang chạy được hay không. scripts/sync-offsite.sh giờ ghi 1 file JSON trạng thái sau MỖI lần
+// chạy (thành công hay thất bại đều ghi) — khối này chỉ đọc lại file đó, không tự chạy sync.
+function OffsiteSyncSummary({ offsite }: { offsite: OffsiteSyncStatus }) {
+  const isStale = offsite.configured && !!offsite.data && offsite.data.ageHours > STALE_THRESHOLD_HOURS;
+  const isFailed = offsite.configured && !!offsite.data && !offsite.data.success;
+  return (
+    <div style={{ marginTop: '0.75rem' }}>
+      <strong>Sao lưu offsite (R2):</strong>{' '}
+      {!offsite.configured && <span>chưa cấu hình trên máy chủ này.</span>}
+      {offsite.configured && !offsite.data && <span>đã cấu hình, nhưng chưa thấy lần chạy nào.</span>}
+      {offsite.configured && offsite.data && (
+        <span style={isFailed || isStale ? { color: 'var(--err, crimson)', fontWeight: 600 } : undefined}>
+          {isFailed && '⚠ Lần chạy gần nhất THẤT BẠI — '}
+          {!isFailed && isStale && '⚠ Quá hạn — '}
+          {isFailed ? 'thất bại' : 'thành công'} ({formatAge(offsite.data.ageHours)}
+          {isFailed ? `, mã lỗi ${offsite.data.exitCode}` : ''}).
+          {isFailed && ' Kiểm tra phuquochub-offsite-backup.log trên máy chủ.'}
+          {!isFailed && isStale && ' Lịch chạy hằng ngày nhưng lần gần nhất đã quá 30 giờ — kiểm tra cron trên máy chủ.'}
+        </span>
+      )}
+    </div>
   );
 }
 

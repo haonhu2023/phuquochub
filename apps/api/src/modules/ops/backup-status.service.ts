@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import * as path from 'node:path';
 import type { AppConfig } from '../../core/config/configuration';
 
@@ -40,9 +40,20 @@ export interface BackupTreeStatus {
   oldest: BackupSnapshotSummary | null;
 }
 
+// 2026-10-22 (R2 offsite visibility gap) — distinct from BackupTreeStatus: there is no "count of
+// snapshots" for offsite sync (it's one additive copy operation, not a set of discrete archives).
+// `configured: false` when BACKUP_STATUS_OFFSITE_FILE is unset. `data: null` with `configured: true`
+// means configured but scripts/sync-offsite.sh has never written the file yet (never run, or a run
+// crashed before reaching its EXIT trap — see that script's `write_offsite_status`).
+export interface OffsiteSyncStatus {
+  configured: boolean;
+  data: { timestampUtc: string; success: boolean; exitCode: number; ageHours: number } | null;
+}
+
 export interface BackupStatusSummary {
   database: BackupTreeStatus;
   media: BackupTreeStatus;
+  offsite: OffsiteSyncStatus;
   checkedAtUtc: string;
 }
 
@@ -66,11 +77,13 @@ function directorySizeBytes(dir: string): number {
 export class BackupStatusService {
   private readonly dbDir: string | null;
   private readonly mediaDir: string | null;
+  private readonly offsiteStatusFile: string | null;
 
   constructor(config: ConfigService) {
     const backupStatus = config.get<AppConfig['backupStatus']>('backupStatus')!;
     this.dbDir = backupStatus.dbDir;
     this.mediaDir = backupStatus.mediaDir;
+    this.offsiteStatusFile = backupStatus.offsiteStatusFile;
   }
 
   getStatus(): BackupStatusSummary {
@@ -78,8 +91,39 @@ export class BackupStatusService {
     return {
       database: this.scanDbDir(now),
       media: this.scanMediaDir(now),
+      offsite: this.readOffsiteStatus(now),
       checkedAtUtc: now.toISOString(),
     };
+  }
+
+  // Tolerant parse: a missing, empty, or corrupt file (e.g. a crash mid-write, extremely unlikely
+  // given the single `printf > file` write but not impossible on process kill) reports `data: null`
+  // rather than throwing — this is a read-only status display, never worth a 500 on the dashboard.
+  private readOffsiteStatus(now: Date): OffsiteSyncStatus {
+    if (!this.offsiteStatusFile) return { configured: false, data: null };
+    if (!existsSync(this.offsiteStatusFile)) return { configured: true, data: null };
+    try {
+      const raw = JSON.parse(readFileSync(this.offsiteStatusFile, 'utf8')) as {
+        timestampUtc?: unknown;
+        success?: unknown;
+        exitCode?: unknown;
+      };
+      const timestamp = typeof raw.timestampUtc === 'string' ? new Date(raw.timestampUtc) : null;
+      if (!timestamp || Number.isNaN(timestamp.getTime()) || typeof raw.success !== 'boolean' || typeof raw.exitCode !== 'number') {
+        return { configured: true, data: null };
+      }
+      return {
+        configured: true,
+        data: {
+          timestampUtc: timestamp.toISOString(),
+          success: raw.success,
+          exitCode: raw.exitCode,
+          ageHours: (now.getTime() - timestamp.getTime()) / 3_600_000,
+        },
+      };
+    } catch {
+      return { configured: true, data: null };
+    }
   }
 
   private scanDbDir(now: Date): BackupTreeStatus {
