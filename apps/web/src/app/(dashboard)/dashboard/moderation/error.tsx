@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useLogError } from '@/components/ui/ErrorRetryState';
 import placeStyles from '@/modules/places/places.module.css';
 
 // Error boundary cho segment /dashboard/moderation. Không lộ stack trace cho người dùng.
@@ -11,9 +11,7 @@ export default function ModerationError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useLogError(error);
 
   return (
     <main>

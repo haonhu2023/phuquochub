@@ -1,6 +1,9 @@
 import { ArgumentsHost, BadRequestException, LoggerService, UnauthorizedException } from '@nestjs/common';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import { Sentry } from '../../core/monitoring/sentry';
 import type { RequestWithCorrelationId } from '../middleware/correlation-id.middleware';
+
+jest.mock('../../core/monitoring/sentry', () => ({ Sentry: { captureException: jest.fn() } }));
 
 function makeMockLogger(): LoggerService & { log: jest.Mock; error: jest.Mock } {
   return {
@@ -30,6 +33,32 @@ function makeHost(
 }
 
 describe('AllExceptionsFilter', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('lỗi không mong đợi (>=500) cũng được báo cho Sentry, kèm correlationId để tra chéo với log', () => {
+    const logger = makeMockLogger();
+    const filter = new AllExceptionsFilter(logger);
+    const { host } = makeHost('GET', '/api/places', 'corr-sentry-1');
+    const error = new Error('unexpected boom');
+
+    filter.catch(error, host);
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(error, { tags: { correlationId: 'corr-sentry-1' } });
+  });
+
+  it.each([
+    ['400 (validation)', new BadRequestException('bad input')],
+    ['401 (unauthorized)', new UnauthorizedException('nope')],
+  ])('lỗi nghiệp vụ mong đợi (%s) KHÔNG báo Sentry — cùng lý do không log (tránh nhiễu)', (_label, exception) => {
+    const logger = makeMockLogger();
+    const filter = new AllExceptionsFilter(logger);
+    const { host } = makeHost('POST', '/api/auth/login');
+
+    filter.catch(exception, host);
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it('lỗi không mong đợi (>=500) được log kèm correlationId, method, path, errorType, stack', () => {
     const logger = makeMockLogger();
     const filter = new AllExceptionsFilter(logger);

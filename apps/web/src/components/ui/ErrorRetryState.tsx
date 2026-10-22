@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { useLocale } from '@/lib/LocaleContext';
 
 // X1 (2026-09-22) — trước bản này, MỖI route public có một `error.tsx` gần như trùng lặp y hệt
@@ -42,9 +43,16 @@ export function ErrorRetryState({
 }
 
 /** Ghi log lỗi phía client để debug — KHÔNG hiển thị nội dung lỗi/stack cho người dùng. Dùng
- *  trong `useEffect` của mỗi `error.tsx` gọi component này. */
+ *  trong `useEffect` của mỗi `error.tsx` gọi component này.
+ *
+ * 2026-10-22 (error-tracking gap, production review): trước dòng Sentry.captureException() dưới
+ * đây, một lỗi render ở BẤT KỲ route public/dashboard nào chỉ nằm trong console trình duyệt của
+ * CHÍNH người dùng gặp lỗi — không ai khác thấy được. An toàn khi SENTRY_DSN chưa cấu hình (SDK tự
+ * no-op, xem instrumentation-client.ts). MỘT điểm sửa ở đây phủ toàn bộ error.tsx đã gọi hook này
+ * (public + dashboard, xem ErrorRetryState.spec.tsx) — không cần sửa từng file. */
 export function useLogError(error: Error & { digest?: string }): void {
   useEffect(() => {
     console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 }

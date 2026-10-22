@@ -28,9 +28,16 @@ RUN npm run build --workspace=@phuquochub/utils
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api
 ARG NEXT_PUBLIC_MAP_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
 ARG NEXT_PUBLIC_SITE_URL=http://localhost:3000
+# 2026-10-22 (error-tracking gap) — same build-time-baked reasoning as the three ARGs above: a
+# Sentry DSN is NOT a secret (see instrumentation-client.ts's comment), but it IS NEXT_PUBLIC_-
+# prefixed, so it must be a build arg, not a runtime env var, or the client bundle silently keeps
+# whatever it had the last time the image was built (same failure mode PLACE-038 fixed for the
+# other three). Empty default — no DSN baked in until one is actually supplied.
+ARG NEXT_PUBLIC_SENTRY_DSN=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_MAP_TILE_URL=$NEXT_PUBLIC_MAP_TILE_URL
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 # next.config.mjs sets output:'standalone' (PLACE-026) — produces a self-contained
 # server.js + pruned node_modules under .next/standalone.
 RUN npm run build --workspace=@phuquochub/web

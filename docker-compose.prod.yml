@@ -325,6 +325,13 @@ services:
       # file under $BACKUP_DIR (host default matches BACKUP_STATUS_DB_DIR's host path), so it lands
       # here through the SAME bind mount below — no new volume entry needed.
       BACKUP_STATUS_OFFSITE_FILE: ${BACKUP_STATUS_OFFSITE_FILE:-/repo/backups/offsite-status.json}
+      # 2026-10-22 (error-tracking gap, production review) — safe no-op until SENTRY_DSN is set
+      # (see apps/api/src/core/monitoring/sentry.ts). SENTRY_RELEASE defaults to the same
+      # commit-SHA tag the image itself is deployed under, so Sentry's own release view lines up
+      # exactly with `scripts/deploy.sh`/`verify-release-pins.sh`'s notion of "what's running".
+      SENTRY_DSN: ${SENTRY_DSN_API:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${API_IMAGE_TAG:-}
       # C1 hardening (2026-09-22): server-to-server cache invalidation. After every place write
       # that touches public output (update/publish/unpublish), PlacesService calls the web app's
       # OWN internal revalidate route directly (see core/cache-invalidation/) — this is what closes
@@ -369,6 +376,10 @@ services:
         # MVP SEO pass: metadataBase/sitemap.ts/robots.ts need the real web origin at build time,
         # same NEXT_PUBLIC_ build-time-baked reasoning as the two vars above (PLACE-038).
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}
+        # 2026-10-22 (error-tracking gap) — same build-time-baked reasoning; empty default is
+        # intentional (safe no-op client-side until a real DSN is supplied, see
+        # instrumentation-client.ts).
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
     # PLACE-038: tag parameterized, same reasoning as the api service above.
     image: phuquochub-web:${WEB_IMAGE_TAG:-local}
     container_name: phuquoc-web-prod
@@ -393,6 +404,12 @@ services:
       # interpolate the exact same `${REVALIDATE_INTERNAL_SECRET:?...}` so a single `.env` value
       # (or a single missing value) affects both identically; they cannot drift apart at this layer.
       REVALIDATE_INTERNAL_SECRET: ${REVALIDATE_INTERNAL_SECRET:?REVALIDATE_INTERNAL_SECRET must be set in .env — no default is permitted (min 16 chars, must not be the placeholder from .env.example)}
+      # 2026-10-22 (error-tracking gap) — server-side half (instrumentation.ts), read at runtime
+      # via process.env (NOT NEXT_PUBLIC_-prefixed, so a plain runtime env var here is correct,
+      # unlike NEXT_PUBLIC_SENTRY_DSN above which must be a build arg). Safe no-op until set.
+      SENTRY_DSN_WEB: ${SENTRY_DSN_WEB:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+      SENTRY_RELEASE: ${WEB_IMAGE_TAG:-}
     # PLACE-038: KHÔNG publish 3000 ra host — chỉ Caddy gọi tới qua mạng Docker nội bộ bằng tên
     # service `web:3000`.
     logging:

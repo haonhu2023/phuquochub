@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useLogError } from '@/components/ui/ErrorRetryState';
 import placeStyles from '@/modules/places/places.module.css';
 
 // Error boundary cho segment /dashboard/business-claims/new — cùng khuôn dashboard/places/error.tsx.
@@ -11,9 +11,7 @@ export default function NewBusinessClaimError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useLogError(error);
 
   return (
     <main>

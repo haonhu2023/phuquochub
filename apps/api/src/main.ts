@@ -10,6 +10,12 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { correlationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { securityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { AppLoggerService } from './core/logger/app-logger.service';
+import { initSentry } from './core/monitoring/sentry';
+
+// Earliest possible point after imports resolve, before NestFactory.create() — installs Sentry's
+// uncaught-exception/unhandled-rejection handlers before the app does anything else. No-op unless
+// SENTRY_DSN is set (see sentry.ts).
+initSentry();
 
 async function bootstrap(): Promise<void> {
   // PLACE-030: bufferLogs giữ log phát sinh trước khi useLogger() gắn xong, tránh mất dòng log

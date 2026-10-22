@@ -110,6 +110,7 @@ else
     --build-arg "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://phuquochub.com/api}" \
     --build-arg "NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-https://phuquochub.com}" \
     --build-arg "NEXT_PUBLIC_MAP_TILE_URL=$TILE_URL" \
+    --build-arg "NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN:-}" \
     --build-arg "GIT_COMMIT=$TAG" \
     --build-arg "BUILD_DATE=$BUILD_DATE"
   RESOLVED_API_ID=$(docker image inspect "phuquochub-api:$TAG" --format '{{.Id}}')

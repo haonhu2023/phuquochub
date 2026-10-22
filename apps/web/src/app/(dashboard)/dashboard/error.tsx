@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useLogError } from '@/components/ui/ErrorRetryState';
 import placesStyles from '@/modules/places/places.module.css';
 
 // Error boundary cho /dashboard — cùng khuôn placesStyles.state đã dùng ở mọi route khác (khuôn
@@ -15,9 +15,7 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useLogError(error);
 
   return (
     <div className={placesStyles.state} role="alert">

@@ -9,6 +9,7 @@ import {
 import type { Request, Response } from 'express';
 import type { ApiErrorBody } from '@phuquochub/shared-types';
 import { AppLoggerService } from '../../core/logger/app-logger.service';
+import { Sentry } from '../../core/monitoring/sentry';
 import { getCorrelationId } from '../middleware/correlation-id.middleware';
 
 // Chuẩn hóa mọi lỗi thành envelope { error, meta }. Map HttpException → code ổn định.
@@ -69,6 +70,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
         },
         exception instanceof Error ? exception.stack : undefined,
       );
+      // 2026-10-22 (error-tracking gap, production review): trước dòng này, một lỗi 500 cho
+      // người dùng thật hoàn toàn vô hình trừ khi ai đó tự đọc log server. Safe no-op nếu
+      // SENTRY_DSN chưa cấu hình (xem sentry.ts) — cùng correlationId với response để tra chéo
+      // giữa Sentry và log server.
+      Sentry.captureException(exception, { tags: { correlationId } });
     }
 
     const body: ApiErrorBody = {

@@ -114,6 +114,19 @@ else
   fail "web build's NEXT_PUBLIC_SITE_URL default is missing or is not https://phuquochub.com"
 fi
 
+echo "== web build passes NEXT_PUBLIC_SENTRY_DSN (same baked-at-build-time trap as SITE_URL above) =="
+# Same failure class the NEXT_PUBLIC_SITE_URL block above already guards against: apps/web/Dockerfile
+# declares `ARG NEXT_PUBLIC_SENTRY_DSN=` (empty default — deliberately NOT a production value, see
+# that Dockerfile's comment: this stays a safe no-op until a real Sentry project exists). If deploy.sh
+# forgot to pass this build-arg, a release built via this script would silently ship with NO
+# client-side error tracking even after SENTRY_DSN_WEB/NEXT_PUBLIC_SENTRY_DSN are set in .env — the
+# exact same "set in .env, but the running image never picked it up" trap as the SITE_URL incident.
+if printf '%s' "$WEB_BLOCK" | grep -q -- '--build-arg "NEXT_PUBLIC_SENTRY_DSN='; then
+  pass "web build passes a NEXT_PUBLIC_SENTRY_DSN build-arg"
+else
+  fail "web build does not pass NEXT_PUBLIC_SENTRY_DSN -- .env changes to it would silently never reach the built image"
+fi
+
 echo "== provenance must never carry a mutable identifier =="
 # `local`/`latest` as a recorded revision would defeat the whole point.
 if grep -qE -- '--build-arg "GIT_COMMIT=(local|latest)"' "$DEPLOY"; then
