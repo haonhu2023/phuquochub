@@ -4,6 +4,15 @@ import { RealEstateListingPhotoGallery } from './RealEstateListingPhotoGallery';
 import { listRealEstateListingPhotos } from './api/real-estate-listing-photos.api';
 import type { RealEstateListingPhoto } from './types';
 
+// 2026-10-22 (rà soát hiệu năng — chuyển sang next/image) — `src` thật giờ đi qua optimizer, xem
+// ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 jest.mock('./api/real-estate-listing-photos.api', () => ({ listRealEstateListingPhotos: jest.fn() }));
 
 const mockList = listRealEstateListingPhotos as jest.Mock;
@@ -28,7 +37,7 @@ describe('RealEstateListingPhotoGallery', () => {
     render(<RealEstateListingPhotoGallery listingId={LISTING_ID} />);
     const images = await screen.findAllByRole('img');
     expect(images).toHaveLength(2);
-    expect(images[0]).toHaveAttribute('src', `/api/real-estate-listings/${LISTING_ID}/photos/p1/file`);
+    expect(originalImgSrc(images[0])).toBe(`/api/real-estate-listings/${LISTING_ID}/photos/p1/file`);
   });
 
   it('lỗi tải danh sách → không render gì (không làm hỏng cả trang)', async () => {

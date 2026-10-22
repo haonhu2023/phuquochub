@@ -12,6 +12,15 @@ import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import TourDetailPage, { generateMetadata } from './page';
 
+// 2026-10-22 (rà soát hiệu năng — PlaceGallery chuyển sang next/image) — `src` thật giờ đi qua
+// optimizer (`/_next/image?url=<encoded>&w=...&q=75`), xem ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 jest.mock('@/modules/tours/api/tours.api', () => ({
   getTour: jest.fn(),
   getItinerary: jest.fn(),
@@ -158,7 +167,7 @@ describe('TourDetailPage — gallery ảnh công khai (real-data pass)', () => {
         ],
       }),
     );
-    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+    expect(originalImgSrc(screen.getByRole('img'))).toBe('https://api.example/api/media/m1/file');
   });
 
   it('media rỗng -> không render <img> nào', async () => {

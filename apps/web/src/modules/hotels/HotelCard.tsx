@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { HotelCard as HotelCardType } from './types';
 import { DEFAULT_LOCALE, localizedHref, type Locale } from '@/lib/locale';
@@ -28,12 +29,14 @@ export function HotelCard({ hotel, locale = DEFAULT_LOCALE }: { hotel: HotelCard
   return (
     <Link href={localizedHref(locale, `/hotels/${hotel.slug}`)} className={placesStyles.card}>
       {hotel.cover_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
-        <img
+        // 2026-10-22 (rà soát hiệu năng) — same-origin, xem ghi chú PlaceCard.tsx.
+        <Image
           className={placesStyles.thumb}
           src={hotel.cover_image_url}
           alt={hotel.name}
-          loading="lazy"
+          width={800}
+          height={600}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">

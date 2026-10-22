@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { BeachCard as BeachCardType } from './types';
 import { formatPriceRange } from '@/modules/places/format';
@@ -24,12 +25,14 @@ export function BeachCard({ beach, locale = DEFAULT_LOCALE }: { beach: BeachCard
   return (
     <Link href={localizedHref(locale, `/places/${beach.slug}`)} className={placesStyles.card}>
       {beach.cover_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
-        <img
+        // 2026-10-22 (rà soát hiệu năng) — same-origin, xem ghi chú PlaceCard.tsx.
+        <Image
           className={placesStyles.thumb}
           src={beach.cover_image_url}
           alt={beach.name}
-          loading="lazy"
+          width={800}
+          height={600}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">

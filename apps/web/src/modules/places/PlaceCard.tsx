@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { PlaceCard as PlaceCardType } from './types';
 import { formatPriceRange } from './format';
@@ -62,12 +63,16 @@ export function PlaceCard({
   return (
     <Link href={placeDetailHref(locale, place.slug, categorySlug)} className={styles.card}>
       {place.cover_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
-        <img
+        // 2026-10-22 (rà soát hiệu năng — ảnh gallery gốc 137-459KB, không hề qua resize/nén nào):
+        // next/image tối ưu được vì cover_image_url luôn same-origin (API_PUBLIC_URL = chính domain
+        // web, xem configuration.ts) — KHÔNG cần remotePatterns như comment cũ (SAI) từng giả định.
+        <Image
           className={styles.thumb}
           src={place.cover_image_url}
           alt={place.name}
-          loading="lazy"
+          width={800}
+          height={600}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
       ) : (
         <div className={styles.thumbFallback} aria-hidden="true">

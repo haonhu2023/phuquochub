@@ -4,6 +4,16 @@ import { PlaceCard } from './PlaceCard';
 import type { PlaceCard as PlaceCardType } from './types';
 import { PRICE_VERIFYING_TEXT } from './trust';
 
+// 2026-10-22 (rà soát hiệu năng — chuyển sang next/image) — `src` thật giờ đi qua optimizer
+// (`/_next/image?url=<encoded>&w=...&q=75`). Đọc lại URL gốc từ query param `url` — vẫn xác nhận
+// ĐÚNG URL API ổn định được truyền (không phải presigned URL), chỉ khác cách next/image bọc nó.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 const BASE_PLACE: PlaceCardType = {
   id: 'p1',
   name: 'Dinh Cậu',
@@ -60,7 +70,7 @@ describe('PlaceCard', () => {
     render(<PlaceCard place={{ ...BASE_PLACE, cover_image_url: coverUrl }} />);
 
     const img = screen.getByRole('img');
-    expect(img).toHaveAttribute('src', coverUrl);
+    expect(originalImgSrc(img)).toBe(coverUrl);
     expect(img).toHaveAttribute('alt', 'Dinh Cậu');
     expect(img.getAttribute('src')).not.toContain('X-Amz-Signature');
     expect(img.getAttribute('src')).not.toContain(':9000');

@@ -3,6 +3,15 @@ import { render, screen } from '@testing-library/react';
 import { HotelCard } from './HotelCard';
 import type { HotelCard as HotelCardType } from './types';
 
+// 2026-10-22 (rà soát hiệu năng — chuyển sang next/image) — `src` thật giờ đi qua optimizer, xem
+// ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 const BASE_HOTEL: HotelCardType = {
   id: 'h1',
   name: 'Salinda Resort',
@@ -31,7 +40,7 @@ describe('HotelCard', () => {
   it('renders the cover image instead of the fallback when present', () => {
     render(<HotelCard hotel={{ ...BASE_HOTEL, cover_image_url: 'https://cdn.example/salinda.jpg' }} />);
     const img = screen.getByRole('img', { name: 'Salinda Resort' });
-    expect(img).toHaveAttribute('src', 'https://cdn.example/salinda.jpg');
+    expect(originalImgSrc(img)).toBe('https://cdn.example/salinda.jpg');
     expect(screen.queryByText('S')).not.toBeInTheDocument();
   });
 

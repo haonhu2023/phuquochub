@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { Locale } from '@/lib/locale';
 import styles from './home.module.css';
 
@@ -32,8 +33,18 @@ export function HeroVisual({ locale, places, heroImageUrl }: HeroVisualProps) {
   return (
     <div className={styles.heroVisual} aria-hidden="true">
       {heroImageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- runtime-resolved media host, cùng precedent PlaceCard.tsx/GuideMediaPicker.tsx
-        <img src={heroImageUrl} alt="" className={styles.heroVisualPhoto} />
+        // 2026-10-22 (rà soát hiệu năng) — same-origin (xem ghi chú PlaceCard.tsx). `fill` khớp
+        // ĐÚNG CSS `.heroVisualPhoto` đã có sẵn (position:absolute; inset:0; object-fit:cover) —
+        // không cần đổi cấu trúc DOM, `.heroVisual` cha đã `position:relative` sẵn. `priority`:
+        // đây gần như chắc chắn là phần tử LCP của trang chủ (ảnh hero trên-màn-hình-đầu-tiên).
+        <Image
+          src={heroImageUrl}
+          alt=""
+          fill
+          sizes="(max-width: 768px) 100vw, 50vw"
+          className={styles.heroVisualPhoto}
+          priority
+        />
       ) : (
         <div className={styles.heroVisualIsland} />
       )}

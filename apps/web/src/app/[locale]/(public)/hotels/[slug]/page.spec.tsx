@@ -1,6 +1,15 @@
 /** @jest-environment jsdom */
 import { render, screen } from '@testing-library/react';
 import { getHotel, type HotelDetail } from '@/modules/hotels/api/hotels.api';
+
+// 2026-10-22 (rà soát hiệu năng — PlaceGallery chuyển sang next/image) — `src` thật giờ đi qua
+// optimizer (`/_next/image?url=<encoded>&w=...&q=75`), xem ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
 import { listReviews } from '@/modules/reviews/api/reviews.api';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import HotelDetailPage, { generateMetadata } from './page';
@@ -159,7 +168,7 @@ describe('HotelDetailPage — gallery ảnh công khai (real-data pass)', () => 
       }),
     );
     const img = screen.getByRole('img');
-    expect(img).toHaveAttribute('src', 'https://api.example/api/media/m1/file');
+    expect(originalImgSrc(img)).toBe('https://api.example/api/media/m1/file');
     expect(img).toHaveAttribute('alt', 'Toàn cảnh khách sạn');
   });
 
@@ -395,7 +404,7 @@ describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
     await renderPage(hotel({ media: [media({ id: 'm1', url: 'https://phuquochub.com/api/media/m1/file' })] }));
     const imgs = screen.getAllByRole('img');
     expect(imgs).toHaveLength(1);
-    expect(imgs[0]).toHaveAttribute('src', 'https://phuquochub.com/api/media/m1/file');
+    expect(originalImgSrc(imgs[0])).toBe('https://phuquochub.com/api/media/m1/file');
   });
 
   it('nhiều ảnh → render đủ, ĐÚNG THỨ TỰ server trả về (không tự sắp lại ở client)', async () => {
@@ -409,7 +418,7 @@ describe('HotelDetailPage — gallery ảnh công khai (Fix A)', () => {
       }),
     );
     const imgs = screen.getAllByRole('img');
-    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['https://x/1', 'https://x/2', 'https://x/3']);
+    expect(imgs.map(originalImgSrc)).toEqual(['https://x/1', 'https://x/2', 'https://x/3']);
   });
 
   it('alt_text có giá trị → dùng alt_text, không rơi về caption/tên khách sạn', async () => {

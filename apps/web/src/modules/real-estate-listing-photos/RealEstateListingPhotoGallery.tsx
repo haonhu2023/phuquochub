@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { listRealEstateListingPhotos } from './api/real-estate-listing-photos.api';
 import type { RealEstateListingPhoto } from './types';
 import styles from './real-estate-listing-photos.module.css';
@@ -41,8 +42,16 @@ export function RealEstateListingPhotoGallery({ listingId }: Props) {
     <ul className={styles.grid} aria-label="Ảnh của tin">
       {photos.map((photo, index) => (
         <li key={photo.id} className={styles.tile}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className={styles.thumb} src={photo.url} alt={`Ảnh ${index + 1} của tin`} loading="lazy" />
+          {/* 2026-10-22 (rà soát hiệu năng) — same-origin (MediaUrlService dùng chung với media
+              thường, xem PlaceGallery.tsx's ghi chú đầy đủ). */}
+          <Image
+            className={styles.thumb}
+            src={photo.url}
+            alt={`Ảnh ${index + 1} của tin`}
+            width={400}
+            height={300}
+            sizes="(max-width: 480px) 45vw, 200px"
+          />
         </li>
       ))}
     </ul>

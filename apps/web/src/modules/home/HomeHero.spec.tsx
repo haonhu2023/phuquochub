@@ -19,6 +19,15 @@ jest.mock('next/link', () => ({
 const mockListPlaces = listPlaces as jest.Mock;
 const mockGetHomeContent = getHomeContent as jest.Mock;
 
+// 2026-10-22 (rà soát hiệu năng — HeroVisual chuyển sang next/image) — `src` thật giờ đi qua
+// optimizer (`/_next/image?url=<encoded>&w=...&q=75`), xem ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element | null): string {
+  const src = img?.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 const NO_OVERRIDE = { hero: null, about: null, featuredPlaceSlugs: [], social: { facebook: null, zalo: null, instagram: null, whatsapp: null, phone: null } };
 
 // HomeHero là async Server Component (V3: gọi listPlaces một lần cho HeroVisual) — cùng quy ước
@@ -160,7 +169,7 @@ describe('HomeHero', () => {
       });
       const { container } = await renderHero();
       const img = container.querySelector('img');
-      expect(img).toHaveAttribute('src', 'https://cdn.test/media/m1/file');
+      expect(originalImgSrc(img)).toBe('https://cdn.test/media/m1/file');
     });
 
     it('getHomeContent lỗi → KHÔNG ném ra ngoài, hero vẫn render nội dung tĩnh mặc định', async () => {

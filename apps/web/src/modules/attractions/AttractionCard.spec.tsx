@@ -4,6 +4,15 @@ import { AttractionCard } from './AttractionCard';
 import type { AttractionCard as AttractionCardType } from './types';
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 
+// 2026-10-22 (rà soát hiệu năng — chuyển sang next/image) — `src` thật giờ đi qua optimizer, xem
+// ghi chú đầy đủ trong PlaceGallery.spec.tsx.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 const BASE_ATTRACTION: AttractionCardType = {
   id: 'a1',
   name: 'Bãi Sao',
@@ -37,7 +46,7 @@ describe('AttractionCard', () => {
       />,
     );
     const img = screen.getByRole('img', { name: 'Bãi Sao' });
-    expect(img).toHaveAttribute('src', 'https://cdn.example/bai-sao.jpg');
+    expect(originalImgSrc(img)).toBe('https://cdn.example/bai-sao.jpg');
     expect(screen.queryByText('B')).not.toBeInTheDocument();
   });
 

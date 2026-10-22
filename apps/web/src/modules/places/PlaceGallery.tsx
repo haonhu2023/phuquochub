@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import type { PlaceMedia } from './types';
 import styles from './places.module.css';
 
@@ -26,12 +27,18 @@ export function PlaceGallery({ media, placeName }: Props) {
     <div className={styles.gallery}>
       {media.map((m) => (
         <figure key={m.id} className={styles.galleryFigure}>
-          {/* eslint-disable-next-line @next/next/no-img-element -- ảnh host bên ngoài; next/image cần remotePatterns (ngoài phạm vi). */}
-          <img
+          {/* 2026-10-22 (rà soát hiệu năng — ảnh gallery gốc đo được 137-459KB/ảnh, không hề qua
+              resize/nén nào): next/image tối ưu được vì `m.url` luôn same-origin (API_PUBLIC_URL =
+              chính domain web) — KHÔNG cần remotePatterns như comment cũ (SAI) từng giả định.
+              `thumbnail_url` hiện LUÔN null (chưa có pipeline sinh thumbnail nào ghi vào cột đó) —
+              nếu sau này có giá trị khác origin, next/image sẽ cần remotePatterns tương ứng. */}
+          <Image
             className={styles.galleryImg}
             src={m.thumbnail_url ?? m.url}
             alt={m.alt_text ?? m.caption ?? placeName}
-            loading="lazy"
+            width={400}
+            height={300}
+            sizes="(max-width: 480px) 45vw, 200px"
           />
           <MediaCredit media={m} />
         </figure>

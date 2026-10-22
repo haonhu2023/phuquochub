@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { TourCard as TourCardType } from './types';
 import { formatDifficulty, formatDuration, formatTourType } from './format';
@@ -21,8 +22,15 @@ export function TourCard({ tour, locale = DEFAULT_LOCALE }: { tour: TourCardType
   return (
     <Link href={localizedHref(locale, `/tours/${tour.slug}`)} className={placesStyles.card}>
       {tour.cover_image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element -- ảnh từ host bên ngoài (MinIO/CDN); next/image cần cấu hình remotePatterns (ngoài phạm vi slice này).
-        <img className={placesStyles.thumb} src={tour.cover_image_url} alt={tour.name} loading="lazy" />
+        // 2026-10-22 (rà soát hiệu năng) — same-origin, xem ghi chú PlaceCard.tsx.
+        <Image
+          className={placesStyles.thumb}
+          src={tour.cover_image_url}
+          alt={tour.name}
+          width={800}
+          height={600}
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+        />
       ) : (
         <div className={placesStyles.thumbFallback} aria-hidden="true">
           <span>{tour.name.charAt(0)}</span>

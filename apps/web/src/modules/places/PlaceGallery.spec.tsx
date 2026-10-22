@@ -3,6 +3,17 @@ import { render, screen } from '@testing-library/react';
 import { PlaceGallery } from './PlaceGallery';
 import type { PlaceMedia } from './types';
 
+// 2026-10-22 (rà soát hiệu năng — chuyển sang next/image) — `src` thật giờ đi qua optimizer
+// (`/_next/image?url=<encoded>&w=...&q=75`), không còn là URL gốc trần. Đọc lại URL gốc từ query
+// param `url` thay vì so khớp `src` trực tiếp — vẫn xác nhận ĐÚNG URL gốc được truyền, chỉ khác
+// cách next/image bọc nó để phục vụ resize/nén.
+function originalImgSrc(img: Element): string {
+  const src = img.getAttribute('src') ?? '';
+  const qIndex = src.indexOf('?');
+  if (qIndex === -1) return src;
+  return new URLSearchParams(src.slice(qIndex + 1)).get('url') ?? src;
+}
+
 function media(overrides: Partial<PlaceMedia> = {}): PlaceMedia {
   return {
     id: 'm1',
@@ -33,12 +44,12 @@ describe('PlaceGallery', () => {
       />,
     );
     const img = screen.getByRole('img');
-    expect(img).toHaveAttribute('src', 'https://api.example/api/media/555/file');
+    expect(originalImgSrc(img)).toBe('https://api.example/api/media/555/file');
   });
 
   it('ưu tiên thumbnail_url khi có, không phải url gốc', () => {
     render(<PlaceGallery media={[media({ thumbnail_url: 'https://api.example/thumb.jpg' })]} placeName="X" />);
-    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://api.example/thumb.jpg');
+    expect(originalImgSrc(screen.getByRole('img'))).toBe('https://api.example/thumb.jpg');
   });
 
   it('alt ưu tiên alt_text, rồi caption, rồi tên địa điểm', () => {
@@ -59,7 +70,7 @@ describe('PlaceGallery', () => {
       />,
     );
     const imgs = screen.getAllByRole('img');
-    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['https://x/a', 'https://x/b']);
+    expect(imgs.map(originalImgSrc)).toEqual(['https://x/a', 'https://x/b']);
   });
 
   it('có attribution -> hiện dòng ghi công', () => {
