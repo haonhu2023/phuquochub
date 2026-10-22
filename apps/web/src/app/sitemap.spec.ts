@@ -209,6 +209,43 @@ describe('sitemap v2', () => {
       expect(urls).toContain('http://localhost:3000/vi/real-estate');
       expect(urls.some((u) => u.includes('/jobs/job-1') || u.includes('/real-estate/rel-1'))).toBe(false);
     });
+
+    // 2026-10-22 (rà soát vận hành toàn site, mục 5) — /real-estate có 0 tin thật trên production
+    // trước đây vẫn luôn vào sitemap (nội dung chỉ "Chưa có tin bất động sản nào"), rủi ro Google
+    // đánh giá thin-content. Áp cùng quy tắc cho /jobs (đối xứng, phòng khi về 0 trong tương lai).
+    describe('hub rỗng thật (thin-content, mục 5)', () => {
+      it('listRealEstateListings thành công NHƯNG trả về mảng rỗng → /real-estate bị loại khỏi sitemap CẢ hai locale', async () => {
+        mockListRealEstateListings.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50 } });
+        const urls = (await sitemap()).map((e) => e.url);
+        expect(urls).not.toContain('http://localhost:3000/vi/real-estate');
+        expect(urls).not.toContain('http://localhost:3000/en/real-estate');
+        // Hub khác không bị ảnh hưởng — chỉ real-estate rỗng.
+        expect(urls).toContain('http://localhost:3000/vi/jobs');
+      });
+
+      it('listJobListings thành công NHƯNG trả về mảng rỗng → /jobs bị loại khỏi sitemap CẢ hai locale', async () => {
+        mockListJobListings.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50 } });
+        const urls = (await sitemap()).map((e) => e.url);
+        expect(urls).not.toContain('http://localhost:3000/vi/jobs');
+        expect(urls).not.toContain('http://localhost:3000/en/jobs');
+        expect(urls).toContain('http://localhost:3000/vi/real-estate');
+      });
+
+      it('có ít nhất một tin thật (mặc định beforeEach) → /jobs và /real-estate VẪN có mặt cả hai locale', async () => {
+        const urls = (await sitemap()).map((e) => e.url);
+        expect(urls).toContain('http://localhost:3000/vi/jobs');
+        expect(urls).toContain('http://localhost:3000/en/jobs');
+        expect(urls).toContain('http://localhost:3000/vi/real-estate');
+        expect(urls).toContain('http://localhost:3000/en/real-estate');
+      });
+
+      it('fetch LỖI (không phải rỗng thật) → hub VẪN giữ, không bị nhầm là "xác nhận rỗng" (phân biệt lỗi vs rỗng thật)', async () => {
+        mockListRealEstateListings.mockRejectedValue(new Error('API down'));
+        const urls = (await sitemap()).map((e) => e.url);
+        expect(urls).toContain('http://localhost:3000/vi/real-estate');
+        expect(urls).toContain('http://localhost:3000/en/real-estate');
+      });
+    });
   });
 
   it('một endpoint lỗi KHÔNG làm hỏng cả sitemap — các entity khác vẫn có mặt', async () => {

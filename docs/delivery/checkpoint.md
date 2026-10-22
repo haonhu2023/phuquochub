@@ -2,6 +2,18 @@
 
 **Baseline production (21/10/2026, SAU cutover Giai đoạn 5):** API `06b1bee2cca8b676d557f92df73cbc044236bc26` (`sha256:538eb9ce024f...`) · Web cùng commit (`sha256:281286243f7e...`) · DB **107 migrations** (không đổi — Giai đoạn 5 không có migration mới). Rollback về API/Web `6406952622cad0dc5ae85e8b995ba3c48e9e3431` (`scripts/rollback.sh 6406952622cad0dc5ae85e8b995ba3c48e9e3431`) nếu cần. **Giữ nguyên schema sau rollback — không revert migration, không restore DB** (không có migration nào để revert lần này).
 
+### Sitemap tự loại hub rỗng thật — tránh thin-content (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 5), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration
+
+**Phát hiện:** `/real-estate` có **0 tin thật** trên production (xác nhận `GET /api/real-estate-listings` → `total:0` ngay trước khi sửa) nhưng trước đây vẫn LUÔN vào `sitemap.xml` cả hai locale — nội dung trang chỉ "Chưa có tin bất động sản nào", rủi ro Google đánh giá thin-content. `/jobs` hiện có 1 tin thật (không rỗng) nên không bị ảnh hưởng hôm nay — áp CÙNG quy tắc cho cả hai, đối xứng, phòng khi `/jobs` về 0 trong tương lai thay vì chỉ vá riêng real-estate.
+
+**Thiết kế trọng tâm — phân biệt "xác nhận rỗng" với "gọi lỗi":** `sitemap.ts` vốn có nguyên tắc xuyên suốt "một fetch lỗi không bao giờ được làm mất URL nào" (`safeList()` nuốt lỗi thành mảng rỗng, test cũ `'listJobListings/listRealEstateListings lỗi → ... hub vẫn còn'` đã khoá hành vi này). Nếu chỉ kiểm `.length === 0` để ẩn hub, một lần API lỗi tạm thời SẼ VÔ TÌNH ẩn mất `/jobs` dù tin thật vẫn còn — regression nghiêm trọng hơn vấn đề đang sửa. Thêm `safeListWithStatus()` (song song `safeList()`, không đổi hành vi hai hàm khác) giữ lại cờ `succeeded` — chỉ `succeeded && length === 0` mới được coi là "xác nhận rỗng", đủ điều kiện loại hub; fetch lỗi vẫn giữ nguyên hub như trước (test mới xác nhận riêng cả hai nhánh).
+
+**Tự thêm lại ngay khi có tin đầu tiên** — không cần deploy lại, chỉ phụ thuộc kết quả fetch thật mỗi lần `sitemap.xml` được tạo (route đã có `export const dynamic = 'force-dynamic'` từ trước).
+
+**Test:** 4 case mới (`sitemap.spec.ts`) — rỗng thật loại cả hai locale (real-estate riêng, jobs riêng, không ảnh hưởng hub kia), có tin thật thì vẫn giữ cả hai locale, lỗi fetch KHÔNG bị nhầm là rỗng thật. 23 case cũ vẫn pass nguyên — không regression.
+
+**Chưa deploy.**
+
 ### Vá gap "Owner Decision Queue thiếu UI" — HOÁ RA đã có UI, chỉ thiếu nút đóng mục (22/10/2026) — phát hiện khi rà soát vận hành toàn site (mục 4), ĐÃ code + test pass, CHƯA deploy, KHÔNG migration, KHÔNG route API mới
 
 **Sửa lại phát hiện ban đầu:** báo cáo rà soát ban đầu ghi "Owner Decision Queue có API đầy đủ nhưng không có màn hình duyệt riêng" — SAI, kiểm trực tiếp code phát hiện `/dashboard/todo` (`OwnerTodoView.tsx`, module `owner-todo`) đã là trang duyệt đầy đủ từ trước (tái dùng `GET /owner-decisions?status=pending`, ghép tên địa điểm, phân trang "Tải thêm", đã có 12 test case). Gap THẬT, hẹp hơn nhiều: trang chỉ ĐỌC — không có nút nào gọi `POST /owner-decisions/:id/resolve` hay `/withdraw` (hai route tồn tại từ 2026-09-18, `owner-todo.api.ts` trước đó chỉ export `listPendingOwnerDecisions`/`resolvePlaceNames`). Hệ quả thật: một mục đã thực sự xử lý xong (vd owner đã bấm "Sửa địa điểm →" và sửa xong) vẫn ở lại "pending" MÃI MÃI trong hàng chờ — không ai đóng nó lại được từ web.

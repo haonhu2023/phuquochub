@@ -40,9 +40,29 @@ const STATIC_ROUTES = [
   '/map',
   '/events',
   '/guide',
-  '/jobs',
-  '/real-estate',
+  // `/jobs`/`/real-estate` KHÔNG ở đây nữa — xem CONDITIONAL_HUB_ROUTES ngay dưới.
 ];
+
+// 2026-10-22 (rà soát vận hành toàn site, phát hiện mục 5) — `/real-estate` có 0 tin thật trên
+// production nhưng trước đây vẫn luôn vào sitemap (nội dung chỉ có "Chưa có tin bất động sản
+// nào"), rủi ro Google đánh giá thin-content. `/jobs` hiện có tin thật (không rỗng) nên không bị
+// ảnh hưởng hôm nay, nhưng CÙNG rủi ro nếu một ngày về 0 — áp cùng quy tắc cho cả hai, đối xứng,
+// thay vì chỉ vá riêng real-estate. Tự loại khi rỗng, tự thêm lại ngay khi có tin đầu tiên — không
+// cần deploy lại, chỉ phụ thuộc kết quả fetch thật trong sitemap() bên dưới.
+const CONDITIONAL_HUB_ROUTES: Array<{ path: string; hasContent: (ctx: SitemapFetchResult) => boolean }> = [
+  { path: '/jobs', hasContent: (ctx) => !ctx.jobListingsConfirmedEmpty },
+  { path: '/real-estate', hasContent: (ctx) => !ctx.realEstateListingsConfirmedEmpty },
+];
+
+// Shape CONDITIONAL_HUB_ROUTES's `hasContent` checks against — `confirmedEmpty` is deliberately
+// NOT just "length === 0": a transient fetch FAILURE must never hide a hub page that may well have
+// real content (same "never take down the whole sitemap" contract every other fetch here already
+// has — see safeListWithStatus() below). Only a fetch that genuinely SUCCEEDED and returned zero
+// rows counts as "confirmed empty" and is allowed to suppress the hub route.
+interface SitemapFetchResult {
+  jobListingsConfirmedEmpty: boolean;
+  realEstateListingsConfirmedEmpty: boolean;
+}
 
 // A single entity-type fetch must never take down the whole sitemap -- if one endpoint is
 // slow/erroring/empty, the sitemap should still list everything else correctly.
@@ -54,10 +74,22 @@ async function safeList<T>(fn: () => Promise<T[]>): Promise<T[]> {
   }
 }
 
-function staticEntriesFor(site: string, locales: readonly Locale[]): MetadataRoute.Sitemap {
+// 2026-10-22 — same fail-safe contract as safeList(), but keeps the success/failure distinction
+// instead of collapsing both into an empty array. CONDITIONAL_HUB_ROUTES needs this: an empty
+// array from a FAILED fetch must not be read as "confirmed zero listings" (that would wrongly
+// deindex a hub page over a transient API hiccup), only an empty array from a SUCCEEDED fetch may.
+async function safeListWithStatus<T>(fn: () => Promise<T[]>): Promise<{ items: T[]; succeeded: boolean }> {
+  try {
+    return { items: await fn(), succeeded: true };
+  } catch {
+    return { items: [], succeeded: false };
+  }
+}
+
+function staticEntriesFor(site: string, locales: readonly Locale[], routes: readonly string[]): MetadataRoute.Sitemap {
   const entries: MetadataRoute.Sitemap = [];
   for (const locale of locales) {
-    for (const path of STATIC_ROUTES) {
+    for (const path of routes) {
       entries.push({
         url: `${site}${localizedHref(locale, path)}`,
         changeFrequency: 'daily',
@@ -124,28 +156,43 @@ function guideEntries(
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const site = getSiteUrl();
 
-  const [placesAll, hotels, restaurants, tours, events, guidesVi, guidesEn, categories, jobListings, realEstateListings] =
-    await Promise.all([
-      safeList(() => listPlaces({ limit: 100 })),
-      safeList(() => listHotelSlugs(100)),
-      safeList(() => listRestaurantSlugs(100)),
-      safeList(() => listTourSlugs(100)),
-      safeList(() => listEvents(1, 100)),
-      safeList(() => listGuideArticles('vi')),
-      safeList(() => listGuideArticles('en')),
-      safeList(() => listCategories()),
-      // listJobListings/listRealEstateListings (@Public) đã tự lọc published + chưa hết hạn tại
-      // thời điểm đọc — đúng tập cần lên sitemap, không cần endpoint riêng.
-      //
-      // limit=50, KHÔNG phải 100 như các entity khác ở trên: ListJobListingsQueryDto/
-      // ListRealEstateListingsQueryDto giới hạn `@Max(50)` ở chính DTO — limit=100 bị 400
-      // VALIDATION_ERROR, `safeList` nuốt lỗi đó thành mảng rỗng (im lặng, trông giống "chưa có
-      // tin nào" chứ không giống một lỗi) — chỉ phát hiện được qua test THẬT trên image đã build
-      // (r15 smoke test, 09/10/2026), không phải qua unit test (mock không áp constraint của DTO
-      // thật). Bài học: không giả định mọi entity list endpoint cùng trần limit.
-      safeList(async () => (await listJobListings({ limit: 50 })).data),
-      safeList(async () => (await listRealEstateListings({ limit: 50 })).data),
-    ]);
+  const [
+    placesAll,
+    hotels,
+    restaurants,
+    tours,
+    events,
+    guidesVi,
+    guidesEn,
+    categories,
+    jobListingsResult,
+    realEstateListingsResult,
+  ] = await Promise.all([
+    safeList(() => listPlaces({ limit: 100 })),
+    safeList(() => listHotelSlugs(100)),
+    safeList(() => listRestaurantSlugs(100)),
+    safeList(() => listTourSlugs(100)),
+    safeList(() => listEvents(1, 100)),
+    safeList(() => listGuideArticles('vi')),
+    safeList(() => listGuideArticles('en')),
+    safeList(() => listCategories()),
+    // listJobListings/listRealEstateListings (@Public) đã tự lọc published + chưa hết hạn tại
+    // thời điểm đọc — đúng tập cần lên sitemap, không cần endpoint riêng.
+    //
+    // limit=50, KHÔNG phải 100 như các entity khác ở trên: ListJobListingsQueryDto/
+    // ListRealEstateListingsQueryDto giới hạn `@Max(50)` ở chính DTO — limit=100 bị 400
+    // VALIDATION_ERROR, `safeList` nuốt lỗi đó thành mảng rỗng (im lặng, trông giống "chưa có
+    // tin nào" chứ không giống một lỗi) — chỉ phát hiện được qua test THẬT trên image đã build
+    // (r15 smoke test, 09/10/2026), không phải qua unit test (mock không áp constraint của DTO
+    // thật). Bài học: không giả định mọi entity list endpoint cùng trần limit.
+    //
+    // `safeListWithStatus`, KHÔNG phải `safeList` — CONDITIONAL_HUB_ROUTES (2026-10-22) cần phân
+    // biệt "gọi thành công, xác nhận rỗng" với "gọi lỗi" (xem ghi chú hàm đó).
+    safeListWithStatus(async () => (await listJobListings({ limit: 50 })).data),
+    safeListWithStatus(async () => (await listRealEstateListings({ limit: 50 })).data),
+  ]);
+  const jobListings = jobListingsResult.items;
+  const realEstateListings = realEstateListingsResult.items;
 
   // Chỉ bỏ entry /places/{slug} khi CHÍNH slug đó đã có entry chuyên biệt trong kết quả sitemap
   // (hotels/restaurants/tours). Nếu danh sách chuyên biệt lỗi, rỗng, hoặc bị cắt ở giới hạn 100, slug
@@ -164,8 +211,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const allIds = [...places, ...hotels, ...restaurants, ...tours].map((e) => e.id);
   const enIndexableIds = new Set(await safeList(() => listEnIndexablePlaceIds(allIds)));
 
+  const fetchResult: SitemapFetchResult = {
+    jobListingsConfirmedEmpty: jobListingsResult.succeeded && jobListings.length === 0,
+    realEstateListingsConfirmedEmpty: realEstateListingsResult.succeeded && realEstateListings.length === 0,
+  };
+  const staticRoutes = [
+    ...STATIC_ROUTES,
+    ...CONDITIONAL_HUB_ROUTES.filter((r) => r.hasContent(fetchResult)).map((r) => r.path),
+  ];
+
   return [
-    ...staticEntriesFor(site, SUPPORTED_LOCALES),
+    ...staticEntriesFor(site, SUPPORTED_LOCALES, staticRoutes),
     ...detailEntries(
       site,
       places.map((p) => ({ slug: p.slug, id: p.id })),
