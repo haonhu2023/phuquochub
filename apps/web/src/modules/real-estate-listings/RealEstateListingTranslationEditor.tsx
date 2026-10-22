@@ -51,11 +51,17 @@ export function RealEstateListingTranslationEditor({ listing }: Props) {
 
   useEffect(() => {
     const session = readSession();
-    if (!session) {
-      setState({ kind: 'error', message: 'Phiên đăng nhập đã hết hạn — tải lại trang.' });
-      return;
-    }
     let cancelled = false;
+    if (!session) {
+      // Trì hoãn qua microtask — không setState() đồng bộ ngay trong thân effect (cùng mẫu đã
+      // dùng xuyên suốt codebase, vd OwnerTodoView/AuditLogView), tránh cascading render.
+      void Promise.resolve().then(() => {
+        if (!cancelled) setState({ kind: 'error', message: 'Phiên đăng nhập đã hết hạn — tải lại trang.' });
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     getMyRealEstateListingTranslation(listing.id, session.accessToken)
       .then((t) => {
         if (cancelled) return;

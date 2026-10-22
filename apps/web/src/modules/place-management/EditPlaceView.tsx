@@ -74,9 +74,16 @@ export function EditPlaceView({ placeId }: Props) {
   // giữa hai lần lưu liên tiếp (vd sửa hotel_details rồi sửa amenities ngay sau đó).
   const placeVersion = state.kind === 'ready' ? state.place.content_version : null;
   const [contentVersion, setContentVersion] = useState<number | null>(placeVersion);
-  useEffect(() => {
+  // Đồng bộ TRONG LÚC RENDER (mẫu "Adjusting state when a prop changes" của React), KHÔNG qua
+  // useEffect+setState — tránh một lượt render thừa + cascading render (react-hooks/set-state-in-effect,
+  // phát hiện khi nâng next/eslint-config-next lên 16.4.2). `prevPlaceVersion` chỉ để phát hiện
+  // ĐÚNG thời điểm `placeVersion` thật sự đổi (place vừa tải xong/tải lại) — không đụng
+  // `contentVersion` khi `onVersionChange` của editor con vừa set nó (xem comment phía trên).
+  const [prevPlaceVersion, setPrevPlaceVersion] = useState(placeVersion);
+  if (placeVersion !== prevPlaceVersion) {
+    setPrevPlaceVersion(placeVersion);
     if (placeVersion !== null) setContentVersion(placeVersion);
-  }, [placeVersion]);
+  }
 
   const load = useCallback(() => {
     const session = readSession();

@@ -1,5 +1,23 @@
 # Checkpoint (cập nhật tại chỗ, không nối dài)
 
+### Vá lỗ hổng bảo mật `next` nghiêm trọng (critical) + dọn audit còn lại (22/10/2026) — phát hiện khi rà soát bảo mật toàn site (mục 7), ĐÃ code + test pass, CHƯA deploy
+
+**Phát hiện (qua subagent bảo mật, đã xác minh lại trực tiếp):** `next` 16.3.4 nằm trong khoảng có CVE **critical** — RCE qua `next/og` `ImageResponse` — và trang web THỰC SỰ dùng route này (`apps/web/src/app/[locale]/opengraph-image.tsx`). Kèm theo: `proxy-addr` (critical, qua express — liên quan trực tiếp đến cấu hình `trust proxy` đang dùng để rate-limit/ghi IP theo đúng client thật), `sharp`/`brace-expansion`/`source-map-js` (high), `multer`/`joi`/`fast-uri` (moderate).
+
+**Đã sửa:**
+- `next` 16.3.4 → **16.4.2** (bản vá mới nhất trong nhánh 16.x ổn định, không phải canary), `eslint-config-next` nâng theo cùng version — cả hai vẫn khớp range `^16.2.11`/`^16.2.11` cũ trong `package.json`, chỉ cần cài lại, không sửa code gọi API của Next.
+- `npm audit fix` (tại root monorepo, ảnh hưởng cả hai app vì dùng chung `package-lock.json`) dọn sạch phần còn lại — **9 lỗ hổng production (2 critical, 3 high, 4 moderate) còn lại đúng 2 moderate** (`multer`, qua `@nestjs/platform-express`). KHÔNG force-fix: lỗ hổng multer nằm ở code path disk-storage mà agent bảo mật đã xác nhận KHÔNG được dùng ở đâu trong codebase thật (upload đi qua presigned S3 PUT, xem `storage.service.ts`) — force-fix đòi nâng `@nestjs/platform-express` lên major mới, rủi ro cao hơn lợi ích thật ở đây. Chấp nhận rủi ro còn lại có ghi chú rõ, không âm thầm bỏ qua.
+
+**Hệ quả phụ phải sửa — 3 lỗi `react-hooks/set-state-in-effect` lộ ra do `eslint-config-next` mới nghiêm ngặt hơn (code CŨ, không phải do nâng cấp gây ra, chỉ MỚI bị bắt):**
+- `JobListingTranslationEditor.tsx`/`RealEstateListingTranslationEditor.tsx`: nhánh "chưa đăng nhập" gọi `setState` đồng bộ ngay trong effect — sửa theo ĐÚNG mẫu đã dùng xuyên suốt codebase (trì hoãn qua `Promise.resolve().then()`, xem `OwnerTodoView`/`AuditLogView`).
+- `EditPlaceView.tsx`: đồng bộ `contentVersion` theo `placeVersion` qua `useEffect`+`setState` — đổi sang mẫu React chính thức "Adjusting state when a prop changes" (so sánh `prevPlaceVersion` NGAY TRONG LÚC RENDER, không qua effect) — tránh một lượt render thừa, không đổi hành vi.
+
+**Đã kiểm kỹ vì đụng đúng code path từng có CVE:** build production thật (`next build`, Turbopack) thành công sạch. Boot CHÍNH `server.js` từ `.next/standalone` thật, gọi `curl` trực tiếp vào route `/opengraph-image` (chính route từng có RCE) — trả về `200`, `Content-Type: image/png` đúng. API build (`nest build`) cũng sạch.
+
+**Test:** API full suite **276 suite/4060 test pass** (không regression từ việc dịch chuyển dependency transitive). Web full suite **188 suite/1953 test pass** (không regression). Typecheck + lint (cả hai phía) sạch.
+
+**Chưa deploy.**
+
 ### Quyết định owner (22/10/2026) — review "Test PhuQuocHub" trên Dinh Cậu: GIỮ NGUYÊN, không sửa
 
 Phát hiện khi rà soát vận hành toàn site: review DUY NHẤT của Dinh Cậu (một trong các địa điểm biểu tượng nhất) có tên tác giả hiển thị công khai là "Test PhuQuocHub" — mâu thuẫn bề ngoài với thông điệp "Thông tin rõ nguồn, dễ kiểm tra" ở trang chủ. Dữ liệu có thật từ trước (không phải tạo trong phiên này). Owner đã quyết định GIỮ NGUYÊN, không đổi tên hiển thị, không ẩn review. Không cần làm gì thêm — ghi lại để không bị flag lại ở lần rà soát sau.
