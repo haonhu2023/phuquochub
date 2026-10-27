@@ -803,9 +803,11 @@ export class SourceFirstIngestService {
     }
 
     // Cross-check against existing place's website contact (if any).
+    // `contacts` is polymorphic (owner_type/owner_id, see Contact entity) — there is no
+    // `place_contacts` table; a raw query against that name errors at runtime.
     const rows = await this.dataSource.query<Array<{ value: string }>>(
-      `SELECT value FROM place_contacts
-       WHERE place_id = $1 AND contact_type = 'website' AND deleted_at IS NULL LIMIT 1`,
+      `SELECT value FROM contacts
+       WHERE owner_type = 'place' AND owner_id = $1 AND contact_type = 'website' AND deleted_at IS NULL LIMIT 1`,
       [placeId],
     );
     if (rows.length === 0) {
@@ -837,9 +839,9 @@ export class SourceFirstIngestService {
     const diffs: EnrichFieldDiff[] = [];
     const auditNotes: Array<{ field: string; summary: string }> = [];
 
-    // Fetch existing contacts
+    // Fetch existing contacts (same `contacts` polymorphic table as confirmByOfficialDomain above).
     const contactRows = await this.dataSource.query<Array<{ contact_type: string; value: string }>>(
-      `SELECT contact_type, value FROM place_contacts WHERE place_id = $1 AND deleted_at IS NULL`,
+      `SELECT contact_type, value FROM contacts WHERE owner_type = 'place' AND owner_id = $1 AND deleted_at IS NULL`,
       [existing.id],
     );
     const existingWebsite = contactRows.find((r) => r.contact_type === 'website')?.value ?? null;
