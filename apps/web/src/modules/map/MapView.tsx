@@ -51,6 +51,12 @@ const RASTER_STYLE: StyleSpecification = {
 const PHU_QUOC_CENTER: [number, number] = [103.98, 10.22];
 const PHU_QUOC_ZOOM = 10;
 
+// Hộp bao TOÀN đảo (có biên dư) — dùng để dò toạ độ marker THỰC khi đổi bộ lọc "Khu vực", thay vì
+// hard-code toạ độ trung tâm từng xã/phường (không có nguồn chính thức đáng tin, và DB mới là
+// nguồn đúng/luôn cập nhật khi thêm địa điểm mới). GeoService.bbox() không giới hạn bbox phải nằm
+// trong Phú Quốc (OD-F-1 — truy vấn ngoài hộp chỉ trả rỗng, vô hại), nên dùng an toàn ở đây.
+const PHU_QUOC_BOUNDS = { minLng: 103.5, minLat: 9.8, maxLng: 104.5, maxLat: 10.6 };
+
 interface MapViewProps {
   focusPoint?: GeoPoint | null;
   category?: string;
@@ -174,7 +180,15 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
             const marker = new maplibregl.Marker({
               element: clusterElement(
                 m.count,
-                () => map.flyTo({ center: [m.lng, m.lat], zoom: Math.min(map.getZoom() + 2, 20) }),
+                () => {
+                  // Đóng popup địa điểm đang mở (nếu có) trước khi bay — sau khi bỏ dựa vào
+                  // `closeOnClick` mặc định của Popup (xem chú thích bindActivation/mapMarkers.ts),
+                  // bấm cụm không còn tự động đóng popup cũ qua cơ chế đó nữa.
+                  popupRef.current?.remove();
+                  popupRef.current = null;
+                  selectMarker(null);
+                  map.flyTo({ center: [m.lng, m.lat], zoom: Math.min(map.getZoom() + 2, 20) });
+                },
                 ariaLabel,
               ),
             })
@@ -225,10 +239,45 @@ export function MapView({ focusPoint, category, ward, categories }: MapViewProps
     mapRef.current.flyTo({ center: [focusPoint.lng, focusPoint.lat], zoom: 15 });
   }, [ready, focusPoint]);
 
-  // Đổi bộ lọc → tải lại marker trong khung nhìn HIỆN TẠI, không di chuyển viewport.
+  // Đổi bộ lọc: category một mình → tải lại marker trong khung nhìn HIỆN TẠI, không di chuyển
+  // viewport (như cũ). Có chọn "Khu vực" (ward) → BAY tới đúng vùng chứa marker thật của khu vực
+  // đó trước — nếu không, chọn một khu vực ngoài khung nhìn hiện tại chỉ làm marker biến mất mà
+  // bản đồ không nhúc nhích, trông như bộ lọc "không hoạt động" (lỗi thực tế đã gặp). `fitBounds`
+  // tự kích hoạt 'moveend' → refresh() chạy lại bình thường với filtersRef hiện tại, nên không cần
+  // tự populate marker ở đây. Không tìm thấy marker nào (khu vực + category không khớp dữ liệu
+  // nào) → không có gì để bay tới, chỉ refresh tại chỗ để hiện banner "không có kết quả".
   useEffect(() => {
     if (!ready) return;
-    void refreshRef.current();
+    const map = mapRef.current;
+    if (!ward || !map) {
+      void refreshRef.current();
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      let bounds: maplibregl.LngLatBounds | null = null;
+      try {
+        const wide = await fetchBbox({ ...PHU_QUOC_BOUNDS, zoom: 12, category, ward });
+        const valid = wide.filter((m) => isValidCoord(m.lng, m.lat));
+        if (valid.length > 0) {
+          bounds = valid.reduce(
+            (acc, m) => acc.extend([m.lng, m.lat]),
+            new maplibregl.LngLatBounds([valid[0].lng, valid[0].lat], [valid[0].lng, valid[0].lat]),
+          );
+        }
+      } catch {
+        // Dò khu vực lỗi (mạng/API) — không chặn người dùng, lùi về refresh tại chỗ bên dưới.
+      }
+      if (cancelled) return;
+      if (bounds) {
+        map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 800 });
+      } else {
+        void refreshRef.current();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [ready, category, ward]);
 
   return (

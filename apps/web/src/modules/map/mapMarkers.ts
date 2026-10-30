@@ -19,12 +19,24 @@ export function isValidCoord(lng: number, lat: number): boolean {
 // bàn phím/trình đọc màn hình kích hoạt được (div không tự nhận focus, không tự bắt Enter/Space
 // như <button> thật). `bindActivation` gắn tabIndex + keydown ĐÚNG NGỮ NGHĨA `role="button"`, dùng
 // chung cho cả cluster lẫn place — tránh lặp lại logic này ở hai hàm dựng marker.
+//
+// `e.stopPropagation()` ở cả hai handler: marker là con của container mà maplibre tự lắng nghe
+// click để quyết định đóng Popup (`closeOnClick`, mặc định true). Thiếu dòng này, bấm marker mở
+// Popup XONG trong CÙNG MỘT sự kiện click, sự kiện đó lại nổi bọt lên map và bị chính cơ chế
+// closeOnClick đóng ngay lập tức — Popup thoáng hiện rồi biến mất, nhìn như bấm marker không có
+// tác dụng gì (xác nhận bằng thực nghiệm: gọi thẳng onActivate() không qua sự kiện DOM thật thì
+// Popup ở lại bình thường; còn click thật qua DOM thì luôn bị đóng ngay). Không tắt closeOnClick
+// ở Popup vì hành vi "bấm ra ngoài bản đồ để đóng popup" vẫn đúng và nên giữ.
 function bindActivation(el: HTMLElement, onActivate: () => void): void {
   el.tabIndex = 0;
-  el.onclick = onActivate;
+  el.onclick = (e: MouseEvent) => {
+    e.stopPropagation();
+    onActivate();
+  };
   el.onkeydown = (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault();
+      e.stopPropagation();
       onActivate();
     }
   };
@@ -95,6 +107,13 @@ function textRow(text: string, className?: string): HTMLElement {
 // Nội dung popup khi bấm marker địa điểm — tên/category/khu vực/thumbnail/rating/giá (những gì
 // dữ liệu THỰC SỰ có, không suy diễn), + link "Xem chi tiết". `categories` (tuỳ chọn, do trang gọi
 // truyền vào cùng bộ lọc) chỉ để đổi category_id → nhãn tiếng Việt; thiếu thì lùi về category_slug.
+//
+// Bố cục hàng ngang (thumbnail nhỏ cạnh tên) thay vì xếp chồng ảnh to 4:3 lên trên — bản đồ sẽ có
+// RẤT NHIỀU điểm, popup cao làm "Xem chi tiết" bị đẩy ra ngoài khung nhìn trên di động (báo cáo
+// thực tế từ chủ sở hữu, 2026-10-28: phải thu nhỏ/cuộn trang mới thấy được link). Mô tả bị giới
+// hạn 2 dòng (`popupDesc`, `-webkit-line-clamp`) và link LUÔN là phần tử cuối, không bị mô tả dài
+// đẩy xuống dưới màn hình — tổng chiều cao ước tính giữ dưới ~200px để vừa cả khung bản đồ thấp
+// nhất (mobile `min-height: 320px`).
 export function buildPopupCard(
   detail: PlaceDetail,
   categories?: Category[],
@@ -103,13 +122,16 @@ export function buildPopupCard(
   const card = document.createElement('div');
   card.className = styles.popup;
 
+  const header = document.createElement('div');
+  header.className = styles.popupHeader;
+
   if (detail.cover_image_url) {
     const img = document.createElement('img');
     img.className = styles.popupThumb;
     img.src = detail.cover_image_url;
     img.alt = detail.name;
     img.loading = 'lazy';
-    card.appendChild(img);
+    header.appendChild(img);
   } else {
     // Không ảnh vỡ, không khoảng trắng đột ngột: chữ cái đầu tên địa điểm trên nền màu — cùng
     // hướng xử lý PlaceCard.thumbFallback ở danh sách, để popup và thẻ danh sách nhất quán.
@@ -117,13 +139,16 @@ export function buildPopupCard(
     placeholder.className = styles.popupThumbFallback;
     placeholder.setAttribute('aria-hidden', 'true');
     placeholder.textContent = detail.name.charAt(0);
-    card.appendChild(placeholder);
+    header.appendChild(placeholder);
   }
+
+  const textCol = document.createElement('div');
+  textCol.className = styles.popupTextCol;
 
   const title = document.createElement('p');
   title.className = styles.popupTitle;
   title.textContent = detail.name;
-  card.appendChild(title);
+  textCol.appendChild(title);
 
   const categoryLabel = categories?.find((c) => c.id === detail.category_id)?.name_vi ?? detail.category_slug;
 
@@ -148,7 +173,10 @@ export function buildPopupCard(
   );
   if (priceLabel) meta.appendChild(textRow(priceLabel));
   else if (showPriceVerifying) meta.appendChild(textRow(PRICE_VERIFYING_TEXT));
-  card.appendChild(meta);
+  textCol.appendChild(meta);
+
+  header.appendChild(textCol);
+  card.appendChild(header);
 
   if (detail.short_description) {
     const desc = document.createElement('p');
