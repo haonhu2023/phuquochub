@@ -54,6 +54,8 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
   const [address, setAddress] = useState(initial?.address ?? '');
   const [lat, setLat] = useState(initial ? String(initial.location.lat) : '');
   const [lng, setLng] = useState(initial ? String(initial.location.lng) : '');
+  const [pasteCoords, setPasteCoords] = useState('');
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const [priceRange, setPriceRange] = useState<PlaceFormInput['price_range']>(initial?.price_range ?? null);
   const [openingHours, setOpeningHours] = useState<OpeningHoursFormState>(() =>
     openingHoursToFormState(initial?.opening_hours),
@@ -124,6 +126,26 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
       cancelled = true;
     };
   }, [defaultCategorySlug, initial]);
+
+  // Google Maps copy-toạ độ (giữ/bấm chuột phải vào điểm → "10.1492554, 104.0375782") dán thẳng
+  // vào đây để tự tách ra 2 ô lat/lng — người dùng không phải tự cắt chuỗi bằng tay.
+  function applyPastedCoords(raw: string) {
+    const match = raw.trim().match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (!match) {
+      setPasteError('Không nhận ra toạ độ. Dán đúng dạng "10.1492, 104.0375" copy từ Google Maps.');
+      return;
+    }
+    const latNum = Number(match[1]);
+    const lngNum = Number(match[2]);
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum) || Math.abs(latNum) > 90 || Math.abs(lngNum) > 180) {
+      setPasteError('Toạ độ không hợp lệ (vĩ độ phải trong khoảng -90..90, kinh độ -180..180).');
+      return;
+    }
+    setLat(String(latNum));
+    setLng(String(lngNum));
+    setPasteError(null);
+    setPasteCoords('');
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -297,6 +319,43 @@ export function PlaceForm({ initial, submitLabel, submittingLabel, onSubmit, can
             maxLength={300}
             disabled={submitting}
           />
+        </div>
+
+        <div className={uiStyles.field}>
+          <label className={uiStyles.fieldLabel} htmlFor="pf-coords-paste">
+            Dán toạ độ từ Google Maps (không bắt buộc)
+          </label>
+          <div className={styles.pasteRow}>
+            <input
+              id="pf-coords-paste"
+              className={styles.input}
+              type="text"
+              inputMode="text"
+              placeholder="vd: 10.1492554, 104.0375782"
+              value={pasteCoords}
+              onChange={(e) => setPasteCoords(e.target.value)}
+              onPaste={(e) => {
+                const text = e.clipboardData.getData('text');
+                if (text.trim()) {
+                  e.preventDefault();
+                  applyPastedCoords(text);
+                }
+              }}
+              disabled={submitting}
+            />
+            <button
+              type="button"
+              className={styles.addRangeBtn}
+              onClick={() => applyPastedCoords(pasteCoords)}
+              disabled={submitting || !pasteCoords.trim()}
+            >
+              Áp dụng
+            </button>
+          </div>
+          {pasteError && <p className={styles.fieldError}>{pasteError}</p>}
+          <p className={styles.fieldHint}>
+            Trên Google Maps: giữ ngón tay (điện thoại) hoặc bấm chuột phải (máy tính) vào đúng vị trí → copy số toạ độ hiện ra → dán vào ô trên. 2 ô “Vĩ độ”/“Kinh độ” dưới đây sẽ tự điền.
+          </p>
         </div>
 
         <div className={styles.fieldGrid}>

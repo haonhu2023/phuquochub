@@ -112,6 +112,19 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
 }
+.pasteRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.pasteRow .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pasteRow .addRangeBtn {
+  flex: 0 0 auto;
+  align-self: auto;
+}
 .section {
   display: flex;
   flex-direction: column;
