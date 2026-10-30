@@ -124,10 +124,20 @@ copy_tree() {
 
 # The media snapshots live UNDER backups/ by default, so exclude them from the database tree to
 # avoid uploading the same bytes twice under two different remote prefixes. Also exclude dotfiles
-# (e.g. .media-backup.lock, .offsite-backup.lock) -- flock lock files, not completed backups.
+# (e.g. .media-backup.lock, .offsite-backup.lock) -- flock lock files, not completed backups. And
+# exclude offsite-status.json itself (found 2026-10-29): it is this script's OWN run-status file,
+# rewritten with a new timestamp on every run via the EXIT trap above, and BackupStatusService
+# reads it locally through the existing read-only bind mount -- it has no reason to exist on R2 at
+# all. Earlier versions let it fall through to this copy like any other file in $BACKUP_DIR: the
+# first couple of runs uploaded it as a "new" file with no conflict, but every run after that
+# re-wrote it locally with a different timestamp, which --immutable (correctly) treats as a
+# changed-after-the-fact backup object and refuses -- so every cron run failed at this exact copy
+# step, and because of `set -e`, the DB backup for that run still copied (this step runs first) but
+# the media-snapshot copy below never ran, silently leaving the offsite media copy stale for days
+# with no visible error except this script's own exit code.
 echo "[sync-offsite] Copying PostgreSQL logical backups ..."
 "$RCLONE_BIN" copy "$BACKUP_DIR" "$R2_REMOTE_NAME:$R2_BUCKET/backups" \
-  --checksum --immutable --exclude "media/**" --exclude ".*"
+  --checksum --immutable --exclude "media/**" --exclude ".*" --exclude "offsite-status.json"
 
 copy_tree "$MEDIA_BACKUP_DIR" "media" "MinIO media snapshots"
 

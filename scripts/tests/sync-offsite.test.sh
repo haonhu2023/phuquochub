@@ -106,6 +106,42 @@ fi
 
 rm -rf "$D"
 
+echo "== offsite-status.json must never reach the remote, and repeated runs must not fail (2026-10-29 regression) =="
+# The EXIT trap writes offsite-status.json to $BACKUP_DIR AFTER each run's rclone copy already ran,
+# so the bug only shows up starting on the run that uploads a SECOND, different copy of a file that
+# already exists remotely -- i.e. the THIRD invocation (run 1: no status file exists yet to copy;
+# run 2: uploads run 1's status file as a brand-new remote object, no conflict yet; run 3: local
+# status file now differs from what run 2 uploaded -- this is where --immutable used to reject it).
+D=$(mktemp -d)
+SRC="$D/project/backups"
+DST="$D/dst"
+mkdir -p "$SRC" "$DST"
+printf 'fixture-db' > "$SRC/phuquochub-regress.sql.gz"
+cat > "$D/test.conf" <<EOF
+[testremote]
+type = local
+EOF
+for i in 1 2 3 4; do
+  RCLONE_CONFIG="$D/test.conf" R2_REMOTE_NAME=testremote R2_BUCKET="$DST" \
+    bash "$SYNC_SCRIPT" "$D/project" >"$D/run$i.log" 2>&1
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    fail "run $i exited $rc (status-file immutable conflict regressed)"; cat "$D/run$i.log"
+  fi
+done
+pass "4 consecutive runs all exited 0"
+if [ -e "$DST/backups/offsite-status.json" ]; then
+  fail "offsite-status.json leaked into the remote backups/ tree"
+else
+  pass "offsite-status.json never uploaded to the remote"
+fi
+if [ -f "$SRC/offsite-status.json" ]; then
+  pass "offsite-status.json still written locally for BackupStatusService to read"
+else
+  fail "offsite-status.json missing locally -- BackupStatusService would see stale/no status"
+fi
+rm -rf "$D"
+
 echo
 echo "== summary: $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
