@@ -47,6 +47,12 @@
 .thumb {
   display: block;
   width: 100%;
+  /* height: auto is REQUIRED alongside aspect-ratio here — next/image renders width/height
+     HTML attributes (800x600) on the <img>, and a definite value on BOTH dimensions makes the
+     browser ignore aspect-ratio entirely (found 2026-10-30: images rendered squashed to their
+     literal 600px height regardless of actual column width, worst on narrow/mobile grids where
+     the column shrinks far below 800px but the height attribute does not). */
+  height: auto;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   background: var(--surface-2);
@@ -288,6 +294,8 @@
 }
 .galleryImg {
   width: 100%;
+  /* height: auto required alongside aspect-ratio — see .thumb above for why. */
+  height: auto;
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: 8px;
