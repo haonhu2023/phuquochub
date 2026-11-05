@@ -3,6 +3,7 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "globalSetup": "<rootDir>/e2e-global-setup.ts",
   "setupFiles": ["reflect-metadata"],
   "transform": {
     "^.+\\.ts$": "ts-jest"
