@@ -7,7 +7,6 @@ import { CacheInvalidationService } from '../core/cache-invalidation/cache-inval
 import { MediaUrlService } from '../core/media-url/media-url.service';
 import { AuditService } from '../core/audit/audit.service';
 import { AuditRepository } from '../core/audit/audit.repository';
-import { PlaceStatus } from '../modules/places/place.enums';
 import { QueryableDataSource } from './create-current-night-markets';
 
 // STAGING LAUNCH BLOCKER CLOSURE -- 2026-09-06.
@@ -128,12 +127,18 @@ export async function planClosure(dataSource: QueryableDataSource): Promise<Clos
 // ================================================================
 export async function executeClosure(dataSource: import('typeorm').DataSource, plan: ClosurePlan, logger: Logger): Promise<void> {
   const placesRepo = new PlacesRepository(dataSource.getRepository(Place), buildMediaUrlService());
+  // TypeORM's DataSource vs this throwaway script's loosely-typed import('typeorm').DataSource
+  // param don't line up structurally; a cast is the pragmatic fix for a one-shot ops script, not
+  // worth a shared type for.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const auditRepo = new AuditRepository(dataSource as any);
   const audit = new AuditService(auditRepo);
   // Only archive()/approve() are ever called on this instance -- every other dependency is
   // genuinely unused by those two methods (confirmed by reading places.service.ts), so passing
   // null here is safe and never dereferenced; it is NOT safe to call any other method on this
-  // instance.
+  // instance. `as any` (not `as unknown as <RealType>`) because the point is exactly that no real
+  // instance of these dependencies is needed or constructed for this script's two call sites.
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   const placesService = new PlacesService(
     placesRepo,
     null as any,
@@ -162,6 +167,7 @@ export async function executeClosure(dataSource: import('typeorm').DataSource, p
     // use of approve() never calls; null is a safe stand-in, same as the other unused deps above.
     null as any,
   );
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   for (const target of plan.publishTargets) {
     if (!target.valid || !target.id) {

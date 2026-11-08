@@ -1,8 +1,6 @@
 import 'reflect-metadata';
 import { readFileSync } from 'fs';
 import { Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
-import { slugify } from '@phuquochub/utils';
 import { Place } from '../modules/places/entities/place.entity';
 import { PlacesRepository } from '../modules/places/repositories/places.repository';
 import { PlacesService } from '../modules/places/places.service';
@@ -297,6 +295,13 @@ export async function planPromotion(dataSource: import('typeorm').DataSource, ma
 // ================================================================
 // EXECUTE -- only when --execute is passed. Governed service calls only.
 // ================================================================
+// This whole function is a one-shot, throwaway production-promotion script: it stubs out unused DI
+// constructor params with `null as any` (same "only these 2-3 methods are ever called, the rest are
+// genuinely unused" pattern as close-staging-launch-blockers.ts), and reads back entities/DTOs
+// loosely (`as any`) rather than re-deriving strict types for a run that executes once and is
+// deleted. Individual stub rationale stays on each line below; this disables the rule for the whole
+// function instead of one eslint-disable-next-line per occurrence (there are ~25).
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export async function executePromotion(
   dataSource: import('typeorm').DataSource,
   manifest: Manifest,
@@ -548,6 +553,7 @@ export async function executePromotion(
     logger.log(`SKIPPED legacy archive (idempotent or absent): ${LEGACY_SLUG}`);
   }
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function buildMediaUrlService(): MediaUrlService {
   const fakeConfig = {

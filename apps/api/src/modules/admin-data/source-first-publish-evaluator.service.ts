@@ -20,12 +20,12 @@ export const AUTO_PUBLISH_SAFE_FIELDS = new Set<string>([
   'name', 'category', 'coordinates', 'address', 'short_description', 'website', 'phone',
 ]);
 
-// Các field KHÔNG BAO GIỜ tự động publish, bất kể chất lượng nguồn.
-// Observation cho các field này được ghi nhận là attribution và log vào auditNotes,
-// nhưng place row không bao giờ được cập nhật tự động.
+// opening_hours và price_range KHÔNG nằm trong AUTO_PUBLISH_SAFE_FIELDS ở trên — vì đây là
+// allowlist, chúng không bao giờ tự động publish, bất kể chất lượng nguồn. Observation cho các
+// field này vẫn được ghi nhận là attribution và log vào auditNotes, nhưng place row không bao giờ
+// được cập nhật tự động.
 // opening_hours: lịch thay đổi thường xuyên; stale hours gây vấn đề cho visitor.
 // price_range: rủi ro fabrication; giá phải được xác minh thủ công trước khi hiển thị.
-const ALWAYS_HOLD_FIELDS = new Set<string>(['opening_hours', 'price_range']);
 
 // Conflict detection chỉ cho safe fields — opening_hours đã bị loại bỏ.
 // Xung đột hours không block verdict tổng thể; được log vào auditNotes (non-blocking).

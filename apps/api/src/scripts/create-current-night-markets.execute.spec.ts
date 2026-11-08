@@ -39,7 +39,7 @@ describe('executePlacesAndAttributions — idempotent on repeat', () => {
         const s = sql.trim();
 
         if (s.startsWith('INSERT INTO places')) {
-          const [name, slug] = params as string[];
+          const [, slug] = params as string[];
           if (!places.has(slug)) {
             places.set(slug, { id: `place-${nextId++}`, slug });
           }

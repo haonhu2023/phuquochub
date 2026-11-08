@@ -8,6 +8,10 @@ const { Client } = require('pg');
 // contract (see revokeTokensForUsers() below) -- this script never touches any OTHER Redis key.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const IORedis = require('ioredis');
+// same rationale as the `require('pg')` eslint-disable above -- no @types/pg, and `pg`'s real
+// row shape is whatever the query returns, which this throwaway ops script reads by field name
+// (rows[0].id, rows[0].is_active, ...) without casts at every call site.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PgClient = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>; connect: () => Promise<void>; end: () => Promise<void> };
 
 // TASK-SCOPED GRANT/REVOKE CHANNEL -- hotel media publish (2026-09-15).
