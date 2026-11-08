@@ -133,6 +133,15 @@ phuquochub.com, :8080 {
 			Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
 
 			# ── Content-Security-Policy — every directive justified against THIS build ──────────
+			# ENFORCED since 2026-11-08 (was Content-Security-Policy-Report-Only since 2026-08-15).
+			# Switched after a real authenticated-session sweep (dashboard home, place edit, photo
+			# upload/listing, guide editor+preview, public place pages with images) logged zero
+			# violations, and the one untested surface -- the presigned PUT upload to
+			# media.phuquochub.com -- was confirmed via code (uploadPipeline.ts + storage.service.ts)
+			# and production .env (S3_ENDPOINT=https://media.phuquochub.com) to be exactly what
+			# connect-src already allowed below. No report-uri/report-to endpoint exists, so
+			# report-only mode was collecting zero real-user violation data anyway -- enforcing is
+			# strictly safer than staying in an unmonitored report-only state indefinitely.
 			# script-src 'unsafe-inline': the shipped production HTML carries 7 inline <script>
 			#   blocks on / and 6 on /map (Next.js flight/hydration payloads) with NO nonce
 			#   attribute. Nonces would require an app-level middleware.ts, which is out of scope
@@ -167,7 +176,7 @@ phuquochub.com, :8080 {
 			#   embedding). Agrees with X-Frame-Options: DENY above.
 			# No COOP/COEP/CORP: none is needed here, and CORP in particular would break the
 			#   cross-origin media images this site depends on.
-			Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; font-src 'self' data:; connect-src 'self' https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; worker-src 'self' blob:; manifest-src 'self'"
+			Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; font-src 'self' data:; connect-src 'self' https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; worker-src 'self' blob:; manifest-src 'self'"
 
 			# Next.js emits `X-Powered-By: Next.js` by default. Stripping it at the proxy avoids an
 			# app rebuild (next.config poweredByHeader:false would need one). `Via: 1.1 Caddy` is
