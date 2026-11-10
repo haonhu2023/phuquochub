@@ -156,6 +156,14 @@ phuquochub.com, :8080 {
 			#                   network log).
 			#         blob:  -> URL.createObjectURL(file) image preview in useSingleImageUpload.ts.
 			#         media.phuquochub.com -> <img src="/api/media/{id}/file"> 302-redirects there.
+			#           KEPT even after the 2026-11-09 MinIO -> R2 migration below: MinIO/Caddy are
+			#           left running as a rollback path, so the allowlist entry must stay valid too.
+			#         730aa48c3b57947d2ba96267780c11d0.r2.cloudflarestorage.com -> same 302-redirect
+			#           role as media.phuquochub.com above, now that S3_ENDPOINT/S3_PUBLIC_URL point
+			#           at Cloudflare R2 (MinIO's open-source distribution was archived upstream
+			#           2026-11-08 -- see production-ops memory, not reproduced here). The presigned
+			#           GET the API redirects to, and the presigned PUT uploadPipeline.ts sends
+			#           straight from the browser, both land on this exact host.
 			#         tile.openstreetmap.org -> raster map tiles, NEXT_PUBLIC_MAP_TILE_URL's default
 			#           (still used in local dev; kept for that case even though production has
 			#           moved to MapTiler -- see next line).
@@ -166,9 +174,10 @@ phuquochub.com, :8080 {
 			#           connect-src, not img-src -- but img-src is kept in sync anyway since a raster
 			#           source is conceptually an image load and some browsers/extensions audit it
 			#           that way too.
-			# connect-src media.phuquochub.com is REQUIRED and easy to miss: uploadPipeline.ts PUTs
-			#   the file straight to the presigned object-storage URL from the browser. Omitting it
-			#   breaks every upload while leaving the rest of the site working.
+			# connect-src media.phuquochub.com (and now the R2 host, same reason) is REQUIRED and easy
+			#   to miss: uploadPipeline.ts PUTs the file straight to the presigned object-storage URL
+			#   from the browser. Omitting it breaks every upload while leaving the rest of the site
+			#   working.
 			# worker-src blob: -> maplibre-gl builds its worker via new Blob + createObjectURL;
 			#   a blob: worker URL was observed loading on /map.
 			# frame-ancestors/frame-src 'none': the app embeds no iframes and is not embeddable
@@ -176,7 +185,7 @@ phuquochub.com, :8080 {
 			#   embedding). Agrees with X-Frame-Options: DENY above.
 			# No COOP/COEP/CORP: none is needed here, and CORP in particular would break the
 			#   cross-origin media images this site depends on.
-			Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; font-src 'self' data:; connect-src 'self' https://media.phuquochub.com https://tile.openstreetmap.org https://api.maptiler.com; worker-src 'self' blob:; manifest-src 'self'"
+			Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; frame-src 'none'; form-action 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://media.phuquochub.com https://730aa48c3b57947d2ba96267780c11d0.r2.cloudflarestorage.com https://tile.openstreetmap.org https://api.maptiler.com; font-src 'self' data:; connect-src 'self' https://media.phuquochub.com https://730aa48c3b57947d2ba96267780c11d0.r2.cloudflarestorage.com https://tile.openstreetmap.org https://api.maptiler.com; worker-src 'self' blob:; manifest-src 'self'"
 
 			# Next.js emits `X-Powered-By: Next.js` by default. Stripping it at the proxy avoids an
 			# app rebuild (next.config poweredByHeader:false would need one). `Via: 1.1 Caddy` is
