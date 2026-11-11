@@ -52,9 +52,11 @@ describe('BackupStatusSection', () => {
     mockFetchCapabilities.mockResolvedValue(NO_CAPABILITIES);
     const { container } = render(<BackupStatusSection />);
 
-    await waitFor(() => expect(mockFetchCapabilities).toHaveBeenCalled());
+    // waitFor trên CHÍNH kết quả cuối (DOM rỗng) — không chỉ trên việc mock đã được GỌI, vì
+    // setState({kind:'hidden'}) chạy ở .then() SAU đó một tick, nên chỉ chờ "đã gọi" có thể
+    // false-pass trước khi state thật sự cập nhật.
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
     expect(mockGetBackupStatus).not.toHaveBeenCalled();
-    expect(container).toBeEmptyDOMElement();
   });
 
   it('content_owner: hiện tình trạng thật của cả hai cây (DB đã cấu hình, media chưa cấu hình)', async () => {

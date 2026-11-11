@@ -61,7 +61,10 @@ describe('PricesEditor — thêm giá mới (append-only, không sửa/xoá bả
     });
 
     render(<PricesEditor placeId="place-1" />);
-    await waitFor(() => expect(mockListPrices).toHaveBeenCalled());
+    // findBy* chờ phần tử THẬT render xong — waitFor trên "mock đã gọi" chỉ chứng minh
+    // listPrices() đã chạy, không chứng minh setState sau .then() của nó đã render (gặp đúng
+    // race này khi nâng React 19).
+    await screen.findByPlaceholderText(/Giá phòng\/đêm/);
 
     fireEvent.change(screen.getByPlaceholderText(/Giá phòng\/đêm/), { target: { value: 'Giá/người' } });
     fireEvent.change(screen.getByPlaceholderText(/đêm, người, vé/), { target: { value: 'người' } });
@@ -83,7 +86,10 @@ describe('PricesEditor — thêm giá mới (append-only, không sửa/xoá bả
   it('không nhập tên -> báo lỗi rõ ràng, KHÔNG gọi API', async () => {
     mockListPrices.mockResolvedValue([]);
     render(<PricesEditor placeId="place-1" />);
-    await waitFor(() => expect(mockListPrices).toHaveBeenCalled());
+    // findBy* chờ phần tử THẬT render xong — waitFor trên "mock đã gọi" chỉ chứng minh
+    // listPrices() đã chạy, không chứng minh setState sau .then() của nó đã render (gặp đúng
+    // race này khi nâng React 19).
+    await screen.findByPlaceholderText(/Giá phòng\/đêm/);
 
     fireEvent.click(screen.getByRole('button', { name: /Thêm giá/ }));
 
@@ -97,7 +103,10 @@ describe('PricesEditor — thêm giá mới (append-only, không sửa/xoá bả
       id: 'p-free', service_name: 'Vé vào cổng', amount: 0, currency: 'VND', unit: null, is_free: true, valid_from: null, valid_to: null, verification_status: 'pending',
     });
     render(<PricesEditor placeId="place-1" />);
-    await waitFor(() => expect(mockListPrices).toHaveBeenCalled());
+    // findBy* chờ phần tử THẬT render xong — waitFor trên "mock đã gọi" chỉ chứng minh
+    // listPrices() đã chạy, không chứng minh setState sau .then() của nó đã render (gặp đúng
+    // race này khi nâng React 19).
+    await screen.findByPlaceholderText(/Giá phòng\/đêm/);
 
     fireEvent.change(screen.getByPlaceholderText(/Giá phòng\/đêm/), { target: { value: 'Vé vào cổng' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /Miễn phí/ }));

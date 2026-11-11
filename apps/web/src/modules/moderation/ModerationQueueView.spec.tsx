@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { ModerationQueueView } from './ModerationQueueView';
 import { listModerationCases } from './api/moderation.api';
 import { readSession } from '@/modules/auth/session';
@@ -56,8 +56,13 @@ beforeEach(() => {
 it('render danh sách case khi tải thành công', async () => {
   mockList.mockResolvedValue({ data: [aCase], meta: meta() });
   render(<ModerationQueueView />);
-  expect(await screen.findByText('Đánh giá')).toBeInTheDocument();
-  expect(screen.getByText(/Báo cáo:/)).toBeInTheDocument();
+  // 'Đánh giá' cũng là nhãn option của bộ lọc "Loại nội dung" (luôn có mặt, kể cả khi đang tải) —
+  // chờ 'Báo cáo:' trước vì nó CHỈ render khi case thật đã tải xong, rồi mới kiểm tra nhãn trong
+  // đúng hàng đó (within), tránh ăn nhầm option của bộ lọc.
+  const reportText = await screen.findByText(/Báo cáo:/);
+  const row = reportText.closest('a')!;
+  expect(within(row).getByText('Đánh giá')).toBeInTheDocument();
+  expect(reportText).toBeInTheDocument();
 });
 
 it('hiển thị empty state khi không có case', async () => {

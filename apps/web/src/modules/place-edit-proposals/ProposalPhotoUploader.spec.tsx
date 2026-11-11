@@ -55,13 +55,14 @@ describe('ProposalPhotoUploader', () => {
 
   it('chưa có ảnh nào → hiện input tải lên, không có thumbnail nào', async () => {
     render(<ProposalPhotoUploader proposalId={PROPOSAL_ID} />);
-    await waitFor(() => expect(mockList).toHaveBeenCalledWith(PROPOSAL_ID, 'tok'));
-    expect(screen.getByLabelText('Chọn ảnh bằng chứng để tải lên')).toBeInTheDocument();
+    // findBy* chờ tới khi phần tử thật xuất hiện — waitFor trên "mock đã được gọi" chỉ chứng minh
+    // listMyProposalPhotos() đã CHẠY, không chứng minh setState sau .then() của nó đã render xong.
+    expect(await screen.findByLabelText('Chọn ảnh bằng chứng để tải lên')).toBeInTheDocument();
   });
 
   it('tải ảnh hợp lệ → presign rồi register đúng proposalId, hiện thông báo chờ duyệt', async () => {
     render(<ProposalPhotoUploader proposalId={PROPOSAL_ID} />);
-    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByLabelText('Chọn ảnh bằng chứng để tải lên');
 
     mockList.mockResolvedValueOnce([photo()]);
     selectFile();
@@ -80,7 +81,7 @@ describe('ProposalPhotoUploader', () => {
 
   it('lỗi 409 từ backend (vd đã đủ ảnh ngay lúc đó) → hiện đúng thông điệp backend trả về', async () => {
     render(<ProposalPhotoUploader proposalId={PROPOSAL_ID} />);
-    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByLabelText('Chọn ảnh bằng chứng để tải lên');
     mockPresign.mockRejectedValueOnce(new ApiError('Tối đa 3 ảnh mỗi góp ý.', 409));
 
     selectFile();
@@ -90,7 +91,7 @@ describe('ProposalPhotoUploader', () => {
 
   it('tệp không phải ảnh hợp lệ → chặn phía client, KHÔNG gọi presign', async () => {
     render(<ProposalPhotoUploader proposalId={PROPOSAL_ID} />);
-    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await screen.findByLabelText('Chọn ảnh bằng chứng để tải lên');
 
     selectFile('doc.pdf', 'application/pdf');
 
