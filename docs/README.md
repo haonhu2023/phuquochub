@@ -44,6 +44,7 @@ docs/
 │   ├── engagement.md
 │   ├── admin.md
 │   ├── growth.md             # Growth & Community (outline: reputation·XP·badge·mission·leaderboard·community health)
+│   ├── monetization.md       # Chiến lược kiếm tiền: Affiliate Marketing quốc tế (proposal — chưa phê duyệt)
 │   └── modules/              # Product Spec 10 module (mục tiêu, tính năng, use case, luồng, nghiệp vụ, dữ liệu, quan hệ, KPI)
 │       ├── README.md         # Index nhóm module + khuôn đặc tả + bản đồ phụ thuộc
 │       ├── place.md          ├── event.md        ├── review.md
