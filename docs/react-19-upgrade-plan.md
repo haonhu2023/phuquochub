@@ -1,6 +1,9 @@
 # Kế hoạch nâng cấp React 18 → 19 (apps/web)
 
-Ngày lập: 2026-11-06. Trạng thái: **chỉ là kế hoạch, chưa đổi code hay package nào.**
+Ngày lập: 2026-11-06. **CẬP NHẬT 2026-11-11 (commit `416f6ad`): đã nâng xong trong code, đã
+test đầy đủ (typecheck/lint/unit/build đều sạch), nhưng CHƯA build Docker image, CHƯA deploy
+production.** Phần "Các bước đề xuất" bên dưới giữ nguyên để tham khảo; thực tế đã làm và phát
+hiện thêm được ghi ở cuối file, mục "Kết quả thực tế (2026-11-11)".
 
 ## Hiện trạng
 
@@ -61,3 +64,35 @@ Nếu có lỗi sau triển khai: quay về tag web trước đó trong `.env` (
 ## Thời điểm
 
 Không gấp. Nên làm trước khi nâng Next lên phiên bản yêu cầu React 19 bắt buộc.
+
+## Kết quả thực tế (2026-11-11)
+
+Đã làm bước 1-5 trong "Các bước đề xuất" ở trên (trên nhánh đang dùng `feat/beach-details-cas`,
+không tạo nhánh riêng — nhánh đó đã là nơi mọi việc trong phiên này diễn ra).
+
+- **Phát hiện ngoài kế hoạch, quan trọng:** chỉ bump version trong `apps/web/package.json` KHÔNG
+  đủ — `npm install` để lại 2 bản React trong cây phụ thuộc (root vẫn 18.3.1, apps/web lồng
+  19.3.1 riêng), vì `next`, `@tiptap/react`, `@sentry/react`, `@testing-library/react` vẫn trỏ
+  về bản root cũ. Phải thêm `overrides` ở `package.json` gốc ép `react`/`react-dom` về đúng
+  19.3.1 toàn repo, **và xoá sạch `node_modules` + `package-lock.json` làm lại từ đầu** —
+  override không tự áp dụng nếu chỉ chạy `npm install` thông thường trên cây đã có sẵn.
+- Mục "JSX.Element toàn cục" trong bảng quét ở trên **không cần sửa** — file đó đã
+  `import type { JSX } from 'react'` đúng chuẩn React 19 từ trước.
+- 5 file test (8 test) hỏng do thay đổi thời gian xử lý của React 19 — tất cả cùng một lỗi:
+  `waitFor` chỉ chờ "mock đã được gọi", không chờ `setState` sau `.then()` của nó thực sự render
+  xong. Đã sửa bằng `findBy*`/`waitFor` trên kết quả render thật, không phải trên việc mock được
+  gọi. Xem commit `416f6ad` để biết chi tiết từng file.
+- Build production (`next build`) biên dịch sạch. Kiểm tra trình duyệt thật: **lần build đầu tiên
+  thiếu `NEXT_PUBLIC_API_URL`/`SITE_URL`/`MAP_TILE_URL` tái hiện đúng sự cố
+  2026-10-30** (ảnh hưởng y hệt — các lệnh gọi API phía client bị đóng cứng vào
+  `localhost:4000`, gây lỗi React #441 trên `/map`). Build lại với đúng 3 biến (lấy từ `.env`
+  production thật qua SSH) thì lỗi biến mất hoàn toàn — xác nhận đây không phải lỗi React 19, mà
+  là lỗi thao tác build cục bộ của tôi.
+- Trang chủ và `/map` kiểm tra sạch (console không lỗi, trừ 1 cảnh báo "Worker failed to load"
+  của maplibre-gl đã tồn tại từ trước trên cả production React 18 — không liên quan nâng cấp).
+  Trang chi tiết địa điểm chỉ kiểm tra được giới hạn cục bộ vì CORS của API production chỉ cho
+  phép gọi từ đúng domain `phuquochub.com`, không cho `localhost` — cần domain thật hoặc stack
+  cô lập để kiểm tra đầy đủ dashboard/form trước khi chốt deploy.
+- **Chưa làm:** bước 6 (test trình duyệt đầy đủ dashboard/form) chưa xong trọn vẹn vì giới hạn
+  CORS cục bộ nêu trên; bước 7-8 (build Docker image + deploy production) hoàn toàn chưa làm,
+  cần owner duyệt riêng.
