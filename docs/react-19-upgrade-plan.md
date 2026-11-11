@@ -1,9 +1,11 @@
 # Kế hoạch nâng cấp React 18 → 19 (apps/web)
 
-Ngày lập: 2026-11-06. **CẬP NHẬT 2026-11-11 (commit `416f6ad`): đã nâng xong trong code, đã
-test đầy đủ (typecheck/lint/unit/build đều sạch), nhưng CHƯA build Docker image, CHƯA deploy
-production.** Phần "Các bước đề xuất" bên dưới giữ nguyên để tham khảo; thực tế đã làm và phát
-hiện thêm được ghi ở cuối file, mục "Kết quả thực tế (2026-11-11)".
+Ngày lập: 2026-11-06. **CẬP NHẬT 2026-11-11: ĐÃ DEPLOY PRODUCTION.** Image
+`phuquochub-web:838c69de422180661882ca5385e24e26c3ffa0a9` (commit `838c69d`) live từ 2026-11-11
+05:2x UTC qua staged single-service cutover (web-only, API không đổi). Rollback target:
+`WEB_IMAGE_TAG=fix-image-stretch-20261030` (bản trước, vẫn giữ trên VPS). Phần "Các bước đề xuất"
+bên dưới giữ nguyên để tham khảo; thực tế đã làm và phát hiện thêm được ghi ở cuối file, mục
+"Kết quả thực tế (2026-11-11)".
 
 ## Hiện trạng
 
@@ -93,6 +95,44 @@ không tạo nhánh riêng — nhánh đó đã là nơi mọi việc trong phi�
   Trang chi tiết địa điểm chỉ kiểm tra được giới hạn cục bộ vì CORS của API production chỉ cho
   phép gọi từ đúng domain `phuquochub.com`, không cho `localhost` — cần domain thật hoặc stack
   cô lập để kiểm tra đầy đủ dashboard/form trước khi chốt deploy.
-- **Chưa làm:** bước 6 (test trình duyệt đầy đủ dashboard/form) chưa xong trọn vẹn vì giới hạn
-  CORS cục bộ nêu trên; bước 7-8 (build Docker image + deploy production) hoàn toàn chưa làm,
-  cần owner duyệt riêng.
+- **Chưa làm (lúc viết đoạn trên):** bước 6 (test trình duyệt đầy đủ dashboard/form) chưa xong
+  trọn vẹn vì giới hạn CORS cục bộ nêu trên; bước 7-8 (build Docker image + deploy production)
+  hoàn toàn chưa làm, cần owner duyệt riêng.
+
+## Deploy production (2026-11-11)
+
+Owner duyệt deploy ngay sau khi CI xác nhận sạch. Thực hiện qua quy trình "staged single-service
+cutover" (chỉ build/deploy lại `web`, không đụng `api`), KHÔNG dùng `scripts/deploy.sh` trọn vẹn vì
+script đó build + cutover cả api lẫn web cùng lúc — không cần thiết cho một thay đổi chỉ ở
+`apps/web`, và theo [[release-tag-governance]] việc đổi tag luôn tốn một lần recreate container dù
+image giống hệt, nên tránh recreate container api không cần thiết.
+
+Các bước đã chạy:
+1. `scripts/create-release-archive.sh 838c69de...` (local) → archive + manifest checksum cho đúng
+   commit `838c69d`.
+2. `scp` lên VPS, `scripts/sync-release-source.sh` áp dụng cây nguồn đã verify checksum lên
+   `/home/deploy/apps/PhuQuocHub` (xác nhận qua `.release-manifest`).
+3. `docker build -f apps/web/Dockerfile` trực tiếp trên VPS với đủ 4 `--build-arg NEXT_PUBLIC_*`
+   (giá trị đọc từ `.env` thật qua SSH, không hard-code) + `GIT_COMMIT`/`BUILD_DATE` để image mang
+   label `org.opencontainers.image.revision` — xác nhận bằng `docker image inspect`.
+   `NEXT_PUBLIC_SENTRY_DSN` production hiện để trống (chưa cấu hình Sentry DSN công khai nào trong
+   `.env` — giữ nguyên hiện trạng, không phải lỗi mới).
+4. Smoke test image độc lập (container riêng, chưa cutover): `/` → 307 → `/vi` → 200, log sạch.
+5. Cutover: `WEB_IMAGE_TAG=838c69d... docker compose -f docker-compose.prod.yml up -d --no-build
+   --no-deps web`, sau đó `release_tag_set WEB_IMAGE_TAG` để `.env` khớp thực tế ngay
+   (theo [[release-tag-governance]], tránh lặp lại bẫy drift tag cũ).
+6. `scripts/smoke-test.sh http://127.0.0.1:8080` sau cutover: health/root-redirect/`/vi`/404 đều
+   pass.
+7. Kiểm tra thật trên domain production qua Browser pane: trang chủ (`phuquochub.com/vi`) console
+   sạch; `/map` render đúng (marker, cluster, tile) — cảnh báo "Worker failed to load"/MIME-type
+   vẫn xuất hiện nhưng đã xác nhận đây là lỗi cũ tồn tại từ trước trên cả React 18, không phải hồi
+   quy của bản nâng cấp này.
+8. Dọn file archive/manifest tạm trên cả hai máy sau khi xong (không để lại trong `scripts/` hay
+   trên VPS ngoài `.release-manifest`).
+
+Rollback (nếu cần sau này): `scripts/rollback.sh fix-image-stretch-20261030 web` — image cũ vẫn
+còn giữ trên VPS, chưa xoá.
+
+Còn lại CHƯA làm trong đợt này: kiểm tra trình duyệt đầy đủ các trang cần đăng nhập (dashboard,
+form) trên chính domain thật (chỉ mới kiểm tra trang công khai) — rủi ro thấp vì CI đã pass unit
+test cho các trang đó, nhưng chưa xác nhận bằng mắt trên production thật.
