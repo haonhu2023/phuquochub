@@ -31,3 +31,31 @@ describe('HotelsController — ranh giới price trust gate', () => {
     expect(hotelsService.updateRooms).toHaveBeenCalledWith('h1', dto);
   });
 });
+
+// 2026-09 locale forwarding fix: GET :slug trước đây không đọc @Query() nào cả, nên `?locale=`
+// luôn bị bỏ qua ở chính tầng controller này — regression guard ở đúng ranh giới đó.
+describe('HotelsController — GET :slug forward đúng ?locale=', () => {
+  type Ctor = ConstructorParameters<typeof HotelsController>;
+  let hotelsService: LooseMock<Ctor[0]>;
+  let controller: HotelsController;
+
+  beforeEach(() => {
+    hotelsService = createMock<Ctor[0]>({ getBySlug: jest.fn() });
+    controller = new HotelsController(hotelsService);
+  });
+
+  it('?locale=en → getBySlug(slug, "en")', () => {
+    controller.get('la-veranda-resort', { locale: 'en' });
+    expect(hotelsService.getBySlug).toHaveBeenCalledWith('la-veranda-resort', 'en');
+  });
+
+  it('?locale=vi → getBySlug(slug, "vi")', () => {
+    controller.get('la-veranda-resort', { locale: 'vi' });
+    expect(hotelsService.getBySlug).toHaveBeenCalledWith('la-veranda-resort', 'vi');
+  });
+
+  it('không truyền locale → getBySlug(slug, undefined) — hành vi mặc định giữ nguyên, PlacesService tự resolve', () => {
+    controller.get('la-veranda-resort', {});
+    expect(hotelsService.getBySlug).toHaveBeenCalledWith('la-veranda-resort', undefined);
+  });
+});

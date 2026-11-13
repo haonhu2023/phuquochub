@@ -66,11 +66,18 @@ export class HotelsService {
     return paginate(items, p, l, total);
   }
 
-  async getBySlug(slug: string) {
+  // Locale forwarding (2026-09): trước đây KHÔNG nhận/forward `locale`, nên `PlacesService.getBySlug()`
+  // luôn thấy `undefined` và trả về bản dịch mặc định bất kể route/client yêu cầu gì —
+  // `GET /hotels/:slug?locale=en` bị bỏ qua hoàn toàn. Sửa bằng cách forward NGUYÊN VẸN xuống
+  // `PlacesService.getBySlug(slug, locale)` — ĐÚNG seam `PlacesController`/`GET /places/:slug` đã
+  // dùng, không tự viết validation/default/fallback riêng: `LocalesService.resolveRequestLocale()`
+  // (gọi bên trong `PlacesService.getBySlug()`) đã xử lý cả hai việc đó cho MỌI field/place, dùng
+  // lại nguyên, không nhân đôi logic. `locale` optional, không đổi hành vi cho lời gọi không truyền.
+  async getBySlug(slug: string, locale?: string) {
     // `place` đã được PlacesService.getBySlug() redact price_range/prices[].amount theo đúng
     // trust — không cần lặp lại logic ở đây (cascade từ một điểm sửa duy nhất). Rooms là public
     // (không route riêng, ghép thẳng vào chi tiết công khai) → publicResponse=true.
-    const place = await this.placesService.getBySlug(slug);
+    const place = await this.placesService.getBySlug(slug, locale);
     const [hotelDetails, rooms, amenities] = await Promise.all([
       this.repo.detail(place.id),
       this.repo.listRooms(place.id),

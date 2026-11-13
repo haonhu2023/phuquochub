@@ -4,6 +4,10 @@ import { RequirePermissions } from '../authz/decorators/require-permissions.deco
 import { AuthorizationContext } from '../authz/decorators/authorization-context.decorator';
 import { HotelsService } from './hotels.service';
 import { ListHotelsQueryDto, UpdateHotelRoomsDto } from './dto/hotels.dto';
+// Cùng DTO `PlacesController`/`GET /places/:slug` đã dùng cho `?locale=` — tái sử dụng nguyên vẹn
+// (validation `@IsOptional() @IsString() @MaxLength(35)`), không tự khai một DTO locale riêng cho
+// hotels chỉ để lặp lại đúng 3 dòng đó.
+import { GetPlaceDetailQueryDto } from '../places/dto/places.dto';
 
 // openapi §Hotels. Đọc công khai; sửa rooms cần Place.Edit.Managed (Hotel là Place).
 @Controller('hotels')
@@ -40,7 +44,7 @@ export class HotelsController {
 
   @Public()
   @Get(':slug')
-  get(@Param('slug') slug: string) {
-    return this.hotelsService.getBySlug(slug);
+  get(@Param('slug') slug: string, @Query() query: GetPlaceDetailQueryDto) {
+    return this.hotelsService.getBySlug(slug, query.locale);
   }
 }
