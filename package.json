@@ -19,7 +19,14 @@
   },
   "overrides": {
     "@nestjs/platform-express": {
-      "multer": "2.3.0"
+      "multer": "2.5.0"
+    },
+    "typeorm": {
+      "glob": {
+        "minimatch": {
+          "brace-expansion": "^2.1.8"
+        }
+      }
     }
   },
   "devDependencies": {
