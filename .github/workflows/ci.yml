@@ -97,11 +97,11 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci-access-secret-please-change
       JWT_REFRESH_SECRET: ci-refresh-secret-please-change
-      # Throwaway CI-only MinIO credentials — deliberately NOT a GitHub secret and never a
+      # Throwaway CI-only S3 credentials — deliberately NOT a GitHub secret and never a
       # production value, exactly like the JWT placeholders above. StorageService.onModuleInit()
       # runs on every e2e boot (it only self-skips when NODE_ENV=production, which this job must
       # not do), so the API needs a reachable S3 endpoint or every suite fails in HeadBucket.
-      S3_ENDPOINT: http://localhost:9000
+      S3_ENDPOINT: http://localhost:4566
       S3_ACCESS_KEY: ci-minio-root
       S3_SECRET_KEY: ci-minio-secret
       S3_REGION: us-east-1
@@ -110,24 +110,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `adobe/s3mock` (tried as a fallback) is NOT an acceptable substitute: its own docs say
-      # "Presigned URLs: Accepted but not validated (expiration, signature, HTTP verb not
-      # checked)", and this suite has a real security test asserting that a signed URL with its
-      # signature stripped must NOT be downloadable -- S3Mock made that test pass with a 200, a
-      # false green that would mask a real regression against production MinIO. Reverted to real
-      # MinIO. Every specific tag/digest tried so far has failed: `minio/minio` on Docker Hub is
-      # gone (404, since 2026-09-12); `quay.io/minio/minio` by the old pinned digest AND by that
-      # same RELEASE tag alone both 401; the `dl.min.io` binary 410s. None of those were the
-      # `:latest` tag, though -- the one a fresh `docker pull` from MinIO's own quickstart docs
-      # would use, and the least likely entry point for a registry to lock down while still
-      # claiming to be a going distribution channel. Trying that next.
-      - name: Start MinIO (S3-compatible storage for StorageService)
+      # No MinIO distribution channel is anonymously pullable anymore -- confirmed exhaustively:
+      # `minio/minio` on Docker Hub 404s (since 2026-09-12); `quay.io/minio/minio` 401s on every
+      # reference tried (the old pinned digest, that same RELEASE tag alone, and `:latest` --
+      # the whole repo is gated, not a specific stale tag); the `dl.min.io` binary 410s.
+      # `adobe/s3mock` was tried as a drop-in replacement but isn't acceptable: it doesn't
+      # validate presigned-URL signatures at all (documented limitation), which made this job's
+      # real security test -- a stripped-signature URL must NOT download -- pass with a false 200.
+      # Using `localstack/localstack` instead: unlike S3Mock, it has first-class, documented config
+      # for this exact behaviour (S3_SKIP_SIGNATURE_VALIDATION=0 and S3_VALIDATE_SIGNATURES=1,
+      # per LocalStack's own S3 docs) rather than silently accepting every request. Pinned to a
+      # specific release, not `:latest`, scoped to the one service this job needs (SERVICES=s3).
+      - name: Start LocalStack (S3-compatible storage for StorageService)
         run: |
-          docker run -d --name minio-ci --network host \
-            -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
-            -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            quay.io/minio/minio:latest \
-            server /data --console-address :9001
+          docker run -d --name localstack-ci -p 4566:4566 \
+            -e SERVICES=s3 \
+            -e DEFAULT_REGION="$S3_REGION" \
+            -e S3_SKIP_SIGNATURE_VALIDATION=0 \
+            -e S3_VALIDATE_SIGNATURES=1 \
+            localstack/localstack:2026.10.7
 
       - uses: actions/setup-node@v4
         with:
@@ -147,16 +148,16 @@ jobs:
       # instead of surfacing as 448 unrelated AggregateErrors: the container is running, the
       # unauthenticated liveness probe answers, and an AUTHENTICATED S3 call succeeds — the last
       # one is what actually proves the credentials and endpoint StorageService will use.
-      - name: Wait for MinIO and verify StorageService can initialise its bucket
+      - name: Wait for LocalStack and verify StorageService can initialise its bucket
         run: |
-          docker ps --filter name=minio-ci --filter status=running --format '{{.Names}}' | grep -qx minio-ci
+          docker ps --filter name=localstack-ci --filter status=running --format '{{.Names}}' | grep -qx localstack-ci
 
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/minio/health/live || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4566/_localstack/health || true)
             [ "$code" = "200" ] && break
             sleep 2
           done
-          curl -sf -o /dev/null http://localhost:9000/minio/health/live
+          curl -sf -o /dev/null http://localhost:4566/_localstack/health
 
           node - <<'JS'
           // Mirrors StorageService.onModuleInit() using the SAME @aws-sdk/client-s3 client and the
@@ -183,15 +184,15 @@ jobs:
               console.log(`bucket "${bucket}" created`);
             }
             await client.send(new HeadBucketCommand({ Bucket: bucket }));
-            console.log('MinIO reachable and bucket initialisation verified');
+            console.log('LocalStack reachable and bucket initialisation verified');
           })().catch((err) => {
             // AggregateError.message is empty -- that is precisely why the original e2e failure was
-            // hard to read. Unwrap the sub-errors so this step says WHY it could not reach MinIO.
+            // hard to read. Unwrap the sub-errors so this step says WHY it could not reach LocalStack.
             const detail =
               err instanceof AggregateError
                 ? err.errors.map((e) => `${e.name}: ${e.message}`).join('; ')
                 : err.message;
-            console.error(`MinIO/S3 preflight failed (${err.name}): ${detail || '(no message)'}`);
+            console.error(`LocalStack/S3 preflight failed (${err.name}): ${detail || '(no message)'}`);
             process.exit(1);
           });
           JS
@@ -199,13 +200,13 @@ jobs:
       - name: API e2e
         run: npm run test:e2e --workspace @phuquochub/api
 
-      - name: MinIO logs (diagnostics)
+      - name: LocalStack logs (diagnostics)
         if: failure()
-        run: docker logs minio-ci || true
+        run: docker logs localstack-ci || true
 
-      - name: Stop MinIO
+      - name: Stop LocalStack
         if: always()
-        run: docker rm -f minio-ci || true
+        run: docker rm -f localstack-ci || true
 
   # PLACE-026 (OD2-2..9) — production deployment pipeline. Builds the same Dockerfiles used for a
   # real deploy and validates them against real Postgres/Redis service containers (same pattern as
