@@ -1,6 +1,6 @@
 # PhuQuocHub — Chiến lược Kiếm tiền: Tiếp thị liên kết (Affiliate Marketing) quốc tế
 
-> **Trạng thái: PROPOSAL (đề xuất — chưa phê duyệt).** Tài liệu **chiến lược sản phẩm/kinh doanh**, không code, tiếng Việt. Mục tiêu: tạo doanh thu cho PhuQuocHub qua **tiếp thị liên kết với các chương trình nước ngoài** (du lịch, bảo hiểm, eSIM…) mà **không phá vỡ** phạm vi hiện tại (không đặt phòng/thanh toán — [vision.md §7](../overview/vision.md)) và không đánh đổi niềm tin cộng đồng ([vision.md §5-6](../overview/vision.md)). Liên quan: [growth.md](growth.md), [business.md](modules/business.md), [hotel.md](modules/hotel.md), [tour.md](modules/tour.md), [place.md](modules/place.md), [seo.md](../architecture/seo.md), [data-collection.md](../architecture/data-collection.md).
+> **Trạng thái: PROPOSAL.** Chiến lược kinh doanh tổng thể vẫn ở mức đề xuất (chưa đăng ký network/chưa launch); **mô hình dữ liệu kỹ thuật đã được phê duyệt để thiết kế** ([ADR-023](../99-decisions/ADR-023-affiliate-link-model.md), §6, §12). Tài liệu **chiến lược sản phẩm/kinh doanh**, không code, tiếng Việt. Mục tiêu: tạo doanh thu cho PhuQuocHub qua **tiếp thị liên kết với các chương trình nước ngoài** (du lịch, bảo hiểm, eSIM…) mà **không phá vỡ** phạm vi hiện tại (không đặt phòng/thanh toán — [vision.md §7](../overview/vision.md)) và không đánh đổi niềm tin cộng đồng ([vision.md §5-6](../overview/vision.md)). Liên quan: [growth.md](growth.md), [business.md](modules/business.md), [hotel.md](modules/hotel.md), [tour.md](modules/tour.md), [place.md](modules/place.md), [seo.md](../architecture/seo.md), [data-collection.md](../architecture/data-collection.md).
 
 ---
 
@@ -58,12 +58,14 @@
 - Link ra ngoài gắn `rel="sponsored nofollow noopener"` (chuẩn SEO/quy định search engine cho link tài trợ).
 - **Không** để affiliate ảnh hưởng thứ tự hiển thị cơ sở trong tìm kiếm/bản đồ (giữ nguyên nguyên tắc *"không bán thứ hạng"* — [growth.md §14](growth.md)); cơ sở không tham gia affiliate vẫn hiển thị bình đẳng.
 
-## 6. Kiến trúc kỹ thuật đề xuất *(outline — CHƯA phê duyệt, cần duyệt trước khi đưa vào [docs/data/](../data/database.md))*
+## 6. Kiến trúc kỹ thuật *(đã chốt — [ADR-023](../99-decisions/ADR-023-affiliate-link-model.md), 2026-11-13)*
 
-- **Thực thể mới, tách biệt khỏi Price/Contact:** `AffiliatePartner` (network, tên, điều khoản, trạng thái hợp tác) và `AffiliateLink` (gắn `place_id`, `partner_id`, `target_url`, `tracking_param`, `is_active`, `label`). Tách riêng để **không** đụng tới dữ liệu cộng đồng (`Price`/`Contact` giữ nguyên ý nghĩa tri thức, không lẫn với link bán hàng).
-- **Endpoint redirect nội bộ** (ví dụ `GET /go/:linkId`): ghi log click (timestamp, place_id, partner_id, ẩn danh IP/user-agent theo chính sách riêng tư) → `302` sang `target_url` có tracking param của network. Mục đích: đo **CTR nội bộ** độc lập với dashboard network (đối chiếu số liệu, phát hiện link hỏng).
-- **Kiểm tra link định kỳ** (nối [data-collection.md](../architecture/data-collection.md)): job quét `AffiliateLink.is_active`, cảnh báo khi cơ sở đã đóng/archived mà vẫn còn affiliate link trỏ tới.
-- **Phân quyền quản lý:** giai đoạn đầu chỉ **Administrator** tạo/sửa `AffiliateLink` (tập trung, kiểm soát chất lượng); câu hỏi "có cho Business Owner tự gắn link của chính họ không" để ở §10 (open question) — cần cân nhắc rủi ro lạm dụng.
+> Cập nhật: schema đã được phê duyệt để thiết kế (không còn là outline chờ duyệt). Chi tiết cột/kiểu/index/quy tắc đầy đủ: [affiliate.md](../data/modules/affiliate.md). API contract: [api.md §25](../api/api.md). **Vẫn chưa triển khai** (chưa có migration/entity TypeORM thật) — chờ Giai đoạn 1 (§9).
+
+- **3 thực thể mới, tách biệt hoàn toàn khỏi Price/Contact:** `affiliate_partners` (danh mục network), `affiliate_links` (gắn `place_id`+`partner_id`+`target_url`+`label`+`is_active`), `affiliate_link_clicks` (log click nội bộ, ẩn danh hoá IP bằng hash). Không FK ngược từ `places`/`price_history`/`contacts` — affiliate không chạm dữ liệu cộng đồng.
+- **Endpoint redirect nội bộ** `GET /go/:linkId` (ngoài prefix `/api`): ghi 1 dòng `affiliate_link_clicks` → `302` sang `target_url`. Đo **CTR nội bộ** độc lập với dashboard network.
+- **Kiểm tra link định kỳ** (nối [data-collection.md](../architecture/data-collection.md)): job quét `affiliate_links.is_active`, cảnh báo khi Place gắn link đã `archived` (BR-AF2).
+- **Phân quyền quản lý — đã chốt:** **chỉ Administrator** (`AffiliateLink.Manage`, toàn cục, không scope Managed — [rbac.md §3.3](../security/rbac.md)) tạo/sửa/xoá. Business Owner/Manager **không** có quyền này ở giai đoạn này (có thể mở lại sau — xem §12).
 - **Không** thêm field affiliate vào entity `Place`/`Hotel`/`Tour` hiện có — giữ schema hiện tại ổn định, affiliate là lớp phụ trợ có thể tắt/xoá không ảnh hưởng dữ liệu lõi.
 
 ## 7. Chiến lược nội dung & SEO quốc tế hoá
@@ -129,13 +131,16 @@
 | Cạnh tranh SEO với chính OTA lớn | Đi ngách sâu theo địa phương (lịch trình, mẹo, so sánh) thay vì cạnh tranh từ khoá rộng |
 | Rủi ro thuế/pháp lý nếu không kê khai | Theo §8 — đăng ký hộ kinh doanh khi doanh thu đủ lớn, lưu hồ sơ đầy đủ |
 
-## 12. Điểm cần quyết định sau (open questions)
+## 12. Điểm cần quyết định (đã chốt & còn mở)
 
-- Có cho **Business Owner** tự thêm affiliate link cho chính cơ sở của họ (vd link Booking riêng) hay chỉ Administrator quản lý tập trung? Ảnh hưởng tới [business.md BR-B9](modules/business.md).
-- Thực thể `AffiliatePartner`/`AffiliateLink` — **CHƯA phê duyệt**; cần duyệt trước khi thêm vào [docs/data/](../data/database.md) và [api.md](../api/api.md).
-- Ngưỡng doanh thu cụ thể để đăng ký hộ kinh doanh cá nhân (xác nhận với kế toán/thuế tại thời điểm triển khai).
-- Cách hiển thị nhãn disclosure tối ưu (không làm xấu UX) — cần phối hợp với [wireframes.md](wireframes.md).
-- Có tích hợp affiliate vào gợi ý của [AI Assistant](modules/ai-assistant.md) ngay từ MVP hay để Giai đoạn 3?
+**Đã chốt (2026-11-13):**
+- ✅ **Quản lý affiliate link:** chỉ **Administrator** (tập trung); Business Owner **không** tự thêm link ở giai đoạn này — có thể mở lại sau khi mô hình tập trung chứng minh hiệu quả. Ảnh hưởng [business.md BR-B9](modules/business.md) — không đổi BR-B9 (Business Owner vẫn không có quyền mới nào ở Business module do quyết định này).
+- ✅ **Thực thể `affiliate_partners`/`affiliate_links`/`affiliate_link_clicks`:** đã phê duyệt, đã thiết kế schema đầy đủ — [affiliate.md](../data/modules/affiliate.md), [ADR-023](../99-decisions/ADR-023-affiliate-link-model.md), [api.md §25](../api/api.md). **Chưa triển khai** (migration/entity thật chờ Giai đoạn 1, §9).
+- ✅ **AI Assistant:** giữ ở **Giai đoạn 3** như roadmap ban đầu — không tích hợp sớm ở MVP.
+
+**Còn mở:**
+- **Ngưỡng doanh thu đăng ký hộ kinh doanh cá nhân:** tra cứu ban đầu (2026-11-13) cho thấy **thông tin mâu thuẫn** giữa các nguồn — có nguồn nói ngưỡng chịu thuế hộ kinh doanh nâng lên **1 tỷ đồng/năm** từ 1/1/2026, nguồn khác (cũ hơn) nói **500 triệu đồng/năm**; thuế khoán được thay bằng tự kê khai theo doanh thu thực tế theo Nghị định 68/2026/NĐ-CP, Thông tư 18/2026/TT-BTC. **Chưa xác minh được văn bản gốc** — bắt buộc đối chiếu trên Thư viện Pháp luật/Công báo hoặc hỏi kế toán/thuế thật trước khi áp dụng, đặc biệt phần thu nhập từ nền tảng/affiliate **nước ngoài** (chưa thấy hướng dẫn rõ ràng trong các nguồn đã tra).
+- **Cách hiển thị nhãn disclosure tối ưu** (không làm xấu UX) — cần phối hợp với [wireframes.md](wireframes.md) khi tới lượt thiết kế UI `AffiliateBox` (Giai đoạn 1, §9); nội dung nhãn mặc định đã có ở §5, còn vị trí/kiểu hiển thị cụ thể chưa thiết kế.
 
 ---
 

@@ -31,9 +31,10 @@ docs/
 │       ├── source.md
 │       ├── verification.md
 │       ├── business.md
-│       └── analytics.md
+│       ├── analytics.md
+│       └── affiliate.md      # affiliate_partners/affiliate_links/affiliate_link_clicks (ADR-023)
 ├── api/                      # [API Documentation] REST API + đặc tả máy đọc
-│   ├── api.md                # Thiết kế REST API 15 module (đa kênh)
+│   ├── api.md                # Thiết kế REST API 16 module (đa kênh)
 │   └── openapi.yaml          # Đặc tả OpenAPI 3.1 (contract máy đọc)
 ├── security/                 # [01·Architecture] Phân quyền (RBAC) & xác thực
 │   ├── rbac.md
@@ -44,7 +45,7 @@ docs/
 │   ├── engagement.md
 │   ├── admin.md
 │   ├── growth.md             # Growth & Community (outline: reputation·XP·badge·mission·leaderboard·community health)
-│   ├── monetization.md       # Chiến lược kiếm tiền: Affiliate Marketing quốc tế (proposal — chưa phê duyệt)
+│   ├── monetization.md       # Chiến lược kiếm tiền: Affiliate Marketing quốc tế (proposal; schema đã phê duyệt — ADR-023)
 │   └── modules/              # Product Spec 10 module (mục tiêu, tính năng, use case, luồng, nghiệp vụ, dữ liệu, quan hệ, KPI)
 │       ├── README.md         # Index nhóm module + khuôn đặc tả + bản đồ phụ thuộc
 │       ├── place.md          ├── event.md        ├── review.md
@@ -94,10 +95,11 @@ docs/
 | 01 · Architecture | [verification.md](data/modules/verification.md) | Entity Verification (xác minh dữ liệu) |
 | 01 · Architecture | [business.md](data/modules/business.md) | Entity Business — `business_claims` + `business_members` (sở hữu cơ sở, ADR-015) |
 | 01 · Architecture | [analytics.md](data/modules/analytics.md) | Nhóm Analytics (thống kê, aggregate-first) |
+| 01 · Architecture | [affiliate.md](data/modules/affiliate.md) | Entity Affiliate — `affiliate_partners`/`affiliate_links`/`affiliate_link_clicks` (ADR-023; chưa triển khai) |
 | 01 · Architecture | [data-dictionary.md](data/data-dictionary.md) | **Từ điển dữ liệu** tổng hợp 47 entity Accepted (cột/kiểu/FK/index/cascade) |
 | 01 · Architecture | [rbac.md](security/rbac.md) | Phân quyền theo vai trò (Role/Permission) |
 | 01 · Architecture | [auth.md](security/auth.md) | Xác thực & phiên đăng nhập |
-| **API Documentation** | [api.md](api/api.md) | Thiết kế REST API **15 module** — Web · Mobile · Public · Partner |
+| **API Documentation** | [api.md](api/api.md) | Thiết kế REST API **16 module** — Web · Mobile · Public · Partner |
 | API Documentation | [openapi.yaml](api/openapi.yaml) | Đặc tả **OpenAPI 3.1** (contract máy đọc — sinh client/SDK/portal/mock) |
 | **02 · Product** | [modules/README.md](product/modules/README.md) | **Product Spec** — index 10 module, khuôn đặc tả 9 mục, bản đồ phụ thuộc |
 | 02 · Product | [modules/place.md](product/modules/place.md) | Spec **Place** (địa điểm — thực thể lõi) |
@@ -123,7 +125,7 @@ docs/
 
 | Tài liệu | Vai trò | Đối tượng sử dụng | Trạng thái |
 |---|---|---|---|
-| [api/api.md](api/api.md) | Thiết kế REST API 15 module, đa kênh (Web/Mobile/Public/Partner) | Backend & Frontend devs, đối tác API | **Review** |
+| [api/api.md](api/api.md) | Thiết kế REST API 16 module, đa kênh (Web/Mobile/Public/Partner) | Backend & Frontend devs, đối tác API | **Review** |
 | [api/openapi.yaml](api/openapi.yaml) | Đặc tả OpenAPI 3.1 máy đọc — sinh client/SDK, portal, mock, lint CI | Devs, đối tác, tooling (Swagger/codegen) | **Draft** |
 | [data/data-dictionary.md](data/data-dictionary.md) | Từ điển dữ liệu tổng hợp 47 entity Accepted (cột/kiểu/FK/index/cascade) | Data & Backend engineers, reviewers | **Review** |
 | `docs/data/migration-strategy.md` *(Reserved for future)* | Chiến lược migration (plan/rollback/seed/versioning/data-compatibility) | Data engineers, DevOps | *Chưa tạo* |
