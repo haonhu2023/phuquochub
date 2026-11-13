@@ -54,20 +54,27 @@
 /* Featured V2 — placeholder có chủ đích khi chưa có ảnh (đa số 49 place hôm nay), không phải một
    ô chữ cái trơn: dải màu ấm/lạnh xen kẽ theo brand + hoạ tiết chấm rời rạc (gợi hình điểm trên
    bản đồ, nhất quán với ngôn ngữ marker của bản đồ thật) + chữ cái đầu làm điểm neo thị giác. Vẫn
-   KHÔNG ảnh giả — chỉ là một hệ thống trang trí, không suy diễn nội dung. */
+   KHÔNG ảnh giả — chỉ là một hệ thống trang trí, không suy diễn nội dung.
+   Tỉ lệ RIÊNG 2.4/1 (không dùng chung 4/3 với .thumb) — mobile UI review 2026-09 (ảnh owner gửi):
+   4/3 cho một khối trang trí thuần (không phải ảnh thật) chiếm quá nhiều chiều cao thẻ trên di
+   động, đẩy tên/mô tả địa điểm xuống dưới màn hình đầu tiên — đặc biệt nặng vì ĐA SỐ thẻ hôm nay
+   rơi vào nhánh này. `.thumb` (ảnh thật) và `.galleryImg` (trang chi tiết) giữ nguyên 4/3 — thay
+   đổi này CHỈ áp dụng cho khối trang trí, không đụng cách hiển thị ảnh thật. `.skelThumb` bên dưới
+   đổi theo cùng tỉ lệ để khớp layout thật ở trường hợp PHỔ BIẾN hơn (chưa có ảnh) — đánh đổi chấp
+   nhận được là một chút lệch layout khi skeleton hoá ra là ảnh thật (ít gặp hơn). */
 .thumbFallback {
   position: relative;
   display: grid;
   place-items: center;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 2.4 / 1;
   overflow: hidden;
   background:
     radial-gradient(120% 140% at 85% 15%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 60%),
     radial-gradient(120% 140% at 15% 100%, color-mix(in srgb, #fb923c 16%, transparent), transparent 60%),
     linear-gradient(135deg, var(--surface-2), var(--surface));
   color: var(--fg);
-  font-size: 2.1rem;
+  font-size: 1.6rem;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -226,8 +233,10 @@
     transition: none;
   }
 }
+/* 2.4/1 — khớp .thumbFallback (trường hợp phổ biến hơn khi skeleton hoá ra chưa có ảnh thật), xem
+   chú thích ở .thumbFallback. */
 .skelThumb {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 2.4 / 1;
 }
 .skelLine {
   height: 0.9rem;
