@@ -463,13 +463,35 @@ Nguyên tắc: cùng mô hình dữ liệu, khác **bề mặt** — Public/Part
 
 ---
 
-## 25. Tài liệu & mở rộng
+## 25. Affiliate (Tiếp thị liên kết)
+
+> Chốt ở [ADR-023](../99-decisions/ADR-023-affiliate-link-model.md); chiến lược: [monetization.md](../product/monetization.md). **Chưa triển khai** — chỉ chốt contract để Giai đoạn 1 ([monetization.md §9](../product/monetization.md)) bắt tay ngay.
+
+| Method | Endpoint | Permission | Kênh |
+|---|---|---|---|
+| GET | `/api/places/:id/affiliate-links` | public | W·M |
+| GET | `/api/affiliate-partners` | `AffiliateLink.Manage` | W |
+| POST | `/api/affiliate-partners` | `AffiliateLink.Manage` | W |
+| POST | `/api/affiliate-links` | `AffiliateLink.Manage` | W |
+| PATCH | `/api/affiliate-links/:id` | `AffiliateLink.Manage` | W |
+| DELETE | `/api/affiliate-links/:id` | `AffiliateLink.Manage` | W |
+| GET | `/go/:linkId` | public (redirect) | — |
+
+> `GET /go/:linkId` nằm **ngoài** prefix `/api` — redirect trình duyệt trực tiếp (ghi 1 dòng `affiliate_link_clicks` rồi `302` sang `target_url`), không phải JSON API ([affiliate.md §4](../data/modules/affiliate.md)).
+
+- **Request:** partner `{name, network_key, category, terms_url?, notes?}`; link `{place_id, partner_id, target_url, label?}`.
+- **Response:** `affiliate-links` theo place = danh sách link `is_active` kèm `partner.name`/`category` (để FE render `AffiliateBox`); partner/link CRUD = bản ghi vừa tạo/sửa.
+- **Validation:** chỉ Administrator (`AffiliateLink.Manage`, toàn cục — **không** scope Managed, Business Owner/Manager không có quyền này); `place_id` phải tồn tại và chưa `archived` (BR-AF2, [affiliate.md §6](../data/modules/affiliate.md)); không ghi đè `price_history`/`contacts`.
+- **Rate Limit:** `GET /go/:linkId` theo IP (chống click giả); CRUD theo mức Administrator thông thường + **audit**.
+- **Caching:** `GET /places/:id/affiliate-links` cache ngắn (vài phút); `GET /go/:linkId` **không cache** (luôn ghi log trước redirect).
+
+## 26. Tài liệu & mở rộng
 
 - **OpenAPI/Swagger** sinh từ contract, phục vụ tại `/api/docs` (dev/staging); **portal riêng** cho Public/Partner (`/public/docs`, `/partner/docs`).
 - **Webhook (Partner):** sự kiện `place.updated`, `review.created`… đẩy tới đối tác (ký HMAC).
 - **Mở rộng module tương lai** (Jobs, Real Estate, Marketplace) theo đúng khuôn: tài nguyên số nhiều + 8 mục + kênh — không đổi lõi.
 
-## 26. Ghi chú — bổ sung sau
+## 27. Ghi chú — bổ sung sau
 
 - [ ] Bảng lỗi (error code) đầy đủ theo module.
 - [ ] Sơ đồ scope OAuth2 Partner ↔ Permission.

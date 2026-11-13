@@ -100,6 +100,11 @@ Dùng chung một bộ động từ giúp module mới (Jobs, Marketplace…) **
 | `Business.Manager.Assign` / `.Revoke` | Thêm/bớt Business Manager |
 | `Business.Transfer` | Chuyển nhượng quyền sở hữu |
 
+**Nhóm Affiliate** ([ADR-023](../99-decisions/ADR-023-affiliate-link-model.md))
+| Permission | Ý nghĩa |
+|---|---|
+| `AffiliateLink.Manage` | Tạo/sửa/xoá đối tác & link affiliate — **toàn cục, không hậu tố scope**; chỉ Administrator, không cấp Business Owner/Manager |
+
 **Nhóm Quản trị & Người dùng**
 | Permission | Ý nghĩa |
 |---|---|
@@ -195,7 +200,7 @@ Vì đã có **quy ước tên + action chuẩn + scope + wildcard**, mọi modu
 
 ### 4.8 Administrator
 - **Mục đích:** quản trị vận hành nền tảng.
-- **Quyền:** kế thừa Moderator + `User.Ban/Manage`, `Role.Assign`, `Category.Manage`, `Notification.Broadcast`, `Analytics.View.Any/Export`, `Developer.ApiKey/App.Manage`, `AI.Model.Configure`, `System.Settings.Edit`, `System.FeatureFlag.Manage`, `System.Audit.View`.
+- **Quyền:** kế thừa Moderator + `User.Ban/Manage`, `Role.Assign`, `Category.Manage`, `Notification.Broadcast`, `Analytics.View.Any/Export`, `Developer.ApiKey/App.Manage`, `AI.Model.Configure`, `System.Settings.Edit`, `System.FeatureFlag.Manage`, `System.Audit.View`, `AffiliateLink.Manage`.
 - **Giới hạn:** **không** sửa vai trò Super Administrator; **không** `Role.Create/Permission.Manage` (đổi lược đồ RBAC); không truy cập secret hạ tầng cấp cao; thao tác tối nhạy cần Super Admin (4-eyes).
 - **Dữ liệu được sửa:** người dùng, gán role, danh mục, cấu hình ứng dụng, cờ tính năng.
 - **Dữ liệu chờ duyệt:** đổi cấu trúc RBAC, xóa dữ liệu hàng loạt → Super Administrator.
