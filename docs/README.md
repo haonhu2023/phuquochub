@@ -44,6 +44,7 @@ docs/
 │   ├── engagement.md
 │   ├── admin.md
 │   ├── growth.md             # Growth & Community (outline: reputation·XP·badge·mission·leaderboard·community health)
+│   ├── monetization.md       # Chiến lược kiếm tiền: Affiliate Marketing quốc tế (proposal — chưa phê duyệt)
 │   └── modules/              # Product Spec 10 module (mục tiêu, tính năng, use case, luồng, nghiệp vụ, dữ liệu, quan hệ, KPI)
 │       ├── README.md         # Index nhóm module + khuôn đặc tả + bản đồ phụ thuộc
 │       ├── place.md          ├── event.md        ├── review.md
@@ -108,6 +109,7 @@ docs/
 | 02 · Product | [engagement.md](product/engagement.md) | Wireframe 3 trang tương tác (Business, Community, Profile) |
 | 02 · Product | [admin.md](product/admin.md) | Wireframe **Admin** (P11 console kiểm duyệt) + **Dashboard** (P13 vận hành) theo RBAC |
 | 02 · Product | [growth.md](product/growth.md) | **Growth & Community** *(outline)* — reputation·XP·level·badge·mission·challenge·Local Guide·referral·leaderboard·community health |
+| 02 · Product | [monetization.md](product/monetization.md) | **Monetization** *(proposal)* — chiến lược Affiliate Marketing quốc tế (Booking/Agoda/Klook/GetYourGuide…) theo module Hotel/Tour/Place |
 | **03 · Development** | [coding-standard.md](standards/coding-standard.md) | Chuẩn viết code, đặt tên, test, Git |
 | **04 · Workflows** | [workflow.md](workflow/workflow.md) | Index 20 workflow + nhóm Tài khoản/Hệ thống |
 | 04 · Workflows | [contribution.md](workflow/contribution.md) | Luồng đóng góp & làm giàu dữ liệu (claim, đề xuất sửa, AI, giá, ảnh) |
