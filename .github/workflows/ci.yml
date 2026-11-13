@@ -119,15 +119,19 @@ jobs:
       # `minio/minio` on Docker Hub returns HTTP 404 ("object not found") from Docker Hub's own
       # repository API as of 2026-09-12 — not a rate limit, the repository itself is gone from that
       # registry. Pinned to the official `minio/minio` org on quay.io instead (MinIO Inc.'s other
-      # active distribution channel; confirmed via quay.io's public API: state NORMAL, maintainer
-      # label "MinIO Inc <dev@min.io>"), by immutable RELEASE tag AND digest so this can never
-      # silently drift to a different build even if the tag were ever re-pushed.
+      # active distribution channel). Previously pinned by immutable RELEASE tag AND digest for
+      # anti-drift, but that exact digest (sha256:cf3dadcf...) stopped resolving on quay.io as of
+      # 2026-11-13 (HEAD on its manifest returns 401, not 404 — quay.io's usual signal that a
+      # digest reference no longer exists under that repo, e.g. after a retention/GC pass).
+      # Pinned to the RELEASE tag alone: quay.io's immutable release tags for minio/minio are not
+      # re-pushed, so this keeps the same anti-drift guarantee without depending on one specific
+      # manifest digest surviving indefinitely.
       - name: Start MinIO (S3-compatible storage for StorageService)
         run: |
           docker run -d --name minio-ci --network host \
             -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
             -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772@sha256:cf3dadcfa1fb0324f43958bad1abba986d53c4ecc04d4d50b46c7dcda28bd3cd \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772 \
             server /data --console-address :9001
 
       - uses: actions/setup-node@v4
