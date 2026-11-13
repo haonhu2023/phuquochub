@@ -110,29 +110,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # MinIO cannot be a `services:` container: it requires the `server /data` command, and service
-      # containers accept only an image plus options — there is no command/args key. Start it as a
-      # Docker step instead, mirroring how `docker-build` below boots images with `--network host`.
-      # Launched before `npm ci` so it warms up while dependencies install; readiness is asserted in
-      # its own step before e2e, never assumed.
-      #
-      # `minio/minio` on Docker Hub returns HTTP 404 ("object not found") from Docker Hub's own
-      # repository API as of 2026-09-12 — not a rate limit, the repository itself is gone from that
-      # registry. Pinned to the official `minio/minio` org on quay.io instead (MinIO Inc.'s other
-      # active distribution channel). Previously pinned by immutable RELEASE tag AND digest for
-      # anti-drift, but that exact digest (sha256:cf3dadcf...) stopped resolving on quay.io as of
-      # 2026-11-13 (HEAD on its manifest returns 401, not 404 — quay.io's usual signal that a
-      # digest reference no longer exists under that repo, e.g. after a retention/GC pass).
-      # Pinned to the RELEASE tag alone: quay.io's immutable release tags for minio/minio are not
-      # re-pushed, so this keeps the same anti-drift guarantee without depending on one specific
-      # manifest digest surviving indefinitely.
+      # No container registry has worked for a pullable MinIO image: `minio/minio` on Docker Hub
+      # returns HTTP 404 (repository gone, as of 2026-09-12); `quay.io/minio/minio` — both by
+      # digest AND by RELEASE tag alone — returns 401 UNAUTHORIZED on an anonymous manifest pull
+      # as of 2026-11-13 (MinIO Inc. has progressively gated anonymous registry pulls; this is no
+      # longer a stale-pin problem, the whole repo needs auth now); `bitnami/minio` is a paid-only
+      # Bitnami Secure Image as of its 2025 Docker Hub policy change, with no free tags published.
+      # Runs the official MinIO server binary directly instead, from `dl.min.io` — MinIO's own
+      # install docs tell users to `curl`/`wget` this exact URL for anonymous downloads, so unlike
+      # the registries above it is the channel MinIO Inc. still intends to be used without auth.
+      # Started in the background (not a `services:` container — that accepts only an image, and
+      # there is no image here) before `npm ci` so it warms up while dependencies install;
+      # readiness is asserted in its own step before e2e, never assumed.
       - name: Start MinIO (S3-compatible storage for StorageService)
         run: |
-          docker run -d --name minio-ci --network host \
-            -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
-            -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772 \
-            server /data --console-address :9001
+          mkdir -p /tmp/minio-data
+          curl -fsSL -o /tmp/minio https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x /tmp/minio
+          MINIO_ROOT_USER="$S3_ACCESS_KEY" MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
+            nohup /tmp/minio server /tmp/minio-data --address :9000 --console-address :9001 \
+            > /tmp/minio.log 2>&1 &
+          echo $! > /tmp/minio.pid
 
       - uses: actions/setup-node@v4
         with:
@@ -149,12 +147,12 @@ jobs:
         run: npm run migration:run --workspace @phuquochub/api
 
       # Three explicit gates before e2e, so a storage problem fails here with a clear message
-      # instead of surfacing as 448 unrelated AggregateErrors: the container is running, the
+      # instead of surfacing as 448 unrelated AggregateErrors: the process is running, the
       # unauthenticated liveness probe answers, and an AUTHENTICATED S3 call succeeds — the last
       # one is what actually proves the credentials and endpoint StorageService will use.
       - name: Wait for MinIO and verify StorageService can initialise its bucket
         run: |
-          docker ps --filter name=minio-ci --filter status=running --format '{{.Names}}' | grep -qx minio-ci
+          kill -0 "$(cat /tmp/minio.pid)"
 
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/minio/health/live || true)
@@ -206,11 +204,14 @@ jobs:
 
       - name: MinIO logs (diagnostics)
         if: failure()
-        run: docker logs minio-ci || true
+        run: cat /tmp/minio.log || true
 
       - name: Stop MinIO
         if: always()
-        run: docker rm -f minio-ci || true
+        run: |
+          if [ -f /tmp/minio.pid ]; then
+            kill "$(cat /tmp/minio.pid)" 2>/dev/null || true
+          fi
 
   # PLACE-026 (OD2-2..9) — production deployment pipeline. Builds the same Dockerfiles used for a
   # real deploy and validates them against real Postgres/Redis service containers (same pattern as
