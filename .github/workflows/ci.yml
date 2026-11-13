@@ -101,7 +101,7 @@ jobs:
       # production value, exactly like the JWT placeholders above. StorageService.onModuleInit()
       # runs on every e2e boot (it only self-skips when NODE_ENV=production, which this job must
       # not do), so the API needs a reachable S3 endpoint or every suite fails in HeadBucket.
-      S3_ENDPOINT: http://localhost:9000
+      S3_ENDPOINT: http://localhost:9090
       S3_ACCESS_KEY: ci-minio-root
       S3_SECRET_KEY: ci-minio-secret
       S3_REGION: us-east-1
@@ -110,27 +110,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # No container registry has worked for a pullable MinIO image: `minio/minio` on Docker Hub
-      # returns HTTP 404 (repository gone, as of 2026-09-12); `quay.io/minio/minio` — both by
-      # digest AND by RELEASE tag alone — returns 401 UNAUTHORIZED on an anonymous manifest pull
-      # as of 2026-11-13 (MinIO Inc. has progressively gated anonymous registry pulls; this is no
-      # longer a stale-pin problem, the whole repo needs auth now); `bitnami/minio` is a paid-only
-      # Bitnami Secure Image as of its 2025 Docker Hub policy change, with no free tags published.
-      # Runs the official MinIO server binary directly instead, from `dl.min.io` — MinIO's own
-      # install docs tell users to `curl`/`wget` this exact URL for anonymous downloads, so unlike
-      # the registries above it is the channel MinIO Inc. still intends to be used without auth.
-      # Started in the background (not a `services:` container — that accepts only an image, and
-      # there is no image here) before `npm ci` so it warms up while dependencies install;
-      # readiness is asserted in its own step before e2e, never assumed.
-      - name: Start MinIO (S3-compatible storage for StorageService)
+      # Every real MinIO distribution channel is gone or gated: `minio/minio` on Docker Hub
+      # returns HTTP 404 (repository removed, as of 2026-09-12); `quay.io/minio/minio` — by
+      # digest, by its RELEASE tag, now returns 401 UNAUTHORIZED on an anonymous pull (MinIO Inc.
+      # has gated anonymous registry access entirely, not a stale-pin problem); the direct binary
+      # at `dl.min.io/server/minio/release/linux-amd64/minio` now returns 410 Gone (retired). Switched
+      # to `adobe/s3mock` instead: a lightweight, actively maintained (Docker Hub, updated
+      # 2026-09) S3-compatible server built specifically for this ("hermetic testing" is its
+      # stated purpose) — HeadBucket/CreateBucket supported, path-style access matches the
+      # existing S3_FORCE_PATH_STYLE config, and it accepts any SigV4 credentials without real
+      # validation (fine for a throwaway CI bucket). Pinned by immutable version tag, not
+      # `:latest`, for the same anti-drift reason as the rest of this job's service images.
+      # Started as a Docker step (not a `services:` container — needs INITIAL_BUCKETS env, same
+      # reason the old MinIO step couldn't be one either) before `npm ci` so it warms up while
+      # dependencies install; readiness is asserted in its own step before e2e, never assumed.
+      - name: Start S3Mock (S3-compatible storage for StorageService)
         run: |
-          mkdir -p /tmp/minio-data
-          curl -fsSL -o /tmp/minio https://dl.min.io/server/minio/release/linux-amd64/minio
-          chmod +x /tmp/minio
-          MINIO_ROOT_USER="$S3_ACCESS_KEY" MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            nohup /tmp/minio server /tmp/minio-data --address :9000 --console-address :9001 \
-            > /tmp/minio.log 2>&1 &
-          echo $! > /tmp/minio.pid
+          docker run -d --name s3mock-ci -p 9090:9090 \
+            -e COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS="$S3_BUCKET" \
+            adobe/s3mock:5.2.3
 
       - uses: actions/setup-node@v4
         with:
@@ -147,19 +145,19 @@ jobs:
         run: npm run migration:run --workspace @phuquochub/api
 
       # Three explicit gates before e2e, so a storage problem fails here with a clear message
-      # instead of surfacing as 448 unrelated AggregateErrors: the process is running, the
+      # instead of surfacing as 448 unrelated AggregateErrors: the container is running, the
       # unauthenticated liveness probe answers, and an AUTHENTICATED S3 call succeeds — the last
       # one is what actually proves the credentials and endpoint StorageService will use.
-      - name: Wait for MinIO and verify StorageService can initialise its bucket
+      - name: Wait for S3Mock and verify StorageService can initialise its bucket
         run: |
-          kill -0 "$(cat /tmp/minio.pid)"
+          docker ps --filter name=s3mock-ci --filter status=running --format '{{.Names}}' | grep -qx s3mock-ci
 
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/minio/health/live || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090/favicon.ico || true)
             [ "$code" = "200" ] && break
             sleep 2
           done
-          curl -sf -o /dev/null http://localhost:9000/minio/health/live
+          curl -sf -o /dev/null http://localhost:9090/favicon.ico
 
           node - <<'JS'
           // Mirrors StorageService.onModuleInit() using the SAME @aws-sdk/client-s3 client and the
@@ -186,15 +184,15 @@ jobs:
               console.log(`bucket "${bucket}" created`);
             }
             await client.send(new HeadBucketCommand({ Bucket: bucket }));
-            console.log('MinIO reachable and bucket initialisation verified');
+            console.log('S3Mock reachable and bucket initialisation verified');
           })().catch((err) => {
             // AggregateError.message is empty -- that is precisely why the original e2e failure was
-            // hard to read. Unwrap the sub-errors so this step says WHY it could not reach MinIO.
+            // hard to read. Unwrap the sub-errors so this step says WHY it could not reach S3Mock.
             const detail =
               err instanceof AggregateError
                 ? err.errors.map((e) => `${e.name}: ${e.message}`).join('; ')
                 : err.message;
-            console.error(`MinIO/S3 preflight failed (${err.name}): ${detail || '(no message)'}`);
+            console.error(`S3Mock/S3 preflight failed (${err.name}): ${detail || '(no message)'}`);
             process.exit(1);
           });
           JS
@@ -202,16 +200,13 @@ jobs:
       - name: API e2e
         run: npm run test:e2e --workspace @phuquochub/api
 
-      - name: MinIO logs (diagnostics)
+      - name: S3Mock logs (diagnostics)
         if: failure()
-        run: cat /tmp/minio.log || true
+        run: docker logs s3mock-ci || true
 
-      - name: Stop MinIO
+      - name: Stop S3Mock
         if: always()
-        run: |
-          if [ -f /tmp/minio.pid ]; then
-            kill "$(cat /tmp/minio.pid)" 2>/dev/null || true
-          fi
+        run: docker rm -f s3mock-ci || true
 
   # PLACE-026 (OD2-2..9) — production deployment pipeline. Builds the same Dockerfiles used for a
   # real deploy and validates them against real Postgres/Redis service containers (same pattern as
