@@ -8,7 +8,14 @@ import { buildBreadcrumbJsonLd, buildHotelJsonLd, serializeJsonLd } from '@/lib/
 import { PRICE_VERIFYING_TEXT, canDisplayPrice } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
-import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+import {
+  buildDetailSocialMetadata,
+  buildDetailTitle,
+  buildMetaDescription,
+  buildRouteAlternates,
+  isEnDetailIndexable,
+  NOINDEX_FOLLOW,
+} from '@/lib/seo';
 import { PlaceDescriptionEditor } from '@/modules/place-inline-edit/PlaceDescriptionEditor';
 import { PlacePhotosButton } from '@/modules/place-photos/PlacePhotosButton';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
@@ -56,11 +63,19 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
+    const title = buildDetailTitle(h.name, 'hotel', locale);
+    const description = buildMetaDescription(h.short_description, h.description);
     return {
-      title: `${h.name} · ${BREADCRUMB_HOTELS_LABEL[locale]} · PhuQuocHub`,
-      description: h.short_description ?? undefined,
+      title,
+      description,
       alternates: { canonical, languages },
       ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
+      ...buildDetailSocialMetadata({
+        title,
+        description,
+        image: h.cover_image_url ?? h.media[0]?.url,
+        imageAlt: h.name,
+      }),
     };
   } catch {
     // Nghiệm thu 20/10/2026 — `locale` đã có từ trước try (dòng 39), tái dùng ĐÚNG hằng số

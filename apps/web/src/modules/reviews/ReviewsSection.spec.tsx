@@ -130,10 +130,18 @@ describe('ReviewsSection', () => {
     expect(screen.getByRole('button', { name: 'Gửi đánh giá' })).not.toBeDisabled();
   });
 
+  it('exposes the star rating as one accessible image with a spoken label', () => {
+    render(<ReviewsSection placeId="p1" initialReviews={[baseReview({ media: [] })]} />);
+
+    // role="img" là điều kiện để aria-label hợp lệ trên <span> (Lighthouse "prohibited ARIA
+    // attributes", 16/11/2026) — các ký tự ★/☆ bên trong vẫn aria-hidden.
+    expect(screen.getByRole('img', { name: /^\d\/5 sao$/ })).toBeInTheDocument();
+  });
+
   it('renders a review with no media without any image markup', () => {
     render(<ReviewsSection placeId="p1" initialReviews={[baseReview({ media: [] })]} />);
 
-    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước).*/ })).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước|\d\/5 sao).*/ })).toHaveLength(0);
   });
 
   it('renders one published image below the review, using url when there is no thumbnail', () => {
@@ -222,7 +230,7 @@ describe('ReviewsSection', () => {
       />,
     );
 
-    expect(screen.queryByRole('img', { name: /^(?!Ảnh xem trước).*/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /^(?!Ảnh xem trước|\d\/5 sao).*/ })).not.toBeInTheDocument();
   });
 
   it('optimistically appended review after submit has no media (unchanged behavior)', async () => {
@@ -233,7 +241,7 @@ describe('ReviewsSection', () => {
     await waitFor(() => expect(mockCreateReview).toHaveBeenCalled());
     // Chỉ có ảnh xem trước cục bộ (nếu có) — không có ảnh review nào được render vì item optimistic
     // luôn có media: [] (createReview trả EmptySuccess, không có media thật để hiển thị ngay).
-    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước).*/ })).toHaveLength(0);
+    expect(screen.queryAllByRole('img', { name: /^(?!Ảnh xem trước|\d\/5 sao).*/ })).toHaveLength(0);
   });
 
   describe('confirmed_visit badge (Giai đoạn 4 — "đã xác nhận từng đến")', () => {

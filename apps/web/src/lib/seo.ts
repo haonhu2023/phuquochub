@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { getSiteUrl } from './site';
 import { SUPPORTED_LOCALES, localizedHref, type Locale } from './locale';
 
@@ -77,3 +78,87 @@ export function isEnDetailIndexable(input: EnIndexabilityInput | null | undefine
 /** `robots` Metadata cho một trang KHÔNG nên vào index nhưng VẪN phải crawl được (Phase 27: một
  * `noindex` không có tác dụng nếu robots.txt đã chặn crawler đọc chính trang đó). */
 export const NOINDEX_FOLLOW = { index: false, follow: true } as const;
+
+const SITE_NAME = 'PhuQuocHub';
+
+/** Nhãn loại SỐ ÍT theo `category_slug` (khớp danh mục công khai ngày 16/11/2026), dùng trong title. */
+const DETAIL_TYPE_LABEL: Record<string, Record<Locale, string>> = {
+  attraction: { vi: 'Điểm tham quan', en: 'Attraction' },
+  beach: { vi: 'Bãi biển', en: 'Beach' },
+  cafe: { vi: 'Quán cà phê', en: 'Cafe' },
+  hotel: { vi: 'Khách sạn', en: 'Hotel' },
+  market: { vi: 'Chợ', en: 'Market' },
+  resort: { vi: 'Resort', en: 'Resort' },
+  restaurant: { vi: 'Nhà hàng', en: 'Restaurant' },
+  tour: { vi: 'Tour', en: 'Tour' },
+  transport: { vi: 'Di chuyển', en: 'Transport' },
+};
+const FALLBACK_TYPE_LABEL: Record<Locale, string> = { vi: 'Địa điểm', en: 'Place' };
+
+function mentionsPhuQuoc(text: string): boolean {
+  return text.normalize('NFD').replace(/\p{M}/gu, '').replace(/đ/gi, 'd').toLowerCase().includes('phu quoc');
+}
+
+/**
+ * Title trang chi tiết: tên + loại + "Phú Quốc" + thương hiệu, ví dụ
+ * "Dinh Cậu · Điểm tham quan Phú Quốc · PhuQuocHub" / "Dinh Cau · Attraction in Phu Quoc · PhuQuocHub".
+ * Bản cũ chỉ là "Dinh Cậu · PhuQuocHub" — thiếu đúng cụm người dùng gõ khi tìm ("... phú quốc").
+ * Tên đã chứa "Phú Quốc" (vd "Sailing Club Phú Quốc") thì không lặp lại cụm đó.
+ */
+export function buildDetailTitle(name: string, categorySlug: string | null | undefined, locale: Locale): string {
+  const label = (categorySlug && DETAIL_TYPE_LABEL[categorySlug]?.[locale]) || FALLBACK_TYPE_LABEL[locale];
+  const where = mentionsPhuQuoc(name) ? '' : locale === 'en' ? ' in Phu Quoc' : ' Phú Quốc';
+  return `${name} · ${label}${where} · ${SITE_NAME}`;
+}
+
+const DESCRIPTION_MIN = 70;
+const DESCRIPTION_MAX = 160;
+
+function clampDescription(text: string): string {
+  if (text.length <= DESCRIPTION_MAX) return text;
+  const cut = text.slice(0, DESCRIPTION_MAX - 1);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 100 ? cut.slice(0, lastSpace) : cut).replace(/[\s.,;:–—-]+$/u, '')}…`;
+}
+
+/**
+ * Meta description 70–160 ký tự (khoảng Google hiển thị đủ trên trang kết quả). Ưu tiên mô tả ngắn;
+ * mô tả ngắn quá ngắn (vd "Resort all-spa-inclusive bên vịnh Vũng Bầu", 42 ký tự) thì dùng mô tả
+ * dài cắt gọn; quá dài (vd 268 ký tự) thì cắt ở ranh giới từ + "…" thay vì để Google tự cắt.
+ */
+export function buildMetaDescription(short?: string | null, long?: string | null): string | undefined {
+  const s = short?.replace(/\s+/g, ' ').trim() || '';
+  const l = long?.replace(/\s+/g, ' ').trim() || '';
+  if (s.length >= DESCRIPTION_MIN) return clampDescription(s);
+  if (l.length > s.length) return clampDescription(l);
+  return s || undefined;
+}
+
+/**
+ * openGraph/twitter cho trang chi tiết có ảnh riêng. KHÔNG có ảnh → trả {} có chủ đích: một trang
+ * con khai `openGraph` mà thiếu `images` sẽ làm mất luôn ảnh chia sẻ mặc định
+ * (`[locale]/(public)/opengraph-image.tsx`) — đã đo trên production 16/11/2026: trang không khai
+ * `openGraph` tự nhận og:title/og:description từ title/description cùng ảnh mặc định 1200×630.
+ */
+export function buildDetailSocialMetadata(input: {
+  title: string;
+  description?: string;
+  image?: string | null;
+  imageAlt: string;
+}): Pick<Metadata, 'openGraph' | 'twitter'> {
+  if (!input.image) return {};
+  return {
+    openGraph: {
+      title: input.title,
+      description: input.description,
+      type: 'article',
+      images: [{ url: input.image, alt: input.imageAlt }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: input.title,
+      description: input.description,
+      images: [input.image],
+    },
+  };
+}

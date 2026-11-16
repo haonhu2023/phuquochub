@@ -580,10 +580,19 @@ describe('HotelDetailPage — nghiệm thu 3 chuỗi giao diện /en (20/10/2026
     expect(screen.getByText('Loại hình').nextElementSibling).toHaveTextContent('Khách sạn');
   });
 
-  it('generateMetadata /en: title dùng "Hotels" (tái dùng BREADCRUMB_HOTELS_LABEL, không còn hardcode "Khách sạn")', async () => {
+  it('generateMetadata /en: title tiếng Anh, không hardcode "Khách sạn"', async () => {
     mockGetHotel.mockResolvedValueOnce(hotel({ name: 'Novotel Phu Quoc Resort' }));
     const metadata = await generateMetadata({ params: Promise.resolve({ slug: 'novotel-phu-quoc', locale: 'en' }) });
-    expect(metadata.title).toBe('Novotel Phu Quoc Resort · Hotels · PhuQuocHub');
+    expect(metadata.title).toBe('Novotel Phu Quoc Resort · Hotel · PhuQuocHub');
+  });
+
+  it('generateMetadata: tên chưa có "Phú Quốc" thì title thêm cụm địa danh (SEO 16/11/2026)', async () => {
+    mockGetHotel.mockResolvedValueOnce(hotel({ name: 'Fusion Resort' }));
+    const vi = await generateMetadata({ params: Promise.resolve({ slug: 'fusion', locale: 'vi' }) });
+    expect(vi.title).toBe('Fusion Resort · Khách sạn Phú Quốc · PhuQuocHub');
+    mockGetHotel.mockResolvedValueOnce(hotel({ name: 'Fusion Resort' }));
+    const en = await generateMetadata({ params: Promise.resolve({ slug: 'fusion', locale: 'en' }) });
+    expect(en.title).toBe('Fusion Resort · Hotel in Phu Quoc · PhuQuocHub');
   });
 
   it('generateMetadata /vi: title vẫn giữ nguyên "Khách sạn"', async () => {

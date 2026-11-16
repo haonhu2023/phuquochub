@@ -43,7 +43,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${copy.title} | PhuQuocHub`,
     description: copy.description,
     alternates: buildRouteAlternates(locale, '/hotels'),
-    openGraph: { title: `${copy.title} | PhuQuocHub`, description: copy.description, type: 'website' },
   };
 }
 

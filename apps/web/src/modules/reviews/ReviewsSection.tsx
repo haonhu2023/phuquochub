@@ -128,7 +128,7 @@ export function ReviewsSection({ placeId, initialReviews }: Props) {
             <li key={r.id} className={styles.reviewItem}>
               <div className={styles.reviewHead}>
                 <span className={styles.reviewAuthor}>{r.author_name}</span>
-                <span className={styles.reviewStars} aria-label={`${r.rating}/5 sao`}>
+                <span className={styles.reviewStars} role="img" aria-label={`${r.rating}/5 sao`}>
                   {ratingStars(r.rating).map((filled, i) => (
                     <span key={i} aria-hidden="true">
                       {filled ? '★' : '☆'}

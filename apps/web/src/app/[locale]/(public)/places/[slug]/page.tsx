@@ -35,7 +35,14 @@ import { ProposeEditCta } from '@/modules/place-edit-proposals/ProposeEditCta';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
 import { ReportButton } from '@/modules/listing-reports/ReportButton';
 import { localizedHref, type Locale } from '@/lib/locale';
-import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+import {
+  buildDetailSocialMetadata,
+  buildDetailTitle,
+  buildMetaDescription,
+  buildRouteAlternates,
+  isEnDetailIndexable,
+  NOINDEX_FOLLOW,
+} from '@/lib/seo';
 
 const BREADCRUMB_HOME_LABEL: Record<Locale, string> = { vi: 'Trang chủ', en: 'Home' };
 const BREADCRUMB_PLACES_LABEL: Record<Locale, string> = { vi: 'Địa điểm', en: 'Places' };
@@ -60,12 +67,6 @@ const BROWSE_LISTING_BY_CATEGORY: Record<string, { href: string; label: Record<L
   beach: { href: '/beaches', label: { vi: 'Bãi biển', en: 'Beaches' } },
 };
 
-function metaDescription(place: PlaceDetail): string | undefined {
-  if (place.short_description) return place.short_description;
-  if (place.description) return place.description.slice(0, 157).trimEnd() + '…';
-  return undefined;
-}
-
 // SEO: ưu tiên field mô tả sẵn có; API hiện chưa expose seo_title/seo_description riêng
 // → fallback name / short_description / description. Không để lỗi/slug sai làm crash.
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
@@ -78,8 +79,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     return { title: `Địa điểm · ${SITE}` };
   }
 
-  const title = `${place.name} · ${SITE}`;
-  const description = metaDescription(place);
+  const title = buildDetailTitle(place.name, place.category_slug, locale);
+  const description = buildMetaDescription(place.short_description, place.description);
   const image = place.cover_image_url ?? place.media[0]?.url ?? undefined;
   const path = `/places/${place.slug}`;
   // Phase 20 (EN indexation gate): `alternates.languages` (hreflang) và `robots` chỉ được phát
@@ -100,17 +101,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     description,
     alternates: { canonical, languages },
     ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
-    openGraph: {
-      title,
-      description,
-      type: 'article',
-      ...(image ? { images: [{ url: image, alt: place.name }] } : {}),
-    },
-    twitter: {
-      card: image ? 'summary_large_image' : 'summary',
-      title,
-      description,
-    },
+    ...buildDetailSocialMetadata({ title, description, image, imageAlt: place.name }),
   };
 }
 

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { GuideArticleView } from '@/modules/guide/GuideArticleView';
 import { getGuideArticle } from '@/modules/guide/api/guide.api';
 import { ApiError } from '@/lib/http';
-import { buildRouteAlternates } from '@/lib/seo';
+import { buildDetailSocialMetadata, buildRouteAlternates } from '@/lib/seo';
 import { buildGuideArticleJsonLd, buildGuideFaqJsonLd, serializeJsonLd } from '@/lib/structured-data';
 import { resolveMetaDescription, resolveMetaTitle } from '@/modules/guide/seoMeta';
 import type { Locale } from '@/lib/locale';
@@ -42,13 +42,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     title,
     description,
     alternates: { canonical, languages },
-    openGraph: {
-      title,
-      description,
-      type: 'article',
-      ...(data.heroImageUrl ? { images: [{ url: data.heroImageUrl }] } : {}),
-    },
-    twitter: { card: 'summary', title, description },
+    ...buildDetailSocialMetadata({ title, description, image: data.heroImageUrl, imageAlt: title }),
   };
 }
 

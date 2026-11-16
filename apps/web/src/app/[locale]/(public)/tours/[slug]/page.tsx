@@ -14,7 +14,14 @@ import { buildBreadcrumbJsonLd, buildTourJsonLd, serializeJsonLd } from '@/lib/s
 import { PRICE_VERIFYING_TEXT } from '@/modules/places/trust';
 import { PlaceGallery } from '@/modules/places/PlaceGallery';
 import { localizedHref, type Locale } from '@/lib/locale';
-import { buildRouteAlternates, isEnDetailIndexable, NOINDEX_FOLLOW } from '@/lib/seo';
+import {
+  buildDetailSocialMetadata,
+  buildDetailTitle,
+  buildMetaDescription,
+  buildRouteAlternates,
+  isEnDetailIndexable,
+  NOINDEX_FOLLOW,
+} from '@/lib/seo';
 import { getOpeningToday, getOpeningWeek, hasOpeningHours } from '@/modules/places/openingHours';
 import { RichDescriptionRenderer } from '@/modules/rich-doc/RichDescriptionRenderer';
 import { SaveButton } from '@/modules/saved-items/SaveButton';
@@ -46,11 +53,19 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     });
     const { canonical, languages: fullLanguages } = buildRouteAlternates(locale, path);
     const languages = enIndexable ? fullLanguages : { vi: fullLanguages.vi, 'x-default': fullLanguages.vi };
+    const title = buildDetailTitle(t.name, 'tour', locale);
+    const description = buildMetaDescription(t.short_description, t.description);
     return {
-      title: `${t.name} · Tour · PhuQuocHub`,
-      description: t.short_description ?? undefined,
+      title,
+      description,
       alternates: { canonical, languages },
       ...(locale === 'en' && !enIndexable ? { robots: NOINDEX_FOLLOW } : {}),
+      ...buildDetailSocialMetadata({
+        title,
+        description,
+        image: t.cover_image_url ?? t.media[0]?.url,
+        imageAlt: t.name,
+      }),
     };
   } catch {
     return { title: 'Tour · PhuQuocHub' };

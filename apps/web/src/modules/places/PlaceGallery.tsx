@@ -25,7 +25,7 @@ export function PlaceGallery({ media, placeName }: Props) {
   if (media.length === 0) return null;
   return (
     <div className={styles.gallery}>
-      {media.map((m) => (
+      {media.map((m, index) => (
         <figure key={m.id} className={styles.galleryFigure}>
           {/* 2026-10-22 (rà soát hiệu năng — ảnh gallery gốc đo được 137-459KB/ảnh, không hề qua
               resize/nén nào): next/image tối ưu được vì `m.url` luôn same-origin (API_PUBLIC_URL =
@@ -39,6 +39,9 @@ export function PlaceGallery({ media, placeName }: Props) {
             width={400}
             height={300}
             sizes="(max-width: 480px) 45vw, 200px"
+            // Ảnh đầu là phần tử LCP của trang chi tiết trên mobile (Lighthouse 16/11/2026: LCP 3.0s
+            // vì ảnh này bị lazy-load) — tải ngay, ưu tiên cao; các ảnh sau vẫn lazy.
+            {...(index === 0 ? { loading: 'eager' as const, fetchPriority: 'high' as const } : {})}
           />
           <MediaCredit media={m} />
         </figure>
